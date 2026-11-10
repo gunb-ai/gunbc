@@ -233,14 +233,15 @@ pub use crate::v1_compiler_infer_env::{
     generic_actual_position_type, global_bare_declarer_in_scope, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
     inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
-    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
-    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
-    merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
-    node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
-    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_head_of_declaration,
-    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    is_recursive_type_by_name, is_unsolved_type_variable, is_where_refinement_node,
+    kernel_settled_name, listed_import_required_bare_call_blocked, lookup_binding_by_name,
+    lookup_binding_on_chain, lookup_type, lookup_type_by_name, lookup_type_for,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
+    node_is_kernel_mint_named, node_with_children, node_with_inferred, overlay_skips_kernel_name,
+    parameterized_alias_rhs, put_inductive_field, put_inductive_field_cross,
+    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
+    qualify_decl_reference_positions, settled_head_of_declaration, settled_type,
+    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
@@ -394,10 +395,11 @@ use crate::v1_std_core::CompilerDiagnostic::{
     EqualityOptionalityMismatch, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
     KernelMintShapeMismatch, MethodExistenceFrontierAdmitted, MethodExistenceUndecided,
     MethodNotFound, MissingField, OptionalCastNotEliminated, ReceiverTypeUnestablished,
-    ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
-    SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
-    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
-    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
+    RefinementCastRefused, ServiceConfigReferenceJudgmentDeferred,
+    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
+    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
+    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -420,7 +422,7 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v1_std_core::ParsedModuleItemKind::{
-    ModuleItemFunction, ModuleItemTypeDeclaration, NotAModuleItem,
+    ModuleItemDataValue, ModuleItemFunction, ModuleItemTypeDeclaration, NotAModuleItem,
 };
 use crate::v1_std_core::ServiceConfigField::{
     SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
@@ -14122,16 +14124,31 @@ pub fn validate_cast(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
     source_reading: Rc<HostTextSourceReading>,
+    int_refinement_cast_domain: bool,
 ) -> Option<Rc<ErrorNode>> {
     match source_inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: src_node, .. }) => {
             let source_name =
                 crate::v1_std_core::authored_name_at(source_indices, src_node.clone());
             let grounded = match source_declaration.clone() {
-                Some(d) => grounded_cast_verdict(d.clone(), target_reading),
+                Some(d) => grounded_cast_verdict(d.clone(), target_reading.clone()),
                 std::option::Option::None => Rc::new(GroundedCastVerdict::GroundedCastNotDecided),
             };
-            if (source_name.clone() == target_name.clone()) {
+            let target_declaration = match (*target_reading.clone()).clone() {
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: t,
+                    ..
+                } => Some(t.clone()),
+                _ => std::option::Option::None,
+            };
+            let is_identity_cast = match source_declaration.clone() {
+                Some(sd) => match target_declaration.clone() {
+                    Some(td) => crate::std_decl_ref::declaration_ref_eq(sd.clone(), td.clone()),
+                    std::option::Option::None => (source_name.clone() == target_name.clone()),
+                },
+                std::option::Option::None => (source_name.clone() == target_name.clone()),
+            };
+            if is_identity_cast.clone() {
                 std::option::Option::None
             } else {
                 if match (*grounded.clone()).clone() {
@@ -14187,45 +14204,59 @@ pub fn validate_cast(
                                     span: span.clone(),
                                 });
                                 Some(crate::v1_std_core::make_error_node(
-                                    diag,
+                                    diag.clone(),
                                     module_name.clone(),
                                 ))
                             }
                         } else {
-                            match (*source_reading.clone()).clone() {
-                                HostTextSourceReading::HostTextRouteAbsentNominal => {
-                                    nominal_cast_refusal(
-                                        source_name.clone(),
-                                        target_name.clone(),
-                                        span.clone(),
+                            if int_refinement_cast_domain.clone() {
+                                {
+                                    let diag = Rc::new(CompilerDiagnostic::RefinementCastRefused {
+                                        source: source_name.clone(),
+                                        target: target_name.clone(),
+                                        span: span.clone(),
+                                    });
+                                    Some(crate::v1_std_core::make_error_node(
+                                        diag.clone(),
                                         module_name.clone(),
-                                    )
+                                    ))
                                 }
-                                HostTextSourceReading::HostTextRouteAbsentKernel {
-                                    kernel: NonTextKernel::NonTextKernelBool,
-                                    ..
-                                } => nominal_cast_refusal(
-                                    source_name.clone(),
-                                    target_name.clone(),
-                                    span.clone(),
-                                    module_name.clone(),
-                                ),
-                                HostTextSourceReading::HostTextRouteAbsentKernel {
-                                    kernel: _,
-                                    ..
-                                } => validate_cast_in_table_domain(
-                                    source_name.clone(),
-                                    target_name.clone(),
-                                    span.clone(),
-                                    module_name.clone(),
-                                ),
-                                HostTextSourceReading::HostTextSourceAdmissible => {
-                                    validate_cast_in_table_domain(
+                            } else {
+                                match (*source_reading.clone()).clone() {
+                                    HostTextSourceReading::HostTextRouteAbsentNominal => {
+                                        nominal_cast_refusal(
+                                            source_name.clone(),
+                                            target_name.clone(),
+                                            span.clone(),
+                                            module_name.clone(),
+                                        )
+                                    }
+                                    HostTextSourceReading::HostTextRouteAbsentKernel {
+                                        kernel: NonTextKernel::NonTextKernelBool,
+                                        ..
+                                    } => nominal_cast_refusal(
                                         source_name.clone(),
                                         target_name.clone(),
                                         span.clone(),
                                         module_name.clone(),
-                                    )
+                                    ),
+                                    HostTextSourceReading::HostTextRouteAbsentKernel {
+                                        kernel: _,
+                                        ..
+                                    } => validate_cast_in_table_domain(
+                                        source_name.clone(),
+                                        target_name.clone(),
+                                        span.clone(),
+                                        module_name.clone(),
+                                    ),
+                                    HostTextSourceReading::HostTextSourceAdmissible => {
+                                        validate_cast_in_table_domain(
+                                            source_name.clone(),
+                                            target_name.clone(),
+                                            span.clone(),
+                                            module_name.clone(),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -20217,6 +20248,52 @@ if type_node_is_established(cpt.clone(), scope.type_env.source_indices.clone()) 
             let target_name = crate::v1_std_core::authored_name_at(si.clone(), target_type.clone());
             let source_reading =
                 cast_source_host_text_reading(inner_typed.inferred.clone(), scope.clone());
+            let target_resolved = match crate::v1_compiler_infer_env::lookup_type_for(
+                scope.type_env.clone(),
+                target_type.clone(),
+            ) {
+                Some(r) => r.clone(),
+                std::option::Option::None => target_type.clone(),
+            };
+            let target_is_int_refined = ((Rc::new({
+                let mut __result = Vec::new();
+                for pred in type_where_refinement_predicates_transitive(
+                    target_resolved,
+                    scope.type_env.clone(),
+                )
+                .iter()
+                .cloned()
+                {
+                    if where_refinement_is_int_literal_predicate(
+                        crate::v1_std_core::field_init_node_name_at(pred.clone(), si.clone()),
+                    ) {
+                        __result.push(pred);
+                    }
+                }
+                __result
+            })
+            .len() as i64)
+                > 0);
+            let source_int_kernel = match inner_typed.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: snode, .. }) => {
+                    let sresolved = match crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        snode.clone(),
+                    ) {
+                        Some(r) => r.clone(),
+                        std::option::Option::None => snode.clone(),
+                    };
+                    let sbase_name = crate::v1_std_core::authored_name_at(
+                        si.clone(),
+                        peel_where_refinement_base(sresolved, scope.type_env.clone()),
+                    );
+                    ((sbase_name.clone() == "Int".to_string())
+                        || (sbase_name.clone() == "Nat".to_string()))
+                }
+                _ => false,
+            };
+            let int_refinement_cast_domain =
+                (target_is_int_refined.clone() && source_int_kernel.clone());
             let cast_diag = validate_cast(
                 inner_typed.inferred.clone(),
                 cast_source_declaration(inner_typed.clone(), scope.clone()),
@@ -20230,6 +20307,7 @@ if type_node_is_established(cpt.clone(), scope.type_env.source_indices.clone()) 
                 si.clone(),
                 scope.module_name.clone(),
                 source_reading.clone(),
+                int_refinement_cast_domain,
             );
             let cast_diags = match cast_diag.clone() {
                 Some(d) => Rc::new(vec![d.clone()]),
@@ -29055,7 +29133,10 @@ pub fn infer_item(
 #[serde(tag = "_variant")]
 pub enum DeclarationDemand {
     AllDeclarations,
-    OnlyDeclarations { names: Rc<HashMap<String, bool>> },
+    OnlyDeclarations {
+        names: Rc<HashMap<String, bool>>,
+        realization: Rc<Realization>,
+    },
 }
 impl DeclarationDemand {
     pub fn names(&self) -> Rc<HashMap<String, bool>> {
@@ -29063,6 +29144,21 @@ impl DeclarationDemand {
             DeclarationDemand::AllDeclarations => panic!("no names on unit variant"),
             DeclarationDemand::OnlyDeclarations { names: __val, .. } => __val.clone(),
         }
+    }
+    pub fn realization(&self) -> Rc<Realization> {
+        match self {
+            DeclarationDemand::AllDeclarations => panic!("no realization on unit variant"),
+            DeclarationDemand::OnlyDeclarations {
+                realization: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn declaration_demand_realization(demand: Rc<DeclarationDemand>) -> Rc<Realization> {
+    match (*demand.clone()).clone() {
+        DeclarationDemand::AllDeclarations => inactive_realization(),
+        DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
     }
 }
 
@@ -29074,6 +29170,809 @@ pub fn declares_function_body(item: Rc<Node>) -> bool {
         })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RealizationEdge {
+    pub reader: String,
+    pub name: String,
+    pub span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Realization {
+    pub active: bool,
+    pub realized: Rc<HashMap<String, bool>>,
+    pub declared: Rc<HashMap<String, bool>>,
+}
+
+pub fn inactive_realization() -> Rc<Realization> {
+    Rc::new(Realization {
+        active: false,
+        realized: v1_rt::rc_empty_map::<String, bool>(),
+        declared: v1_rt::rc_empty_map::<String, bool>(),
+    })
+}
+
+pub fn realization_enforcing(realization: Rc<Realization>) -> bool {
+    realization.active.clone()
+}
+
+pub fn realization_edges(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<RealizationEdge>>> {
+    v1_rt::concat(
+        Rc::new(vec![
+            "spelled".to_string(),
+            "inhabitance_row".to_string(),
+            "algebra_row".to_string(),
+            "dispatch".to_string(),
+            "provider_demand".to_string(),
+            "effect_analysis".to_string(),
+            "global_bare_lookup".to_string(),
+        ])
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<Rc<RealizationEdge>>>, reader: String| {
+                realization_read_names(n.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                    .fold(acc, |a2: Rc<Vec<Rc<RealizationEdge>>>, nm: String| {
+                        v1_rt::rc_list_push(
+                            a2,
+                            Rc::new(RealizationEdge {
+                                reader: reader.clone(),
+                                name: nm.clone(),
+                                span: n.span.clone(),
+                            }),
+                        )
+                    })
+            },
+        ),
+        v1_rt::concat(
+            realization_row_edges(n.clone(), source_indices.clone()),
+            realization_provider_row_edges(n.clone(), source_indices.clone()),
+        ),
+    )
+}
+
+pub fn realization_row_edges(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<RealizationEdge>>> {
+    {
+        let reader = match crate::v1_compiler_infer_env::transparent_alias_rhs(item.clone()) {
+            Some(_) => "alias_rhs_expansion".to_string(),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::parameterized_alias_rhs(
+                    item.clone(),
+                    source_indices.clone(),
+                ) {
+                    Some(_) => "alias_rhs_expansion".to_string(),
+                    std::option::Option::None => match item.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: rhs, .. }) => {
+                            if crate::v1_compiler_infer_env::is_where_refinement_node(rhs.clone()) {
+                                "where_refinement_chain".to_string()
+                            } else {
+                                "".to_string()
+                            }
+                        }
+                        _ => "".to_string(),
+                    },
+                }
+            }
+        };
+        let rhs = match crate::v1_compiler_infer_env::transparent_alias_rhs(item.clone()) {
+            Some(r) => Some(r.clone()),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::parameterized_alias_rhs(
+                    item.clone(),
+                    source_indices.clone(),
+                ) {
+                    Some(pa) => Some(pa.rhs.clone()),
+                    std::option::Option::None => match item.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: r, .. }) => {
+                            if crate::v1_compiler_infer_env::is_where_refinement_node(r.clone()) {
+                                Some(r.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                        _ => std::option::Option::None,
+                    },
+                }
+            }
+        };
+        v1_rt::concat(
+            realization_wire_contract_row_edges(item.clone(), source_indices.clone()),
+            if (reader.clone() == "".to_string()) {
+                Rc::new(vec![])
+            } else {
+                match rhs.clone() {
+                    std::option::Option::None => Rc::new(vec![]),
+                    Some(r) => realization_read_names(r.clone(), source_indices.clone())
+                        .iter()
+                        .cloned()
+                        .fold(
+                            Rc::new(vec![]),
+                            |acc: Rc<Vec<Rc<RealizationEdge>>>, nm: String| {
+                                v1_rt::rc_list_push(
+                                    acc,
+                                    Rc::new(RealizationEdge {
+                                        reader: reader.clone(),
+                                        name: nm.clone(),
+                                        span: item.span.clone(),
+                                    }),
+                                )
+                            },
+                        ),
+                }
+            },
+        )
+    }
+}
+
+pub fn realization_wire_contract_read_row(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (item.module_item_kind.clone() != ParsedModuleItemKind::ModuleItemDataValue) {
+        false
+    } else {
+        if (item.name.clone() == "wire_contract".to_string()) {
+            true
+        } else {
+            match item.type_annotation.clone() {
+                Some(ta) => {
+                    ((realization_last_segment(
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), ta.clone()),
+                        0,
+                        v1_rt::string_length(&crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            ta.clone(),
+                        )),
+                    ) == "CoproductWireContract".to_string())
+                        && match item.body.clone() {
+                            Some(body) => {
+                                ((realization_record_field_value(
+                                    body.clone(),
+                                    "coproduct".to_string(),
+                                    source_indices.clone(),
+                                ) != std::option::Option::None)
+                                    && (realization_record_field_value(
+                                        body.clone(),
+                                        "encoding".to_string(),
+                                        source_indices.clone(),
+                                    ) != std::option::Option::None))
+                            }
+                            std::option::Option::None => false,
+                        })
+                }
+                std::option::Option::None => false,
+            }
+        }
+    }
+}
+
+pub fn realization_wire_contract_read_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    modules.iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<String>>, m: Rc<ResolvedModule>| {
+            crate::v1_std_core::module_items(m.module.clone())
+                .iter()
+                .cloned()
+                .fold(acc, |a: Rc<Vec<String>>, item: Rc<Node>| {
+                    if !realization_wire_contract_read_row(item.clone(), source_indices.clone()) {
+                        a
+                    } else {
+                        v1_rt::rc_list_push(
+                            a,
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                item.clone(),
+                            ),
+                        )
+                    }
+                })
+        },
+    )
+}
+
+pub fn realization_wire_contract_row_edges(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<RealizationEdge>>> {
+    if !realization_wire_contract_read_row(item.clone(), source_indices.clone()) {
+        Rc::new(vec![])
+    } else {
+        match realization_wire_contract_row_target(item.clone(), source_indices.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(target) => v1_rt::rc_list_push(
+                Rc::new(vec![]),
+                Rc::new(RealizationEdge {
+                    reader: "wire_contract_index".to_string(),
+                    name: target.clone(),
+                    span: item.span.clone(),
+                }),
+            ),
+        }
+    }
+}
+
+pub fn realization_wire_contract_row_target(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match item.body.clone() {
+        Some(body) => match realization_record_field_value(
+            body.clone(),
+            "coproduct".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(decl_ref_node) => realization_record_string_field(
+                decl_ref_node.clone(),
+                "decl_name".to_string(),
+                source_indices.clone(),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn realization_record_field_value(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for fi in record.children.clone().iter().cloned() {
+            if (crate::v1_std_core::field_init_node_name_at(fi.clone(), source_indices.clone())
+                == field_name.clone())
+            {
+                __result.push(fi);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(fi) => Some(crate::v1_std_core::field_init_node_value(fi.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn realization_record_string_field(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match realization_record_field_value(record, field_name, source_indices) {
+        Some(n) => crate::v1_std_core::expr_literal_string_optional(n.clone()),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn realization_spine_names_into(
+    own: Rc<HashMap<String, bool>>,
+    name: String,
+) -> Rc<HashMap<String, bool>> {
+    {
+        let length = v1_rt::string_length(&name);
+        let with_self = v1_rt::rc_map_insert(own.clone(), name.clone(), true);
+        let with_head = v1_rt::rc_map_insert(
+            with_self.clone(),
+            realization_generic_head(name.clone(), 0, length.clone()),
+            true,
+        );
+        v1_rt::concat(
+            realization_dotted_prefix_walk(name.clone(), 0, length.clone(), Rc::new(vec![])),
+            realization_dotted_segment_walk(name.clone(), 0, length.clone(), Rc::new(vec![])),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            with_head.clone(),
+            |a: Rc<HashMap<String, bool>>, part: String| {
+                v1_rt::rc_map_insert(a, part.clone(), true)
+            },
+        )
+    }
+}
+
+pub fn realization_generic_head(
+    mut __tco_loop_name: String,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_length: i64,
+) -> String {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut pos = __tco_loop_pos;
+            #[allow(unused_mut)]
+            let mut length = __tco_loop_length;
+            if (pos.clone() >= length.clone()) {
+                break name.clone();
+            } else {
+                if (v1_rt::char_at(&name, pos.clone()) == "<".to_string()) {
+                    break v1_rt::substring(&name, 0, pos.clone());
+                } else {
+                    {
+                        let __tco_0 = name;
+                        let __tco_1 = v1_rt::int_add(pos, 1);
+                        let __tco_2 = length;
+                        __tco_loop_name = __tco_0;
+                        __tco_loop_pos = __tco_1;
+                        __tco_loop_length = __tco_2;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn realization_dotted_segment_walk(
+    mut __tco_loop_name: String,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_length: i64,
+    mut __tco_loop_acc: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut pos = __tco_loop_pos;
+            #[allow(unused_mut)]
+            let mut length = __tco_loop_length;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            if (pos.clone() >= length.clone()) {
+                break acc.clone();
+            } else {
+                if (v1_rt::char_at(&name, pos.clone()) == ".".to_string()) {
+                    {
+                        let __tco_0 = name.clone();
+                        let __tco_1 = v1_rt::int_add(pos.clone(), 1);
+                        let __tco_2 = length.clone();
+                        let __tco_3 = v1_rt::rc_list_push(
+                            acc,
+                            v1_rt::substring(&name, v1_rt::int_add(pos.clone(), 1), length.clone()),
+                        );
+                        __tco_loop_name = __tco_0;
+                        __tco_loop_pos = __tco_1;
+                        __tco_loop_length = __tco_2;
+                        __tco_loop_acc = __tco_3;
+                        continue;
+                    }
+                } else {
+                    {
+                        let __tco_0 = name;
+                        let __tco_1 = v1_rt::int_add(pos, 1);
+                        let __tco_2 = length;
+                        let __tco_3 = acc;
+                        __tco_loop_name = __tco_0;
+                        __tco_loop_pos = __tco_1;
+                        __tco_loop_length = __tco_2;
+                        __tco_loop_acc = __tco_3;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn realization_dotted_prefix_walk(
+    mut __tco_loop_name: String,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_length: i64,
+    mut __tco_loop_acc: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut pos = __tco_loop_pos;
+            #[allow(unused_mut)]
+            let mut length = __tco_loop_length;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            if (pos.clone() >= length.clone()) {
+                break acc.clone();
+            } else {
+                if (v1_rt::char_at(&name, pos.clone()) == ".".to_string()) {
+                    {
+                        let __tco_0 = name.clone();
+                        let __tco_1 = v1_rt::int_add(pos.clone(), 1);
+                        let __tco_2 = length;
+                        let __tco_3 =
+                            v1_rt::rc_list_push(acc, v1_rt::substring(&name, 0, pos.clone()));
+                        __tco_loop_name = __tco_0;
+                        __tco_loop_pos = __tco_1;
+                        __tco_loop_length = __tco_2;
+                        __tco_loop_acc = __tco_3;
+                        continue;
+                    }
+                } else {
+                    {
+                        let __tco_0 = name;
+                        let __tco_1 = v1_rt::int_add(pos, 1);
+                        let __tco_2 = length;
+                        let __tco_3 = acc;
+                        __tco_loop_name = __tco_0;
+                        __tco_loop_pos = __tco_1;
+                        __tco_loop_length = __tco_2;
+                        __tco_loop_acc = __tco_3;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn realization_provider_row_edges(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<RealizationEdge>>> {
+    realization_read_names(item.clone(), source_indices)
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<Rc<RealizationEdge>>>, name: String| {
+                if !v1_rt::contains(name.clone(), ".".to_string()) {
+                    acc
+                } else {
+                    realization_dotted_prefix_walk(
+                        name.clone(),
+                        0,
+                        v1_rt::string_length(&name),
+                        Rc::new(vec![]),
+                    )
+                    .iter()
+                    .cloned()
+                    .fold(
+                        acc,
+                        |a2: Rc<Vec<Rc<RealizationEdge>>>, prefix: String| {
+                            v1_rt::rc_list_push(
+                                a2,
+                                Rc::new(RealizationEdge {
+                                    reader: "provider_demand".to_string(),
+                                    name: prefix.clone(),
+                                    span: item.span.clone(),
+                                }),
+                            )
+                        },
+                    )
+                }
+            },
+        )
+}
+
+pub fn realization_row_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    v1_rt::concat(
+        realization_read_names(item.clone(), source_indices.clone()),
+        v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for e in realization_row_edges(item.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                {
+                    __result.push(e.name.clone());
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for e in realization_provider_row_edges(item.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                {
+                    __result.push(e.name.clone());
+                }
+                __result
+            }),
+        ),
+    )
+}
+
+pub fn realization_typed_edges(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<RealizationEdge>>> {
+    realization_read_names(n.clone(), source_indices)
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<Rc<RealizationEdge>>>, nm: String| {
+                v1_rt::rc_list_push(
+                    acc,
+                    Rc::new(RealizationEdge {
+                        reader: "desugar_or_synth".to_string(),
+                        name: nm.clone(),
+                        span: n.span.clone(),
+                    }),
+                )
+            },
+        )
+}
+
+pub fn realization_read_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new(v1_rt::map_keys(&spelled_names_into(
+        n,
+        source_indices,
+        v1_rt::rc_empty_map::<String, bool>(),
+        true,
+    )))
+}
+
+pub fn realization_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    seeds: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        let items =
+            modules
+                .iter()
+                .cloned()
+                .fold(Rc::new(vec![]), |acc: _, m: Rc<ResolvedModule>| {
+                    v1_rt::concat(acc, crate::v1_std_core::module_items(m.module.clone()))
+                });
+        let declaration_index = items.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<_>>>(),
+            |idx: _, item: _| {
+                let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+                v1_rt::rc_map_insert(
+                    idx.clone(),
+                    nm.clone(),
+                    v1_rt::rc_list_push(
+                        match v1_rt::map_get(&idx, nm.clone()) {
+                            Some(l) => l.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        },
+                        item.clone(),
+                    ),
+                )
+            },
+        );
+        let demand_seeds = v1_rt::concat(
+            seeds.clone(),
+            realization_wire_contract_read_names(modules.clone(), source_indices.clone()),
+        );
+        let seeded = demand_seeds.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        let first = Rc::new(v1_rt::map_keys(&seeded)).iter().cloned().fold(
+            Rc::new(DemandWave {
+                demanded: seeded.clone(),
+                fresh: Rc::new(v1_rt::map_keys(&seeded)),
+            }),
+            |w: Rc<DemandWave>, nm: String| {
+                match v1_rt::map_get(&declaration_index, nm.clone()) {
+                    Some(l) => l.clone(),
+                    std::option::Option::None => Rc::new(vec![]),
+                }
+                .iter()
+                .cloned()
+                .fold(w, |a: Rc<DemandWave>, item: _| {
+                    demand_wave_add(a, item.clone(), source_indices.clone())
+                })
+            },
+        );
+        demand_wave_loop(first, declaration_index.clone(), source_indices.clone())
+            .demanded
+            .clone()
+    }
+}
+
+pub fn realization_declared_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    symbol_index: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        let by_item = modules
+            .iter()
+            .cloned()
+            .fold(Rc::new(vec![]), |acc: _, m: Rc<ResolvedModule>| {
+                v1_rt::concat(acc, crate::v1_std_core::module_items(m.module.clone()))
+            })
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, item: _| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                        true,
+                    )
+                },
+            );
+        v1_rt::concat(
+            Rc::new(v1_rt::map_keys(&symbol_index.entries.clone())),
+            Rc::new(v1_rt::map_keys(&symbol_index.global_bare.clone())),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            by_item.clone(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        )
+    }
+}
+
+pub fn realization_of(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    seeds: Rc<Vec<String>>,
+    symbol_index: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Realization> {
+    Rc::new(Realization {
+        active: true,
+        realized: realization_names(modules.clone(), seeds, source_indices.clone()),
+        declared: realization_declared_names(modules.clone(), symbol_index, source_indices.clone()),
+    })
+}
+
+pub fn realization_includes(realization: Rc<Realization>, name: String) -> bool {
+    if !realization.active.clone() {
+        true
+    } else {
+        realization_name_variants(name)
+            .iter()
+            .cloned()
+            .fold(false, |hit: bool, v: String| {
+                (hit || v1_rt::map_has(&realization.realized.clone(), v.clone()))
+            })
+    }
+}
+
+pub fn realization_last_segment(
+    mut __tco_loop_name: String,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_length: i64,
+) -> String {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut pos = __tco_loop_pos;
+            #[allow(unused_mut)]
+            let mut length = __tco_loop_length;
+            if (pos.clone() >= length.clone()) {
+                break name.clone();
+            } else {
+                if (v1_rt::char_at(&name, pos.clone()) == ".".to_string()) {
+                    {
+                        let __tco_0 =
+                            v1_rt::substring(&name, v1_rt::int_add(pos.clone(), 1), length.clone());
+                        let __tco_1 = 0;
+                        let __tco_2 =
+                            v1_rt::int_sub(v1_rt::int_sub(length.clone(), pos.clone()), 1);
+                        __tco_loop_name = __tco_0;
+                        __tco_loop_pos = __tco_1;
+                        __tco_loop_length = __tco_2;
+                        continue;
+                    }
+                } else {
+                    {
+                        let __tco_0 = name;
+                        let __tco_1 = v1_rt::int_add(pos, 1);
+                        let __tco_2 = length;
+                        __tco_loop_name = __tco_0;
+                        __tco_loop_pos = __tco_1;
+                        __tco_loop_length = __tco_2;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn realization_name_variants(name: String) -> Rc<Vec<String>> {
+    {
+        let head = realization_generic_head(name.clone(), 0, v1_rt::string_length(&name));
+        let segment = realization_last_segment(head.clone(), 0, v1_rt::string_length(&head));
+        v1_rt::rc_list_push(
+            v1_rt::rc_list_push(Rc::new(vec![name.clone(), head.clone()]), segment.clone()),
+            realization_last_segment(name.clone(), 0, v1_rt::string_length(&name)),
+        )
+    }
+}
+
+pub fn realization_audit(
+    realization: Rc<Realization>,
+    edges: Rc<Vec<Rc<RealizationEdge>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if !realization_enforcing(realization.clone()) {
+        Rc::new(vec![])
+    } else {
+        {
+            let asked = edges.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<RealizationEdge>>(),
+                |acc: Rc<HashMap<String, Rc<RealizationEdge>>>, edge: Rc<RealizationEdge>| {
+                    if realization_name_variants(edge.name.clone())
+                        .iter()
+                        .cloned()
+                        .fold(false, |hit: bool, v: String| {
+                            (hit || v1_rt::map_has(&realization.realized.clone(), v.clone()))
+                        })
+                    {
+                        acc.clone()
+                    } else {
+                        if !realization_name_variants(edge.name.clone())
+                            .iter()
+                            .cloned()
+                            .fold(false, |hit: bool, v: String| {
+                                (hit || v1_rt::map_has(&realization.declared.clone(), v.clone()))
+                            })
+                        {
+                            acc.clone()
+                        } else {
+                            if v1_rt::map_has(&acc, edge.name.clone()) {
+                                acc.clone()
+                            } else {
+                                v1_rt::rc_map_insert(acc.clone(), edge.name.clone(), edge.clone())
+                            }
+                        }
+                    }
+                },
+            );
+            Rc::new(v1_rt::map_keys(&asked)).iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<ErrorNode>>>, name: String| match v1_rt::map_get(
+                    &asked,
+                    name.clone(),
+                ) {
+                    Some(edge) => v1_rt::rc_list_push(
+                        acc.clone(),
+                        crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::DeclarationRealizationGap {
+                                reader: edge.reader.clone(),
+                                target_module: module_name.clone(),
+                                name: name.clone(),
+                                span: edge.span.clone(),
+                            }),
+                            module_name.clone(),
+                        ),
+                    ),
+                    std::option::Option::None => acc.clone(),
+                },
+            )
+        }
+    }
+}
+
 pub fn declaration_demanded(
     demand: Rc<DeclarationDemand>,
     item: Rc<Node>,
@@ -29081,14 +29980,23 @@ pub fn declaration_demanded(
 ) -> bool {
     match (*demand.clone()).clone() {
         DeclarationDemand::AllDeclarations => true,
-        DeclarationDemand::OnlyDeclarations { names: names, .. } => {
+        DeclarationDemand::OnlyDeclarations {
+            names, realization, ..
+        } => {
             if declares_function_body(item.clone()) {
                 v1_rt::map_has(
                     &names,
-                    crate::v1_std_core::authored_name_at(source_indices, item.clone()),
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
                 )
             } else {
-                true
+                if realization.active.clone() {
+                    v1_rt::map_has(
+                        &realization.realized.clone(),
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                    )
+                } else {
+                    true
+                }
             }
         }
     }
@@ -29098,6 +30006,7 @@ pub fn spelled_names_into(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     acc: Rc<HashMap<String, bool>>,
+    deep: bool,
 ) -> Rc<HashMap<String, bool>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let own = v1_rt::rc_map_insert(
@@ -29109,40 +30018,64 @@ pub fn spelled_names_into(
             n.name.clone(),
             true,
         );
+        let own = match crate::v1_std_core::field_access_spine(n.clone(), source_indices.clone()) {
+            Some(spine) => {
+                if (spine.dotted.clone() == "".to_string()) {
+                    own.clone()
+                } else {
+                    realization_spine_names_into(own.clone(), spine.dotted.clone())
+                }
+            }
+            std::option::Option::None => own.clone(),
+        };
+        let own = match n.declaration.clone() {
+            Some(d) => v1_rt::rc_map_insert(own.clone(), d.decl_name.clone(), true),
+            std::option::Option::None => own.clone(),
+        };
+        let own = if !deep.clone() {
+            own.clone()
+        } else {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rn, .. }) => {
+                    spelled_names_into(rn.clone(), source_indices.clone(), own.clone(), false)
+                }
+                _ => own.clone(),
+            }
+        };
         let own = n.children.clone().iter().cloned().fold(
             own.clone(),
             |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
-                spelled_names_into(c.clone(), source_indices.clone(), a)
+                spelled_names_into(c.clone(), source_indices.clone(), a, true)
             },
         );
         let own = n.params.clone().iter().cloned().fold(
             own.clone(),
             |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
-                spelled_names_into(c.clone(), source_indices.clone(), a)
+                spelled_names_into(c.clone(), source_indices.clone(), a, true)
             },
         );
         let own = n.properties.clone().iter().cloned().fold(
             own.clone(),
             |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
-                spelled_names_into(c.clone(), source_indices.clone(), a)
+                spelled_names_into(c.clone(), source_indices.clone(), a, true)
             },
         );
         let own = n.uses.clone().iter().cloned().fold(
             own.clone(),
             |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
-                spelled_names_into(c.clone(), source_indices.clone(), a)
+                spelled_names_into(c.clone(), source_indices.clone(), a, true)
             },
         );
         let own = match n.body.clone() {
-            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone(), true),
             std::option::Option::None => own.clone(),
         };
         let own = match n.type_annotation.clone() {
-            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone(), true),
             std::option::Option::None => own.clone(),
         };
         match n.transport.clone() {
-            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone(), true),
             std::option::Option::None => own.clone(),
         }
     })
@@ -29221,23 +30154,19 @@ pub fn demand_wave_add(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<DemandWave> {
-    {
-        let spelled =
-            spelled_names_into(item, source_indices, v1_rt::rc_empty_map::<String, bool>());
-        Rc::new(v1_rt::map_keys(&spelled)).iter().cloned().fold(
-            w.clone(),
-            |acc: Rc<DemandWave>, nm: String| {
-                if v1_rt::map_has(&acc.demanded.clone(), nm.clone()) {
-                    acc.clone()
-                } else {
-                    Rc::new(DemandWave {
-                        demanded: v1_rt::rc_map_insert(acc.demanded.clone(), nm.clone(), true),
-                        fresh: v1_rt::rc_list_push(acc.fresh.clone(), nm.clone()),
-                    })
-                }
-            },
-        )
-    }
+    realization_row_names(item, source_indices)
+        .iter()
+        .cloned()
+        .fold(w.clone(), |acc: Rc<DemandWave>, nm: String| {
+            if v1_rt::map_has(&acc.demanded.clone(), nm.clone()) {
+                acc.clone()
+            } else {
+                Rc::new(DemandWave {
+                    demanded: v1_rt::rc_map_insert(acc.demanded.clone(), nm.clone(), true),
+                    fresh: v1_rt::rc_list_push(acc.fresh.clone(), nm.clone()),
+                })
+            }
+        })
 }
 
 pub fn demand_wave_loop(
@@ -33230,6 +34159,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
 
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
+    items: Rc<Vec<Rc<Node>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
@@ -33486,10 +34416,7 @@ pub fn build_type_env(
         });
         let namespace_alias_diags = Rc::new({
             let mut __result = Vec::new();
-            for item in crate::v1_std_core::module_items(module.module.clone())
-                .iter()
-                .cloned()
-            {
+            for item in items.iter().cloned() {
                 __result.extend(
                     (*if is_namespace_alias_item(item.clone(), source_indices.clone()) {
                         match namespace_alias_target_path(item.clone(), source_indices.clone()) {
@@ -33522,116 +34449,104 @@ pub fn build_type_env(
             __result
         });
         let local_bindings_seed = v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>();
-        let local_bindings = crate::v1_std_core::module_items(module.module.clone())
-            .iter()
-            .cloned()
-            .fold(
-                local_bindings_seed.clone(),
-                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
-                    if is_namespace_alias_item(item.clone(), source_indices.clone()) {
-                        match namespace_alias_target_path(item.clone(), source_indices.clone()) {
-                            std::option::Option::None => acc.clone(),
-                            Some(target_path) => {
-                                match crate::v1_compiler_infer_env::symbol_index_lookup(
-                                    symbol_index.clone(),
-                                    target_path.clone(),
-                                ) {
-                                    std::option::Option::None => acc.clone(),
-                                    Some(target_node) => {
-                                        let binding = namespace_alias_binding_for_target(
-                                            item.clone(),
-                                            target_node.clone(),
-                                            source_indices.clone(),
-                                        );
-                                        v1_rt::rc_map_insert(
-                                            acc.clone(),
-                                            crate::v1_std_core::intern(
-                                                intern_table.clone(),
-                                                binding.name.clone(),
-                                            )
-                                            .id
-                                            .clone(),
-                                            binding.clone(),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        match local_binding_for_item(
-                            item.clone(),
-                            module_name_str.clone(),
-                            source_indices.clone(),
-                        ) {
-                            Some(binding) => v1_rt::rc_map_insert(
-                                acc.clone(),
-                                crate::v1_std_core::intern(
-                                    intern_table.clone(),
-                                    binding.name.clone(),
-                                )
-                                .id
-                                .clone(),
-                                binding.clone(),
-                            ),
-                            std::option::Option::None => acc.clone(),
-                        }
-                    }
-                },
-            );
-        let param_bindings_seed = v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>();
-        let param_bindings = crate::v1_std_core::module_items(module.module.clone())
-            .iter()
-            .cloned()
-            .fold(
-                param_bindings_seed.clone(),
-                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
-                    let is_type_decl = match v1_rt::map_get(
-                        &local_bindings,
-                        crate::v1_std_core::intern(
-                            intern_table.clone(),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                item.clone(),
-                            ),
-                        )
-                        .id
-                        .clone(),
-                    ) {
-                        Some(_) => true,
-                        std::option::Option::None => false,
-                    };
-                    if ((((item.params.clone().len() as i64) > 0) && is_type_decl.clone())
-                        && (item.body.clone() == std::option::Option::None))
-                    {
-                        {
-                            let result = item.params.clone().iter().cloned().fold(
-                                acc.clone(),
-                                |pacc: Rc<HashMap<i64, Rc<TypeBinding>>>, p: Rc<Node>| {
+        let local_bindings = items.iter().cloned().fold(
+            local_bindings_seed.clone(),
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
+                if is_namespace_alias_item(item.clone(), source_indices.clone()) {
+                    match namespace_alias_target_path(item.clone(), source_indices.clone()) {
+                        std::option::Option::None => acc.clone(),
+                        Some(target_path) => {
+                            match crate::v1_compiler_infer_env::symbol_index_lookup(
+                                symbol_index.clone(),
+                                target_path.clone(),
+                            ) {
+                                std::option::Option::None => acc.clone(),
+                                Some(target_node) => {
+                                    let binding = namespace_alias_binding_for_target(
+                                        item.clone(),
+                                        target_node.clone(),
+                                        source_indices.clone(),
+                                    );
                                     v1_rt::rc_map_insert(
-                                        pacc,
+                                        acc.clone(),
                                         crate::v1_std_core::intern(
                                             intern_table.clone(),
-                                            crate::v1_std_core::authored_name_at(
-                                                source_indices.clone(),
-                                                p.clone(),
-                                            ),
+                                            binding.name.clone(),
                                         )
                                         .id
                                         .clone(),
-                                        nominal_type_binding(crate::v1_std_core::authored_name_at(
+                                        binding.clone(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    match local_binding_for_item(
+                        item.clone(),
+                        module_name_str.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Some(binding) => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            crate::v1_std_core::intern(intern_table.clone(), binding.name.clone())
+                                .id
+                                .clone(),
+                            binding.clone(),
+                        ),
+                        std::option::Option::None => acc.clone(),
+                    }
+                }
+            },
+        );
+        let param_bindings_seed = v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>();
+        let param_bindings = items.iter().cloned().fold(
+            param_bindings_seed.clone(),
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
+                let is_type_decl = match v1_rt::map_get(
+                    &local_bindings,
+                    crate::v1_std_core::intern(
+                        intern_table.clone(),
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                    )
+                    .id
+                    .clone(),
+                ) {
+                    Some(_) => true,
+                    std::option::Option::None => false,
+                };
+                if ((((item.params.clone().len() as i64) > 0) && is_type_decl.clone())
+                    && (item.body.clone() == std::option::Option::None))
+                {
+                    {
+                        let result = item.params.clone().iter().cloned().fold(
+                            acc.clone(),
+                            |pacc: Rc<HashMap<i64, Rc<TypeBinding>>>, p: Rc<Node>| {
+                                v1_rt::rc_map_insert(
+                                    pacc,
+                                    crate::v1_std_core::intern(
+                                        intern_table.clone(),
+                                        crate::v1_std_core::authored_name_at(
                                             source_indices.clone(),
                                             p.clone(),
-                                        )),
+                                        ),
                                     )
-                                },
-                            );
-                            result.clone()
-                        }
-                    } else {
-                        acc.clone()
+                                    .id
+                                    .clone(),
+                                    nominal_type_binding(crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        p.clone(),
+                                    )),
+                                )
+                            },
+                        );
+                        result.clone()
                     }
-                },
-            );
+                } else {
+                    acc.clone()
+                }
+            },
+        );
         let local_name_seed = v1_rt::rc_empty_map::<i64, bool>();
         let local_name_set = Rc::new(v1_rt::map_keys(&local_bindings))
             .iter()
@@ -33736,7 +34651,7 @@ pub fn build_type_env(
                 v1_rt::rc_set_insert(acc, name.clone())
             });
         let local_inductive_fields = build_item_inductive_fields(
-            crate::v1_std_core::module_items(module.module.clone()),
+            items.clone(),
             cycle_set_for_inductive,
             source_indices.clone(),
         );
@@ -33921,11 +34836,7 @@ pub fn build_type_env(
         });
         let summarized_env = crate::v1_compiler_infer_env::type_env_with_equality_by_target(
             final_env.clone(),
-            build_equality_by_target(
-                crate::v1_std_core::module_items(module.module.clone()),
-                final_env.clone(),
-                module_name_str.clone(),
-            ),
+            build_equality_by_target(items.clone(), final_env.clone(), module_name_str.clone()),
         );
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
@@ -38677,6 +39588,30 @@ pub fn equality_synthetic_fn(
     }
 }
 
+pub fn realized_declaration_items(
+    items: Rc<Vec<Rc<Node>>>,
+    demand: Rc<DeclarationDemand>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    if !declaration_demand_realization(demand.clone())
+        .active
+        .clone()
+    {
+        items.clone()
+    } else {
+        items
+            .iter()
+            .cloned()
+            .fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<Node>>>, item: Rc<Node>| {
+                if declaration_demanded(demand.clone(), item.clone(), source_indices.clone()) {
+                    v1_rt::rc_list_push(acc, item.clone())
+                } else {
+                    acc
+                }
+            })
+    }
+}
+
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -38714,8 +39649,15 @@ pub fn typecheck_module_demanded(
     service_census: Option<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
 ) -> Rc<TypecheckModuleResult> {
     {
+        let realization = declaration_demand_realization(demand.clone());
+        let realized_items = realized_declaration_items(
+            crate::v1_std_core::module_items(resolved.module.clone()),
+            demand.clone(),
+            source_indices.clone(),
+        );
         let env_result = build_type_env(
             resolved.clone(),
+            realized_items.clone(),
             parent_index.clone(),
             source_indices.clone(),
             intern_table,
@@ -38769,21 +39711,52 @@ pub fn typecheck_module_demanded(
                 binding_forks: env_result.binding_forks.clone(),
             });
         }
+        if ((realized_items.clone().len() as i64) == 0) {
+            return Rc::new(TypecheckModuleResult {
+                typed: Rc::new(TypedModule {
+                    progress: ModuleTypecheckProgress::AbandonedBeforeItems,
+                    module: resolved.module.clone(),
+                    items: Rc::new(vec![]),
+                    type_env: env.clone(),
+                    type_env_cache: env_cache.clone(),
+                    interface: build_module_interface(
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            resolved.module.clone(),
+                        ),
+                        resolved.module.clone(),
+                        env.clone(),
+                        env_cache.clone(),
+                        source_indices.clone(),
+                    ),
+                    func_env: Rc::new(ResolvedFuncEnv {
+                        name: crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            resolved.module.clone(),
+                        ),
+                        local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                        parents: Rc::new(vec![]),
+                    }),
+                    item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+                    occurrence_transport: Some(resolved.occurrence_transport.clone()),
+                }),
+                diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
+                provider_demands: Rc::new(vec![]),
+                binding_forks: env_result.binding_forks.clone(),
+            });
+        }
         let resolved_module_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
         let synthesized_items = equality_synthesized_items(
-            crate::v1_std_core::module_items(resolved.module.clone()),
+            realized_items.clone(),
             resolved_module_name.clone(),
             env.clone(),
         );
         let contributions = Rc::new({
             let mut __result = Vec::new();
-            for item in v1_rt::concat(
-                crate::v1_std_core::module_items(resolved.module.clone()),
-                synthesized_items.clone(),
-            )
-            .iter()
-            .cloned()
+            for item in v1_rt::concat(realized_items.clone(), synthesized_items.clone())
+                .iter()
+                .cloned()
             {
                 __result.push(analyze_item(
                     item.clone(),
@@ -38844,7 +39817,7 @@ pub fn typecheck_module_demanded(
             enclosing_declared_type_param_names: Rc::new(vec![]),
         });
         let typed_item_results =
-            infer_items_demanded(ctx.resolved_items.clone(), infer_scope, demand);
+            infer_items_demanded(ctx.resolved_items.clone(), infer_scope, demand.clone());
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.iter().cloned() {
@@ -38852,6 +39825,28 @@ pub fn typecheck_module_demanded(
             }
             __result
         });
+        let source_edges =
+            realized_items
+                .iter()
+                .cloned()
+                .fold(Rc::new(vec![]), |acc: _, item: Rc<Node>| {
+                    v1_rt::concat(acc, realization_edges(item.clone(), source_indices.clone()))
+                });
+        let typed_edges =
+            typed_items
+                .iter()
+                .cloned()
+                .fold(Rc::new(vec![]), |acc: _, item: Rc<Node>| {
+                    v1_rt::concat(
+                        acc,
+                        realization_typed_edges(item.clone(), source_indices.clone()),
+                    )
+                });
+        let audit_diags = realization_audit(
+            realization,
+            v1_rt::concat(source_edges.clone(), typed_edges.clone()),
+            resolved_module_name.clone(),
+        );
         let infer_emissions = infer_emissions_concat_all(Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.iter().cloned() {
@@ -38962,10 +39957,13 @@ pub fn typecheck_module_demanded(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
-                                infer_emissions.diagnostics.clone(),
+                                v1_rt::concat(
+                                    v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
+                                    infer_emissions.diagnostics.clone(),
+                                ),
+                                grounded.diagnostics.clone(),
                             ),
-                            grounded.diagnostics.clone(),
+                            audit_diags.clone(),
                         ),
                         kernel_mint_shape_diagnostics(
                             env.clone(),
@@ -39998,19 +40996,6 @@ pub fn typecheck_scoped(
     scope: Rc<DeclarationScope>,
 ) -> Rc<TypecheckPass> {
     {
-        let demand = match (*scope.clone()).clone() {
-            DeclarationScope::EveryDeclaration => Rc::new(DeclarationDemand::AllDeclarations),
-            DeclarationScope::ReachableFrom {
-                requested: requested,
-                ..
-            } => Rc::new(DeclarationDemand::OnlyDeclarations {
-                names: demanded_declaration_names(
-                    graph.modules.clone(),
-                    requested.clone(),
-                    source_indices.clone(),
-                ),
-            }),
-        };
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<ResolvedModule>>(),
@@ -40023,6 +41008,28 @@ pub fn typecheck_scoped(
             },
         );
         let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+        let realization = match (*scope.clone()).clone() {
+            DeclarationScope::EveryDeclaration => inactive_realization(),
+            DeclarationScope::ReachableFrom {
+                requested: requested,
+                ..
+            } => realization_of(
+                graph.modules.clone(),
+                requested.clone(),
+                symbol_index.clone(),
+                source_indices.clone(),
+            ),
+        };
+        let demand = match (*scope.clone()).clone() {
+            DeclarationScope::EveryDeclaration => Rc::new(DeclarationDemand::AllDeclarations),
+            DeclarationScope::ReachableFrom {
+                requested: requested,
+                ..
+            } => Rc::new(DeclarationDemand::OnlyDeclarations {
+                names: realization.realized.clone(),
+                realization: realization.clone(),
+            }),
+        };
         let global_variant_base = build_global_bare_variant_locals(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
@@ -40031,7 +41038,7 @@ pub fn typecheck_scoped(
             compiler_kernel_type_env(source_indices.clone(), intern_table.clone()),
             symbol_index.clone(),
         ));
-        let state =
+        let state0 =
             graph.modules.clone().iter().cloned().fold(
                 Rc::new(RealizeState {
                     module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -40061,6 +41068,18 @@ pub fn typecheck_scoped(
                     )
                 },
             );
+        let state = realization_fixpoint(
+            0,
+            state0,
+            realization.clone(),
+            graph.modules.clone(),
+            resolved_by_name.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            symbol_index.clone(),
+            global_variant_base.clone(),
+            service_census.clone(),
+        );
         let modules = Rc::new({
             let mut __result = Vec::new();
             for rm in graph.modules.clone().iter().cloned() {
@@ -40137,14 +41156,28 @@ pub fn typecheck_scoped(
                 modules: modules.clone(),
                 item_registry: analysed_registry.clone(),
                 diagnostics: v1_rt::concat(
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for c in diag_chunks.iter().cloned() {
-                            __result.extend((*c.clone()).iter().cloned());
-                        }
-                        __result
-                    }),
-                    incompleteness_diagnostics.clone(),
+                    v1_rt::concat(
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for c in diag_chunks.iter().cloned() {
+                                __result.extend((*c.clone()).iter().cloned());
+                            }
+                            __result
+                        }),
+                        incompleteness_diagnostics.clone(),
+                    ),
+                    realization_profile_diagnostic(
+                        realization.clone(),
+                        graph.modules.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for c in diag_chunks.iter().cloned() {
+                                __result.extend((*c.clone()).iter().cloned());
+                            }
+                            __result
+                        }),
+                        source_indices.clone(),
+                    ),
                 ),
             }),
             provider_demands: crate::std_generated_provider::group_provider_demands(Rc::new({
@@ -40155,6 +41188,226 @@ pub fn typecheck_scoped(
                 __result
             })),
         })
+    }
+}
+
+pub fn realization_count_text(value: i64) -> String {
+    realization_count_digits(value, Rc::new(vec![]))
+        .iter()
+        .cloned()
+        .fold("".to_string(), |acc: String, ch: String| {
+            v1_rt::concat(acc, ch.clone())
+        })
+}
+
+pub fn realization_count_digits(
+    mut __tco_loop_value: i64,
+    mut __tco_loop_acc: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut value = __tco_loop_value;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            if (value.clone() <= 0) {
+                break acc.clone();
+            } else {
+                let rest = v1_rt::int_div(value.clone(), 10);
+                {
+                    let __tco_0 = rest.clone();
+                    let __tco_1 = v1_rt::concat(
+                        Rc::new(vec![realization_digit_char(v1_rt::int_sub(
+                            value,
+                            v1_rt::int_mul(rest.clone(), 10),
+                        ))]),
+                        acc,
+                    );
+                    __tco_loop_value = __tco_0;
+                    __tco_loop_acc = __tco_1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn realization_digit_char(digit: i64) -> String {
+    if (digit.clone() == 0) {
+        "0".to_string()
+    } else {
+        if (digit.clone() == 1) {
+            "1".to_string()
+        } else {
+            if (digit.clone() == 2) {
+                "2".to_string()
+            } else {
+                if (digit.clone() == 3) {
+                    "3".to_string()
+                } else {
+                    if (digit.clone() == 4) {
+                        "4".to_string()
+                    } else {
+                        if (digit.clone() == 5) {
+                            "5".to_string()
+                        } else {
+                            if (digit.clone() == 6) {
+                                "6".to_string()
+                            } else {
+                                if (digit.clone() == 7) {
+                                    "7".to_string()
+                                } else {
+                                    if (digit.clone() == 8) {
+                                        "8".to_string()
+                                    } else {
+                                        "9".to_string()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn realization_profile_diagnostic(
+    realization: Rc<Realization>,
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if !realization.active.clone() {
+        Rc::new(vec![])
+    } else {
+        {
+            let declarations = modules
+                .iter()
+                .cloned()
+                .fold(0, |n: i64, rm: Rc<ResolvedModule>| {
+                    v1_rt::int_add(
+                        n,
+                        (crate::v1_std_core::module_items(rm.module.clone()).len() as i64),
+                    )
+                });
+            let declarations_realized =
+                modules
+                    .iter()
+                    .cloned()
+                    .fold(0, |n: i64, rm: Rc<ResolvedModule>| {
+                        crate::v1_std_core::module_items(rm.module.clone())
+                            .iter()
+                            .cloned()
+                            .fold(n, |a: i64, item: Rc<Node>| {
+                                if realization_includes(
+                                    realization.clone(),
+                                    crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        item.clone(),
+                                    ),
+                                ) {
+                                    v1_rt::int_add(a, 1)
+                                } else {
+                                    a
+                                }
+                            })
+                    });
+            let modules_realized = (modules
+                .iter()
+                .cloned()
+                .fold(
+                    Rc::new(vec![]),
+                    |acc: Rc<Vec<Rc<ResolvedModule>>>, rm: Rc<ResolvedModule>| {
+                        if crate::v1_std_core::module_items(rm.module.clone())
+                            .iter()
+                            .cloned()
+                            .fold(false, |seen: bool, item: Rc<Node>| {
+                                (seen
+                                    || realization_includes(
+                                        realization.clone(),
+                                        crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            item.clone(),
+                                        ),
+                                    ))
+                            })
+                        {
+                            v1_rt::rc_list_push(acc, rm.clone())
+                        } else {
+                            acc
+                        }
+                    },
+                )
+                .len() as i64);
+            let gaps = (diagnostics
+                .iter()
+                .cloned()
+                .fold(
+                    Rc::new(vec![]),
+                    |acc: Rc<Vec<Rc<ErrorNode>>>, d: Rc<ErrorNode>| match (*d.diagnostic.clone())
+                        .clone()
+                    {
+                        CompilerDiagnostic::DeclarationRealizationGap { .. } => {
+                            v1_rt::rc_list_push(acc.clone(), d.clone())
+                        }
+                        _ => acc.clone(),
+                    },
+                )
+                .len() as i64);
+            match modules.clone().first().cloned() {
+                std::option::Option::None => Rc::new(vec![]),
+                Some(head) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::DeclarationRealizationProfile {
+                        grain: "reachable".to_string(),
+                        modules: (modules.clone().len() as i64),
+                        modules_realized: modules_realized.clone(),
+                        declarations: declarations.clone(),
+                        declarations_realized: declarations_realized.clone(),
+                        gaps: gaps.clone(),
+                        summary: v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            realization_count_text(
+                                                                modules_realized.clone(),
+                                                            ),
+                                                            "/".to_string(),
+                                                        ),
+                                                        realization_count_text(
+                                                            (modules.clone().len() as i64),
+                                                        ),
+                                                    ),
+                                                    " modules realized, ".to_string(),
+                                                ),
+                                                realization_count_text(
+                                                    declarations_realized.clone(),
+                                                ),
+                                            ),
+                                            "/".to_string(),
+                                        ),
+                                        realization_count_text(declarations.clone()),
+                                    ),
+                                    " declarations realized, ".to_string(),
+                                ),
+                                realization_count_text(gaps.clone()),
+                            ),
+                            " reads outside the realized set".to_string(),
+                        ),
+                        span: head.module.span.clone(),
+                    }),
+                    crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        head.module.clone(),
+                    ),
+                )]),
+            }
+        }
     }
 }
 
@@ -40280,6 +41533,257 @@ pub fn realize_module(
             },
         }
     })
+}
+
+pub fn realization_gap_names(state: Rc<RealizeState>) -> Rc<Vec<String>> {
+    {
+        let set = Rc::new(v1_rt::map_keys(&state.diags_by_name.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, key: String| match v1_rt::map_get(
+                    &state.diags_by_name.clone(),
+                    key.clone(),
+                ) {
+                    Some(ds) => ds.iter().cloned().fold(
+                        acc.clone(),
+                        |b: Rc<HashMap<String, bool>>, d: Rc<ErrorNode>| match (*d
+                            .diagnostic
+                            .clone())
+                        .clone()
+                        {
+                            CompilerDiagnostic::DeclarationRealizationGap {
+                                name: gname, ..
+                            } => realization_name_variants(gname.clone())
+                                .iter()
+                                .cloned()
+                                .fold(b.clone(), |b2: Rc<HashMap<String, bool>>, v: String| {
+                                    v1_rt::rc_map_insert(b2, v.clone(), true)
+                                }),
+                            _ => b.clone(),
+                        },
+                    ),
+                    std::option::Option::None => acc.clone(),
+                },
+            );
+        Rc::new(v1_rt::map_keys(&set))
+    }
+}
+
+pub fn realization_gap_modules(state: Rc<RealizeState>) -> Rc<Vec<String>> {
+    Rc::new(v1_rt::map_keys(&state.diags_by_name.clone()))
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<String>>, key: String| match v1_rt::map_get(
+                &state.diags_by_name.clone(),
+                key.clone(),
+            ) {
+                Some(ds) => {
+                    if ds
+                        .iter()
+                        .cloned()
+                        .fold(false, |seen: bool, d: Rc<ErrorNode>| {
+                            (seen
+                                || match (*d.diagnostic.clone()).clone() {
+                                    CompilerDiagnostic::DeclarationRealizationGap { .. } => true,
+                                    _ => false,
+                                })
+                        })
+                    {
+                        v1_rt::rc_list_push(acc.clone(), key.clone())
+                    } else {
+                        acc.clone()
+                    }
+                }
+                std::option::Option::None => acc.clone(),
+            },
+        )
+}
+
+pub fn realization_retype(
+    state: Rc<RealizeState>,
+    names: Rc<Vec<String>>,
+    resolved_by_name: Rc<HashMap<String, Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    demand: Rc<DeclarationDemand>,
+    service_census: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+) -> Rc<RealizeState> {
+    names
+        .iter()
+        .cloned()
+        .fold(
+            state.clone(),
+            |st: Rc<RealizeState>, key: String| match v1_rt::map_get(&resolved_by_name, key.clone())
+            {
+                std::option::Option::None => st.clone(),
+                Some(resolved) => {
+                    let tc_result = typecheck_module_demanded(
+                        resolved.clone(),
+                        st.module_index.clone(),
+                        st.variant_surfaces.clone(),
+                        source_indices.clone(),
+                        intern_table.clone(),
+                        symbol_index.clone(),
+                        global_variant_base.clone(),
+                        st.equality_by_target.clone(),
+                        demand.clone(),
+                        Some(service_census.clone()),
+                    );
+                    let typed = tc_result.typed.clone();
+                    let typed_path = crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        typed.module.clone(),
+                    );
+                    Rc::new(RealizeState {
+                        module_index: v1_rt::rc_map_insert(
+                            st.module_index.clone(),
+                            typed_path.clone(),
+                            typed.clone(),
+                        ),
+                        variant_surfaces: v1_rt::rc_map_insert(
+                            st.variant_surfaces.clone(),
+                            typed_path.clone(),
+                            build_variant_export_surface(
+                                typed.clone(),
+                                st.variant_surfaces.clone(),
+                                source_indices.clone(),
+                            ),
+                        ),
+                        item_registry: v1_rt::rc_map_merge(
+                            st.item_registry.clone(),
+                            typed.item_registry.clone(),
+                        ),
+                        diags_by_name: v1_rt::rc_map_insert(
+                            st.diags_by_name.clone(),
+                            typed_path.clone(),
+                            v1_rt::concat(
+                                missing_parent_env_diagnostics(
+                                    resolved.clone(),
+                                    st.module_index.clone(),
+                                    source_indices.clone(),
+                                ),
+                                tc_result.diagnostics.clone(),
+                            ),
+                        ),
+                        demands_by_name: v1_rt::rc_map_insert(
+                            st.demands_by_name.clone(),
+                            typed_path.clone(),
+                            tc_result.provider_demands.clone(),
+                        ),
+                        equality_by_target: equality_table_with_module(
+                            st.equality_by_target.clone(),
+                            typed.clone(),
+                            source_indices.clone(),
+                        ),
+                    })
+                }
+            },
+        )
+}
+
+pub fn realization_fixpoint(
+    mut __tco_loop_round: i64,
+    mut __tco_loop_state: Rc<RealizeState>,
+    mut __tco_loop_realization: Rc<Realization>,
+    mut __tco_loop_modules: Rc<Vec<Rc<ResolvedModule>>>,
+    mut __tco_loop_resolved_by_name: Rc<HashMap<String, Rc<ResolvedModule>>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_intern_table: Rc<InternTable>,
+    mut __tco_loop_symbol_index: Rc<SymbolIndex>,
+    mut __tco_loop_global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    mut __tco_loop_service_census: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+) -> Rc<RealizeState> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut round = __tco_loop_round;
+            #[allow(unused_mut)]
+            let mut state = __tco_loop_state;
+            #[allow(unused_mut)]
+            let mut realization = __tco_loop_realization;
+            #[allow(unused_mut)]
+            let mut modules = __tco_loop_modules;
+            #[allow(unused_mut)]
+            let mut resolved_by_name = __tco_loop_resolved_by_name;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut intern_table = __tco_loop_intern_table;
+            #[allow(unused_mut)]
+            let mut symbol_index = __tco_loop_symbol_index;
+            #[allow(unused_mut)]
+            let mut global_variant_base = __tco_loop_global_variant_base;
+            #[allow(unused_mut)]
+            let mut service_census = __tco_loop_service_census;
+            if !realization.active.clone() {
+                break state.clone();
+            } else {
+                if (round.clone() >= 3) {
+                    break state.clone();
+                } else {
+                    let gaps = realization_gap_names(state.clone());
+                    if ((gaps.clone().len() as i64) == 0) {
+                        break state.clone();
+                    } else {
+                        let grown = realization_of(
+                            modules.clone(),
+                            v1_rt::concat(
+                                Rc::new(v1_rt::map_keys(&realization.realized.clone())),
+                                gaps.clone(),
+                            ),
+                            symbol_index.clone(),
+                            source_indices.clone(),
+                        );
+                        let demand = Rc::new(DeclarationDemand::OnlyDeclarations {
+                            names: grown.realized.clone(),
+                            realization: grown.clone(),
+                        });
+                        let gapped = realization_gap_modules(state.clone());
+                        let retyped = realization_retype(
+                            state.clone(),
+                            gapped,
+                            resolved_by_name.clone(),
+                            source_indices.clone(),
+                            intern_table.clone(),
+                            symbol_index.clone(),
+                            global_variant_base.clone(),
+                            demand,
+                            service_census.clone(),
+                        );
+                        {
+                            let __tco_0 = v1_rt::int_add(round, 1);
+                            let __tco_1 = retyped;
+                            let __tco_2 = grown.clone();
+                            let __tco_3 = modules;
+                            let __tco_4 = resolved_by_name;
+                            let __tco_5 = source_indices;
+                            let __tco_6 = intern_table;
+                            let __tco_7 = symbol_index;
+                            let __tco_8 = global_variant_base;
+                            let __tco_9 = service_census;
+                            __tco_loop_round = __tco_0;
+                            __tco_loop_state = __tco_1;
+                            __tco_loop_realization = __tco_2;
+                            __tco_loop_modules = __tco_3;
+                            __tco_loop_resolved_by_name = __tco_4;
+                            __tco_loop_source_indices = __tco_5;
+                            __tco_loop_intern_table = __tco_6;
+                            __tco_loop_symbol_index = __tco_7;
+                            __tco_loop_global_variant_base = __tco_8;
+                            __tco_loop_service_census = __tco_9;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn import_module_path_at(

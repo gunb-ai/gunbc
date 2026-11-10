@@ -1,0 +1,16 @@
+module test.fixture.refined_int_cast_fork_a
+import std.types { Int, range }
+
+// Fixture for test.claim.machine_intake.refined_int_cast_fork_witness: a range-refined Int carrier NAMED
+// `Port`, declared here (module ...fork_a). It deliberately shares its LEAF name with the `Port` in
+// ...fork_b. The witness casts a value of THIS Port into that other Port to prove the checker's cast
+// identity keys on the resolved DeclarationRef, not the leaf name
+// (gunbc.design_argument::closed_grounded_substrate): under the pre-fix leaf-name identity test the two
+// `Port`s compared equal and the checker stayed silent while eval_cast refused the cast, the fork class
+// gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses. The constructor is named
+// `make_a` (not `make`) so the witness can import one Port and this foreign constructor without an
+// import-name collision; the value reaches the cast by its declaration, never by a name the witness
+// module itself imports.
+type Port = Int where range(min: 1, max: 100)
+
+fn make_a() -> Port { 1 }

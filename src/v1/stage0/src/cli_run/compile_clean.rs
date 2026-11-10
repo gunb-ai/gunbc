@@ -429,6 +429,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::RefinementCastRefused { .. } => "RefinementCastRefused",
         CompilerDiagnostic::CastRealizationRefused { .. } => "CastRealizationRefused",
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
@@ -452,6 +453,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => {
             "TypeNameCarriesNoRecordConstructor"
         }
+        CompilerDiagnostic::DeclarationRealizationGap { .. } => "DeclarationRealizationGap",
+        CompilerDiagnostic::DeclarationRealizationProfile { .. } => "DeclarationRealizationProfile",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -582,6 +585,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
+        // The NAME is the TARGET carrier: the burn-down this feeds is the list of refined Int carriers
+        // still awaiting a checked constructor, keyed by the carrier the author targeted.
+        CompilerDiagnostic::RefinementCastRefused { target, .. } => target.clone(),
         // The NAME is the refusal fact, which names the uncastable pair: the burn-down is the
         // list of cast routes awaiting a declaration or a realization.
         CompilerDiagnostic::CastRealizationRefused {
@@ -614,6 +620,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name, .. } => {
             type_name.clone()
         }
+        // The declaration a read crossed out is the identity of a gap; the grain label is the
+        // identity of the single profile row a run emits.
+        CompilerDiagnostic::DeclarationRealizationGap { name, .. } => name.clone(),
+        CompilerDiagnostic::DeclarationRealizationProfile { grain, .. } => grain.clone(),
     };
     (class.to_string(), name)
 }
@@ -645,6 +655,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         // The refusal carries the target NAME and the missing realization FACT, not a rendered
         // type-shape pair: like the pairless classes its arm is None, and the census model's
         // `Absent` is the honest reading.
+        CompilerDiagnostic::RefinementCastRefused { .. } => None,
         CompilerDiagnostic::CastRealizationRefused { .. } => None,
         CompilerDiagnostic::CircularDependency { .. } => None,
         CompilerDiagnostic::ComplexityUnknown { .. } => None,
@@ -711,6 +722,8 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
             Some((expected.clone(), got.clone()))
         }
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
+        CompilerDiagnostic::DeclarationRealizationGap { .. } => None,
+        CompilerDiagnostic::DeclarationRealizationProfile { .. } => None,
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
         // INTERIM hand-Rust scaffold, same marker as the pair above
         // (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting): the
