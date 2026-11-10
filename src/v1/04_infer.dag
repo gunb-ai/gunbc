@@ -4198,16 +4198,23 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
 // carries no PartialEq (emit_data_def, 05_emit_rust.dag). equality_applied_argument_is_structural alone
 // admitted a comparable-but-not-by-target argument and reproduced the E0369 the #15175 wall exists to
 // prevent; the table reading restores the wall at exactly the occurring positions #15972 opened.
-// A FORWARDED PARAMETER (condition 3): a bare argument whose leaf names one of the applied basis's OWN
-// parameters. It is a binder, visible exactly in its declaration's parameter list -- a scope fact, not a
-// spelling identity -- so a membership test is the right authority here, and it is applied ONLY at the
-// applied arm (never as a general argument identity, which would fork the lookup). A forwarded binder is
-// admitted and DEFERRED: its argument-specific judgment happens at instantiation, not at the generic's own
-// declaration, so this argument contributes no obligation now (mirrors the phantom-parameter rule #15175).
-fn equality_applied_argument_is_forwarded_binder(a: Node, parameter_names: List<String>, scope: InferScope) -> Bool {
+// A FORWARDED PARAMETER (condition 3): a bare argument that is a TYPE PARAMETER OF THE ENCLOSING
+// DECLARATION -- a binder, visible exactly in the ENCLOSING declaration's type-parameter roster, a scope
+// fact read by IDENTITY via name_is_enclosing_declared_type_parameter (the corpus's own binder authority,
+// the same roster 17672 keys on), never by leaf spelling against the APPLIED declaration's parameter
+// names. Matching the callee's own parameter list by spelling was the gunbc#16143 hole: `type Engine<Ops>
+// { engine: Ops }` applied to the CONCRETE `Ops` classified that concrete record as Engine's own binder
+// (leaf 'Ops' == Engine's param 'Ops'), so it skipped the applied-argument judgment and emitted a raw Rust
+// `==` over Engine<Ops> -> Ops -> `f: fn(Int)->Int`, a fn field no PartialEq covers. Renaming the param to
+// `P` made the same source refuse -- proof it was a spelling collision, not a scope fact. A genuine
+// forwarded binder (the enclosing generic passes its own parameter down) is still admitted and DEFERRED:
+// its argument-specific judgment happens at instantiation, not at the generic's own declaration, so this
+// argument contributes no obligation now (mirrors the phantom-parameter rule #15175). It is applied ONLY at
+// the applied arm (never as a general argument identity, which would fork the lookup).
+fn equality_applied_argument_is_forwarded_binder(a: Node, scope: InferScope) -> Bool {
   let peeled = normalize_access_type_node(n: a)
   let leaf = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
-  (peeled.children |> count) == 0 && (parameter_names |> filter(p => qualified_last_segment(name: p) == leaf) |> count) > 0
+  (peeled.children |> count) == 0 && name_is_enclosing_declared_type_parameter(name: leaf, scope: scope)
 }
 
 fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<String>, arguments: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
@@ -4218,7 +4225,7 @@ fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<Strin
         Absent => false
         Present { value: a } =>
           (!equality_type_variable_occurs(n: basis, id: pn)
-            || equality_applied_argument_is_forwarded_binder(a: a, parameter_names: parameter_names, scope: scope)
+            || equality_applied_argument_is_forwarded_binder(a: a, scope: scope)
             || (equality_applied_argument_is_structural(n: a, scope: scope, visited: visited, depth: depth)
                   && equality_argument_by_target(n: a, scope: scope, depth: depth + 1))
             || equality_applied_argument_route_admitted(a: a, scope: scope))
