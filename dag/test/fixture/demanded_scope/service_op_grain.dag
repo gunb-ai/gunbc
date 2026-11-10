@@ -21,9 +21,23 @@ module test.fixture.demanded_scope.service_op_grain
 import std.types { Bool, String }
 import extdeps.transports.rest { RestAnswered, RestRefused }
 import test.fixture.rest_exchange_replay_probe
+import test.fixture.demanded_scope.service_op_grain_aligned_probe
 
 fn service_op_spelled_in_entry_body() -> Bool {
   match test.RestReplay.Observe() {
+    RestAnswered { answer } => answer.message == "accepted"
+    RestRefused { refusal: _ } => false
+  }
+}
+
+// THE ALIGNED ARM. Same file, same entry-body position, same braceless whole-module import style as the
+// misaligned arm above; the ONLY difference is that this service is authored under its own module's namespace
+// (`service_op_grain_aligned_probe.SvcAligned`, spine first segment == the import's local name), mirroring the
+// green production shape `service shell.Env` in module `extdeps.shell`. If this resolves at main while the
+// misaligned arm refuses at main, namespace alignment -- not position, not braceless import per se -- is the
+// discriminator #16156 broke, decided by execution on the gunbc-run grain.
+fn service_op_spelled_in_aligned_namespace_body() -> Bool {
+  match service_op_grain_aligned_probe.SvcAligned.Observe() {
     RestAnswered { answer } => answer.message == "accepted"
     RestRefused { refusal: _ } => false
   }
