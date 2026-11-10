@@ -644,8 +644,11 @@ fn spool_open(kind: SpoolKind, instance_root: String) -> SpoolStore {
 
 // THE MINT FOR A PARTITIONED SPOOL: takes the kind, instance root, and the principal uid. Only a kind whose
 // declaration says ByPrincipalUid may be opened through here; any other kind is refused (the uid would be
-// meaningless). The uid must be positive (uid 0 is root, not a partition). The path derivation inserts the
-// uid segment from the kind's declaration.
+// meaningless). HOST POLICY (not a type fact -- absence is already typed by Optional<Nat>): a seat's exit
+// partition is keyed by the PRINCIPAL uid that ran the seat, and seats run under unprivileged principals, so
+// uid 0 (root) must never own a seat's exit partition; the mint refuses Zero. The claim
+// test.claim.spool_queue_seal_witness:a_partitioned_store_mint_refuses_the_root_uid_and_admits_a_real_uid asserts
+// this and its converse. The path derivation inserts the uid segment from the kind's declaration.
 type SpoolOpenVerdict
   = SpoolOpenReady { store: SpoolStore }
   | SpoolOpenRefused { cause: String }
@@ -654,7 +657,7 @@ fn spool_open_uid(kind: SpoolKind, instance_root: String, uid: Nat) -> SpoolOpen
   if spool_declaration(kind: kind).partition != ByPrincipalUid {
     SpoolOpenRefused { cause: "the kind does not declare a uid partition; use spool_open" }
   } else if uid == Zero {
-    SpoolOpenRefused { cause: "a partitioned spool requires a positive principal uid" }
+    SpoolOpenRefused { cause: "a seat's exit partition is keyed by a principal uid; root (uid 0) must never own one" }
   } else if !path_segment_is_safe(raw: to_string(value: uid)) {
     SpoolOpenRefused { cause: "the rendered uid is not a safe path segment" }
   } else {

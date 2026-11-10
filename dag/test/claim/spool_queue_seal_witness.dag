@@ -21,6 +21,8 @@ import gunbc.spool_queue {
   spool_defer_assess, spool_undefer_assess, ParkEligible, ParkNotApplicable, ParkNotDeclared, ClaimParked,
    SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
 }
+import gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }
+import std.nat { Nat, Zero, Succ }
 
 // THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
 // control. The effects RESOLVE (their stripped twins are the MissingExport probes for the operations that must not
@@ -151,6 +153,21 @@ test fn the_partitioned_reader_reaches_the_realization_and_the_handjoined_reader
     census_verdict(census: total_blocking_census(source: partitioned_reader_twin_source), holds: fn(n) { n == 0 }),
     blocking_delta(hostile: partitioned_reader_handjoined_source, safe: partitioned_reader_twin_source, holds: fn(n) { n >= 1 }),
   ])
+}
+
+// HOST POLICY, asserted (review 92698 / jolly-hawk-60): a seat's exit partition is keyed by the PRINCIPAL uid that
+// ran the seat, and seats run under unprivileged principals, so root (uid 0) must never own one. The mint refuses
+// Zero and admits a real principal uid (Succ -> uid 1). This is a POLICY claim, not a type fact (absence is already
+// typed by Optional<Nat>), so it must be witnessed -- dropping it is a policy regression.
+test fn a_partitioned_store_mint_refuses_the_root_uid_and_admits_a_real_uid() -> ProcessExit {
+  match spool_open_uid(kind: SpoolComputeExit, instance_root: "/tmp/compute/root", uid: Zero) {
+    SpoolOpenRefused { cause: _ } =>
+      match spool_open_uid(kind: SpoolComputeExit, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+        SpoolOpenReady { store: _ } => ExitSuccess
+        SpoolOpenRefused { cause: _ } => exit_failure(reason: "a real principal uid (1) was refused")
+      }
+    SpoolOpenReady { store: _ } => exit_failure(reason: "root (uid 0) was admitted as a seat exit partition owner")
+  }
 }
 
 test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
