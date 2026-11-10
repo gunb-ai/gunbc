@@ -447,6 +447,8 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "lmedia_object" as NonEmptyStr, octets: ui_octets_of("lmedia:{") },
   MegaRacUiProbe { name: "lmedia_object_quoted" as NonEmptyStr, octets: ui_octets_of("\"lmedia\":{") },
   MegaRacUiProbe { name: "local_storage_res" as NonEmptyStr, octets: ui_octets_of("\"res_\"") },
+  MegaRacUiProbe { name: "cd_error" as NonEmptyStr, octets: ui_octets_of("cd_error") },
+  MegaRacUiProbe { name: "error_code" as NonEmptyStr, octets: ui_octets_of("error_code") },
 ]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
