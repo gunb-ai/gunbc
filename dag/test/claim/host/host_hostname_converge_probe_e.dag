@@ -1,0 +1,13 @@
+module test.claim.host.host_hostname_converge_probe_e
+
+// DIAGNOSTIC: does host_identity_plan_from_verdict alone (no three-way fold) stall claim-run?
+import std.types { Bool, String }
+import std.change { KeyedUnchanged }
+import gunbc.host.host_identity_converge { HostIdentityPlan, host_identity_plan_from_verdict }
+
+test fn probe_plan_from_verdict_direct() -> Bool {
+  match host_identity_plan_from_verdict(verdict: KeyedUnchanged, base: "a", desired: "b") {
+    NoopPlan => true
+    _ => false
+  }
+}

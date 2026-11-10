@@ -1,0 +1,17 @@
+module test.claim.host.host_hostname_converge_probe_f
+
+// DIAGNOSTIC: is the stall the brand refinement `type DnsLabel = NonEmptyStr where brand("DnsLabel")`
+// (dag/extdeps/dns/domain_name.dag:25) rather than the host-effect surface around it? This entry touches
+// nothing but the brand and a string comparison, so a stall here locates the cost in the brand check or
+// in the DNS module's own closure.
+
+import std.types { Bool, String }
+import extdeps.dns.domain_name { DnsLabel }
+
+fn dns_label_round_trip(candidate: String) -> Bool {
+  (candidate as DnsLabel) as String == candidate
+}
+
+test fn probe_dns_label_brand_only() -> Bool {
+  dns_label_round_trip(candidate: "a")
+}

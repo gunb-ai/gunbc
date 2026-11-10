@@ -1,0 +1,20 @@
+module test.claim.host.host_hostname_converge_probe_d
+
+// DIAGNOSTIC: does the generic keyed_three_way_leaf with a function argument alone stall claim-run?
+import std.types { Bool, String }
+import std.change { keyed_three_way_leaf, KeyedLeafVerdict, KeyedUnchanged }
+
+type DV {
+  s: String,
+}
+
+fn dv_eq(a: DV, b: DV) -> Bool {
+  a.s == b.s
+}
+
+test fn probe_keyed_three_way_direct() -> Bool {
+  match keyed_three_way_leaf(base: DV { s: "a" }, observed: DV { s: "b" }, desired: DV { s: "b" }, equal: dv_eq) {
+    KeyedUnchanged => true
+    _ => false
+  }
+}

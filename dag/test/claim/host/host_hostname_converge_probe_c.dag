@@ -1,0 +1,32 @@
+module test.claim.host.host_hostname_converge_probe_c
+
+import std.types { Bool, String }
+import std.optional { Absent, Present }
+import gunbc.host.host_hostname_converge { HostnameConvergePlan, hostname_converge_plan, HostnameConvergeDirection }
+
+type FoldRow {
+  base: String,
+  desired: String,
+  live: String,
+  expect_noop: Bool,
+}
+
+data fold_rows: List<FoldRow> = [
+  FoldRow { base: "a", desired: "b", live: "b", expect_noop: true },
+  FoldRow { base: "a", desired: "b", live: "a", expect_noop: false },
+  FoldRow { base: "a", desired: "b", live: "c", expect_noop: false },
+  FoldRow { base: "b", desired: "b", live: "b", expect_noop: true },
+  FoldRow { base: "a", desired: "b", live: "b", expect_noop: true },
+  FoldRow { base: "c", desired: "d", live: "d", expect_noop: true },
+]
+
+fn row_holds(row: FoldRow) -> Bool {
+  match hostname_converge_plan(direction: Forward, base: row.base, desired: row.desired, live: row.live) {
+    NoopPlan { live: _ } => row.expect_noop
+    _ => !row.expect_noop
+  }
+}
+
+test fn probe_table_fold_call() -> Bool {
+  !any(fold_rows, r => !row_holds(row: r))
+}

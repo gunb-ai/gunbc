@@ -54,7 +54,8 @@ import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextRefused,
   prepare_fleet_ssh_agent_context,
 }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_principal, grounded_principal_privileged_commands }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_principal }
+import gunbc.ci.ci_deploy_access { grounded_principal_privileged_commands }
 
 // ONE HOST-GENERIC MODE THAT SETS AND READS BACK A HOST'S LINUX HOSTNAME, RUN FROM A PEER.
 data gunbc_host_hostname_converge_scope_disposition: Disposition = std.disposition.Terminal {
@@ -204,9 +205,7 @@ fn hostname_converge_plan_stamp(
   direction: HostnameConvergeDirection,
   plan: HostnameConvergePlan,
 ) -> NonEmptyStr {
-  sha256_hex_digest(
-    input: join([hostname_converge_plan_fold_text(target: target, peer: peer, direction: direction, plan: plan)], ""),
-  )
+  hostname_converge_plan_fold_text(target: target, peer: peer, direction: direction, plan: plan) as NonEmptyStr
 }
 
 fn hostname_converge_plan_fold_text(
