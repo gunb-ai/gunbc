@@ -21181,17 +21181,30 @@ fn rest_exchange_selection(
             // dropped it left the zero-fixture op-route probe refusing with no evidence of
             // WHICH invocation went unbound — the second field-default-scope blind spot after
             // #16196 read a declaring-site default in its own module's scope: the value the
-            // route bound was unobservable at the refusal. Surface its `target` so a refusal
-            // witness can read the bound value (the second PR removes #16185's explicit Jwt
-            // fields once this executed reading shows the default binds).
+            // route bound was unobservable at the refusal. Surface `target` AND `input_digest`
+            // (the host-computed encoding of the digest-relevant inputs) so a refusal witness
+            // can read the whole bound value, not just its URL. A field-default binding that
+            // resolved to a different value shares a target but not a digest, so the digest is
+            // what lets the witness tell "the default bound the explicit value" from "some
+            // value bound." (#16185's explicit Jwt fields are removed once this shows the
+            // default binds identically.)
             let bound_target = ctx
                 .field(&fields, "invocation")
                 .and_then(|invocation| record_field(ctx, invocation, "target"))
                 .map(|target| rest_uri_render(ctx, &target))
                 .unwrap_or_else(|| "<unbound target>".to_string());
+            let bound_digest = ctx
+                .field(&fields, "invocation")
+                .and_then(|invocation| record_field(ctx, invocation, "input_digest"))
+                .and_then(|input_digest| record_field(ctx, &input_digest, "digest"))
+                .map(|digest| match &digest {
+                    Value::Str(hex) => hex.to_string(),
+                    other => format!("{other}"),
+                })
+                .unwrap_or_else(|| "<unbound digest>".to_string());
             Err(InterpError::TypeError {
                 msg: format!(
-                    "missing exact REST replay fixture for bound invocation {bound_target}; real transport refused"
+                    "missing exact REST replay fixture for bound invocation {bound_target} (input_digest {bound_digest}); real transport refused"
                 ),
             })
         }

@@ -1,0 +1,98 @@
+module test.claim.field_default_jwt_path_binds_default
+
+// GATE for removing #16185's explicit Jwt/RequestAccessToken fields on the gcp.STS.Exchange Jwt path.
+//
+// extdeps.cloud/gcp/sts declares, in its OWN module scope,
+//   subject_token_type: SubjectTokenType   = Jwt
+//   requested_token_type: RequestedTokenType = RequestAccessToken
+// #16196 evaluates an omitted input-block default in the DECLARING module's scope, where Jwt and
+// RequestAccessToken are bound. So omitting the two args at the call site must bind exactly the values
+// #16185 passed explicitly, and the host-computed bound invocation -- its target AND its input_digest
+// (the digest-relevant fields: content_hash_service_inputs over the evaluated inputs, which cover the
+// two token types) -- must be identical whether they are named or defaulted.
+//
+// Drive the REAL gcp.STS.Exchange twice under a zero-fixture replay frame (no hand-keyed fixture: the
+// digest is host-computed by #16232's refusal, which surfaces target + input_digest):
+//   present: subject_token_type / requested_token_type named (mirrors today's heal_publication call)
+//   omitted: both args dropped, relying on the declaring-scope default
+// Both must refuse at RestReplayExchangeAbsent naming the STS token endpoint with the same input_digest.
+// If the default did NOT bind on this route (path 3, the type layer) the omitted leg would refuse
+// earlier with no target/digest, so present_reason != omitted_reason -- the discriminating input.
+//
+// This claim is the executed reading that must go GREEN before heal_publication's two explicit fields
+// (and their now-unused import) are removed.
+
+import std.types { Bool, Secret, NonEmptyStr, Unit }
+import std.algebra { string_contains }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Write, ServiceOpTree, NamespacePosition,
+  Replay, LifecycleByConstruction, Grant, Envelope,
+}
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
+}
+import extdeps.cloud.gcp.sts { Jwt, RequestAccessToken }
+
+data sts_store: String = "jwt-default-gate"
+// The realized target of gcp.STS.Exchange: service endpoint https://sts.googleapis.com + path /v1/token.
+data sts_target: String = "https://sts.googleapis.com/v1/token"
+
+// A replay frame that covers ONLY the gcp.STS service (POST -> Write verb), with zero fixtures so the
+// transport resolves to RestReplayExchangeAbsent for any STS invocation.
+fn sts_replay_frame() -> WitnessEvaluationFrame<Unit> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "jwt-default-gate", kind: SharedStateFrame }
+      grants: [Grant {
+        verb: Write
+        root: NamespacePosition {
+          tree: ServiceOpTree { service: "gcp.STS" }
+          path: []
+        }
+        binding: Replay { fixture_store: sts_store }
+        lifecycle: LifecycleByConstruction
+      }]
+    }
+    rest_fixtures: []
+    realization: none
+  }
+}
+
+test fn sts_exchange_omitted_jwt_types_bind_the_declaring_scope_default() -> Bool {
+  // Match the frame result inline (as the control rest_exchange_replay does) so the operation's
+  // return type parameter is inferred and never named -- it is not a type extdeps.transports.rest exports.
+  let present_reason = match evaluate_in_witness_frame(
+    frame: sts_replay_frame(),
+    subject: fn(_scope) {
+      gcp.STS.Exchange(
+        subject_token: "gate-subject-token" as Secret,
+        audience: "gate-audience" as NonEmptyStr,
+        subject_token_type: Jwt,
+        requested_token_type: RequestAccessToken,
+      )
+    }
+  ) {
+    WitnessReturned { value } => ""
+    WitnessRefused { diagnostic } => witness_diagnostic_rendered_reason(diagnostic: diagnostic)
+    WitnessInterrupted { at: _, route: _, state: _ } => ""
+  }
+  let omitted_reason = match evaluate_in_witness_frame(
+    frame: sts_replay_frame(),
+    subject: fn(_scope) {
+      gcp.STS.Exchange(
+        subject_token: "gate-subject-token" as Secret,
+        audience: "gate-audience" as NonEmptyStr,
+      )
+    }
+  ) {
+    WitnessReturned { value } => ""
+    WitnessRefused { diagnostic } => witness_diagnostic_rendered_reason(diagnostic: diagnostic)
+    WitnessInterrupted { at: _, route: _, state: _ } => ""
+  }
+  string_contains(s: present_reason, pattern: sts_target)
+    && string_contains(s: omitted_reason, pattern: sts_target)
+    && string_contains(s: omitted_reason, pattern: "input_digest")
+    && present_reason == omitted_reason
+}
