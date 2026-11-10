@@ -135,14 +135,14 @@ test fn the_aardvark_positions_are_the_manuals() -> Bool {
     && is_pair(xs: positions_carrying(connector: aardvark_target_connector, signal: TargetPowerOrNoConnect), a: 4, b: 6)
 }
 
-// The consoles. J2 owes only its RJ45 pin assignment; J4 owes its level, its assignment, its pitch and
-// its key; J19 owes what it enumerates as.
+// The consoles. J2 owes only its RJ45 pin assignment; J4, four open pins with no key, owes its level,
+// its assignment and its pitch; J19 owes what it enumerates as.
 test fn j2_is_an_rs232_console_owing_its_rj45_assignment() -> Bool {
   reached_owing(access: on_held_card(i: e4833_rs232), tool: Rs232ConsoleCable, owed: 1)
 }
 
-test fn j4_is_a_logic_uart_owing_level_assignment_pitch_and_key() -> Bool {
-  reached_owing(access: on_held_card(i: e4833_uart), tool: LogicUartAdapter, owed: 4)
+test fn j4_is_a_logic_uart_owing_level_assignment_and_pitch() -> Bool {
+  reached_owing(access: on_held_card(i: e4833_uart), tool: LogicUartAdapter, owed: 3)
 }
 
 test fn j19_is_reached_by_a_micro_usb_data_cable_owing_what_it_enumerates_as() -> Bool {

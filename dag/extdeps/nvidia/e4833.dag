@@ -114,7 +114,15 @@ type PitchReading
 type HeaderKey
   = KeyedByShroudNotch
   | NoKeyNeeded
+  | NotKeyed
   | KeyUnread { read_obligation: NonEmptyStr }
+
+// Whether walls stand around the pins. Read side-on or from a frame that shows the walls; a white base
+// seen only from above does not say which, so it stays unread.
+type ShroudReading
+  = Shrouded
+  | OpenPins
+  | ShroudUnread { read_obligation: NonEmptyStr }
 
 type InterfaceForm
   = HmcCardEdgeSocket
@@ -122,7 +130,7 @@ type InterfaceForm
   | MicroUsbBReceptacle
   | Rj45Jack
   | M2Socket
-  | PinHeader { rows: Nat, positions_per_row: Nat, shrouded: Bool, key: HeaderKey, pitch: PitchReading }
+  | PinHeader { rows: Nat, positions_per_row: Nat, shroud: ShroudReading, key: HeaderKey, pitch: PitchReading }
 
 type AutoPowerOn
   = AutoPowerOnEnabled
@@ -157,8 +165,8 @@ type E4833Interface {
 
 data e4833_print_obligation: NonEmptyStr = "an NVIDIA drawing or schematic of the E4833 naming this position; until then the row is the held unit's silkscreen and fitted part as photographed, and the function is what the print claims, with no continuity read behind it"
 
-fn header(rows: Nat, positions_per_row: Nat, key: HeaderKey, pitch_obligation: NonEmptyStr) -> InterfaceForm {
-  PinHeader { rows: rows, positions_per_row: positions_per_row, shrouded: true, key: key, pitch: PitchUnread { read_obligation: pitch_obligation } }
+fn header(rows: Nat, positions_per_row: Nat, shroud: ShroudReading, key: HeaderKey, pitch_obligation: NonEmptyStr) -> InterfaceForm {
+  PinHeader { rows: rows, positions_per_row: positions_per_row, shroud: shroud, key: key, pitch: PitchUnread { read_obligation: pitch_obligation } }
 }
 
 fn printed(designator: NonEmptyStr, print: List<NonEmptyStr>, form: InterfaceForm, function: InterfaceFunction) -> E4833Interface {
@@ -183,31 +191,36 @@ data e4833_dc_input_position: E4833Interface = E4833Interface {
 
 data e4833_rs232: E4833Interface = printed(designator: "J2", print: ["RS232"], form: Rj45Jack, function: Rs232Serial)
 
-data e4833_uart: E4833Interface = printed(designator: "J4", print: ["UART"], form: header(rows: 1, positions_per_row: 4, key: KeyUnread { read_obligation: "whether J4's housing has a latch ramp or polarizing wall, from a side-on frame" }, pitch_obligation: "J4's position pitch by caliper"), function: LogicLevelUart)
+// J4 is four bare pins on a low white base, seen side-on in the operator's 2026-11-09 video: nothing on it
+// stops a plug going on reversed.
+data e4833_uart: E4833Interface = printed(designator: "J4", print: ["UART"], form: header(rows: 1, positions_per_row: 4, shroud: OpenPins, key: NotKeyed, pitch_obligation: "J4's position pitch by caliper"), function: LogicLevelUart)
 
 // The legend is printed beside J6 with an arrow to it. It was read in full from a seller's photograph of
 // an E4833 of this layout; the held unit's frame shows the same table with the ends of its three cells.
 data e4833_auto_power_on: E4833Interface = E4833Interface {
   designator: designator_of(verbatim: "J6"),
   print: ["Auto Power On", "Open: Enable", "Short: Disable"],
-  form: PinHeader { rows: 1, positions_per_row: 2, shrouded: false, key: NoKeyNeeded, pitch: PitchUnread { read_obligation: "J6's pitch by caliper, which names the shunt that fits" } },
+  form: PinHeader { rows: 1, positions_per_row: 2, shroud: OpenPins, key: NoKeyNeeded, pitch: PitchUnread { read_obligation: "J6's pitch by caliper, which names the shunt that fits" } },
   function: AutoPowerOnJumper { when_open: AutoPowerOnEnabled, when_shorted: AutoPowerOnDisabled },
   standing: TranscribedUncited { read_obligation: "one straight-down frame of the held unit's legend in full; the held unit's frame of 2026-11-09 shows its cells ending '...r ON', '...ble' and '...able', and the full words are from a seller's photograph of another E4833" },
 }
 
-data e4833_jtag: E4833Interface = printed(designator: "J7", print: ["JTAG"], form: header(rows: 2, positions_per_row: 5, key: KeyUnread { read_obligation: "whether the position without a pin on the held unit is the maker's key: a second E4833 shows it, and a 2x5 header keyed that way is Arm's 10-position debug connector, whose documentation did not render on 2026-11-09" }, pitch_obligation: "J7's pitch by caliper; 1.27 mm would match Arm's 10-position debug connector"), function: Jtag)
+data e4833_jtag: E4833Interface = printed(designator: "J7", print: ["JTAG"], form: header(rows: 2, positions_per_row: 5, shroud: Shrouded, key: KeyUnread { read_obligation: "whether the position without a pin on the held unit is the maker's key: a second E4833 shows it, and a 2x5 header keyed that way is Arm's 10-position debug connector, whose documentation did not render on 2026-11-09" }, pitch_obligation: "J7's pitch by caliper; 1.27 mm would match Arm's 10-position debug connector"), function: Jtag)
 
-data e4833_espi: E4833Interface = printed(designator: "J8", print: ["ESPI"], form: header(rows: 2, positions_per_row: 5, key: KeyUnread { read_obligation: "J8's polarization, from a side-on frame" }, pitch_obligation: "J8's pitch by caliper"), function: Espi)
+data e4833_espi: E4833Interface = printed(designator: "J8", print: ["ESPI"], form: header(rows: 2, positions_per_row: 5, shroud: Shrouded, key: KeyUnread { read_obligation: "J8's polarization, from a side-on frame" }, pitch_obligation: "J8's pitch by caliper"), function: Espi)
 
 data e4833_four_position_key: HeaderKey = KeyUnread { read_obligation: "the housing's latch ramp or polarizing wall, from a side-on frame" }
 
-data e4833_j9: E4833Interface = printed(designator: "J9", print: [], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J9's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
+// J9 to J12 are white four-position parts seen only from above; they look like J4's, which is open pins.
+data e4833_white_header_shroud: ShroudReading = ShroudUnread { read_obligation: "a side-on frame of J9 to J12: from above they look like J4's part, which is four open pins" }
 
-data e4833_j10: E4833Interface = printed(designator: "J10", print: [], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J10's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
+data e4833_j9: E4833Interface = printed(designator: "J9", print: [], form: header(rows: 1, positions_per_row: 4, shroud: e4833_white_header_shroud, key: e4833_four_position_key, pitch_obligation: "J9's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
 
-data e4833_j11: E4833Interface = printed(designator: "J11", print: [], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J11's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
+data e4833_j10: E4833Interface = printed(designator: "J10", print: [], form: header(rows: 1, positions_per_row: 4, shroud: e4833_white_header_shroud, key: e4833_four_position_key, pitch_obligation: "J10's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
 
-data e4833_peci: E4833Interface = printed(designator: "J12", print: ["PECI"], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J12's pitch by caliper"), function: Peci)
+data e4833_j11: E4833Interface = printed(designator: "J11", print: [], form: header(rows: 1, positions_per_row: 4, shroud: e4833_white_header_shroud, key: e4833_four_position_key, pitch_obligation: "J11's pitch by caliper"), function: FunctionUnprinted { read_obligation: "J9 to J11 carry no print beside them; continuity from each position to a part whose pins are known, or an NVIDIA drawing, says what they are" })
+
+data e4833_peci: E4833Interface = printed(designator: "J12", print: ["PECI"], form: header(rows: 1, positions_per_row: 4, shroud: e4833_white_header_shroud, key: e4833_four_position_key, pitch_obligation: "J12's pitch by caliper"), function: Peci)
 
 // The M.2 socket's own designator is not printed beside its body. 'J13' is printed between its 'NVMe'
 // print and J9, and each four-position header already has its own designator, so J13 is attributed to
@@ -220,21 +233,21 @@ data e4833_nvme: E4833Interface = E4833Interface {
   standing: TranscribedUncited { read_obligation: "the socket's designator: 'J13' is printed between the 'NVMe' print and J9 and is attributed to the socket by placement only; an NVIDIA drawing, or a frame showing J13's outline around the socket, settles it, and the socket's key position is unread" },
 }
 
-data e4833_fan1: E4833Interface = printed(designator: "J14", print: ["FAN1"], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J14's pitch by caliper"), function: FanHeader { index: 1 })
+data e4833_fan1: E4833Interface = printed(designator: "J14", print: ["FAN1"], form: header(rows: 1, positions_per_row: 4, shroud: Shrouded, key: e4833_four_position_key, pitch_obligation: "J14's pitch by caliper"), function: FanHeader { index: 1 })
 
-data e4833_fan2: E4833Interface = printed(designator: "J15", print: ["FAN2"], form: header(rows: 1, positions_per_row: 4, key: e4833_four_position_key, pitch_obligation: "J15's pitch by caliper"), function: FanHeader { index: 2 })
+data e4833_fan2: E4833Interface = printed(designator: "J15", print: ["FAN2"], form: header(rows: 1, positions_per_row: 4, shroud: Shrouded, key: e4833_four_position_key, pitch_obligation: "J15's pitch by caliper"), function: FanHeader { index: 2 })
 
 // The print names Total Phase's Aardvark, so its pitch and its pinout are the Aardvark's and live in
 // extdeps.total_phase.aardvark. That J16 is wired to that pinout is still the print's claim.
 data e4833_aardvark: E4833Interface = E4833Interface {
   designator: designator_of(verbatim: "J16"),
   print: ["Aardvark", "SPI/I2C"],
-  form: PinHeader { rows: 2, positions_per_row: 5, shrouded: true, key: KeyedByShroudNotch, pitch: PitchOfNamedMate { pitch: aardvark_target_connector.pitch, mate: "Total Phase Aardvark 10-position IDC cable" } },
+  form: PinHeader { rows: 2, positions_per_row: 5, shroud: Shrouded, key: KeyedByShroudNotch, pitch: PitchOfNamedMate { pitch: aardvark_target_connector.pitch, mate: "Total Phase Aardvark 10-position IDC cable" } },
   function: AardvarkI2cSpi { connector: aardvark_target_connector },
   standing: TranscribedUncited { read_obligation: "continuity from J16's positions to the card's I2C and SPI parts: the print claims the Aardvark pinout and nothing has checked the card against it" },
 }
 
-data e4833_rtc: E4833Interface = printed(designator: "J18", print: ["RTC"], form: header(rows: 1, positions_per_row: 2, key: KeyUnread { read_obligation: "J18's latch side, from a side-on frame" }, pitch_obligation: "J18's pitch by caliper, which names the cell lead that fits"), function: RtcBattery)
+data e4833_rtc: E4833Interface = printed(designator: "J18", print: ["RTC"], form: header(rows: 1, positions_per_row: 2, shroud: Shrouded, key: KeyUnread { read_obligation: "J18's latch side, from a side-on frame" }, pitch_obligation: "J18's pitch by caliper, which names the cell lead that fits"), function: RtcBattery)
 
 data e4833_pm342_usb: E4833Interface = printed(designator: "J19", print: ["PM342 USB"], form: MicroUsbBReceptacle, function: UsbPortNamedForPm342)
 
@@ -297,13 +310,22 @@ fn key_owed(key: HeaderKey) -> List<NonEmptyStr> {
   match key {
     KeyedByShroudNotch => [],
     NoKeyNeeded => [],
+    NotKeyed => [],
     KeyUnread { read_obligation } => [read_obligation],
+  }
+}
+
+fn shroud_owed(shroud: ShroudReading) -> List<NonEmptyStr> {
+  match shroud {
+    Shrouded => [],
+    OpenPins => [],
+    ShroudUnread { read_obligation } => [read_obligation],
   }
 }
 
 fn form_owed(form: InterfaceForm) -> List<NonEmptyStr> {
   match form {
-    PinHeader { rows, positions_per_row, shrouded, key, pitch } => concat(pitch_reading_owed(reading: pitch), key_owed(key: key)),
+    PinHeader { rows, positions_per_row, shroud, key, pitch } => concat(pitch_reading_owed(reading: pitch), concat(key_owed(key: key), shroud_owed(shroud: shroud))),
     _ => [],
   }
 }
