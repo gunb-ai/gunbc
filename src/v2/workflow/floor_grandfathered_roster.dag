@@ -796,6 +796,546 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     new_identity: "v2.test.v2_native_route.a_universe_member_outside_the_route_boundary_is_refused" as NonEmptyStr,
     renamed_in: "the test-marker universe cutover (gunbc.recurring_failure_mode test_identity_restated_as_a_location_predicate_beside_the_marker): a universe member is foreign to the route when its module lies outside the default pattern's subtree, not when it lacks the retired v2.test prefix; the claim keeps its subject and is named for the boundary it asserts" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_identity_consumer_census.derived_counts_bounded_by_roster" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_identity_consumer_census.interrupt_cell_is_exactly_its_two_predicates" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_identity_consumer_census.member_has_at_least_one_call_site" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.bare_name_identity_consumer_census.sibling_claim_has_an_identity_to_feed_it" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.a_mixed_family_site_stays_in_the_denominator" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.an_empty_census_refuses" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.a_site_answering_no_authored_reference_is_neither_tappable_nor_owed_threading" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.a_site_measured_at_another_revision_refuses" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.a_site_with_no_families_refuses_rather_than_counting_as_out_of_scope" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.duplicate_sites_yield_one_cause_per_excess_row" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.no_surveyed_callable_site_is_tappable_today" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.no_surveyed_site_receives_the_parser_minted_occurrence_identity" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.only_the_corner_with_both_halves_is_tappable" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.the_five_measured_sites_are_the_callable_resolution_surfaces" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.the_four_unsurveyed_decision_surfaces_are_counted_refusals" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.the_roster_is_bound_to_the_revision_it_was_read_at" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_tap_coverage_witness.the_target_axis_separates_four_exact_sites_from_one_erased_one" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_call_head_and_a_bare_function_value_are_stamped_differently" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.adding_an_unreferenced_declaration_only_adds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_generic_type_argument_produces_no_occurrence" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_named_argument_label_is_emitted_as_a_reference_occurrence" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_nullary_constructor_is_stamped_as_a_lexical_value" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_payload_constructor_in_expression_position_produces_no_occurrence" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_qualified_containment_reference_is_split_into_two_occurrences" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_split_family_can_never_reach_full_discrimination" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.a_variant_in_pattern_position_produces_no_occurrence" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.every_observed_outcome_claims_a_branch_the_run_exercises" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.every_producer_branch_is_claimed_by_a_calibration_row" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.every_reference_family_is_claimed_by_a_calibration_row" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.only_the_head_of_an_import_list_is_emitted_as_a_reference" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.removing_a_variant_entirely_does_not_change_the_occurrence_count" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.renaming_a_binder_consistently_disturbs_only_the_renamed_keys" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_defect" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.reordering_independent_declarations_does_not_change_the_observed_population" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.the_calibration_standing_reports_blindness_rather_than_coverage" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.the_cap_fires_only_when_a_family_is_actually_split" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.the_instrument_observed_this_subject_and_is_not_silent" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.the_qualified_family_produces_both_of_its_declared_categories" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_step0_census_calibration_witness.the_qualified_pair_carries_no_definer_resolvable_disposition" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_baseline_line_with_no_path_separator_is_unparsable_not_merely_empty" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_baseline_match_line_yields_its_path_and_name" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_baseline_match_that_is_not_a_prose_row_yields_nothing" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_baseline_row_whose_module_is_unknown_is_carried_not_dropped" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_citation_in_the_retiring_file_is_local_to_it" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_cited_name_declared_nowhere_and_one_surviving_elsewhere_are_different_states" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_line_naming_two_rows_yields_both" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_longer_identifier_ending_in_the_suffix_is_not_read_as_its_tail" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_name_retired_from_one_path_resolves_its_locality" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_name_retired_from_several_paths_refuses_to_pick_a_locality" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.an_annotation_citation_in_another_file_is_one_site_at_its_line" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.an_annotation_line_and_a_prose_row_line_are_different_carriers" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_partial_module_index_splits_the_rows_across_both_lists" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_populated_module_index_leaves_nothing_unidentified" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_program_data_line_is_read_as_not_a_prose_row_not_as_malformed" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_prose_row_citation_is_a_prose_row_site" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_row_still_declared_in_its_own_module_is_not_retired" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_row_whose_bare_name_survives_only_in_another_module_is_retired" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_semantic_line_naming_a_retired_row_is_not_a_citation_site" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.a_word_that_merely_starts_with_the_suffix_is_not_a_name" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.every_baseline_line_lands_in_exactly_one_arm" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.prose_naming_a_row_outside_the_retired_index_is_not_a_site" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_census_totals_are_projections_of_its_own_site_list" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_module_index_reads_module_lines_and_ignores_others" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_produced_site_identities_join_with_the_expected_ones_both_ways" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_qualified_identity_is_the_module_dot_name_spelling" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_same_path_seen_twice_is_still_one_origin" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_sample_is_the_twelve_sites_that_were_drawn" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_scan_is_non_constant_in_its_retired_index" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_trailing_blank_line_is_blank_not_malformed" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.prose_citation_census_witness.the_twelve_sampled_specimens_are_all_recognised" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_admission_reads_completeness" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_admission_refuses_a_blocking_consumer" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_admission_refuses_an_unrealized_successor" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_boundary_census_enumerates_the_rows" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_catches_an_undisposed_consumer" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_catches_an_unrealized_successor_claim" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_catches_a_stale_row" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_counts_the_unknown_arm_apart_from_the_uncovered_one" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_manifest_join_is_clean_when_every_rostered_site_is_produced" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_manifest_relation_keys_on_the_package_graph" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_native_lane_rows_joined_the_population" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_one_item_naming_two_authorities_is_two_relations" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_population_carries_the_partition" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_same_size_substitution_refuses_in_both_directions" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_stale_rostered_renderer_is_excluded" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_tooling_row_decides_shim_citability" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_tooling_tree_projects_to_the_assembled_package_namespace" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_two_lines_naming_one_authority_are_one_consumer" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_unknown_token_refuses_rather_than_borrowing_an_authority" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_unrostered_seed_link_site_blocks" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_unrostered_uncitable_site_is_undisposed_and_comment_is_not_a_site" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.consumer_census_worklist_is_a_permutation_that_leads_with_the_unjudged" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.discovery_excludes_the_bare_cli_homonym_and_keeps_the_qualified_spelling" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.discovery_fold_does_not_count_its_own_signature_table" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.discovery_fold_executes_over_a_real_declaration_node" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.discovery_fold_is_blind_to_a_bare_string_initializer" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_consumer_census_witness.discovery_projects_the_module_path_from_the_declaring_root" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_catches_a_fabricated_subject" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_catches_a_fixture_member_with_a_disposition" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_catches_a_lost_subject" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_catches_a_merged_target" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_catches_a_self_referential_red_control" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_evidence_projection_is_total" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_gate_refuses_an_unmeasured_roster" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_gate_refuses_every_plant" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_live_roster_is_declared_unmeasured" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_v1_witness_census_witness.witness_census_native_roster_is_derived" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.type_reference_decl_file_occurrence_census.availability_price_within_its_class" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.type_reference_decl_file_occurrence_census.class_exhibits_a_real_specimen" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.type_reference_decl_file_occurrence_census.conversion_and_irreducibility_agree_with_authority" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.type_reference_decl_file_occurrence_census.derived_totals_bounded_by_roster" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.type_reference_decl_file_occurrence_census.no_more_specimens_than_occurrences" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.fallback_arm_census_planted.classifier_class_eq_covers_all_variants_self_applies_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.fallback_arm_census_planted.classifier_input_not_wildcard_is_unknown_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.fallback_arm_census_planted.planted_answers_on_open_is_defect_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.fallback_arm_census_planted.planted_closed_total_answers_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.fallback_arm_census_planted.planted_interim_overrides_answers_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.fallback_arm_census_planted.planted_opaque_is_unknown_counted_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.fallback_arm_census_planted.planted_refuses_is_healthy_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.witness_entry_eligibility_census_classification.census_bulk_pending_default_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.witness_entry_eligibility_census_classification.census_emit_host_execution_family_row_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.witness_entry_eligibility_census_classification.census_emit_host_gate_not_family_grain_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.witness_entry_eligibility_census_classification.census_emit_on_demand_family_crate_leg_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.witness_entry_eligibility_census_classification.census_long_lane_row_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.witness_entry_eligibility_census_classification.census_offline_recipe_row_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.languages_consumer_census.corpus.per_language_row_ratchet.corpus_per_language_row_ratchet_holds" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.languages_consumer_census.corpus.rust_language_external_consumer.corpus_rust_language_external_consumer_count_positive" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.languages_consumer_census.corpus.rust_language_external_consumer.corpus_rust_language_has_external_consumer" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.languages_consumer_census.corpus.rust_spec_external_consumer.corpus_rust_spec_has_external_consumer" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.languages_consumer_census.corpus.rust_statements_composition_only.corpus_rust_statements_is_composition_only" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.body_lowering_retention_census.one_production_at_two_node_shapes_stays_two_families" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.body_lowering_retention_census.one_production_observed_repeatedly_is_one_family_with_a_count" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.body_lowering_retention_census.the_family_key_names_both_the_production_and_the_shape" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.body_lowering_retention_census.the_observation_total_is_preserved_across_every_partition" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.body_lowering_retention_census.two_productions_at_one_node_shape_stay_two_families" as NonEmptyStr,
+    deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
+  }
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

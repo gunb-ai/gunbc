@@ -525,12 +525,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "mock_response coverage lands for the git.Inspect revision-addressed operations AND scaffold assertions are re-checked under a fixed mock; or the scaffold fns enroll on a scheduled wet lane. Either way this row deletes.")
   },
   WitnessExclusionRow {
-    pattern: "stage0_rust_maintenance_census_report_live_witness.dag",
-    classification: OfflineLocalRecipe,
-    reason: "SUBSTANTIATED per-row (found 2026-08-06, PR #7894 CI red, run 31069215347): maintenance_census_report_positive_control_derives_from_current_head calls current_rust_maintenance_census_report(), which reaches current_stage0_rust_source_observation() and therefore git.Inspect.HeadCommit without mock_response — the same class stage0_rust_host_observation_live_witness.dag documents above; a refusing hermetic discovery member fails its whole batch (batch 3 discovery-corpus, 7298-row corpus). This row alone would only remove the function from hermetic discovery, which is not an executing consumer by itself (DESIGN.md 'witness cost derives from purpose', operator ruling 2026-08-04) — so, mirroring stage0_rust_host_observation_live_witness.dag's closing contract, the function is ALSO enrolled in bin_witness_wet_entries below (GITHUB_SHA supplied by the runner, not hand-set), which is its real per-PR executing consumer under WitnessHasExecutingConsumer standing; this exclusion row only keeps it off the hermetic per-PR discovery batch it cannot pass. This origin file has only the one witness, so no scaffold-witness residue remains offline-only.",
-    dissolution: unbound_dissolution(description: "mock_response coverage lands for the git.Inspect revision-addressed operations used by current_stage0_rust_source_observation AND this assertion is re-checked under a fixed mock; or the fn enrolls on a scheduled wet lane. Either way this row deletes.")
-  },
-  WitnessExclusionRow {
     pattern: "claim/long/mandatory_tag_extdeps_corpus",
     classification: OfflineLocalRecipe,
     reason: "interpreted corpus walk prices out of every CI lane (measured ~33s/module parse, hours full run; see corpus_witness_note in the test file); the CI-cadence corpus consumer is the retained host projection v2.lens.mandatory_tag.corpus_scan",
@@ -863,11 +857,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "long/v1_complexity_decl_classification_totality.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
-    pattern: "fallback_arm_census_witness.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
@@ -1930,7 +1919,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/push_event_witness_wet.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
   bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness.dag", f: "observe_echo_wet_posix_command_v_check_does_not_crash"),
   bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness.dag", f: "observe_npm_wet_posix_command_v_check_does_not_crash"),
-  bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness.dag", f: "maintenance_census_report_positive_control_derives_from_current_head"),
   bin_wet(entry: "dag/test/claim/materialization_store_local_immutable_pin_wet_witness.dag", f: "a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution")
 ]
 
@@ -2326,36 +2314,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",
     dissolution: unbound_dissolution(description: "the census-ingest fixture pipeline's per-fixture pass drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR and delete this row")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/fallback_arm_census_witness.dag",
-    function: "fallback_arm_census_reconciliation_holds",
-    reason: "W2 fallback-arm census corpus grain (docs/plans/fallback-arm-census.md, 2026-07-25): host-seamed MatchPattern::Wildcard walk over witness_layer_roots via decl_facts — exceeds per-PR 5s fast-lane budget (Class C). Per-PR fixture walls stay in fallback_arm_census_planted.dag",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/fallback_arm_census_witness.dag",
-    function: "fallback_arm_census_total_nonempty_holds",
-    reason: "same W2 census corpus grain as sibling reconciliation_holds",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/fallback_arm_census_witness.dag",
-    function: "fallback_arm_census_class_counts_nonnegative_holds",
-    reason: "same W2 census corpus grain as sibling reconciliation_holds",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/fallback_arm_census_witness.dag",
-    function: "fallback_arm_seed_inventory_count_holds",
-    reason: "same W2 census corpus grain as sibling reconciliation_holds (seed inventory count receipt)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/fallback_arm_census_witness.dag",
-    function: "fallback_arm_census_self_applies_holds",
-    reason: "same W2 census corpus grain as sibling reconciliation_holds (lens self-application: zero AnswersOnOpen on fallback_arm_census.dag)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long.dag",

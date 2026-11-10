@@ -661,8 +661,6 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_mechanical_checks_reflect_live_classification", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_maintenance_census_report_live_witness.maintenance_census_report_positive_control_derives_from_current_head", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.manual.git_upstream_model_execution.witness_git_cli_fixture_hashes_projects_and_independently_reads_back", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.manual.mercurial_upstream_model_execution.witness_mercurial_cli_fixture_projects_and_independently_reads_back", operation: "Dir", ground: NoMockResponse {} },
@@ -697,7 +695,6 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "v2.test.claim.manual.emit_source_store.emit_source_store_mutated_emitter_misses_holds", operation: "Write", ground: NoMockResponse {} },
     tail: Empty {}
-  }
   }
   }
   }

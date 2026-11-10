@@ -1,15 +1,14 @@
 module gunbc.recurring_failure_mode.a_revision_pinned_reading_cites_a_declaration_without_its_revision
 
 import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_revision_pinned_reading_cites_a_declaration_without_its_revision: RecurringFailureMode = RecurringFailureMode {
   identity: "a_revision_pinned_reading_cites_a_declaration_without_its_revision" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "a record literal that omits a required field, and a CommitSha that is not a commit identity, are each refused by the compiler on the real acceptance path, so the revision coordinate on a pinned reading's citation cannot be absent or hollow by construction rather than by the generator's admission" } },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "a record literal that omits a required field, and a CommitSha that is not a commit identity, are each refused by the compiler on the real acceptance path, so the revision coordinate on a pinned reading's citation cannot be absent or hollow by construction rather than by the generator's admission" } },
 
   receipts: [
     "INVALID STATE: an observation of the repository at a pinned revision (gunbc.realization_census_rows, pinned by realization_census_pin, an inhabitant of gunbc.repository_census_observation) cites its evidence as EvidenceDeclaration { ref: DeclarationRef }, and DeclarationRef names a module and declaration but no revision. The reading is true of the pin, while its citation resolves against whatever tree it is read in.",
@@ -24,10 +23,9 @@ data a_revision_pinned_reading_cites_a_declaration_without_its_revision: Recurri
 
     "CLIMB (gunbc.realization_census EvidenceCitation): EvidenceDeclaration now carries revision: CommitSha, the pin the reading was made at, and gunbc.realization_census_rows_gen admits the revision once per run (CauseRevisionEmpty refuses an empty one) and emits it on every declaration citation; gunbc.realization_census_rows was regenerated in full from its receipt with it, and all 630 declaration citations carry the revision. A module later deleted from main reads as cited at 1dd3eda5, not as a dangling symbol. EXECUTED EVIDENCE: test.claim.realization_census_admission_witness a_citation_of_a_module_absent_at_head_is_admitted_carrying_its_revision (positive) and a_census_read_at_no_revision_refuses_instead_of_citing_without_one (RED). RUNG: mechanically preventable, not higher: the generator is the only producer that inhabits the carrier on a tested path, no executed fixture hands the compiler a literal that omits the field, and CommitSha is an unvalidated String alias, so a hollow revision still constructs. SCOPE: this one carrier; other pinned observations that cite a DeclarationRef are not measured here.",
   "RUNG FOUND AT: below the ladder, a dangling citation nothing refuses. CEILING: structurally impossible. NEXT TRIGGER: the capability named in the rung reading.",
+
+    "RETIRED CARRIER, 2026-11-10 (census retirement, gunbc.design_ruling bad_process_is_worse_than_no_process): gunbc.realization_census, gunbc.realization_census_rows, gunbc.realization_census_rows_gen and test.claim.realization_census_admission_witness were deleted without a successor. The climb recorded above described that one carrier, so the executed evidence it names no longer runs and the current rung returns to where the class was found; the class stays filed for any other pinned observation that cites a revision-free DeclarationRef, and no such carrier is measured here."
   ],
 
-  evidence: [
-    DeclarationRef { module_path: "gunbc.realization_census", decl_name: "EvidenceCitation", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.realization_census_rows", decl_name: "realization_census_pin", field: WholeDeclaration },
-  ],
+  evidence: [],
 }

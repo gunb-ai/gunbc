@@ -50,9 +50,5 @@ data stale_present_tense_coverage_claim_in_the_authority_consulted_first: Recurr
     decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "excl_bin_wet_reason"),
     decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
     decl_ref(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),
-    decl_ref(
-      module_path: "gunbc.v2_compile_obligation_census",
-      decl_name: "interpreted_standing"
-    ),
   ],
 }

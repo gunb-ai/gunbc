@@ -58,9 +58,5 @@ data receipt_subject_is_the_prose_about_the_mechanism: RecurringFailureMode = Re
       module_path: "gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall",
       decl_name: "self_host_wet_route_receipt_lifetime_stall"
     ),
-    decl_ref(
-      module_path: "gunbc.v2_compile_obligation_census",
-      decl_name: "native_standing"
-    ),
   ],
 }

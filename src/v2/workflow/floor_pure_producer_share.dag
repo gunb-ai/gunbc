@@ -1435,13 +1435,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.reference_conservation_census",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "a_share_under_the_floor_takes_six_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "the_rule_takes_its_quota_at_the_floor_indices_holds", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
     module: "v2.test.claim.normalize.operation_modifier",
     claims: [
       SingleClaimFillDebtClaim { claim: "an_operations_modifiers_lower_onto_its_contract_edges_holds", standing: ActiveFillDebt }
@@ -1577,17 +1570,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "population_two_declaration_module_collects_two", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "population_two_declaration_module_refuses_whole_on_unwired_target", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
-    module: "v2.test.claim.text_string_importer_census",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "tsic_every_window_predicate_matches_the_real_parse", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsic_real_raw_parse_route_reaches_the_classifier", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsic_rosters_are_derived_from_the_text_module_walk", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsil_a_declined_module_is_a_named_unresolved_gap", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsil_aliases_are_chased_to_their_declaring_module", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tsil_population_module_decides_the_bare_string", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
