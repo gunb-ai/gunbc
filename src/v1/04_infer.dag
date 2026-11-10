@@ -2,7 +2,7 @@ module v1.compiler.infer
 
 import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
 import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
-import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope }
+import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided }
 import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments, field_access_spine }
 import v1.compiler.ownership { fold_terminal_expr }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
@@ -3912,6 +3912,40 @@ fn equality_optional_payload(n: Node) -> Node {
   }
 }
 
+// THE ONE DECLARING-FILE KEY FOR AN EQUALITY ROUTE/TABLE LOOKUP. The by-target table (built by
+// equality_table_with_module) and the equality route table are BOTH keyed node_declaration_identity(
+// declaration node) = declaring-file::name. A reference to a type DECLARED IN ANOTHER MODULE is keyed by
+// type_reference_identity at the USE-SITE file -- "src/v2/std/diagnostic.dag::NodeOccurrence", never
+// "src/v2/std/node.dag::NodeOccurrence" (the root cause is documented above equality_route_for) -- so the
+// route and by-target lookups MISS and the argument is refused though its declaration is comparable. That
+// mis-key made the 54-set claim files load-refuse at LocusAnchor<NodeOccurrence> and regressed every
+// cross-module plain argument. Key the argument through the resolver's OWN scope classifier so this key
+// agrees with resolution by construction (never a second has-== authority, DESIGN 6b):
+//   - a leaf declared in its own file, or imported by name, keys by its DECLARATION identity (the table key);
+//   - a kernel name keeps type_reference_identity -- the kernel resolves in a scope layer ABOVE imports
+//     (overlay_skips_kernel_name / BareOccurrenceIsKernelName), not in the symbol index, so this arm matches
+//     resolution rather than re-testing the spelling with is_kernel_type;
+//   - an ambiguous or genuinely unbound leaf is ABSENT: callers REFUSE, they never fall back to the use-site
+//     key (that key is the known-wrong one; a fallback would hide the miss even when it happens to refuse).
+fn equality_argument_identity(a: Node, scope: InferScope) -> String? {
+  let peeled = normalize_access_type_node(n: a)
+  let source_indices = scope.type_env.source_indices
+  let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))
+  match bare_occurrence_binding(index: scope.type_env.symbol_index, name: leaf, reference: peeled) {
+    BareOccurrenceDeclaredInItsFile { declaration: d } => Present { value: node_declaration_identity(n: d, source_indices: source_indices) }
+    BareOccurrenceImportedByName { module_path: _, declaration: d } => Present { value: node_declaration_identity(n: d, source_indices: source_indices) }
+    BareOccurrenceIsKernelName => Present { value: type_reference_identity(n: peeled, source_indices: source_indices) }
+    BareOccurrenceUnbound => Absent
+    BareOccurrenceUndecided => Absent
+  }
+}
+
+// THE DECLARED-IN-ITS-OWN-FILE KEY, the one primitive both this walk's resolved-declaration entry and the
+// helper above share, so a route/table key is never produced two ways (DESIGN 6b).
+fn equality_declaring_identity(decl: Node, scope: InferScope) -> String {
+  node_declaration_identity(n: decl, source_indices: scope.type_env.source_indices)
+}
+
 fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
   let source_indices = scope.type_env.source_indices
   if depth > 64 {
@@ -3928,7 +3962,14 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
         EqualityWalk { refusal: none, step: EqualityThroughPlan { declaration: identity }, plans: [] }
       } else {
         let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
-        match equality_route_for(identity: identity) {
+        // Route key by the DECLARING identity (the key the route table holds), not the use-site key. A bound
+        // name always resolves through the classifier; an unbound operand has no route to find and keeps the
+        // structural path below (this is the generic walker, so it is not the place to hard-refuse).
+        let route_key = match equality_argument_identity(a: n, scope: scope) {
+          Present { value: k } => k
+          Absent => identity
+        }
+        match equality_route_for(identity: route_key) {
           Present { value: route } => equality_route_walk(route: route, name: name, at_root: at_root)
           Absent =>
             if (peeled.connective == Arrow) {
@@ -4017,7 +4058,10 @@ fn equality_unresolved_leaf_walk(peeled: Node, name: String, scope: InferScope, 
 }
 
 fn equality_resolved_declaration_walk(rt: Node, peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
-  let rt_identity = node_declaration_identity(n: rt, source_indices: scope.type_env.source_indices)
+  // rt is ALREADY the resolved declaration node, so its declaring identity is the route/table key directly
+  // (no re-resolution: resolving an already-resolved node through a use-site lookup is the fork DESIGN 6b
+  // rejects). Shares the one primitive with equality_argument_identity so the key is never produced two ways.
+  let rt_identity = equality_declaring_identity(decl: rt, scope: scope)
   match equality_route_for(identity: rt_identity) {
     Present { value: route } => equality_route_walk(route: route, name: name, at_root: at_root)
     Absent =>
@@ -4100,6 +4144,18 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
 // carries no PartialEq (emit_data_def, 05_emit_rust.dag). equality_applied_argument_is_structural alone
 // admitted a comparable-but-not-by-target argument and reproduced the E0369 the #15175 wall exists to
 // prevent; the table reading restores the wall at exactly the occurring positions #15972 opened.
+// A FORWARDED PARAMETER (condition 3): a bare argument whose leaf names one of the applied basis's OWN
+// parameters. It is a binder, visible exactly in its declaration's parameter list -- a scope fact, not a
+// spelling identity -- so a membership test is the right authority here, and it is applied ONLY at the
+// applied arm (never as a general argument identity, which would fork the lookup). A forwarded binder is
+// admitted and DEFERRED: its argument-specific judgment happens at instantiation, not at the generic's own
+// declaration, so this argument contributes no obligation now (mirrors the phantom-parameter rule #15175).
+fn equality_applied_argument_is_forwarded_binder(a: Node, parameter_names: List<String>, scope: InferScope) -> Bool {
+  let peeled = normalize_access_type_node(n: a)
+  let leaf = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
+  (peeled.children |> count) == 0 && (parameter_names |> filter(p => qualified_last_segment(name: p) == leaf) |> count) > 0
+}
+
 fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<String>, arguments: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
   match parameter_names |> first {
     Absent => (arguments |> count) == 0
@@ -4108,6 +4164,7 @@ fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<Strin
         Absent => false
         Present { value: a } =>
           (!equality_type_variable_occurs(n: basis, id: pn)
+            || equality_applied_argument_is_forwarded_binder(a: a, parameter_names: parameter_names, scope: scope)
             || (equality_applied_argument_is_structural(n: a, scope: scope, visited: visited, depth: depth)
                   && equality_argument_by_target(n: a, scope: scope, depth: depth + 1))
             || equality_applied_argument_route_admitted(a: a, scope: scope))
@@ -4129,11 +4186,15 @@ fn equality_type_variable_occurs(n: Node, id: String) -> Bool {
 // through it. Routes refused at the root (Node/Edge compare IGNORING provenance) are NOT admitted here: a
 // derived `==` would compare WITH provenance, a different relation (gunbc#15175, ruling silent-bee-845).
 fn equality_applied_argument_route_admitted(a: Node, scope: InferScope) -> Bool {
-  let peeled = normalize_access_type_node(n: a)
-  let identity = type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices)
-  match equality_route_for(identity: identity) {
-    Present { value: route } => route.admitted_at_root
+  // Key the route by the argument's DECLARING identity (the key the route table holds). Ambiguous or
+  // unbound => refuse (condition 2): this is an argument judgment, never fall back to the use-site key.
+  match equality_argument_identity(a: a, scope: scope) {
     Absent => false
+    Present { value: key } =>
+      match equality_route_for(identity: key) {
+        Present { value: route } => route.admitted_at_root
+        Absent => false
+      }
   }
 }
 
@@ -4153,19 +4214,24 @@ fn equality_applied_argument_is_structural(n: Node, scope: InferScope, visited: 
   } else {
     let peeled = normalize_access_type_node(n: n)
     let si = scope.type_env.source_indices
-    let identity = type_reference_identity(n: peeled, source_indices: si)
-    match equality_route_for(identity: identity) {
-      Present { value: _ } => false
-      Absent =>
-        if peeled.connective == Arrow {
-          false
-        } else if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
-          false
-        } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: si, node: peeled))) && (peeled.children |> count) == 0 {
-          true
-        } else {
-          let w = equality_operand_walk(n: n, scope: scope, visited: visited, depth: depth + 1, at_root: false)
-          w.refusal == none
+    // Route by the argument's DECLARING identity. Ambiguous or unbound => refuse (condition 2): this is an
+    // argument judgment, so never fall back to the use-site key (the known-wrong one).
+    match equality_argument_identity(a: n, scope: scope) {
+      Absent => false
+      Present { value: key } =>
+        match equality_route_for(identity: key) {
+          Present { value: _ } => false
+          Absent =>
+            if peeled.connective == Arrow {
+              false
+            } else if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
+              false
+            } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: si, node: peeled))) && (peeled.children |> count) == 0 {
+              true
+            } else {
+              let w = equality_operand_walk(n: n, scope: scope, visited: visited, depth: depth + 1, at_root: false)
+              w.refusal == none
+            }
         }
     }
   }
@@ -4207,31 +4273,39 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
     if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) || ((peeled.children |> count) == 1 && peeled.connective != Conj && peeled.connective != Disj && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled)) == "Optional" && node_is_std_optional(n: peeled, scope: scope)) {
       equality_argument_by_target(n: equality_optional_payload(n: peeled), scope: scope, depth: depth + 1)
     } else {
+      // Route AND the by-target table are keyed by the argument's ONE declaring identity (never two ways,
+      // DESIGN 6b). Ambiguous or unbound argument name => refuse (condition 2): never fall back to the
+      // use-site key. The alias-progress check below keeps the use-site identity on BOTH sides (like-for-like
+      // "did this nominal alias expand" test; it is not a route/table lookup).
       let identity = type_reference_identity(n: peeled, source_indices: source_indices)
-      match equality_route_for(identity: identity) {
-        Present { value: _ } => false
-        Absent =>
-          match map_get(scope.type_env.equality_by_target, identity) {
-            Present { value: declaration_by_target } =>
-              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_table_arguments_by_target(n: peeled, source_indices: source_indices, arguments: peeled.children, scope: scope, depth: depth + 1))
+      match equality_argument_identity(a: n, scope: scope) {
+        Absent => false
+        Present { value: key } =>
+          match equality_route_for(identity: key) {
+            Present { value: _ } => false
             Absent =>
-              if peeled.connective == Arrow {
-                false
-              } else if (peeled.connective == Conj || peeled.connective == Disj) {
-                peeled.children |> all(k => equality_argument_by_target(n: child_type_node(ch: k), scope: scope, depth: depth + 1))
-              } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))) {
-                equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1)
-              } else {
-                match map_get(equality_extensional_container_rows, qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))) {
-                  Present { value: extensional } => extensional && equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1)
-                  Absent =>
-                    let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
-                    if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
-                      equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
-                    } else {
-                      false
+              match map_get(scope.type_env.equality_by_target, key) {
+                Present { value: declaration_by_target } =>
+                  declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_table_arguments_by_target(n: peeled, source_indices: source_indices, arguments: peeled.children, scope: scope, depth: depth + 1))
+                Absent =>
+                  if peeled.connective == Arrow {
+                    false
+                  } else if (peeled.connective == Conj || peeled.connective == Disj) {
+                    peeled.children |> all(part => equality_argument_by_target(n: child_type_node(ch: part), scope: scope, depth: depth + 1))
+                  } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))) {
+                    equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1)
+                  } else {
+                    match map_get(equality_extensional_container_rows, qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))) {
+                      Present { value: extensional } => extensional && equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1)
+                      Absent =>
+                        let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
+                        if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
+                          equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
+                        } else {
+                          false
+                        }
                     }
-                }
+                  }
               }
           }
       }
