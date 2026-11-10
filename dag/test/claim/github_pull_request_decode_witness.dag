@@ -25,35 +25,36 @@ module test.claim.github_pull_request_decode_witness
 // test.claim.rest_exchange_replay's, and the target and input_digest there are what the probe host computes
 // for a paramless, unauthenticated call to this probe service).
 //
-// RED WHERE, GREEN WHERE. The tests below run at the whole-closure grain (claim_batch), where every
-// declaration is realized, so they are GREEN at main and at head: they pin WHAT the decode must produce.
-// The regression witness is the SCOPED entry `pull_request_decode_scoped_run_witness`, which runs at the
-// grain a `gunbc run --function` compiles at -- the publisher's grain:
-//   target/release/gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/github_pull_request_decode_witness.dag \
-//     --function pull_request_decode_scoped_run_witness
-// It exits 0 with ExitSuccess at the fixed head, and exits non-zero with the reason
-// `GithubPullRequestDecodeWitnessRefused: ...` at origin/main, where the contract row is excluded. That is
-// the whole witness: no credential, no token, no live GitHub, and the refusal reason names the cause the
-// publish path could not print (extdeps.transports.rest RestBodyUndecodable's cause is now minted from the
-// declared type only, v1_interpreter.rs rest_response_declared_cause).
-//
+// RED WHERE, GREEN WHERE -- STATED FROM MEASUREMENT, NOT FROM INTENT. These tests run at the
+// whole-closure grain (`claim_batch --hermetic`), where EVERY declaration is realized, so they are GREEN
+// at origin/main and at head: they pin WHAT the decode must produce, and they cannot be the regression
+// discriminator. No scoped-run witness for this bug can exist on today's routes, for two measured reasons
+// (BuildBuddy invocations 0e65ba61-7bae-4b50-8601-139ead309ee1 at e1dd6b50 and caebcfaa-a82c-4e44-af06-
+// f455d4d27635 at 5e315131, both with this file overlaid):
+//   (a) `evaluate_in_witness_frame` has no REST-replay realization on the `gunbc run` route at all, at any
+//       commit -- the frame refuses its subject there (the same shape vivid-carp's STS gate measures as
+//       'rest_exchange_resolution has no body' under `gunbc run` while `claim_batch` passes it); and
+//   (b) from 5e315131 (`gunbc.v1.declaration_grain_realization`) a service operation spelled through its
+//       namespace has no method surface on that route either -- `test.RestReplay.PullRequestPage` resolves
+//       at e1dd6b50 and is refused at :95:28 from 5e315131 on.
+// And a scoped entry cannot simply NAME the row to make itself red at main: a spelled name is a seed, so
+// the run would realize the row at main too and the witness would be green at both heads. The row can only
+// be demanded by the READER, which lives behind the REST replay path that (a) refuses. The home for the
+// missing discriminator is the demanded-versus-closure equivalence harness that already exists for exactly
+// this shape (src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs), recorded as the next rung in
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag.
 // THE CONTROL, WHICH MUST BE GREEN AT BOTH HEADS. `the_replay_seam_still_decodes_an_ordinary_record`
 // answers the probe's `Observe` operation -- a declared String with no coproduct behind it -- through the
 // same frame. It does not depend on a wire-contract row being realized, so it separates "the replay seam
 // and the type-directed decode work" from "this coproduct's contract row survived the demanded set".
 
 import std.types { Bool, String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestResponseObserved, RestBodyRead }
 import extdeps.github.github { UserType, Bot, User, Organization }
 import extdeps.github.pulls { PullRequest, PullRequestState, Open, Closed }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay { replay_frame, fixture_for }
 import test.fixture.rest_exchange_replay_probe
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // RECORDED, NOT INVENTED: the body GitHub answered 200 with for GET /repos/gunb-ai/gunbc/pulls/16238 on
 // 2026-11-10, the run 42795658738 refused. Fields the PullRequest carrier does not declare are dropped and
@@ -166,23 +167,5 @@ test fn the_recorded_scalar_fields_survive_the_decode() -> Bool {
       && o.head.sha == "cfcdf23a3cdee54806d367e4adccc30f9d57f13b"
       && o.created_at == "2026-11-10T09:11:39Z"
     PullRequestNotDecoded { detail: _ } => false
-  }
-}
-
-// THE REGRESSION WITNESS, RUN AT THE PUBLISHER'S OWN COMPILE GRAIN. `gunbc run --function` realizes only
-// the declarations the entry can name, which is the grain heal_publication_publish_wet runs at; at
-// origin/main the wire-contract rows are excluded there and this refuses. Its reason carries the cause the
-// publish path could not print, because the host now mints RestBodyUndecodable's cause from the declared
-// type only (v1_interpreter.rs rest_response_declared_cause).
-fn pull_request_decode_scoped_run_witness() -> ProcessExit {
-  match decoded_pull_request() {
-    PullRequestDecoded { pull: o } =>
-      if state_is_closed(s: o.state) && user_type_is_bot(t: o.user.type) && o.number == 16238 {
-        ExitSuccess
-      } else {
-        exit_failure(reason: "GithubPullRequestDecodeWitnessRefused: the recorded body decoded, but not into the arms its contracts declare")
-      }
-    PullRequestNotDecoded { detail: detail } =>
-      exit_failure(reason: join(["GithubPullRequestDecodeWitnessRefused: the recorded PR body did not decode: ", detail], ""))
   }
 }
