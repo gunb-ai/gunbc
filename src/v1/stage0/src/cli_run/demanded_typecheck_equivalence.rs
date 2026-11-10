@@ -530,6 +530,27 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
             // reaching scope.service_registry once #16156 narrowed realization. That is the fix target.
             let census = infer::build_symbol_index_census(modules.clone(), si.clone());
             let census_has_service = census.services.contains_key("test.RestReplay");
+            // DECISIVE LEVER INSTRUMENT. `declaration_demanded` (@04_infer:17120) gates a non-function
+            // item on `map_has(realization.realized, authored_name_at(item))`, and
+            // `realized_declaration_items` (@04_infer:21234) filters the module CONTEXT on it. If the
+            // service item's authored key is not in `realized` while the qualified spelling is, the item
+            // is filtered out of the probe module's context, `merge_scope_from_imports` (@04_infer:545)
+            // silently skips the parent entry it no longer lists, `scope.service_registry` loses the
+            // OpEntry list, and the call falls to the Primitive method-pipe (@04_infer:8542). This
+            // instrument prints the exact item-level verdict, so the fix targets the measured link.
+            let svc_probe = modules
+                .iter()
+                .flat_map(|m| module_items(m.module.clone()).into_iter())
+                .find(|it| it.name == "RestReplay")
+                .map(|it| {
+                    (
+                        authored_name_at(si.clone(), it.clone()),
+                        infer::declaration_demanded(demand.clone(), it.clone(), si.clone()),
+                        realization.realized.contains_key("RestReplay"),
+                    )
+                });
+            let (svc_authored, svc_demanded, realized_bare) =
+                svc_probe.unwrap_or((String::new(), false, false));
             // DEMANDED-VERSUS-CLOSURE EQUIVALENCE. The demanded chain and the full (EveryDeclaration)
             // chain each thread their own module index; the demanded chain must refuse no method surface
             // the full chain does not. The service is realized, so the full chain resolves the Observe op
@@ -555,9 +576,12 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 .cloned()
                 .collect();
             eprintln!(
-                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} census_has_service={} demanded_refusals={} closure_refusals={} surface={:?}",
+                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} census_has_service={} svc_authored={} svc_demanded={} realized_bare={} demanded_refusals={} closure_refusals={} surface={:?}",
                 service_realized,
                 census_has_service,
+                svc_authored,
+                svc_demanded,
+                realized_bare,
                 surface.len(),
                 closure_surface.len(),
                 surface
