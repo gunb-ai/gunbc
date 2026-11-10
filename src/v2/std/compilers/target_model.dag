@@ -1886,11 +1886,41 @@ type ConditionalDelimiting
   = ConditionalClosedByToken { close_token: Symbol }
   | ConditionalSelfDelimiting
 
+// THE ARM DELIMITERS BELONG TO THE SHAPE, NOT TO THE ARMS. A target whose arms are braced writes
+// them: Rust closes the then-arm with `}` before `else` and opens the else-arm with `{` after it, which
+// is the whole of `if c { a } else { b }`. A target whose arms delimit themselves (a `then`/`end` pair,
+// or a layout where the arm is a block by construction) declares Absent in both fields and prints
+// exactly what it printed before this field existed. Without them the Rust row could only ever print
+// `if c { a else b }`: the then-arm opened and never closed, the else-arm opened nothing, and the one
+// closing token the shape carried landed at the very end where it closes nothing. That is not a
+// spacing nit -- the text is refused at PARSING, and the reading is executed (rustc 1.93.0, on the
+// emitted item verbatim: "expected one of `.`, `;`, `?`, `}`, or an operator, found keyword `else`").
+// Absent is carried in the projection bundle as its own atom, never as a missing field, exactly as the
+// let separator does below: a bundle that lost the field still refuses at decode.
 type TargetConditionalShape {
   if_token: Symbol
   then_token: Symbol
+  then_close_token: Optional<Symbol>
   else_token: Symbol
+  else_open_token: Optional<Symbol>
   delimiting: ConditionalDelimiting
+}
+
+fn target_conditional_arm_delimiter_atom(delimiter: Optional<Symbol>) -> Symbol {
+  match delimiter {
+    Present { value: t } => t
+    Absent => ^target_conditional_no_arm_delimiter
+  }
+}
+
+fn target_conditional_arm_delimiter_of_atom(atom: Symbol) -> Optional<Symbol> {
+  if atom == ^target_conditional_no_arm_delimiter { target_conditional_arm_delimiter_absent() } else { target_conditional_arm_delimiter_present(token: atom) }
+}
+
+fn target_conditional_arm_delimiter_absent() -> Optional<Symbol> { Absent }
+
+fn target_conditional_arm_delimiter_present(token: Symbol) -> Optional<Symbol> {
+  Present { value: token }
 }
 
 // THE TOKEN BETWEEN A BINDING AND ITS BODY, WHEN THE TARGET HAS ONE. `let k = v in b` (`in`) and the
@@ -3130,18 +3160,40 @@ fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalSha
           bind_outcome(
             o: projection_bundle_symbol_field(
               bundle: bundle,
-              field: ^target_value_expr_field_else_token
+              field: ^target_value_expr_field_then_close_token
             ),
-            f: fn(else_token) {
+            f: fn(then_close_token) {
               bind_outcome(
-                o: decode_conditional_delimiting(bundle: bundle),
-                f: fn(delimiting) {
-                  outcome_accepted(
-                    TargetConditionalShape {
-                      if_token: if_token,
-                      then_token: then_token,
-                      else_token: else_token,
-                      delimiting: delimiting
+                o: projection_bundle_symbol_field(
+                  bundle: bundle,
+                  field: ^target_value_expr_field_else_token
+                ),
+                f: fn(else_token) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_value_expr_field_else_open_token
+                    ),
+                    f: fn(else_open_token) {
+                      bind_outcome(
+                        o: decode_conditional_delimiting(bundle: bundle),
+                        f: fn(delimiting) {
+                          outcome_accepted(
+                            TargetConditionalShape {
+                              if_token: if_token,
+                              then_token: then_token,
+                              then_close_token: target_conditional_arm_delimiter_of_atom(
+                                atom: then_close_token
+                              ),
+                              else_token: else_token,
+                              else_open_token: target_conditional_arm_delimiter_of_atom(
+                                atom: else_open_token
+                              ),
+                              delimiting: delimiting
+                            }
+                          )
+                        }
+                      )
                     }
                   )
                 }
@@ -8779,15 +8831,25 @@ fn target_value_expression_symbol_identity_to_concrete_tokens(
   )
 }
 
-// if_token cond then_token then else_token else, and then a close only if the
-// target declares one. Previously this fold ended at the else arm for every
-// target, so a brace-closing language had no way to emit its own close.
+// if_token cond then_token then then_close else_token else_open else, and then a close only if the
+// target declares one. The two arm delimiters are Absent for a target whose arms delimit
+// themselves; see TargetConditionalShape for why they are the shape's and not the arms'. Previously
+// this fold ended at the else arm for every target, so a brace-closing language had no way to emit
+// its own close, and it had no way at all to close the then-arm or open the else-arm.
 fn conditional_delimited_tokens(
   conditional_form: TargetConditionalShape,
   cond_tokens: List<ConcreteSyntaxToken>,
   then_tokens: List<ConcreteSyntaxToken>,
   else_tokens: List<ConcreteSyntaxToken>
 ) -> List<ConcreteSyntaxToken> {
+  let then_arm = conditional_arm_closed_tokens(
+    delimiter: conditional_form.then_close_token,
+    then_tokens: then_tokens
+  )
+  let else_arm = conditional_arm_opened_tokens(
+    delimiter: conditional_form.else_open_token,
+    else_tokens: else_tokens
+  )
   let opened = list_append(
     left: list_append(
       left: list_append(
@@ -8798,11 +8860,11 @@ fn conditional_delimited_tokens(
           ),
           right: [FixedToken { token_class: conditional_form.then_token }]
         ),
-        right: then_tokens
+        right: then_arm
       ),
       right: [FixedToken { token_class: conditional_form.else_token }]
     ),
-    right: else_tokens
+    right: else_arm
   )
   match conditional_form.delimiting {
     ConditionalSelfDelimiting => opened
@@ -8812,6 +8874,33 @@ fn conditional_delimited_tokens(
         right: [FixedToken { token_class: close_token }]
       )
   }
+}
+
+fn conditional_arm_delimiter_tokens(delimiter: Optional<Symbol>) -> List<ConcreteSyntaxToken> {
+  match delimiter {
+    Present { value: token } => [FixedToken { token_class: token }]
+    Absent => []
+  }
+}
+
+fn conditional_arm_closed_tokens(
+  delimiter: Optional<Symbol>,
+  then_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: then_tokens,
+    right: conditional_arm_delimiter_tokens(delimiter: delimiter)
+  )
+}
+
+fn conditional_arm_opened_tokens(
+  delimiter: Optional<Symbol>,
+  else_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: conditional_arm_delimiter_tokens(delimiter: delimiter),
+    right: else_tokens
+  )
 }
 
 fn target_value_expression_conditional_to_concrete_tokens(
@@ -9735,9 +9824,25 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
                 )
               ),
               target_model_named_edge(
+                name: ^target_value_expr_field_then_close_token,
+                target: target_model_type_atom_node(
+                  identity: target_conditional_arm_delimiter_atom(
+                    delimiter: projection.conditional_form.then_close_token
+                  )
+                )
+              ),
+              target_model_named_edge(
                 name: ^target_value_expr_field_else_token,
                 target: target_model_type_atom_node(
                   identity: projection.conditional_form.else_token
+                )
+              ),
+              target_model_named_edge(
+                name: ^target_value_expr_field_else_open_token,
+                target: target_model_type_atom_node(
+                  identity: target_conditional_arm_delimiter_atom(
+                    delimiter: projection.conditional_form.else_open_token
+                  )
                 )
               )
             ],
@@ -16116,9 +16221,12 @@ fn target_value_expr_match_gate(node: Node) -> Bool {
   }
 }
 
+// THE PATTERN SLOT NEVER CARRIES THE POSITION; THE ARM BODY MIGHT. A pattern is never the value the
+// position returns, so it keeps the ordinary subexpression route whatever the arm body is given.
 fn target_value_expr_match_arm_slot_from_arm_edge(
   arrow: Node,
   arm_edge: Edge,
+  tail_return: Optional<FunctionTypePosition>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
@@ -16139,9 +16247,10 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
             ),
             f: fn(projected_pattern) {
               bind_outcome(
-                o: target_value_expr_project_body_subexpression(
+                o: target_project_branch_match_arm_body(
                   arrow: arrow,
-                  node: body_node,
+                  arm: body_node,
+                  tail_return: tail_return,
                   target: target,
                   source_bool_form: source_bool_form,
                   handle_transform: handle_transform
@@ -16166,6 +16275,7 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
 fn target_value_expr_match_project_arms(
   arrow: Node,
   match_node: Node,
+  tail_return: Optional<FunctionTypePosition>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
@@ -16181,6 +16291,7 @@ fn target_value_expr_match_project_arms(
             o: target_value_expr_match_arm_slot_from_arm_edge(
               arrow: arrow,
               arm_edge: arm_edge,
+              tail_return: tail_return,
               target: target,
               source_bool_form: source_bool_form,
               handle_transform: handle_transform
@@ -16200,6 +16311,7 @@ fn target_value_expr_match_project_arms(
 fn target_project_match(
   arrow: Node,
   body: Node,
+  tail_return: Optional<FunctionTypePosition>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
@@ -16234,6 +16346,7 @@ fn target_project_match(
               o: target_value_expr_match_project_arms(
                 arrow: arrow,
                 match_node: body,
+                tail_return: tail_return,
                 target: target,
                 source_bool_form: source_bool_form,
                 handle_transform: handle_transform
@@ -16253,9 +16366,78 @@ fn target_project_match(
   }
 }
 
+// AN ARM IS AT THE RETURN POSITION WHEN THE BRANCH IS THE BODY. The let route holds the same fact
+// (target_project_bind_tail): the place a function value is BUILT is the place its row is read, and
+// target_project_realized_closure is the only projector that consults the FunctionTypeRealizationRow
+// -- for Rust, the `move` the row opens a closure with (rust_function_type_realization_rows). Read
+// without the position, an arm closure falls to the ordinary value route
+// (target_project_closure_in_arrow_scope) and the capture is silently absent: Rust builds a closure
+// that borrows an enclosing binder at the point where that binder cannot outlive the call. A branch
+// or match in any other position passes Absent and prints exactly what it printed before this
+// argument existed; a nested branch keeps the position, because there the closures still sit at the
+// arms of the branch that IS the body's value.
+fn target_project_branch_match_arm_body(
+  arrow: Node,
+  arm: Node,
+  tail_return: Optional<FunctionTypePosition>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match arm.kind {
+    TypeNode { connective: Arrow } =>
+      match tail_return {
+        Present { value: position } =>
+          target_project_realized_closure(
+            closure: arm,
+            position: position,
+            enclosing: arrow_domain_binder_names(arrow: arrow),
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+        Absent =>
+          target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: arm,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+      }
+    ComputationNode { behavior: Branch } =>
+      target_project_branch_bool_if_else(
+        arrow: arrow,
+        body: arm,
+        tail_return: tail_return,
+        target: target,
+        source_bool_form: source_bool_form,
+        handle_transform: handle_transform
+      )
+    ComputationNode { behavior: Match } =>
+      target_project_match(
+        arrow: arrow,
+        body: arm,
+        tail_return: tail_return,
+        target: target,
+        source_bool_form: source_bool_form,
+        handle_transform: handle_transform
+      )
+    _ =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: arm,
+        target: target,
+        source_bool_form: source_bool_form,
+        handle_transform: handle_transform
+      )
+  }
+}
+
 fn target_project_branch_bool_if_else(
   arrow: Node,
   body: Node,
+  tail_return: Optional<FunctionTypePosition>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
@@ -16311,18 +16493,20 @@ fn target_project_branch_bool_if_else(
                   ),
                   f: fn(projected_cond) {
                     bind_outcome(
-                      o: target_value_expr_project_body_subexpression(
+                      o: target_project_branch_match_arm_body(
                         arrow: arrow,
-                        node: then_arm,
+                        arm: then_arm,
+                        tail_return: tail_return,
                         target: target,
                         source_bool_form: source_bool_form,
                         handle_transform: handle_transform
                       ),
                       f: fn(projected_then) {
                         bind_outcome(
-                          o: target_value_expr_project_body_subexpression(
+                          o: target_project_branch_match_arm_body(
                             arrow: arrow,
-                            node: else_arm,
+                            arm: else_arm,
+                            tail_return: tail_return,
                             target: target,
                             source_bool_form: source_bool_form,
                             handle_transform: handle_transform
@@ -16614,6 +16798,7 @@ fn target_value_expr_project_body_subexpression(
       target_project_branch_bool_if_else(
         arrow: arrow,
         body: node,
+        tail_return: optional_absent(),
         target: target,
         source_bool_form: source_bool_form,
         handle_transform: handle_transform
@@ -16639,6 +16824,7 @@ fn target_value_expr_project_body_subexpression(
       target_project_match(
         arrow: arrow,
         body: node,
+        tail_return: optional_absent(),
         target: target,
         source_bool_form: source_bool_form,
         handle_transform: handle_transform
@@ -17013,6 +17199,7 @@ fn target_project_arrow_body_by_kind(
         target_project_branch_bool_if_else(
           arrow: arrow,
           body: body,
+          tail_return: optional_present(value: FunctionTypeAtItemReturn),
           target: target,
           source_bool_form: source_bool_form,
           handle_transform: handle_transform
@@ -17038,6 +17225,7 @@ fn target_project_arrow_body_by_kind(
         target_project_match(
           arrow: arrow,
           body: body,
+          tail_return: optional_present(value: FunctionTypeAtItemReturn),
           target: target,
           source_bool_form: source_bool_form,
           handle_transform: handle_transform

@@ -227,7 +227,10 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     ComposeOwned { kind: ck } => match ck {
       SystemdUnit => TeardownActs
       FleetConvergeTimerUnit => TeardownActs
-      FabricStorageServeUnit => TeardownActs
+      // Outside the deployment's ownership by the operator's ruling of 2026-11-10
+      // (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10): the fabric DB
+      // endpoint's unit stays the host's, so a retract that names it refuses rather than removing it.
+      FabricStorageServeUnit => TeardownRefuses { cause: TeardownOutsideOwnership }
       FabricStorageServeMapping => TeardownActs
       TailnetDoorServeUnit => TeardownActs
       AgentDoorServeUnit => TeardownActs
@@ -419,10 +422,6 @@ data roadmap_ingress_function: NonEmptyStr = "roadmap_ingress"
 
 data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_ingress.dag"
 data approval_broker_ingress_function: NonEmptyStr = "approval_broker_ingress"
-
-data fabric_storage_ingress_entry_file: NonEmptyStr = "dag/gunbc/fabric/fabric_storage_ingress.dag"
-data fabric_storage_ingress_function: NonEmptyStr = "fabric_storage_ingress"
-data fabric_storage_handler_function: NonEmptyStr = "fabric_storage_serve_handle"
 
 // ── THE APPROVAL BROKER IS ONE PER HOST, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION ──
 // Every other unit this deployment installs is named per deployment identity, so a lab twin gets
@@ -693,17 +692,18 @@ fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
   service_unit.replace(from: ".service", to: "")
 }
 
-// THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
-// only by the deployment whose instance holds the fabric DB placement (RoleSingletonHolding). It is
-// deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
-// are owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement fabric_storage_directory_demands).
-fn deployment_fabric_storage_unit_name(names: DeploymentNames) -> NonEmptyStr {
-  join([deployment_belt_unit_stem(names: names), "-fabric-storage.service"], "") as NonEmptyStr
-}
-
-fn deployment_fabric_storage_unit_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/systemd/system/", deployment_fabric_storage_unit_name(names: names) as String], "") as NonEmptyStr
-}
+// THE FABRIC DB ENDPOINT'S OWN UNIT IS NOT DEPLOYMENT STATE. Its name and path were derived here, its text
+// emitted by gunbc.live_deploy.emit, staged and restarted by gunbc.live_deploy.apply_legs, torn down by
+// gunbc.live_deploy.retract_legs and required as a member by gunbc.live_deploy.role_singleton_convergence,
+// until the operator ruled on 2026-11-10 (gunbc.design_ruling::
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10): `gunbc-roadmap-fabric-storage.service` keeps the
+// unit and process it already has on srv1, and no modeled deploy may repoint, restart or remove it. The model
+// and the host had been two homes deciding one fragment, which is the fork
+// gunbc.design_argument::single_authority refuses, and the ruling names the model as the home that ends. What
+// the deployment still owns is declared below, because it is NOT the unit: the tailscale route to the
+// endpoint's door socket, and, as a dependency step, the store's ownership marker. The store's files remain
+// owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement
+// fabric_storage_directory_demands).
 
 // THE DOOR SOCKET OF THE HOLDER THIS SPEC CARRIES, built from the token's instance like every other
 // role singleton. A spec holding no role has no socket, and the emitter refuses rather than invent one.
@@ -1322,14 +1322,14 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
   }
 }
 
-// The fabric DB endpoint's two owned members, after the dashboard's own: the unit (its ExecStart
-// references the binary and tree installed above) and then its tailscale route (routes to a live
-// service, the same reason the dashboard's mapping is last). Empty on every instance that does not
-// hold the placement.
+// The fabric DB endpoint's one owned member, after the dashboard's own: the tailscale route to the
+// endpoint's door socket (routes to a live service, the same reason the dashboard's mapping is last). The
+// endpoint's OWN unit is not a member at all since the operator's ruling of 2026-11-10 -- see the note above
+// deployment_fabric_storage_door_socket -- so no deploy stages or restarts it and no retract can tear it down.
+// Empty on every instance that does not hold the placement.
 fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: DeploymentNames) -> List<DeploymentArtifactStep> {
   match holding {
     HoldsProdRoleSingletons { holder } => [
-      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: deployment_fabric_storage_unit_path(names: names) },
       DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeMapping }, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
     ]
     HoldsNoRoleSingleton => []

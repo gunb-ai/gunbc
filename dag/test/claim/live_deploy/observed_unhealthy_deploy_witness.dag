@@ -84,7 +84,6 @@ import gunbc.live_deploy.tailnet_door_cutover {
   tailnet_door_cutover_run,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.live_deploy.spec { deployment_fabric_storage_unit_name }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import extdeps.systemd { Active }
 
