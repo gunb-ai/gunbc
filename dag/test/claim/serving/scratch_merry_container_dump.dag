@@ -13,8 +13,7 @@ import gunbc.serving.srv1_serving_replica_layout {
 }
 
 fn main() -> CliWireResponse {
-  let lines: List<String> =
-    srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config);
+  let lines: List<String> = srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config)
   CliWirePrintable {
     bytes: concat("<<<BEGIN>>>\n", concat(string_concat_join(lines, "\n"), "\n<<<END>>>\n")),
     exit: ExitSuccess,
