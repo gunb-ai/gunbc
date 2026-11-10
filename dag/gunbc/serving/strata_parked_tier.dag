@@ -1,0 +1,226 @@
+module gunbc.serving.strata_parked_tier
+
+// THE STRATA REALIZATION OF THE ONE WARM STORE. gunbc.serving.serving_capacity_anchor owns the store and its one rule;
+// this module owns the two questions only the Strata adapter can answer: may a conversation be saved to disk at all
+// (the engine refuses slot save/restore while it runs parallel requests), and does the host have the room the declared
+// budget asks for. It answers with an admissibility verdict the store's home turns into a rung or an unread rung.
+//
+// NOT A SECOND STORE, RULE OR CHOOSER (operator, 2026-11-09; bold-wren-111 msg_be37fae0). srv1's LMCache L2 is the same
+// store concept realized by the engine's own eviction; here the ROUTER drives the save and restore through the engine's
+// slot-file endpoint (extdeps.strata.session_file, gunbc.serving.strata_checkpoint_transfer). Medium and mechanism are
+// fields of the one store; what differs is who pays for the save and what survives, which is why this adapter exists at
+// all rather than a parallel model.
+
+import std.measure { byte_size, ByteSize, byte_size_count }
+import gunbc.serving.serving_host_memory { ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, serving_reading_bytes_or_zero, srv4_strata_parked_budget, srv4_host_free_disk, srv3_strata_parked_budget, srv3_host_free_disk }
+import gunbc.serving.serving_layout { ServingLayoutResult, ServingLayoutConfigured, srv3_layout, srv4_layout }
+import gunbc.serving.serving_warm_admission { ServingWarmAdmission, WarmAdmit, WarmRungUnread, WarmRungRefused }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// THE VERDICT THE STORE'S HOME CONSUMES. A refusal carries the TYPED cause (a constraint the derivation sees, not a
+// comment), the plain reason the shape shows, and the citation the reader checks it against; the store turns it into a rung that contributes nothing and joins its obligation to the
+// standings, so a refused rung is visible rather than quietly absent (gunbc.design_argument::fail_closed). RungAdmissible
+// carries the standings of the deployment facts admission rested on (gentle-swift-129, review 92497): an established
+// restore contract is a CitedToAuthority, an assumed one a TranscribedUncited bet, so the bet reaches the tally rather
+// than being consumed as fact.
+type ServingRungAdmissibility
+  = RungAdmissible { admission_standings: List<CitedFigureStanding> }
+  | RungRefused { why: StrataRungRefusal, reason: NonEmptyStr, cites: NonEmptyStr }
+
+// WHAT MUST HOLD FOR A SAVED FILE TO COME BACK. These are restore ADMISSIBILITY, not durability: a saved slot file is
+// on disk (that is its durability, ServingSwapDurability), but it is only restorable while the model it was written
+// against is unchanged and the engine reading it is the build that wrote it. extdeps.strata.session_file states the
+// first outright -- "Models must remain immutable while their files are retained", because the save file stores only
+// offsets and fingerprints and re-reads the live model's tensor layout -- and the second is SessionFileIdentity
+// (engine version, backend, KV format and residency, RoPE, control vectors), which the engine itself checks on restore.
+// A change here does not weaken the tier: it makes every file already saved unrestorable.
+// Each question is a READING with an epistemic arm, not a bare `true` asserted as fact (epistemic_humility: "do not
+// assert as deduced what is only inferred"). A deployment re-read on the host carries SafetyEstablished with the
+// evidence that checked it; a deployment taken from its declared release path but not re-read on the live host
+// (every figure here is ServingLiveUnqualified until bold-wren-111's realization step) carries SafetyAssumed with the
+// reason it is only inferred; a known breach carries SafetyViolated; nobody having read it carries SafetyUnread.
+// admissible refuses a Violated contract by name and an Unread one fail-closed -- an unknown restore contract is not
+// a fact the rung may rest on.
+type StrataRestoreSafety
+  = SafetyEstablished { evidence: NonEmptyStr }
+  | SafetyAssumed { reason: NonEmptyStr }
+  | SafetyViolated { reason: NonEmptyStr }
+  | SafetyUnread { reason: NonEmptyStr }
+
+type StrataRestoreGuard { model_immutable: StrataRestoreSafety, engine_build_matches: StrataRestoreSafety, cites: NonEmptyStr }
+
+fn strata_restore_violated(s: StrataRestoreSafety) -> Bool {
+  match s { SafetyViolated { reason: _ } => true, _ => false }
+}
+fn strata_restore_unread(s: StrataRestoreSafety) -> Bool {
+  match s { SafetyUnread { reason: _ } => true, _ => false }
+}
+
+// The standing a restore-safety reading contributes to an admitted rung's tally. Only an ASSUMED contract is a bet
+// that must reach the tally (as an uncited read obligation, making the rung's standing Estimated). An ESTABLISHED
+// contract is a fact, not a bet -- it carries no standing to surface (minting a CitedToAuthority would need an
+// ExternalAuthority{uri}, and dressing a descriptive evidence string as a URI citation would be a fabricated cite, the
+// very thing epistemic_humility forbids). Violated/Unread never reach an admitted rung (refused earlier), but are
+// mapped to the bet carrier so the sum stays total. (gentle-swift-129, review 92497)
+fn strata_guard_standing(s: StrataRestoreSafety) -> List<CitedFigureStanding> {
+  match s {
+    SafetyEstablished { evidence: _ } => [] as List<CitedFigureStanding>
+    SafetyAssumed { reason: r } => [TranscribedUncited { read_obligation: r }]
+    SafetyViolated { reason: r } => [TranscribedUncited { read_obligation: r }]
+    SafetyUnread { reason: r } => [TranscribedUncited { read_obligation: r }]
+  }
+}
+
+// WHY A RUNG MAY NOT EXIST ON THIS REPLICA AT ALL. The engine answers 501 "slot save/restore is not available with
+// parallel requests (\"parallel\" / --batch)" (serve/server.py:4091, the release srv4 runs), so the router cannot park
+// a conversation on a replica that is running a batch: one active slot is the admissible shape. This is a constraint
+// the derivation sees, not a comment -- an inactive knob is not a tier.
+type StrataRungRefusal
+  = BatchDisablesSlotFiles { active_slots: Nat }
+  | BudgetUndeclared { detail: NonEmptyStr }
+  | FreeSpaceUnread { detail: NonEmptyStr }
+  | FreeSpaceBelowBudget { budget_bytes: ByteSize, free_bytes: ByteSize }
+  | ModelNotImmutable
+  | EngineBuildChanged
+  | LayoutRefused { detail: NonEmptyStr }
+  | RestoreSafetyUnread { which: NonEmptyStr }
+
+fn strata_refusal_text(r: StrataRungRefusal) -> NonEmptyStr {
+  match r {
+    BatchDisablesSlotFiles { active_slots: n } => ("the replica runs " + to_string(n) + " active slots: Strata answers 501 'slot save/restore is not available with parallel requests' (serve/server.py:4091), so the router cannot park a conversation here") as NonEmptyStr
+    BudgetUndeclared { detail: d } => ("the parked-conversation disk budget is not declared: " + to_string(d)) as NonEmptyStr
+    FreeSpaceUnread { detail: d } => ("the host's free disk is unread, so it cannot be shown to admit the declared budget: " + to_string(d)) as NonEmptyStr
+    FreeSpaceBelowBudget { budget_bytes: b, free_bytes: f } => ("the declared disk budget of " + to_string(byte_size_count(b: b)) + " bytes does not fit the host: " + to_string(byte_size_count(b: f)) + " bytes free") as NonEmptyStr
+    ModelNotImmutable => "the model is not immutable while its files are retained, so every saved slot file becomes unrestorable (extdeps.strata.session_file: the save file holds offsets and fingerprints, not tensor data)" as NonEmptyStr
+    EngineBuildChanged => "the engine build no longer matches the one that saved the files, so SessionFileIdentity (engine version, backend, KV format and residency, RoPE, control vectors) rejects the restore" as NonEmptyStr
+    LayoutRefused { detail: d } => ("the replica's layout is refused, so its active-slot figure is unknown and its disk rung cannot be admitted: " + to_string(d)) as NonEmptyStr
+    RestoreSafetyUnread { which: w } => ("the restore contract (" + to_string(w) + ") has not been read on the live host, so the rung cannot rest on it being satisfied") as NonEmptyStr
+  }
+}
+
+fn strata_refusal_cites(r: StrataRungRefusal) -> NonEmptyStr {
+  match r {
+    BatchDisablesSlotFiles { active_slots: _ } => "extdeps.strata.session_file slot action save/restore; /opt/gunbc-serving/srv4-daily/engine/serve/server.py:4091" as NonEmptyStr
+    BudgetUndeclared { detail: _ } => "the deployment's declared parked-conversation budget row in gunbc.serving.serving_host_memory (srv4_strata_parked_budget / srv3_strata_parked_budget)" as NonEmptyStr
+    FreeSpaceUnread { detail: _ } => "df on the host" as NonEmptyStr
+    FreeSpaceBelowBudget { budget_bytes: _, free_bytes: _ } => "the deployment's declared budget against the host free-space reading (srv4_host_free_disk / srv3_host_free_disk), gunbc.serving.serving_host_memory" as NonEmptyStr
+    ModelNotImmutable => "extdeps.strata.session_file module summary" as NonEmptyStr
+    EngineBuildChanged => "extdeps.strata.session_file SessionFileIdentity" as NonEmptyStr
+    LayoutRefused { detail: _ } => "gunbc.serving.serving_layout (the layout's own refusal; there is no active-slot figure to read)" as NonEmptyStr
+    RestoreSafetyUnread { which: _ } => "the deployment's restore-safety contract, unread on the live host until bold-wren-111's realization step re-checks it on deploy" as NonEmptyStr
+  }
+}
+
+// THE ADAPTER'S ANSWER. The budget must be DECLARED (a workflow decision the operator caps, not the filesystem's
+// free space: free space is a reading that must ADMIT the budget, never the budget itself), the host must have the
+// room, the replica must be able to save at all, and the model and build must still be the ones the files were
+// written against. An unread free-space figure refuses rather than assuming the disk is big enough.
+fn strata_slot_file_admissible(active_slots: Nat, budget: ServingMemoryReading, free: ServingMemoryReading, guard: StrataRestoreGuard) -> ServingRungAdmissibility {
+  if active_slots > 1 {
+    RungRefused { why: BatchDisablesSlotFiles { active_slots: active_slots }, reason: strata_refusal_text(r: BatchDisablesSlotFiles { active_slots: active_slots }), cites: strata_refusal_cites(r: BatchDisablesSlotFiles { active_slots: active_slots }) }
+  } else if strata_restore_violated(s: guard.model_immutable) {
+    RungRefused { why: ModelNotImmutable, reason: strata_refusal_text(r: ModelNotImmutable), cites: guard.cites }
+  } else if strata_restore_violated(s: guard.engine_build_matches) {
+    RungRefused { why: EngineBuildChanged, reason: strata_refusal_text(r: EngineBuildChanged), cites: guard.cites }
+  } else if strata_restore_unread(s: guard.model_immutable) {
+    RungRefused { why: RestoreSafetyUnread { which: "model immutability" }, reason: strata_refusal_text(r: RestoreSafetyUnread { which: "model immutability" }), cites: guard.cites }
+  } else if strata_restore_unread(s: guard.engine_build_matches) {
+    RungRefused { why: RestoreSafetyUnread { which: "engine build match" }, reason: strata_refusal_text(r: RestoreSafetyUnread { which: "engine build match" }), cites: guard.cites }
+  } else {
+    match budget {
+      ServingMemoryUnread { reason: r } => RungRefused { why: BudgetUndeclared { detail: r }, reason: strata_refusal_text(r: BudgetUndeclared { detail: r }), cites: strata_refusal_cites(r: BudgetUndeclared { detail: r }) }
+      _ =>
+        match free {
+          ServingMemoryUnread { reason: r } => RungRefused { why: FreeSpaceUnread { detail: r }, reason: strata_refusal_text(r: FreeSpaceUnread { detail: r }), cites: strata_refusal_cites(r: FreeSpaceUnread { detail: r }) }
+          _ =>
+            if byte_size_count(b: serving_reading_bytes_or_zero(r: budget)) > byte_size_count(b: serving_reading_bytes_or_zero(r: free)) {
+              RungRefused { why: FreeSpaceBelowBudget { budget_bytes: serving_reading_bytes_or_zero(r: budget), free_bytes: serving_reading_bytes_or_zero(r: free) }, reason: strata_refusal_text(r: FreeSpaceBelowBudget { budget_bytes: serving_reading_bytes_or_zero(r: budget), free_bytes: serving_reading_bytes_or_zero(r: free) }), cites: strata_refusal_cites(r: FreeSpaceBelowBudget { budget_bytes: serving_reading_bytes_or_zero(r: budget), free_bytes: serving_reading_bytes_or_zero(r: free) }) }
+            } else {
+              // Admitted. The standings of the restore-safety facts this rested on travel with it: an established
+              // contract is cited evidence, an assumed one is an uncited bet, so the ladder's tally shows a rung that
+              // admitted on a bet rather than presenting it as established (review 92497, epistemic_humility).
+              RungAdmissible {
+                admission_standings: concat(
+                  strata_guard_standing(s: guard.model_immutable),
+                  strata_guard_standing(s: guard.engine_build_matches)
+                )
+              }
+            }
+        }
+    }
+  }
+}
+
+// SRV4 AS IT RUNS: one active slot (parallel 1), so slot save/restore is available; the model file is immutable in
+// /opt/gunbc-serving/srv4-daily (a release directory, replaced only by a deployment that also changes the build); and
+// the build question is the deployment's to answer, so it is read off the same release the engine runs. srv3 is NOT
+// admissible today -- it runs --batch 8, and the engine refuses save/restore under parallel requests.
+data srv4_strata_restore_guard: StrataRestoreGuard = StrataRestoreGuard {
+  model_immutable: SafetyEstablished { evidence: "a release directory (/opt/gunbc-serving/srv4-daily) replaced only by a deployment that also changes the build, so the model file a slot was saved against does not move under it" as NonEmptyStr },
+  engine_build_matches: SafetyAssumed { reason: "taken from the same release the engine runs (406c9de18cef); a replaced release changes the build and strands every save, so it is a bet re-checked on deploy, not re-read on the live host" as NonEmptyStr },
+  cites: "extdeps.strata.session_file; /opt/gunbc-serving/srv4-daily release 406c9de18cef (a replaced release changes the build and strands every saved file: re-check on deploy)" as NonEmptyStr
+}
+
+// SRV3'S OWN GUARD, not srv4's borrowed. Its model lives under /home/ubuntu/strata-test and its engine is the
+// hand-run strata-pool build; reading srv4's release for srv3 would answer srv3's model-immutability and build
+// facts with srv4's deployment (a single_authority fork) -- the reason srv3 answers for itself even though it
+// refuses on --batch 8 today. The build question is re-checked on the host's next engine change.
+data srv3_strata_restore_guard: StrataRestoreGuard = StrataRestoreGuard {
+  model_immutable: SafetyEstablished { evidence: "the model file under /home/ubuntu/strata-test is replaced only when strata-pool.service is redeployed, which also changes the build" as NonEmptyStr },
+  engine_build_matches: SafetyAssumed { reason: "taken from the hand-run build (strata-rkllama-build-c5fd1fe15c3e); it matches until the host swaps the engine, so it is a bet re-checked on the host's next engine change, not re-read" as NonEmptyStr },
+  cites: "extdeps.strata.session_file; /home/ubuntu/strata-test under strata-pool.service, build /home/ubuntu/strata-test/strata-rkllama-build-c5fd1fe15c3e (hand-run: re-check on the host's next engine change)" as NonEmptyStr
+}
+
+// THE REPLICA'S BATCH AND ITS LAYOUT'S REFUSAL, READ FROM THE LAYOUT THAT OWNS THEM. A refused layout has no
+// active-slot figure; folding it to 0 would let a host whose layout was refused sail past the batch check and come
+// out admissible, so the refusal is carried through as a typed rung refusal (fail_closed: no silent widen), not a
+// zero. Both hosts run one replica today; the sum is that replica's figure, and a second replica answers for itself.
+fn strata_replica_verdict(l: ServingLayoutResult, budget: ServingMemoryReading, free: ServingMemoryReading, guard: StrataRestoreGuard) -> ServingRungAdmissibility {
+  match l {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
+      strata_slot_file_admissible(active_slots: fold(rs, init: 0, f: (acc, c) => acc + c.active_slots), budget: budget, free: free, guard: guard)
+    ServingLayoutRefused { refusal: _ } => RungRefused {
+      why: LayoutRefused { detail: "its replica set could not be derived, so there is no active-slot figure to admit on" as NonEmptyStr },
+      reason: strata_refusal_text(r: LayoutRefused { detail: "its replica set could not be derived, so there is no active-slot figure to admit on" as NonEmptyStr }),
+      cites: strata_refusal_cites(r: LayoutRefused { detail: "its replica set could not be derived, so there is no active-slot figure to admit on" as NonEmptyStr })
+    }
+  }
+}
+
+// SRV4 AND SRV3 AS THEY RUN, each on its OWN rows and its OWN guard. srv4's engine is parallel 1, so its slot
+// endpoint answers save and restore; srv3 runs --batch 8, so the same question refuses -- and that refusal is the
+// answer, not a gap to fill in.
+fn srv4_strata_rung_admissible() -> ServingRungAdmissibility {
+  strata_replica_verdict(l: srv4_layout, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard)
+}
+
+fn srv3_strata_rung_admissible() -> ServingRungAdmissibility {
+  strata_replica_verdict(l: srv3_layout, budget: srv3_strata_parked_budget, free: srv3_host_free_disk, guard: srv3_strata_restore_guard)
+}
+
+// HOW SRV3/SRV4'S LAYOUT VERDICT LOOKS TO THE GENERIC STORE. The anchor must not hardcode Strata's refusal
+// vocabulary (one store, many rungs), so the two genuinely-UNMEASURED refusals -- an undeclared budget, an unread
+// free-space reading -- fold to WarmRungUnread (a rung the store has not measured), while every HARD refusal --
+// --batch, a mutable model, a changed build, free space below the budget, a refused layout -- becomes WarmRungRefused
+// so the held bound NAMES it instead of inventing a read obligation (review 92430 / gentle-swift-129).
+fn strata_warm_admission(v: ServingRungAdmissibility) -> ServingWarmAdmission {
+  match v {
+    RungAdmissible { admission_standings: a } => WarmAdmit { admission_standings: a }
+    RungRefused { why: w, reason: r, cites: c } => match w {
+      BudgetUndeclared { detail: _ } => WarmRungUnread { reason: r }
+      FreeSpaceUnread { detail: _ } => WarmRungUnread { reason: r }
+      _ => WarmRungRefused { reason: r, cites: c }
+    }
+  }
+}
+
+// WHY THIS IS HERE AND NOT A SECOND STORE (cited as the method cites it, gunbc.design_argument::root_generalization).
+// The root cause this removes: srv4's parked conversations die with the engine process, because its 16 GiB RAM
+// conversation cache is the whole warm store, while srv1 already models a disk tier for exactly that job. The general
+// rule is one warm store with rungs; the same two questions decide any rung -- can this engine persist a conversation
+// at all, and does the host have the room the tier's declared budget asks for -- so this module answers them for the
+// Strata realization (engine eviction needs no capability and refuses nothing) instead of the store growing a
+// per-host rule. Deleting the parallel-requests refusal would let srv3, which runs --batch 8, claim a disk tier its
+// engine answers 501 to; that is the discriminating red, and it is pinned in the witness. The host change that makes
+// srv4's rung real is bold-wren-111's separate step (operator, 2026-11-09: model it now, "i will clean this up more
+// later"); srv3 stays without a rung until it drops --batch, which is a host decision, not a modelling one.
