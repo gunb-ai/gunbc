@@ -101,6 +101,14 @@ test fn bare_out_of_range_literal_in_a_channel_field_is_refused() -> Bool {
   blocking_type_mismatch_count(source: probe_bare_out_of_range_source) >= 1
 }
 
+// DOCUMENTING THE FORK, NOT ENDORSING THE BEHAVIOUR (review 92769). What this row measures is the
+// invalid state that gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses
+// records: the checker adds no blocking row for a cast the evaluator then refuses. It is kept, under
+// gunbc.design_argument::guarantee_ladder item 4, because a control stays enrolled across the climb --
+// and it is exactly the row that is expected to go RED when that row's own trigger lands (silent-bee-845's
+// ruling: refuse `as T` for a numeric int-predicate target unless source and target are the same declared
+// type). When it does, this fixture is re-pinned as the positive control for the new refusal; the
+// dissolution condition itself lives on that row's trigger_capability, restated here and not owned here.
 test fn in_range_cast_into_a_channel_field_is_admitted_by_the_checker() -> Bool {
   blocking_type_mismatch_count(source: probe_cast_in_range_source) == 0
 }
@@ -109,6 +117,11 @@ test fn out_of_range_cast_into_a_channel_field_is_refused() -> Bool {
   blocking_type_mismatch_count(source: probe_cast_out_of_range_source) >= 1
 }
 
+// THE SPELLING THE STRICT RULE MUST PRESERVE (silent-bee-845's ruling, and the reason it keys on the
+// source declared type rather than on the kernel): a value already declared on the target carrier needs
+// no proof, so the cast is admitted by the checker and by the evaluator alike. This is the post-fix pin
+// for that -- if a future rule refuses it, checker and evaluator have opened the same fork in the other
+// direction, and this row is where that shows up.
 test fn a_value_already_on_the_carrier_casts_by_identity() -> Bool {
   blocking_type_mismatch_count(source: probe_identity_source) == 0
 }
