@@ -7,7 +7,8 @@ module test.claim.fleet.gpu_interconnect_observation_witness
 // the table. The negatives below are the load-bearing lines: the same joins over a pair with no readings, or
 // over a relayed-only collective, must answer no.
 
-import std.types { Bool, List, Nat, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
 import std.algebra { string_contains }
 import std.measure { Bandwidth, ByteSize, Microsecond, bandwidth, bandwidth_count, byte_size, byte_size_count, microsecond, microsecond_count }
 import std.optional { Absent, Present }
