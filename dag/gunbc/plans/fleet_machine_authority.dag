@@ -14,7 +14,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
       p(text: "srv1-srv4 and mtcollins1 are renamed with names drawn by `gunbc.hostname_allocation` `draw_human_name` over `gunbc.host_names.gen_z`, with the entropy as the receipt. The Sparks, mtjade1, the Hetzner guests and the H11 host converge on their drawn names. srv13 and srv15 are one board (kept as bobo), and srv16 is a reserved key with no board."),
       p(text: "Per-host declarations are mini forks and are removed (D2). Names must be easy to change (D4)."),
       p(text: "**Review of gunbc#16252 at `d98300c17597` (operator side review, 2026-11-10):** this restructures the plan around four outcomes. It makes the stable machine handle a typed key distinct from the mutable name. It replaces the single roster admission with two coordinated admissions over the existing `PhysicalMachineBinding`. It makes R2-R4 and the wall mandatory. It adds a new-machine acceptance. It moves the Tailscale rename out of the additive stage."),
-      p(text: "**Standing:** D1-D10 were answered on 2026-11-10 (section 8). D12 and D13 are open. The program proceeds in the order of section 6, and each host's flip is its own PR and live window."),
+      p(text: "**Standing:** D1-D13 were answered on 2026-11-10 (section 8). The program proceeds in the dependency order of section 6.1, and each host's flip is its own PR and live window."),
       p(text: "**Read at:** gunbc main `b687f96f16bd` (census) and `b3c701d554f0` (plan). The two revisions differ by two commits that touch no file read here."),
     ]),
 
@@ -226,7 +226,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
           li(text: "The Tailscale mode sets the old name back and reads it."),
           li(text: "DHCP renew."),
           li(text: "Runners re-mint under the old label."),
-          li(text: "If the account migration shared the window (D13), its own reverse step runs too, and the separately verified management path from S2 is what makes that reachable."),
+          li(text: "The account migration is not in this window (D13). It ran earlier in its own window, so the management path verified in S2 is under the account the host already uses."),
         ]),
         p(text: "The old secrets, known_hosts rows and OAuth URIs still exist until S4, so they need no restore."),
       ]),
@@ -242,7 +242,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
     ]),
 
     h2(text: "6. PR sequence, with acceptance and completion"),
-    p(text: "Each PR names its scope, what must execute for it to be accepted, and what is true when it is done. P1-P13 are all required for program completion (the retirement condition). The critical path to the first flip (srv4) is P1, P2, P3 (srv4), P4, P5 and P8a-P8c, with D13 decided. P6, P7, P12 and P13 are required for completion but do not gate that flip."),
+    p(text: "Each PR names its scope, what must execute for it to be accepted, and what is true when it is done. P1-P13 are all required for program completion (the retirement condition). The critical path to the first flip (srv4) is P1, P2, P3 (srv4), P4, P5 and P8a-P8c, with srv4's account window (D13) done. P6, P7, P12 and P13 are required for completion but do not gate that flip."),
     ol(items: [
       li_blocks(blocks: [
         p(text: "**P0, this plan** (gunbc#16252, small)."),
@@ -356,7 +356,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
       li_blocks(blocks: [
         p(text: "**P9, flip srv4 to fox** (a one-row diff plus a live window)."),
         ul(items: [
-          li(text: "**Depends on:** P1-P5, P8a-P8c, D13, and srv4's S1 and S2, including the verified management path."),
+          li(text: "**Depends on:** P1-P5, P8a-P8c, srv4's own gunbc-runner account window (X5, D13) done and verified, and srv4's S1 and S2, including the verified management path."),
           li_blocks(blocks: [
             p(text: "**Acceptance, read back live:**"),
             ul(items: [
@@ -418,6 +418,65 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
         ]),
       ]),
     ]),
+    h3(text: "6.1 Dependency order: what starts in parallel"),
+    p(text: "External inputs, owned by other lanes:"),
+    ul(items: [
+      li(text: "**X1**, smart-crane-730's srv13 retirement PR."),
+      li(text: "**X2**, smart-crane-730's PXE 1 arrival generalization."),
+      li(text: "**X3**, smart-crane-730's host-generic boot-once (R5)."),
+      li(text: "**X4**, smart-crane-730's PXE 2c network-install arm."),
+      li(text: "**X5**, cool-lark-40's derived `RunnerHostSpec`, access template and per-host `gunbc-runner` account windows (D13)."),
+    ]),
+    p(text: "Each wave is the earliest a PR can start, and the PRs within a wave can run in parallel."),
+    ol(items: [
+      li_blocks(blocks: [
+        p(text: "**Wave 0, now.**"),
+        ul(items: [
+          li(text: "P0 (merge)."),
+          li(text: "P1, the b* comparators: no dependency."),
+          li(text: "P8a, the hostname mode: built now, and reads the name from the registry once P2 lands."),
+          li(text: "P8c's Tailscale half."),
+          li(text: "P8d, the JIT sweep."),
+          li(text: "In other lanes at the same time: X1, X2, X3, X5."),
+        ]),
+      ]),
+      li(text: "**Wave 1: P2** (registry and admissions), which needs X1."),
+      li_blocks(blocks: [
+        p(text: "**Wave 2, after P2, all in parallel:**"),
+        ul(items: [
+          li(text: "P3, the observation producers. srv4's read comes first."),
+          li(text: "P4, the derivations. Its SSH-target part consumes X5's derived `RunnerHostSpec`."),
+          li(text: "P6a (R2) and P6b (R3)."),
+          li(text: "P6c (R4), which also needs X2."),
+          li(text: "P13's rebind, participation and retire witnesses, which need A2 from P2."),
+        ]),
+      ]),
+      li_blocks(blocks: [
+        p(text: "**Wave 3, after P4:**"),
+        ul(items: [
+          li(text: "P5, the handles, landed as late as possible on the critical path so that P6 has already deleted the branches it would otherwise rename."),
+          li(text: "P8b, the secret shadow copy, which uses P4's secret ids."),
+          li(text: "P8c's known_hosts half, which uses P4's addresses."),
+        ]),
+      ]),
+      li_blocks(blocks: [
+        p(text: "**Wave 4:**"),
+        ul(items: [
+          li(text: "P7, the wall, after P5."),
+          li(text: "P9, the srv4 flip, after P1, P3 for srv4, P4, P5 and P8a-P8c, and after srv4's own account window under X5."),
+        ]),
+      ]),
+      li_blocks(blocks: [
+        p(text: "**Wave 5, once srv4 works:**"),
+        ul(items: [
+          li(text: "P10, the other flips, one host at a time: srv3 also needs X3; srv14/butch goes with cool-lark-40; srv15/bobo after X1 and X2."),
+          li(text: "P11, each host's retirements, after that host's flip; P8d lands before the first."),
+          li(text: "P12, the new-machine acceptance, after P2, P3, P4, P6a-P6c and X4, on the next real arrival."),
+        ]),
+      ]),
+      li(text: "**Completion:** every wave done, with W1-W4 receipts at the final revision."),
+    ]),
+    p(text: "**Critical path to the first flip:** X1, P2, P4, P5, P9. P3 (srv4), P8a-P8c, P1 and srv4's X5 account window must also be in by P9. Everything in waves 0 and 2 that is off that path (P6, P13, P8d) runs beside it."),
     p(text: "Before each PR, search the open PRs that touch its files (`gh pr list --json files` filtered by path). At this revision: #16058 and #16246 touch the `runner_host_*` files, #16035 and #15978 touch `runner_host_file_converge`, #15221 touches `runner_connectivity_recovery`, and #15287 touches the mtcollins1 boot approval."),
     p(text: "**What the required job does not judge.** `v2-bootstrap` evaluates no witness outside its two emitted closures (`gunbc.rung_drop` `v1_required_lanes_withdrawn`). W1-W4 are therefore run with `gunbc run --claim-run`, and each PR cites the receipt. Completion is read from those receipts at the final revision, not from a green required job."),
 
@@ -448,11 +507,11 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
           li(text: "**Tailscale.** ACL convergence exists (`gunbc.tailscale_acl_emit`, `gunbc.tailscale_acl_phase2_credential`), and `tailscale serve` is modeled (`gunbc.tailscale_serve_scope`). Nothing sets or reads a machine's Tailscale name: `git grep -nE 'tailscale (up|set)|--hostname'` returns 0. P7c adds that mode, which sets the name through `tailscale set --hostname` and reads it back through `tailscale status --json`, keyed by the derived name. Whether a Tailscale name follows an OS hostname change on its own is not established here, so the mode reads before it writes."),
         ]),
       ]),
-      li(text: "**D9, srv4 first,** then the others once srv4 works (section 5.3). Whether the gunbc-runner account migration shares the window is D13."),
+      li(text: "**D9, srv4 first,** then the others once srv4 works (section 5.3). The gunbc-runner account migration runs in its own window (D13)."),
       li(text: "**D10, no fixed soak.** Old artifacts are retired piece by piece as each is shown unread, and breakage is fixed where it arises (S4)."),
       li(text: "**D11, accepted as (b) with the review's refinement.** The handle is a stable typed key (2.1), not a renamed symbol over a name-derived value. The name is a mutable field."),
-      li(text: "**D12 (open), handle values.** Option (a): mint opaque `host-<hex>` handles for srv1-srv4, mtcollins1, mtjade1 and srv9-srv16, under the 2026-10-07 opaque rule that host-183527 already follows. This costs a one-time migration of identity-keyed live state (P5). Option (b): keep the historical spellings as keys, which is free but means a key spelled srv4 for a machine named fox, which people will read as a name. Recommendation: (a)."),
-      li(text: "**D13 (open), couple or decouple the gunbc-runner account migration.** Option (a): run it in the same S3 window as the flip, as the brief proposed, so each host's live state changes once. That needs a combined rollback rehearsal. Option (b): run it first, in its own window owned by cool-lark-40, verified, and then flip the name. Recommendation: (b). The two touch different artifacts (account and units versus name-derived names), runner re-registration is per job anyway, and a failed combined window could strand management access."),
+      li(text: "**D12, opaque handles** (operator, 2026-11-10). srv1-srv4, mtcollins1, mtjade1 and srv9-srv16 get opaque `host-<hex>` handles under the 2026-10-07 opaque rule that host-183527 already follows. Identity-keyed live state is migrated once, in P5."),
+      li(text: "**D13, the account migration gets its own window** (operator, 2026-11-10). cool-lark-40 moves each host from briansrls to gunbc-runner in a separate, verified window before that host's rename window, so neither window's rollback depends on the other."),
       li(text: "**D11 (open), how a fact row names its machine.** D2 asks that a rename edit one row. Today a row about one machine names it through the symbol `operator_host_srv4`, and once srv4 is fox that symbol is a nickname. Option (a): rename the symbols at each flip. This is mechanical and the compiler catches a missed reference, but a rename is then no longer one row. Option (b): give each machine a stable opaque handle (`machine_01` ...), as `gpu_board_NN` already are, with the name only in the row's name field. That is a one-time mechanical migration (P5), and from then on a rename is one row. Option (c): key facts by board serial. That is rejected, because a board swap would orphan facts about the machine's role. Recommendation: (b)."),
     ]),
     h2(text: "9. What this does not claim"),
