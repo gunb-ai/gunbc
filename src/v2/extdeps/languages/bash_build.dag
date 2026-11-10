@@ -883,7 +883,7 @@ fn bash_build_for(name: String, words: List<Node>, body: List<Node>) -> Optional
                 binding: ^bash_production_fold_for,
                     body: [
                   bash_build_name_atom(text: name),
-                  bash_build_stmt_list_from_nodes(stmts: words),
+                  bash_build_command_words_from_nodes(words: words),
                   bash_build_stmt_list_from_nodes(stmts: body)
                 ]
               )
@@ -906,7 +906,7 @@ fn bash_build_array_assign(name: String, elements: List<Node>) -> Optional<Node>
             binding: ^bash_production_fold_array_assign,
             body: [
               bash_build_name_atom(text: name),
-              bash_build_stmt_list_from_nodes(stmts: elements)
+              bash_build_command_words_from_nodes(words: elements)
             ]
           )
         }

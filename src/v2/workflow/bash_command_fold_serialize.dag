@@ -1174,7 +1174,11 @@ fn bash_fold_serialize_for_node(stmt: Node) -> Outcome<String> {
               match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 3) {
                 Present { value: body } =>
                   bind_outcome(
-                    o: bash_fold_serialize_word_list_spelling(parts: words),
+                    o: bash_fold_serialize_leaf_node(
+                      emitted: words,
+                      production_binding: ^bash_production_fold_command_words,
+                      rule_name: ^bash_relation_rule_fold_command_words
+                    ),
                     f: fn(words_spelling) {
                       bind_outcome(
                         o: bash_fold_serialize_stmt_list_semi(list_node: body),
@@ -1209,7 +1213,11 @@ fn bash_fold_serialize_array_assign_node(stmt: Node) -> Outcome<String> {
           match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
             Present { value: elements } =>
               bind_outcome(
-                o: bash_fold_serialize_word_list_spelling(parts: elements),
+                o: bash_fold_serialize_leaf_node(
+                  emitted: elements,
+                  production_binding: ^bash_production_fold_command_words,
+                  rule_name: ^bash_relation_rule_fold_command_words
+                ),
                 f: fn(elements_spelling) {
                   if string_is_empty(s: elements_spelling) {
                     // 'name=()' is an empty-array assignment, not what any

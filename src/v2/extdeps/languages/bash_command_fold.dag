@@ -1441,7 +1441,9 @@ fn bash_fold_array_expansion_word_production() -> FormalProduction {
         identity: ^bash_fold_word_kind_array_expansion,
         binding: ^bash_fold_word_kind_array_expansion
       ),
-      grammar_formal_terminal_free(identity: ^bash_token_orch_raw)
+      grammar_formal_terminal(identity: ^bash_token_array_expand_open),
+      grammar_formal_terminal_free(identity: ^bash_token_orch_raw),
+      grammar_formal_terminal(identity: ^bash_token_array_expand_all)
     ]
   )
 }
@@ -1467,6 +1469,7 @@ fn bash_fold_positional_all_word_production() -> FormalProduction {
         identity: ^bash_fold_word_kind_positional_all,
         binding: ^bash_fold_word_kind_positional_all
       ),
+      grammar_formal_terminal(identity: ^bash_token_dollar),
       grammar_formal_terminal_free(identity: ^bash_token_orch_raw)
     ]
   )
@@ -1480,7 +1483,9 @@ fn bash_fold_double_quoted_word_production() -> FormalProduction {
         identity: ^bash_fold_word_kind_double_quoted,
         binding: ^bash_fold_word_kind_double_quoted
       ),
-      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_command_words)
+      grammar_formal_terminal(identity: ^bash_token_double_quote_open),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_command_words),
+      grammar_formal_terminal(identity: ^bash_token_double_quote_close)
     ]
   )
 }
@@ -1509,6 +1514,7 @@ fn bash_fold_var_bare_word_production() -> FormalProduction {
         identity: ^bash_fold_word_kind_var_bare,
         binding: ^bash_fold_word_kind_var_bare
       ),
+      grammar_formal_terminal(identity: ^bash_token_dollar),
       grammar_formal_terminal_free(identity: ^bash_token_orch_raw)
     ]
   )
