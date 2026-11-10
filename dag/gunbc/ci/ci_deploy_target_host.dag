@@ -11,6 +11,7 @@ import gunbc.hostname_read {
   HostnameShortCaptureRefused,
 }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.ci.ci_fleet { srv1_offer, ComputeOffer }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
@@ -149,6 +150,14 @@ fn runner_name_proves_host_identity(runner_name: String, host: HostIdentity) -> 
     || runner_name.ends_with(suffix: concat("@", host))
 }
 
+// THE KERNEL'S ANSWER PROVES NOTHING ABOUT THE HOST UNTIL THE ALLOCATION RESOLVES IT
+// (gunbc.hostname_allocation::observed_host_identity; gunbc.plans.fleet_machine_authority section 4.4 (b*)).
+// The old form asked whether the observed spelling EQUALLED the target identity -- true on a machine
+// that has no name of its own, false on srv14 answering "butch" and on every host this program
+// renames. The observed spelling now resolves to a HostIdentity and that identity is what is compared;
+// a spelling no roster answers to contributes no proof at all, and is never used as if it were an
+// identity. The runner's registered LABEL remains the other proof, because that is the routing token
+// the runner presented, not the kernel's word about itself.
 fn deploy_target_runner_identity_proves_host(
   proof: DeployTargetHostProof,
   observed_hostname: String,
@@ -156,7 +165,10 @@ fn deploy_target_runner_identity_proves_host(
 ) -> Bool {
   match proof {
     RunnerIdentityOnHost { host: id } =>
-      (observed_hostname == id)
+      (match observed_host_identity(observed: observed_hostname) {
+        ObservedHostIdentityResolved { host: answered } => (answered as String) == id
+        ObservedHostIdentityRefused { refusal: _ } => false
+      })
         || runner_name_proves_host_identity(runner_name: observed_runner_name, host: id)
     SshExplicitHost { host: _, ssh_host: _ } => true
   }

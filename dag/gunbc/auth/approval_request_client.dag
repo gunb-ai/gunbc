@@ -19,6 +19,7 @@ import gunbc.auth.approval_request_submission {
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.hostname_allocation { observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused, observed_host_identity_refusal_text }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal,
@@ -101,7 +102,15 @@ type ApprovalOriginStanding
   | ApprovalOriginUnresolved { cause: ProdRoleRealizationRefusal }
   | ApprovalExecutorNotTheOriginHost { origin_host: NonEmptyStr, executor_host: String }
   | ApprovalExecutorHostUnobserved { reason: String }
+  | ApprovalOriginHostUnresolved { origin_host: NonEmptyStr, reason: String }
 
+// THE LOOPBACK ORIGIN IS ACTUATED AS A NAME AND THE EXECUTOR ANSWERS AS A NAME, AND NEITHER IS AN
+// IDENTITY UNTIL THE ALLOCATION'S SELECTOR SAYS IT IS (gunbc.hostname_allocation
+// ::observed_host_identity; gunbc.plans.fleet_machine_authority section 4.4 (b*)). The old form compared
+// the two strings, so an approval request raised on the host that answers "butch" was refused as
+// "not the origin host" forever -- and a rename moved the refusal to whichever host inherited the
+// name. Both sides now resolve, the comparison is between HostIdentities, and a spelling that resolves
+// to nothing refuses by that spelling instead of being read as an identity.
 fn classify_approval_origin(origin: ApprovalLoopbackOrigin, executor: HostnameShortCapture) -> ApprovalOriginStanding {
   match origin {
     ApprovalLoopbackOriginRefused { cause } => ApprovalOriginUnresolved { cause: cause }
@@ -109,10 +118,21 @@ fn classify_approval_origin(origin: ApprovalLoopbackOrigin, executor: HostnameSh
       match executor {
         HostnameShortCaptureRefused { reason } => ApprovalExecutorHostUnobserved { reason: reason }
         HostnameShortCaptured { value } =>
-          if value == (host as String) {
-            ApprovalOriginWouldDial { host: host, origin: o }
-          } else {
-            ApprovalExecutorNotTheOriginHost { origin_host: host, executor_host: value }
+          match observed_host_identity(observed: value) {
+            ObservedHostIdentityRefused { refusal: r } =>
+              ApprovalExecutorHostUnobserved { reason: observed_host_identity_refusal_text(refusal: r) }
+            ObservedHostIdentityResolved { host: executor_host } =>
+              match observed_host_identity(observed: host as String) {
+                ObservedHostIdentityRefused { refusal: r } =>
+                  ApprovalOriginHostUnresolved { origin_host: host,
+                    reason: observed_host_identity_refusal_text(refusal: r) }
+                ObservedHostIdentityResolved { host: origin_identity } =>
+                  if (executor_host as String) == (origin_identity as String) {
+                    ApprovalOriginWouldDial { host: host, origin: o }
+                  } else {
+                    ApprovalExecutorNotTheOriginHost { origin_host: host, executor_host: executor_host as NonEmptyStr }
+                  }
+              }
           }
       }
   }
@@ -139,6 +159,7 @@ fn approval_origin_admission_here() -> ApprovalOriginAdmission admit_callers: [
     ApprovalOriginUnresolved { cause: _ } => ApprovalOriginNotAdmitted { standing: standing }
     ApprovalExecutorNotTheOriginHost { origin_host: _, executor_host: _ } => ApprovalOriginNotAdmitted { standing: standing }
     ApprovalExecutorHostUnobserved { reason: _ } => ApprovalOriginNotAdmitted { standing: standing }
+    ApprovalOriginHostUnresolved { origin_host: _, reason: _ } => ApprovalOriginNotAdmitted { standing: standing }
   }
 }
 
@@ -149,7 +170,10 @@ fn approval_origin_standing_detail(standing: ApprovalOriginStanding) -> NonEmpty
     ApprovalExecutorNotTheOriginHost { origin_host, executor_host } =>
       join(["approval writer is loopback on ", origin_host as String, " (the prod-role holder's host) but this executor is ", executor_host, "; refusing before any request"], "") as NonEmptyStr
     ApprovalExecutorHostUnobserved { reason } =>
-      join(["this executor's host could not be read (", reason, "); refusing before any request to the approval writer"], "") as NonEmptyStr
+      join(["this executor's host could not be read or resolved (", reason, "); refusing before any request to the approval writer"], "") as NonEmptyStr
+    ApprovalOriginHostUnresolved { origin_host, reason } =>
+      join(["the actuated approval origin names ", origin_host as String, ", which the host roster does not resolve (",
+            reason, "); refusing before any request to the approval writer"], "") as NonEmptyStr
   }
 }
 

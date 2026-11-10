@@ -9,6 +9,11 @@ import gunbc.command_runner { run_shell_command_observe_outcome }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.live_deploy.candidate { CandidateCheckoutObservation, CandidateCheckoutClean, CandidateCheckoutDirty, CandidateCheckoutUnobservable, observe_candidate_checkout }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.hostname_allocation {
+  resolve_host_selector, HostSelectorResolved, HostSelectorAmbiguous, HostSelectorUnknown,
+  ObservedHostAmbiguous, ObservedHostUnknown, observed_host_identity_refusal_text,
+  observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -192,7 +197,18 @@ fn microvm_network_apply_admission(
   } else if trim(s: expected_revision) != trim(s: checked_out_revision) {
     MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: expected_revision ", trim(s: expected_revision), " is not the tree this job runs from (HEAD ", trim(s: checked_out_revision), "); the installed bytes must come from the named revision, not from whatever this checkout happens to be"], "") }
   } else {
-    microvm_network_apply_admission_for_deploy(host: trim(s: host) as HostIdentity, revision: trim(s: expected_revision))
+    // THE DISPATCH'S WORD IS A NAME, AND A NAME BUYS NOTHING BUT WHAT THE ALLOCATION'S SELECTOR
+    // RESOLVES IT TO (gunbc.hostname_allocation::resolve_host_selector). srv14 is answered by
+    // "butch" and selected by "srv14"; both names resolve to one identity, and a name no roster
+    // answers to refuses by that name instead of being cast into an identity it was never given.
+    match resolve_host_selector(selector: trim(s: host)) {
+      HostSelectorResolved { host: identity } =>
+        microvm_network_apply_admission_for_deploy(host: identity, revision: trim(s: expected_revision))
+      HostSelectorAmbiguous { selector: s, candidates: c } =>
+        MicrovmNetworkApplyRefused { cause: observed_host_identity_refusal_text(refusal: ObservedHostAmbiguous { observed: s, candidates: c }) }
+      HostSelectorUnknown { selector: s } =>
+        MicrovmNetworkApplyRefused { cause: observed_host_identity_refusal_text(refusal: ObservedHostUnknown { observed: s }) }
+    }
   }
 }
 
@@ -879,14 +895,25 @@ fn runner_microvm_network_apply_ci_wet() -> ProcessExit
 
 // The same staged-file and operation folds are available on the subject host. A local caller
 // must already be root: this entry adds no grant, consumes no agent and cannot select a peer.
+// THE KERNEL'S ANSWER AND THE DISPATCH'S SELECTION ARE TWO NAMES, AND THIS JOIN RESOLVES BOTH
+// THROUGH THE ALLOCATION'S SELECTOR (gunbc.hostname_allocation::observed_host_selector_join) before a
+// single privileged operation is admitted. The old form compared the two strings, which refused the
+// host that answers "butch" while selecting "srv14" -- and a name is not an identity, so a side that
+// resolves to nothing refuses by its spelling rather than becoming one.
 fn microvm_network_local_admission(host: String, observed_host: String, effective_uid: String,
   expected_revision: String, checked_out_revision: String) -> MicrovmNetworkApplyAdmission {
-  if trim(s: host) == "" || trim(s: host) != trim(s: observed_host) {
-    MicrovmNetworkApplyRefused { cause: "local network administration must name this host" }
-  } else if trim(s: effective_uid) != "0" {
-    MicrovmNetworkApplyRefused { cause: "local network administration requires the administrator's root process" }
-  } else { microvm_network_apply_admission(host: host, expected_revision: expected_revision,
-    checked_out_revision: checked_out_revision) }
+  match observed_host_selector_join(expected: host, observed: observed_host) {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      MicrovmNetworkApplyRefused { cause: join(["local network administration must name this host: ",
+                                                observed_host_join_refusal_text(cause: c)], "") }
+    ObservedHostSelectorAgreed { host: identity } =>
+      if trim(s: effective_uid) != "0" {
+        MicrovmNetworkApplyRefused { cause: "local network administration requires the administrator's root process" }
+      } else {
+        microvm_network_apply_admission(host: identity as String, expected_revision: expected_revision,
+          checked_out_revision: checked_out_revision)
+      }
+  }
 }
 
 fn microvm_network_local_subject(host: String, expected_revision: String) -> MicrovmNetworkApplyAdmission {

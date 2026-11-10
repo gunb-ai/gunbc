@@ -15,6 +15,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.floor_cost_distribution { permille_percentile }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.fabric.workspace_source {
   WorkspaceSourceRoot, workspace_source_fixed_roots, workspace_source_pack_host,
@@ -547,14 +548,26 @@ fn workspace_transcript_rate_finish(receipt: String, outcome: ProcessExit) -> Pr
   }
 }
 
+// THE TRANSCRIPTS LIVE ON ONE HOST, AND BOTH SIDES OF THAT CLAIM ARE NAMES
+// (gunbc.hostname_allocation::observed_host_selector_join; gunbc.plans.fleet_machine_authority
+// section 4.4 (b*)). The kernel's answer and the hand-selected pack host each resolve through the
+// allocation's selector, and the observation runs only when they name the SAME HostIdentity; the
+// RESOLVED identity is what the receipt records, never the kernel's spelling.
 fn workspace_transcript_rate_observe_wet() -> ProcessExit {
   let host = match hostname_short_read(transport: LocalShell) {
     HostnameShortCaptured { value: v } => v
     HostnameShortCaptureRefused { reason: _ } => ""
   }
-  if host != (workspace_source_pack_host as String) {
-    exit_failure(reason: join(["workspace_transcript_rate_observe: the transcripts live on ", workspace_source_pack_host as String, " but this job runs on '", host, "'; dispatch it with host=", workspace_source_pack_host as String], ""))
-  } else {
+  match observed_host_selector_join(expected: workspace_source_pack_host as String, observed: host) {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      exit_failure(reason: join(["workspace_transcript_rate_observe: ", observed_host_join_refusal_text(cause: c),
+                                 "; dispatch it with host=", workspace_source_pack_host as String], ""))
+    ObservedHostSelectorAgreed { host: identity } =>
+      workspace_transcript_rate_observe_on(host: identity as String)
+  }
+}
+
+fn workspace_transcript_rate_observe_on(host: String) -> ProcessExit {
     let slot = workspace_agent_state_slot_observe()
     let slot_line = concat(workspace_agent_state_slot_words(admission: slot), "\n")
     match workspace_transcript_rate_roots(slot: slot, fixed: workspace_transcript_rate_select_roots(labels: workspace_transcript_rate_fixed_root_labels, declared: workspace_source_fixed_roots)) {
@@ -577,5 +590,4 @@ fn workspace_transcript_rate_observe_wet() -> ProcessExit {
         }
       }
     }
-  }
 }

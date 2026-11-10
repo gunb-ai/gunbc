@@ -41,6 +41,10 @@ import extdeps.tools.coreutils_stat {
 }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+import gunbc.hostname_allocation {
+  observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed,
+  ObservedHostSelectorJoinRefused, ObservedHostJoinRefusal, JoinHostsDisagree,
+}
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
 }
@@ -378,26 +382,42 @@ type MicrovmHostBinding
   = MicrovmHostBound { spec: RunnerHostSpec, host: NonEmptyStr }
   | MicrovmHostBindingRefused { cause: MicrovmHostBindingRefusal }
 
-// FOUR CAUSES, NOT ONE STRING, because they send an operator to four different places: a dispatch
-// that named no host, a machine that could not name itself, a machine that is not the one the
-// dispatch selected, and a machine no roster describes.
+// FOUR CAUSES FOR WHAT THE SITE ALONE CAN NAME, AND ONE SHARED CAUSE FOR WHAT THE SELECTOR NAMES.
+// The four send an operator to four different places: a dispatch that named no host, a machine that
+// could not name itself, a machine that is not the one the dispatch selected, and a machine no roster
+// describes. The fifth carries the selector's own typed refusal (gunbc.hostname_allocation::
+// ObservedHostJoinRefusal) for a NAME neither side can resolve, and says which spelling it refused.
 type MicrovmHostBindingRefusal
   = ExpectedHostAbsent { detail: String }
   | HostObservationFailed { reason: String }
   | HostBindingRefused { expected: NonEmptyStr, observed: NonEmptyStr }
   | HostNotRostered { host: NonEmptyStr }
+  | HostNameUnresolved { cause: ObservedHostJoinRefusal }
 
 // THE JOIN IS PURE SO THE MISMATCH IS DISCRIMINABLE WITHOUT A HOST. Its inputs are the two supplied
 // values a witness can construct; the wet wrapper below is the only thing that has to run on a
 // machine to obtain them (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
+//
+// BOTH INPUTS ARE NAMES, AND THE JOIN RESOLVES THEM (gunbc.hostname_allocation
+// ::observed_host_selector_join; gunbc.plans.fleet_machine_authority section 4.4 (b*)). What the dispatch
+// selected and what this machine answers each resolve through the allocation's selector, and the join
+// holds only when they name the SAME HostIdentity -- so a dispatch for srv14 on the machine answering
+// "butch" binds, where the old comparison of the two strings refused it. The bound host and the host
+// spec lookup below carry the RESOLVED identity, never either spelling as observed; a side that
+// resolves to nothing refuses through HostNameUnresolved and no spec is looked up for a name.
 fn microvm_host_binding_of(expected: NonEmptyStr, observed: NonEmptyStr) -> MicrovmHostBinding {
-  if (trim(s: expected as String)) != (trim(s: observed as String)) {
-    MicrovmHostBindingRefused { cause: HostBindingRefused { expected: expected, observed: observed } }
-  } else {
-    match runner_host_spec_for(host: (trim(s: observed as String)) as HostIdentity) {
-      RunnerHostSpecFound { spec: sp } => MicrovmHostBound { spec: sp, host: observed }
-      RunnerHostSpecAbsent { host: h } => MicrovmHostBindingRefused { cause: HostNotRostered { host: h } }
-    }
+  match observed_host_selector_join(expected: expected as String, observed: observed as String) {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      match c {
+        JoinHostsDisagree { expected: e, observed: o } =>
+          MicrovmHostBindingRefused { cause: HostBindingRefused { expected: e as NonEmptyStr, observed: o as NonEmptyStr } }
+        _ => MicrovmHostBindingRefused { cause: HostNameUnresolved { cause: c } }
+      }
+    ObservedHostSelectorAgreed { host: identity } =>
+      match runner_host_spec_for(host: identity) {
+        RunnerHostSpecFound { spec: sp } => MicrovmHostBound { spec: sp, host: identity as NonEmptyStr }
+        RunnerHostSpecAbsent { host: h } => MicrovmHostBindingRefused { cause: HostNotRostered { host: h } }
+      }
   }
 }
 
@@ -414,6 +434,8 @@ fn microvm_host_binding_refusal_text(c: MicrovmHostBindingRefusal) -> String {
             " and certify it under ", e as String, "'s name"], "")
     HostNotRostered { host: h } =>
       join(["HostNotRostered -- ", h as String, " carries no runner host spec, so no executor login and no grant roster are declared for it"], "")
+    HostNameUnresolved { cause: c2 } =>
+      join(["HostNameUnresolved -- ", observed_host_join_refusal_text(cause: c2)], "")
   }
 }
 

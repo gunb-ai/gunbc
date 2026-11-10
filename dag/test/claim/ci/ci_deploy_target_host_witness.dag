@@ -22,7 +22,9 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv2,
   operator_host_srv3,
   operator_host_srv4,
+  operator_host_srv14,
 }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
 import gunbc.runner.runner_registration_labels {
   runner_evidence_gated_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
@@ -66,6 +68,49 @@ test fn witness_ubicloud_runner_name_refused_for_local_apply() -> Bool {
     transport: ci_deploy_srv1_access.transport,
     observed_hostname: "ubicloud-runner",
     observed_runner_name: "ubicloud-standard-16-arm"
+  )
+}
+
+// THE REAL PRODUCER PATH, ON A HOST THAT HAS A NAME. srv14 answers "butch" -- the deploy gate used to
+// ask whether the observed spelling EQUALLED the target identity, which is true only of a host with no
+// name of its own, so this exact deploy was refused while srv1 sat idle and srv14 went unconverged.
+// The runner label here names a DIFFERENT host, so nothing but the resolved hostname can carry the
+// proof: this test is the control that the site itself, not just the shared rule, runs on it.
+test fn witness_a_named_host_proves_its_own_deploy_target() -> Bool {
+  !deploy_local_apply_refused_for_observed_host(
+    host: operator_host_srv14,
+    transport: LocalShell,
+    observed_hostname: "butch",
+    observed_runner_name: "actions-runner@srv9-01.service"
+  )
+}
+
+// AND THE REFUSAL IS STILL A REFUSAL: a spelling no roster answers to proves nothing, and the runner
+// label pointing at another host cannot smuggle it through. It is not read as a host, cast to one, or
+// compared to one.
+test fn witness_an_unresolved_hostname_proves_no_deploy_target() -> Bool {
+  deploy_local_apply_refused_for_observed_host(
+    host: operator_host_srv14,
+    transport: LocalShell,
+    observed_hostname: "totch",
+    observed_runner_name: "actions-runner@srv9-01.service"
+  )
+}
+
+// TWO NAMES, TWO MACHINES: srv14's own deploy refuses a kernel answering srv15's name, even though
+// both are real hosts the roster knows -- and the runner label cannot rescue it, because that label
+// names srv15 too. The identity each side resolves to is what is compared, on both proofs.
+test fn witness_a_named_host_refuses_another_hosts_name() -> Bool {
+  deploy_local_apply_refused_for_observed_host(
+    host: operator_host_srv14,
+    transport: LocalShell,
+    observed_hostname: "bobo",
+    observed_runner_name: "actions-runner@srv15-01.service"
+  ) && !deploy_local_apply_refused_for_observed_host(
+    host: operator_host_srv14,
+    transport: LocalShell,
+    observed_hostname: "srv14",
+    observed_runner_name: "actions-runner@srv14-01.service"
   )
 }
 

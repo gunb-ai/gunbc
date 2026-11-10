@@ -105,8 +105,8 @@ fn runner_microvm_network_observe_wet() -> ProcessExit
       match bind_requested_host(expected: expected_host_reading(), observed: name) {
         HostBindingUnnamed { detail: d } =>
           exit_failure(reason: host_binding_refusal_text(b: HostBindingUnnamed { detail: d }))
-        HostBindingRefused { expected: e, observed: o } =>
-          exit_failure(reason: host_binding_refusal_text(b: HostBindingRefused { expected: e, observed: o }))
+        HostBindingRefused { cause: c } =>
+          exit_failure(reason: host_binding_refusal_text(b: HostBindingRefused { cause: c }))
         HostBindingHeld { host: bound } => observe_bound_host_wet(bound: bound)
       }
   }

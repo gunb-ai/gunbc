@@ -17,7 +17,7 @@ import gunbc.runner.runner_microvm_host_ready {
   KvmGroupEnrolment, KvmGroupEnrolled, KvmGroupNotEnrolled, KvmGroupEnrolmentUnreadable,
   KvmDeviceDelegation, KvmDeviceDelegated, KvmDeviceDelegationContradicted, KvmDeviceDelegationUnreadable,
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
-  MicrovmHostBindingRefusal, HostBindingRefused, HostNotRostered,
+  MicrovmHostBindingRefusal, HostBindingRefused, HostNotRostered, HostNameUnresolved,
   microvm_host_binding_of, microvm_host_binding_refusal_text,
   kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_ready_in_this_process,
   group_names_contain, firecracker_host_standing_text,
@@ -185,7 +185,13 @@ test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_gr
 test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
   let mismatch = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv3" as NonEmptyStr)
   let agreed = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv1" as NonEmptyStr)
-  let unrostered = microvm_host_binding_of(expected: "srv-nope" as NonEmptyStr, observed: "srv-nope" as NonEmptyStr)
+  let unresolved = microvm_host_binding_of(expected: "srv-nope" as NonEmptyStr, observed: "srv-nope" as NonEmptyStr)
+  // THE SHAPE THE OLD JOIN REFUSED OUTRIGHT: a dispatch for srv14, a kernel answering "butch". The
+  // two strings disagreed, so this run was refused as a mis-dispatch on a host that was perfectly
+  // correctly dispatched. Resolving both names first, the join AGREES on the machine and the only
+  // refusal left is the roster's own gap -- srv14 carries no runner host spec yet -- which is a
+  // different cause sending an operator to a different place.
+  let named_host = microvm_host_binding_of(expected: "srv14" as NonEmptyStr, observed: "butch" as NonEmptyStr)
   (match mismatch {
     MicrovmHostBindingRefused { cause: c } =>
       (match c {
@@ -199,8 +205,22 @@ test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
       MicrovmHostBound { spec: sp, host: h } => (h as String) == "srv1" && (sp.job_user as String) == "ghrunner"
       MicrovmHostBindingRefused { cause: _ } => false
     })
-    && (match unrostered {
-      MicrovmHostBindingRefused { cause: c } => match c { HostNotRostered { host: _ } => true  _ => false }
+    && (match unresolved {
+      // A NAME NO ROSTER ANSWERS TO IS REFUSED AS AN UNRESOLVED NAME, before any spec is looked up:
+      // "no runner host spec" would send an operator to the roster's runner rows for a problem that is
+      // the dispatch's or the machine's spelling.
+      MicrovmHostBindingRefused { cause: c } => match c { HostNameUnresolved { cause: _ } => true  _ => false }
+      MicrovmHostBound { spec: _, host: _ } => false
+    })
+    && (match named_host {
+      MicrovmHostBindingRefused { cause: c } =>
+        match c {
+          HostNotRostered { host: h } => (h as String) == "srv14"
+          HostBindingRefused { expected: _, observed: _ } => false
+          HostNameUnresolved { cause: _ } => false
+          ExpectedHostAbsent { detail: _ } => false
+          HostObservationFailed { reason: _ } => false
+        }
       MicrovmHostBound { spec: _, host: _ } => false
     })
 }

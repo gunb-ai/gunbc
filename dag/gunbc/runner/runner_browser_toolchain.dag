@@ -70,6 +70,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContex
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+import gunbc.hostname_allocation { observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused, observed_host_identity_refusal_text }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.runner.runner_microvm_host_ready {
   microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text,
@@ -383,15 +384,29 @@ fn runner_browser_toolchain_pool_host_labels() -> List<String> {
 // A HOST OUTSIDE THE POOL IS REFUSED, BY THE CONVERGE AND BY A CONSUMER ALIKE. The converge will
 // not install onto a machine that does not run the floor job, and a consumer on such a machine is
 // told so rather than handed a location nobody converged.
+//
+// BOTH SIDES OF THE MATCH ARE NAMES, AND NEITHER IS READ AS AN IDENTITY
+// (gunbc.hostname_allocation::observed_host_identity; gunbc.plans.fleet_machine_authority section 4.4 (b*)).
+// The requested spelling -- a consumer's `hostname -s`, which on srv14 answers "butch" -- and the pool's
+// derived host_label each resolve through the allocation's selector, and the pool member is the row
+// whose RESOLVED identity is the same machine. The old form compared the two strings, so a host with a
+// human name was "not in the pool" no matter what the roster said; the refusal below names the spelling
+// it refused, and an unresolvable one is never matched, cast, or carried.
 type BrowserToolchainHostAdmission
   = BrowserToolchainHostAdmitted { deploy: RunnerHostDeploy, location: RunnerBrowserToolchainLocation }
   | BrowserToolchainHostRefused { host: NonEmptyStr, cause: String }
 
-fn pool_member_named(hosts: List<RunnerHostDeploy>, host: NonEmptyStr) -> RunnerHostDeploy? {
+fn pool_member_identity(hosts: List<RunnerHostDeploy>, wanted: HostIdentity) -> RunnerHostDeploy? {
   match hosts {
     Empty => none
     Cons { head: d, tail: rest } =>
-      if (d.host_label as String) == trim(s: host as String) { Present { value: d } } else { pool_member_named(hosts: rest, host: host) }
+      match observed_host_identity(observed: d.host_label as String) {
+        ObservedHostIdentityResolved { host: declared } =>
+          if (declared as String) == (wanted as String) {
+            Present { value: d }
+          } else { pool_member_identity(hosts: rest, wanted: wanted) }
+        ObservedHostIdentityRefused { refusal: _ } => pool_member_identity(hosts: rest, wanted: wanted)
+      }
   }
 }
 
@@ -399,18 +414,28 @@ fn runner_browser_toolchain_host_admission_in(pool: BrowserToolchainPool, host: 
   match pool {
     BrowserToolchainPoolUndefined { cause: c } => BrowserToolchainHostRefused { host: host, cause: c }
     BrowserToolchainPoolDerived { hosts: hs } =>
-      match pool_member_named(hosts: hs, host: host) {
-        Present { value: d } =>
-          BrowserToolchainHostAdmitted { deploy: d, location: runner_browser_toolchain_location(job_user: d.job_user) }
-        Absent =>
+      match observed_host_identity(observed: host as String) {
+        ObservedHostIdentityRefused { refusal: r } =>
           BrowserToolchainHostRefused {
             host: host,
-            cause: join([
-              "runner_browser_toolchain: ", host as String,
-              " is not in the pool that runs the floor job (derived pool: ",
-              join(map(hs, d => d.host_label as String), ", "),
-              "), so no browser toolchain is declared for it",
-            ], ""),
+            cause: join(["runner_browser_toolchain: ", host as String,
+                         " does not resolve to a host, so no browser toolchain is admitted for it: ",
+                         observed_host_identity_refusal_text(refusal: r)], ""),
+          }
+        ObservedHostIdentityResolved { host: identity } =>
+          match pool_member_identity(hosts: hs, wanted: identity) {
+            Present { value: d } =>
+              BrowserToolchainHostAdmitted { deploy: d, location: runner_browser_toolchain_location(job_user: d.job_user) }
+            Absent =>
+              BrowserToolchainHostRefused {
+                host: host,
+                cause: join([
+                  "runner_browser_toolchain: ", host as String,
+                  " (", identity as String, ") is not in the pool that runs the floor job (derived pool: ",
+                  join(map(hs, d => d.host_label as String), ", "),
+                  "), so no browser toolchain is declared for it",
+                ], ""),
+              }
           }
       }
   }
@@ -1079,20 +1104,30 @@ fn runner_browser_toolchain_here_wet() -> RunnerBrowserToolchainResolution {
     HostnameShortCaptureRefused { reason: r } =>
       BrowserToolchainUnresolved { cause: join(["runner_browser_toolchain: the host could not name itself (", r, ")"], "") }
     HostnameShortCaptured { value: v } =>
-      if trim(s: v) == "" {
-        BrowserToolchainUnresolved { cause: "runner_browser_toolchain: hostname -s returned empty output" }
-      } else {
-        match runner_browser_toolchain_host_admission(host: trim(s: v) as NonEmptyStr) {
-          BrowserToolchainHostRefused { host: _, cause: c } => BrowserToolchainUnresolved { cause: c }
-          BrowserToolchainHostAdmitted { deploy: _, location: loc } => {
-            let standing = runner_browser_toolchain_readback_wet(host: trim(s: v) as NonEmptyStr, location: loc)
-            if runner_browser_toolchain_ready(s: standing) {
-              BrowserToolchainReady { location: loc, standing: standing }
-            } else {
-              BrowserToolchainNotReady { standing: standing }
+      // THE MACHINE'S OWN ANSWER IS A NAME, NOT AN IDENTITY
+      // (gunbc.hostname_allocation::observed_host_identity; gunbc.plans.fleet_machine_authority
+      // section 4.4 (b*)). What the admission and the readback are given is the RESOLVED identity; a
+      // spelling that resolves to nothing -- an empty answer, an unknown one, one that answers to two
+      // hosts -- refuses here by that spelling, and is never trimmed into a HostIdentity or compared
+      // to one.
+      match observed_host_identity(observed: v) {
+        ObservedHostIdentityRefused { refusal: r } =>
+          BrowserToolchainUnresolved {
+            cause: join(["runner_browser_toolchain: the kernel hostname does not resolve to a host: ",
+                         observed_host_identity_refusal_text(refusal: r)], "")
+          }
+        ObservedHostIdentityResolved { host: identity } =>
+          match runner_browser_toolchain_host_admission(host: identity as NonEmptyStr) {
+            BrowserToolchainHostRefused { host: _, cause: c } => BrowserToolchainUnresolved { cause: c }
+            BrowserToolchainHostAdmitted { deploy: _, location: loc } => {
+              let standing = runner_browser_toolchain_readback_wet(host: identity as NonEmptyStr, location: loc)
+              if runner_browser_toolchain_ready(s: standing) {
+                BrowserToolchainReady { location: loc, standing: standing }
+              } else {
+                BrowserToolchainNotReady { standing: standing }
+              }
             }
           }
-        }
       }
   }
 }

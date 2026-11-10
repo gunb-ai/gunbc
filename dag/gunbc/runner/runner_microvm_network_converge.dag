@@ -25,6 +25,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
+import gunbc.hostname_allocation {
+  observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed,
+  ObservedHostSelectorJoinRefused, ObservedHostJoinRefusal, JoinExpectedUnnamed, JoinObservedUnnamed,
+}
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, runner_slot_identities_of }
 import extdeps.network.ipv4 { render_ipv4_address, render_ipv4_prefix }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -808,25 +812,32 @@ fn receipt_text(o: ConvergeOutcome) -> String {
 }
 
 
-// THE DISPATCH NAMES A HOST AND THE MACHINE NAMES ITSELF, AND THE RUN REFUSES UNLESS THEY AGREE.
-// This mode mutates host-global state -- the nft table, forwarding, networkd's links -- so applying
-// to "whichever modeled host I turn out to be" means a mislabeled runner dispatched for srv1 can
-// mutate srv3 (side-chat hold on #11751). The comparison happens BEFORE any staging write and before
-// any privileged operation, so a refusal leaves the host untouched.
+// THE DISPATCH NAMES A HOST AND THE MACHINE NAMES ITSELF, AND THE RUN REFUSES UNLESS THEY ARE THE
+// SAME MACHINE. This mode mutates host-global state -- the nft table, forwarding, networkd's links --
+// so applying to "whichever modeled host I turn out to be" means a mislabeled runner dispatched for
+// srv1 can mutate srv3 (side-chat hold on #11751). The join happens BEFORE any staging write and
+// before any privileged operation, so a refusal leaves the host untouched.
+//
+// THE JOIN IS NOT A STRING COMPARISON (gunbc.hostname_allocation::observed_host_selector_join;
+// gunbc.plans.fleet_machine_authority section 4.4 (b*)). Both inputs are names: each resolves through
+// the allocation's selector and the binding holds only when both name the SAME HostIdentity, so the
+// host answering "butch" is bound as srv14 instead of refused for the crime of having a name. What is
+// carried onward is the RESOLVED identity; a name that resolves to nothing refuses by that name and
+// is never used as an identity.
 type HostBinding
   = HostBindingHeld { host: HostIdentity }
-  | HostBindingRefused { expected: String, observed: String }
+  | HostBindingRefused { cause: ObservedHostJoinRefusal }
   | HostBindingUnnamed { detail: String }
 
 fn bind_requested_host(expected: String, observed: String) -> HostBinding {
-  if trim(s: expected) == "" {
-    HostBindingUnnamed { detail: "the dispatch named no expected host" }
-  } else if trim(s: observed) == "" {
-    HostBindingUnnamed { detail: "the machine did not name itself" }
-  } else if trim(s: expected) != trim(s: observed) {
-    HostBindingRefused { expected: trim(s: expected), observed: trim(s: observed) }
-  } else {
-    HostBindingHeld { host: trim(s: observed) as HostIdentity }
+  match observed_host_selector_join(expected: expected, observed: observed) {
+    ObservedHostSelectorAgreed { host: identity } => HostBindingHeld { host: identity }
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      match c {
+        JoinExpectedUnnamed { expected: _ } => HostBindingUnnamed { detail: "the dispatch named no expected host" }
+        JoinObservedUnnamed { observed: _ } => HostBindingUnnamed { detail: "the machine did not name itself" }
+        _ => HostBindingRefused { cause: c }
+      }
   }
 }
 
@@ -842,8 +853,9 @@ fn host_binding_refusal_text(b: HostBinding) -> String {
   match b {
     HostBindingUnnamed { detail: d } =>
       join(["microvm-network-observe: HostBindingUnnamed -- ", d, "; nothing was staged and no privileged operation ran"], "")
-    HostBindingRefused { expected: e, observed: o } =>
-      join(["microvm-network-observe: HostBindingRefused -- expected ", e, ", observed ", o, "; nothing was staged and no privileged operation ran"], "")
+    HostBindingRefused { cause: c } =>
+      join(["microvm-network-observe: HostBindingRefused -- ", observed_host_join_refusal_text(cause: c),
+            "; nothing was staged and no privileged operation ran"], "")
     HostBindingHeld { host: h } => join(["microvm-network-observe: bound to ", h as String], "")
   }
 }

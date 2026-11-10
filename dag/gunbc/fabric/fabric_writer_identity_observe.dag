@@ -11,6 +11,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageDoorSocket, FabricStorageServed, FabricStorageBindingUnplaced, FabricStorageBindingRefused, fabric_storage_presented_identity }
 import gunbc.fabric.fabric_storage_wire { FabricIdentityRead, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricIdentityLocalPeer, FabricIdentityUnattested }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
@@ -138,15 +139,22 @@ type FabricWriterIdentitySubject
   = FabricWriterIdentitySubjectAdmitted { host: HostIdentity }
   | FabricWriterIdentitySubjectRefused { reason: String }
 
+// THE HOST THE DISPATCH NAMES AND THE HOST THE KERNEL ANSWERS ARE TWO NAMES FOR POSSIBLY TWO
+// MACHINES, and neither name is an identity. The join resolves BOTH through the allocation's selector
+// (gunbc.hostname_allocation::observed_host_selector_join) and holds only when they name the SAME
+// HostIdentity: a dispatch naming "srv14" and a kernel answering "butch" agree, which is the shape
+// this site's old direct string comparison refused outright. A side that resolves to nothing refuses
+// by the spelling it refused, and nothing falls back to the raw string -- a receipt labelled with a
+// host nobody resolved is the guess the roster trigger forbids.
 fn fabric_writer_identity_subject(dispatched: String, kernel_hostname: String) -> FabricWriterIdentitySubject {
-  if dispatched == "" {
-    FabricWriterIdentitySubjectRefused { reason: "the dispatch names no host" }
-  } else if kernel_hostname == "" {
-    FabricWriterIdentitySubjectRefused { reason: join(["the kernel hostname could not be read on the runner the dispatch named ", dispatched], "") }
-  } else if dispatched != kernel_hostname {
-    FabricWriterIdentitySubjectRefused { reason: join(["the dispatch names ", dispatched, " but this job runs on ", kernel_hostname, "; a receipt labelled with a host it was not taken on is refused"], "") }
-  } else {
-    FabricWriterIdentitySubjectAdmitted { host: dispatched as HostIdentity }
+  match observed_host_selector_join(expected: dispatched, observed: kernel_hostname) {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      FabricWriterIdentitySubjectRefused {
+        reason: join(["the dispatch and this machine do not name one resolvable host: ",
+                      observed_host_join_refusal_text(cause: c)], "")
+      }
+    ObservedHostSelectorAgreed { host: identity } =>
+      FabricWriterIdentitySubjectAdmitted { host: identity }
   }
 }
 

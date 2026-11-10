@@ -2,6 +2,7 @@ module gunbc.hostname_allocation
 
 import std.types { List, Bool, String, Int, NonEmptyStr }
 import std.optional { Absent, Present }
+import std.algebra { trim }
 import std.allocation_roster {
   AllocationAdmission,
   AllocationAdmitted,
@@ -547,4 +548,159 @@ fn resolve_host_selector_in_admitted(allocations: List<HostnameAllocation>, sele
 
 fn resolve_host_selector(selector: String) -> HostSelectorResolution {
   resolve_host_selector_in(allocations: fleet_machine_registry, selector: selector)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OBSERVED KERNEL HOSTNAME IS A NAME, NEVER AN IDENTITY
+// ---------------------------------------------------------------------------------------------
+
+// WHAT A MACHINE ANSWERS `hostname -s` LOOKS LIKE AN IDENTITY AND IS NOT ONE. The roster already
+// disproves the equation: srv14 answers "butch", srv15 answers "bobo", srv9-srv12 answer francis,
+// emerson, mil and bastien, mtjade1 answers eric -- and every rename this program performs adds
+// another pair. A site that compares or casts the kernel's answer against a HostIdentity therefore
+// refuses the hosts whose name and identity differ, and a site that CARRIES it as the identity binds
+// the wrong machine silently, today on those hosts and on every renamed one.
+// (gunbc.plans.fleet_machine_authority section 4.4 (b*), the comparator census its P1 replaces.)
+//
+// THE ONE RULE, SHARED BY EVERY SUCH SITE INSTEAD OF THIRTEEN COPIES OF IT: the observed spelling
+// resolves through resolve_host_selector above, and only what it resolves to is carried onward. An
+// empty answer is its own refusal -- a failed observation is not a name -- and Ambiguous and Unknown
+// name the spelling they refused. NOTHING falls back to the raw string: a site that "just" compares
+// on a fallback has reinstated the equation this function exists to break, and a comparison against
+// a refused spelling is not a check but a coincidence.
+//
+// IT IS PURE AND IT NEEDS NO HOST: a witness hands it "butch", or a spelling no roster answers to,
+// and discriminates the two answers at this one interface (gunbc.design_argument::witness_one_interface).
+type ObservedHostIdentity
+  = ObservedHostIdentityResolved { host: HostIdentity }
+  | ObservedHostIdentityRefused { refusal: ObservedHostIdentityRefusal }
+
+type ObservedHostIdentityRefusal
+  = ObservedHostUnnamed { observed: String }
+  | ObservedHostAmbiguous { observed: String, candidates: List<DnsLabel> }
+  | ObservedHostUnknown { observed: String }
+
+fn observed_host_identity(observed: String) -> ObservedHostIdentity {
+  observed_host_identity_in(allocations: gunbc_fleet_hostname_allocations, observed: observed)
+}
+
+// THE SAME RULE OVER A GIVEN ROSTER, so a witness can hand it two hosts that answer to one short
+// name and see the Ambiguous refusal without editing the fleet (the pattern resolve_host_selector_in
+// already sets in this module).
+fn observed_host_identity_in(allocations: List<HostnameAllocation>, observed: String) -> ObservedHostIdentity {
+  let spelling = trim(s: observed)
+  if spelling == "" {
+    ObservedHostIdentityRefused { refusal: ObservedHostUnnamed { observed: observed } }
+  } else {
+    match resolve_host_selector_in(allocations: allocations, selector: spelling) {
+      HostSelectorResolved { host: host } => ObservedHostIdentityResolved { host: host }
+      HostSelectorAmbiguous { selector: s, candidates: c } =>
+        ObservedHostIdentityRefused { refusal: ObservedHostAmbiguous { observed: s, candidates: c } }
+      HostSelectorUnknown { selector: s } =>
+        ObservedHostIdentityRefused { refusal: ObservedHostUnknown { observed: s } }
+    }
+  }
+}
+
+// WHAT EACH REFUSAL TELLS AN OPERATOR, ONCE. A site prefixes its own context to this; none of them
+// writes its own sentence about what an unknown spelling means, because thirteen sentences is
+// thirteen chances to say something the selector does not mean.
+fn observed_host_identity_refusal_text(refusal: ObservedHostIdentityRefusal) -> String {
+  match refusal {
+    ObservedHostUnnamed { observed: o } =>
+      join(["the kernel named nothing (the raw answer was ", quote_spelling(s: o),
+            "); a failed observation is not a host name"], "")
+    ObservedHostAmbiguous { observed: o, candidates: c } =>
+      join([quote_spelling(s: o), " answers to more than one host (",
+            join(map(c, d => d as String), ", "),
+            "); a shorter form selects a host only when exactly one answers to it"], "")
+    ObservedHostUnknown { observed: o } =>
+      join([quote_spelling(s: o),
+            " is no host's identity, allocated hostname, or shorter form of its drawn name;",
+            " the kernel's answer is a name and is never a HostIdentity"], "")
+  }
+}
+
+fn quote_spelling(s: String) -> String {
+  concat(concat("[", s), "]")
+}
+
+// THE JOIN OF THE TWO FACTS EVERY DISPATCH-BOUND SITE HOLDS: what the dispatch or the roster selected,
+// and what this machine answered. Both sides are names until this resolves them, and the join holds
+// only when both name the SAME HostIdentity. Each side refuses by its own typed cause, so an operator
+// is sent to the dispatch or to the roster -- or to both, when they name two different machines.
+type ObservedHostSelectorJoin
+  = ObservedHostSelectorAgreed { host: HostIdentity }
+  | ObservedHostSelectorJoinRefused { cause: ObservedHostJoinRefusal }
+
+type ObservedHostJoinRefusal
+  = JoinObservedUnnamed { observed: String }
+  | JoinObservedAmbiguous { observed: String, candidates: List<DnsLabel> }
+  | JoinObservedUnknown { observed: String }
+  | JoinExpectedUnnamed { expected: String }
+  | JoinExpectedAmbiguous { expected: String, candidates: List<DnsLabel> }
+  | JoinExpectedUnknown { expected: String }
+  | JoinHostsDisagree { expected: HostIdentity, observed: HostIdentity }
+
+fn join_refusal_of_observed(r: ObservedHostIdentityRefusal) -> ObservedHostJoinRefusal {
+  match r {
+    ObservedHostUnnamed { observed: o } => JoinObservedUnnamed { observed: o }
+    ObservedHostAmbiguous { observed: o, candidates: c } => JoinObservedAmbiguous { observed: o, candidates: c }
+    ObservedHostUnknown { observed: o } => JoinObservedUnknown { observed: o }
+  }
+}
+
+fn observed_host_selector_join(expected: String, observed: String) -> ObservedHostSelectorJoin {
+  observed_host_selector_join_in(
+    allocations: gunbc_fleet_hostname_allocations, expected: expected, observed: observed)
+}
+
+fn observed_host_selector_join_in(
+  allocations: List<HostnameAllocation>, expected: String, observed: String
+) -> ObservedHostSelectorJoin {
+  match observed_host_identity_in(allocations: allocations, observed: expected) {
+    ObservedHostIdentityRefused { refusal: r } =>
+      match r {
+        ObservedHostUnnamed { observed: e } => ObservedHostSelectorJoinRefused { cause: JoinExpectedUnnamed { expected: e } }
+        ObservedHostAmbiguous { observed: e, candidates: c } => ObservedHostSelectorJoinRefused { cause: JoinExpectedAmbiguous { expected: e, candidates: c } }
+        ObservedHostUnknown { observed: e } => ObservedHostSelectorJoinRefused { cause: JoinExpectedUnknown { expected: e } }
+      }
+    ObservedHostIdentityResolved { host: wanted } =>
+      match observed_host_identity_in(allocations: allocations, observed: observed) {
+        ObservedHostIdentityRefused { refusal: r } =>
+          ObservedHostSelectorJoinRefused { cause: join_refusal_of_observed(r: r) }
+        ObservedHostIdentityResolved { host: answered } =>
+          if (wanted as String) == (answered as String) {
+            ObservedHostSelectorAgreed { host: answered }
+          } else {
+            ObservedHostSelectorJoinRefused { cause: JoinHostsDisagree { expected: wanted, observed: answered } }
+          }
+      }
+  }
+}
+
+fn observed_host_join_refusal_text(cause: ObservedHostJoinRefusal) -> String {
+  match cause {
+    JoinObservedUnnamed { observed: o } =>
+      observed_host_identity_refusal_text(refusal: ObservedHostUnnamed { observed: o })
+    JoinObservedAmbiguous { observed: o, candidates: c } =>
+      observed_host_identity_refusal_text(refusal: ObservedHostAmbiguous { observed: o, candidates: c })
+    JoinObservedUnknown { observed: o } =>
+      observed_host_identity_refusal_text(refusal: ObservedHostUnknown { observed: o })
+    JoinExpectedUnnamed { expected: e } =>
+      join(["the dispatch named nothing (the raw selection was ", quote_spelling(s: e),
+            "); a dispatch that selects no host runs nothing"], "")
+    JoinExpectedAmbiguous { expected: e, candidates: c } =>
+      join([quote_spelling(s: e), " answers to more than one host (",
+            join(map(c, d => d as String), ", "),
+            "); the dispatch must select one"], "")
+    JoinExpectedUnknown { expected: e } =>
+      join([quote_spelling(s: e),
+            " is no host's identity, allocated hostname, or shorter form of its drawn name;",
+            " the dispatch selected a host the roster does not have"], "")
+    JoinHostsDisagree { expected: e, observed: o } =>
+      join(["the dispatch selected ", e as String, " and this machine answers ", quote_spelling(s: o as String),
+            "; NOTHING has been fetched, installed or written. A run that continued here would mutate ",
+            o as String, " and certify it under ", e as String, "'s name"], "")
+  }
 }
