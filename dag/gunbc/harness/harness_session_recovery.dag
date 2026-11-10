@@ -365,16 +365,27 @@ fn request_pending_cause_of_wire(wire: String) -> RequestPendingCause? {
   else { none }
 }
 
-// THE LEGACY CAUSE DERIVATION. The old build (5592b17b/4e63be8e) wrote turn.request_pending events
-// with a free-text `cause` string but no typed `cause_class` member. The text embeds the canonical
-// cause phrase from request_pending_cause_text; deriving the class from it is the one honest reading
-// of a legacy record. An unrecognized text reads as PendingNoResponse (the catch-all) — never as
-// "fresh" or "no pending event." A missing cause text is malformed.
-fn request_pending_cause_of_legacy_text(text: String) -> RequestPendingCause {
-  if string_contains(s: text, pattern: "429") { PendingUpstreamBusy }
-  else if string_contains(s: text, pattern: "503") { PendingNoCardServing }
-  else if string_contains(s: text, pattern: "502") { PendingCardUnanswered }
-  else { PendingNoResponse }
+// THE LEGACY CAUSE DERIVATION. The old builds (5592b17b/4e63be8e) wrote turn.request_pending events
+// with a free-text `cause` string and NO typed `cause_class` member, and their wording drifts across
+// builds ("the pool front answered 429 (every compatible upstream busy)" in 5592b17b, "the operator
+// route answered 429 (...)" in 4e63be8e), so no single canonical phrase matches. What is stable across
+// every build is the anchor that the capacity status is written as "answered <status>": a worker never
+// writes a round number after "answered" (a round is the "round N:" prefix), so matching the whole
+// "answered <status>" phrase cannot collide with the round. A text carrying none of these anchors is
+// none -- the caller refuses it as malformed. There is NO catch-all default: fabricating PendingNoResponse
+// for an unrecognized text would be a silent widen over a value the record never carried.
+fn request_pending_cause_of_legacy_text(text: String) -> RequestPendingCause? {
+  if string_contains(s: text, pattern: "answered 429") {
+    Present { value: PendingUpstreamBusy }
+  } else if string_contains(s: text, pattern: "answered 503") {
+    Present { value: PendingNoCardServing }
+  } else if string_contains(s: text, pattern: "answered 502") {
+    Present { value: PendingCardUnanswered }
+  } else if string_contains(s: text, pattern: "drew no response at all") {
+    Present { value: PendingNoResponse }
+  } else {
+    none
+  }
 }
 
 fn request_pending_cause_text(c: RequestPendingCause) -> String {
@@ -631,12 +642,16 @@ fn session_request_pending_event_of(doc: JsonValue) -> SessionRecoveryEvent {
               match json_field_string(obj: doc, key: "cause_class") {
                 FieldAbsent =>
                   // LEGACY READER: the old build wrote `cause` as free text with no `cause_class`.
-                  // Derive the cause from the legacy text; a missing cause text is malformed.
+                  // Derive the cause from the legacy text's "answered <status>" anchor; a text with
+                  // no recognized anchor is malformed -- there is no catch-all cause.
                   match json_field_string(obj: doc, key: "cause") {
                     FieldAbsent => RecoveryEventMalformed { mismatch: "turn.request_pending: member cause_class is absent and no legacy cause text to derive it from" }
                     FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending legacy cause text: ", m], "") }
                     FieldRead { value: cause_text } =>
-                      RecoveryEventRequestPending { cause: request_pending_cause_of_legacy_text(text: cause_text), round: round, interrupted_calls: interrupted_calls, since: since, resumable: resumable }
+                      match request_pending_cause_of_legacy_text(text: cause_text) {
+                        Absent => RecoveryEventMalformed { mismatch: join(["turn.request_pending: the legacy cause text carries no recognized cause anchor (no \"answered 503/502/429\", no \"drew no response at all\"): ", cause_text], "") }
+                        Present { value: derived } => RecoveryEventRequestPending { cause: derived, round: round, interrupted_calls: interrupted_calls, since: since, resumable: resumable }
+                      }
                   }
                 FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
                 FieldRead { value: wire } =>

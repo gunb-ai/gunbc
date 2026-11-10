@@ -257,7 +257,6 @@ type SubmissionCapture {
   scm_root_locator: SubmissionCaptureRoot
   digest: String
   submission: WorkerSubmission
-  handin: String?
 }
 
 fn submission_capture_basename(head_sha: String) -> String {
@@ -267,29 +266,15 @@ fn submission_capture_basename(head_sha: String) -> String {
 fn submission_capture_json(capture: SubmissionCapture) -> JsonValue {
   match capture.scm_root_locator {
     SubmissionCaptureRootBound { locator } =>
-      match capture.handin {
-        Present { value: h } =>
-          json_object(members: [
-            json_kv(key: "schema", value: json_string(s: submission_capture_schema_v4 as String)),
-            json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
-            json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
-            json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
-            json_kv(key: "scm_root_locator", value: json_string(s: locator)),
-            json_kv(key: "digest", value: json_string(s: capture.digest)),
-            json_kv(key: "submission", value: submission_json(submission: capture.submission)),
-            json_kv(key: "handin", value: json_string(s: h)),
-          ])
-        Absent =>
-          json_object(members: [
-            json_kv(key: "schema", value: json_string(s: submission_capture_schema_v3 as String)),
-            json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
-            json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
-            json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
-            json_kv(key: "scm_root_locator", value: json_string(s: locator)),
-            json_kv(key: "digest", value: json_string(s: capture.digest)),
-            json_kv(key: "submission", value: submission_json(submission: capture.submission)),
-          ])
-      }
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: submission_capture_schema_v3 as String)),
+        json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
+        json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
+        json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
+        json_kv(key: "scm_root_locator", value: json_string(s: locator)),
+        json_kv(key: "digest", value: json_string(s: capture.digest)),
+        json_kv(key: "submission", value: submission_json(submission: capture.submission)),
+      ])
     SubmissionCaptureRootLegacyUnbound =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: submission_capture_schema as String)),
@@ -326,11 +311,15 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
               reason: "capture record scm_root_locator member is absent, duplicated or not a string",
             }
           ReceiptMemberRead { value: locator } =>
+            // v4 = v3 plus an optional `handin` string. No consumer reads handin on this authority
+            // (the continuation classifies a capture by its submission and root binding, not its
+            // hand-in prose), so it is NOT modelled on SubmissionCapture: it is validated (a
+            // non-string handin is refused, fail-closed) and then dropped by the tail.
             match json_object_unique_member(v: doc, key: "handin") {
               JsonMemberAbsent =>
-                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: none)
-              JsonMemberFound { value: JsonString { value: h } } =>
-                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: Present { value: h })
+                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
+              JsonMemberFound { value: JsonString { value: _ } } =>
+                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
               JsonMemberFound { value: _ } =>
                 CaptureNotDecodable { reason: "capture record handin member is not a string" }
               JsonMemberDuplicated { count: _ } =>
@@ -346,10 +335,10 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
               reason: "capture record scm_root_locator member is absent, duplicated or not a string",
             }
           ReceiptMemberRead { value: locator } =>
-            submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: none)
+            submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
         }
       } else if schema == (submission_capture_schema as String) {
-        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound, handin: none)
+        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound)
       } else {
         CaptureNotDecodable {
           reason: join([
@@ -364,8 +353,9 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
 
 // THE MEMBER TAIL, SHARED BY ALL SCHEMAS. The binding arrived as a parameter because the schema
 // dispatch already decided it; everything from head_sha down is the carrier all versions carry
-// unchanged. `handin` arrives as a parameter for the same reason: v4 carries it, v3 and v2 do not.
-fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot, handin: String?) -> SubmissionCaptureDecode {
+// unchanged. v4's extra `handin` member is validated at the schema arm and dropped here -- it has
+// no consumer on this authority, so it is not carried onto SubmissionCapture.
+fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -> SubmissionCaptureDecode {
   match publication_receipt_member(doc: doc, key: "head_sha") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
     ReceiptMemberRead { value: head_sha } =>
@@ -394,7 +384,6 @@ fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot, h
                               scm_root_locator: root,
                               digest: digest,
                               submission: submission,
-                              handin: handin,
                             },
                           }
                       }

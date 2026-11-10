@@ -498,9 +498,10 @@ test fn patient_claim_an_unknown_pending_cause_class_is_malformed() -> Bool {
 
 // CLAIM L-1 (#15822 row 4, legacy reader). A turn.request_pending written by the OLD lab build
 // (5592b17b/4e63be8e) carries a free-text `cause` but NO `cause_class` member. The reader derives
-// the cause from the text's embedded canonical phrase ("429" → upstream_busy) and the event reads
-// as a valid standing pending request -- never as malformed, never as fresh. The shape below is
-// copied from the real legacy record at /opt/gunbc-lab/codex-provider-feedback-v0/attempt-state/
+// the cause from the "answered <status>" anchor (the wording around it drifts across builds, so no
+// canonical phrase is used) and the event reads as a valid standing pending request -- never as
+// malformed, never as fresh. The shape below is copied from the real legacy record at
+// /opt/gunbc-lab/codex-provider-feedback-v0/attempt-state/
 // debt-expected-red-mock-totality-dead-rows-ae5a42384c6a5e13d/worker/provider-events.jsonl.
 test fn legacy_claim_request_pending_without_cause_class_reads_as_pending() -> Bool {
   let legacy_line = "{\"type\":\"turn.request_pending\",\"round\":7,\"cause\":\"round 7: the pool front answered 429 (every compatible upstream busy); no model output came back and the request had no effect, so it stands pending until the belt re-delivers it\",\"since_epoch_seconds\":1793228565,\"resumable\":true,\"interrupted_calls\":[]}"
@@ -533,13 +534,40 @@ test fn legacy_claim_request_pending_without_cause_class_or_cause_is_malformed()
   })
 }
 
-// CLAIM L-4 (legacy reader, non-429 cause). A legacy record with "503" in the text derives
-// no_card_serving.
+// CLAIM L-4 (legacy reader, non-429 cause). A legacy record with the "answered 503" anchor derives
+// no_card_serving. The wording "(no card serving)" here differs from 5592b17b's "(no TLS card
+// serving)" -- both carry the same "answered 503" anchor, which is what the reader keys on.
 test fn legacy_claim_request_pending_legacy_503_reads_as_no_card_serving() -> Bool {
   let legacy_line = "{\"type\":\"turn.request_pending\",\"round\":2,\"cause\":\"round 2: the pool front answered 503 (no card serving); no model output came back\",\"since_epoch_seconds\":2000,\"resumable\":true,\"interrupted_calls\":[]}"
   (match session_recovery_of_events(lines: ["{\"type\":\"turn.started\"}", legacy_line]) {
     SessionRecoveryRequestPending { cause, resumable, resume_round: _, interrupted_calls: _, since: _, re_deliveries: _, wakes_made: _, last_delivery_at: _ } =>
       request_pending_cause_wire(c: cause) == "no_card_serving" && resumable
+    _ => false
+  })
+}
+
+// CLAIM L-5 (legacy reader, NO fabricated default; review 38602 / finding 1). A legacy text that
+// carries no "answered <status>" anchor and no "drew no response at all" phrase is REFUSED as
+// malformed -- the reader never guesses a cause the record did not state.
+test fn legacy_claim_request_pending_unrecognized_text_is_malformed_not_guessed() -> Bool {
+  let unknown = "{\"type\":\"turn.request_pending\",\"round\":4,\"cause\":\"round 4: the front said something we have no word for\",\"since_epoch_seconds\":3000,\"resumable\":true,\"interrupted_calls\":[]}"
+  (match session_recovery_of_events(lines: ["{\"type\":\"turn.started\"}", unknown]) {
+    SessionRecoveryMalformed { mismatch: _ } => true
+    _ => false
+  })
+}
+
+// CLAIM L-6 (legacy reader, no round-number collision; review 38602 / finding 1). A round number
+// that happens to read 429/502/503 must NOT be mistaken for a capacity status: the anchor is the
+// phrase "answered 429", and "round 429:" never produces that. With no real anchor the event is
+// malformed, never a fabricated upstream_busy.
+test fn legacy_claim_request_pending_round_number_is_not_read_as_capacity_status() -> Bool {
+  let collision = "{\"type\":\"turn.request_pending\",\"round\":429,\"cause\":\"round 429: the front answered with no status code and none of the known words\",\"since_epoch_seconds\":4000,\"resumable\":true,\"interrupted_calls\":[]}"
+  (match session_recovery_of_events(lines: ["{\"type\":\"turn.started\"}", collision]) {
+    SessionRecoveryMalformed { mismatch: _ } => true
+    SessionRecoveryRequestPending { cause, resume_round: _, interrupted_calls: _, resumable: _, since: _, re_deliveries: _, wakes_made: _, last_delivery_at: _ } =>
+      // If it ever read as a pending event, it must NOT be the wrong upstream_busy.
+      request_pending_cause_wire(c: cause) != "upstream_busy"
     _ => false
   })
 }

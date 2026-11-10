@@ -8132,7 +8132,6 @@ fn belt_capture_record_write(instance: HostDashboardInstance, node_id: RoadmapNo
           scm_root_locator: intent.scm_root_locator,
           digest: intent.digest,
           submission: intent.submission,
-          handin: intent.handin,
         }),
       ) {
         BeltReceiptWritten => none
@@ -8233,7 +8232,6 @@ fn belt_capture_candidate_mint(
         scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
         digest: digest,
         submission: submission,
-        handin: none,
       }
       let persisted_before = match prior {
         Present { value: p } => commit_ordinal > p.scm_commit_ordinal && p.head_sha == base
