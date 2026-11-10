@@ -197,7 +197,7 @@ test fn a_retried_acceptance_is_the_same_operation_though_it_is_not_the_same_com
       b: issue_command_event(command: retry, recorded_at: "2026-11-04T08:00:02Z")))
   && claim("two different receipts on one node are two operations, so a node is not accepted once in its whole life",
     key != roadmap_acceptance_operation_identity(node: node,
-      choice: BuildAcceptCommand { receipt: sample_receipt_on(node: node, day: "2026-11-06"), evidence: earned(fact_set()) })))
+      choice: BuildAcceptCommand { receipt: sample_receipt_on(node: node, day: "2026-11-06"), evidence: earned(fact_set()) }))
 }
 
 test fn a_retired_node_is_retired_once_because_its_key_is_the_reason_not_the_call() -> Bool {

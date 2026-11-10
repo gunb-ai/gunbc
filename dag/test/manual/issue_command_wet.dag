@@ -3,12 +3,11 @@ module test.manual.issue_command_wet
 import std.types { String, NonEmptyStr, FilePath, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, roadmap_criteria_digest }
 import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, roadmap_event_envelope, roadmap_issue_comments, roadmap_event_heads, roadmap_node_standing, roadmap_node_standing_key, AcceptanceRecordedEvent, Retired, AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest }
 import gunbc.roadmap.roadmap_event_carrier { carrier_snapshot_close_failures, RoadmapEventAppend, roadmap_event_carrier_layout, roadmap_events_read, EventsRead, EventAppended, EventAlreadyPresent, EventAppendRefused }
-import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, CreateComment, AcceptNode, RetireNode, issue_command_apply }
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, CreateComment, AcceptNode, RetireNode, issue_command_event, issue_command_apply }
 import gunbc.roadmap.roadmap_event_cli { roadmap_retirement_operation_identity }
-import gunbc.roadmap.roadmap_model { RoadmapAcceptanceReceipt, roadmap_criteria_digest }
 import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedControlExecuted, HandbackDelivered }
 
 // Local throwaway Git remote only. Drives the command -> conditional carrier -> fold -> readback.
