@@ -600,3 +600,49 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
         .join()
         .unwrap();
 }
+
+// ---------------------------------------------------------------------------------------------
+// WIRE-CONTRACT ROW ON THE RUN GRAIN (#16241). A `CoproductWireContract` data row is a lookup key the
+// interpreter holds in one module while the coproduct it designates lives in another; the demanded entry
+// reaches the coproduct (through `github.Pulls.Get` -> `PullRequestState`) but spells no lexeme for the
+// contract row itself, so before #16241 the declaration-grain cut never realized it and the run answered
+// 'no such coproduct' at the first body that decoded it. #16241's `realization_wire_contract_read_names`
+// seeds every such row by its own shape (a data row named `wire_contract`, or a `CoproductWireContract`
+// row initialising both `coproduct` and `encoding`) into the demanded set. This is the same seed-growth
+// authority as the precedent above (`a_row_named_only_through_a_demanded_signature_is_realized`): a row
+// only reachable through a reader's key, not a source lexeme, grown into the closure. It is RED at origin/main
+// (the reader is absent) and GREEN at head once #16241's reader is integrated, which is what makes it the
+// discriminating witness for that fix.
+
+#[test]
+fn wire_contract_row_reached_by_the_publisher_route_is_realized() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, _intern, si, modules) = graph_from("dag/gunbc/heal_publication.dag");
+            let demand = grain_demand(&modules, &["heal_publication_publish_for"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let row = "extdeps.github.pulls_contracts.pull_request_state_wire_contract";
+            let row_realized = realization.realized.contains_key(row);
+            // The row must be DECLARED in this run's index even when unrealized -- that is what makes its
+            // absence a realization gap (#16241), not an 'undeclared name' error.
+            let row_declared = realization.declared.contains_key(row);
+            eprintln!(
+                "WIRE_CONTRACT_GRAIN entry=heal_publication_publish_for row={row} row_realized={row_realized} row_declared={row_declared}"
+            );
+            assert!(
+                row_declared,
+                "the contract row is declared in the graph the publisher route reaches (a realization gap, not an absence)"
+            );
+            assert!(
+                row_realized,
+                "the CoproductWireContract row the interpreter decodes at publish must be realized by the demanded grain (reader seed, #16241): {row}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
