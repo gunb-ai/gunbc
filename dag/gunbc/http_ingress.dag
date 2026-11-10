@@ -662,3 +662,41 @@ fn http_ingress_native_contract(admission: HttpIngressAdmission, program: Native
       }
   }
 }
+
+// THE HOST'S KEY SET, DECLARED WHERE THE CHECKER CAN READ IT. The ingress host
+// (src/v1/stage0/src/cli_run/http_ingress_host.rs) evaluates these folds BY NAME at startup and
+// per request -- the names exist in host source as strings, so no .dag declaration spells them
+// and the demanded grain (5e315131 onward) realizes none of them: the srv1 lab serve unit
+// crash-looped refusing `http_ingress_handler_identity` ("no declaration named ... in this
+// execution's loaded index"). This row is that reader's DECLARED KEY SET: the infer-side runtime
+// key registry (src/v1/04_infer.dag runtime_key_readers, instance loaded_index_keyed_call) seeds
+// and edges these names into realization, and the host reads THE SAME ROW at startup to refuse
+// with every missing key named instead of dying at the first consult. One authority, read twice:
+// a fold the host gains without entering this row is caught by the loaded-index check at startup,
+// and a row entry the host never evaluates is dead weight the audit keeps visible.
+data http_ingress_host_read_folds: List<String> = [
+  "http_ingress_arguments",
+  "http_ingress_announcement",
+  "http_ingress_body_limit_bytes",
+  "http_ingress_budget_refused",
+  "http_ingress_cpu_limit_ms",
+  "http_ingress_fact_plan",
+  "http_ingress_frame",
+  "http_ingress_handler_error",
+  "http_ingress_handler_identity",
+  "http_ingress_head_limit_bytes",
+  "http_ingress_listener_refusal",
+  "http_ingress_not_a_response",
+  "http_ingress_outgoing",
+  "http_ingress_pre_evaluation_routes",
+  "http_ingress_read_refused",
+  "http_ingress_read_timeout_ms",
+  "http_ingress_wall_limit_ms",
+  "http_ingress_wire_head",
+  "http_ingress_host_read_folds_reader",
+]
+
+// The row, reachable as a fold so the host -- which reaches the program only through folds --
+// reads THE ROW ITSELF and not a second transcription of it. It names itself in the row above:
+// the registry must realize the reader the host reads the key set through.
+fn http_ingress_host_read_folds_reader() -> List<String> { http_ingress_host_read_folds }
