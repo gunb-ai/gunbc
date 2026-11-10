@@ -1,0 +1,96 @@
+module v2.test.claim.compiler.branch_arm_closure_inhabits
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol }
+import std.types { Bool }
+import v2.compiler.infer { infer }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data bac_artifact: Artifact = Artifact { kind: SourceFile, id: ^branch_arm_closure_inhabits_artifact, file_path: "src/v2/pilot/bac_pilot.dag" }
+
+fn bac_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^branch_arm_closure_inhabits_cu,
+    source_root: V2Tree
+  }
+}
+
+fn bac_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      bac_witness(src: concat("module p\n\n", body), artifact: bac_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn bac_infer_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn bac_fatal_is(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+// THE FIX: a return-annotated closure with unannotated parameters in a branch/match arm at an arrow-typed
+// declared return. The closure's fresh parameter type variable is instantiated from the expected arrow's
+// input types (infer_branch_arm_callback_frame), making the closure's type derivable and the branch inhabit
+// the declared return. RED ON BASE: the closure's type is undetermined (FunctionValueSignatureUndetermined),
+// the arm is not held, the branch join cannot unify the undetermined arm types, and the function refuses.
+
+fn bac_if_both_arms_accept() -> Outcome<ResolvedTree> {
+  bac_assemble(body: "fn f(c: Bool) -> fn(Int) -> Int {\n  if c { fn(q) -> Int { q } } else { fn(r) -> Int { r } }\n}\n")
+}
+test fn bac_if_both_arms_inhabit_arrow_return() -> Bool { bac_infer_accepted(o: bac_if_both_arms_accept()) }
+
+fn bac_match_both_arms_accept() -> Outcome<ResolvedTree> {
+  bac_assemble(body: "fn f(c: Bool) -> fn(Int) -> Int {\n  match c {\n    true => fn(q) -> Int { q }\n    false => fn(r) -> Int { r }\n  }\n}\n")
+}
+test fn bac_match_both_arms_inhabit_arrow_return() -> Bool { bac_infer_accepted(o: bac_match_both_arms_accept()) }
+
+// NEGATIVE CONTROL: an arm closure whose return type truly differs from the declared return must still refuse.
+// fn(q) -> Bool in an arm where the declared return is fn(Int) -> Int: the closure's codomain is Bool, which
+// does not inhabit Int, so the branch arms conflict.
+
+fn bac_arm_wrong_return_refuses() -> Outcome<ResolvedTree> {
+  bac_assemble(body: "fn f(c: Bool) -> fn(Int) -> Int {\n  if c { fn(q) -> Bool { true } } else { fn(r) -> Int { r } }\n}\n")
+}
+test fn bac_arm_wrong_return_still_refuses() -> Bool {
+  !bac_infer_accepted(o: bac_arm_wrong_return_refuses())
+}
+
+// NEGATIVE CONTROL 2: one arm is a closure, the other is a literal Int -- they cannot inhabit fn(Int) -> Int.
+fn bac_mixed_shapes_refuse() -> Outcome<ResolvedTree> {
+  bac_assemble(body: "fn f(c: Bool) -> fn(Int) -> Int {\n  if c { fn(q) -> Int { q } } else { 1 }\n}\n")
+}
+test fn bac_mixed_closure_and_literal_refuses() -> Bool {
+  !bac_infer_accepted(o: bac_mixed_shapes_refuse())
+}

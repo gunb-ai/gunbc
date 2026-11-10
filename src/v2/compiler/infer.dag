@@ -9980,6 +9980,29 @@ fn infer_branch_arm_child_frame(slot: ChildSlot, frame: InferFrame) -> InferFram
   }
 }
 
+// A BRANCH OR MATCH ARM IS A CALLBACK POSITION: when the arm's child is a function value (a closure with
+// fresh parameter variables) and the frame carries an arrow-typed expected type, the closure's fresh
+// variables are instantiated from the expected arrow's input types -- the same mechanism an application
+// argument uses (infer_callback_formal_frame). Without this frame, the closure's type stays undetermined
+// at FunctionValueSignatureUndetermined and the branch join refuses it with a grounding-not-derived
+// diagnostic even though the expected type supplies the missing information.
+fn infer_branch_arm_callback_frame(frame: InferFrame, callback: Node) -> InferFrame {
+  match frame.declared_position_expected {
+    Absent => frame
+    Present { value: expected } =>
+      if infer_node_is_function_value(n: callback) {
+        infer_callback_formal_frame(
+          frame: frame,
+          expected: expected,
+          callback: callback,
+          type_params: type_param_names(n: callback)
+        )
+      } else {
+        frame
+      }
+  }
+}
+
 // A DECLARATION'S OWN TYPE PARAMETERS ARE RIGID AND IN SCOPE BENEATH IT. Entering a node that declares type
 // parameters (a generic fn's Arrow, a generic type declaration: v2.std.type_binder type_param_names) adds
 // them to the frame its children see, so a type atom spelling one of them is that declaration's rigid
@@ -10042,12 +10065,12 @@ fn infer_gather_child_context_unscoped(parent: Node, frame: InferFrame, acc: Inf
             match slot.ordinal {
               PositionalOrdinal { index: i } =>
                 match match_positional_slot(ordinal: i) {
-                  MatchArmSlot => infer_frame_with_declared_position_expected(frame: infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved), expected: frame.declared_position_expected)
+                  MatchArmSlot => infer_branch_arm_callback_frame(frame: infer_frame_with_declared_position_expected(frame: infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved), expected: frame.declared_position_expected), callback: edge.target)
                   MatchScrutineeSlot => infer_frame_inherited(frame: frame)
                 }
               LabeledChild => infer_frame_inherited(frame: frame)
             }
-          ComputationNode { behavior: Branch } => infer_branch_arm_child_frame(slot: slot, frame: frame)
+          ComputationNode { behavior: Branch } => infer_branch_arm_callback_frame(frame: infer_branch_arm_child_frame(slot: slot, frame: frame), callback: edge.target)
           ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
           TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
         }
