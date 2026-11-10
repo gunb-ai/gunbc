@@ -1209,6 +1209,15 @@ fn serve_seed_argv_probe() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
+            // cargo test starts in the crate dir (src/v1/stage0); resolve_entry_graph_demand_acquired_scoped
+            // takes the relative entry path as-is, so stand at the repo root first (as closure_of does).
+            let root = std::env::current_dir()
+                .unwrap()
+                .ancestors()
+                .find(|d| d.join("dag").exists() && d.join("Cargo.toml").exists())
+                .unwrap()
+                .to_path_buf();
+            std::env::set_current_dir(&root).unwrap();
             let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
             let requested = vec!["roadmap_ingress".to_string()];
             let (graph, source_indices) =
@@ -1320,6 +1329,135 @@ fn serve_seed_argv_probe() {
                 "SERVE_SEED modules_with_serve={:?} srv_items={:?} entry_found={} params={:?} result={:?}",
                 modules_with_serve, srv_items, entry_found, params_report, result
             );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+// CTX-REGISTRY PROBE (instance-2 discriminator). Static elimination has established: the receiver
+// leaf (auth test.RestReplay, NoConnective, 0 children), the exported tier-1 gate replay on it, and
+// the pass-level service census (14 keys) are IDENTICAL across scopes (quick-newt BB 1d3ff02f).
+// check_service_method_call_node is a pure fn of (receiver leaf, registry, si); the only unmeasured
+// input is the RUNTIME ctx.svc_registry that build_module_context hands the entry-body scope.
+// This probe calls the EXPORTED build_module_context exactly as typecheck_scoped's fold does
+// (symbol_index/census per @21898-21920; contributions from analyze_item over the claim module's
+// resolved items; parent_index from each scope's OWN typed graph -- the one input that legitimately
+// differs under demand) and prints the RestReplay-related keys of ctx.svc_registry/svc_locals per
+// scope. MISSING-in-demanded localizes the fix to the ctx assembly (census merge /
+// merge_scope_from_imports over parents); PRESENT-in-both contradicts the observed refusal and
+// indicts the caller-side recv_rt handed at the call (resolve_method_receiver_type over the
+// receiver's binding), which is then the next probe.
+#[test]
+fn ctx_svc_registry_decides_the_service_op_leaf() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, intern, si, _modules, graph) =
+                graph_from("dag/test/claim/github_pull_request_decode_witness.dag");
+            let intern = crate::v1_compiler_infer::seed_kernel_intern_table(intern.clone());
+            let symbol_index = crate::v1_compiler_infer::build_symbol_index_census(
+                graph.modules.clone(),
+                si.clone(),
+            );
+            let env = crate::v1_compiler_infer::type_env_over_symbol_index(
+                crate::v1_compiler_infer::compiler_kernel_type_env(si.clone(), intern.clone()),
+                symbol_index.clone(),
+            );
+            let census = Some(crate::v1_compiler_infer::service_census_registry(env.clone()));
+            let claim = graph
+                .modules
+                .iter()
+                .find(|rm| {
+                    crate::v1_std_core::authored_name_at(si.clone(), rm.module.clone())
+                        .contains("github_pull_request_decode_witness")
+                })
+                .expect("claim module present in graph");
+            let claim_name =
+                crate::v1_std_core::authored_name_at(si.clone(), claim.module.clone());
+            let contributions: Rc<Vec<Rc<crate::v1_compiler_infer::ItemContribution>>> = Rc::new(
+                claim
+                    .items
+                    .iter()
+                    .map(|item| {
+                        crate::v1_compiler_infer::analyze_item(
+                            item.clone(),
+                            env.clone(),
+                            claim_name.clone(),
+                        )
+                    })
+                    .collect(),
+            );
+            for (tag, requested) in
+                [("demanded", vec!["decoded_pull_request".to_string()]), ("closure", vec![])]
+            {
+                let scope = if requested.is_empty() {
+                    crate::v1_compiler_infer::DeclarationScope::EveryDeclaration
+                } else {
+                    crate::v1_compiler_infer::DeclarationScope::ReachableFrom {
+                        requested: Rc::new(requested.clone()),
+                    }
+                };
+                let pass = crate::v1_compiler_infer::typecheck_scoped(
+                    graph.clone(),
+                    si.clone(),
+                    intern.clone(),
+                    scope,
+                );
+                let parent_index: Rc<std::collections::HashMap<String, Rc<crate::v1_compiler_infer::TypedModule>>> =
+                    Rc::new(
+                        pass.graph
+                            .modules
+                            .iter()
+                            .map(|tm| {
+                                (
+                                    crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone()),
+                                    tm.clone(),
+                                )
+                            })
+                            .collect(),
+                    );
+                let ctx = crate::v1_compiler_infer::build_module_context(
+                    contributions.clone(),
+                    parent_index.clone(),
+                    crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_compiler_infer::VariantExportSurface>>(),
+                    claim.resolved_imports.clone(),
+                    env.clone(),
+                    claim_name.clone(),
+                    symbol_index.global_bare.clone(),
+                    census.clone(),
+                );
+                let svc_keys: Vec<String> = ctx
+                    .svc_registry
+                    .keys()
+                    .filter(|k| k.contains("RestReplay"))
+                    .cloned()
+                    .collect();
+                let ops: Vec<String> = ctx
+                    .svc_registry
+                    .get("test.RestReplay")
+                    .map(|v| {
+                        v.iter()
+                            .map(|o| o.name.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let local_keys: Vec<String> = ctx
+                    .locals
+                    .keys()
+                    .filter(|k| k.contains("rest_replay") || k.contains("RestReplay"))
+                    .cloned()
+                    .collect();
+                let parents: Vec<String> = parent_index
+                    .keys()
+                    .filter(|k| k.contains("rest_exchange_replay_probe") || k.contains("RestReplay"))
+                    .cloned()
+                    .collect();
+                eprintln!(
+                    "CTX_REG_PROBE tag={} claim={} parents={:?} svc_rest_keys={:?} ops={:?} locals={:?}",
+                    tag, claim_name, parents, svc_keys, ops, local_keys
+                );
+            }
         })
         .unwrap()
         .join()
