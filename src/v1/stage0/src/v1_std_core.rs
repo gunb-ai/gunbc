@@ -963,6 +963,11 @@ pub enum CompilerDiagnostic {
         missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
+    RefinementCastRefused {
+        source: String,
+        target: String,
+        span: Rc<SourceSpan>,
+    },
     TypeNameCarriesNoRecordConstructor {
         type_name: String,
         declared_variants: Rc<Vec<String>>,
@@ -1160,6 +1165,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::RefinementCastRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::CastRealizationRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclarationRealizationGap { span: s, .. } => s.clone(),
@@ -1248,6 +1254,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (gunbc.design_argument::single_authority: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
+    CompilerDiagnostic::RefinementCastRefused { source: src, target: tgt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), src.clone()), " as ".to_string()), tgt.clone()), " is a refinement cast, not a re-typing -- a value on ".to_string()), src.clone()), " reaches ".to_string()), tgt.clone()), " only through a checked constructor (or write a bare literal in the refined position, which needs no cast)".to_string()),
     CompilerDiagnostic::CastRealizationRefused { target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("cast cannot be emitted for target '".to_string(), tgt.clone()), "' -- ".to_string()), missing.clone()),
     CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("record literal names '".to_string(), t.clone()), "' which declares no record constructor: '".to_string()), t.clone()), "' is a union with variants [".to_string()), vs.clone().join(&", ".to_string())), "]; construct one of its variants instead (gunbc.design_argument::guarantee_ladder: a value inhabits its declared type)".to_string()),
     CompilerDiagnostic::DeclarationRealizationGap { reader: r, target_module: m, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("read outside the realized set: reading check '".to_string(), r.clone()), "' asked for the row of declaration '".to_string()), n.clone()), "' in module '".to_string()), m.clone()), "', which no demanded declaration names; realization refused instead of reporting it absent (declare the edge from '".to_string()), r.clone()), "' to '".to_string()), n.clone()), "' in v1.compiler.infer realization_edges, or the read is a silent miss)".to_string()),
@@ -1616,6 +1623,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TransportEmissionNotModeled { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::RefinementCastRefused { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
