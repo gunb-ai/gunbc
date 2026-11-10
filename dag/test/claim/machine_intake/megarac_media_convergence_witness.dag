@@ -2,7 +2,7 @@ module test.claim.machine_intake.megarac_media_convergence_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.algebra { non_empty_singleton }
+import std.algebra { non_empty_singleton, string_contains }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
@@ -10,6 +10,7 @@ import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name, ubuntu_seeded_install_media_name_digest_prefix }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import gunbc.machine_intake.mount_establishment {
   MediaImageAbsentFromListing,
   MountEvaluationBoundary,

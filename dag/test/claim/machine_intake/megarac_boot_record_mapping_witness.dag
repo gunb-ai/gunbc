@@ -88,14 +88,14 @@ import gunbc.host.boot_console_observation {
   boot_console_observation_debt_outstanding,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  megarac_boot_run_record, MegaRacRunRecord, BootParam5Reading, BootParam5NotTaken,
-  BootParam5Read, BootParam5Unread, BmcUnreachable,
+  megarac_boot_run_record, megarac_look_presentation, megarac_handoff_issued_set, MegaRacRunRecord, BootParamReading, BootParamNotTaken,
+  BootParamRead, BootParamUnread, BmcUnreachable,
   megarac_boot_override_consumption, megarac_power_after_from_observation,
   BootOverrideClears, boot_override_clears_none_found,
   megarac_override_release, megarac_stale_override_clearance, boot_param5_owes_clear,
   boot_param5_clear_not_required_reason, BootParam5Clear, BootParam5ClearIssued, BootParam5ClearNotIssued,
   BootOverrideClear, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, OverrideClearUnread,
-  StaleOverrideClearance, StaleOverrideNoneFound, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideUnread,
+  StaleOverrideClearance, StaleOverrideNoneFound, StaleOverrideCleared, StaleOverrideWouldNotClear, ClearWriteAccepted, StaleOverrideUnread,
   StaleOverrideClearedUnread, boot_override_standing_after_clear,
 }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootparam5_no_override }
@@ -530,7 +530,7 @@ test fn the_chassis_read_becomes_the_stored_reading() -> Bool {
 // standings -- and then the core's decision over them. The row's own contribution is which rendering
 // counts as pending, and that the census END marker is what establishes consumption by THIS attempt.
 
-fn p5(readback: String) -> BootParam5Reading = BootParam5Read { readback: readback, at: "t" }
+fn p5(readback: String) -> BootParamReading = BootParamRead { readback: readback, at: "t" }
 
 // THE PENDING FIXTURE is assembled from the renderings the handoff's own verdict expects (the same
 // boot_readback_verdict the classifier uses), so "this attempt's override is pending" cannot drift from
@@ -558,8 +558,8 @@ data p5_bytes_foreign_pending: String = "Boot parameter version: 1\nBoot paramet
 
 data p5_consumed_text: String = "Boot parameter version: 1\nBoot Flag Invalid\nBoot Device Selector : No override"
 
-fn p5_unread(which: String) -> BootParam5Reading {
-  BootParam5Unread { cause: BmcUnreachable { endpoint: "bmc.test" as NonEmptyStr, at: "t" as NonEmptyStr, detail: which } }
+fn p5_unread(which: String) -> BootParamReading {
+  BootParamUnread { cause: BmcUnreachable { endpoint: "bmc.test" as NonEmptyStr, at: "t" as NonEmptyStr, detail: which } }
 }
 
 test fn an_override_consumed_by_the_census_boot_is_consumed_by_the_attempt() -> Bool {
@@ -619,7 +619,7 @@ test fn the_two_reads_become_the_core_input_standings() -> Bool {
 // argument). The row supplies that argument; it no longer makes the decision with it.
 test fn the_census_end_marker_is_what_establishes_consumption() -> Bool {
   let sel = uefi_once_boot_selection(device: IpmiBootCdrom)
-  let before = BootParam5NotTaken { reason: "not taken yet" }
+  let before = BootParamNotTaken { reason: "not taken yet" }
   (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), clears: no_clears(), selection: sel,
       booted_through_override_device: true) == OverrideConsumedByAttempt)
     && (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), clears: no_clears(), selection: sel,
@@ -732,7 +732,7 @@ test fn no_harness_findings_stores_nothing() -> Bool {
 
 fn no_smpro() -> SmproReading = SmproNotTaken { reason: "fixture: smpro was not taken" }
 
-fn no_param5() -> BootParam5Reading = BootParam5NotTaken { reason: "fixture: param5 was not read" }
+fn no_param5() -> BootParamReading = BootParamNotTaken { reason: "fixture: param5 was not read" }
 
 // THE NEUTRAL CLEARS, for a raw record whose run never owed one. None-found is the neutral element of the
 // consumption fold, so these fixtures keep asserting what they always asserted -- and the two rows that DO
@@ -1339,9 +1339,9 @@ fn with_clears(r: MegaRacRunRecord, clears: BootOverrideClears) -> MegaRacRunRec
 fn clears_with(stale: StaleOverrideClearance, released: BootOverrideClear) -> BootOverrideClears {
   BootOverrideClears {
     stale: stale,
-    stale_read: no_param5(),
+    stale_clear: BootParam5ClearNotIssued { reason: "fixture: no clear record in this row" },
     released: released,
-    release_read: no_param5(),
+    release_clear: BootParam5ClearNotIssued { reason: "fixture: no clear record in this row" },
   }
 }
 
@@ -1360,7 +1360,7 @@ test fn a_cleared_stale_override_is_what_makes_the_after_read_informative() -> B
     && (megarac_boot_override_consumption(before: p5(p5_pending_text()), after: p5(p5_consumed_text),
       clears: no_clears(), selection: sel, booted_through_override_device: true) == OverridePendingBeforeAttempt)
     && (megarac_boot_override_consumption(before: p5(p5_pending_text()), after: p5(p5_consumed_text),
-      clears: clears_with(stale: StaleOverrideWouldNotClear, released: OverrideClearNotRequired { reason: "withheld" }),
+      clears: clears_with(stale: StaleOverrideWouldNotClear { write: ClearWriteAccepted }, released: OverrideClearNotRequired { reason: "withheld" }),
       selection: sel, booted_through_override_device: true) == OverridePendingBeforeAttempt)
 }
 
@@ -1370,11 +1370,11 @@ test fn a_cleared_stale_override_is_what_makes_the_after_read_informative() -> B
 // answered is 'unread', never the optimistic arm. This is the same refusal the Check arm of a reconcile
 // step makes (dag/std/realization_reconcile.dag): no convergence is claimed without the check's evidence.
 test fn the_releases_verdict_comes_from_its_readback_alone() -> Bool {
-  (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_pending()) })
+  (megarac_override_release(clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_pending()) })
     == OverrideClearLeftPending)
-    && (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+    && (megarac_override_release(clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) })
       == OverrideCleared)
-    && (match megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5_unread("transport") }) {
+    && (match megarac_override_release(clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5_unread("transport") }) {
          OverrideClearUnread { reason: _ } => true
          _ => false
        })
@@ -1390,10 +1390,10 @@ test fn the_releases_verdict_comes_from_its_readback_alone() -> Bool {
 // nothing owes no write at all.
 test fn a_stale_override_that_would_not_clear_is_its_own_ending() -> Bool {
   (megarac_stale_override_clearance(before: p5(p5_bytes_pending()),
-    clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_pending()) })
-    == StaleOverrideWouldNotClear)
+    clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_pending()) })
+    == StaleOverrideWouldNotClear { write: ClearWriteAccepted })
     && (megarac_stale_override_clearance(before: p5(p5_bytes_pending()),
-      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) })
       == StaleOverrideCleared)
     && (megarac_stale_override_clearance(before: p5(p5_bytes_cleared()),
       clear: BootParam5ClearNotIssued { reason: "nothing was pending" }) == StaleOverrideNoneFound)
@@ -1412,7 +1412,7 @@ test fn a_stale_override_that_would_not_clear_is_its_own_ending() -> Bool {
 test fn each_clear_failure_raises_a_finding_of_its_own() -> Bool {
   let left = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideCleared, released: OverrideClearLeftPending)))
   let unread = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideCleared, released: OverrideClearUnread { reason: "the read never answered" })))
-  let stale = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideWouldNotClear, released: OverrideClearNotRequired { reason: "nothing was set" })))
+  let stale = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideWouldNotClear { write: ClearWriteAccepted }, released: OverrideClearNotRequired { reason: "nothing was set" })))
   let clean = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideCleared, released: OverrideCleared)))
   (count(left) == 1 && any(left, f => match f { OverrideLeftPendingAtRelease { clear: _ } => true _ => false }))
     && (count(unread) == 1 && any(unread, f => match f { OverrideLeftPendingAtRelease { clear: _ } => true _ => false }))
@@ -1462,10 +1462,10 @@ test fn a_foreign_override_is_reported_as_left_pending_never_as_none_found() -> 
       _ => false
     })
     && (megarac_stale_override_clearance(before: p5(p5_bytes_foreign_pending),
-      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_foreign_pending) })
-      == StaleOverrideWouldNotClear)
+      clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_foreign_pending) })
+      == StaleOverrideWouldNotClear { write: ClearWriteAccepted })
     && (megarac_stale_override_clearance(before: p5(p5_bytes_foreign_pending),
-      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) })
       == StaleOverrideCleared)
     && (megarac_stale_override_clearance(before: p5(p5_bytes_cleared()),
       clear: BootParam5ClearNotIssued { reason: "the controller said nothing was in force" })
@@ -1476,9 +1476,9 @@ test fn a_foreign_override_is_reported_as_left_pending_never_as_none_found() -> 
 // question: a readback still naming any valid flag -- including one this attempt never set -- is 'left
 // pending', which is the finding the next attempt would otherwise inherit blind.
 test fn the_release_reports_a_foreign_flag_as_left_pending_too() -> Bool {
-  (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_foreign_pending) })
+  (megarac_override_release(clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_foreign_pending) })
     == OverrideClearLeftPending)
-    && (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+    && (megarac_override_release(clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) })
       == OverrideCleared)
 }
 
@@ -1489,7 +1489,7 @@ test fn the_release_reports_a_foreign_flag_as_left_pending_too() -> Bool {
 test fn unparseable_parameter_five_bytes_are_answered_as_pending() -> Bool {
   boot_param5_owes_clear(read: p5("Boot parameter version: 1\nBoot parameter data: not-hex\n"))
     && boot_param5_owes_clear(read: p5("Boot parameter version: 1\nBoot Flag Valid\n"))
-    && (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5("Boot Flag Valid") })
+    && (megarac_override_release(clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5("Boot Flag Valid") })
       == OverrideClearLeftPending)
 }
 
@@ -1519,20 +1519,20 @@ test fn a_standing_nobody_read_owes_the_clear_too() -> Bool {
 // which of the two ways of not-looking this was -- because the receipt has to say so.
 test fn a_blind_clear_that_landed_reads_as_cleared_unread() -> Bool {
   (match megarac_stale_override_clearance(before: p5_unread("transport"),
-    clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) }) {
+    clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) }) {
       StaleOverrideClearedUnread { reason: r } => string_contains(s: r as String, pattern: "could not be read")
       _ => false
     })
     && (match megarac_stale_override_clearance(before: no_param5(),
-      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) }) {
+      clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) }) {
         StaleOverrideClearedUnread { reason: r } => string_contains(s: r as String, pattern: "not taken")
         _ => false
       })
     && (megarac_stale_override_clearance(before: p5(p5_bytes_pending()),
-      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) })
       == StaleOverrideCleared)
     && (megarac_stale_override_clearance(before: p5(p5_bytes_cleared()),
-      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_cleared()) })
       == StaleOverrideNoneFound)
 }
 
@@ -1542,10 +1542,10 @@ test fn a_blind_clear_that_landed_reads_as_cleared_unread() -> Bool {
 // its own words rather than reporting 'none found'.
 test fn a_blind_clear_that_never_answered_is_not_a_clearance() -> Bool {
   (megarac_stale_override_clearance(before: p5_unread("transport"),
-    clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_pending()) })
-    == StaleOverrideWouldNotClear)
+    clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5(p5_bytes_pending()) })
+    == StaleOverrideWouldNotClear { write: ClearWriteAccepted })
     && (match megarac_stale_override_clearance(before: p5_unread("transport"),
-      clear: BootParam5ClearIssued { write_answered: true, readback: p5_unread("transport") }) {
+      clear: BootParam5ClearIssued { policy: BootParamNotTaken { reason: "fixture: parameter 3 was not read" }, write: ClearWriteAccepted, readback: p5_unread("transport") }) {
         StaleOverrideUnread { reason: _ } => true
         _ => false
       })

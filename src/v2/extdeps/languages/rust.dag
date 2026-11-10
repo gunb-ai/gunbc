@@ -1201,10 +1201,15 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^rust_token_rparen,
       separator: ^rust_token_comma
     },
+    // The Rust arm delimiters are its own braces: the then-arm closes with `}` before `else`, the
+    // else-arm opens with `{` after it, and the shape's closing token closes the else-arm. Without
+    // them this row prints `if c { a else b }`, which Rust refuses at PARSING.
     conditional_form: TargetConditionalShape {
       if_token: ^rust_token_kw_if,
       then_token: ^rust_token_lbrace,
+      then_close_token: Present { value: ^rust_token_rbrace },
       else_token: ^rust_token_kw_else,
+      else_open_token: Present { value: ^rust_token_lbrace },
       delimiting: ConditionalClosedByToken { close_token: ^rust_token_rbrace }
     },
     let_form: TargetBindLetShape {

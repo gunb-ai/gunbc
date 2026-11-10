@@ -47,16 +47,21 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
   srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
   srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
-  srv1_boot_path_run_ready_duration,
+  srv1_boot_path_run_ready_duration, srv1_boot_path_incident_downtime,
   srv1_boot_path_window_router_counting_2026_11_09, srv1_router_window_count_balances, srv1_boot_path_incident_2026_11_09,
-  srv1_bash_emit_capability_gaps,
+  srv1_bash_emit_capability_gaps, srv1_bash_emit_scaffold_approval,
   srv1_installed_boot_path_artifacts_2026_11_09,
   srv1_serving_replica_roster,
   srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
   srv1_replica_helper_bash_emit_dissolution,
 }
-import gunbc.fleet.gpu_interconnect_observation { srv1_window_seconds_between }
+import extdeps.units.iso8601_calendar {
+  Iso8601UtcInstant,
+  iso8601_utc_instant,
+  iso8601_utc_instant_seconds_between,
+  iso8601_utc_instant_text,
+}
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
 //
@@ -531,7 +536,12 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
     && length(filter(runs, r => srv1_boot_path_run_is_cold_start(r))) == 2
     && length(filter(runs, r => srv1_boot_path_run_is_crash(r))) == 2
     && srv1_boot_path_incident_2026_11_09.replica_index == 1
-    && second_count(srv1_boot_path_incident_2026_11_09.downtime) == 756
+    && match srv1_boot_path_incident_downtime(incident: srv1_boot_path_incident_2026_11_09) {
+      Absent => false
+      Present { value: d } => second_count(d) == 756
+    }
+    && host_text_matches(instant: srv1_boot_path_incident_2026_11_09.down_from, host_text: "2026-11-09T21:04:54Z")
+    && host_text_matches(instant: srv1_boot_path_incident_2026_11_09.down_to, host_text: "2026-11-09T21:17:30Z")
     && srv1_boot_path_incident_2026_11_09.container_exit_status == 2
     && srv1_boot_path_incident_2026_11_09.failed_starts == 4
     && srv1_router_window_count_balances(record: srv1_boot_path_window_router_counting_2026_11_09)
@@ -587,10 +597,9 @@ test fn the_rendered_boot_path_pins_the_card_from_the_profile_row() -> Bool {
 // EACH GAP ROW POINTS AT A RENDER THAT ACTUALLY CARRIES A MARKER. Declared debt rots in two ways: a marker whose
 // stated trigger names nothing real, or a gap row that no artifact depends on. So the gap rows are checked as
 // references -- four constructs, each naming a renderer in this module, each of those renderers covered by the
-// text of one of the two bash-emit markers -- and not as a paragraph about how hard the bash lane is.
-@test
-@untrusted -- the gaps themselves were established by reading the bash lane (its builders, node kinds and lexical
-  phrases) on 2026-11-10; this claim checks the ROWS against this module's artifacts, not against that lane.
+// text of one of the two bash-emit markers -- and not as a paragraph about how hard the bash lane is. The gaps
+// themselves were established by reading the bash lane (its builders, node kinds and lexical phrases) on
+// 2026-11-10; this claim checks the ROWS against this module's artifacts, not against that lane.
 test fn each_declared_bash_emit_gap_points_at_a_marked_render() -> Bool {
   let gaps = srv1_bash_emit_capability_gaps
   let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
@@ -603,6 +612,30 @@ test fn each_declared_bash_emit_gap_points_at_a_marked_render() -> Bool {
     && gaps.all(g =>
       string_contains(s: launcher_marker, pattern: g.used_by as String)
         || string_contains(s: command_marker, pattern: g.used_by as String))
+}
+
+// THE APPROVAL FOR SHIPPING THIS HAND-SHELL IS A ROW, AND BOTH MARKERS CITE IT. fail_closed asks for the
+// operator's approval OUTSIDE the diff when a scaffold is admitted while a modeled path exists: the route is
+// here (v2.workflow.bash_emit bash_emit_stmts) and the four builders named by srv1_bash_emit_capability_gaps
+// are not. The decision was taken in an escalation, so the markers point at a row that records it rather than at
+// a thread a later reader cannot open. RED controls: a marker that drops its citation, and a record that names no
+// escalation, no option, or no limit on what it covers -- an approval with no stated boundary is not an approval.
+test fn the_shipped_hand_shell_carries_its_out_of_diff_approval() -> Bool {
+  let approval = srv1_bash_emit_scaffold_approval
+  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
+  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
+  approval.approved_by as String != ""
+    && string_contains(s: approval.asked_via as String, pattern: "msg_")
+    && string_contains(s: approval.asked_via as String, pattern: "bash_emit")
+    && string_contains(s: approval.decided_on_utc as String, pattern: "2026-11-10")
+    && string_contains(s: approval.what_it_covers as String, pattern: "srv1_bash_emit_capability_gaps")
+    && string_contains(s: approval.what_it_does_not_cover as String, pattern: "no new hand-authored shell")
+    && string_contains(s: approval.what_it_does_not_cover as String, pattern: "bash_build")
+    && all([launcher_marker, command_marker], m =>
+      string_contains(s: m, pattern: "srv1_bash_emit_scaffold_approval")
+        && string_contains(s: m, pattern: "msg_856d8172"))
+    // the approved state is still the gap state: the four constructs remain open
+    && srv1_bash_emit_capability_gaps.length() == 4
 }
 
 test fn every_hand_composed_script_carries_its_own_marker() -> Bool {
@@ -629,27 +662,73 @@ test fn every_hand_composed_script_carries_its_own_marker() -> Bool {
 // module reads its NCCL spans through. That dependency earned its keep: replica 1's crash row had been
 // transcribed with the kill 7 s late (the host recorded 22:11:01Z, epoch 1794262261; the row said 22:11:08Z),
 // and the hand-typed ready duration agreed with the WRONG instant. With the duration derived, the row can only
-// say what the instants say. The red controls are the shapes of transcription errors this window actually
-// produced -- a reversed pair, an instant missing its leading zero -- and each must answer Absent rather than
-// returning the number someone expected.
+// say what the instants say -- and the instants arrive through the calendar's checked constructor, so a malformed
+// instant (`2026-11-9T…`, a missing leading zero) or an out-of-range clock face (`hour: 99`, `minute: 61`) is not
+// a value a receipt can hold: the constructor answers Absent where the instant is made. The red controls here are
+// the errors that remain possible: a pair in the wrong order, which must answer Absent, and the 7-second slip
+// this window actually made, which must produce 505 -- a different duration -- so the claim over 512 goes red
+// instead of agreeing with the mistyped instant.
+// A receipt's instants arrive through the calendar's checked constructor, so a comparison with a host read cases
+// on the Optional: an absent instant fails the comparison rather than becoming a string that looks like a date.
+fn host_text_matches(instant: Iso8601UtcInstant?, host_text: String) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: v } => iso8601_utc_instant_text(i: v) == host_text
+  }
+}
+
+fn is_instant_present(instant: Iso8601UtcInstant?) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
 test fn the_ready_duration_is_the_instants_and_not_a_third_copy() -> Bool {
   let runs = srv1_boot_path_runs_executed_2026_11_09
   let r1_crash = filter(runs, r => srv1_boot_path_run_is_crash(r) && r.replica_index == 1)
   length(r1_crash) == 1
-    && all(r1_crash, r => r.window_start_utc as String == "2026-11-09T22:11:01Z"
+    // the parts render back to the exact text the host printed, which is what ties the typed instant to the read
+    && all(r1_crash, r => host_text_matches(instant: r.trigger_at, host_text: "2026-11-09T22:11:01Z")
+      && host_text_matches(instant: r.ready_at, host_text: "2026-11-09T22:19:33Z")
       && match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(e) == 512 })
-    && match srv1_window_seconds_between(earlier: "2026-11-09T22:11:01Z" as NonEmptyStr, later: "2026-11-09T22:19:33Z" as NonEmptyStr) {
+    // RED control: the same pair the other way round refuses.
+    && all(r1_crash, r => match iso8601_utc_instant_seconds_between(earlier: r.ready_at, later: r.trigger_at) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    // RED control: the exact slip this window made -- the kill typed 7 s late -- must yield 505, not 512. A
+    // duration stored beside the instants would have been true of the wrong pair and this claim would not have
+    // noticed, which is how the drift got past a review round.
+    && all(r1_crash, r => match iso8601_utc_instant_seconds_between(
+      earlier: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 8),
+      later: r.ready_at,
+    ) {
       Absent => false
-      Present { value: e } => second_count(e) == 512
-    }
-    && match srv1_window_seconds_between(earlier: "2026-11-09T22:19:33Z" as NonEmptyStr, later: "2026-11-09T22:11:01Z" as NonEmptyStr) {
+      Present { value: e } => second_count(e) == 505
+    })
+    // RED controls: the range is decided by the CONSTRUCTOR, not by whichever consumer noticed. Each part
+    // outside what its name claims answers Absent where the instant is made, so a receipt cannot hold one and no
+    // reader downstream has to be clever about it.
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 99, minute: 11, second: 1) {
       Absent => true
       Present { value: _ } => false
     }
-    && match srv1_window_seconds_between(earlier: "2026-11-9T22:11:01Z" as NonEmptyStr, later: "2026-11-09T22:19:33Z" as NonEmptyStr) {
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 61) {
       Absent => true
       Present { value: _ } => false
     }
+    && match iso8601_utc_instant(year: 2026, month: 0, day: 9, hour: 22, minute: 11, second: 1) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // the in-range side builds the instant the host printed, which ties the parts back to the reading
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 19, second: 33) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2026-11-09T22:19:33Z"
+    }
+    // and every recorded instant is the Present side, which is what the green durations rest on
+    && all(srv1_boot_path_runs_executed_2026_11_09, r => is_instant_present(instant: r.trigger_at) && is_instant_present(instant: r.ready_at))
 }
 
 // THE BARS THEMSELVES ARE NOT FREE NUMBERS. The crash floor must be the CONTRACT's restart delay, so a unit

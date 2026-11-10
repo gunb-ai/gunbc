@@ -165,7 +165,7 @@ pub(crate) type OutsideIndexRebuild<'a> =
 /// is the last iteration's, so the settled closure is resolved once and emission starts from it.
 pub(crate) fn compile_to_provider_fixed_point_with(
     sources: Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
-    options: crate::v1_compiler_compile::CompilePipelineOptions,
+    options: Rc<crate::v1_compiler_compile::CompilePipelineOptions>,
     pool: &dyn Fn(&str) -> PoolAnswer,
     closure_of: &dyn Fn(
         &str,
@@ -183,7 +183,7 @@ pub(crate) fn compile_to_provider_fixed_point_with(
     loop {
         let resolved = crate::v1_compiler_compile::compile_to_resolved_with_options(
             Rc::new(sources.clone().into()),
-            options,
+            options.clone(),
         );
         let graph = match resolved.graph.clone() {
             Some(graph) => graph,

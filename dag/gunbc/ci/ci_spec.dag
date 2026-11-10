@@ -4523,8 +4523,17 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // pick as the base commit would fabricate the fact the receipt carries (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). It is passed unconditionally -- the round does not try the
 // head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
 // different invocation of the same producer with the flag absent, not a second path.
+//
+// SCOPED TO WHAT THE PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2b). `--regen-affected-scope`
+// asks a child for the scope (required_regen_host EmissionScopeReceipt) over the pull request's own change
+// from merge-base(base, HEAD), with what the base gained since that merge-base read apart as the generator
+// delta (gunbc.regen_affected_set regen_affected_set_over_diverged_change, P2c), after any interrupted round
+// is recovered; a change that reaches no committed mirror is a successful zero-work round, an added or
+// deleted module, an edited seed build input (gunbc.seed_build_inputs) or a generator change on the base
+// is the whole population, and a scope that cannot be computed refuses (operator decision 2026-11-10). Switched on only now that the base carries the scoped protocol (P2a):
+// round 1 re-execs into a seed built from the base commit's crate.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --source-root dag --source-root src/v2")
+  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {

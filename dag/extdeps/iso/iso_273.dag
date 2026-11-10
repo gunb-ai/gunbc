@@ -71,15 +71,24 @@ data iso_273_relay: StandardTextProvenance = RelayedFromStandardText {
   relay: "relayed from secondary knowledge of ISO 273:1979; no archived copy of the standard is held in this repository, so these rows are not a transcription",
 }
 
+data m2_5_thread: FastenerThread = MetricCoarseThread { designation: "M2.5" }
 data m3_thread: FastenerThread = MetricCoarseThread { designation: "M3" }
 data m4_thread: FastenerThread = MetricCoarseThread { designation: "M4" }
 data m5_thread: FastenerThread = MetricCoarseThread { designation: "M5" }
 data m6_thread: FastenerThread = MetricCoarseThread { designation: "M6" }
 
+// A row a consumer names directly, because it holds a value that must exist (the A16 duct's flange holes,
+// product.printed_chassis.gpu_duct a16_insert_screw_clearance_row) rather than look it up and handle absence.
+// It is a member of the table below, not a second copy of it.
+data iso_273_m2_5_coarse: IsoClearanceHoleRow = IsoClearanceHoleRow { thread: m2_5_thread, series: CoarseSeries, diameter: micrometer(count: 3100), provenance: iso_273_relay }
+
 // Micrometer throughout, for the same reason the fan pattern is: the fine series for M3 is 3.2 mm,
 // and a whole-millimetre carrier would round it to 3 and silently destroy the value the whole
 // comparison turns on.
 data iso_273_clearance_rows: List<IsoClearanceHoleRow> = [
+  IsoClearanceHoleRow { thread: m2_5_thread, series: FineSeries,   diameter: micrometer(count: 2700), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m2_5_thread, series: MediumSeries, diameter: micrometer(count: 2900), provenance: iso_273_relay },
+  iso_273_m2_5_coarse,
   IsoClearanceHoleRow { thread: m3_thread, series: FineSeries,   diameter: micrometer(count: 3200), provenance: iso_273_relay },
   IsoClearanceHoleRow { thread: m3_thread, series: MediumSeries, diameter: micrometer(count: 3400), provenance: iso_273_relay },
   IsoClearanceHoleRow { thread: m3_thread, series: CoarseSeries, diameter: micrometer(count: 3600), provenance: iso_273_relay },

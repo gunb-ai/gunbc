@@ -7,6 +7,7 @@ import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire
 import extdeps.transports.rest { RestResult }
 import extdeps.cloud.packet_ai { PacketAiStorefrontProduct, PacketAiStorefrontProducts }
 import extdeps.cloud.vast_ai { VastAiOffer, VastAiOffers }
+import extdeps.github.pulls { PullRequest }
 
 type WireFileShape {
   encoding: String
@@ -134,6 +135,23 @@ service test.RestReplay {
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => VastAiOffers }
+  }
+
+  // THE PUBLISHER'S OWN RESPONSE CARRIER, SERVED HERMETICALLY. `200 => PullRequest` is verbatim
+  // extdeps.github.pulls `service github.Pulls` `operation Get`'s declared response type -- the type
+  // gunbc.heal_publication ensure_pull_request_open_wet reads through -- so a recorded pull-request body
+  // reaches the interpreter's type-directed decode exactly as it does on the publish path, with no
+  // credential anywhere: the answer comes from the witness frame's recorded fixture. PullRequest's `state`
+  // is the coproduct PullRequestState, whose wire spelling lives only in a CoproductWireContract row in the
+  // sibling module extdeps.github.pulls_contracts; nothing in PullRequest's own row names that row, which
+  // is what dag/test/claim/github_pull_request_decode_witness.dag is for.
+  operation PullRequestPage {
+    output {
+      pull: PullRequest
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => PullRequest }
   }
 
   operation VerifiedFlag {

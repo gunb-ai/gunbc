@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_report, ipmitool_raw_byte_value }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_report }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -104,11 +104,5 @@ fn master_write_read_completion_text(c: MasterWriteReadCompletion) -> String {
 
 
 
-// The completion code ipmitool names on stderr ("rsp=0x83"), when it names one.
-fn master_write_read_stderr_completion(stderr: String) -> Int? {
-  let parts = split(s: stderr, delimiter: "rsp=0x")
-  if count(parts) < 2 { none } else {
-    let rest = match parts.skip(n: 1).first() { Absent => "" Present { value: r } => r }
-    if rest.length() < 2 { none } else { ipmitool_raw_byte_value(t: substring(s: rest, start: 0, end: 2)) }
-  }
-}
+// The completion code ipmitool names on stderr is read by extdeps.bmc.ipmitool_raw_reply
+// ipmitool_raw_stderr_completion: the rendering is the client's, the same for every raw command.

@@ -57,7 +57,7 @@ type AssemblyPart {
   print_plane: PrintPlane, notes: String,
 }
 type InterfaceStatus = Proposed | OriginalPlateFitOnly | Unresolved
-type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | GravitySeatOnLocatingNubs | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug | FrictionFitSleeve | LocatingSleeveNoRetention | M3IntoCardInsert | M5FanScrewIntoBlowerLug
+type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | GravitySeatOnLocatingNubs | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug | FrictionFitSleeve | LocatingSleeveNoRetention | ScrewIntoCardInsert | M5FanScrewIntoBlowerLug
 
 type MechanicalInterface {
   id: String, members: List<String>, fastener: FastenerKind, quantity: Int,

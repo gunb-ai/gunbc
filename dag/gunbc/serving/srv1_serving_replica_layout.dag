@@ -34,7 +34,8 @@ import std.decimal { fixed_point_trimmed_wire }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_2026_11_09, srv1_collective_read_measurement_duration, srv1_collective_read_window_duration, srv1_window_seconds_between }
+import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_2026_11_09, srv1_collective_read_measurement_duration, srv1_collective_read_window_duration }
+import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, iso8601_utc_instant_seconds_between }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
@@ -1241,10 +1242,10 @@ data srv1_bash_emit_capability_gaps: List<BashEmitCapabilityGap> = [
   },
   BashEmitCapabilityGap {
     construct: "the 2>&1 descriptor duplication (appending stderr to the same event log)" as NonEmptyStr,
-    missing_from: "CORRECTED 2026-11-10, at the head this PR builds on: the row as first written claimed 2>&1 existed 'only inside literal strings', and that was wrong. v2.extdeps.languages.bash_command_fold already carried bash_production_fold_redir_stderr_to_stdout (and its stdout-to-stderr sibling), v2.workflow.bash_command_fold_serialize already had the serializer arm, and the fold witness already pinned the golden 'true' 2>&1 -- all of it landed in cfdcde24b607 (2026-10-14), before this row was verified. What was actually missing was only the NAMED builder in v2.extdeps.languages.bash_build: the lane had builders for stderr-to-null and stderr-to-file and none for merging stderr into stdout, so a caller could not construct the node the grammar already described. (read 2026-11-10)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build has stderr-to-file and stderr-to-null builders, but no merge-stderr-into-stdout; 2>&1 appears in the lane only inside literal strings" as NonEmptyStr,
     used_by: "srv1_replica_container_command_lines" as NonEmptyStr,
     verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
-    what_would_close_it: "CLOSED BY THIS PR: bash_build_with_redir_stderr_to_stdout and bash_build_with_redir_stdout_to_stderr in v2.extdeps.languages.bash_build, witnessed by v2.test.claim.bash_emit_constructs::merge_stderr_to_stdout_serializes and v2.test.claim.bash_emit_constructs::merge_stdout_to_stderr_serializes" as NonEmptyStr,
+    what_would_close_it: "a redirection builder for descriptor duplication" as NonEmptyStr,
   },
   BashEmitCapabilityGap {
     construct: "a case statement (the launcher dispatches on the replica index)" as NonEmptyStr,
@@ -1254,7 +1255,7 @@ data srv1_bash_emit_capability_gaps: List<BashEmitCapabilityGap> = [
     what_would_close_it: "a case node kind, production and builder in the bash lane" as NonEmptyStr,
   },
   BashEmitCapabilityGap {
-    construct: "array assignment and ${ARRAY[@]} expansion (the launcher builds engine args, then execs them as separate words)" as NonEmptyStr,
+    construct: "array assignment and $\{ARRAY[@]} expansion (the launcher builds engine args, then execs them as separate words)" as NonEmptyStr,
     missing_from: "v2.extdeps.languages.bash_build and v2.extdeps.languages.bash: neither mentions arrays at all (no array token class, no expansion builder)" as NonEmptyStr,
     used_by: "srv1_replica_launcher_lines" as NonEmptyStr,
     verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
@@ -1262,7 +1263,28 @@ data srv1_bash_emit_capability_gaps: List<BashEmitCapabilityGap> = [
   },
 ]
 
-data srv1_container_command_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_container_command_lines — the container's inner command is hand-composed strings (concat over literals), admitted as a capture-and-digest-pinned receipt: the witness refuses any render whose lines differ from the command the live containers ran on 2026-11-09, and the installer parses and dry-runs it with the serving image's own bash. DISSOLVES WHEN the same command is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ContainerRunShape/Srv1LaunchConfig rows, KEEPING that byte-for-byte control against docker inspect .Config.Cmd so the migration changes the medium and not the artifact.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): v2.extdeps.languages.bash_build exposes about forty builders -- words (literal, variable, compound, concat, command substitution), commands, and/or chains, if and if-else, subshell, redirection to a file, redirection of stderr to a file, assignments, test brackets, exit -- and has NO builder for the constructs this body is made of: a shell FUNCTION definition (the event logger), and the 2>&1 descriptor duplication on its redirection. v2.extdeps.languages.bash carries no node kind for function definitions, case statements or array expansion at all, so grep for those constructs in it returns nothing. The grammar rows have to grow in that lane before this body can be written as nodes; the swap is not available from this module today. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Until then this is adopted hand-shell under a marker, and it is not an authority on how shell should be written.")
+// THE OUT-OF-DIFF APPROVAL FOR SHIPPING THESE RENDERS AS MARKED HAND-SHELL. fail_closed asks for the operator's
+// approval OUTSIDE the diff when a scaffold is admitted while a modeled path exists, so the decision lives here
+// rather than being paraphrased out of a review thread: who was asked, what the options were, which was chosen,
+// and where it stops. A row rather than a sentence inside the markers, so the markers can cite it and a witness
+// can check the citation is there.
+type ScaffoldApproval {
+  approved_by: NonEmptyStr,
+  asked_via: NonEmptyStr,
+  decided_on_utc: NonEmptyStr,
+  what_it_covers: NonEmptyStr,
+  what_it_does_not_cover: NonEmptyStr,
+}
+
+data srv1_bash_emit_scaffold_approval: ScaffoldApproval = ScaffoldApproval {
+  approved_by: "the operator, on gentle-swift-129's recommendation, approved by default when the escalation went unanswered past its window" as NonEmptyStr,
+  asked_via: "escalation msg_856d8172 (2026-11-10): A = ship the marked hand-built renders with the capability gaps recorded, the bash_emit extension as its own PR; B = extend bash_emit first and re-install on srv1 from the new render" as NonEmptyStr,
+  decided_on_utc: "2026-11-10" as NonEmptyStr,
+  what_it_covers: "option A: the launcher, the engine-args file and the container command stay hand-composed under their markers, byte-identical to the bytes srv1 runs (srv1_installed_boot_path_artifacts_2026_11_09), with the four missing builders of that lane recorded in srv1_bash_emit_capability_gaps as why the modeled route is not open yet" as NonEmptyStr,
+  what_it_does_not_cover: "no new hand-authored shell anywhere in this module; no change to the bytes installed on srv1 without a fresh window; and nothing in v2.extdeps.languages.bash_build -- the four builders are their own change, with their own witnesses",
+}
+
+data srv1_container_command_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_container_command_lines — the container's inner command is hand-composed strings (concat over literals), admitted as a capture-and-digest-pinned receipt: the witness refuses any render whose lines differ from the command the live containers ran on 2026-11-09, and the installer parses and dry-runs it with the serving image's own bash. DISSOLVES WHEN the same command is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ContainerRunShape/Srv1LaunchConfig rows, KEEPING that byte-for-byte control against docker inspect .Config.Cmd so the migration changes the medium and not the artifact.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): v2.extdeps.languages.bash_build exposes about forty builders -- words (literal, variable, compound, concat, command substitution), commands, and/or chains, if and if-else, subshell, redirection to a file, redirection of stderr to a file, assignments, test brackets, exit -- and has NO builder for the constructs this body is made of: a shell FUNCTION definition (the event logger), and the 2>&1 descriptor duplication on its redirection. v2.extdeps.languages.bash carries no node kind for function definitions, case statements or array expansion at all, so grep for those constructs in it returns nothing. The grammar rows have to grow in that lane before this body can be written as nodes; the swap is not available from this module today. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Shipping them hand-built under this marker rather than extending that lane is the operator's decision taken OUTSIDE this diff, recorded in srv1_bash_emit_scaffold_approval (escalation msg_856d8172, option A; option B -- extend the lane, then re-install from the new render -- was declined). Until then this is adopted hand-shell under a marker, and it is not an authority on how shell should be written.")
 
 // The `docker run` line for one replica, with every value rendered -- no host shell variable survives into
 // it. This is the shape change that makes the adoption claim checkable: the command the container reports is
@@ -1504,7 +1526,7 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
 // inner command equals what `docker inspect` reported before the switch. Those controls do not depend on the
 // medium, and they are what makes a live switch attributable; swapping the emitter in the same diff would move
 // the bytes while a live replica was moving, and the window's evidence would then explain neither.
-data srv1_replica_launcher_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_launcher_lines — the launcher the fleet boots as of 2026-11-09 (input guards, case arms over srv1_serving_replica_roster, docker run -d with the rendered argv, the TLS copy guards, exec of the rendered engine args file) is composed from strings. The gpu.sh marker covers only the retained restore script; this is the live render, and its debt is counted here. DISSOLVES WHEN the launcher is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig/Srv1ContainerRunShape rows, KEEPING the three install-time gates that do not depend on the medium: the serving image's own bash parses the emitted inner command, a dry-run of it yields the argv docker inspect .Config.Cmd reported before the switch, and sha256(render) equals the on-host sha256 of the installed file.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): this script is a case statement over the replica roster, BASH ARRAY expansion for the engine-args vector, and a function, and v2.extdeps.languages.bash_build has no builder for any of the three -- v2.extdeps.languages.bash has no node kind for case, arrays or function definitions, so grep for those constructs in it returns nothing. The emitter cannot express a launcher of this shape today; the grammar rows must grow in that lane, and the migration is that lane's change with these gates kept, not a call-site swap here. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Until then this is adopted hand-shell under a marker, not an authority on how a launcher should be written.")
+data srv1_replica_launcher_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_launcher_lines — the launcher the fleet boots as of 2026-11-09 (input guards, case arms over srv1_serving_replica_roster, docker run -d with the rendered argv, the TLS copy guards, exec of the rendered engine args file) is composed from strings. The gpu.sh marker covers only the retained restore script; this is the live render, and its debt is counted here. DISSOLVES WHEN the launcher is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig/Srv1ContainerRunShape rows, KEEPING the three install-time gates that do not depend on the medium: the serving image's own bash parses the emitted inner command, a dry-run of it yields the argv docker inspect .Config.Cmd reported before the switch, and sha256(render) equals the on-host sha256 of the installed file.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): this script is a case statement over the replica roster, BASH ARRAY expansion for the engine-args vector, and a function, and v2.extdeps.languages.bash_build has no builder for any of the three -- v2.extdeps.languages.bash has no node kind for case, arrays or function definitions, so grep for those constructs in it returns nothing. The emitter cannot express a launcher of this shape today; the grammar rows must grow in that lane, and the migration is that lane's change with these gates kept, not a call-site swap here. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Shipping it hand-built under this marker rather than extending that lane is the operator's decision taken OUTSIDE this diff, recorded in srv1_bash_emit_scaffold_approval (escalation msg_856d8172, option A; option B -- extend the lane, then re-install from the new render -- was declined). Until then this is adopted hand-shell under a marker, not an authority on how a launcher should be written.")
 
 // The launcher as installed, in one string. CLI entry:
 //   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_launcher
@@ -1718,8 +1740,12 @@ type Srv1BootPathRun {
   // How the run was driven, in prose: what was stopped, removed or killed. A note, never a verdict, and never
   // the thing a witness branches on -- that is `kind`.
   note: NonEmptyStr,
-  window_start_utc: NonEmptyStr,
-  window_end_utc: NonEmptyStr,
+  // THE INSTANTS ARE BUILT BY THE CALENDAR'S CHECKED CONSTRUCTOR, and the receipt holds its Optional. A
+  // `NonEmptyStr` instant accepted `2026-11-9T22:1:8Z` and only complained -- by answering nothing -- when a
+  // consumer asked for a span; typed parts alone would let `hour: 99` sit in a row and come back as a plausible
+  // duration. So the range is decided at construction and each consumer cases on Absent.
+  trigger_at: Iso8601UtcInstant?,
+  ready_at: Iso8601UtcInstant?,
   container_created: Second,
   // Time from the stop/kill to the first 200 from /health is NOT a field: it is the difference of this
   // row's own two instants (srv1_boot_path_run_ready_duration below). A row that types it beside the
@@ -1735,8 +1761,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 1,
     kind: ColdStart,
     note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
-    window_start_utc: "2026-11-09T21:51:38Z" as NonEmptyStr,
-    window_end_utc: "2026-11-09T21:59:21Z" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 51, second: 38),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 59, second: 21),
     container_created: second(46),
     restarts_observed: 0,
     verdict: "ready inside the 10-minute deadline; engine argv carries no --api-key (count 0) and the engine's environment carries VLLM_API_KEY (count 1); router upstream srv1-vllm-1 served six /v1/chat/completions probes at 200 with zero new 502s" as NonEmptyStr,
@@ -1745,8 +1771,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 1,
     kind: Crash,
     note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
-    window_start_utc: "2026-11-09T22:11:01Z" as NonEmptyStr,
-    window_end_utc: "2026-11-09T22:19:33Z" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 1),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 19, second: 33),
     container_created: second(39),
     restarts_observed: 1,
     verdict: "systemd did restart it, but NOT within the 30 s the brief set as the bar: the unit's own RestartSec=30 makes 30 s the FLOOR, and the measured replacement container appeared 39 s after the kill (22:11:39Z, written by the rendered launcher's own START event). Engine ready 512 s. Auth held: 401 without the key, 200 with it. No --api-key in .Config.Cmd; VLLM_API_KEY present in the engine environment." as NonEmptyStr,
@@ -1755,8 +1781,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 0,
     kind: ColdStart,
     note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
-    window_start_utc: "2026-11-09T22:24:35Z" as NonEmptyStr,
-    window_end_utc: "2026-11-09T22:31:38Z" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 24, second: 35),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 31, second: 38),
     container_created: second(46),
     restarts_observed: 0,
     verdict: "ready inside the deadline; `ps` on the host shows zero processes carrying --api-key once both replicas are on this path (previously the engine's own argv named the key)" as NonEmptyStr,
@@ -1765,8 +1791,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 0,
     kind: Crash,
     note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
-    window_start_utc: "2026-11-09T22:32:21Z" as NonEmptyStr,
-    window_end_utc: "2026-11-09T22:39:23Z" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 32, second: 21),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 39, second: 23),
     container_created: second(38),
     restarts_observed: 1,
     verdict: "replacement container 38 s after the kill (again above the 30 s bar, which the unit's RestartSec=30 sets); engine ready 422 s; auth held (401 without key, 200 with); no --api-key in .Config.Cmd" as NonEmptyStr,
@@ -1781,7 +1807,7 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
 // (22:11:08Z where the host recorded 22:11:01Z, epoch 1794262261), and the hand-typed ready duration agreed
 // with the WRONG instant. Deriving it from the pair exposes the disagreement instead of hiding it.
 fn srv1_boot_path_run_ready_duration(run: Srv1BootPathRun) -> Second? {
-  srv1_window_seconds_between(earlier: run.window_start_utc, later: run.window_end_utc)
+  iso8601_utc_instant_seconds_between(earlier: run.trigger_at, later: run.ready_at)
 }
 
 
@@ -1807,7 +1833,7 @@ fn srv1_boot_path_crash_restart_floor_seconds() -> Nat { second_count(srv1_repli
 // cost is a difference, and the phase and upstream breakdowns must ADD UP to that difference. In prose those
 // numbers could drift apart silently; here a witness can check the arithmetic.
 type Srv1RouterWindowCount {
-  snapshot_from_utc: NonEmptyStr,
+  snapshot_from: Iso8601UtcInstant?,
   status_502_before: Nat,
   status_502_after: Nat,
   status_200_before: Nat,
@@ -1829,7 +1855,7 @@ type Srv1RouterWindowCount {
 }
 
 data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = Srv1RouterWindowCount {
-  snapshot_from_utc: "2026-11-09T20:38:24Z" as NonEmptyStr,
+  snapshot_from: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 20, minute: 38, second: 24),
   status_502_before: 13,
   status_502_after: 64,
   status_200_before: 27150,
@@ -1853,9 +1879,8 @@ data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = S
 // claim cannot be made about this row by accident, and the downtime is a duration, not a number in prose.
 type Srv1BootPathIncident {
   replica_index: Nat,
-  down_from_utc: NonEmptyStr,
-  down_to_utc: NonEmptyStr,
-  downtime: Second,
+  down_from: Iso8601UtcInstant?,
+  down_to: Iso8601UtcInstant?,
   failed_starts: Nat,
   container_exit_status: Nat,
   unit_outcome: NonEmptyStr,
@@ -1866,15 +1891,21 @@ type Srv1BootPathIncident {
 
 data srv1_boot_path_incident_2026_11_09: Srv1BootPathIncident = Srv1BootPathIncident {
   replica_index: 1,
-  down_from_utc: "2026-11-09T21:04:54Z" as NonEmptyStr,
-  down_to_utc: "2026-11-09T21:17:30Z" as NonEmptyStr,
-  downtime: second(756),
+  down_from: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 4, second: 54),
+  down_to: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 17, second: 30),
   failed_starts: 4,
   container_exit_status: 2,
   unit_outcome: "lil-replica@1 exhausted its restart burst (Start request repeated too quickly after 5 attempts; StartLimitBurst=3 inside StartLimitIntervalSec=3600) and the unit entered failed" as NonEmptyStr,
   cause: "the rendered container command carried one unmatched ) : the args-file refusal had been CONCATENATED onto the end of the captured START line, so the container's bash -lc exited 2 within a second of starting, four times. The witness that was supposed to catch it asked only whether each captured line appeared INSIDE the rendered line, which an appended token cannot be caught by -- see a_control_that_shares_its_derivation_with_its_subject, SPECIMEN THREE." as NonEmptyStr,
   recovery: "manual: restore the backed-up helper, systemctl daemon-reload, systemctl reset-failed, start the old path" as NonEmptyStr,
   repair: "the switch script now rolls itself back on any failure inside the deadline (reinstall the backup, reset the counter, start the old path, report the total outage), and the containment control was replaced with whole-LINE equality plus two gates that do not travel through this module's own representation: the serving image's bash parses the emitted command, and a dry run of it must yield the argv docker inspect reported before the switch." as NonEmptyStr,
+}
+
+// How long the replica was down, computed from the row's own instants by the shared calendar -- the same rule as
+// the run receipts. A downtime typed beside the pair it measures agrees with whichever instant someone
+// transcribed; the pair is the fact.
+fn srv1_boot_path_incident_downtime(incident: Srv1BootPathIncident) -> Second? {
+  iso8601_utc_instant_seconds_between(earlier: incident.down_from, later: incident.down_to)
 }
 
 // The window's counter row has to ADD UP. The phase fields are the closed set of actions this window took
