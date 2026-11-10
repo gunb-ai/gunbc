@@ -3248,6 +3248,7 @@ type RunnerHostFileRun {
   privilege: FleetHostPrivilegeStanding
   results: List<FleetHostFileResult>
   withheld: List<RunnerHostFileWithheld>
+  retiree_drain: List<SlotActuationOutcome>
   pre_actuation_reload: RunnerHostManagerReload
   actuation_admission: RunnerHostActuationAdmission
   actuations: List<SlotActuationOutcome>
@@ -4396,6 +4397,14 @@ fn run_runner_host_files_admitted(
   // Observe reads per-slot standings and writes nothing — a mode that answered "caps not owed" without
   // looking was a two-valued answer hiding "could not look" (gunbc.design_argument::fail_closed). The population fold is read once here and
   // shared by both arms; apply's behavior is byte-equal (same reads, same order).
+  // THE PRE-CAP RETIREE DRAIN: retiree units must reach SlotRetiredAsDeclared (masked) BEFORE the cap
+  // phase reads the population, because the cap gate's retirement precondition requires them masked.
+  // Mask + stop need no daemon-reload, so this drain is not gated by the cap phase. This is the existing
+  // retirement route (drain_and_mask_runner_slot_over), reordered to satisfy its own precondition.
+  let retiree_drain = match mode {
+    FleetHostFilesApply => map(subject.retired_units, u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u))
+    FleetHostFilesObserveOnly => []
+  }
   let early_population = observe_runner_slot_population(subject: subject, context: context, expect: early_expect)
   let cap_phase = match mode {
     FleetHostFilesObserveOnly => observe_runner_host_cap_phase(subject: subject, context: context, population: early_population)
@@ -4448,6 +4457,7 @@ fn run_runner_host_files_admitted(
     privilege: privilege,
     results: results,
     withheld: gated.withheld,
+    retiree_drain: retiree_drain,
     pre_actuation_reload: pre_reload,
     actuation_admission: admission,
     actuations: actuations,
@@ -4511,6 +4521,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && runner_host_manager_reload_settled(r: run.pre_actuation_reload)
         && (match run.actuation_admission { ActuationAdmitted => true ActuationSkipped { cause: _ } => false })
         && all(run.actuations, a => slot_actuation_settled(o: a))
+        && all(run.retiree_drain, a => slot_actuation_settled(o: a))
         && retired_residue_settled(result: run.residue)
         && (match run.reload {
           ManagerReloadNotOwed => true
@@ -4565,6 +4576,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     join(map(run.superseded, r => concat(superseded_dropin_line(r: r), "\n")), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
+    "pre-cap-retiree-drain=", join(map(run.retiree_drain, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),
     "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",
     match run.actuation_admission { ActuationAdmitted => "" ActuationSkipped { cause: c } => join(["actuations SKIPPED ", c, "\n"], "") },
     join(map(run.actuations, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),

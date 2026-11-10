@@ -328,6 +328,7 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
     control_plane: real.control_plane,
     served_deployment: real.served_deployment,
     disk: real.disk,
+    thermal: real.thermal,
     authored_slots: real.authored_slots,
   }
 }

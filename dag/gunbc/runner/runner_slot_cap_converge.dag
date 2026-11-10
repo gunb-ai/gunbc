@@ -103,6 +103,7 @@ fn slot_cap_unit_view_at_desired(live: SlotCapLive, desired: RunnerSlotDesired) 
 fn slot_cap_cgroup_view_at_desired(live: SlotCapLive, desired: RunnerSlotDesired) -> Bool {
   slot_cap_cgroup_value_is(reading: live.cgroup_memory_max, bytes: desired.memory_max)
     && slot_cap_cgroup_value_is(reading: live.cgroup_swap_max, bytes: desired.memory_swap_max)
+    && slot_cap_cgroup_value_is(reading: live.cgroup_memory_high, bytes: desired.memory_high)
 }
 
 // A PRESENT, PARSEABLE cgroup reading: `max` or a byte count. Missing and malformed are the same
@@ -126,8 +127,8 @@ fn slot_cap_standing(live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapSt
     if slot_cap_unit_view_at_desired(live: live, desired: desired) { SlotCapsStopped } else {
       SlotCapsNeedRestart { detail: join(["stopped, and the unit's loaded caps are not the desired ones: MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max, " MemoryHigh=", live.unit_memory_high, " TasksMax=", live.unit_tasks_max], "") }
     }
-  } else if !slot_cap_cgroup_value_readable(reading: live.cgroup_memory_max) || !slot_cap_cgroup_value_readable(reading: live.cgroup_swap_max) {
-    SlotCapsUnread { cause: join(["the unit has cgroup ", live.control_group, " but memory.max/memory.swap.max are missing or malformed: memory.max=", match live.cgroup_memory_max { Absent => "<missing>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<missing>" Present { value: v } => trim(s: v) }], "") }
+  } else if !slot_cap_cgroup_value_readable(reading: live.cgroup_memory_max) || !slot_cap_cgroup_value_readable(reading: live.cgroup_swap_max) || !slot_cap_cgroup_value_readable(reading: live.cgroup_memory_high) {
+    SlotCapsUnread { cause: join(["the unit has cgroup ", live.control_group, " but memory.max/memory.swap.max/memory.high are missing or malformed: memory.max=", match live.cgroup_memory_max { Absent => "<missing>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<missing>" Present { value: v } => trim(s: v) }, " memory.high=", match live.cgroup_memory_high { Absent => "<missing>" Present { value: v } => trim(s: v) }], "") }
   } else {
     slot_cap_standing_readable(live: live, desired: desired)
   }
@@ -140,11 +141,11 @@ fn slot_cap_standing_readable(live: SlotCapLive, desired: RunnerSlotDesired) -> 
     SlotCapsAtDesired
   } else if cgroup_ok {
     SlotCapsReadingsDisagree {
-      detail: join(["the cgroup shows memory.max/memory.swap.max at the desired caps while systemctl show reports MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max, " MemoryHigh=", live.unit_memory_high, " TasksMax=", live.unit_tasks_max], ""),
+      detail: join(["the cgroup shows memory.max/memory.swap.max/memory.high at the desired caps while systemctl show reports MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max, " MemoryHigh=", live.unit_memory_high, " TasksMax=", live.unit_tasks_max], ""),
     }
   } else {
     SlotCapsNeedRestart {
-      detail: join(["cgroup memory.max=", match live.cgroup_memory_max { Absent => "<unread>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<unread>" Present { value: v } => trim(s: v) }, "; unit view MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max], ""),
+      detail: join(["cgroup memory.max=", match live.cgroup_memory_max { Absent => "<unread>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<unread>" Present { value: v } => trim(s: v) }, " memory.high=", match live.cgroup_memory_high { Absent => "<unread>" Present { value: v } => trim(s: v) }, "; unit view MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max], ""),
     }
   }
 }
@@ -419,14 +420,12 @@ fn slot_cap_standing_wire(unit: NonEmptyStr, s: SlotCapStanding) -> String {
 
 data slot_cap_show_properties: List<SystemdUnitProperty> = [MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup]
 
-// THE SHARED LIVE READ STAYS THE PAIR THE ENVELOPE CHECK READS. memory.high is NOT added here: the fleet's
-// cap witnesses script this exact argv (two file names), and the shared standing judges max+swap -- the pair
-// the memory-envelope check reads (gunbc.host.memory_envelope). A caller that must read MORE of a unit's
-// cgroup passes its own file list to read_slot_cap_live_files_over; the bracket holder is such a caller
-// (slot_cap_holder_cgroup_files below), because its verdict is taken from its live cgroup alone -- the
-// holder is never stop/start bracketed (gunbc.runner.runner_host_cap_bracket), and the fleet ruling
-// (parent 2026-10-24) counts it converged only when all three values the drop-in set read back at desired.
-data slot_cap_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmptyStr, "memory.swap.max" as NonEmptyStr]
+// THE SHARED LIVE READ READS ALL THREE VALUES THE DROP-IN SET WRITES. The bracket holder path
+// (slot_cap_holder_cgroup_files below) and the ordinary standing both require all three (memory.max,
+// memory.swap.max, memory.high) to read back at desired before a cap file is retired. The fleet ruling
+// (parent 2026-10-24; expanded 2026-11-07 for the memory.high gap) counts convergence only when the
+// live cgroup shows all three at desired.
+data slot_cap_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmptyStr, "memory.swap.max" as NonEmptyStr, "memory.high" as NonEmptyStr]
 
 fn slot_cap_show_value(lines: List<String>, property: SystemdUnitProperty) -> String? {
   let key = concat(systemd_unit_property_wire(property: property) as String, "=")
