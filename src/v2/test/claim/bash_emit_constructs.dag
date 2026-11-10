@@ -50,11 +50,12 @@ import v2.extdeps.languages.bash_build {
   bash_build_with_redir_stderr_to_stdout,
   bash_build_with_redir_stdout_to_stderr
 }
-import v2.extdeps.languages.bash_command_fold {
+import v2.extdeps.languages.bash_command_fold { bash_fold_relation_row_witness,
   bash_fold_lex_rule,
   bash_ingest_lex_rules
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.std.witness { Holds, Violates }
 import std.host_text { chars }
 import std.types { List }
 import v2.std.compilers.lexing { LexRule }
@@ -632,5 +633,67 @@ test fn bare_word_refuses_bytes_that_would_split_or_expand() -> Bool {
         Present { value: _ } => false
       }
     Present { value: _ } => false
+  }
+}
+
+// ── discriminating probes (temporary) ──────────────────────────────────────
+// Which stage refuses a new-kind word? The relation row is the first gate
+// bash_fold_serialize_leaf_node passes a node through, so pinning it here
+// separates "the grammar row does not accept the node" from "the row accepts it
+// and the spelling map is what fails". The literal word is the control: it uses
+// the lane's own token class, while every new kind shares bash_token_orch_raw.
+
+test fn probe_relation_row_holds_for_a_literal_word() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_build_word_lit(text: "mapfile"),
+    lhs: ^bash_production_fold_lit_word
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn probe_relation_row_holds_for_a_bare_word() -> Bool {
+  match bash_build_word_bare(text: "mapfile") {
+    Absent => false
+    Present { value: w } =>
+      match bash_fold_relation_row_witness(
+        emitted: w,
+        lhs: ^bash_production_fold_bare_word
+      ) {
+        Holds { value: _ } => true
+        Violates { diagnostic: _ } => false
+      }
+  }
+}
+
+test fn probe_relation_row_holds_for_a_var_bare_word() -> Bool {
+  match bash_build_word_var_bare(name: "D") {
+    Absent => false
+    Present { value: w } =>
+      match bash_fold_relation_row_witness(
+        emitted: w,
+        lhs: ^bash_production_fold_var_bare_word
+      ) {
+        Holds { value: _ } => true
+        Violates { diagnostic: _ } => false
+      }
+  }
+}
+
+test fn probe_relation_row_holds_for_a_function_definition() -> Bool {
+  match bash_build_function_def(
+    name: "ev",
+    body: [command([word("echo"), word("up")])]
+  ) {
+    Absent => false
+    Present { value: n } =>
+      match bash_fold_relation_row_witness(
+        emitted: n,
+        lhs: ^bash_production_fold_function_def
+      ) {
+        Holds { value: _ } => true
+        Violates { diagnostic: _ } => false
+      }
   }
 }
