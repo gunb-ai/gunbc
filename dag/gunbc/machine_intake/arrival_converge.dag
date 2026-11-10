@@ -166,7 +166,7 @@ import gunbc.auth.standing_operator_grant {
 }
 import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_named }
+import gunbc.hostname_allocation { operator_host_named }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
 import gunbc.machine_intake.bmc_write_controller {
   BmcWriteRoute, ByStandingGrant, ByPerWriteApproval, BmcWriteControllerSelected, BmcWriteControllerRefused, select_bmc_write_controller,

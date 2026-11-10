@@ -14,7 +14,7 @@ import extdeps.nvidia.system_management_interface {
   parse_gpu_power_state, smi_effect_outcome,
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.fleet.fleet_host_identity { operator_hosts }
+import gunbc.hostname_allocation { operator_hosts }
 import gunbc.fleet.board_function_converge { running_as_root }
 import gunbc.serving.gpu_power_state_policy {
   GpuCapAdmission, GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending,

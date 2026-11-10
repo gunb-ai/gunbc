@@ -28,7 +28,7 @@ import std.algebra { trim }
 import extdeps.boards.types { FirmwareSetupSwitch, JumperSwitch, SwitchNotStated, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.fleet.fleet_host_identity { operator_hosts }
+import gunbc.hostname_allocation { operator_hosts }
 import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute }
 import gunbc.fleet.board_function_admission_marker { board_function_converge_admission_marker }
 import gunbc.fleet.board_function_admission {
@@ -617,7 +617,7 @@ fn remove_admission_marker() -> String? {
   }
 }
 
-// THE ENTRY. `host` names the machine in gunbc.fleet.fleet_host_identity operator_hosts; the deployment
+// THE ENTRY. `host` names the machine in gunbc.hostname_allocation operator_hosts; the deployment
 // that installs the unit passes its own target host. Exit 0 means every host-side removal the plans license
 // is in place and read back, and the admission latch is written; any refusal removes the latch and exits
 // non-zero with every plan's line printed.

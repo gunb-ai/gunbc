@@ -1,11 +1,53 @@
 module test.claim.hostname_allocation_witness
 
+// IMPORTS ADDED 2026-11-10 (gunbc.plans.fleet_machine_authority P2). Before this the file named nothing it
+// used and resolved only through the retired flat namespace, so at main it refused at resolve and none of
+// its claims ran.
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Present }
+import std.error_primitives { Err, Ok }
+import std.algebra { fold_list }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.allocation_roster { AllocationAdmitted, AllocationPrimaryKeyRepeated, AllocationSecondaryKeyRepeated }
+import product.host_identity { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_183527,
+}
+import gunbc.hostname_allocation {
+  HostnameAllocation,
+  HumanName,
+  FirstOnly,
+  FirstLast,
+  LegacyHostname,
+  DrawnHumanName,
+  HumanNameDraw,
+  HumanNameDrawn,
+  HumanNameDrawExhausted,
+  HumanNameDrawRefused,
+  HostSelectorResolved,
+  HostSelectorAmbiguous,
+  HostSelectorUnknown,
+  human_name_canonical_hostname,
+  draw_human_name,
+  canonical_hostname_for_fleet_slot,
+  canonical_hostname_in_roster,
+  hostname_allocation_admission,
+  resolve_host_selector,
+  resolve_host_selector_in,
+  fleet_machine_registry,
+  next_name_for_fleet_slot,
+  allocation_reserved_forms,
+  pending_name_collisions,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn allocation_fixture(slot: String, hostname: String) -> HostnameAllocation {
   HostnameAllocation {
     fleet_slot: slot as HostIdentity,
     name: LegacyHostname { label: hostname as DnsLabel },
+    next_name: Absent,
   }
 }
 
@@ -13,6 +55,33 @@ fn drawn_fixture(slot: String, name: HumanName, entropy: Int) -> HostnameAllocat
   HostnameAllocation {
     fleet_slot: slot as HostIdentity,
     name: DrawnHumanName { name: name, draw: HumanNameDraw { entropy: entropy } },
+    next_name: Absent,
+  }
+}
+
+fn pending_fixture(slot: String, hostname: String, next: String) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: LegacyHostname { label: hostname as DnsLabel },
+    next_name: Present { value: LegacyHostname { label: next as DnsLabel } },
+  }
+}
+
+// A PENDING DRAW REPRODUCES against every other registry row, pending names included. Re-drawing against
+// that superset is exact because pending_name_collisions forbids any other row from holding the form the
+// draw chose; so a recorded next_name the allocator would not yield reds here rather than standing.
+fn pending_draw_reproduces(row: HostnameAllocation, rows: List<HostnameAllocation>) -> Bool {
+  match row.next_name {
+    Absent => true
+    Present { value: next } => match next {
+      LegacyHostname { label: _ } => true
+      DrawnHumanName { name: recorded, draw: d } =>
+        match draw_human_name(draw: d, existing: filter(rows, o => (o.fleet_slot as String) != (row.fleet_slot as String))) {
+          HumanNameDrawn { name: drawn } => human_name_eq(a: drawn, b: recorded)
+          HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+          HumanNameDrawRefused { reason: _ } => false
+        }
+    }
   }
 }
 
@@ -75,7 +144,7 @@ test fn witness_identity_that_is_not_a_dns_label_can_still_have_a_hostname() -> 
 }
 
 test fn witness_production_fleet_roster_is_injective() -> Bool {
-  match hostname_allocation_admission(allocations: gunbc_fleet_hostname_allocations) {
+  match hostname_allocation_admission(allocations: fleet_machine_registry) {
     AllocationAdmitted { roster: _ } => true
     AllocationPrimaryKeyRepeated { key: _ } => false
     AllocationSecondaryKeyRepeated { key: _ } => false
@@ -133,12 +202,12 @@ test fn witness_lookup_of_unallocated_slot_is_absent_not_reconstructed() -> Bool
 // is re-drawn by the real allocator against the rows allocated before it, and must yield exactly the
 // recorded name; at least one drawn row must exist, so an empty set cannot pass vacuously.
 test fn witness_every_recorded_draw_is_what_the_allocator_yields() -> Bool {
-  let drawn = filter(gunbc_fleet_hostname_allocations, r => match r.name {
+  let drawn = filter(fleet_machine_registry, r => match r.name {
     DrawnHumanName { name: _, draw: _ } => true
     LegacyHostname { label: _ } => false
   })
   let check = fold_list(
-    xs: gunbc_fleet_hostname_allocations,
+    xs: fleet_machine_registry,
     empty: RecordedDrawCheck { prior: [], reproduced: true },
     cons: fn(acc, r) {
       RecordedDrawCheck {
@@ -263,4 +332,49 @@ test fn witness_owen_and_host_94c81d_name_no_host() -> Bool {
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
   by_name && by_identity
+}
+
+// THE ACCEPTED NEXT NAMES (operator, D3 of gunbc.plans.fleet_machine_authority, 2026-11-10) ARE THE
+// ALLOCATOR'S: each re-draws to its recorded name, at least five are pending, and srv4's is fox.
+test fn witness_every_pending_draw_is_what_the_allocator_yields() -> Bool {
+  let pending = filter(fleet_machine_registry, r => match r.next_name {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let fox = match next_name_for_fleet_slot(fleet_slot: operator_host_srv4) {
+    Present { value: n } => match n {
+      DrawnHumanName { name: h, draw: _ } => (human_name_canonical_hostname(name: h) as String) == "fox"
+      LegacyHostname { label: _ } => false
+    }
+    Absent => false
+  }
+  pending.length() >= 5 && all(pending, r => pending_draw_reproduces(row: r, rows: fleet_machine_registry)) && fox
+}
+
+// A PENDING NAME IS RESERVED, NOT ANSWERED TO: srv4 does not resolve as fox until its rename applies, and
+// no other draw can take fox meanwhile.
+test fn witness_pending_name_is_reserved_but_does_not_resolve() -> Bool {
+  let unresolved = match resolve_host_selector(selector: "fox") {
+    HostSelectorUnknown { selector: s } => s == "fox"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+  }
+  let reserved = any(allocation_reserved_forms(allocation: pending_fixture(slot: "a", hostname: "a1", next: "fox")), f => f == "fox")
+  unresolved && reserved
+}
+
+test fn witness_production_registry_has_no_pending_collision() -> Bool {
+  pending_name_collisions(allocations: fleet_machine_registry).length() == 0
+}
+
+// THE TWO REDS OF THE PENDING AXIS: a next_name another machine already answers to, and one next_name
+// awaited by two machines.
+test fn witness_pending_name_colliding_with_a_current_name_refuses() -> Bool {
+  let roster = [allocation_fixture(slot: "a", hostname: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox")]
+  any(pending_name_collisions(allocations: roster), c => c == "fox")
+}
+
+test fn witness_one_pending_name_for_two_machines_refuses() -> Bool {
+  let roster = [pending_fixture(slot: "a", hostname: "a1", next: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox")]
+  pending_name_collisions(allocations: roster).length() == 2
 }

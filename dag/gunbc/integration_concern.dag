@@ -740,7 +740,7 @@ data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
     head: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller"),
     tail: [
       decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
-      decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
+      decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "fleet_machine_registry"),
       decl_ref(module_path: "gunbc.fleet.machine_board", decl_name: "machine_board_rows"),
       decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
     ],

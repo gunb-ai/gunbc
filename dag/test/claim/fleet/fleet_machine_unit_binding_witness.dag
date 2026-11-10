@@ -1,0 +1,187 @@
+module test.claim.fleet.fleet_machine_unit_binding_witness
+
+// W1 (physical half) of gunbc.plans.fleet_machine_authority: the A2 admission over observed board serials.
+// The registry half (a handle or a name claimed twice, a pending name colliding) is
+// test.claim.hostname_allocation_witness. Fixture serials below are planted; the duplicate case uses the
+// srv13/srv15 serial because that is the shape that entered the fleet twice
+// (gunbc.integration_concern::srv13_and_srv15_name_one_board).
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import gunbc.machine_intake.subject {
+  BmcFru,
+  BoardSerialContradictory,
+  BoardSerialObservation,
+  HostSmbios,
+  UnitIdentityInputs,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  qualification_subject_of,
+}
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
+  mtcollins1_unit_identity_inputs,
+  mtcollins1_unit_key_standing,
+  mtcollins1_assembly,
+  mtcollins1_firmware_manifest,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia, HostUnitUnobserved, resolve_host_unit }
+import gunbc.host.physical_machine_binding { PhysicalMachineRefused, PhysicalMachineSubjectUnitMismatch, PhysicalMachineAdmitted, physical_machine_admission }
+import gunbc.fleet.fleet_machine_unit_binding {
+  MachineUnitEvidence,
+  MachineUnitBound,
+  MachineUnitRefused,
+  MachineUnitSerialHeldByAnother,
+  MachineEvidenceRepeated,
+  admit_machine_units,
+  fleet_machine_unit_standings,
+  machine_unit_admission_refusals,
+  machine_unit_standing,
+  machine_unit_standing_in,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn machine(label: String) -> HostIdentity { label as HostIdentity }
+
+fn evidence(m: String, fru: String, smbios: String) -> MachineUnitEvidence {
+  MachineUnitEvidence {
+    machine: machine(label: m),
+    inputs: UnitIdentityInputs {
+      bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint,
+      board_serial_observations: [
+        BoardSerialObservation { source: BmcFru, serial: fru as NonEmptyStr },
+        BoardSerialObservation { source: HostSmbios, serial: smbios as NonEmptyStr },
+      ],
+    },
+  }
+}
+
+// RED: two machines observed on one board serial. The second is refused and the refusal names both.
+test fn two_machines_on_one_observed_serial_refuse_naming_both() -> Bool {
+  let standings = admit_machine_units(evidence: [
+    evidence(m: "fixture-a", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
+    evidence(m: "fixture-b", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
+  ])
+  match standings.get(index: 1) {
+    Present { value: s } => match s {
+      MachineUnitSerialHeldByAnother { machine: m, holder: h, serial: d } =>
+        (m as String) == "fixture-b" && (h as String) == "fixture-a" && (d as String) == "BR80S6102300049"
+      MachineUnitBound { machine: _, unit: _ } => false
+      MachineUnitRefused { machine: _, cause: _ } => false
+      MachineEvidenceRepeated { machine: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// RED: the BMC's FRU and the host's SMBIOS disagree, so the machine binds no unit.
+test fn contradictory_serial_readings_refuse() -> Bool {
+  match admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-TWO")]).first() {
+    Present { value: s } => match s {
+      MachineUnitRefused { machine: _, cause: c } => match c {
+        BoardSerialContradictory { observations: o } => o.length() == 2
+        _ => false
+      }
+      MachineUnitBound { machine: _, unit: _ } => false
+      MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
+      MachineEvidenceRepeated { machine: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// RED: a machine's evidence given twice is reported, and its first binding stands.
+test fn repeated_evidence_for_one_machine_is_reported() -> Bool {
+  let standings = admit_machine_units(evidence: [
+    evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
+    evidence(m: "fixture-a", fru: "SERIAL-TWO", smbios: "SERIAL-TWO"),
+  ])
+  let reported = any(machine_unit_admission_refusals(standings: standings), s => match s {
+    MachineEvidenceRepeated { machine: m } => (m as String) == "fixture-a"
+    MachineUnitBound { machine: _, unit: _ } => false
+    MachineUnitRefused { machine: _, cause: _ } => false
+    MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
+  })
+  let first_stands = match machine_unit_standing_in(standings: standings, machine: machine(label: "fixture-a")) {
+    Present { value: u } => match u {
+      UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
+      UnitKeyRefused { cause: _ } => false
+    }
+    Absent => false
+  }
+  reported && first_stands
+}
+
+// A REGISTERED MACHINE WITH NO READING is absent from A2, and its backing row stays unobserved with its read
+// obligation rather than claiming a key.
+test fn unread_machine_is_absent_and_its_backing_unobserved() -> Bool {
+  let standings = admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE")])
+  let unread = machine_unit_standing_in(standings: standings, machine: machine(label: "fixture-unread"))
+  let absent = match unread {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let unobserved = match resolve_host_unit(backing: OwnedMachine {
+    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    unit: unread,
+  }) {
+    HostUnitUnobserved { trigger: _ } => true
+    _ => false
+  }
+  absent && unobserved
+}
+
+// A BOARD SWAP REBINDS THE SAME HANDLE: a later reading binds the machine to the new unit, and a qualification
+// subject built for the old board refuses to seal against it.
+fn subject_for(unit: UnitKey) -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: unit, assembly: mtcollins1_assembly, firmware: mtcollins1_firmware_manifest),
+    attempt_id: "fixture-attempt" as IntakeAttemptId,
+  }
+}
+
+test fn board_swap_rebinds_the_handle_and_old_subject_refuses() -> Bool {
+  let after = admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-NEW", smbios: "SERIAL-NEW")])
+  match machine_unit_standing_in(standings: after, machine: machine(label: "fixture-a")) {
+    Present { value: u } => match u {
+      UnitKeyBound { key: k } =>
+        (k as String) == "SERIAL-NEW"
+          && (match physical_machine_admission(
+            host: machine(label: "fixture-a"),
+            unit_standing: u,
+            current_subject: Present { value: subject_for(unit: "SERIAL-OLD" as UnitKey) },
+            fleet: Absent,
+            control: Absent,
+          ) {
+            PhysicalMachineRefused { cause: PhysicalMachineSubjectUnitMismatch { physical_unit: p, subject_unit: s } } =>
+              (p as String) == "SERIAL-NEW" && (s as String) == "SERIAL-OLD"
+            _ => false
+          })
+      UnitKeyRefused { cause: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// POSITIVE CONTROL ON THE REAL PRODUCER: the production evidence admits with no refusal, and mtcollins1 is bound
+// to exactly the unit its own intake observation binds (gunbc.machine_intake.mtcollins1_bmc_secure_observation).
+test fn production_evidence_admits_and_mtcollins1_binds_its_observed_unit() -> Bool {
+  let clean = machine_unit_admission_refusals(standings: fleet_machine_unit_standings).length() == 0
+  let same = match machine_unit_standing(machine: operator_host_mtcollins1) {
+    Present { value: u } => match u {
+      UnitKeyBound { key: k } => match mtcollins1_unit_key_standing {
+        UnitKeyBound { key: expected } => k == expected
+        UnitKeyRefused { cause: _ } => false
+      }
+      UnitKeyRefused { cause: _ } => false
+    }
+    Absent => false
+  }
+  clean && same
+}

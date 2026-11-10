@@ -14,7 +14,7 @@ import gunbc.machine_intake.subject {
   compare_qualification_subject,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
+import gunbc.hostname_allocation { HostnameAllocation, fleet_machine_registry }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
@@ -482,7 +482,7 @@ fn managed_hosts_projected(
 fn managed_host_memberships() -> List<ManagedHostMembership> {
   managed_host_memberships_projected(
     records: authored_managed_host_admissions(),
-    allocations: gunbc_fleet_hostname_allocations,
+    allocations: fleet_machine_registry,
   )
 }
 

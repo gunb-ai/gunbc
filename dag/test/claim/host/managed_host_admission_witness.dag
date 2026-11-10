@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String, CommitSha }
 import std.content_hash { content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
-import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
+import gunbc.hostname_allocation { fleet_machine_registry }
 import gunbc.rung_drop {
   AuthoredProse,
   RungDrop,
@@ -98,7 +98,7 @@ test fn w_a_record_whose_subject_is_current_is_an_ordinary_member() -> Bool {
       match project_managed_host_admission(
         record: r,
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       ) {
         Absent => false
         Present { value: m } => match m {
@@ -129,7 +129,7 @@ test fn w_a_superseded_subject_with_no_declared_drop_is_absent() -> Bool {
           match project_managed_host_admission(
             record: without,
             current_subject: mtcollins1_current_intake_subject(),
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           ) {
             Absent => true
             Present { value: _ } => false
@@ -155,7 +155,7 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
         without => {
           let hosts = managed_hosts_projected(
             records: [without],
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           )
           count(hosts) == 0 && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: hosts)) == 0
         }
@@ -198,7 +198,7 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       ) {
         Absent => true
         Present { value: _ } => false
@@ -282,7 +282,7 @@ test fn w_the_membership_carries_the_record_value_identity_and_ignores_prose() -
           match project_managed_host_admission(
             record: carried,
             current_subject: mtcollins1_current_intake_subject(),
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           ) {
             Absent => false
             Present { value: m } => match m {
@@ -327,7 +327,7 @@ test fn w_a_superseded_covering_drop_is_absent() -> Bool {
           match project_managed_host_admission(
             record: superseded,
             current_subject: mtcollins1_current_intake_subject(),
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           ) {
             Absent => true
             Present { value: _ } => false
@@ -365,7 +365,7 @@ test fn w_a_retired_covering_drop_is_absent() -> Bool {
           match project_managed_host_admission(
             record: retired,
             current_subject: mtcollins1_current_intake_subject(),
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           ) {
             Absent => true
             Present { value: _ } => false
@@ -404,7 +404,7 @@ test fn w_admission_permits_a_platform_that_does_not_carry_smpro() -> Bool {
           match project_managed_host_admission(
             record: notcarried,
             current_subject: Present { value: r.binding.subject },
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           ) {
             Absent => false
             Present { value: m } => match m {
@@ -463,7 +463,7 @@ test fn w_an_admissibly_dissolved_covering_drop_is_absent() -> Bool {
           match project_managed_host_admission(
             record: dissolved,
             current_subject: mtcollins1_current_intake_subject(),
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           ) {
             Absent => true
             Present { value: _ } => false
@@ -495,7 +495,7 @@ test fn w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_m
           match project_managed_host_admission(
             record: covered,
             current_subject: mtcollins1_current_intake_subject(),
-            allocations: gunbc_fleet_hostname_allocations,
+            allocations: fleet_machine_registry,
           ) {
             Absent => false
             Present { value: m } => match m {
