@@ -335,7 +335,10 @@ fn compute_attempt_exit_entry_parts(done_dir: String, identity: String) -> List<
 // "...+${INVOCATION_ID}+..." -- which attempt_exit_record_put_mkdir_name refuses to write and
 // attempt_exit_entry_decode refuses to read, at the two ends of the only routes that touch it.
 fn compute_attempt_exit_hook(store: SpoolStore, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
-  match spool_role_path(store: store, role: RoleDone) {
+  // The store's KIND is part of the sealed fact, not just its shape: a foreign kind would render a hook into
+  // that kind's `done` directory. Refuse anything that is not the compute-exit spool (review 92720 finding 3).
+  match store.kind {
+    SpoolComputeExit => match spool_role_path(store: store, role: RoleDone) {
     Absent => AttemptExitHookRefused { reason: "SpoolComputeExit declares no Done terminal" as NonEmptyStr }
     Present { value: done_dir } => match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
       ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
@@ -347,7 +350,9 @@ fn compute_attempt_exit_hook(store: SpoolStore, identity: String, record_owner: 
           ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
           ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
         }
+      }
     }
+    _ => AttemptExitHookRefused { reason: "compute_attempt_exit_hook renders only the compute-exit spool" as NonEmptyStr }
   }
 }
 
@@ -356,9 +361,14 @@ fn compute_attempt_exit_hook(store: SpoolStore, identity: String, record_owner: 
 // cannot support, and the door keeps the seat on it. The path derives from the declaration through
 // spool_role_path; the caller passes the sealed store, never a path.
 fn compute_attempt_exit_record_listing(store: SpoolStore) -> SpoolListing {
-  match spool_role_path(store: store, role: RoleDone) {
-    Absent => SpoolListingUnreadable { reason: "SpoolComputeExit declares no Done terminal" }
-    Present { value: done_dir } => spool_directory_listing(directory: done_dir)
+  // Refuse a foreign kind: listing another kind's `done` directory through the compute-exit reader is the same
+  // cross-kind planting the sealed store exists to prevent (review 92720 finding 3).
+  match store.kind {
+    SpoolComputeExit => match spool_role_path(store: store, role: RoleDone) {
+      Absent => SpoolListingUnreadable { reason: "SpoolComputeExit declares no Done terminal" }
+      Present { value: done_dir } => spool_directory_listing(directory: done_dir)
+    }
+    _ => SpoolListingUnreadable { reason: "compute_attempt_exit_record_listing lists only the compute-exit spool" }
   }
 }
 

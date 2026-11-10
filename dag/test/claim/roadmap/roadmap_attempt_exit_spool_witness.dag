@@ -34,13 +34,14 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_role, attempt_exit_record_names_attempt,
   attempt_exit_subject_of_record,
   AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit, ComputeEntrySubject,
+  compute_attempt_exit_record_listing,
 }
 import gunbc.systemd_unit_names { compute_unit_name }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal, ServiceResultExitCode }
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
 // variables spelled as systemd expansions and no shell anywhere.
-import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable }
+import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable, spool_open, SpoolAttemptExit }
 
 fn drain_principal() -> PosixOwnerNames {
   PosixOwnerNames { user: "svc" as NonEmptyStr, group: "grp" as NonEmptyStr }
@@ -469,4 +470,18 @@ test fn a_worker_role_word_decodes_to_its_invocation_and_a_malformed_one_is_refu
     AttemptExitEntryDecoded { record: _ } => false
   }
   first && resumed && obligation && malformed
+}
+
+// review 92720 finding 3: the compute-exit readers must refuse a store of ANY foreign kind, not just be
+// "shaped right". A SpoolAttemptExit store (unpartitioned, has its own done dir) passed to the compute-exit
+// reader would otherwise list that kind's done directory. The kind-narrowing guard makes it refuse.
+test fn the_compute_exit_readers_refuse_a_foreign_kind_store() -> Bool {
+  let foreign = spool_open(kind: SpoolAttemptExit, instance_root: "/tmp/compute/root")
+  match compute_attempt_exit_record_listing(store: foreign) {
+    // The refusal must be the KIND guard, not an incidental unreadable (a missing done dir would also be
+    // SpoolListingUnreadable with a different reason). Matching the exact reason makes this RED if the
+    // foreign-kind guard is removed -- then a SpoolAttemptExit store falls through to the listing itself.
+    SpoolListingUnreadable { reason: r } => r == "compute_attempt_exit_record_listing lists only the compute-exit spool"
+    SpoolListed { names: _ } => false
+  }
 }
