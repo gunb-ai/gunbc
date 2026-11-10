@@ -88,7 +88,7 @@ import gunbc.host.boot_console_observation {
   boot_console_observation_debt_outstanding,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  megarac_boot_run_record, megarac_look_presentation, MegaRacRunRecord, BootParamReading, BootParamNotTaken,
+  megarac_boot_run_record, megarac_look_presentation, megarac_handoff_issued_set, MegaRacRunRecord, BootParamReading, BootParamNotTaken,
   BootParamRead, BootParamUnread, BmcUnreachable,
   megarac_boot_override_consumption, megarac_power_after_from_observation,
   BootOverrideClears, boot_override_clears_none_found,
