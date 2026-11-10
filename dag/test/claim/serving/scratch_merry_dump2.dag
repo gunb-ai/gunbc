@@ -1,49 +1,52 @@
-module test.claim.serving.scratch_merry_dump2
+// scratch (merry-gull-120): isolate which fold piece refuses with the generic
+// grammar_relation_production_not_found. DELETE when done.
+use v2.std.diagnostic.*
+use v2.extdeps.languages.bash_build.*
+use v2.workflow.bash_command_fold_serialize.*
 
-// SCRATCH, NOT FOR MERGE. Three probes in one run:
-//   1. the launcher render, between sentinels, for a byte diff against the installed file;
-//   2. the two red bash_command_fold controls' actual Outcomes, with the refusal reasons.
-// Run: gunbc run --source-root dag --source-root src/v2 --entry <this file> --function main
+data scratch_main_ok: Int = 0
 
-import std.types { String }
-import std.process { ExitSuccess }
-import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import v2.std.diagnostic { diagnostics_reason_lexemes, Outcome }
-import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
-import v2.extdeps.languages.bash_build {
-  bash_build_command_from_word_nodes, bash_build_word_var, bash_build_command_from_lits,
-  bash_build_with_redir_from_file, bash_build_word_positional, bash_build_word_double_quoted,
-  bash_build_word_kinded,
-}
-import gunbc.serving.srv1_serving_replica_layout { srv1_render_replica_launcher }
-
-fn probe(label: String, outcome: Outcome<String>) -> String {
-  match outcome {
-    Accepted { value: v } => concat(label, concat(" ACCEPTED[", concat(v, "]\n")))
+fn scratch_probe(label: String, node: Node) -> String {
+  match bash_fold_serialize_node(stmt: node) {
+    Accepted { value: v, diagnostics: _ } => concat(label, concat(" ACCEPTED[", concat(v, "]")))
     Rejected { diagnostics: d } =>
-      concat(label, concat(" REJECTED[", concat(diagnostics_reason_lexemes(diagnostics: d), "]\n")))
+      match diagnostics_first(diagnostics: d) {
+        Present { value: x } =>
+          concat(label, concat(" REJECTED[", concat(diagnostics_reason_lexemes(d: x), "]")))
+        Absent => concat(label, " REJECTED[]")
+      }
   }
 }
 
 fn main() -> CliWireResponse {
-  let bad_var = bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "1x")])
-  let redir_inner = bash_build_command_from_lits(lits: ["exec"])
-  let zero_word = match bash_build_word_positional(index: "0") {
-    Present { value: p } => match bash_build_word_double_quoted(parts: [p]) {
-      Present { value: n } => n
-      Absent => bash_build_word_kinded(kind: ^scratch_refused_double_quoted, value: "0")
-    }
+  let positional0 = match bash_build_word_positional(index: "0") {
+    Present { value: p } => p
     Absent => bash_build_word_kinded(kind: ^scratch_refused_positional, value: "0")
   }
-  let redir = bash_build_with_redir_from_file(inner: redir_inner, path: zero_word)
+  let dq0 = match bash_build_word_double_quoted(parts: [positional0]) {
+    Present { value: n } => n
+    Absent => bash_build_word_kinded(kind: ^scratch_refused_dq, value: "0")
+  }
+  let exec_cmd = bash_build_command_from_lits(lits: ["exec"])
+  let echo_bare = bash_build_command_with_words(words: [bash_build_word_bare(text: "echo")])
+  let echo_lit = bash_build_command_with_words(words: [bash_build_word_lit(text: "echo")])
+  let bad_var_cmd = bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "1x")])
+  let redir_bare = bash_build_with_redir_from_file(
+    inner: exec_cmd,
+    path: bash_build_word_bare(text: "/root/engine.args")
+  )
+  let lines = [
+    scratch_probe(label: "P1_POSITIONAL", node: positional0),
+    scratch_probe(label: "P2_DQ0", node: dq0),
+    scratch_probe(label: "P3_EXEC", node: exec_cmd),
+    scratch_probe(label: "P4_REDIR_DQ0", node: bash_build_with_redir_from_file(inner: exec_cmd, path: dq0)),
+    scratch_probe(label: "P5_ECHO_BARE", node: echo_bare),
+    scratch_probe(label: "P6_ECHO_LIT", node: echo_lit),
+    scratch_probe(label: "P7_BADVAR_CMD", node: bad_var_cmd),
+    scratch_probe(label: "P8_REDIR_BARE", node: redir_bare)
+  ]
   CliWirePrintable {
-    bytes: concat(
-      concat("<<<LAUNCHER>>>\n", concat(srv1_render_replica_launcher(), "<<<END_LAUNCHER>>>\n")),
-      concat(
-        probe(label: "BADVAR", outcome: bash_fold_serialize_node(stmt: bad_var)),
-        probe(label: "REDIR0", outcome: bash_fold_serialize_node(stmt: redir))
-      )
-    ),
-    exit: ExitSuccess,
+    bytes: join(parts: lines, separator: "\n"),
+    exit: ExitSuccess
   }
 }

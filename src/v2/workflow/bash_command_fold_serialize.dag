@@ -681,12 +681,35 @@ fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
   )
 }
 
+// A COMMAND'S WORDS ARE CHECKED BEFORE THE ROW SPEAKS. The bytes of a command come from
+// one authority -- the grammar row for ^bash_production_fold_command -- and this function
+// deliberately does NOT splice word spellings in, for the same reason the double-quoted
+// arm does not: two authorities on the same bytes. But deriving the spelling purely from
+// the row meant a word the builders had marked refused (a variable name bash would not
+// accept, a declined builder's marker, an unsupported kind) was rendered anyway, with its
+// raw text interpolated by the row's binding -- fail-open, exactly what review 93289
+// (gunbc.design_argument::fail_closed) says a checked builder must never allow. So each
+// word is run through `bash_fold_serialize_word_node` first, and its result is used ONLY
+// as a refusal check: any rejection propagates with the word's own diagnostic, and an
+// acceptance is thrown away before the row supplies the spelling.
 fn bash_fold_serialize_command_node(stmt: Node) -> Outcome<String> {
-  bash_fold_serialize_leaf_node(
-    emitted: stmt,
-    production_binding: ^bash_production_fold_command,
-    rule_name: ^bash_relation_rule_fold_command
-  )
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
+    Present { value: words } =>
+      match bash_fold_serialize_word_parts_concatenated(parts: words) {
+        Accepted { value: _, diagnostics: wd } =>
+          match wd {
+            None =>
+              bash_fold_serialize_leaf_node(
+                emitted: stmt,
+                production_binding: ^bash_production_fold_command,
+                rule_name: ^bash_relation_rule_fold_command
+              )
+            Some { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
 }
 
 fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
