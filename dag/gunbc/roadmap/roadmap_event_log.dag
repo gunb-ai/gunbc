@@ -141,10 +141,15 @@ type RoadmapEventKind
   // The wire words stay `acceptance_recorded` / `acceptance_revoked`, and the members are written only
   // under `roadmap_event_schema`, so a v1 or v2 decode that does not know this schema refuses them.
   // An acceptance carries the WHOLE receipt — node, criteria digest, executed red control, delivered
-  // handback, accepted_by, accepted_on, and the pull request it was earned by — because the fold must
-  // be able to answer "is this node's acceptance still the one its own criteria demand" without a
-  // second carrier to consult.
-  | AcceptanceRecordedEvent { receipt: RoadmapAcceptanceReceipt, pr_url: NonEmptyStr, merged_at: NonEmptyStr, head_sha: NonEmptyStr }
+  // handback, accepted_by, accepted_on — because the fold must be able to answer "is this node's
+  // acceptance still the one its own criteria demand" without a second carrier to consult. The pull
+  // request it was earned by is OPTIONAL, and only because of what the record is: the 18 acceptances the
+  // operator recorded before this log became the authority (the hand-committed JSONL seed, whose latest
+  // day is 2026-10-11) name no pull request — no such fact was ever recorded, and the migration that
+  // moves them here must not invent one to satisfy a field. An absence is written as an absence, never as
+  // an empty string or a guess, and roadmap_acceptance_pr_evidence_cutoff is the dated law that keeps
+  // that door shut for anything recorded after the switch.
+  | AcceptanceRecordedEvent { receipt: RoadmapAcceptanceReceipt, pr_url: NonEmptyStr?, merged_at: NonEmptyStr?, head_sha: NonEmptyStr? }
   // THE OPERATOR TAKING AN ACCEPTANCE BACK. `disposition` is the operator's own word for WHY the node
   // stays off the plan (it is retired) or comes back (it reopens the frontier); the fold honours it and
   // nothing else. What makes this an event and not an edit is the law next to it in
@@ -299,11 +304,9 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
     // The acceptance members exist only in this schema generation: v1 and v2 predate the kind, and
     // an event naming it under those schemas decodes as missing its members and is refused.
     AcceptanceRecordedEvent { receipt, pr_url, merged_at, head_sha } =>
-      if schema == roadmap_event_schema { concat([
-        json_kv(key: "pr_url", value: json_string(s: pr_url)),
-        json_kv(key: "merged_at", value: json_string(s: merged_at)),
-        json_kv(key: "head_sha", value: json_string(s: head_sha)),
-      ], roadmap_acceptance_receipt_members(r: receipt)) } else { [] }
+      if schema == roadmap_event_schema {
+        concat(roadmap_acceptance_pr_evidence_members(pr_url: pr_url, merged_at: merged_at, head_sha: head_sha),
+          roadmap_acceptance_receipt_members(r: receipt)) } else { [] }
     AcceptanceRevokedEvent { receipt, disposition, revoked_by, revoked_on, reason } =>
       if schema == roadmap_event_schema { concat([
         json_kv(key: "disposition", value: json_string(s: match disposition { AcceptanceNodeReopensActiveFrontier {} => "reopens_active_frontier"  AcceptanceNodeRemainsSuperseded {} => "remains_superseded" })),
@@ -311,6 +314,88 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
         json_kv(key: "revoked_on", value: json_string(s: revoked_on)),
         json_kv(key: "reason", value: json_string(s: reason)),
       ], roadmap_acceptance_receipt_members(r: receipt)) } else { [] }
+  }
+}
+
+// THE DATED DOOR FOR AN ACCEPTANCE WITH NO PULL REQUEST. Every acceptance recorded before this log
+// became the sole authority names no pull request: the hand-committed JSONL seed never recorded one, and
+// the latest day it holds is 2026-10-11. This log became the authority on 2026-11-09, and the live
+// acceptance tail it replaces was read and verified EMPTY on that date, so no acceptance ever recorded
+// falls between this cutoff and the switch. An evidence-less acceptance is therefore admissible only for
+// a receipt whose accepted_on day is before this date — which is the one-time migration's whole case and
+// nobody else's. The law itself is enforced where commands are admitted
+// (gunbc.roadmap.roadmap_issue_command issue_command_receipt_disagreement), because a missing field may
+// only ever mean "this fact never carried one", never "nobody looked".
+fn roadmap_acceptance_pr_evidence_cutoff() -> String { "2026-11-01" }
+
+type OptionalMemberRead
+  = OptionalMemberAbsent
+  | OptionalMemberPresent { value: NonEmptyStr }
+  | OptionalMemberRefused
+
+// AN OPTIONAL NON-EMPTY TEXT MEMBER. Absent means the fact never carried it. A member that IS there and
+// is null, the wrong type, duplicated, or the empty string REFUSES: an optional field is not a licence to
+// guess at a malformed one, and it is why an absence and an empty string cannot be confused here.
+fn event_member_optional_nonempty(doc: JsonValue, key: String) -> OptionalMemberRead {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberAbsent => OptionalMemberAbsent
+    JsonMemberFound { value: JsonString { value: s } } =>
+      if s == "" { OptionalMemberRefused } else { OptionalMemberPresent { value: s as NonEmptyStr } }
+    JsonMemberFound { value: _ } => OptionalMemberRefused
+    JsonMemberDuplicated { count: _ } => OptionalMemberRefused
+    JsonMemberNotAnObject => OptionalMemberRefused
+  }
+}
+
+// THE PR EVIDENCE'S MEMBERS, written only as a whole: the three are the same fact — the pull request, its
+// merge time, its head — so a record either carries all three or carries none of them, and half of one is
+// not written (the decode refuses it and the command law refuses it; see the cutoff above).
+fn roadmap_acceptance_pr_evidence_members(pr_url: NonEmptyStr?, merged_at: NonEmptyStr?, head_sha: NonEmptyStr?) -> List<JsonKeyValue> {
+  match pr_url {
+    Absent => match merged_at {
+      Absent => match head_sha { Absent => [] as List<JsonKeyValue>  Present { value: _ } => [] as List<JsonKeyValue> }
+      Present { value: _ } => [] as List<JsonKeyValue>
+    }
+    Present { value: url } => match merged_at {
+      Absent => [] as List<JsonKeyValue>
+      Present { value: at } => match head_sha {
+        Absent => [] as List<JsonKeyValue>
+        Present { value: sha } => [
+          json_kv(key: "pr_url", value: json_string(s: url)),
+          json_kv(key: "merged_at", value: json_string(s: at)),
+          json_kv(key: "head_sha", value: json_string(s: sha)),
+        ]
+      }
+    }
+  }
+}
+
+// THE PULL-REQUEST EVIDENCE, READ AS ONE FACT OR NOT AT ALL: all three members present and well-shaped,
+// or all three absent (an acceptance the operator recorded before this log was the authority). Anything
+// in between — one member, a duplicated member, an empty string where a value should be — REFUSES. There
+// is no default and no partial reading: a record that half-names the pull request that earned it is not
+// evidence of either case.
+fn roadmap_acceptance_pr_evidence_decode(doc: JsonValue, receipt: RoadmapAcceptanceReceipt) -> RoadmapEventKind? {
+  match event_member_optional_nonempty(doc: doc, key: "pr_url") {
+    OptionalMemberRefused => none
+    OptionalMemberAbsent => match event_member_optional_nonempty(doc: doc, key: "merged_at") {
+      OptionalMemberRefused => none
+      OptionalMemberAbsent => match event_member_optional_nonempty(doc: doc, key: "head_sha") {
+        OptionalMemberRefused => none
+        OptionalMemberAbsent => Present { value: AcceptanceRecordedEvent { receipt: receipt, pr_url: none, merged_at: none, head_sha: none } }
+        OptionalMemberPresent { value: _ } => none
+      }
+      OptionalMemberPresent { value: _ } => none
+    }
+    OptionalMemberPresent { value: url } => match event_member_optional_nonempty(doc: doc, key: "merged_at") {
+      OptionalMemberAbsent => none
+      OptionalMemberRefused => none
+      OptionalMemberPresent { value: at } => match event_member_optional_nonempty(doc: doc, key: "head_sha") {
+        OptionalMemberAbsent => none
+        OptionalMemberRefused => none
+        OptionalMemberPresent { value: sha } => Present { value: AcceptanceRecordedEvent { receipt: receipt, pr_url: url, merged_at: at, head_sha: sha } }
+      }
+    }
   }
 }
 
@@ -527,18 +612,7 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
     else {
       match roadmap_acceptance_receipt_decode(node: node, doc: doc) {
         Absent => none
-        Present { value: receipt } => match event_member_nonempty(doc: doc, key: "pr_url") {
-          Absent => none
-          Present { value: pr_url } =>
-            match event_member_nonempty(doc: doc, key: "merged_at") {
-              Absent => none
-              Present { value: merged_at } =>
-                match event_member_nonempty(doc: doc, key: "head_sha") {
-                  Absent => none
-                  Present { value: head_sha } => Present { value: AcceptanceRecordedEvent { receipt: receipt, pr_url: pr_url, merged_at: merged_at, head_sha: head_sha } }
-                }
-            }
-        }
+        Present { value: receipt } => roadmap_acceptance_pr_evidence_decode(doc: doc, receipt: receipt)
       }
     }
   } else if word == "acceptance_revoked" {
@@ -1476,7 +1550,12 @@ fn roadmap_acceptance_row_of_events(events: List<RoadmapEventEnvelope>, acc: Lis
       AcceptanceRecordedEvent { receipt, pr_url, merged_at, head_sha } =>
         roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: concat(acc, [RoadmapAcceptanceEventRow {
           id: hd.id, recorded_at: hd.event.recorded_at, line: roadmap_acceptance_line_of_receipt(receipt: receipt),
-          pr_url: pr_url, merged_at: merged_at, head_sha: head_sha }]))
+          // The row is a display carrier and already spells "no pull request" as the empty string (that
+          // is what a revocation row carries); an acceptance recorded before this log was the authority
+          // carries no pull request either, and it reads the same way — never a fabricated value.
+          pr_url: match pr_url { Present { value: u } => u as String  Absent => "" },
+          merged_at: match merged_at { Present { value: a } => a as String  Absent => "" },
+          head_sha: match head_sha { Present { value: s } => s as String  Absent => "" }}]))
       AcceptanceRevokedEvent { receipt, disposition, revoked_by, revoked_on, reason } =>
         roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: concat(acc, [RoadmapAcceptanceEventRow {
           id: hd.id, recorded_at: hd.event.recorded_at,
@@ -1585,7 +1664,17 @@ fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: Roadmap
     Progress { note: _ } => true
     Blocked { reason: _ } => true
     HandedBack { reason: _ } => true
-    Retired { reason: _ } => true
+    // A RETIREMENT IS TERMINAL, SO A SECOND ONE NAMES NO CHANGE. The first moved the standing to
+    // NodeRetired and the fold never leaves it (roadmap_standing_step_acc answers nothing after a
+    // terminal standing). Admitting another Retired would let a later writer quietly rewrite the reason
+    // the plan shows for a node that cannot move — a second fact with no effect is a silent edit of the
+    // first, so this refuses (witness: a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_
+    // first_answers_it; the operation identity in gunbc.roadmap.roadmap_event_cli makes the *same*
+    // command a replay rather than a second attempt).
+    Retired { reason: _ } => match roadmap_node_standing(envs: envs) {
+      NodeRetired { by: _, reason: _ } => false
+      _ => true
+    }
     AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => true
     AcceptanceRevokedEvent { receipt, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
       roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt)

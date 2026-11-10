@@ -586,9 +586,9 @@ fn acceptance_event(parent: RoadmapEventId?, at: String) -> RoadmapEventEnvelope
   ev(
     kind: AcceptanceRecordedEvent {
       receipt: receipt_fixture(),
-      pr_url: "https://github.com/gunb-ai/gunbc/pull/16126" as NonEmptyStr,
-      merged_at: "2026-11-09T00:00:00Z" as NonEmptyStr,
-      head_sha: "73e79ab5" as NonEmptyStr,
+      pr_url: Present { value: "https://github.com/gunb-ai/gunbc/pull/16126" as NonEmptyStr },
+      merged_at: Present { value: "2026-11-09T00:00:00Z" as NonEmptyStr },
+      head_sha: Present { value: "73e79ab5" as NonEmptyStr },
     },
     parent: parent, author: human_principal(), at: at)
 }

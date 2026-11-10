@@ -349,10 +349,19 @@ fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> Strin
   join(["operations/", event.node as String, "/", operation, ".json"], "")
 }
 
-// recorded_at belongs to the committed result, not the retry payload. Parent remains bound to
-// the original precondition; a key cannot be repurposed for a new command after a later event.
+// THE KEY BINDS THE COMMAND, NEVER THE PRECONDITION. A command is its node, its principal, and its
+// payload — and the payload IS the kind: every field of the fact rides inside the kind's own variant, so
+// kind equality is payload equality and a used key can never authorize a different fact.
+//
+// The parent is deliberately NOT part of the command's identity. A retry whose read of the world moved
+// on — the migration resuming after an interruption, where the head is now the event the first attempt
+// committed — is the SAME command and must answer with the first attempt's committed outcome. Binding the
+// key to the parent made that retry a fresh command and refused it `operation-conflict`, so a half-finished
+// migration could not be finished by replaying it (witness:
+// a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first_recording). What a used key
+// still cannot do is carry another payload: that comparison is the one below, and it refuses.
 fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {
-  a.node == b.node && a.author == b.author && a.parent == b.parent && a.kind == b.kind
+  a.node == b.node && a.author == b.author && a.kind == b.kind
 }
 
 // The operation receipt is observed, not read-and-kind-matched: the old flow branched on the

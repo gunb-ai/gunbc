@@ -1,11 +1,15 @@
 module gunbc.roadmap.roadmap_issue_command
 
 import std.types { String, NonEmptyStr }
-import std.algebra { trim }
+import std.algebra { trim, string_compare_canonical, Ordering, Less }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition }
-import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired, AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema }
+import gunbc.roadmap.roadmap_event_log {
+  EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema,
+  roadmap_acceptance_pr_evidence_cutoff,
+}
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
 
 // Authorization precedes this boundary. The operation is a submission identity, independent of
@@ -36,9 +40,12 @@ type IssueCommand
   | AcceptNode {
       subject: IssueCommandSubject,
       receipt: RoadmapAcceptanceReceipt,
-      pr_url: String,
-      merged_at: String,
-      head_sha: String,
+      // The pull request the acceptance was earned by, as ONE fact or not at all: the three are present
+      // together or absent together, and absent is admissible only for a receipt the operator recorded
+      // before this log became the authority (roadmap_acceptance_pr_evidence_law, below).
+      pr_url: NonEmptyStr?,
+      merged_at: NonEmptyStr?,
+      head_sha: NonEmptyStr?,
     }
   // THE SAME RECEIPT, UNDONE, ON THE SAME ROUTE. `disposition` is the standing the node returns to and
   // is READ from the operator's revocation line — there is no default to fall into. Whether the receipt
@@ -86,6 +93,32 @@ fn issue_command_receipt_node(receipt: RoadmapAcceptanceReceipt) -> String {
   receipt.node as String
 }
 
+// THE PULL-REQUEST EVIDENCE LAW, in one place: all three, or none before the cutoff. Witnessed by
+// a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_before_the_cutoff.
+fn issue_command_acceptance_evidence_law(
+  receipt: RoadmapAcceptanceReceipt,
+  pr_url: NonEmptyStr?,
+  merged_at: NonEmptyStr?,
+  head_sha: NonEmptyStr?,
+) -> String? {
+  let fields = [pr_url, merged_at, head_sha] as List<NonEmptyStr?>
+  let carried = count(filter(fields, f => match f { Present { value: _ } => true  Absent => false }))
+  if carried == 3 { none }
+  else if carried == 0 {
+    let day = receipt.accepted_on as String
+    if string_compare_canonical(a: day, b: roadmap_acceptance_pr_evidence_cutoff()) == Less { none }
+    else {
+      Present { value: join(["an acceptance with no pull request is admitted only for a receipt the operator recorded before ",
+        roadmap_acceptance_pr_evidence_cutoff(), "; this receipt says it was accepted on '", day,
+        "'. A live acceptance names the pull request it was earned by — an absent field may only mean this fact never carried one, never that nobody looked"], "") }
+    }
+  }
+  else {
+    Present { value: join(["the pull request an acceptance was earned by is one fact — its url, its merge time and its head arrive together; this command carries ",
+      to_string(value: carried), " of the three"], "") }
+  }
+}
+
 fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> CarrierClosed<RoadmapEventAppend> {
   let event = issue_command_event(command: command, recorded_at: recorded_at)
   match issue_command_receipt_disagreement(command: command, event: event) {
@@ -99,15 +132,25 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
   }
 }
 
-// A RECEIPT THAT NAMES ANOTHER NODE IS REFUSED AT THE ROUTE, before any write. The reason is the
-// mismatch itself: a caller that meant this node fixes the subject, and a caller that meant the other
-// node fixes the receipt; neither gets to write an event whose evidence is about something else.
+// THE COMMAND'S EVIDENCE LAW, REFUSED AT THE ROUTE BEFORE ANY WRITE. Two things are checked here, both
+// about the receipt the command carries:
+//   1. A RECEIPT THAT NAMES ANOTHER NODE IS REFUSED. The reason is the mismatch itself: a caller that
+//      meant this node fixes the subject, and a caller that meant the other node fixes the receipt;
+//      neither gets to write an event whose evidence is about something else.
+//   2. THE PULL REQUEST IS A FACT OR AN ABSENCE, NEVER HALF A FACT, AND AN ABSENCE IS DATED. All three
+//      (url, merge time, head) arrive together or none arrive; a partial triple is refused as a
+//      wrong-shaped fact rather than half-read. An acceptance with no pull request is admitted only when
+//      its own accepted_on day is before gunbc.roadmap.roadmap_event_log
+//      roadmap_acceptance_pr_evidence_cutoff — the one-time migration of the acceptances the operator
+//      recorded before this log became the authority, and nothing else. An acceptance earned today must
+//      name the pull request that earned it: an absent field may only ever mean "this fact never carried
+//      one", never "nobody looked".
 fn issue_command_receipt_disagreement(command: IssueCommand, event: RoadmapEvent) -> String? {
   match command {
-    AcceptNode { subject, receipt, pr_url: _, merged_at: _, head_sha: _ } =>
+    AcceptNode { subject, receipt, pr_url, merged_at, head_sha } =>
       if (subject.node as String) != issue_command_receipt_node(receipt: receipt) {
         Present { value: join(["the acceptance receipt names node '", issue_command_receipt_node(receipt: receipt), "' but the command's subject is node '", subject.node as String, "'"], "") }
-      } else { none }
+      } else { issue_command_acceptance_evidence_law(receipt: receipt, pr_url: pr_url, merged_at: merged_at, head_sha: head_sha) }
     RevokeAcceptance { subject, receipt, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
       if (subject.node as String) != issue_command_receipt_node(receipt: receipt) {
         Present { value: join(["the revocation receipt names node '", issue_command_receipt_node(receipt: receipt), "' but the command's subject is node '", subject.node as String, "'"], "") }

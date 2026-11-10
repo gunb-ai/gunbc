@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import std.content_hash { serialize_content_hash, Fnv1a64 }
+import std.content_hash { serialize_content_hash, Fnv1a64, content_hash_atom }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown }
 import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_event_log {
@@ -105,7 +105,15 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
                 let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
                 let parent = match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }
                 let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-                let appended = roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at })
+                // THE RETIREMENT IS AN OPERATION, THE OTHER KINDS ARE NOT (yet). Retirement is terminal,
+                // so its key can be the fact itself and a retried command answers the first recording
+                // instead of appending; claim/progress/block/handback are not terminal, and giving them
+                // the same key would refuse an operator's SECOND deliberate posting of the same note.
+                let operation = match k {
+                  Retired { reason } => roadmap_retirement_operation_identity(node: node, reason: reason as String)
+                  _ => ""
+                }
+                let appended = roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at }, operation: operation)
                 roadmap_event_record_exit(
                   exit: match appended.result {
                     EventAppended { id } => ExitSuccess
@@ -137,6 +145,14 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 //     --arg repo_root=<instance repo> --arg receipt_line=<acceptance line> \
 //     --arg pr_url=<review thread> --arg merged_at=<merge time> --arg head_sha=<head at merge> \
 //     --arg author=principal:<authority>/<namespace>/<subject>
+//
+// THE THREE PULL-REQUEST ARGUMENTS ARE ONE FACT OR NOTHING. An acceptance earned now names the review
+// thread that earned it, its merge time and its head. Passing NOTHING for all three records an acceptance
+// that never had a pull request — which is admitted only for a receipt the operator recorded before this
+// log became the authority (roadmap_acceptance_pr_evidence_cutoff), because that is what the one-time
+// migration of the hand-committed seed carries and nothing else; half a triple, or an absence dated after
+// the cutoff, is refused at the route (witness:
+// a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_before_the_cutoff).
 fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url: String, merged_at: String, head_sha: String, author: String) -> ProcessExit {
   match roadmap_acceptance_line_of(text: receipt_line) {
     Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: the receipt line is refused: it must be an acceptance line spelled exactly as the operator law spells one, naming the live receipt, its red control, and its handback" }
@@ -194,15 +210,37 @@ fn roadmap_acceptance_operation_identity(node: String, choice: AcceptanceCommand
   }
 }
 
+// THE COMMAND LINE'S EMPTY ARGUMENT IS AN ABSENCE, never an empty string carried into the record. The
+// one-time migration passes nothing for the pull request its records never carried (the hand-committed
+// seed holds no such field); whether that absence is ADMISSIBLE is the command law's decision
+// (gunbc.roadmap.roadmap_issue_command issue_command_acceptance_evidence_law), not this reader's guess —
+// an acceptance earned after this log became the authority still has to name its pull request.
+fn roadmap_acceptance_optional_text(value: String) -> NonEmptyStr? {
+  if value == "" { none } else { Present { value: value as NonEmptyStr } }
+}
+
 // The receipt's own digest, in the hex text the member law already writes into the event.
 fn roadmap_acceptance_receipt_digest_text(receipt: RoadmapAcceptanceReceipt) -> String {
   serialize_content_hash(hash: Fnv1a64(receipt.criteria_digest)) as String
 }
 
+// THE RETIREMENT'S OPERATION KEY IS ITS FACT: the node, the word "retirement", and the digest of the
+// reason the principal gave — an identity the CLI can recompute, so a retried retirement meets its own
+// operation receipt and answers the first recording (EventAlreadyPresent) instead of appending a second
+// event or colliding; a DIFFERENT retirement of the same node is a different key, and the admission law
+// refuses it outright, because a node already retired has no change left to name (witness:
+// a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_first_answers_it).
+fn roadmap_retirement_operation_identity(node: String, reason: String) -> String {
+  join([node, "-retirement-", content_hash_atom(value: reason as NonEmptyStr).digest as String], "")
+}
+
 fn roadmap_acceptance_built_command(subject: IssueCommandSubject, choice: AcceptanceCommandChoice) -> IssueCommand {
   match choice {
     BuildAcceptCommand { receipt, pr_url, merged_at, head_sha } => AcceptNode {
-      subject: subject, receipt: receipt, pr_url: pr_url, merged_at: merged_at, head_sha: head_sha }
+      subject: subject, receipt: receipt,
+      pr_url: roadmap_acceptance_optional_text(value: pr_url),
+      merged_at: roadmap_acceptance_optional_text(value: merged_at),
+      head_sha: roadmap_acceptance_optional_text(value: head_sha) }
     BuildRevokeCommand { facts } => RevokeAcceptance {
       subject: subject, receipt: facts.receipt, disposition: facts.disposition,
       revoked_by: facts.revoked_by, revoked_on: facts.revoked_on, reason: facts.reason }
