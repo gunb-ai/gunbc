@@ -635,11 +635,14 @@ fn roadmap_operator_close_append(
               },
               receipt: roadmap_operator_close_receipt(inputs: inputs),
               // The close route always names the pull request it was earned by: the PR facts are read
-              // from GitHub before this point, so the evidence is never absent here (an absent triple is
-              // the migration's case alone, and only before the cutoff).
-              pr_url: Present { value: facts.url as String as NonEmptyStr },
-              merged_at: Present { value: facts.merged_at as String as NonEmptyStr },
-              head_sha: Present { value: facts.head as String as NonEmptyStr },
+              // from GitHub before this point, so the evidence is never absent here (the absence is the
+              // migration's case alone, and only before the cutoff). The typed fact is BUILT here — the
+              // url, the merge time and the head arrive as one, never as three later-joined fields.
+              evidence: EarnedByPullRequest {
+                pr_url: facts.url as String as NonEmptyStr,
+                merged_at: facts.merged_at as String as NonEmptyStr,
+                head_sha: facts.head as String as NonEmptyStr,
+              },
             },
             recorded_at: roadmap_operator_render_civil_date(date: roadmap_operator_date_from_epoch_secs(secs: inputs.at)))
           match applied.result {
@@ -815,7 +818,7 @@ fn roadmap_acceptance_migration_verdict(
     wanted: wanted, held: log_events, closed_nodes: closed_nodes, not_retired: not_retired)
   let event_lines = map(
     filter(envelopes, env => match env.event.kind {
-      AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => true
+      AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
       AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => true
       _ => false }),
     env => join(["  EVENT ", env.id as String, " ", env.event.node as String, " ", roadmap_event_kind_word(k: env.event.kind)], ""))

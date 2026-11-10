@@ -53,7 +53,7 @@ import gunbc.roadmap.roadmap_event_carrier {
 import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, AcceptNode, IssueCommandSubject, issue_command_apply }
 import gunbc.roadmap.roadmap_event_cli {
   AcceptanceCommandChoice, BuildAcceptCommand, BuildRevokeCommand, roadmap_acceptance_operation_identity,
-  roadmap_retirement_operation_identity, roadmap_acceptance_optional_text,
+  roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args,
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapAcceptanceRevocationFacts, AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier,
@@ -104,6 +104,7 @@ import gunbc.roadmap.roadmap_operator_acceptance {
 }
 import gunbc.roadmap.roadmap_event_log {
   roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_migration_problems,
+  AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
   RoadmapEvent, RoadmapNodeStanding,
   Claimed, HandedBack, Retired, NodeRetired, NodeReadyForReview, NodeOpen,
   roadmap_event_envelope, roadmap_issue_state, EventPrincipalAuthenticated,
@@ -201,6 +202,15 @@ fn fact_set() -> OperatorClosePrFacts {
     head: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
   }
 }
+// THE PULL REQUEST THE CLOSE EARNED, spelled ONCE as the typed fact the command carries — the url, the
+// merge time and the head arrive together because the type says they do
+// (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence).
+fn earned(facts: RoadmapAcceptanceFacts) -> AcceptancePrEvidence {
+  EarnedByPullRequest {
+    pr_url: facts.url as NonEmptyStr, merged_at: facts.merged_at as NonEmptyStr, head_sha: facts.head as NonEmptyStr,
+  }
+}
+
 
 fn close_layout(instance: HostDashboardInstance) -> RoadmapEventCarrierLayout {
   roadmap_event_carrier_layout_for_instance(instance: instance)
@@ -555,9 +565,7 @@ test fn a_duplicate_acceptance_of_one_node_refuses_the_whole_load_located() -> B
       command: AcceptNode {
         subject: IssueCommandSubject { node: node, author: opr_principal(),
           operation: "op-duplicate-one" as NonEmptyStr, expected: none },
-        receipt: receipt,
-        pr_url: Present { value: facts.url as NonEmptyStr }, merged_at: Present { value: facts.merged_at as NonEmptyStr },
-        head_sha: Present { value: facts.head as NonEmptyStr } },
+        receipt: receipt, evidence: earned(facts) },
       recorded_at: 1793692800)
     let e1 = match first { EventAppended { id: _ } => claim("the first acceptance appended", true)
       _ => claim("the first acceptance was refused", false) }
@@ -565,9 +573,7 @@ test fn a_duplicate_acceptance_of_one_node_refuses_the_whole_load_located() -> B
       command: AcceptNode {
         subject: IssueCommandSubject { node: node, author: opr_principal(),
           operation: "op-duplicate-two" as NonEmptyStr, expected: none },
-        receipt: receipt,
-        pr_url: Present { value: facts.url as NonEmptyStr }, merged_at: Present { value: facts.merged_at as NonEmptyStr },
-        head_sha: Present { value: facts.head as NonEmptyStr } },
+        receipt: receipt, evidence: earned(facts) },
       recorded_at: 1793692801)
     let e2 = match second { EventAppended { id: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
       EventAppendRefused { step: _, reason: _ } => claim("the writer itself refused the duplicate at the chain", true) }
@@ -918,10 +924,7 @@ test fn an_unknown_node_is_refused_before_anything_is_written() -> Bool {
 // ──────────────────────────────────────────────────────────────────────────────────────────────
 test fn an_acceptance_and_its_revocation_are_two_operations_and_a_retry_is_one() -> Bool {
   let receipt = sample_receipt("node-operation")
-  let accept = BuildAcceptCommand {
-    receipt: receipt, pr_url: "https://github.com/briansrls/gunbc/pull/14189",
-    merged_at: "2026-11-03T04:15:00Z", head_sha: "0123456789abcdef0123456789abcdef01234567",
-  }
+  let accept = BuildAcceptCommand { receipt: receipt, evidence: earned(fact_set()) }
   let revoke = BuildRevokeCommand {
     facts: RoadmapAcceptanceRevocationFacts {
       receipt: receipt, disposition: AcceptanceNodeReopensActiveFrontier,
@@ -929,10 +932,7 @@ test fn an_acceptance_and_its_revocation_are_two_operations_and_a_retry_is_one()
       revoked_by: "briansrls" as NonEmptyStr, revoked_on: "2026-11-04" as NonEmptyStr,
     },
   }
-  let retry = BuildAcceptCommand {
-    receipt: receipt, pr_url: "https://github.com/briansrls/gunbc/pull/14189",
-    merged_at: "2026-11-03T04:15:00Z", head_sha: "0123456789abcdef0123456789abcdef01234567",
-  }
+  let retry = BuildAcceptCommand { receipt: receipt, evidence: earned(fact_set()) }
   let accept_id = roadmap_acceptance_operation_identity(node: "node-operation", choice: accept)
   let retry_id = roadmap_acceptance_operation_identity(node: "node-operation", choice: retry)
   let revoke_id = roadmap_acceptance_operation_identity(node: "node-operation", choice: revoke)
@@ -966,9 +966,7 @@ test fn a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first
     let command = AcceptNode {
       subject: IssueCommandSubject { node: node, author: opr_principal(),
         operation: "op-retry-head-moved" as NonEmptyStr, expected: none },
-      receipt: sample_receipt("node-retry-head-moved"),
-      pr_url: Present { value: facts.url as NonEmptyStr }, merged_at: Present { value: facts.merged_at as NonEmptyStr },
-      head_sha: Present { value: facts.head as NonEmptyStr } }
+      receipt: sample_receipt("node-retry-head-moved"), evidence: earned(facts) }
     let first = issue_command_apply(layout: layout, command: command, recorded_at: 1793692800)
     let e1 = match first {
       EventAppended { id } => claim("the acceptance appended", (id as String) != "")
@@ -1000,7 +998,7 @@ test fn a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first
     let read = roadmap_events_read_synced(layout: layout, node: node)
     let acceptances = match read {
       EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind {
-        AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => true
+        AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
         _ => false }))
       EventsReadRefused { node: _, step: _, reason: _ } => 0 - 1
     }
@@ -1136,29 +1134,30 @@ fn sample_receipt_on(node: String, day: String) -> RoadmapAcceptanceReceipt {
   }
 }
 
-// An acceptance command carrying EXACTLY the pull-request evidence named. The empty string means the
-// ABSENCE, read through the CLI's own reader (roadmap_acceptance_optional_text) so the witness exercises
-// the same mapping the migration runbook's command line goes through, not a private copy of it.
-fn acceptance_command_with_evidence(node: String, day: String, url: String, at: String, sha: String) -> IssueCommand {
+// An acceptance command carrying EXACTLY the pull-request evidence named. The evidence is the TYPED fact
+// (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence), so this builder can only be handed a whole one —
+// half a pull request is not a command this file can even write, which is what finding 1 asked for.
+fn acceptance_command_with_evidence(node: String, day: String, evidence: AcceptancePrEvidence) -> IssueCommand {
   AcceptNode {
     subject: IssueCommandSubject {
       node: node as NonEmptyStr as RoadmapNodeId, author: opr_principal(),
       operation: "op-evidence-law" as NonEmptyStr, expected: none },
     receipt: sample_receipt_on(node: node, day: day),
-    pr_url: roadmap_acceptance_optional_text(value: url),
-    merged_at: roadmap_acceptance_optional_text(value: at),
-    head_sha: roadmap_acceptance_optional_text(value: sha),
+    evidence: evidence,
   }
 }
 
 // DISCRIMINATING (finding 1, the honesty half): AN ACCEPTANCE WITHOUT ITS PULL REQUEST IS THE
 // MIGRATION'S, AND ONLY ITS. The 18 acceptances the operator recorded before this log became the
 // authority name no pull request — the hand-committed seed holds no such field — so the log must be able
-// to hold that absence rather than invent a value to fill a field. Three cases, each differing from the
-// one beside it in exactly one thing:
-//   NO pull request, an acceptance day BEFORE the cutoff  → admitted (the migration's case);
-//   NO pull request, an acceptance day ON OR AFTER it     → refused, saying why;
-//   HALF a pull request (its url alone), any day          → refused as a wrong-shaped fact.
+// to hold that absence rather than invent a value to fill a field. The evidence is one typed fact, so the
+// cases are the variants and the door, each differing from its neighbour in exactly one thing:
+//   NO pull request (the typed absence), an acceptance day BEFORE the cutoff → admitted (the migration's case);
+//   NO pull request, an acceptance day ON OR AFTER it                        → refused, saying why;
+//   a whole pull request, any day                                             → admitted;
+//   HALF a pull request                                                       → CANNOT EXIST: refused where
+//     the command line's raw arguments are read (roadmap_acceptance_pr_evidence_from_args), naming how
+//     many of the three arrived, and unconstructible at every boundary past it.
 // The refusals write nothing. The first case is what makes the runbook's migration commands executable
 // at all; the second is what stops the same door being used tomorrow.
 test fn a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_before_the_cutoff() -> Bool {
@@ -1170,37 +1169,44 @@ test fn a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_
     let straddle = claim("the witness's two days straddle the pull-request evidence cutoff",
       string_compare_canonical(a: before, b: roadmap_acceptance_pr_evidence_cutoff()) == Less
         && string_compare_canonical(a: after, b: roadmap_acceptance_pr_evidence_cutoff()) != Less)
+    // THE UNTYPED EDGE REFUSES HALF A FACT, where the command line's arguments are still three strings.
+    let half_refused = match roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: "", sha: "") {
+      Absent => claim("half a pull request — its url alone — is refused where the arguments arrive", true)
+      Present { value: _ } => claim("half a pull request was converted instead of refused", false) }
+    let shape_refused = match roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", at: " ", sha: "abc123def456") {
+      Absent => claim("a pull request whose merge time is not spelled is refused too", true)
+      Present { value: _ } => claim("a wrong-shaped pull request was converted into evidence", false) }
+    let none_converts = match roadmap_acceptance_pr_evidence_from_args(url: "", at: "", sha: "") {
+      Present { value: NoPullRequest } => claim("no pull request at all becomes the typed absence, not a refusal", true)
+      _ => claim("the absence of a pull request did not convert to the typed absence", false) }
+    let all_three_convert = match roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: facts.merged_at as String, sha: facts.head as String) {
+      Present { value: EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } } =>
+        claim("all three arguments become the one typed fact", true)
+      _ => claim("a complete pull request did not convert to the typed fact", false) }
     let admitted = issue_command_apply(layout: layout, recorded_at: 1793692800,
-      command: acceptance_command_with_evidence(node: "node-evidence-absent-old", day: before, url: "", at: "", sha: ""))
+      command: acceptance_command_with_evidence(node: "node-evidence-absent-old", day: before, evidence: NoPullRequest))
     let c_admitted = match admitted {
       EventAppended { id: _ } => claim("an acceptance recorded before the cutoff is admitted without a pull request", true)
       EventAppendRefused { step, reason } => claim(join(["the migration's own case was refused at '", step, "' ('", reason, "')"], ""), false)
       _ => claim("the migration's own case did not append", false) }
     let refused_after = issue_command_apply(layout: layout, recorded_at: 1793692801,
-      command: acceptance_command_with_evidence(node: "node-evidence-absent-new", day: after, url: "", at: "", sha: ""))
+      command: acceptance_command_with_evidence(node: "node-evidence-absent-new", day: after, evidence: NoPullRequest))
     let c_refused_after = match refused_after {
       EventAppendRefused { id: _, step, reason } => claim(join([
         "an acceptance with no pull request refuses on or after the cutoff, located at '", step, "' ('", reason, "')"], ""),
         step == "receipt" && string_contains(s: reason, pattern: "pull request"))
       _ => claim("an acceptance with no pull request was admitted on or after the cutoff", false) }
-    let refused_half = issue_command_apply(layout: layout, recorded_at: 1793692802,
-      command: acceptance_command_with_evidence(node: "node-evidence-half", day: before, url: facts.url as String, at: "", sha: ""))
-    let c_refused_half = match refused_half {
-      EventAppendRefused { id: _, step, reason } => claim(join([
-        "HALF a pull request refuses even on an old day, located at '", step, "' ('", reason, "')"], ""),
-        step == "receipt" && string_contains(s: reason, pattern: "of the three"))
-      _ => claim("half a pull request was admitted", false) }
     let read = roadmap_events_read_synced(layout: layout, node: "node-evidence-absent-new" as NonEmptyStr as RoadmapNodeId)
     let wrote_nothing = match read {
       EventsRead { node: _, envelopes } => count(envelopes) == 0
       EventsReadRefused { node: _, step: _, reason: _ } => false
     }
     let full_still_works = issue_command_apply(layout: layout, recorded_at: 1793692803,
-      command: acceptance_command_with_evidence(node: "node-evidence-full", day: after,
-        url: facts.url as String, at: facts.merged_at as String, sha: facts.head as String))
+      command: acceptance_command_with_evidence(node: "node-evidence-full", day: after, evidence: earned(facts)))
     let c_full = match full_still_works {
       EventAppended { id: _ } => claim("a live acceptance naming its pull request is admitted on any day", true)
       _ => claim("a live acceptance with full evidence was refused", false) }
-    straddle && c_admitted && c_refused_after && c_refused_half && claim("a refusal wrote nothing to the log", wrote_nothing) && c_full
+    straddle && half_refused && shape_refused && none_converts && all_three_convert
+      && c_admitted && c_refused_after && claim("a refusal wrote nothing to the log", wrote_nothing) && c_full
   })
 }

@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_result_returned_event, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack, NodeReadyForReview,
   roadmap_event_admitted_after, roadmap_results_for_attempt,
   RoadmapResultBinding, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
-  AcceptanceRecordedEvent, AcceptanceRevokedEvent, NodeRetired, Retired,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, EarnedByPullRequest, NodeRetired, Retired,
   roadmap_standing_is_accepted, roadmap_standing_is_retired, roadmap_standing_is_terminal,
   roadmap_revocation_names_live_acceptance, roadmap_retired_node_ids_of,
   RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
@@ -121,7 +121,7 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
           Released => false
           Progress { note: _ } => false
           Blocked { reason: _ } => false
-          AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+          AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
           AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
@@ -152,7 +152,7 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
           Released => false
           Progress { note: _ } => false
           Blocked { reason: _ } => false
-          AcceptanceRecordedEvent { receipt: _, pr_url: _, merged_at: _, head_sha: _ } => false
+          AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
           AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
@@ -586,9 +586,12 @@ fn acceptance_event(parent: RoadmapEventId?, at: String) -> RoadmapEventEnvelope
   ev(
     kind: AcceptanceRecordedEvent {
       receipt: receipt_fixture(),
-      pr_url: Present { value: "https://github.com/gunb-ai/gunbc/pull/16126" as NonEmptyStr },
-      merged_at: Present { value: "2026-11-09T00:00:00Z" as NonEmptyStr },
-      head_sha: Present { value: "73e79ab5" as NonEmptyStr },
+      // the pull request the acceptance was earned by, spelled as the ONE typed fact it is
+      evidence: EarnedByPullRequest {
+        pr_url: "https://github.com/gunb-ai/gunbc/pull/16126" as NonEmptyStr,
+        merged_at: "2026-11-09T00:00:00Z" as NonEmptyStr,
+        head_sha: "73e79ab5" as NonEmptyStr,
+      },
     },
     parent: parent, author: human_principal(), at: at)
 }
