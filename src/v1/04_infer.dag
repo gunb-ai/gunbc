@@ -9380,6 +9380,17 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
 // `RestResult<Body>` annotation would be -- the arms are read from the model, never restated here.
 // A caller therefore reaches a body field only by eliminating the refusal arm. Every other method
 // resolution passes through unchanged.
+// THE ONE AUTHORITATIVE DEFINITION of the rest-result carrier's identity. THE SINGLE AUTHORITY
+// (gunbc.design_argument::single_authority): the reader `rest_operation_result_type` below and the
+// runtime-reader registry both consult this row -- renaming or re-homing the carrier is a one-row
+// edit, and the demand seed cannot drift from what the reader actually resolves.
+type RestCarrierDeclaration {
+  home_module: String
+  type_name: String
+}
+
+data rest_result_carrier_declaration: RestCarrierDeclaration = RestCarrierDeclaration { home_module: "extdeps.transports.rest", type_name: "RestResult" }
+
 type RestOperationResultType {
   resolved_result: Node?
   diagnostics: List<ErrorNode>
@@ -9389,18 +9400,19 @@ fn rest_operation_result_type(resolution: KnownMethodResolution, site: SourceSpa
   match resolution.result_type {
     Present { value: body } =>
       if resolution.rest_operation {
-        let carrier = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "RestResult", span: kernel_span(name: "RestResult"), ident_span: Present { value: kernel_span(name: "RestResult") }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        let carrier_name = rest_result_carrier_declaration.type_name
+        let carrier = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: carrier_name, span: kernel_span(name: carrier_name), ident_span: Present { value: kernel_span(name: carrier_name) }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         let decl = resolve_generic_use_decl(env: scope.type_env, n: carrier)
         match decl.params |> first {
           Present { value: body_slot } =>
             RestOperationResultType {
-              resolved_result: Present { value: generic_declaration_application(n: carrier, decl: decl, type_name: "RestResult", resolved_args: [body], slot_bindings: map_insert(empty_map(), authored_name_at(source_indices: scope.type_env.source_indices, node: body_slot), body), env: scope.type_env) },
+              resolved_result: Present { value: generic_declaration_application(n: carrier, decl: decl, type_name: carrier_name, resolved_args: [body], slot_bindings: map_insert(empty_map(), authored_name_at(source_indices: scope.type_env.source_indices, node: body_slot), body), env: scope.type_env) },
               diagnostics: []
             }
           Absent =>
             RestOperationResultType {
               resolved_result: none,
-              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: "extdeps.transports.rest RestResult (import it where a rest operation is called)", span: site }, module_name: scope.module_name)]
+              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: concat(rest_result_carrier_declaration.home_module, concat(" ", concat(carrier_name, " (import it where a rest operation is called)"))), span: site }, module_name: scope.module_name)]
             }
         }
       } else {
@@ -16948,9 +16960,9 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
 // so, refusing `http_ingress_handler_identity` at startup). The rule that keeps the demanded grain
 // honest: every runtime keyed read declares its key class HERE, so its keys enter the SAME demand
 // seeds and the SAME edge inventory `realization_of` assembles, and `realization_audit` refuses by
-// READER NAME on any key this run did not realize. A new keyed read is one registry row plus one
-// `kind` arm -- never a second ad-hoc seed site beside this one, and never a hand-listed name at
-// the consumer: the consumer reads the declared row, the registry grows it.
+// READER NAME on any key this run did not realize. A new keyed read is one variant plus its arms
+// in the two dispatches below -- never a second ad-hoc seed site beside this one, and never a
+// hand-listed name at the consumer: the consumer reads the declared row, the registry grows it.
 // A DECLARED COPRODUCT, not a String tag: the kernel checks every consultation by variant, an
 // unknown shape is a compile error rather than a silent fall-through (gunbc.design_argument::
 // fail_closed), and a new keyed read is one variant plus its arms in the two dispatches below.
@@ -16958,7 +16970,7 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
 type RuntimeKeyReader =
     WireContractShape { name: String }
   | DeclaredKeyRow { name: String, reader_module: String, row_name: String }
-  | RestCarrier { name: String, home_module: String, carrier_type: String }
+  | RestCarrier { name: String }
 
 // THE REGISTRY. `wire_contract_index` (#16241, the first instance): the interpreter decodes a
 // coproduct through the wire-contract row keyed by its `coproduct` DeclarationRef -- the category
@@ -16970,16 +16982,23 @@ type RuntimeKeyReader =
 data runtime_key_readers: List<RuntimeKeyReader> = [
   WireContractShape { name: "wire_contract_index" },
   DeclaredKeyRow { name: "loaded_index_keyed_call", reader_module: "gunbc.http_ingress", row_name: "http_ingress_host_read_folds" },
-  RestCarrier { name: "rest_result_carrier", home_module: "extdeps.transports.rest", carrier_type: "RestResult" },
+  RestCarrier { name: "rest_result_carrier" },
 ]
 
 // The declared-key row of this class, when the module that owns it is in THIS graph: a run that
 // does not load the serving module has no such reader running, so owes no seed.
+fn runtime_key_module_by_name(modules: List<ResolvedModule>, module_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == module_name) |> first {
+    Absent => none
+    Present { value: m } => Present { value: m.module }
+  }
+}
+
 fn runtime_key_declared_row(modules: List<ResolvedModule>, reader_module: String, row_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == reader_module) |> first {
+  match runtime_key_module_by_name(modules: modules, module_name: reader_module, source_indices: source_indices) {
     Absent => none
     Present { value: m } =>
-      match module_items(n: m.module) |> filter(i => i.module_item_kind == ModuleItemDataValue && i.name == row_name) |> first {
+      match module_items(n: m) |> filter(i => i.module_item_kind == ModuleItemDataValue && i.name == row_name) |> first {
         Present { value: row } => Present { value: row }
         Absent => none
       }
@@ -17009,7 +17028,7 @@ fn runtime_key_declared_row_keys(row: Node) -> List<String> {
 // -- the same dotted naming convention every realized key uses. A graph without the carrier's
 // home module seeds nothing: such a graph cannot type a rest call at all.
 fn rest_carrier_home_in_graph(modules: List<ResolvedModule>, reader_module: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == reader_module) |> first {
+  match runtime_key_module_by_name(modules: modules, module_name: reader_module, source_indices: source_indices) {
     Absent => false
     Present { value: _ } => true
   }
@@ -17034,10 +17053,6 @@ fn graph_has_rest_service(modules: List<ResolvedModule>, source_indices: Map<Str
 // holds them, in the authored form `realized` is keyed by (measured: the wire row realizes under
 // its BARE name). A declared-key row seeds ITSELF -- the host reads the row at run time, so the
 // row must be realized -- plus every key it lists.
-// THE SINGLE DEMAND-SEED SOURCE FOR ALL RUNTIME READERS: each reader's keys as the reader itself
-// holds them, in the authored form `realized` is keyed by (measured: the wire row realizes under
-// its BARE name). A declared-key row seeds ITSELF -- the host reads the row at run time, so the
-// row must be realized -- plus every key it lists.
 fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   fold(runtime_key_readers, init: [], f: (acc, r) =>
     match r {
@@ -17057,9 +17072,9 @@ fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: 
       // Node named "RestResult"; that bare name is the ONE spelling looked up, so it is the ONE
       // spelling demanded. The home-module AND rest-service gates keep a graph without either
       // seeding nothing extra over main.
-      RestCarrier { name: _, home_module: home_module, carrier_type: carrier_type } =>
-        if rest_carrier_home_in_graph(modules: modules, reader_module: home_module, source_indices: source_indices) && graph_has_rest_service(modules: modules, source_indices: source_indices) {
-          concat(acc, [carrier_type])
+      RestCarrier { name: _ } =>
+        if rest_carrier_home_in_graph(modules: modules, reader_module: rest_result_carrier_declaration.home_module, source_indices: source_indices) && graph_has_rest_service(modules: modules, source_indices: source_indices) {
+          concat(acc, [rest_result_carrier_declaration.type_name])
         } else {
           acc
         }
@@ -17082,13 +17097,13 @@ fn runtime_key_reader_row_edges(item: Node, source_indices: Map<String, NewlineI
         } else {
           acc
         }
-      RestCarrier { name: name, home_module: _, carrier_type: carrier_type } =>
+      RestCarrier { name: name } =>
         if item.module_item_kind == ModuleItemService && service_is_rest_declared(item: item, source_indices: source_indices) {
           // THE REST CARRIER IS A SERVICE-DECLARED READ: every operation rest_operation_result_type
           // would type resolves this carrier at the call, so the service that DECLARES a rest
           // transport reads it. Edge under the reader's name: a run missing the carrier is refused
           // by realization_audit blaming `rest_result_carrier` and naming the carrier.
-          list_push(acc: acc, item: RealizationEdge { reader: name, name: carrier_type, span: item.span })
+          list_push(acc: acc, item: RealizationEdge { reader: name, name: rest_result_carrier_declaration.type_name, span: item.span })
         } else {
           acc
         }
