@@ -1,0 +1,212 @@
+module test.claim.roadmap.t6_debug_probe
+
+// TEMPORARY diagnostic entries (never pushed). Each returns the FAILING step's own words as an
+// ExitFailure reason, so a run says which step of a witness came back false instead of only `false`.
+
+import std.types { String, Bool, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.algebra { string_contains, string_compare_canonical, Less }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_store, FabricWetStoreReady, FabricWetStoreUnready,
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready,
+}
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, CarrierClosed,
+  roadmap_event_append, roadmap_events_read_synced, EventAppended, EventAlreadyPresent, EventAppendRefused,
+  EventsRead, EventsReadRefused,
+}
+import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, AcceptNode, IssueCommandSubject, issue_command_apply }
+import gunbc.roadmap.roadmap_event_cli { roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceEvent, AcceptanceRecorded }
+import gunbc.roadmap.roadmap_event_log {
+  AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest, AcceptanceRecordedEvent, Retired,
+  roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_migration_problems,
+}
+import test.claim.roadmap.roadmap_acceptance_evidence_witness {
+  sample_receipt, fact_set, earned, close_layout, opr_principal, retirement_event,
+  acceptance_command_with_evidence,
+}
+
+fn flag(on: Bool, label: String) -> String { if on { join([label, " | "], "") } else { "" } }
+
+fn report(tags: List<String>) -> ProcessExit {
+  let text = join(tags, "")
+  if text == "" { ExitSuccess } else { ExitFailure { code: 1, reason: text } }
+}
+
+fn dbg_wet(fn_with: fn(HostDashboardInstance) -> String) -> ProcessExit {
+  match fabric_wet_scenario(template: "/tmp/gunbc_t6_debug_probe.XXXXXX" as NonEmptyStr) {
+    FabricWetScenarioUnready { detail: d } => report([join(["scenario-unready: ", (d as String), ""], "")])
+    FabricWetScenarioReady { instance: instance, root: _ } =>
+      match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
+        FabricWetStoreUnready { area: a, detail: d } =>
+          report([join(["store-unready at ", (a as String), ": ", (d as String), ""], "")])
+        FabricWetStoreReady { store: _ } => report([fn_with(instance)])
+      }
+  }
+}
+
+// What problem list does the lost-acceptance scenario actually produce?
+fn dbg_verifier_lost() -> ProcessExit {
+  let wanted = [AcceptanceRecorded { receipt: sample_receipt("node-multiset") }] as List<RoadmapAcceptanceEvent>
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: wanted, held: [] as List<RoadmapAcceptanceEvent>,
+    closed_nodes: [] as List<String>, not_retired: [] as List<String>)
+  report([
+    flag(count(problems) == 0, "count-is-0"),
+    flag(count(problems) == 1, "count-is-1"),
+    flag(count(problems) == 2, "count-is-2"),
+    flag(count(problems) == 3, "count-is-3"),
+    flag(any(problems, pr => string_contains(s: pr, pattern: "the log does not hold the manifest's fact")), "membership-refusal"),
+    flag(any(problems, pr => string_contains(s: pr, pattern: "does not say so")), "closedness-refusal"),
+    flag(any(problems, pr => string_contains(s: pr, pattern: "does not replay")), "replay-refusal"),
+    flag(any(problems, pr => string_contains(s: pr, pattern: "retired")), "retired-refusal"),
+    join(["LIST: ", join(problems, " || "), ""], ""),
+  ])
+}
+
+// Where does the retry-after-head-move witness stop agreeing?
+fn dbg_wet_retry() -> ProcessExit {
+  dbg_wet(fn(instance) {
+    let layout = close_layout(instance)
+    let node = "node-retry-head-moved" as NonEmptyStr as RoadmapNodeId
+    let command = AcceptNode {
+      subject: IssueCommandSubject { node: node, author: opr_principal(),
+        operation: "op-retry-head-moved" as NonEmptyStr, expected: none },
+      receipt: sample_receipt("node-retry-head-moved"), evidence: earned(fact_set()) }
+    let first = issue_command_apply(layout: layout, command: command, recorded_at: "2026-11-04T08:00:00Z")
+    let t_first = match first {
+      CarrierClosed { result: EventAppended { id }, close: _ } => join(["first=appended(", (id as String), ") | "], "")
+      CarrierClosed { result: EventAlreadyPresent { id }, close: _ } => join(["first=already(", (id as String), ") | "], "")
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["first=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let first_id = match first {
+      CarrierClosed { result: EventAppended { id }, close: _ } => Present { value: (id as String) }
+      _ => Absent }
+    let intervening = issue_command_apply(layout: layout,
+      command: RetireNode { subject: IssueCommandSubject { node: node, author: opr_principal(),
+        operation: "op-intervening-after-close" as NonEmptyStr, expected: none },
+        reason: "an act after the close, before the retry" as NonEmptyStr },
+      recorded_at: "2026-11-04T08:00:01Z")
+    let t_inter = match intervening {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => "intervening=appended | "
+      CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => "intervening=already | "
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["intervening=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let retry = issue_command_apply(layout: layout, command: command, recorded_at: "2026-11-04T08:00:02Z")
+    let t_retry = match retry {
+      CarrierClosed { result: EventAppended { id }, close: _ } => join(["retry=appended(", (id as String), ") | "], "")
+      CarrierClosed { result: EventAlreadyPresent { id }, close: _ } => join(["retry=already(", (id as String), ") | "], "")
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["retry=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let read = roadmap_events_read_synced(layout: layout, node: node)
+    let acceptances = match read {
+      EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind {
+        AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
+        _ => false }))
+      EventsReadRefused { node: _, step: _, reason: _ } => 0 - 1
+    }
+    let t_read = match read {
+      EventsRead { node: _, envelopes: _ } => join(["read=ok,count=", to_string(value: acceptances), " | "], "")
+      EventsReadRefused { node: _, step: s, reason: r } => join(["read=refused-at(", (s as String), "):", (r as String), " | "], "")
+    }
+    join([t_first, t_inter, t_retry,
+      flag(match first_id { Present { value: _ } => true, Absent => false }, "first-id-present"),
+      t_read], "")
+  })
+}
+
+// Where does the retirement-identity witness stop agreeing?
+fn dbg_wet_retire() -> ProcessExit {
+  dbg_wet(fn(instance) {
+    let layout = close_layout(instance)
+    let node = "node-retirement-identity" as NonEmptyStr as RoadmapNodeId
+    let first = roadmap_event_append(layout: layout,
+      event: retirement_event(node: node, reason: "the row was deleted as an authored row; its work moved"),
+      operation: roadmap_retirement_operation_identity(node: "node-retirement-identity", reason: "the row was deleted as an authored row; its work moved"))
+    let t_first = match first {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => "first=appended | "
+      CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => "first=already | "
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["first=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let replayed = roadmap_event_append(layout: layout,
+      event: retirement_event(node: node, reason: "the row was deleted as an authored row; its work moved"),
+      operation: roadmap_retirement_operation_identity(node: "node-retirement-identity", reason: "the row was deleted as an authored row; its work moved"))
+    let t_replayed = match replayed {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => "replayed=appended | "
+      CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => "replayed=already | "
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["replayed=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let other = roadmap_event_append(layout: layout,
+      event: retirement_event(node: node, reason: "a second retirement naming a different reason"),
+      operation: roadmap_retirement_operation_identity(node: "node-retirement-identity", reason: "a second retirement naming a different reason"))
+    let t_other = match other {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => "other=appended | "
+      CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => "other=already | "
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["other=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let read = roadmap_events_read_synced(layout: layout, node: node)
+    let retirements = match read {
+      EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind {
+        Retired { reason: _ } => true
+        _ => false }))
+      EventsReadRefused { node: _, step: _, reason: _ } => 0 - 1
+    }
+    let t_read = match read {
+      EventsRead { node: _, envelopes: _ } => join(["read=ok,count=", to_string(value: retirements), " | "], "")
+      EventsReadRefused { node: _, step: s, reason: r } => join(["read=refused-at(", (s as String), "):", (r as String), " | "], "")
+    }
+    join([t_first, t_replayed, t_other, t_read], "")
+  })
+}
+
+// Where does the pull-request-evidence witness stop agreeing?
+fn dbg_wet_evidence() -> ProcessExit {
+  dbg_wet(fn(instance) {
+    let layout = close_layout(instance)
+    let facts = fact_set()
+    let before = "2026-07-29"
+    let after = "2026-11-03"
+    let cutoff = roadmap_acceptance_pr_evidence_cutoff()
+    let half = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: "", sha: "")
+    let shape = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", at: " ", sha: "abc123def456")
+    let none_conv = roadmap_acceptance_pr_evidence_from_args(url: "", at: "", sha: "")
+    let all_conv = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: facts.merged_at as String, sha: facts.head as String)
+    let admitted = issue_command_apply(layout: layout, recorded_at: "2026-11-04T08:00:00Z",
+      command: acceptance_command_with_evidence(node: "node-evidence-absent-old", day: before, evidence: NoPullRequest))
+    let t_admitted = match admitted {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => "admitted=appended | "
+      CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => "admitted=already | "
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["admitted=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let refused_after = issue_command_apply(layout: layout, recorded_at: "2026-11-04T08:00:01Z",
+      command: acceptance_command_with_evidence(node: "node-evidence-absent-new", day: after, evidence: NoPullRequest))
+    let t_refused = match refused_after {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => "refused_after=appended | "
+      CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => "refused_after=already | "
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["refused_after=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    let read_new = roadmap_events_read_synced(layout: layout, node: "node-evidence-absent-new" as NonEmptyStr as RoadmapNodeId)
+    let full = issue_command_apply(layout: layout, recorded_at: "2026-11-04T08:00:03Z",
+      command: acceptance_command_with_evidence(node: "node-evidence-full", day: after, evidence: earned(facts)))
+    let t_full = match full {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => "full=appended | "
+      CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => "full=already | "
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => join(["full=refused-at(", (step as String), "):", (reason as String), " | "], "")
+    }
+    join([
+      flag(string_compare_canonical(a: before, b: cutoff) == Less, "before-is-before-cutoff"),
+      flag(string_compare_canonical(a: after, b: cutoff) != Less, "after-is-not-before-cutoff"),
+      flag(match half { Absent => true, Present { value: _ } => false }, "half-refused"),
+      flag(match shape { Absent => true, Present { value: _ } => false }, "shape-refused"),
+      flag(match none_conv { Present { value: NoPullRequest } => true, _ => false }, "absence-converts"),
+      flag(match all_conv { Present { value: EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } } => true, _ => false }, "all-three-convert"),
+      t_admitted, t_refused,
+      flag(match read_new { EventsRead { node: _, envelopes } => count(envelopes) == 0, _ => false }, "refusal-wrote-nothing"),
+      t_full,
+    ], "")
+  })
+}
