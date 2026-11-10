@@ -1,0 +1,291 @@
+module gunbc.runner.runner_jit_dead_sweep
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.host_identity { HostIdentity }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, github_runner_registration_is_online }
+import gunbc.fleet.fleet_runner_connectivity {
+  OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable,
+}
+import gunbc.runner.runner_incarnation { JitRegistrationName, parse_jit_registration_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
+
+// THE JIT DEAD-REGISTRATION SWEEP -- the selection arm the RFM
+// gunbc.recurring_failure_mode::a_registration_name_model_drifts_from_the_name_the_runner_registers_under
+// says was MISSING.
+//
+// The service sweep (gunbc.runner.runner_jit_deregistration lost_boot_sweep) selects ONLY the canonical
+// service grammar `gunbc-service-<host>-<boot>-<index>`; a name outside it reads SweepClassUntouched. A JIT
+// registration is spelled `<slot>-<epoch>-<pid>` (gunbc.runner.runner_incarnation parse_jit_registration_name),
+// so on 2026-11-04 133 dead offline registrations for srv1-02 accumulated with no arm to retire them. This module
+// supplies the arm: over ONE COMPLETE organization roster read it selects, for a host, every JIT registration that
+// parses under that host's slot grammar, is offline, and is not the slot's current incarnation -- and every
+// registration under a RETIRED name prefix the plan supplies, so a rename's old name is an input, never a literal.
+//
+// THREE DISCIPLINES THE RFM DEMANDS, EACH ENFORCED BY A TYPE:
+// 1. COMPLETENESS BEFORE SELECTION. The roster arrives as OrganizationRunnerRosterEvidence. Only RosterObserved
+//    (a closed read) is swept; a RosterObservedPartial read REFUSES rather than selecting from a prefix that
+//    "looked clean". A partial roster read stays unobserved, never zero (gunbc.design_argument::fail_closed).
+// 2. THE GRAMMAR DECIDES ATTRIBUTION. A row is a candidate ONLY if parse_jit_registration_name parses it against
+//    one of the host's slot instances. A name that parses against none and is not under a retired prefix is Foreign
+//    and is NEVER selected -- an unrelated registration is never collateral (the RFM's "a Foreign runner can never
+//    be collateral").
+// 3. THE LIVE UNIT IS PROTECTED BY ITS OWN MainPID. "Offline" alone would sweep the running unit's registration
+//    during a transient offline; so a row whose pid token equals the slot unit's observed MainPID is the CURRENT
+//    incarnation and is preserved even when offline. When a slot's MainPID is unreadable we cannot tell the live
+//    row from a dead one, so we fail closed and preserve rather than risk deregistering the live runner.
+
+// The unit's observed MainPID for one slot, as the sweep consumes it. A sum, never an optional field: the sweep
+// must say WHICH of "known" and "unreadable" it holds, because the two take opposite arms (compare vs fail closed).
+type JitMainPid
+  = MainPidKnown { pid: Int }
+  | MainPidUnreadable
+
+// One slot's current incarnation, keyed by slot index. `main_pid` is the unit's MainPID from systemd, read as the
+// live registration's pid token; `MainPidUnreadable` is the fail-closed case that preserves the slot's rows.
+type JitCurrentIncarnation {
+  slot_index: Nat
+  main_pid: JitMainPid
+}
+
+// WHY a row was selected. The two arms are the two ways a JIT registration is dead by the plan's own definition:
+// an offline non-current incarnation, or a registration under a retired name (the rename's old name).
+type JitDeadReason
+  = DeadOfflineIncarnation { slot_index: Nat, minted_epoch: Int, wrapper_pid: Int }
+  | RetiredName { prefix: NonEmptyStr }
+
+// A row the sweep selected for deletion: the registration's GitHub id (so the wet run can delete it by id) and its
+// name (so the dry run can list exactly what would go).
+type JitDeadRow {
+  runner_id: Nat
+  name: NonEmptyStr
+  reason: JitDeadReason
+}
+
+// WHY a row was NOT selected. Kept as named arms so the dry-run report and the witness can say WHY a name survived,
+// rather than only that it did -- the RFM's claim that a name must "read as what it is: live, a dead incarnation,
+// or Foreign", never silently absent.
+type JitPreservedReason
+  = LiveRegistration { name: NonEmptyStr }
+  | CurrentIncarnation { name: NonEmptyStr }
+  | UnreadableIncarnation { name: NonEmptyStr, slot_index: Nat }
+  | ForeignName { name: NonEmptyStr }
+
+// How many rows the sweep selected FOR THIS HOST. The host is carried so a dry run reports counts by host without
+// any per-host literal -- one arm for every host (gunbc.design_argument::root_generalization).
+type JitDeadHostCount {
+  host: HostIdentity
+  selected: Int
+}
+
+// The fold accumulator: the selected and preserved rows, in roster order. A record so the fold carries two growing
+// lists without a tuple (this language has no tuple values).
+type JitSweepFold {
+  selected: List<JitDeadRow>
+  preserved: List<JitPreservedReason>
+}
+
+type JitDeadSweep
+  = JitDeadSweepSelected {
+      host: HostIdentity,
+      selected: List<JitDeadRow>,
+      preserved: List<JitPreservedReason>,
+      counts: List<JitDeadHostCount>,
+    }
+  | JitDeadSweepRefused { refusal: JitDeadSweepRefusal }
+
+type JitDeadSweepRefusal
+  = SweepRosterIncomplete { observed_count: Int, authority_total: Int }
+  | SweepRosterUnavailable { reason: String }
+  | SweepHostSlotsUnresolved { host: HostIdentity }
+
+fn roster_incomplete_refusal(observed_count: Int, authority_total: Int) -> JitDeadSweep {
+  JitDeadSweepRefused { refusal: SweepRosterIncomplete { observed_count: observed_count, authority_total: authority_total } }
+}
+
+fn roster_unreadable_refusal(reason: String) -> JitDeadSweep {
+  JitDeadSweepRefused { refusal: SweepRosterUnavailable { reason: reason } }
+}
+
+fn host_slots_unresolved_refusal(host: HostIdentity) -> JitDeadSweep {
+  JitDeadSweepRefused { refusal: SweepHostSlotsUnresolved { host: host } }
+}
+
+// Is `name` under ANY retired prefix the plan supplied -- and NOT under the host's own live prefix, so a mis-supplied
+// retired prefix that equals the current name can never sweep the host's live-name rows. `current_prefix` is
+// "<host>-"; a retired prefix carries its own trailing dash (the old name + "-").
+fn jit_row_is_retired(name: String, current_prefix: String, retired_prefixes: List<NonEmptyStr>) -> NonEmptyStr? {
+  fold(retired_prefixes, init: none, f: (acc, prefix) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        let p = prefix as String
+        if starts_with(s: name, prefix: p) && !starts_with(s: name, prefix: current_prefix) {
+          Present { value: prefix }
+        } else {
+          none
+        }
+    }
+  )
+}
+
+// The JIT standing of one registration under the host's slot grammar: which of the host's slots it parses against,
+// if any, with its parsed epoch/pid tokens. Returns the matched slot_index and the parsed tokens together, so
+// attribution and the pid-token comparison are one fact -- never re-derived apart (gunbc.design_argument::
+// single_authority).
+type JitSlotStanding {
+  slot_index: Nat
+  parsed: JitRegistrationName
+}
+
+fn jit_row_slot_standing(name: String, slots: List<RunnerSlotIdentity>) -> JitSlotStanding? {
+  fold(slots, init: none, f: (acc, slot) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match parse_jit_registration_name(name: name, slot_instance: runner_slot_instance_name(slot: slot)) {
+          Present { value: parsed } => Present { value: JitSlotStanding { slot_index: slot.slot_index, parsed: parsed } }
+          Absent => none
+        }
+    }
+  )
+}
+
+// The slot unit's observed MainPID. No entry for the slot reads MainPidUnreadable: if we did not observe the unit,
+// we do not sweep its rows.
+fn jit_main_pid_of_slot(current: List<JitCurrentIncarnation>, slot_index: Nat) -> JitMainPid {
+  fold(current, init: MainPidUnreadable, f: (acc, inc) =>
+    match acc {
+      MainPidKnown { pid: _ } => acc
+      MainPidUnreadable => if inc.slot_index == slot_index { inc.main_pid } else { MainPidUnreadable }
+    }
+  )
+}
+
+// THE SELECTION. Fold the closed roster into selected and preserved. The completeness decision is made first: only
+// RosterObserved reaches the fold; the partial and unavailable arms refuse. An empty committed slot set refuses
+// rather than selecting -- with no slot grammar to attribute a row, a dead row would read as "nothing to sweep",
+// which is exactly the RFM's failure (the sweep must never report a clean roster it never enumerated).
+// The standing of one roster row under the host, decided for the fold. A named function (not a lambda) so its
+// branches can bind names and each arm stays a single JitSweepFold value.
+fn jit_sweep_one_row(
+  acc: JitSweepFold,
+  reg: GitHubSelfHostedRunnerRegistration,
+  current_prefix: String,
+  slots: List<RunnerSlotIdentity>,
+  current: List<JitCurrentIncarnation>,
+  retired_prefixes: List<NonEmptyStr>,
+) -> JitSweepFold {
+  let name = reg.name as String
+  match jit_row_is_retired(name: name, current_prefix: current_prefix, retired_prefixes: retired_prefixes) {
+    Present { value: prefix } => JitSweepFold {
+      selected: concat(acc.selected, [JitDeadRow { runner_id: reg.id, name: reg.name, reason: RetiredName { prefix: prefix } }]),
+      preserved: acc.preserved,
+    }
+    Absent =>
+      match jit_row_slot_standing(name: name, slots: slots) {
+        Absent => JitSweepFold { selected: acc.selected, preserved: concat(acc.preserved, [ForeignName { name: reg.name }]) }
+        Present { value: standing } =>
+          if github_runner_registration_is_online(reg: reg) {
+            JitSweepFold { selected: acc.selected, preserved: concat(acc.preserved, [LiveRegistration { name: reg.name }]) }
+          } else {
+            match jit_main_pid_of_slot(current: current, slot_index: standing.slot_index) {
+              MainPidUnreadable => JitSweepFold {
+                selected: acc.selected,
+                preserved: concat(acc.preserved, [UnreadableIncarnation { name: reg.name, slot_index: standing.slot_index }]),
+              }
+              MainPidKnown { pid: main_pid } =>
+                if main_pid == standing.parsed.wrapper_pid {
+                  JitSweepFold { selected: acc.selected, preserved: concat(acc.preserved, [CurrentIncarnation { name: reg.name }]) }
+                } else {
+                  JitSweepFold {
+                    selected: concat(acc.selected, [JitDeadRow {
+                      runner_id: reg.id,
+                      name: reg.name,
+                      reason: DeadOfflineIncarnation {
+                        slot_index: standing.slot_index,
+                        minted_epoch: standing.parsed.minted_epoch,
+                        wrapper_pid: standing.parsed.wrapper_pid,
+                      },
+                    }]),
+                    preserved: acc.preserved,
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE SELECTION. Fold the closed roster into selected and preserved. The completeness decision is made first: only
+// RosterObserved reaches the fold; the partial and unavailable arms refuse. An empty committed slot set refuses
+// rather than selecting -- with no slot grammar to attribute a row, a dead row would read as "nothing to sweep",
+// which is exactly the RFM's failure (the sweep must never report a clean roster it never enumerated).
+fn jit_dead_registration_sweep(
+  host: HostIdentity,
+  slots: List<RunnerSlotIdentity>,
+  current: List<JitCurrentIncarnation>,
+  retired_prefixes: List<NonEmptyStr>,
+  evidence: OrganizationRunnerRosterEvidence,
+) -> JitDeadSweep {
+  if length(slots) == 0 {
+    host_slots_unresolved_refusal(host: host)
+  } else {
+    match evidence {
+      RosterObservedPartial { observed_count: observed, authority_total: total } =>
+        roster_incomplete_refusal(observed_count: observed, authority_total: total)
+      RosterReadUnavailable { reason: reason } => roster_unreadable_refusal(reason: reason)
+      RosterObserved { observed_on: _, registrations: registrations } => {
+        let current_prefix = concat(host as String, "-")
+        let swept = fold(registrations, init: JitSweepFold { selected: [], preserved: [] }, f: (acc, reg) =>
+          jit_sweep_one_row(
+            acc: acc,
+            reg: reg,
+            current_prefix: current_prefix,
+            slots: slots,
+            current: current,
+            retired_prefixes: retired_prefixes,
+          )
+        )
+        JitDeadSweepSelected {
+          host: host,
+          selected: swept.selected,
+          preserved: swept.preserved,
+          counts: [JitDeadHostCount { host: host, selected: length(swept.selected) }],
+        }
+      }
+    }
+  }
+}
+
+// Was a row selected because it is a dead offline incarnation (offline, not the current incarnation) -- the arm the
+// witness asserts IS selected.
+fn jit_row_is_dead(row: JitDeadRow) -> Bool {
+  match row.reason {
+    DeadOfflineIncarnation { slot_index: _, minted_epoch: _, wrapper_pid: _ } => true
+    RetiredName { prefix: _ } => false
+  }
+}
+
+// Was a row selected because it sits under a retired name prefix (the rename's old name) -- the other arm the witness
+// asserts is selected.
+fn jit_row_is_retired_selection(row: JitDeadRow) -> Bool {
+  match row.reason {
+    DeadOfflineIncarnation { slot_index: _, minted_epoch: _, wrapper_pid: _ } => false
+    RetiredName { prefix: _ } => true
+  }
+}
+
+// The names the sweep would delete. The dry run prints exactly these (one line each), and the wet run deletes exactly
+// these -- the same list, one reading, so the dry run cannot describe a deletion the wet run would not perform.
+fn jit_sweep_selected_names(selected: List<JitDeadRow>) -> List<NonEmptyStr> {
+  map(selected, row => row.name)
+}
+
+// The total the dry run reports for a host, read back from the counts the sweep itself carried (not recounted here).
+fn jit_sweep_host_count(counts: List<JitDeadHostCount>, host: HostIdentity) -> Int {
+  fold(counts, init: 0, f: (acc, row) =>
+    if row.host == host { acc + row.selected } else { acc }
+  )
+}
