@@ -486,13 +486,3 @@ fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
     },
   ]
 }
-
-fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
-  match (
-    declared_system_slice_memory_maxes()
-      |> filter(row => (row.unit as String) == unit && byte_size_count(b: row.memory_max) > 0)
-  ).first() {
-    Absent => none
-    Present { value: row } => Present { value: row.memory_max }
-  }
-}
