@@ -390,6 +390,7 @@ fn tier1_replay(
     let reg = infer::service_census_registry(env);
     let mut reg_keys: Vec<String> = reg.keys().cloned().collect();
     reg_keys.sort();
+    let mut items_walked = 0usize;
     for tm in pass.graph.modules.iter() {
         if !tm
             .module
@@ -1153,60 +1154,74 @@ fn serve_entry_realizes_the_host_declared_key_row() {
 //   error: run args: --arg `handler`: no declaration named 'roadmap_serve_handle_srv1_lab' in
 //   this run's graph
 // although dag/gunbc/roadmap/roadmap_serve.dag:2276 declares `fn roadmap_serve_handle_srv1_lab(`.
-// seed_declaration_ref_argv_keys matches `authored_name_at(item) == argv text` on
-// ModuleItemFunction items. This arm runs the EXACT seed call main.rs makes, on the real
-// roadmap_ingress graph, and prints every predicate it consulted: the roadmap_serve module's
-// presence, every srv1_lab item's kind and authored spelling, the entry item's discovery, each
-// param's name and DeclarationRef identity test, and the final Ok/Err. Decides whether the miss
-// is the module absent, the kind wrong, or the authored spelling qualified where bare was assumed.
+// Runs main.rs's EXACT production seam: resolve_entry_graph_demand_acquired_scoped (the same call
+// and arguments the refused run used) then seed_declaration_ref_argv_keys, printing every
+// predicate consulted: modules carrying srv1_lab items, each such item's kind and authored
+// spelling, entry discovery, entry param names, and the Ok/Err. Decides module-absent vs
+// kind-mismatch vs qualified-vs-bare authored spelling at the seed.
 #[test]
 fn serve_seed_argv_probe() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
-            let (_sources, _intern, si, _modules, graph) =
-                graph_from("dag/gunbc/roadmap/roadmap_ingress.dag");
-            let srv_items: Vec<String> = graph
+            let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
+            let requested = vec!["roadmap_ingress".to_string()];
+            let (graph, source_indices) =
+                match crate::cli_run::resolve_entry_graph_demand_acquired_scoped(
+                    &source_roots,
+                    "dag/gunbc/roadmap/roadmap_ingress.dag",
+                    &requested,
+                ) {
+                    Ok(pair) => pair,
+                    Err(cause) => {
+                        eprintln!("SERVE_SEED resolve-FAIL cause={cause}");
+                        panic!("resolve failed: {cause}");
+                    }
+                };
+            let modules_with_serve: Vec<String> = graph
                 .modules
                 .iter()
                 .filter(|rm| {
-                    crate::v1_std_core::authored_name_at(si.clone(), rm.module.clone())
-                        .contains("roadmap_serve")
-                })
-                .flat_map(|rm| {
-                    rm.items.iter().filter(|item| {
-                        crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
+                    rm.items.iter().any(|item| {
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
                             .contains("srv1_lab")
                     })
+                })
+                .map(|rm| {
+                    crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        rm.module.clone(),
+                    )
+                })
+                .collect();
+            let srv_items: Vec<String> = graph
+                .modules
+                .iter()
+                .flat_map(|rm| rm.items.iter())
+                .filter(|item| {
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), (*item).clone())
+                        .contains("srv1_lab")
                 })
                 .map(|item| {
                     format!(
                         "{}|{:?}|auth={}",
                         item.name,
                         item.module_item_kind,
-                        crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            (*item).clone()
+                        )
                     )
-                })
-                .collect();
-            let modules_with_serve: Vec<String> = graph
-                .modules
-                .iter()
-                .filter(|rm| {
-                    rm.items.iter().any(|item| {
-                        crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
-                            .contains("srv1_lab")
-                    })
-                })
-                .map(|rm| {
-                    crate::v1_std_core::authored_name_at(si.clone(), rm.module.clone())
                 })
                 .collect();
             let entry_found = graph.modules.iter().any(|rm| {
                 rm.items.iter().any(|item| {
                     item.module_item_kind
                         == crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
-                        && crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
-                            == "roadmap_ingress"
+                        && crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            item.clone(),
+                        ) == "roadmap_ingress"
                 })
             });
             let params_report: Vec<String> = graph
@@ -1216,8 +1231,10 @@ fn serve_seed_argv_probe() {
                 .find(|item| {
                     item.module_item_kind
                         == crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
-                        && crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
-                            == "roadmap_ingress"
+                        && crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            (*item).clone(),
+                        ) == "roadmap_ingress"
                 })
                 .map(|item| {
                     item.params
@@ -1225,7 +1242,10 @@ fn serve_seed_argv_probe() {
                         .map(|p| {
                             format!(
                                 "{}|ann={}",
-                                crate::v1_std_core::authored_name_at(si.clone(), p.clone()),
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    p.clone()
+                                ),
                                 p.type_annotation.is_some()
                             )
                         })
@@ -1233,16 +1253,22 @@ fn serve_seed_argv_probe() {
                 })
                 .unwrap_or_default();
             let run_args: Vec<(String, String)> = vec![
-                ("handler".to_string(), "roadmap_serve_handle_srv1_lab".to_string()),
+                (
+                    "handler".to_string(),
+                    "roadmap_serve_handle_srv1_lab".to_string(),
+                ),
                 ("listener".to_string(), "tcp:127.0.0.1:18099".to_string()),
-                ("release_revision".to_string(), "1b32b284ff94c29f1dd962088663d0d04a0a90d4".to_string()),
+                (
+                    "release_revision".to_string(),
+                    "1b32b284ff94c29f1dd962088663d0d04a0a90d4".to_string(),
+                ),
                 ("cpu_limit_ms".to_string(), "30000".to_string()),
                 ("wall_limit_ms".to_string(), "120000".to_string()),
             ];
             let result = crate::cli_run::seed_declaration_ref_argv_keys(
                 &graph,
-                &si,
-                &["roadmap_ingress".to_string()],
+                &source_indices,
+                &requested,
                 &run_args,
             );
             eprintln!(
