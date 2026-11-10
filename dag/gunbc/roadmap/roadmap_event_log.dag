@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_event_log
 
 import std.types { String, Int, Bool, List, NonEmptyStr, brand }
+import std.algebra { trim }
 import std.content_hash { content_hash_atom, fnv1a64_structural_hex_digest, serialize_content_hash, Fnv1a64 }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue, json_array, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse {
@@ -417,10 +418,19 @@ fn roadmap_acceptance_pr_evidence_decode(doc: JsonValue) -> AcceptancePrEvidence
 // and they either spell the whole fact, spell its absence, or are refused HERE — the only place a partial
 // pull request can exist is in a command line, and it does not get past this function.
 fn roadmap_acceptance_pr_evidence_from_args(url: String, at: String, sha: String) -> AcceptancePrEvidence? {
-  let filled = count(filter([url, at, sha], v => v != ""))
+  // A BLANK IS NOT A FACT. NonEmptyStr forbids "", not " ", so counting the raw arguments would let a
+  // pull request that never merged in, or a URL typed as three spaces on a terminal, fold into
+  // EarnedByPullRequest and be written to the log as evidence. Each argument is measured on its trimmed
+  // spelling: whitespace-only arrives as the absence it means, so it either joins the ONE admissible
+  // absence (all three blank) or leaves a partial fact, which has no representation and refuses here —
+  // where the three arguments are read, not later at the write.
+  let url_seen = trim(s: url)
+  let at_seen = trim(s: at)
+  let sha_seen = trim(s: sha)
+  let filled = count(filter([url_seen, at_seen, sha_seen], v => v != ""))
   if filled == 3 {
     Present { value: EarnedByPullRequest {
-      pr_url: url as NonEmptyStr, merged_at: at as NonEmptyStr, head_sha: sha as NonEmptyStr } }
+      pr_url: url_seen as NonEmptyStr, merged_at: at_seen as NonEmptyStr, head_sha: sha_seen as NonEmptyStr } }
   }
   else if filled == 0 { Present { value: NoPullRequest } }
   else { none }

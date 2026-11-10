@@ -98,7 +98,13 @@ fn issue_command_acceptance_wet(repo: String, git_program: String = "/usr/bin/gi
     }
     let created = issue_command_apply(layout: layout, command: acceptance, recorded_at: "2026-11-04T08:00:00Z")
     let first_id = match created.result { EventAppended { id } => id as String  EventAlreadyPresent { id: _ } => ""  EventAppendRefused { id: _, step: _, reason: _ } => "" }
-    let moved = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject { node: accepted_node, author: author, operation: "op-move-the-head" as NonEmptyStr, expected: none }, body: "an unrelated act that moves the chain head before the retry" }, recorded_at: "2026-11-04T08:00:01Z")
+    let first_head = match created.result { EventAppended { id } => id  EventAlreadyPresent { id } => id  EventAppendRefused { id, step: _, reason: _ } => id }
+    // THE UNRELATED ACT NAMES THE HEAD IT SAW. A command on a chain that already holds events carries the
+    // event it expects to sit on — `expected: none` means "I expect this chain to be empty" and the carrier
+    // refuses it as revision-conflict (test.manual.issue_command_wet's sequential mode witnesses exactly
+    // that). So the head really does move here, which is the point: what the retry then names is the parent
+    // it saw BEFORE this act, and command identity alone could not tell the two apart.
+    let moved = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject { node: accepted_node, author: author, operation: "op-move-the-head" as NonEmptyStr, expected: Present { value: first_head } }, body: "an unrelated act that moves the chain head before the retry" }, recorded_at: "2026-11-04T08:00:01Z")
     // THE REPLAY NAMES THE PARENT IT EXPECTED BEFORE THE HEAD MOVED: same operation, same fact, stale guess.
     let retry = issue_command_apply(layout: layout,
       command: AcceptNode {
