@@ -433,6 +433,8 @@ test fn the_record_spans_are_computed_from_its_instants() -> Bool {
     }
     // RED controls: the range lives at construction. Each part outside what its name claims answers Absent from
     // the constructor itself -- a reader that only ever received the constructor's output cannot be handed one.
+    // Calendar-impossible days are in that set: `day: 31` in February is not a loose bound, it is a date that the
+    // normalized day arithmetic would silently move to March, so it must be refused where the instant is made.
     && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 99, minute: 39, second: 48) {
       Absent => true
       Present { value: _ } => false
@@ -451,6 +453,37 @@ test fn the_record_spans_are_computed_from_its_instants() -> Bool {
     }
     // and the in-range side of the same constructor builds the instant the host printed, which is what ties the
     // parts back to the reading instead of leaving them free-floating numbers.
+    // February by the leap rule, from the module's one day-in-month rule (iso8601_gregorian_days_in_month), the
+    // same one iso8601_utc_epoch_seconds refuses with: 2026 is not a leap year, 2024 is, 1900 is not (century),
+    // 2000 is. And the text door refuses the identical date, which is what makes it one rule and not two.
+    && match iso8601_utc_instant(year: 2026, month: 2, day: 31, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 2, day: 29, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 1900, month: 2, day: 29, hour: 0, minute: 0, second: 0) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 4, day: 31, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2024, month: 2, day: 29, hour: 12, minute: 0, second: 0) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2024-02-29T12:00:00Z"
+    }
+    && match iso8601_utc_instant(year: 2000, month: 2, day: 29, hour: 12, minute: 0, second: 0) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2000-02-29T12:00:00Z"
+    }
+    && match iso8601_utc_epoch_seconds(text: "2026-02-31T22:47:37Z") {
+      Absent => true
+      Present { value: _ } => false
+    }
     && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 40, second: 51) {
       Absent => false
       Present { value: v } => iso8601_utc_instant_text(i: v) == "2026-11-09T22:40:51Z"

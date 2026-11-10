@@ -130,11 +130,15 @@ fn iso8601_utc_instant_text(i: Iso8601UtcInstant) -> String {
 // The constructor's guard, over the parts as written rather than over a built instant: the predicate decides, the
 // constructor below is the only producer of the carrier, and consumers never validate for themselves. (The pair
 // is the shape extdeps.llm.openai sets with `openai_text_completion_object_valid` and its checked constructor.)
-// Day is bounded to 1..31 rather than to month length: the day arithmetic above normalizes the rest, and no
-// reading in this repo needs the finer rule.
-fn iso8601_utc_instant_parts_are_valid(month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Bool {
+// Day is bounded BY MONTH LENGTH, not by 31, on the rule this module already owns --
+// iso8601_gregorian_days_in_month carries the leap rule, and the TEXT reader below already refuses with it. A
+// constructor that accepted February 31 would not merely be loose: the normalized day arithmetic would turn it
+// into March 3 and hand back a real, wrong instant, which is the plausible output fail_closed refuses
+// (gunbc.design_argument::fail_closed, "no plausible output is fabricated"). The constructor and the text reader
+// now refuse the same set of dates, which is the point of keeping one day-in-month rule here.
+fn iso8601_utc_instant_parts_are_valid(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Bool {
   (month >= 1 && month <= 12)
-    && (day >= 1 && day <= 31)
+    && (day >= 1 && day <= iso8601_gregorian_days_in_month(y: year, m: month))
     && (hour >= 0 && hour <= 23)
     && (minute >= 0 && minute <= 59)
     && (second >= 0 && second <= 59)
@@ -149,7 +153,7 @@ fn iso8601_utc_instant_parts_are_valid(month: Int, day: Int, hour: Int, minute: 
 // is a claim about call sites, not reachability -- `dag` has no visibility modifier -- which is why the witnesses
 // call this constructor with each out-of-range part and require Absent.
 fn iso8601_utc_instant(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Iso8601UtcInstant? {
-  if !iso8601_utc_instant_parts_are_valid(month: month, day: day, hour: hour, minute: minute, second: second) {
+  if !iso8601_utc_instant_parts_are_valid(year: year, month: month, day: day, hour: hour, minute: minute, second: second) {
     none
   } else {
     Present { value: Iso8601UtcInstant { date: Iso8601CivilDate { year: year, month: month, day: day }, hour: hour, minute: minute, second: second } }
