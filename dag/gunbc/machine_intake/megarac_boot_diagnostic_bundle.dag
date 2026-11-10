@@ -185,6 +185,7 @@ import gunbc.host.boot_console_observation {
   bracketed_int, firmware_report_text, grub_report_text, console_text,
   console_path_retained, console_size_of_stat, checkpoint_relations, console, console_reading,
 }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_stderr_completion }
 import gunbc.host.boot_attempt {
   AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   HostPowerState, PowerOn, PowerOff, PowerUnread, host_power_text,
@@ -204,6 +205,7 @@ import gunbc.host.boot_attempt {
   BootOverrideClear, StaleOverrideClearance, OverrideCleared, OverrideClearLeftPending,
   OverrideClearNotRequired, OverrideClearUnread, StaleOverrideNoneFound, StaleOverrideCleared,
   StaleOverrideWouldNotClear, StaleOverrideUnread, StaleOverrideClearedUnread, boot_override_clear_text,
+  StaleOverrideClearWrite, ClearWriteAccepted, ClearWriteRefused, ClearWriteUnanswered, stale_override_clear_write_text,
   stale_override_clearance_text, boot_override_standing_after_clear,
   DerivedFinding, derived_finding_text, run_record_derived_findings,
   StandingFinding, TerminalObserved,
@@ -738,10 +740,15 @@ type SensorReading
 // A POWER-OFF AFTER THE CENSUS END MARKER IS THE IMAGE WORKING. Chassis power is read after the
 // attempt; off after the END marker is recorded as expected, and the post-attempt SMpro pass is not
 // sent at a socket the census deliberately powered down.
-type BootParam5Reading
-  = BootParam5Read { readback: String, at: NonEmptyStr }
-  | BootParam5Unread { cause: BmcReadCause }
-  | BootParam5NotTaken { reason: NonEmptyStr }
+// ONE READING SHAPE FOR ANY BOOT OPTION PARAMETER: the readback with its instant, or why it did not answer.
+// Parameter 5 (boot flags) is read before, after, and back from each clear; parameter 3 (boot flag valid bit
+// clearing) is read just before each clear, so a flag the controller re-asserts has the controller's own
+// clearing configuration recorded beside it. The read is the same `chassis bootparam get <n>`, so the reading
+// is one type, not one per parameter.
+type BootParamReading
+  = BootParamRead { readback: String, at: NonEmptyStr }
+  | BootParamUnread { cause: BmcReadCause }
+  | BootParamNotTaken { reason: NonEmptyStr }
 
 // THE ARMS ANSWER ONLY THE CHASSIS QUESTION: on, off, or no answer. They used to key on the census
 // END marker while MegaRacRunRecord separately
@@ -1263,8 +1270,8 @@ type MegaRacRunRecord {
   media: MegaRacMediaAttach
   smpro_power_on: SmproReading
   smpro_census: SmproReading
-  override_before: BootParam5Reading
-  override_after: BootParam5Reading
+  override_before: BootParamReading
+  override_after: BootParamReading
   // THE CONSUMPTION AND THE POST-ATTEMPT POWER, stored as the core's OWN types. This module used to
   // keep a MegaRacOverride sum and a MegaRacPowerAfter sum beside these fields and map them 1:1 into
   // the neutral ones -- two decisions, two renderers, and production called this module's copy (review
@@ -1290,8 +1297,8 @@ fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
     media: MegaRacMediaAttachNotAttempted { reason: reason },
     smpro_power_on: SmproNotTaken { reason: reason },
     smpro_census: SmproNotTaken { reason: reason },
-    override_before: BootParam5NotTaken { reason: reason },
-    override_after: BootParam5NotTaken { reason: reason },
+    override_before: BootParamNotTaken { reason: reason },
+    override_after: BootParamNotTaken { reason: reason },
     override: OverrideNotHandedOff { reason: reason },
     override_clears: boot_override_clears_not_required(reason: reason),
     power_after: HostPowerNotTaken { reason: reason },
@@ -1304,9 +1311,39 @@ fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
 // worked. Two calls, therefore two facts held apart -- a write that answered and a read that never did is
 // NOT a clear, and it is not the same failure as a write that was refused. `NotIssued` is the arm for a
 // clear nobody owed: no override was pending (pre-power), or this attempt never set one (release).
+//
+// THREE FACTS FOR AN ISSUED CLEAR: `policy`, parameter 3 read just before the write (read-only); `write`, what
+// the Set itself answered; `readback`, parameter 5 read after it -- the only one that says whether the flag
+// is gone. The write's answer is kept because when the readback says the flag is still in force, a write the
+// controller REFUSED (boot run 42663208460's clear sent six data bytes for a five-byte parameter) and a write
+// it TOOK are different defects, and a Bool that nothing read could not tell them apart.
 type BootParam5Clear
-  = BootParam5ClearIssued { write_answered: Bool, readback: BootParam5Reading }
+  = BootParam5ClearIssued { policy: BootParamReading, write: StaleOverrideClearWrite, readback: BootParamReading }
   | BootParam5ClearNotIssued { reason: NonEmptyStr }
+
+// WHAT THE SET SYSTEM BOOT OPTIONS WRITE ANSWERED, read into the core's one sum for it
+// (gunbc.host.boot_attempt StaleOverrideClearWrite) as ipmitool reports it: exit 0 is the controller's completion
+// code 00h; a nonzero exit with "rsp=0x.." on stderr is the controller declining with that completion code
+// (extdeps.bmc.ipmitool_raw_reply ipmitool_raw_stderr_completion); a nonzero exit without one is no answer from
+// the controller at all.
+fn boot_param5_clear_write_of(success: Bool, exit_code: Int, stderr: String) -> StaleOverrideClearWrite {
+  if success {
+    ClearWriteAccepted
+  } else {
+    match ipmitool_raw_stderr_completion(stderr: stderr) {
+      Present { value: c } => ClearWriteRefused { code: c, detail: stderr }
+      Absent => ClearWriteUnanswered { exit_code: exit_code, detail: stderr }
+    }
+  }
+}
+
+// THE PARAMETER-5 READBACK OF A CLEAR, or why there is none.
+fn boot_param5_clear_readback(clear: BootParam5Clear) -> BootParamReading {
+  match clear {
+    BootParam5ClearIssued { policy: _, write: _, readback: rb } => rb
+    BootParam5ClearNotIssued { reason: r } => BootParamNotTaken { reason: r }
+  }
+}
 
 // WHAT THE ROUTE'S TWO CLEARS SAID, each standing kept beside the reading it was reduced from. The
 // standings are the core's (one decision, one home); the readings ride beside them because a standing
@@ -1317,9 +1354,9 @@ type BootParam5Clear
 // cannot become a verdict here even by accident.
 type BootOverrideClears {
   stale: StaleOverrideClearance
-  stale_read: BootParam5Reading
+  stale_clear: BootParam5Clear
   released: BootOverrideClear
-  release_read: BootParam5Reading
+  release_clear: BootParam5Clear
 }
 
 // THE CLEARANCES FOR A RUN THAT owed NEITHER, and never stood at the controller to find out otherwise:
@@ -1329,9 +1366,9 @@ type BootOverrideClears {
 fn boot_override_clears_not_required(reason: NonEmptyStr) -> BootOverrideClears {
   BootOverrideClears {
     stale: StaleOverrideUnread { reason: reason },
-    stale_read: BootParam5NotTaken { reason: reason },
+    stale_clear: BootParam5ClearNotIssued { reason: reason },
     released: OverrideClearNotRequired { reason: reason },
-    release_read: BootParam5NotTaken { reason: reason },
+    release_clear: BootParam5ClearNotIssued { reason: reason },
   }
 }
 
@@ -1341,9 +1378,9 @@ fn boot_override_clears_not_required(reason: NonEmptyStr) -> BootOverrideClears 
 fn boot_override_clears_none_found(reason: NonEmptyStr) -> BootOverrideClears {
   BootOverrideClears {
     stale: StaleOverrideNoneFound,
-    stale_read: BootParam5NotTaken { reason: reason },
+    stale_clear: BootParam5ClearNotIssued { reason: reason },
     released: OverrideClearNotRequired { reason: reason },
-    release_read: BootParam5NotTaken { reason: reason },
+    release_clear: BootParam5ClearNotIssued { reason: reason },
   }
 }
 
@@ -1373,11 +1410,11 @@ fn boot_param5_override_is_pending(readback: String) -> Bool {
 fn megarac_override_release(clear: BootParam5Clear) -> BootOverrideClear {
   match clear {
     BootParam5ClearNotIssued { reason: r } => OverrideClearNotRequired { reason: r }
-    BootParam5ClearIssued { write_answered: _, readback: read } => match read {
-      BootParam5Read { readback: rb, at: _ } =>
+    BootParam5ClearIssued { policy: _, write: _, readback: read } => match read {
+      BootParamRead { readback: rb, at: _ } =>
         if boot_param5_override_is_pending(readback: rb) { OverrideClearLeftPending } else { OverrideCleared }
-      BootParam5Unread { cause: c } => OverrideClearUnread { reason: bmc_read_cause_text(cause: c) }
-      BootParam5NotTaken { reason: r } => OverrideClearUnread { reason: r }
+      BootParamUnread { cause: c } => OverrideClearUnread { reason: bmc_read_cause_text(cause: c) }
+      BootParamNotTaken { reason: r } => OverrideClearUnread { reason: r }
     }
   }
 }
@@ -1391,7 +1428,7 @@ fn megarac_override_release(clear: BootParam5Clear) -> BootOverrideClear {
 // (run 40258937016), not a saving. An UNREAD clearance is its own arm because it is its own exposure -- the
 // attempt proceeds, or refuses, without ever learning what stood, and the receipt has to say so rather than
 // claim a clear.
-fn megarac_stale_override_clearance(before: BootParam5Reading, clear: BootParam5Clear) -> StaleOverrideClearance {
+fn megarac_stale_override_clearance(before: BootParamReading, clear: BootParam5Clear) -> StaleOverrideClearance {
   match clear {
     // A clear was owed and none was issued -- for a standing the controller described as pending, or for one
     // nobody ever read. Either way the attempt may not proceed: 'none found' is reserved for the controller
@@ -1402,10 +1439,10 @@ fn megarac_stale_override_clearance(before: BootParam5Reading, clear: BootParam5
       } else {
         StaleOverrideNoneFound
       }
-    BootParam5ClearIssued { write_answered: _, readback: read } => match read {
-      BootParam5Read { readback: rb2, at: _ } => stale_clear_verdict(before: before, readback: rb2)
-      BootParam5Unread { cause: c } => StaleOverrideUnread { reason: bmc_read_cause_text(cause: c) }
-      BootParam5NotTaken { reason: r } => StaleOverrideUnread { reason: r }
+    BootParam5ClearIssued { policy: _, write: w, readback: read } => match read {
+      BootParamRead { readback: rb2, at: _ } => stale_clear_verdict(before: before, write: w, readback: rb2)
+      BootParamUnread { cause: c } => StaleOverrideUnread { reason: bmc_read_cause_text(cause: c) }
+      BootParamNotTaken { reason: r } => StaleOverrideUnread { reason: r }
     }
   }
 }
@@ -1423,11 +1460,11 @@ fn boot_override_pending(readback: String, selection: IpmiBootSelection) -> Bool
   }
 }
 
-fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr? {
+fn boot_param5_unread_reason(r: BootParamReading, which: String) -> NonEmptyStr? {
   match r {
-    BootParam5Read { readback: _, at: _ } => none
-    BootParam5Unread { cause: c } => Present { value: concat("boot parameter 5 ", which, " was not read (", bmc_read_cause_kind(cause: c), ")") as NonEmptyStr }
-    BootParam5NotTaken { reason: why } => Present { value: concat("boot parameter 5 ", which, " was not taken: ", why as String) as NonEmptyStr }
+    BootParamRead { readback: _, at: _ } => none
+    BootParamUnread { cause: c } => Present { value: concat("boot parameter 5 ", which, " was not read (", bmc_read_cause_kind(cause: c), ")") as NonEmptyStr }
+    BootParamNotTaken { reason: why } => Present { value: concat("boot parameter 5 ", which, " was not taken: ", why as String) as NonEmptyStr }
   }
 }
 
@@ -1453,16 +1490,16 @@ fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr
 // sum for it, or words it (review 81601; the six-arm MegaRacOverride sum and its 1:1 map to the core's
 // six arms are deleted, and the core function that used to be dead outside witnesses is now what
 // production calls).
-fn megarac_override_standing(read: BootParam5Reading, which: String, selection: IpmiBootSelection) -> BootOverrideStanding {
+fn megarac_override_standing(read: BootParamReading, which: String, selection: IpmiBootSelection) -> BootOverrideStanding {
   match read {
-    BootParam5Read { readback: b, at: _ } =>
+    BootParamRead { readback: b, at: _ } =>
       if boot_override_pending(readback: b, selection: selection) {
         OverrideFlagPending
       } else {
         OverrideFlagNotPending
       }
-    BootParam5Unread { cause: c } => OverrideReadUnanswered { reason: concat("boot parameter 5 ", which, " was not read (", bmc_read_cause_kind(cause: c), ")") as NonEmptyStr }
-    BootParam5NotTaken { reason: why } => OverrideReadUnanswered { reason: concat("boot parameter 5 ", which, " was not taken: ", why as String) as NonEmptyStr }
+    BootParamUnread { cause: c } => OverrideReadUnanswered { reason: concat("boot parameter 5 ", which, " was not read (", bmc_read_cause_kind(cause: c), ")") as NonEmptyStr }
+    BootParamNotTaken { reason: why } => OverrideReadUnanswered { reason: concat("boot parameter 5 ", which, " was not taken: ", why as String) as NonEmptyStr }
   }
 }
 
@@ -1472,7 +1509,7 @@ fn megarac_override_standing(read: BootParam5Reading, which: String, selection: 
 // that correction out is what turned every attempt after the first into 'already pending before it was
 // set' -- a verdict that returns before the after-read is looked at, which is how the second read became
 // dead information (clever-bat-328; boot 5 run 40258937016, boot 6 run 40264233543).
-fn megarac_boot_override_consumption(before: BootParam5Reading, after: BootParam5Reading, clears: BootOverrideClears,
+fn megarac_boot_override_consumption(before: BootParamReading, after: BootParamReading, clears: BootOverrideClears,
                                      selection: IpmiBootSelection, booted_through_override_device: Bool) -> BootOverrideConsumption {
   boot_override_consumption(
     before: boot_override_standing_after_clear(
@@ -1497,20 +1534,20 @@ fn megarac_handoff_issued_set(h: MegaRacHandoff) -> Bool {
 // from, so the receipt can never say 'nothing was pending' about bytes nobody read. Only the Read arm is
 // reachable: an unread or un-taken standing OWES the clear (boot_param5_owes_clear), so the two defensive
 // arms below say what they would mean rather than flattering the route.
-fn boot_param5_clear_not_required_reason(read: BootParam5Reading) -> NonEmptyStr {
+fn boot_param5_clear_not_required_reason(read: BootParamReading) -> NonEmptyStr {
   match read {
-    BootParam5Read { readback: _, at: _ } => "the controller's own reading said no boot override was in force"
-    BootParam5Unread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), "), which owes a clear") as NonEmptyStr
-    BootParam5NotTaken { reason: r } => concat("the before-read was not taken (", r as String, "), which owes a clear") as NonEmptyStr
+    BootParamRead { readback: _, at: _ } => "the controller's own reading said no boot override was in force"
+    BootParamUnread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), "), which owes a clear") as NonEmptyStr
+    BootParamNotTaken { reason: r } => concat("the before-read was not taken (", r as String, "), which owes a clear") as NonEmptyStr
   }
 }
 
 // WHY THE BEFORE-READ ESTABLISHES NOTHING, for the receipt and for the finding that says so.
-fn boot_param5_standing_not_established(read: BootParam5Reading) -> NonEmptyStr {
+fn boot_param5_standing_not_established(read: BootParamReading) -> NonEmptyStr {
   match read {
-    BootParam5Read { readback: _, at: _ } => "the controller read back, which establishes a standing"
-    BootParam5Unread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), ")") as NonEmptyStr
-    BootParam5NotTaken { reason: r } => concat("the before-read was not taken (", r as String, ")") as NonEmptyStr
+    BootParamRead { readback: _, at: _ } => "the controller read back, which establishes a standing"
+    BootParamUnread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), ")") as NonEmptyStr
+    BootParamNotTaken { reason: r } => concat("the before-read was not taken (", r as String, ")") as NonEmptyStr
   }
 }
 
@@ -1520,26 +1557,26 @@ fn boot_param5_standing_not_established(read: BootParam5Reading) -> NonEmptyStr 
 // controller, and must not report one). What was there to clear is judged from the BEFORE-read: 'cleared'
 // is said only when the controller had reported a flag in force, 'none found' only when it reported none,
 // and the blind case -- where nobody ever read what stood -- is StaleOverrideClearedUnread, which is neither.
-fn stale_clear_verdict(before: BootParam5Reading, readback: String) -> StaleOverrideClearance {
+fn stale_clear_verdict(before: BootParamReading, write: StaleOverrideClearWrite, readback: String) -> StaleOverrideClearance {
   if boot_param5_override_is_pending(readback: readback) {
-    StaleOverrideWouldNotClear
+    StaleOverrideWouldNotClear { write: write }
   } else {
     stale_clear_verdict_of_unchanged_standings(before: before, readback: readback)
   }
 }
 
-fn stale_clear_verdict_of_unchanged_standings(before: BootParam5Reading, readback: String) -> StaleOverrideClearance {
+fn stale_clear_verdict_of_unchanged_standings(before: BootParamReading, readback: String) -> StaleOverrideClearance {
   match before {
-    BootParam5Read { readback: rb, at: _ } =>
+    BootParamRead { readback: rb, at: _ } =>
       if boot_param5_override_is_pending(readback: rb) { StaleOverrideCleared } else { StaleOverrideNoneFound }
-    BootParam5Unread { cause: _ } => StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
-    BootParam5NotTaken { reason: _ } => StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
+    BootParamUnread { cause: _ } => StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
+    BootParamNotTaken { reason: _ } => StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
   }
 }
 
 // WHAT THE RECEIPT SAYS WHEN A CLEAR THAT WAS OWED NEVER HAPPENED -- worded differently for the two ways to
 // get there, because 'it was there and we left it' and 'we never looked' are different things to fix.
-fn stale_clear_not_issued_reason(before: BootParam5Reading, why: NonEmptyStr) -> NonEmptyStr {
+fn stale_clear_not_issued_reason(before: BootParamReading, why: NonEmptyStr) -> NonEmptyStr {
   if boot_param5_standing_established(read: before) {
     concat("the pending override's clear was not issued: ", why as String) as NonEmptyStr
   } else {
@@ -1549,11 +1586,11 @@ fn stale_clear_not_issued_reason(before: BootParam5Reading, why: NonEmptyStr) ->
 
 // DID THIS READING ESTABLISH A STANDING AT ALL? An answer nobody could read is not a standing: the route may
 // not treat 'we failed to look' as 'we looked and it was clear'.
-fn boot_param5_standing_established(read: BootParam5Reading) -> Bool {
+fn boot_param5_standing_established(read: BootParamReading) -> Bool {
   match read {
-    BootParam5Read { readback: _, at: _ } => true
-    BootParam5Unread { cause: _ } => false
-    BootParam5NotTaken { reason: _ } => false
+    BootParamRead { readback: _, at: _ } => true
+    BootParamUnread { cause: _ } => false
+    BootParamNotTaken { reason: _ } => false
   }
 }
 
@@ -1566,11 +1603,11 @@ fn boot_param5_standing_established(read: BootParam5Reading) -> Bool {
 // says so, or the attempt refuses before any set. So an unread or un-taken standing owes the clear, and if
 // the clear's own readback cannot be read either, megarac_stale_override_clearance answers StaleOverrideUnread
 // and mtcollins1_boot_stale_clear_refusal refuses the set.
-fn boot_param5_owes_clear(read: BootParam5Reading) -> Bool {
+fn boot_param5_owes_clear(read: BootParamReading) -> Bool {
   match read {
-    BootParam5Read { readback: rb, at: _ } => boot_param5_override_is_pending(readback: rb)
-    BootParam5Unread { cause: _ } => true
-    BootParam5NotTaken { reason: _ } => true
+    BootParamRead { readback: rb, at: _ } => boot_param5_override_is_pending(readback: rb)
+    BootParamUnread { cause: _ } => true
+    BootParamNotTaken { reason: _ } => true
   }
 }
 
@@ -1604,11 +1641,28 @@ fn megarac_power_reading_not_taken(reason: NonEmptyStr) -> HostPowerReading {
 // (power_after_text). This module has no vocabulary for either decision (review 81601) -- what it keeps
 // below are the sections whose detail exists only in this row's raw record.
 // WHAT A PARAMETER-5 READ LOOKS LIKE IN THE RAW RECORD: the readback itself, or why it did not answer.
-fn boot_param5_text(label: String, r: BootParam5Reading) -> String {
+fn boot_param5_text(label: String, r: BootParamReading) -> String {
+  boot_param_text(parameter: "5", label: label, r: r)
+}
+
+fn boot_param_text(parameter: String, label: String, r: BootParamReading) -> String {
   match r {
-    BootParam5Read { readback: rb, at: at } => concat("boot parameter 5 ", label, " (", at as String, "):\n", rb)
-    BootParam5Unread { cause: c } => concat("boot parameter 5 ", label, ": UNREAD: ", bmc_read_cause_text(cause: c))
-    BootParam5NotTaken { reason: why } => concat("boot parameter 5 ", label, ": NOT TAKEN: ", why as String)
+    BootParamRead { readback: rb, at: at } => concat("boot parameter ", parameter, " ", label, " (", at as String, "):\n", rb)
+    BootParamUnread { cause: c } => concat("boot parameter ", parameter, " ", label, ": UNREAD: ", bmc_read_cause_text(cause: c))
+    BootParamNotTaken { reason: why } => concat("boot parameter ", parameter, " ", label, ": NOT TAKEN: ", why as String)
+  }
+}
+
+// ONE CLEAR IN THE RAW RECORD: parameter 3 as it stood before the write, what the write answered, and the
+// parameter-5 readback -- or, when no clear was issued, why.
+fn boot_param5_clear_text(label: String, c: BootParam5Clear) -> String {
+  match c {
+    BootParam5ClearIssued { policy: p, write: w, readback: rb } => join([
+      boot_param_text(parameter: "3", label: concat("before the ", label), r: p),
+      concat("boot parameter 5 ", label, " write: ", stale_override_clear_write_text(w: w)),
+      boot_param5_text(label: label, r: rb),
+    ], "\n")
+    BootParam5ClearNotIssued { reason: r } => concat("boot parameter 5 ", label, ": NOT TAKEN: ", r as String)
   }
 }
 
@@ -1625,9 +1679,9 @@ fn megarac_run_record_text(row: MegaRacBootRow, r: MegaRacRunRecord) -> String {
     "-- phase timing (gunbc.host.managed_host_boot_phase_timing) --",
     boot_phase_timing_text(t: r.timing),
     boot_param5_text(label: "before", r: r.override_before),
-    boot_param5_text(label: "stale-clear", r: r.override_clears.stale_read),
+    boot_param5_clear_text(label: "stale-clear", c: r.override_clears.stale_clear),
     boot_param5_text(label: "after", r: r.override_after),
-    boot_param5_text(label: "release-clear", r: r.override_clears.release_read),
+    boot_param5_clear_text(label: "release-clear", c: r.override_clears.release_clear),
     "-- smpro pass at power on --",
     smpro_text(s: r.smpro_power_on),
     "-- smpro pass while the census ran --",
@@ -2500,7 +2554,7 @@ fn megarac_boot_sensors(row: MegaRacBootRow, password_file: NonEmptyStr, sdr: Sd
 }
 
 // CLEAR BOOT PARAMETER 5'S OVERRIDE AND READ IT BACK. The write is Set System Boot Options, parameter 5,
-// with the valid bit clear -- `ipmitool raw 0x00 0x08 0x05 0x01 0x00 0x00 0x00 0x00 0x00`, extdeps.bmc.ipmi
+// with the valid bit clear -- `ipmitool raw 0x00 0x08 0x05 0x00 0x00 0x00 0x00 0x00`, extdeps.bmc.ipmi
 // Tool.ChassisBootOptionsClear, whose data bytes are the model's own (extdeps.bmc.ipmi_boot_selection
 // ipmi_boot_flag_data_*_clear, cited to the IPMI v2.0 rev 1.1 boot option parameter 5 table; the dry world
 // gunbc.bmc_dry_realization bmc_boot_options_clear_reply refuses any other). It REPLACES `chassis bootdev
@@ -2519,6 +2573,7 @@ fn megarac_boot_param5_clear(row: MegaRacBootRow, username: NonEmptyStr, passwor
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_release"),
   ]
 {
+  let policy = megarac_boot_param3(row: row, username: username, password_file: password_file)
   let r = diagnostic.ipmi.Tool.ChassisBootOptionsClear(
     bmc_host: row.controller.host,
     username: username,
@@ -2531,12 +2586,13 @@ fn megarac_boot_param5_clear(row: MegaRacBootRow, username: NonEmptyStr, passwor
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   BootParam5ClearIssued {
-    write_answered: r.success,
+    policy: policy,
+    write: boot_param5_clear_write_of(success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr),
     readback: megarac_boot_param5(row: row, username: username, password_file: password_file),
   }
 }
 
-fn megarac_boot_param5(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr) -> BootParam5Reading
+fn megarac_boot_param5(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr) -> BootParamReading
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_under_hold"),
     // The clear reads its own write back with THIS read, so the read that judges a clear is the same read
@@ -2544,20 +2600,39 @@ fn megarac_boot_param5(row: MegaRacBootRow, username: NonEmptyStr, password_file
     decl_ref(module_path: "gunbc.machine_intake.megarac_boot_diagnostic_bundle", decl_name: "megarac_boot_param5_clear"),
   ]
 {
+  megarac_boot_param(row: row, username: username, password_file: password_file, parameter: "5")
+}
+
+// PARAMETER 3, BOOT FLAG VALID BIT CLEARING: which events this controller is configured to clear the valid bit on.
+// Read-only, just before each clear, so a flag the controller re-asserts has its clearing configuration beside it.
+fn megarac_boot_param3(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr) -> BootParamReading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_diagnostic_bundle", decl_name: "megarac_boot_param5_clear"),
+  ]
+{
+  megarac_boot_param(row: row, username: username, password_file: password_file, parameter: "3")
+}
+
+fn megarac_boot_param(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr) -> BootParamReading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_diagnostic_bundle", decl_name: "megarac_boot_param5"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_diagnostic_bundle", decl_name: "megarac_boot_param3"),
+  ]
+{
   let at = clock_now_probed_at_or_unknown()
   let r = diagnostic.ipmi.Tool.ChassisBootParamGet(
     bmc_host: row.controller.host,
     username: username,
     password_file: password_file,
-    parameter: "5",
+    parameter: parameter,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
-    BootParam5Read { readback: r.stdout, at: at }
+    BootParamRead { readback: r.stdout, at: at }
   } else {
-    BootParam5Unread { cause: bmc_ipmitool_read_cause(endpoint: megarac_ipmi_endpoint(row: row), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
+    BootParamUnread { cause: bmc_ipmitool_read_cause(endpoint: megarac_ipmi_endpoint(row: row), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
   }
 }
 
