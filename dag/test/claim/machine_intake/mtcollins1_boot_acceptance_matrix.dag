@@ -97,6 +97,10 @@ fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
 data matrix_services: List<String> = [
   "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
   "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path", "shell.Stat",
+  // The media attach carries its CSRF token through gunbc.auth.private_secret_file's bracket, whose
+  // demand reaches the modeled mktemp and remove services (their handlers live in
+  // gunbc.filesystem_model private_secret_file_bindings, beside the filesystem handlers).
+  "shell.Mktemp", "shell.Remove",
 ]
 
 fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
