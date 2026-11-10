@@ -8764,13 +8764,8 @@ pub fn run_regen_round_cost(
     // do. A pull-request run's base is main and carries it, but a manual dispatch names any base, so
     // the owning image refuses here, before recovery, bootstrap or re-exec.
     if affected_scope && base_mirror && handoff_in.is_none() {
-        if let Some(base) = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
-            .ok()
-            .map(|c| c.trim().to_string())
-            .filter(|c| !c.is_empty())
-        {
-            scoped_round_base_carries_protocol(&workspace, &base, SCOPED_ROUND_PROTOCOL_FLOOR)?;
-        }
+        let base = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
+        scoped_round_base_admission(&workspace, base.as_deref(), SCOPED_ROUND_PROTOCOL_FLOOR)?;
     }
 
     let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
@@ -12398,6 +12393,25 @@ fn scoped_round_git(workspace: &Path, args: &[&str]) -> Result<String, String> {
 /// the same change.
 const SCOPED_ROUND_PROTOCOL_FLOOR: &str = "b5a924921eaa8b564a7d3e511b3514c09c9b83c9";
 
+/// THE BASE A SCOPED BASE-MIRROR ROUND OWNS MUST BE NAMED (side-chat review of #16236 at 02e160d): an
+/// unset, empty or blank `HEAL_BASE_MIRROR_COMMIT` refuses here, before recovery and before the
+/// zero-work return, instead of letting the scope fall back to the floor's diff and answer
+/// `NoAffectedMirrors` for a round whose base was never established. A named base must then carry
+/// the protocol.
+fn scoped_round_base_admission(
+    workspace: &Path,
+    base: Option<&str>,
+    floor: &str,
+) -> Result<(), String> {
+    match base.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(base) => scoped_round_base_carries_protocol(workspace, base, floor),
+        None => Err(format!(
+            "refusal: a scoped base-mirror round (--base-mirror --regen-affected-scope) needs \
+             {REGEN_ROUND_COST_BASE_MIRROR_ENV} to name its base commit, and it is unset or blank"
+        )),
+    }
+}
+
 /// Refuses unless `floor` is an ancestor of (or equal to) `base`. A base that cannot be resolved, or an
 /// ancestry git cannot decide, refuses too: the protocol is not established, and the round does not
 /// guess.
@@ -12848,6 +12862,15 @@ mod regen_affected_set_tests {
         assert!(scoped_round_base_carries_protocol(&dir, &base, &root).is_ok());
         assert!(scoped_round_base_carries_protocol(&dir, &root, &base).is_err());
         assert!(scoped_round_base_carries_protocol(&dir, &base, &"0".repeat(40)).is_err());
+        // An absent, empty or blank base refuses at admission; a named one goes to the ancestry check.
+        for absent in [None, Some(""), Some("   ")] {
+            assert!(
+                scoped_round_base_admission(&dir, absent, &root).is_err(),
+                "{absent:?}"
+            );
+        }
+        assert!(scoped_round_base_admission(&dir, Some(base.as_str()), &root).is_ok());
+        assert!(scoped_round_base_admission(&dir, Some(root.as_str()), &base).is_err());
 
         // A base with no common history refuses rather than widening.
         git(&["checkout", "-q", "--orphan", "stranger"]);
