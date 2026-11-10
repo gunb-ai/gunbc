@@ -104,8 +104,18 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //   tallies of any refusal: they are RED at main (where both refined controls' operands were refused with
 //   that name) and GREEN here, and they stay green if the grounding read is later fixed. The remaining
 //   refusal is named on the class row as the v2 gap this PR does not close, with these fields; the census
-//   prints er=, ident_deep/opreason and the *_root tags (what evaluation says at the tree's own root) so a
-//   reader can see the difference rather than take it on word.
+//   prints er= and the *_deep fields so a reader can see the difference rather than take it on word.
+//
+//   ONE FIELD WAS MEASURED AND REMOVED. The census used to print what evaluation says at each probe's OWN
+//   root (the data declaration). Measured on a print-always variant of this row -- branch
+//   session/witty-moth-273-censusprint at a3359df321dfd, BuildBuddy 6869b205-2e58-4cd8-a5a0-b65c97046925 --
+//   ident_root, widen_root AND kern_ref_root all read eval_rejected_grounding_not_derived, including the
+//   kernel control whose cast root and operand root are both admitted. A declaration node is not a term the
+//   evaluator grounds, so that field reported the shape of the probe rather than any verdict production
+//   reaches; a census field that refuses for every probe, controls included, is not evidence and was taken
+//   out rather than left to be misread as a finding. What stays specific, and open, is the one that
+//   DIFFERENTIATES: a refinement-typed CAST node rooted as the input is refused with that reason, while
+//   widening's cast node is admitted at its own root.
 //
 //
 // WHAT THIS PR BUILDS ON TOP OF THE READING -- THE CARRIER ARM.
@@ -370,14 +380,6 @@ fn cecf_is_operand_admitted(r: CecfProbeReading) -> Bool {
     PairAdmitted => true
     CastRefused { cast_reason: _ } => true
     _ => false
-  }
-}
-
-// What evaluation says at the tree's own root -- the production shape, where probes root at a chosen node.
-fn cecf_root_tag(src: String) -> String {
-  match cecf_check(src: src) {
-    Accepted { value: t, diagnostics: _ } => cecf_refusal_reason(t: t, n: t.root)
-    Rejected { diagnostics: _ } => "check_rejected"
   }
 }
 
@@ -803,10 +805,7 @@ test fn cecf_verdict_census() -> ProcessExit {
     " | ident_deep:" + cecf_deep_census(src: cecf_identity_source) +
     " | widen_deep:" + cecf_deep_census(src: cecf_widening_source) +
     " | gate_carrier:" + cecf_gate_verdict(src: cecf_identity_source, value_type: integer_int_type_node()) +
-    " | gate_foreign:" + cecf_gate_foreign_verdict() +
-    " | ident_root:" + cecf_root_tag(src: cecf_identity_source) +
-    " | widen_root:" + cecf_root_tag(src: cecf_widening_source) +
-    " | kern_ref_root:" + cecf_root_tag(src: cecf_kernel_dataref_source)
+    " | gate_foreign:" + cecf_gate_foreign_verdict()
   let ident = cecf_read_probe(src: cecf_identity_source)
   let widen = cecf_read_probe(src: cecf_widening_source)
   let lit = cecf_read_probe(src: cecf_literal_source)
