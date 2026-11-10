@@ -1,0 +1,93 @@
+module gunbc.test.claim.serving.serving_butch_fixture_witness
+
+// THE FIRST REAL SERVING ROW, EXECUTED: butch (srv14), the operator's hand-deployed two-engine host (2026-11-10).
+// srv3 and srv4 run one engine each; butch runs TWO, so it is the first row that proves the N-replica model --
+// one host, priced once per replica, no per-host fork. This witness drives gunbc.serving.serving_reservation
+// and says the four things the operator's facts required, each discriminating:
+//
+//   1. TWO REPLICAS, EACH PRICED. butch gives up all four A2 cards and its reserved memory, and its two cpusets
+//      (0-39, 40-79) are AFFINITY -- disjoint, bookable, so the runner keeps every core. A model that summed
+//      slots per host, or that priced an affinity pin as exclusive, fails here.
+//   2. THE POWER CAP IS A PRESENT FACT: all four cards at 35 W (a2-power-cap.service), not the always-Absent
+//      field the finding found.
+//   3. THE API KEY IS A REFERENCE, NEVER A LITERAL: butch-a and butch-b name the SAME reference at
+//      ~/strata-pool/api_key ("one key, two servers"); a host whose custody is not modeled comes back ABSENT,
+//      not as an empty-string literal. The type has no value arm, so a literal key is unrepresentable.
+//   4. STRATA IS PINNED BY DIGEST, NOT "latest": butch names the same content digest as srv3 ("same build"),
+//      and pinning is KEYED -- a host with no row is not pinned, so the predicate is not a blanket true.
+//
+// Run (the whole floor is CI's job; this file runs alone):
+//   claim_batch --hermetic --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/serving/serving_butch_fixture_witness.dag \
+//     --functions <the three witness_* names, comma-joined>
+import std.types { Bool, List, String }
+import std.measure { byte_size_count }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv14 }
+import gunbc.serving.serving_reservation {
+  host_reservations_for, host_memory_reserved, host_gpus_withheld_from_runner, host_cores_withheld_from_runner,
+  ServingHostReservation, ReplicaReservation, cpu_reservation_covers,
+  serving_api_key_is_reference, serving_api_key_source_path,
+  host_strata_is_pinned, strata_release_for, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned, StrataArtifactDigest,
+}
+
+fn butch_replicas() -> List<ReplicaReservation> {
+  match host_reservations_for(operator_host_srv14) {
+    Present { value: r } => r.replicas
+    Absent => []
+  }
+}
+
+// TWO REPLICAS, EACH PRICED; AFFINITY PINS DISJOINT AND THE RUNNER KEEPS EVERY CORE.
+test fn witness_butch_runs_two_priced_replicas_whose_affinity_pins_are_disjoint() -> Bool {
+  let reps = butch_replicas()
+  let two = count(reps) == 2
+  // butch-a owns 0-39 and nothing above 39; butch-b owns 40-79 and nothing below 40 -- the operator's shape.
+  let butch_a = any(reps, c => cpu_reservation_covers(c.cpu, 5) && cpu_reservation_covers(c.cpu, 39) && !cpu_reservation_covers(c.cpu, 40))
+  let butch_b = any(reps, c => cpu_reservation_covers(c.cpu, 40) && cpu_reservation_covers(c.cpu, 79) && !cpu_reservation_covers(c.cpu, 39))
+  // AFFINITY leaves the runner whole: butch pays cards and memory but withholds no cores.
+  let cores_whole = host_cores_withheld_from_runner(operator_host_srv14) == 0
+  let memory_priced = byte_size_count(b: host_memory_reserved(operator_host_srv14)) == 64
+  let cards_priced = host_gpus_withheld_from_runner(operator_host_srv14) == 4
+  // a2-power-cap.service holds all four A2 at 35 W -- a Present cap on every replica, not the old always-Absent.
+  let caps_35 = all(reps, c => match c.gpu.power_cap_watts { Present { value: v } => v == 35 Absent => false })
+  two && butch_a && butch_b && cores_whole && memory_priced && cards_priced && caps_35
+}
+
+// THE KEY IS A REFERENCE, NOT A LITERAL, AND ONE KEY COVERS BOTH SERVERS.
+test fn witness_butch_key_is_a_reference_not_a_literal_and_one_key_covers_both() -> Bool {
+  let a_ref = serving_api_key_is_reference(operator_host_srv14, "butch-a")
+  let b_ref = serving_api_key_is_reference(operator_host_srv14, "butch-b")
+  let a_path = serving_api_key_source_path(operator_host_srv14, "butch-a")
+  let b_path = serving_api_key_source_path(operator_host_srv14, "butch-b")
+  let same_key = match a_path {
+    Present { value: pa } => match b_path {
+      Present { value: pb } => (pa as String) == (pb as String)
+      Absent => false
+    }
+    Absent => false
+  }
+  // a host whose key custody is not modeled reads absent -- not an invented path, not an empty literal.
+  let srv3_absent = match serving_api_key_source_path(operator_host_srv3, "srv3-strata") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  a_ref && b_ref && same_key && srv3_absent
+}
+
+// STRATA IS PINNED BY DIGEST, NOT "latest"; AND PINNING IS KEYED, NOT BLANKET.
+test fn witness_butch_strata_is_pinned_by_digest_and_a_keyed_absence_is_not_pinned() -> Bool {
+  let butch_pinned = host_strata_is_pinned(operator_host_srv14)
+  let srv3_pinned = host_strata_is_pinned(operator_host_srv3)
+  // "same build and server as srv3 production": the two hosts name the SAME content digest.
+  let same_build = match strata_release_for(operator_host_srv14) {
+    Present { value: StrataReleasePinned { digest: db } } => match strata_release_for(operator_host_srv3) {
+      Present { value: StrataReleasePinned { digest: d3 } } => (db.hex as String) == (d3.hex as String)
+      _ => false
+    }
+    _ => false
+  }
+  // discriminating: a host with no release row is NOT pinned -- the predicate is keyed, never a blanket true.
+  let unmodeled_not_pinned = host_strata_is_pinned(operator_host_srv2) == false
+  butch_pinned && srv3_pinned && same_build && unmodeled_not_pinned
+}

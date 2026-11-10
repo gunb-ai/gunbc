@@ -39,7 +39,7 @@ import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { ByteSize, byte_size_count, byte_size }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
@@ -234,6 +234,31 @@ data serving_host_reservations: List<ServingHostReservation> = [
       },
     ],
   },
+  // BUTCH (srv14) -- THE FIRST REAL ROW, AND THE FIRST HOST THAT RUNS TWO REPLICAS. This is the operator's
+  // hand-deployed serving host (2026-11-10): strata-pool@a (butch-a) and strata-pool@b (butch-b), one engine
+  // each, each holding two of the four A2 cards (0+1 / 2+3) that a2-power-cap.service holds at 35 W. Its
+  // cpusets are AFFINITY (the operator's word): 0-39 and 40-79 pin each engine but leave the cores bookable,
+  // so butch gives the runner back no cores while still paying the memory and all four cards -- the N-per-host
+  // price the finding's per-host code could not express. The memory here is a MODEL PLACEHOLDER: the operator
+  // stated ports, cpusets, cards and the 35 W cap, not a memory figure, and B4a must not invent one -- B4b
+  // (cool-lark-40) reads the real per-engine reservation off the box and replaces the placeholder. The ports,
+  // router cap (2) and sticky count (4) are the ROUTER's facts (RouterDevReplicaNaming / RouterDevUpstream),
+  // not a reservation, so they are not duplicated here.
+  ServingHostReservation {
+    host: operator_host_srv14,
+    replicas: [
+      ReplicaReservation {
+        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] } },
+        memory: byte_size(count: 32),
+        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 35 } },
+      },
+      ReplicaReservation {
+        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, last: 79 } ] } },
+        memory: byte_size(count: 32),
+        gpu: GpuReservation { devices: ["GPU-2", "GPU-3"], power_cap_watts: Present { value: 35 } },
+      },
+    ],
+  },
 ]
 
 fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
@@ -292,4 +317,95 @@ fn runner_cores_available_on(host: HostIdentity, total_runner_cores: Nat) -> Opt
 // reduce width; an exclusive one does.
 fn reservation_reduces_runner_width(res: ReplicaReservation) -> Bool {
   cpu_reservation_excluded_cores(res.cpu) > 0
+}
+
+// ── THE ENGINE'S API KEY IS A REFERENCE, NEVER A LITERAL (operator 2026-11-10) ───────────────────────
+
+// HOW A REPLICA'S SERVER-SIDE API KEY IS HELD. The key is a SECRET: the operator carries butch's key host to
+// host and never prints it, and a request without it is refused 401 by the engine. So the model must be
+// UNABLE to state a literal key -- there is no arm here that carries a secret value at all. `ApiKeyReference`
+// names the secret and the path it is read from on the host; the value is resolved at deploy by B4b from
+// that path, never from the model. `NoApiKey` records a replica whose key custody is not yet modeled, which
+// is honest where an empty string (a "literal" of nothing) would be a lie. A whole host can be added with no
+// key modeled and nothing crashes -- the reference simply comes back absent.
+type ServingApiKey
+  = ApiKeyReference { name: NonEmptyStr, source_path: NonEmptyStr }
+  | NoApiKey
+
+type ServingReplicaApiKey {
+  host: HostIdentity
+  replica: NonEmptyStr
+  key: ServingApiKey
+}
+
+// ONE KEY CAN COVER SEVERAL REPLICAS: butch-a and butch-b both reference butch's single key at
+// ~/strata-pool/api_key (the operator's fact), so the two rows name the SAME reference and the model can say
+// "one key, two servers" without ever holding the secret. A host with no row has no key modeled -- srv3/srv4
+// custody is B4b's to record -- so they come back absent rather than inventing a path.
+data serving_replica_api_keys: List<ServingReplicaApiKey> = [
+  ServingReplicaApiKey { host: operator_host_srv14, replica: "butch-a", key: ApiKeyReference { name: "butch-strata-pool", source_path: "~/strata-pool/api_key" } },
+  ServingReplicaApiKey { host: operator_host_srv14, replica: "butch-b", key: ApiKeyReference { name: "butch-strata-pool", source_path: "~/strata-pool/api_key" } },
+]
+
+fn serving_api_key_for(host: HostIdentity, replica: NonEmptyStr) -> Optional<ServingApiKey> {
+  match filter(serving_replica_api_keys, r => host_identity_eq(r.host, host) && (r.replica as String) == (replica as String)) |> first() {
+    Present { value: r } => Present { value: r.key }
+    Absent => Absent
+  }
+}
+
+// IS THIS REPLICA'S KEY A REFERENCE (present and secret by construction). Absent -- no row at all -- is false:
+// the model says nothing was modeled, which is distinct from a modeled absence and refuses nothing.
+fn serving_api_key_is_reference(host: HostIdentity, replica: NonEmptyStr) -> Bool {
+  match serving_api_key_for(host: host, replica: replica) {
+    Present { value: ApiKeyReference { name: _, source_path: _ } } => true
+    Present { value: NoApiKey } => false
+    Absent => false
+  }
+}
+
+// THE PATH A REPLICA'S KEY IS READ FROM, for B4b to resolve at deploy and for the witness to assert two
+// replicas share one key. Two replicas reading the same path is "one key covers both servers."
+fn serving_api_key_source_path(host: HostIdentity, replica: NonEmptyStr) -> Optional<NonEmptyStr> {
+  match serving_api_key_for(host: host, replica: replica) {
+    Present { value: ApiKeyReference { name: _, source_path: p } } => Present { value: p }
+    Present { value: NoApiKey } => Absent
+    Absent => Absent
+  }
+}
+
+// ── EACH SERVING HOST'S STRATA IS PINNED BY THE DIGEST OF THE BUILD ACTUALLY RUNNING ─────────────────
+
+// WHICH STRATA EACH HOST RUNS. Pinning lives on the host (a data row keyed by the machine), so "butch runs
+// the same build as srv3" is two rows naming the same digest, not a branch. The digest hex below is a MODEL
+// PLACEHOLDER: the byte-exact digest of the binary running on butch is read over ssh by B4b (cool-lark-40)
+// and replaces it -- B4a must not invent a production digest as if it were observed. What the model fixes now
+// is the SHAPE: a release is a content digest, never the moving tag "latest" that a hand deploy drifts toward.
+type ServingHostStrata {
+  host: HostIdentity
+  strata: StrataRelease
+}
+
+data serving_host_strata_releases: List<ServingHostStrata> = [
+  ServingHostStrata { host: operator_host_srv3, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "model-placeholder-srv3-build" } } },
+  ServingHostStrata { host: operator_host_srv4, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "model-placeholder-srv4-build" } } },
+  // butch runs the same build as srv3 -- the same digest, keyed to a second host. No "latest."
+  ServingHostStrata { host: operator_host_srv14, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "model-placeholder-srv3-build" } } },
+]
+
+fn strata_release_for(host: HostIdentity) -> Optional<StrataRelease> {
+  match filter(serving_host_strata_releases, r => host_identity_eq(r.host, host)) |> first() {
+    Present { value: r } => Present { value: r.strata }
+    Absent => Absent
+  }
+}
+
+// A host's Strata is PINNED only when it is present AND names a content-addressed digest; a host with no row,
+// or one that fell back to "latest," is not pinned and any consumer that must reproduce the byte-exact engine
+// must refuse it. Fail closed on the natural reading.
+fn host_strata_is_pinned(host: HostIdentity) -> Bool {
+  match strata_release_for(host) {
+    Present { value: r } => strata_release_is_pinned(r)
+    Absent => false
+  }
 }
