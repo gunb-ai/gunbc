@@ -4109,7 +4109,8 @@ fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<Strin
         Present { value: a } =>
           (!equality_type_variable_occurs(n: basis, id: pn)
             || (equality_applied_argument_is_structural(n: a, scope: scope, visited: visited, depth: depth)
-                  && equality_argument_by_target(n: a, scope: scope, depth: depth + 1)))
+                  && equality_argument_by_target(n: a, scope: scope, depth: depth + 1))
+            || equality_applied_argument_route_admitted(a: a, scope: scope))
             && equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names |> skip(1), arguments: arguments |> skip(1), scope: scope, visited: visited, depth: depth)
       }
   }
@@ -4118,8 +4119,22 @@ fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<Strin
 fn equality_type_variable_occurs(n: Node, id: String) -> Bool {
   (match n.inferred {
     Present { value: TypeVariable { id: v } } => v == id
+    Present { value: Resolved { node: inner } } => equality_type_variable_occurs(n: inner, id: id)
     _ => false
   }) || n.name == id || (n.children |> any(ch => equality_type_variable_occurs(n: ch, id: id)))
+}
+
+// A ROUTED NATIVE whose declared route is admitted at the root carries a host `==` that agrees with its
+// route (NodeOccurrence's node_occurrence_eq), so an occurring applied argument may compare by the target
+// through it. Routes refused at the root (Node/Edge compare IGNORING provenance) are NOT admitted here: a
+// derived `==` would compare WITH provenance, a different relation (gunbc#15175, ruling silent-bee-845).
+fn equality_applied_argument_route_admitted(a: Node, scope: InferScope) -> Bool {
+  let peeled = normalize_access_type_node(n: a)
+  let identity = type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices)
+  match equality_route_for(identity: identity) {
+    Present { value: route } => route.admitted_at_root
+    Absent => false
+  }
 }
 
 // AN OCCURRING APPLIED ARGUMENT MUST BE STRUCTURAL. A routed native (a Node-style declaration whose
