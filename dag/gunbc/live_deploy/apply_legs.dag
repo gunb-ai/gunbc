@@ -167,11 +167,11 @@ import gunbc.host.host_layout {
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv }
 import extdeps.systemd.unit_file { SystemdUnitFile }
 import gunbc.live_deploy.emit {
-  spec_has_artifact_kind, live_deploy_fabric_storage_unit_file,
+  spec_has_artifact_kind,
   live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.spec {
-  deployment_fabric_storage_door_socket, deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path,
+  deployment_fabric_storage_door_socket,
   deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_agent_door_unit_name, deployment_agent_door_unit_path,
 }
 import gunbc.live_deploy.spec { UpsertArtifactKind }
@@ -1331,19 +1331,17 @@ fn deploy_apply_unit_lifecycle_legs(step: String, unit: NonEmptyStr, dest: NonEm
   )
 }
 
-fn deploy_apply_fabric_storage_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+// WHAT THE DEPLOYMENT ENSURES OF THE FABRIC DB ENDPOINT: the tailscale route to its door socket, and nothing
+// of the endpoint's own unit. This plan used to stage the unit's serialized text, daemon-reload and restart it
+// as well; the operator's ruling of 2026-11-10 (gunbc.design_ruling::
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10) ended that — the unit on the host is the host's. A
+// deployment holding no prod role has no door socket, and this refuses rather than invent one.
+fn deploy_apply_fabric_storage_serve_plan(spec: DeploymentSpec) -> DeployApplyPlan {
   match deployment_fabric_storage_door_socket(spec: spec) {
     Absent =>
-      ApplyPlanRefused { step: "fabric-storage", reason: join(["live-deploy apply refused: the fabric storage step was reached with a deployment that holds no prod role, so it has no door socket. instance=", spec.instance_id as String], "") }
+      ApplyPlanRefused { step: "fabric-storage-serve", reason: join(["live-deploy apply refused: the fabric storage route was reached with a deployment that holds no prod role, so it has no door socket. instance=", spec.instance_id as String], "") }
     Present { value: door } =>
-      ApplyPlanReady { legs: concat(
-        deploy_apply_unit_lifecycle_legs(
-          step: "fabric-storage",
-          unit: deployment_fabric_storage_unit_name(names: spec.names),
-          dest: deployment_fabric_storage_unit_path(names: spec.names),
-          file: live_deploy_fabric_storage_unit_file(spec: spec, revision: revision, door_socket: door)),
-        [apply_serve_route_leg(step: "fabric-storage-serve", endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door))],
-      ) }
+      ApplyPlanReady { legs: [apply_serve_route_leg(step: "fabric-storage-serve", endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door))] }
   }
 }
 
@@ -1391,13 +1389,13 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
           match ck {
             OidcConfigArtifact => deploy_apply_oidc_plan(spec: spec, plan: plan, oidc_now: oidc_now)
             SystemdUnit => deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now)
-            FabricStorageServeUnit => deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
-            FabricStorageServeMapping =>
-              if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {
-                ApplyPlanReady { legs: [] }
-              } else {
-                deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
-              }
+            // REFUSED, not skipped: no spec the model emits names this member any more, so one that does came
+            // from before the operator's ruling of 2026-11-10 (gunbc.design_ruling::
+            // t6_fabric_storage_excluded_from_live_deploy_2026_11_10) or was written by hand. Silently dropping
+            // it would let a stale plan keep believing the deployment owns the endpoint's unit.
+            FabricStorageServeUnit =>
+              ApplyPlanRefused { step: "fabric-storage-unit", reason: "live-deploy apply refused: the fabric DB endpoint's unit is not deployment state -- the host keeps its own unit (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10). Re-emit the plan; do not hand-author the member. (gunbc.design_argument::fail_closed: refuse, never widen)" }
+            FabricStorageServeMapping => deploy_apply_fabric_storage_serve_plan(spec: spec)
             TailnetDoorServeUnit => deploy_apply_tailnet_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
             AgentDoorServeUnit => deploy_apply_agent_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
             FleetConvergeTimerUnit =>
