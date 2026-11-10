@@ -239,6 +239,7 @@ import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
+  build_value_ref_graph_info,
   imported_owner_of_bare_ref,
   declared_return_type_node,
   match_unguarded_absent_arm_index, optional_match_arm_sees_present_value,
@@ -3351,23 +3352,27 @@ fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: 
 // gunbc.design_argument::fail_closed: "not at all" beats plausible output), and the emitted `panic!` branch
 // is gone rather than kept as a fallback (DESIGN.md gunbc.design_argument::replacement_migration).
 //
-// THE POPULATION IS THE EMITTER'S OWN LOOKUP, NOT A PARALLEL PREDICATE. Per gunbc.design_argument::single_authority
-// and fail_closed, the pass does NOT re-implement the value-ref resolution. It calls the emitter's ONE authority,
-// `lookup_item_for_value_ref` (on an `EmitGraphInfo` built by the emitter's `build_emit_graph_info`), and refuses
-// exactly the references that lookup answers `ItemLeafAmbiguous`. That lookup resolves a bare reference by the
+// THE POPULATION IS THE EMITTER'S OWN CLASSIFIER, NOT A PARALLEL PREDICATE. Per gunbc.design_argument::single_authority
+// and fail_closed, the pass does NOT re-implement the value-ref resolution. It calls the emitter's ONE classifier,
+// `classify_value_ref` (the same call `emit_typed_expr_base` makes), on an `EmitGraphInfo` built by
+// `build_value_ref_graph_info` -- which reuses the emitter's own fold (`emit_graph_info_build_state`) and index
+// builders -- and refuses exactly the references the classifier answers `ItemLeafAmbiguous`. That classifier's
+// lookup resolves a bare reference by the
 // referring module's OWN declaration, then its explicit IMPORT binding (`bare_import_owner_index`), then the
 // closure-wide leaf-owner index -- so a leaf two modules declare is bound, not refused, for the module that
 // imported it from one named owner (the population #16155 patched by hand-qualifying six call sites; the old
-// emitter skipped the import step and fell to `LeafAmbiguous`). The keyword/native/variant gates are the emitter's
-// own functions too, replayed in the emitter's order, so the pass is a visitor over the emitter's decision, never
-// a second decider of it. The discriminating fixture `v2.test.claim.ambiguous_leaf_value_ref_compile` pins all
+// emitter skipped the import step and fell to `LeafAmbiguous`). The keyword/bool/native/variant gates are the
+// classifier's own too, so the pass is a visitor over the emitter's decision, never a second decider of it. The
+// discriminating fixture `v2.test.claim.ambiguous_leaf_value_ref_compile` pins all
 // three outcomes: the bare ambiguous leaf goes red, the imported-bare reference in a two-owner closure and the
 // owner-qualified reference both compile.
 fn ambiguous_leaf_value_ref_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
-  // Build the SAME EmitGraphInfo the emitter builds (build_emit_graph_info is the emitter's own; it carries
-  // item_leaf_owner_modules AND bare_import_owner_index), so every ambiguity decision below is made by the
-  // emitter's own lookup on the emitter's own data -- not by a second copy of its rules.
-  let emit_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
+  // The SAME data the emitter decides on, minus what the refusal never reads. build_value_ref_graph_info
+  // reuses the emitter's own fold (emit_graph_info_build_state) and its own leaf/import index builders, so
+  // every ambiguity decision below is made by the emitter's own lookup on the emitter's own data -- and it
+  // runs on the required floor without paying the full build_emit_graph_info (see its comment, and the
+  // 04_items ResolvedGraph no-EmitGraphInfo-carried authority this honours).
+  let emit_info = build_value_ref_graph_info(modules: typed.modules, registry: typed.item_registry)
   typed.modules |> flat_map(tm => ambiguous_leaf_value_ref_diagnostics_in_module(tm: tm, emit_info: emit_info, registry: typed.item_registry, source_indices: source_indices))
 }
 
@@ -3400,14 +3405,21 @@ fn ambiguous_leaf_value_ref_nodes(node: Node, source_indices: Map<String, Newlin
   concat(here, node.children |> flat_map(c => ambiguous_leaf_value_ref_nodes(node: c, source_indices: source_indices)), nested_body)
 }
 
-// THE EMITTER'S OWN VALUE-REF GATE, NOT A SECOND PREDICATE. This does not decide "is this ambiguous" itself:
-// it walks to each `ExprVar` and replays the EXACT sequence `emit_typed_expr_base` uses before it reaches the
-// registry answer -- the keyword/native/variant gates call the emitter's own functions (`effective_variant_parent`,
-// `rust_native_variant_spelling_of_binding`, `value_ref_normalize_self_module`) -- and then asks the emitter's
-// ONE authority, `lookup_item_for_value_ref`, whether the reference resolves. It refuses exactly when that
-// lookup answers `ItemLeafAmbiguous` -- the same condition under which the emitter would have rendered the poison.
-// So own-declaration, import binding and the leaf-owner index live in ONE place (the emitter's lookup); the pass
-// cannot drift from it because it is not re-deciding them. (See gunbc.design_argument::single_authority.)
+// THE EMITTER'S OWN CLASSIFIER, NOT A SECOND PREDICATE. Per gunbc.design_argument::single_authority this does
+// not decide "is this ambiguous" itself and does not restate the keyword/native/variant routing: it walks to
+// each `ExprVar` and calls the ONE function the emitter itself uses to sort a value reference,
+// `classify_value_ref` (the same call `emit_typed_expr_base` makes), and refuses exactly the references that
+// classifier answers `ValueRefRoutingItem { lookup: ItemLeafAmbiguous }` -- the same condition under which the
+// emitter would render the poison. Own-declaration, import binding and the leaf-owner index live in that one
+// classifier's lookup; the keyword/bool/native/variant gates live in the classifier too. Because both sides
+// call the SAME function, neither can drift from the other.
+//
+// WHY THE `children` + `body` WALK IS ENOUGH (gunbc.design_argument::fail_closed backstop). The walk above
+// reaches the expression positions the emitter binds a value reference from. If it ever under-reached (a value
+// position it did not visit), the reference would fall through to the emitter's `ambiguous_leaf_module_refusal`,
+// which renders an identifier NO crate defines -- so rustc fails the build LOUDLY rather than the emitted
+// `panic!` running. Over-refusal is impossible: the classifier answers `ItemLeafAmbiguous` only for a bare leaf
+// no own-declaration/import resolves and that two owners declare, which is precisely what the emitter poisons.
 fn ambiguous_leaf_value_ref_refusal_for_node(node: Node, module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   match node.expr_data {
     ExprVar { binding_kind: binding_kind } =>
