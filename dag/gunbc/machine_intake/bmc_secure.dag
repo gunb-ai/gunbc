@@ -1427,7 +1427,12 @@ type BmcAccountStateObservation sole_constructor {
   published_credential: PublishedCredentialEvidence
   published_user: IpmiUserId
   published_account: ObservedPublishedAccount
-  break_glass: ManagedCredentialReference
+  // THE BREAK-GLASS GENERATION THE CONTROLLER ANSWERED WITH -- Optional because a host may have NO
+  // break-glass generation at all (srv15: no onboarding plan derives one). Absence is carried in the
+  // TYPE (none), never substituted with the managed reference: a reference field holding a plausible
+  // default that was never established is a fabricated output (fail_closed), and a consumer reading
+  // only this field would see a generation that does not exist.
+  break_glass: Optional<ManagedCredentialReference>
   break_glass_probe: ObservedCredentialProbe
   // THE REDFISH ACCOUNT CENSUS, part of the account-state reading: another ENABLED account whose credential
   // is not the managed one refuses the conjunction (operator round-2). The read derives it from the world it
@@ -1474,7 +1479,7 @@ fn observed_bmc_account_state(
   published_credential: PublishedCredentialEvidence,
   published_user: IpmiUserId,
   published_account: ObservedPublishedAccount,
-  break_glass: ManagedCredentialReference,
+  break_glass: Optional<ManagedCredentialReference>,
   break_glass_probe: ObservedCredentialProbe,
   redfish_accounts: BmcRedfishAccountCensusReading,
   redfish_surface_served: Bool,
@@ -1648,6 +1653,7 @@ type BmcSecureStateRefusal
   | AccountDeviationNeedsUngroundedOperation { cause: BmcSecureRefusalCause, operation: MissingAccountOperation }
   | AccountRetentionNotGoalBound { retained: SecretRef, goal: ManagedCredentialReference }
   | AccountStateForOtherBreakGlassReference { goal: ManagedCredentialReference, observed: ManagedCredentialReference }
+  | AccountStateHasNoBreakGlassGeneration { goal: ManagedCredentialReference }
 
 // WHICH CONJUNCTION REFUSALS AN ACCOUNT WRITE CAN REMEDY, WHICH ARE UNKNOWNS, AND WHICH ARE NEITHER.
 // A deviation is a state the account action changes (the managed credential not accepted, the
@@ -2093,8 +2099,14 @@ fn assess_break_glass_generation(
   observed: BmcAccountStateObservation,
   evidence: List<EvidenceRef>,
 ) -> GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal> {
-  if !managed_reference_same(a: goal.published_break_glass, b: observed.break_glass) {
-    GoalAssessmentRefused { cause: AccountStateForOtherBreakGlassReference { goal: goal.published_break_glass, observed: observed.break_glass } }
+  match observed.break_glass {
+    // The reading says this controller has NO break-glass generation. The goal names one; nothing
+    // in this reading establishes it -- refuse with the located cause, never treat the managed
+    // account as a stand-in generation.
+    Absent => GoalAssessmentRefused { cause: AccountStateHasNoBreakGlassGeneration { goal: goal.published_break_glass } }
+    Present { value: observed_generation } =>
+      if !managed_reference_same(a: goal.published_break_glass, b: observed_generation) {
+    GoalAssessmentRefused { cause: AccountStateForOtherBreakGlassReference { goal: goal.published_break_glass, observed: observed_generation } }
   } else {
     match observed.break_glass_probe {
       ObservedCredentialUnestablished { detail: d } =>
@@ -2112,6 +2124,7 @@ fn assess_break_glass_generation(
           GoalSatisfied { evidence: BmcSecureHeld { observation: observed, evidence: concat(evidence, [r.evidence]) } }
         }
     }
+  }
   }
 }
 
@@ -2181,6 +2194,7 @@ fn bmc_secure_state_refusal_label(cause: BmcSecureStateRefusal) -> NonEmptyStr {
       }
     AccountRetentionNotGoalBound { retained: _, goal: _ } => "the break-glass account retained by policy is not the generation the goal names"
     AccountStateForOtherBreakGlassReference { goal: _, observed: _ } => "the account-state reading probed another break-glass generation than the goal names"
+    AccountStateHasNoBreakGlassGeneration { goal: _ } => "the account-state reading reports a controller with no break-glass generation; the goal names one and nothing establishes it"
   }
 }
 
@@ -3228,7 +3242,7 @@ fn dry_read_bmc_account_state(
       evidence: dry_evidence(text: join(["dry user list of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
       observed_at: at,
     ),
-    break_glass: break_glass,
+    break_glass: Present { value: break_glass },
     break_glass_probe: dry_probe(world: world, user: published_user, password: break_glass_password, what: "break-glass", at: at),
     controller_clock: none,
     // Both Redfish facts are read off THIS world, never supplied: a caller cannot declare a controller
@@ -3512,9 +3526,10 @@ fn supplied_mint(
     bmc_lockout_surface_from_ipmi_lan(verdict: transport.lan_threshold, evidence: lan_threshold_evidence, read_at: at),
   ], read_at: at)
   match transport.break_glass {
-    // No break-glass generation: the standing is typed Absent, the probe is Unestablished with
-    // the row's cause, and the reference is the managed one (root is both). The assessment flags
-    // it as BreakGlassGenerationUnestablished -- the absence is modelled, never invented.
+    // No break-glass generation: absence carried IN THE TYPE -- break_glass is none, the probe is
+    // Unestablished with the row's cause. The managed reference is NOT substituted (fail_closed: no
+    // plausible output is fabricated; a real reference field must mean a generation the controller
+    // answered with). The assessment refuses with AccountStateHasNoBreakGlassGeneration.
     BreakGlassAbsent { cause: c } =>
       SuppliedTransportMinted { observation: observed_bmc_account_state(
         subject: subject, endpoint: endpoint, board: board, firmware: firmware,
@@ -3523,7 +3538,7 @@ fn supplied_mint(
         channel_census: transport.census, census_evidence: census_evidence, census_observed_at: at,
         published_credential: published_credential,
         published_user: published_user, published_account: published_account_obs,
-        break_glass: managed, break_glass_probe: ObservedCredentialUnestablished { detail: c },
+        break_glass: none, break_glass_probe: ObservedCredentialUnestablished { detail: c },
         redfish_accounts: transport.redfish_census, redfish_surface_served: transport.redfish_surface_served,
         controller_clock: none, lockout: lockout,
       ) }
@@ -3540,7 +3555,7 @@ fn supplied_mint(
             channel_census: transport.census, census_evidence: census_evidence, census_observed_at: at,
             published_credential: published_credential,
             published_user: published_user, published_account: published_account_obs,
-            break_glass: bg_ref, break_glass_probe: bg_probe,
+            break_glass: Present { value: bg_ref }, break_glass_probe: bg_probe,
             redfish_accounts: transport.redfish_census, redfish_surface_served: transport.redfish_surface_served,
             controller_clock: none, lockout: lockout,
           ) }
@@ -3709,7 +3724,7 @@ fn dry_apply_bmc_account_plan(
 // observer_clock_read, each response written as content-addressed evidence) plus one live srv15 run whose
 // receipt is committed; the frontier binds when THAT transport has produced srv15's committed receipt.
 data bmc_secure_state_live_read_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live read of a controller's account state mints BmcAccountStateObservation beside dry_read_bmc_account_state from IPMI user-test and channel-census transport calls, including the user test of the published account with the goal's exact break-glass generation (break_glass_probe) materialized through fetch_secret_ref_credential, timed by gunbc.clock_read observer_clock_read, with every probe and census response committed as content-addressed evidence; LANDED: the response-to-observation assembler over a transport interface, supplied_transport_read_bmc_account_state, witnessed by machine_intake_bmc_secure_supplied_transport_read_witness; REMAINING: the wet transport behind that interface (real ipmitool lanplus user-test/channel-census/user-list/Get LAN Configuration Parameters, real Redfish AccountService and Accounts GET, the secret through fetch_secret_ref_credential, instants from observer_clock_read, each response committed as evidence) and one live srv15 run whose receipt is committed; NOT satisfied by the dry realization, by the supplied/fixed-response transport with modeled instants (that assembler is not a live read), by a transcription of an older readback, or by a read whose instants come from the controller's clock" as NonEmptyStr,
+  description: "dissolves when a live read of a controller's account state mints BmcAccountStateObservation beside dry_read_bmc_account_state from IPMI user-test and channel-census transport calls: the user test of the MANAGED account, and -- only when the unit HAS a break-glass generation -- its user test with the goal's exact generation materialized through fetch_secret_ref_credential (a unit with none carries the typed absence: break_glass none, probe Unestablished, never an invented generation); the published credential's standing is DERIVED on the shared managed account under the credential-policy row (gunbc.machine_intake.bmc_credential_policy), NEVER probed with its published secret over IPMI or Redfish -- on tight-lockout boards such as ALTRAD8UD-1L2T/OpenBMC 3.22.00 a published-secret probe is forbidden by the lockout budget, and an ungrounded policy row refuses with its typed cause rather than inviting a probe to find out; timed by gunbc.clock_read observer_clock_read, with every probe and census response committed as content-addressed evidence; LANDED: the response-to-observation assembler over a transport interface, supplied_transport_read_bmc_account_state, witnessed by machine_intake_bmc_secure_supplied_transport_read_witness; REMAINING: the wet transport behind that interface (real ipmitool lanplus user-test/channel-census/user-list/Get LAN Configuration Parameters, real Redfish AccountService and Accounts GET, the secret through fetch_secret_ref_credential, instants from observer_clock_read, each response committed as evidence) and one live srv15 run whose receipt is committed; NOT satisfied by the dry realization, by the supplied/fixed-response transport with modeled instants (that assembler is not a live read), by a transcription of an older readback, by a reading that substitutes the managed reference for an absent break-glass generation, or by a read whose instants come from the controller's clock" as NonEmptyStr,
 )
 
 data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissolution(

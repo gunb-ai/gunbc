@@ -221,11 +221,17 @@ fn managed_is_accepted(obs: BmcAccountStateObservation) -> Bool {
   }
 }
 
+// TYPED ABSENCE, IN THE TYPE: the reference is none (NOT the managed reference standing in -- that
+// was a fabricated default) and the probe is Unestablished. Re-substituting `managed` here turns red.
 fn break_glass_is_typed_absence(obs: BmcAccountStateObservation) -> Bool {
-  match obs.break_glass_probe {
-    ObservedCredentialUnestablished { detail: _ } => true
-    ObservedCredentialAccepted { reading: _ } => false
-    ObservedCredentialRejected { reading: _ } => false
+  match obs.break_glass {
+    Absent =>
+      match obs.break_glass_probe {
+        ObservedCredentialUnestablished { detail: _ } => true
+        ObservedCredentialAccepted { reading: _ } => false
+        ObservedCredentialRejected { reading: _ } => false
+      }
+    Present { value: _ } => false
   }
 }
 
