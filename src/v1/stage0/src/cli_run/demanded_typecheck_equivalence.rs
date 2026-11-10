@@ -838,13 +838,13 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
             // lives in the quick-newt witness run, cited in the PR).
             eprintln!(
                 "SERVICE_OP_SURFACE_CHARACTERIZATION demanded_refusals={} closure_refusals={} demanded_only={:?}",
-                demanded_refusals,
-                closure_refusals,
+                surface.len(),
+                closure_surface.len(),
                 surface.iter().filter(|m| !closure_surface.contains(m)).collect::<Vec<_>>()
             );
             assert!(
-                closure_refusals.is_empty(),
-                "the full-closure grain must refuse no service method surface: closure={closure_refusals}"
+                closure_surface.is_empty(),
+                "the full-closure grain must refuse no service method surface: closure={closure_surface:?}"
             );
         })
         .unwrap()
@@ -913,13 +913,13 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
             // lives in the quick-newt witness run, cited in the PR).
             eprintln!(
                 "SERVICE_OP_SURFACE_CHARACTERIZATION demanded_refusals={} closure_refusals={} demanded_only={:?}",
-                demanded_refusals,
-                closure_refusals,
+                surface.len(),
+                closure_surface.len(),
                 surface.iter().filter(|m| !closure_surface.contains(m)).collect::<Vec<_>>()
             );
             assert!(
-                closure_refusals.is_empty(),
-                "the full-closure grain must refuse no service method surface: closure={closure_refusals}"
+                closure_surface.is_empty(),
+                "the full-closure grain must refuse no service method surface: closure={closure_surface:?}"
             );
         })
         .unwrap()
@@ -1110,13 +1110,13 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
             // lives in the quick-newt witness run, cited in the PR).
             eprintln!(
                 "SERVICE_OP_SURFACE_CHARACTERIZATION demanded_refusals={} closure_refusals={} demanded_only={:?}",
-                demanded_refusals,
-                closure_refusals,
+                surface.len(),
+                closure_surface.len(),
                 surface.iter().filter(|m| !closure_surface.contains(m)).collect::<Vec<_>>()
             );
             assert!(
-                closure_refusals.is_empty(),
-                "the full-closure grain must refuse no service method surface: closure={closure_refusals}"
+                closure_surface.is_empty(),
+                "the full-closure grain must refuse no service method surface: closure={closure_surface:?}"
             );
         })
         .unwrap()
