@@ -9,7 +9,7 @@ module v2.test.claim.bash_emit_constructs
 // spellings that happen to agree today.
 //
 // Upstream authority: GNU Bash Reference Manual, nodes "Shell Functions",
-// "Bash Conditional Expressions" (case), "Arrays", "Shell Parameters",
+// "Conditional Constructs" (case), "Arrays", "Shell Parameters",
 // "Comments", "Looping Constructs", "Definition of Terms", "Quotes".
 
 import std.algebra { list_at_optional, list_head }
@@ -183,7 +183,7 @@ test fn the_two_descriptor_merges_are_not_the_same_bytes() -> Bool {
 }
 
 // ── case ───────────────────────────────────────────────────────────────────
-// Bash manual, node "Bash Conditional Expressions": case word in [ [(] pattern
+// Bash manual, node "Conditional Constructs": case word in [ [(] pattern
 // [| pattern] command-list ;;]… esac. The roster arms are the block spelling,
 // the default arm the inline one.
 
