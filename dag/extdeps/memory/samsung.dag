@@ -1,7 +1,7 @@
 module extdeps.memory.samsung
 
 import std.measure { ByteSize, byte_size, bit_width, Celsius, CelsiusDelta }
-import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, DramDieStacking, dram_generation_ddr4, DualDiePackage, ThreeDimensionalStacked }
+import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, DualDiePackage, ThreeDimensionalStacked }
 import extdeps.vendor.samsung { samsung }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
@@ -114,67 +114,6 @@ data m393a8g40d40_crb0q_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   chip_width: bit_width(4),
 
   rank_count: 8,
-}
-
-// A second Samsung DDR4 RDIMM SKU, installed on srv14/butch (measured 2026-11-10). This row's
-// capacity, generation, data rate, ECC, buffering and rank come from a HOST read of the installed
-// modules -- `sudo dmidecode -t 17` on butch (sudo dmidecode 3.5, 2026-11-10): every populated
-// device reads Size 64 GB, Type DDR4, Type Detail "Registered (Buffered)", Speed/Configured Memory
-// Speed 2666 MT/s, Total Width 72 / Data Width 64 (=> on-die ECC), Rank 2, part "M393A8K40B22-CWD"
-// (serials 40CE1048 / 40CE0C2B / 40CFFBAA / 40CE0D1F in DDR4_A1,B1,E1,F1; C1,D1,G1,H1 empty). The
-// dmidecode authority is a first-party OEM description plus the SPD label a controller publishes,
-// the same rung the M393A8G40D40 row sits on; the four serials read as one batch, so the module
-// batch and the module are read as ONE claim (the sibling row's note explains why that is honest
-// here, not an inference).
-//
-// WHAT WAS OBSERVED vs WHAT IS INFERRED, split field by field.
-//
-// OBSERVED on the installed modules by a HOST read -- `sudo dmidecode -t 17` on butch (dmidecode 3.5,
-// 2026-11-10): every populated device reads Size 64 GB, Type DDR4, Type Detail "Registered (Buffered)",
-// Speed/Configured Memory Speed 2666 MT/s, Total Width 72 / Data Width 64 (=> on-die ECC), Rank 2, part
-// "M393A8K40B22-CWD" (serials 40CE1048 / 40CE0C2B / 40CFFBAA / 40CE0D1F in DDR4_A1,B1,E1,F1; C1,D1,G1,H1
-// empty). So capacity_bytes, generation, data_rate_mts, ecc and buffering are read. The dmidecode rung is
-// a first-party OEM description plus the SPD label a controller publishes -- the same rung the
-// M393A8G40D40 row sits on. rank_count is the SPD-reported physical rank (2); the design note above
-// (types.dag, rank_count paragraph) warns this is an observation of the slot standing in for the part's
-// logical rank, so it is a read with a datasheet dissolve, not a vendor-stated part property.
-//
-// chip_width is NOT printed by dmidecode but is DEDUCED-AND-CORROBORATED, not guessed: with the OBSERVED
-// capacity (64 GiB) and rank (2) on DDR4, dram_module_required_die_density gives capacity/(chips_per_rank
-// x rank); an x8 organization would demand a 32 Gbit die (64 GiB / (8 x 2)), which exceeds the DDR4
-// monolithic ceiling in extdeps.memory.jedec and is therefore NOT realizable -- the same failure the
-// samsung_dram_module witness drives for its 32 GiB 1Rx8 control. Only x4 keeps the module realizable, so
-// x4 is pinned by the read plus the ceiling, the design's "the model adds a check, not a restatement."
-//
-// die_stacking is the ONE field that is a genuine BET. dmidecode prints no stacking, and at x4/rank-2/64 GiB
-// BOTH a monolithic 16 Gbit die (at the ceiling) and 3DS 8 Gbit stacks are realizable, so the read does not
-// distinguish them. MonolithicDie is carried as the simple ceiling-consistent reading; the bet and its
-// dissolution live in a typed carrier below (m393a8k40b22_cwd_die_stacking_source), not only in this prose.
-// Nothing consumes this row's stacking today, exactly as with the sibling row, so the bet does not yet
-// grade anything against a class the part might not belong to -- but a consumer that starts to must resolve
-// the carrier first.
-data m393a8k40b22_cwd_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
-  part_number: "M393A8K40B22-CWD",
-  manufacturer: samsung,
-  generation: dram_generation_ddr4,
-  capacity_bytes: stick_capacity_bytes_64g,
-  data_rate_mts: 2666,
-  ecc: true,
-  buffering: Registered,
-  die_stacking: MonolithicDie,
-  chip_width: bit_width(4),
-  rank_count: 2,
-}
-
-// The typed carrier for the single unobserved organization field of the row above. The dmidecode read that
-// grounds this part reports capacity, rank, speed, ECC and buffering but NOT die stacking; at x4 / 2 ranks /
-// 64 GiB both monolithic and 3DS are ceiling-consistent, so the installed read cannot decide which. This is
-// the bet, carried as a pending read with its dissolution condition machine-readable (source_annotations:
-// a dissolution condition belongs in a typed carrier, not only a comment). When a consumer needs this row's
-// stacking it must resolve this obligation -- it is not satisfied by the catalog row's MonolithicDie, which
-// is only the placeholder the ceiling-consistent reading allows while the read is outstanding.
-data m393a8k40b22_cwd_die_stacking_source: RowField<DramDieStacking> = NeedsReading {
-  read_obligation: "Read Samsung's M393A8K40B22-CWD datasheet / product-selection guide for the module's die stacking (monolithic vs 3DS) and the die density; dmidecode reports capacity+rank+speed+ECC+buffering but not stacking, and both are ceiling-consistent at x4/2R/64 GiB."
 }
 
 // PART-SPECIFIC TEMPERATURE FACTS the SAMSUNG PUBLICATION states for this registered 3DS module, each

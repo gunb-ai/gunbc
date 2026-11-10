@@ -26,7 +26,7 @@ import extdeps.cpu { cpu_facts_threads, cpu_facts_sustained_per_thread_hz }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import extdeps.memory.types { MemoryKind, Dram, HostMemoryPopulation, MemoryPopulationRow }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
-import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog, m393a8k40b22_cwd_catalog }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
 import extdeps.memory { memory_population_row_bytes, host_memory_population_nominal_bytes }
 import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
@@ -430,7 +430,7 @@ data srv14_host: ComputeHost = ComputeHost {
   baseboard: Present { value: srv14_baseboard },
   bmc_intent: Present { value: fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: srv14_cpu }],
-  memory: memory_devices_from_population(pop: srv14_memory_population),
+  memory: srv14_memory_devices,
   storage: [srv14_nvme0],
   network_interfaces: [],
 }
@@ -457,18 +457,29 @@ data srv14_cpu: CpuFacts = CpuFacts {
   deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
 }
 
-// butch's DIMM population, read on butch 2026-11-10 by `sudo dmidecode -t 17`: four Samsung
-// M393A8K40B22-CWD 64 GB DDR4 RDIMMs at 2666 MT/s in DDR4_A1, B1, E1, F1 (serials 40CE1048 / 40CE0C2B /
-// 40CFFBAA / 40CE0D1F); DDR4_C1, D1, G1, H1 empty (No Module). 4 x 64 GB = 256 GB installed. /proc/meminfo
-// MemTotal 262937520 kB (~250.7 GiB usable) is a SEPARATE, kernel-reported fact and lives in
-// gunbc.host.host_memory_observation (the CI usable budget), not here -- this row is the nominal DIMM
-// population; the nominal-vs-usable gap (~5 GB firmware/kernel reservation) is the point of that split
-// (see fleet_host_memory_nominal_vs_usable_note). Module catalog row: m393a8k40b22_cwd_catalog.
-data srv14_memory_population: HostMemoryPopulation = HostMemoryPopulation {
-  rows: [
-    MemoryPopulationRow { module: m393a8k40b22_cwd_catalog, stick_count: 4 },
-  ],
-}
+// butch's installed memory -- a HOST OBSERVATION, kept in the consuming (fleet) layer, not in the
+// vendor extdeps catalog (design_argument external_upstreams: an observation this repository makes is a
+// receipt in the observing layer, never a fact of the upstream). Read on butch 2026-11-10 by
+// `sudo dmidecode -t 17`: four Samsung M393A8K40B22-CWD 64 GiB DDR4-2666 RDIMMs (Registered/Buffered,
+// on-die ECC, SPD-reported rank 2) in DDR4_A1, B1, E1, F1 -- serials 40CE1048 / 40CE0C2B / 40CFFBAA /
+// 40CE0D1F; DDR4_C1, D1, G1, H1 report No Module. That is 4 x 64 GiB = 256 GiB installed.
+//
+// ComputeHost.memory needs only per-device capacity/kind for RAM sizing (MemoryDevice), so the read is
+// carried directly as four observed DDR4 devices -- NO vendor catalog row is authored from it, and NO
+// unobserved organization (chip width, die stacking, logical rank) is asserted, because dmidecode does
+// not report those and several organizations are consistent with what it does report. A faithful vendor
+// catalog row for this part, and a proper per-DIMM census receipt (the machine_intake census pattern),
+// are DISSOLVE-ON items for a follow-up that reads the Samsung datasheet or a deeper census; until then
+// butch's memory is stated at exactly the granularity it was observed. The kernel's MemTotal 262937520 kB
+// (~250.7 GiB usable) is a separate observation and is what the CI usable budget derives from (added in
+// the runner-pool lane), NOT this nominal figure; the nominal-vs-usable gap is that firmware/kernel
+// reservation (fleet_host_memory_nominal_vs_usable_note).
+data srv14_memory_devices: List<MemoryDevice> = [
+  MemoryDevice { capacity: byte_size(68719476736), memory_kind: Dram, bandwidth: none },
+  MemoryDevice { capacity: byte_size(68719476736), memory_kind: Dram, bandwidth: none },
+  MemoryDevice { capacity: byte_size(68719476736), memory_kind: Dram, bandwidth: none },
+  MemoryDevice { capacity: byte_size(68719476736), memory_kind: Dram, bandwidth: none },
+]
 
 // butch's single boot disk, read on butch 2026-11-10 (`lsblk -b -d -o NAME,MODEL,SIZE /dev/nvme0n1`):
 // SAMSUNG MZVPV512HDGL-000H1, 512110190592 bytes, on which / is LVM (ubuntu-vg, 466G, 198G used at read
