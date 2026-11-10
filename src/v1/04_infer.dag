@@ -4175,8 +4175,8 @@ fn equality_table_arguments_by_target(n: Node, source_indices: Map<String, Newli
 }
 
 // WHETHER AN APPLIED ARGUMENT COMPARES BY THE TARGET, read from the table and the argument's own shape in O(argument),
-// never from a walk of any declaration body. A type variable is instantiation-blind and compares by the target; a routed
-// declaration, a function, a declaration the table does not name and an unresolved spelling do not.
+// never from a walk of any declaration body. A routed declaration, a function, a declaration the table does not name and an
+// unresolved spelling do not. A type variable does NOT compare by the target either (see equality_argument_by_target).
 fn equality_arguments_by_target(arguments: List<Node>, scope: InferScope, depth: Int) -> Bool {
   arguments |> all(ch => equality_argument_by_target(n: ch, scope: scope, depth: depth))
 }
