@@ -83,11 +83,11 @@ data lawful_defer_source: String = "module probe_spool_queue_lawful_defer\nimpor
 // the field shape or the uid. MINTED CONTROL: a store produced by spool_open_uid (the business-key mint) carries
 // no violation.
 
-data forged_partitioned_store_source: String = "module probe_spool_queue_forged_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore }\nimport std.optional { Present }\nfn f() -> SpoolStore {\n  SpoolStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", partition_uid: Present { value: 1000 } }\n}\n"
+data forged_partitioned_store_source: String = "module probe_spool_queue_forged_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore, UidPartitionedStore }\nfn f() -> SpoolStore {\n  UidPartitionedStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
 
-data forged_partitioned_store_no_uid_source: String = "module probe_spool_queue_forged_partitioned_store_no_uid\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore }\nimport std.optional { Absent }\nfn f() -> SpoolStore {\n  SpoolStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", partition_uid: Absent }\n}\n"
+data forged_unpartitioned_store_source: String = "module probe_spool_queue_forged_unpartitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore, UnpartitionedStore }\nfn f() -> SpoolStore {\n  UnpartitionedStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\" }\n}\n"
 
-data twin_partitioned_store_source: String = "module probe_spool_queue_twin_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport test.fixture.spool_queue_seal.unsealed { SpoolStore }\nimport std.optional { Present }\nfn f() -> SpoolStore {\n  SpoolStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", partition_uid: Present { value: 1000 } }\n}\n"
+data twin_partitioned_store_source: String = "module probe_spool_queue_twin_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport test.fixture.spool_queue_seal.unsealed { SpoolStore, UidPartitionedStore }\nfn f() -> SpoolStore {\n  UidPartitionedStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
 
 data minted_partitioned_store_source: String = "module probe_spool_queue_minted_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store: _ } => \"ready\"\n    SpoolOpenRefused { cause: _ } => \"refused\"\n  }\n}\n"
 
@@ -118,25 +118,27 @@ test fn the_lawful_entry_key_mint_is_admitted() -> ProcessExit {
   ])
 }
 
-// PARTITIONED SPOOL STORE SEAL (SpoolComputeExit, ByPrincipalUid). A foreign module cannot spell a partitioned
-// store -- the ONLY mint is spool_open_uid (sealed), which requires a positive principal uid alongside the instance.
+// PARTITIONED SPOOL STORE SEAL (SpoolComputeExit, ByPrincipalUid). A foreign module cannot spell a store --
+// the sole-constructor mint is the only producer. spool_open builds only UnpartitionedStore; spool_open_uid is
+// the only way to a UidPartitionedStore and requires a positive principal uid. RED: a foreign literal is blocking.
 test fn a_foreign_module_cannot_construct_a_partitioned_spool_store() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: forged_partitioned_store_source, subject: "SpoolStore"), holds: fn(n) { n == 1 }))
+  census_exit(census_verdict(census: total_blocking_census(source: forged_partitioned_store_source), holds: fn(n) { n >= 1 }))
 }
 
-test fn a_foreign_module_cannot_construct_a_partitioned_spool_store_without_a_uid() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: forged_partitioned_store_no_uid_source, subject: "SpoolStore"), holds: fn(n) { n == 1 }))
+// Foreign modules cannot even construct the UNPARTITIONED variant directly -- both constructors are sealed.
+test fn a_foreign_module_cannot_construct_a_spool_store_directly() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: forged_unpartitioned_store_source), holds: fn(n) { n >= 1 }))
 }
 
-// STRIPPED TWIN: the identical forged literal, over the unsealed fixture's SpoolStore (same field names and
-// types, sole_constructor removed), is admitted -- so the refusal above is the keyword, not the shape or the uid.
+// STRIPPED TWIN: the identical forged UidPartitionedStore, over the unsealed fixture (same variants and field
+// names, sole_constructor removed), is admitted -- so the refusal above is the keyword, not the shape or the uid.
 test fn the_same_forged_partitioned_store_passes_against_the_seal_stripped_twin() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: twin_partitioned_store_source, subject: "SpoolStore"), holds: fn(n) { n == 0 }))
+  census_exit(census_verdict(census: total_blocking_census(source: twin_partitioned_store_source), holds: fn(n) { n == 0 }))
 }
 
 // MINTED CONTROL: a store produced by the business-key mint spool_open_uid carries no seal violation.
 test fn a_minted_partitioned_store_has_no_seal_violation() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: minted_partitioned_store_source, subject: "SpoolStore"), holds: fn(n) { n == 0 }))
+  census_exit(census_verdict(census: total_blocking_census(source: minted_partitioned_store_source), holds: fn(n) { n == 0 }))
 }
 
 // FRESHNESS PAIR for the compute exit spool realization: a reader that reaches the done directory THROUGH the

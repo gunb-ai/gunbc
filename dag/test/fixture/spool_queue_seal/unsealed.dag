@@ -2,7 +2,6 @@ module test.fixture.spool_queue_seal.unsealed
 
 import std.types { NonEmptyStr, String }
 import std.nat { Nat }
-import std.optional { Optional }
 import gunbc.spool_queue { SpoolKind }
 
 // THE STRIPPED TWIN for test.claim.spool_queue_seal_witness: the SAME records as gunbc.spool_queue SpoolEntryKey and SpoolStore with the
@@ -14,8 +13,6 @@ type SpoolEntryKey {
   name: NonEmptyStr
 }
 
-type SpoolStore {
-  kind: SpoolKind
-  instance_root: String
-  partition_uid: Optional<Nat>
-}
+type SpoolStore
+  = UnpartitionedStore { kind: SpoolKind, instance_root: String }
+  | UidPartitionedStore { kind: SpoolKind, instance_root: String, uid: Nat }

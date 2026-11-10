@@ -34,14 +34,14 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_role, attempt_exit_record_names_attempt,
   attempt_exit_subject_of_record,
   AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit, ComputeEntrySubject,
-  compute_attempt_exit_record_listing,
+  compute_attempt_exit_record_listing, compute_attempt_exit_hook,
 }
 import gunbc.systemd_unit_names { compute_unit_name }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal, ServiceResultExitCode }
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
 // variables spelled as systemd expansions and no shell anywhere.
-import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable, spool_open, SpoolAttemptExit }
+import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable, spool_open, SpoolAttemptExit, SpoolComputeExit }
 
 fn drain_principal() -> PosixOwnerNames {
   PosixOwnerNames { user: "svc" as NonEmptyStr, group: "grp" as NonEmptyStr }
@@ -478,10 +478,30 @@ test fn a_worker_role_word_decodes_to_its_invocation_and_a_malformed_one_is_refu
 test fn the_compute_exit_readers_refuse_a_foreign_kind_store() -> Bool {
   let foreign = spool_open(kind: SpoolAttemptExit, instance_root: "/tmp/compute/root")
   match compute_attempt_exit_record_listing(store: foreign) {
-    // The refusal must be the KIND guard, not an incidental unreadable (a missing done dir would also be
-    // SpoolListingUnreadable with a different reason). Matching the exact reason makes this RED if the
-    // foreign-kind guard is removed -- then a SpoolAttemptExit store falls through to the listing itself.
-    SpoolListingUnreadable { reason: r } => r == "compute_attempt_exit_record_listing lists only the compute-exit spool"
+    // A foreign-kind store minted by spool_open is UnpartitionedStore{SpoolAttemptExit}; the compute-exit
+    // reader must refuse it (via the has-uid guard). RED if the guard is dropped -- then it falls through to
+    // spool_role_path on the foreign kind.
+    SpoolListingUnreadable { reason: r } => r == "compute_attempt_exit_record_listing lists only a uid-partitioned compute-exit store"
     SpoolListed { names: _ } => false
+  }
+}
+
+// review 92878 residual guard (jolly): the LISTING refuses an UnpartitionedStore of SpoolComputeExit (reachable
+// only by misusing spool_open with a partitioned kind; no live caller does), never listing the shared root.
+test fn the_compute_exit_listing_refuses_an_unpartitioned_compute_exit_store() -> Bool {
+  let residual = spool_open(kind: SpoolComputeExit, instance_root: "/tmp/compute/root")
+  match compute_attempt_exit_record_listing(store: residual) {
+    SpoolListingUnreadable { reason: r } => r == "compute_attempt_exit_record_listing lists only a uid-partitioned compute-exit store"
+    SpoolListed { names: _ } => false
+  }
+}
+
+// review 92878 residual guard (jolly): the HOOK, likewise, refuses an UnpartitionedStore of SpoolComputeExit,
+// never rendering an install into the shared root.
+test fn the_compute_exit_hook_refuses_an_unpartitioned_compute_exit_store() -> Bool {
+  let residual = spool_open(kind: SpoolComputeExit, instance_root: "/tmp/compute/root")
+  match compute_attempt_exit_hook(store: residual, identity: "atm-1", record_owner: PosixOwnerNames { user: "svc" as NonEmptyStr, group: "svc" as NonEmptyStr }) {
+    AttemptExitHookRefused { reason } => reason as String == "compute_attempt_exit_hook renders only a uid-partitioned compute-exit store"
+    AttemptExitHookRendered { exec_line: _ } => false
   }
 }
