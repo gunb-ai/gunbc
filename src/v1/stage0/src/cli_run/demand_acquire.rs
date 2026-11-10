@@ -1327,3 +1327,116 @@ mod tests {
         assert!(acquired.len() > unseeded.len());
     }
 }
+
+/// TYPE-DIRECTED argv KEY SEEDING for the runtime-key reader registry
+/// (`src/v1/04_infer.dag` `runtime_key_readers`, instance `loaded_index_keyed_call`).
+/// An `--arg` bound to an entry parameter DECLARED as `std.decl_ref`'s `DeclarationRef`
+/// carries a DECLARATION NAME that this execution consults in the loaded index at run time
+/// (the ingress host calls the handler by its module-qualified identity, composed from this
+/// value). Seed such a value's authored name into the demand seeds so realization carries it
+/// into the loaded index. A value bound to a parameter of ANY OTHER type is never seeded --
+/// a plain string argument that happens to equal a declaration name must not widen the
+/// realized set (silent-bee-845, msg_889b5e11: STRICT variant; the type belongs at the
+/// boundary where the value enters). NOT FOUND in the resolved graph refuses at the
+/// boundary: this parse IS the reader's key declaration.
+pub fn seed_declaration_ref_argv_keys(
+    graph: &Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    requested: &[String],
+    run_args: &[(String, String)],
+) -> Result<Vec<String>, String> {
+    use crate::v1_std_core::{param_node_type_expr, ParsedModuleItemKind};
+    // The ONE DeclarationRef authority: std.decl_ref's own declaration item.
+    let decl_ref_decl = graph
+        .modules
+        .iter()
+        .find(|rm| {
+            crate::v1_std_core::authored_name_at(source_indices.clone(), rm.module.clone())
+                == "std.decl_ref"
+        })
+        .and_then(|rm| {
+            rm.items
+                .iter()
+                .find(|item| {
+                    item.module_item_kind == ParsedModuleItemKind::ModuleItemTypeDeclaration
+                        && crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            (*item).clone(),
+                        ) == "DeclarationRef"
+                })
+                .cloned()
+        })
+        .ok_or_else(|| {
+            "entry argv declares a DeclarationRef parameter but std.decl_ref's DeclarationRef \
+             is not in this run's graph"
+                .to_string()
+        })?;
+    let decl_id = crate::v1_compiler_infer_types::node_declaration_identity(
+        decl_ref_decl.clone(),
+        source_indices.clone(),
+    );
+    let mut widened: Vec<String> = requested.to_vec();
+    for entry_fn in requested {
+        // The entry's own item: its params carry the declared types that AUTHORIZE seeding.
+        let Some(entry_item) = graph.modules.iter().find_map(|rm| {
+            rm.items
+                .iter()
+                .find(|item| {
+                    item.module_item_kind == ParsedModuleItemKind::ModuleItemFunction
+                        && crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            (*item).clone(),
+                        ) == *entry_fn
+                })
+                .cloned()
+        }) else {
+            continue; // not an item of this graph (builtin/kernel entry): no params to consult
+        };
+        // The item node IS the function node (module_item_kind decorates it): `params` are its
+        // declared parameters, the same fields the checker types.
+        let params = entry_item.params.clone();
+        for p in params.iter() {
+            let pname = crate::v1_std_core::authored_name_at(source_indices.clone(), p.clone());
+            // Annotated first; the param node's resolved type expression second -- the same
+            // source `declared_parameter_type_exprs` reads for argv admission at bind time.
+            let ty = match p.type_annotation.clone() {
+                Some(t) => t,
+                None => param_node_type_expr(p.clone()),
+            };
+            let is_decl_ref = !decl_id.is_empty()
+                && crate::v1_compiler_infer::type_reference_identity(
+                    ty.clone(),
+                    source_indices.clone(),
+                ) == decl_id;
+            if !is_decl_ref {
+                continue;
+            }
+            for (arg_name, arg_value) in run_args {
+                if arg_name != &pname || widened.iter().any(|w| w == arg_value) {
+                    continue;
+                }
+                // The KEY DECLARATION: the name must name a callable declaration in THIS
+                // graph -- signatures resolve at every grain, so this consult is sound
+                // pre-realization and refuses a bogus handler before the minute of compile.
+                let found = graph.modules.iter().any(|rm| {
+                    rm.items.iter().any(|item| {
+                        item.module_item_kind == ParsedModuleItemKind::ModuleItemFunction
+                            && crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                (*item).clone(),
+                            ) == *arg_value
+                    })
+                });
+                if !found {
+                    return Err(format!(
+                        "--arg `{arg_name}`: no declaration named '{arg_value}' in this run's \
+                         graph; a DeclarationRef parameter admits only a declared callable \
+                         (the reader's keys are declared, never guessed)"
+                    ));
+                }
+                widened.push(arg_value.clone());
+            }
+        }
+    }
+    Ok(widened)
+}

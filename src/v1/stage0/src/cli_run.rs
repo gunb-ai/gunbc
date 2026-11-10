@@ -203,6 +203,7 @@ mod provider_acquire;
 pub(crate) mod source_layout_lookup;
 pub use demand_acquire::{
     resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_scoped,
+    seed_declaration_ref_argv_keys,
 };
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
@@ -17107,6 +17108,14 @@ pub enum CliArgAdmission {
         display: String,
         predicates: Vec<String>,
     },
+    /// A parameter DECLARED `std.decl_ref`'s `DeclarationRef`: the argv text is a DECLARATION
+    /// NAME this execution consults by key at run time (the ingress handler). Binding resolves it
+    /// against the loaded index and builds the value through std.decl_ref's own constructor fold
+    /// -- one authority for the shape. The DEMAND side is `seed_declaration_ref_argv_keys`
+    /// (cli_run/demand_acquire.rs): same type-directed rule, applied before realization.
+    DeclarationRef {
+        display: String,
+    },
     Unsupported {
         display: String,
     },
@@ -17122,6 +17131,19 @@ fn cli_arg_no_inhabitance_route(function: &str, param: &str, type_label: &str) -
 
 /// Bind one `--arg` text value against a resolved admission.
 pub fn bind_cli_arg_text(
+    function: &str,
+    param: &str,
+    admission: &CliArgAdmission,
+    text: &str,
+) -> Result<v1_interpreter::Value, String> {
+    bind_cli_arg_text_in_ctx(None, function, param, admission, text)
+}
+
+/// [`bind_cli_arg_text`] plus the execution context the `DeclarationRef` arm needs to resolve
+/// its key against the loaded index. `ctx: None` keeps every other arm's behavior -- and every
+/// existing caller -- exactly as before.
+pub fn bind_cli_arg_text_in_ctx(
+    ctx: Option<&v1_interpreter::InterpContext>,
     function: &str,
     param: &str,
     admission: &CliArgAdmission,
@@ -17160,6 +17182,36 @@ pub fn bind_cli_arg_text(
                 }
             }
             Ok(str_value(text))
+        }
+        CliArgAdmission::DeclarationRef { display } => {
+            let Some(ctx) = ctx else {
+                return Err(cli_arg_no_inhabitance_route(function, param, display));
+            };
+            // The KEY DECLARATION at bind time: the text must name a callable declaration in
+            // THIS execution's loaded index; the value is then built by std.decl_ref's own
+            // constructor fold -- never a hand-assembled record (one authority for the shape).
+            let Some(module_path) = ctx.modules.iter().find_map(|tm| {
+                tm.items.iter().find(|item| {
+                    item.module_item_kind
+                        == crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
+                        && authored_name_at(ctx.si(), (*item).clone()) == text
+                })?;
+                Some(authored_name_at(ctx.si(), tm.module.clone()))
+            }) else {
+                return Err(format!(
+                    "--arg `{param}`: function `{function}` declares `{param}: {display}`, but \
+                     no callable declaration named '{text}' is in this execution's loaded index"
+                ));
+            };
+            let named: Vec<(Option<String>, v1_interpreter::Value)> = vec![
+                (Some("module_path".to_string()), str_value(&module_path)),
+                (Some("decl_name".to_string()), str_value(text)),
+            ];
+            v1_interpreter::run_in_context_with_args(ctx, "decl_ref", &named, false).map_err(|e| {
+                format!(
+                    "--arg `{param}`: std.decl_ref `decl_ref` refused '{module_path}.{text}': {e}"
+                )
+            })
         }
         CliArgAdmission::Unsupported { display } => {
             Err(cli_arg_no_inhabitance_route(function, param, display))
@@ -17273,7 +17325,13 @@ fn cli_arg_admission_from_type_expr(
         TypeReferenceIdentity::ReferenceIsTypeVariableBinder { .. }
         | TypeReferenceIdentity::ReferenceIdentityUnavailable { .. } => {}
     }
-    std_types_nonempty_str_admission(ctx, type_expr, display)
+    let refined = std_types_nonempty_str_admission(ctx, type_expr.clone(), display.clone());
+    if !matches!(refined, CliArgAdmission::Unsupported { .. }) {
+        return refined;
+    }
+    // The DeclarationRef ground, next to NonEmptyStr: a parameter DECLARED std.decl_ref's
+    // DeclarationRef admits a declaration NAME (runtime-keyed read; see the variant doc).
+    std_decl_ref_admission(ctx, type_expr, display)
 }
 
 fn refers_to_std_types_nonempty_str(
@@ -17310,6 +17368,48 @@ fn std_types_nonempty_str_admission(
     }
 }
 
+fn std_decl_ref_item(ctx: &v1_interpreter::InterpContext) -> Option<Rc<Node>> {
+    let module = ctx.typed_module_for_authored_path("std.decl_ref")?;
+    module
+        .items
+        .iter()
+        .find(|item| {
+            item.module_item_kind
+                == crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration
+                && authored_name_at(ctx.si(), (*item).clone()) == "DeclarationRef"
+        })
+        .cloned()
+}
+
+fn refers_to_std_decl_ref(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+    decl: &Rc<Node>,
+) -> bool {
+    let resolved = cli_arg_resolved_type_node(type_expr.clone());
+    if type_nodes_name_the_same_declaration(&resolved, decl) {
+        return true;
+    }
+    let decl_id = node_declaration_identity(decl.clone(), ctx.source_indices.clone());
+    let ref_id = v1_compiler_infer::type_reference_identity(type_expr, ctx.source_indices.clone());
+    !decl_id.is_empty() && ref_id == decl_id
+}
+
+fn std_decl_ref_admission(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+    display: String,
+) -> CliArgAdmission {
+    let Some(decl) = std_decl_ref_item(ctx) else {
+        return CliArgAdmission::Unsupported { display };
+    };
+    if refers_to_std_decl_ref(ctx, type_expr, &decl) {
+        CliArgAdmission::DeclarationRef { display }
+    } else {
+        CliArgAdmission::Unsupported { display }
+    }
+}
+
 fn cli_arg_admission_for_kernel(ground: &str, display: String) -> CliArgAdmission {
     match ground {
         "String" => CliArgAdmission::String,
@@ -17321,6 +17421,17 @@ fn cli_arg_admission_for_kernel(ground: &str, display: String) -> CliArgAdmissio
 
 /// Bind `--arg` specs against caller-supplied admissions (unit tests).
 pub fn bind_run_arg_specs_against_admissions(
+    function: &str,
+    declared: &[(String, CliArgAdmission)],
+    specs: &[(String, String)],
+) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+    bind_run_arg_specs_against_admissions_in_ctx(None, function, declared, specs)
+}
+
+/// [`bind_run_arg_specs_against_admissions`] with the execution context forwarded to
+/// [`bind_cli_arg_text_in_ctx`] for the `DeclarationRef` arm.
+pub fn bind_run_arg_specs_against_admissions_in_ctx(
+    ctx: Option<&v1_interpreter::InterpContext>,
     function: &str,
     declared: &[(String, CliArgAdmission)],
     specs: &[(String, String)],
@@ -17350,7 +17461,7 @@ pub fn bind_run_arg_specs_against_admissions(
         };
         bound.push((
             Some(name.clone()),
-            bind_cli_arg_text(function, name, admission, text)?,
+            bind_cli_arg_text_in_ctx(ctx, function, name, admission, text)?,
         ));
     }
     Ok(bound)
@@ -17376,7 +17487,7 @@ pub fn bind_run_args_for_entry(
         .into_iter()
         .map(|(name, ty)| (name, cli_arg_admission_from_type_expr(ctx, ty)))
         .collect();
-    bind_run_arg_specs_against_admissions(entry_fn, &admissions, specs)
+    bind_run_arg_specs_against_admissions_in_ctx(Some(ctx), entry_fn, &admissions, specs)
 }
 
 struct ScopedRunObservation {

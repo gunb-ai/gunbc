@@ -1193,6 +1193,50 @@ fn run_verb(
         }
     };
 
+    // Runtime-keyed reads through argv (the runtime-reader registry, DESIGN 6b): an entry
+    // parameter DECLARED std.decl_ref's DeclarationRef carries a declaration NAME that the
+    // entry looks up in the loaded index at run time. Seed every such name into demand
+    // before the typecheck pass — otherwise the demanded grain never acquires the named
+    // declaration and the run-time lookup refuses (#16156 era: roadmap_ingress's handler
+    // arrived as --arg text and no demanded edge named roadmap_serve_handle_srv1_lab).
+    // A malformed key is a typed refusal at the seam, not a silent skip.
+    let requested_before_seed_len = requested.len();
+    let requested = match cli_run::seed_declaration_ref_argv_keys(
+        &graph,
+        &source_indices,
+        &requested,
+        run_args,
+    ) {
+        Ok(widened) => widened,
+        Err(reason) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: run args: {reason}")),
+            };
+        }
+    };
+    let (graph, source_indices) = if requested.len() > requested_before_seed_len {
+        // An argv declaration key widened the seed set: re-resolve once so the named
+        // module is acquired and indexed before evaluation.
+        match cli_run::resolve_entry_graph_demand_acquired_scoped(
+            source_roots,
+            entry_file,
+            &requested,
+        ) {
+            Ok(pair) => pair,
+            Err(cause) => {
+                return Verdict {
+                    status: 1,
+                    message: Some(format!(
+                        "error: resolve failed for {entry_file}\n  cause: {cause}"
+                    )),
+                };
+            }
+        }
+    } else {
+        (graph, source_indices)
+    };
+
     // The SAME total classification the compile path uses — blocking vs advisory, with
     // advisory derived as (total - blocking) so no diagnostic is counted by neither.
     if has_blocking_diagnostics(graph.diagnostics.as_ref()) {
