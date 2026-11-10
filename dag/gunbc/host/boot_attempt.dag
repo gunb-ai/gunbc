@@ -362,7 +362,7 @@ type StaleOverrideClearWrite
 
 fn stale_override_clear_write_text(w: StaleOverrideClearWrite) -> String {
   match w {
-    ClearWriteAccepted => "the controller accepted the write and the flag still reads valid"
+    ClearWriteAccepted => "the controller accepted the write"
     ClearWriteRefused { code: c, detail: d } => join(["the controller refused the write with code ", to_string(c), ": ", trim(d)], "")
     ClearWriteUnanswered { exit_code: x, detail: d } => join(["the write was not answered (client exited ", to_string(x), " naming no code), so whether it landed is unknown: ", trim(d)], "")
   }

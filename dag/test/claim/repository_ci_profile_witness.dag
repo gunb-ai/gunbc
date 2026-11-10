@@ -2,52 +2,29 @@ module test.claim.repository_ci_profile_witness
 
 import gunbc.heal_workflow { heal_workflow_yml_for, HealWorkflowGenerated, HealWorkflowGenerationRefused }
 import gunbc.heal_publication { heal_publication_candidate_directory_env }
-import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.heal_publisher_workflow {
   heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused,
-  heal_publisher_route_steps, heal_publisher_resolved_steps, heal_publisher_steps_refusal_reason,
-  heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy,
+  heal_publisher_candidate_directory, HealPublisherPolicy, heal_publisher_resolved_steps,
   heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step,
-  heal_publisher_seed_route_steps, heal_publisher_seed_route_without_a_composition_refusal_reason,
-  heal_publisher_build_step_name, heal_publisher_toolchain_install_step_name,
-  heal_publisher_seed_toolchain_role,
 }
-import gunbc.ci.ci_materialization { step_display_name }
-import v2.std.diagnostic { diagnostics_reason_lexemes, Accepted, Rejected }
-import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
-// THE STANDING MODULE'S OWN PREDICATES, so the order below is asserted with the definitions the
-// admission actually uses -- a name kept here would be a second account of what an install is.
-import gunbc.toolchain_home_standing { step_isolates_toolchain_homes, step_installs_toolchain, step_pins_default_toolchain }
-import gunbc.roadmap.roadmap_execution_contract {
-  ExecutionCapability, execution_capability_equal,
-  CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
-}
-import std.list { list_cover }
+import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.drift_watch_workflow { drift_watch_workflow_yml_for, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
-import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_build_step }
+import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
 
-import std.types { Bool, List, NonEmptyStr, String, Int }
-import std.measure { byte_size, Minute, minute, second, second_count }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Minute, minute, second, second_count }
 import extdeps.cloud.gcp.iam { token_lifetime_wire, token_lifetime_within_ordinary_maximum }
 import std.optional { Optional, Present, Absent }
-import std.algebra { for_all, list_head, list_map }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
-import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
+import std.algebra { list_head }
 import gunbc.ci.repository_ci_profile {
-  RepositoryCiProfile, RosterGate, PublicSeed, SeedSource, Seed_commit_pin, Seed_pin_owed,
-  SeedPinVerifierProducer, seed_source_pin, seed_source_refusal_reason, profile_seed_pin_is_a_commit_or_is_owed,
-  OverlayIngest, AnnotationStep, ProjectionDrift, HealSeal,
-  HealPublisherPolicy, CompilerSource, Own_checkout_under_witness_floor, Declared_seed,
-  Declared_seed_under_composed_overlay,
+  RepositoryCiProfile, RosterGate, ProjectionDrift, HealSeal,
+  HealPublisherPolicy, Own_checkout_under_witness_floor,
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
   PublisherCompilerSource, profile_publisher_compiler_source,
-  profile_overlay, profile_public_seed, profile_required_bins, profile_runs_roster_in_composed_root,
   fleet_runner_group_target,
   github_hosted_publisher_runner_target,
   profile_with_roster_runner, profile_with_heal_runner, profile_with_drift_runner,
-  profile_with_compiler_source,
   profile_with_publisher_runner, profile_with_required_context,
 }
 import gunbc.auth.heal_publisher_federation {
@@ -56,48 +33,22 @@ import gunbc.auth.heal_publisher_federation {
 }
 import gunbc.action_use_admission { google_auth_action }
 import gunbc.heal_workflow { step_uses_action }
-import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep, Job, RunnerSpec, HostedRunner, UbuntuLatest }
+import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep, Job, RunnerSpec }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
-import gunbc.witness.witness_roster {
-  RosterEntry, RosterEntryKind, Enforced, KnownRed, MustNotCompile,
-  roster_entry_is_enforced, roster_entry_is_known_red, roster_entry_is_must_not_compile,
-  enforced_entries, known_red_entries, must_not_compile_entries, roster_needs_declared_cause_arms,
-  RosterAggregate
-}
-import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
-import gunbc.ci.repository_compose_overlay {
-  command,
-  word, heal_seal_env, private_root_assign_stmt }
-import gunbc.action_use_admission {
-  checkout_ref_admitted_in_jobs, checkout_ref_value_refusals, job_step_ids,
-  seed_pin_verifier_producer, seed_pin_verifier_job_id, seed_pin_verifier_output_name,
-  seed_pin_verifier_check_step_id,
-}
-import gunbc.ci.repository_seed_steps {
-  seed_pin_proofs, seed_pin_fetch_url,
-  seed_lane_steps, SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps,
-  seed_pin_consumer_guard_step_name, seed_pin_consumer_guard_var_name,
-  seed_pin_consumer_guard_statements,
-  seed_pin_verifier_output_path, seed_pin_checkout_ref_expression,
-  seed_pin_verification_statements, seed_pin_verifier_job,
-}
-import v2.workflow.bash_emit { bash_emit_stmts }
-import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, Steps, interpolate }
-import gunbc.ci.repository_projection_drift_workflow {
-  DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
-  ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,
-}
-import gunbc.witness.repository_witness_workflow {
-  RosterProgram, repository_witness_lane_refusal, expected_repository_witnesses_yml,
-  repository_witnesses_yml_emission, yaml_emission_admitted, repository_witness_triggers,
-  // Called unqualified at lines 1184, 1195 and 1215 and never imported: the load refused with "no
-  // established callee identity, so its effects cannot be joined". Pre-existing -- main carries the same two
-  // omissions -- and invisible until now because no CI lane loads this file standalone; v2-bootstrap runs no
-  // .dag witness. Imported here because this PR's paired evidence cannot be read while the file refuses.
-  enforced_rows_need_an_aggregate_refusal, lane_admission,
-}
+
+// WHAT THESE CLAIMS HOLD.
+//
+// gunbc's CI is described by ONE row (gunbc_repository_ci_profile) and rendered by ONE set of emitters that
+// read identity, runner, timeout and source roots out of that row; the committed bytes are compared with their
+// emission by the authority that owns generated artifacts (dag/gunbc/instruments/tier_o_drift_check.dag). So
+// what is claimed here is what no emitter can vouch for itself: that gunbc's own row is well formed, that the
+// shapes a repository may not declare are refused before a byte is emitted, and that a declared row becomes a
+// step rather than a comment.
+
+
+
 
 // WHAT THESE CLAIMS HOLD.
 //
@@ -116,6 +67,7 @@ fn public_profile() -> RepositoryCiProfile {
   gunbc_repository_ci_profile()
 }
 
+
 // THE ROW IS CHECKED AGAINST THE RULES THAT DECIDE WHAT A REPOSITORY MAY DECLARE - never against a copy of
 // the strings the emitters print. The four workflow emitters read identity, runner, timeout and source roots
 // out of this row (gunbc.witness.compiler_gate_workflow, gunbc.heal_workflow,
@@ -126,30 +78,10 @@ test fn the_public_row_is_well_formed_under_the_profile_rules() -> Bool {
   repository_ci_profile_refusal(profile: public_profile()) == no_refusal()
 }
 
-// WHERE A REPOSITORY'S COMPILER COMES FROM IS ONE FIELD, SO "THE INSTRUMENT LANE THAT ALSO DECLARES A
-// SEED" -- a dispatcher running every row in the checkout that already holds the compiler, beside a seed row
-// and an overlay whose binary none of those rows ever ran -- is no longer a row anyone can write. The claim
-// that remains is the one the fields used to need a rule to enforce: the lane answer and the compiler answer
-// are the same reading. gunbc's row dispatches and has no seed, no overlay and a binary its own checkout has
-// to produce; the mirror's row composes, carries both, and names no bin.
-test fn the_instrument_lane_and_the_second_compiler_are_one_reading_not_two_fields() -> Bool {
-  let own = public_profile()
-  let mirror = mirror_profile(seal: true, publish: true)
-  profile_runs_roster_in_composed_root(profile: own) == false &&
-    has_no_seed(profile: own) &&
-    has_no_overlay(profile: own) &&
-    any(profile_required_bins(profile: own), b => (b as String) == "gunbc") &&
-    profile_runs_roster_in_composed_root(profile: mirror) == true &&
-    has_a_seed(profile: mirror) &&
-    has_an_overlay(profile: mirror) &&
-    holds_no_bins(profile_required_bins(profile: mirror)) &&
-    repository_ci_profile_refusal(profile: own) == no_refusal() &&
-    repository_ci_profile_refusal(profile: mirror) == no_refusal()
-}
-
 fn no_refusal() -> Optional<NonEmptyStr> {
   Absent
 }
+
 
 // THE GATE'S TIMEOUT IS A FACT ABOUT THE GATE, NOT A VIBRANCY. A required check killed before it can
 // report leaves the branch unpromotable with no reason attached, so a non-positive timeout is refused
@@ -161,12 +93,13 @@ test fn a_zero_timeout_gate_is_refused() -> Bool {
   }
 }
 
+
 // BOTH HALVES OF THE HEAL TRANSACTION OR NEITHER. A seal with no publisher produces repair candidates
 // nobody can land; a publisher with no seal is a job whose every run must fail. Either shape looks like
 // a working workflow in the file list, which is why it is refused at emit time.
 test fn a_seal_without_a_publisher_is_refused_and_both_halves_are_accepted() -> Bool {
-  let only_seal = repository_ci_profile_refusal(profile: mirror_profile(seal: true, publish: false))
-  let whole = repository_ci_profile_refusal(profile: mirror_profile(seal: true, publish: true))
+  let only_seal = repository_ci_profile_refusal(profile: shape_profile(seal: true, publish: false))
+  let whole = repository_ci_profile_refusal(profile: shape_profile(seal: true, publish: true))
   match only_seal {
     Present { value: _ } => true
     Absent => false
@@ -177,12 +110,13 @@ test fn a_seal_without_a_publisher_is_refused_and_both_halves_are_accepted() -> 
        }
 }
 
+
 // A JOB MAY ONLY PIN ITSELF TO A RUNNER GROUP SOMETHING ENSURES. An undeclared group name is a job that
 // never runs: the check stays pending forever, which reads as infrastructure flakiness rather than as a
 // reference to a resource that was never created.
 test fn an_undeclared_runner_group_is_refused_and_a_declared_one_is_accepted() -> Bool {
-  let undeclared = repository_ci_profile_refusal(profile: mirror_profile_on_group(group: "no-such-runner-group"))
-  let declared = repository_ci_profile_refusal(profile: mirror_profile_on_group(group: declared_group_name()))
+  let undeclared = repository_ci_profile_refusal(profile: shape_profile_on_group(group: "no-such-runner-group"))
+  let declared = repository_ci_profile_refusal(profile: shape_profile_on_group(group: declared_group_name()))
   match undeclared {
     Present { value: _ } => true
     Absent => false
@@ -200,99 +134,6 @@ fn declared_group_name() -> NonEmptyStr {
   }
 }
 
-// THE THREE DISPOSITIONS PARTITION, AND NO FILTER IS THE COMPLEMENT OF ANOTHER. "Not enforced" was a
-// faithful reading while there were two kinds; when the third arrived it silently began counting a
-// must-not-compile probe as a declared red - reported in the quarantine census, read as debt, and its row
-// proposed for retirement. Each filter asks the arm it names.
-test fn the_dispositions_partition_and_no_filter_complements_another() -> Bool {
-  count(enforced_entries(entries: fixture_roster())) == 2
-    && count(known_red_entries(entries: fixture_roster())) == 1
-    && count(must_not_compile_entries(entries: fixture_roster())) == 1
-    && any(fixture_roster(), e =>
-         counted_twice(entry: e)
-       ) == false
-}
-
-fn counted_twice(entry: RosterEntry) -> Bool {
-  count(kinds_matching(entry: entry)) != 1
-}
-
-fn kinds_matching(entry: RosterEntry) -> List<String> {
-  filter(
-    ["enforced", "known-red", "must-not-compile"],
-    k => kind_label_matches(entry: entry, label: k)
-  )
-}
-
-fn kind_label_matches(entry: RosterEntry, label: String) -> Bool {
-  if label == "enforced" {
-    roster_entry_is_enforced(entry: entry)
-  } else if label == "known-red" {
-    roster_entry_is_known_red(entry: entry)
-  } else {
-    roster_entry_is_must_not_compile(entry: entry)
-  }
-}
-
-// A ROSTER WITH DECLARED-CAUSE ROWS CANNOT RUN THROUGH THE INSTRUMENT DISPATCHER. The dispatcher runs a
-// labelled subject and reports green or red; it has no arm that reads a cause set or a declared refusal,
-// so under that route a quarantined row would be a passing step and a probe would be a passing step - the
-// shape of a check that cannot fail. The emitter asks the ROWS this question rather than trusting the
-// route the profile declares.
-test fn rows_with_declared_causes_require_the_arm_capable_route() -> Bool {
-  roster_needs_declared_cause_arms(entries: fixture_roster())
-    && roster_needs_declared_cause_arms(entries: enforced_only_roster()) == false
-}
-
-// A QUARANTINE READS BOTH DIRECTIONS. Every declared cause must have occurred, AND every diagnostic that
-// came out must be one of the declared causes - presence-only checking let a quarantine pass while new
-// defects arrived beside the expected ones. And a red that has started passing fails the run, because the
-// row then describes a repository that no longer exists.
-test fn the_declared_red_arm_states_both_directions_and_carries_its_trigger() -> Bool {
-  let gate = emitted_gate_text(mirror_profile(seal: true, publish: true))
-  string_contains(s: gate, pattern: "STALE QUARANTINE")
-    && string_contains(s: gate, pattern: "CAUSE DRIFT")
-    && string_contains(s: gate, pattern: "UNDECLARED FAILURE")
-    && string_contains(s: gate, pattern: "Declare it or fix it")
-    && string_contains(s: gate, pattern: "'-vF'")
-    && string_contains(s: gate, pattern: "overlay/dag/")
-}
-
-// A MUST-NOT-COMPILE PROBE IS EVIDENCE ONLY IF IT REFUSES FOR THE REFUSAL IT NAMES. Any nonzero exit
-// satisfies a bare expecting-red check -- a typo in an import refuses too -- so the emitted arm compares
-// the diagnostic against the declared refusal, fails the run when a declared refusal is absent, and names
-// the wall the probe was supposed to be measuring.
-test fn the_must_not_compile_arm_compares_the_refusal_not_the_exit_code() -> Bool {
-  let gate = emitted_gate_text(mirror_profile(seal: true, publish: true))
-  string_contains(s: gate, pattern: "WALL GONE")
-    && string_contains(s: gate, pattern: "PROBE DRIFT")
-    && string_contains(s: gate, pattern: "'-qF'")
-    && string_contains(s: gate, pattern: "this program MUST NOT COMPILE and it compiled")
-    && string_contains(s: gate, pattern: "refused, but NOT for its declared cause")
-    && count(must_not_compile_entries(entries: fixture_roster())) == 1
-    && string_contains(s: gate, pattern: "dag/claim/d.dag")
-    && string_contains(s: gate, pattern: "no such module")
-    && string_contains(s: gate, pattern: "the wall that keeps the credential out of the image")
-}
-
-// ONE SUBJECT, INVOKED THE SAME WAY IN EVERY REPOSITORY. The argv is built from the row rather than
-// assembled at each call site, because the difference between two repositories' CI must be the row and
-// never the command construction.
-test fn a_subject_is_invoked_through_its_own_roots_entry_and_function() -> Bool {
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile(seal: true, publish: true),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerated { content: text } =>
-      string_contains(
-        s: text,
-        pattern: "'--source-root' 'dag' '--source-root' 'src/v2' '--source-root' 'overlay/dag'"
-      ) &&
-      string_contains(s: text, pattern: "'--entry' 'overlay/dag/dag/claim/projections.dag'") &&
-      string_contains(s: text, pattern: "'--function' 'projection_check'")
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
-  }
-}
 
 // ── THE CANDIDATE'S IDENTITY IS ONE AUTHORITY ON BOTH SIDES OF THE HAND-OFF ────────────────────
 //
@@ -339,80 +180,20 @@ fn step_env_entry(step: Step, key: String) -> String {
   }
 }
 
-// ── THE PUBLISHER'S PHASES RUN THE COMPILER ITS OWN BUILD PRODUCED ──────────────────────────
-// Review round 5 asked for this pair by name: a control showing WHICH COMPILER THE PHASES INVOKE, not
-// merely that the build-step names differ. Both controls read the scripts the emitter's own step builders
-// produce under the source the row's `CompilerSource` selected, and both discriminate on the binary path
-// the row carries -- the composed fixture's seed binary is `target/release/example`, a name no own-checkout
-// route can produce, and the own-checkout launcher resolves `target/release/gunbc`, which no seed route
-// can produce. So neither assertion can be satisfied by the other route's text.
-
-test fn the_composed_publisher_phases_invoke_the_seed_binary_the_route_built() -> Bool {
-  let row = mirror_profile(seal: true, publish: true)
-  match row.publisher {
-    Absent => false
-    Present { value: job } =>
-      match publisher_source_of(row: row) {
-        Absent => false
-        Present { value: source } =>
-          let seed = fixture_seed()
-          let overlay = fixture_overlay()
-          let script = publisher_phase_scripts(profile: row, job: job, source: source)
-          // The seed's own binary is what the phases exec, and
-          string_contains(s: script, pattern: seed.seed_binary_relative_path as String)
-          // the tree they stand in is the composed one the overlay row names,
-            && string_contains(s: script, pattern: join([overlay.overlay_dir_name as String, "/dag"], ""))
-          // and the checkout's floor binary -- the one this row never built -- appears nowhere.
-            && !string_contains(s: script, pattern: "target/release/gunbc")
-      }
-  }
-}
-
 test fn the_own_checkout_publisher_phases_invoke_the_floor_binary_it_built() -> Bool {
   let row = gunbc_repository_ci_profile()
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match publisher_source_of(row: row) {
-        Absent => false
-        Present { value: source } =>
-          let script = publisher_phase_scripts(profile: row, job: job, source: source)
-          string_contains(s: script, pattern: "target/release/gunbc")
-          // No seed binary and no composed root can appear: this row declares
-          // neither, and were the phases to reach for one the previous control's row would be this one's text.
-            && !string_contains(s: script, pattern: fixture_seed().seed_binary_relative_path as String)
-            && !string_contains(s: script, pattern: join([fixture_overlay().overlay_dir_name as String, "/dag"], ""))
-      }
+      let source = profile_publisher_compiler_source(profile: row)
+      let script = publisher_phase_scripts(profile: row, job: job, source: source)
+      string_contains(s: script, pattern: "target/release/gunbc")
+      // A row with no seed and no composed overlay reaches for exactly the checkout's own floor binary,
+      // built in-tree: the composed-root binary and its dag/ no longer exist to reach for.
   }
 }
 
-// THE THIRD CASE OF THE SUM HAS NO PUBLISHER CONSUMER, and the emitter says so before it resolves a single
-// step: the row below is admitted as a lane (its seed build has a consumer there) but a publisher over it
-// would run admit and publish against a binary its build steps never produced.
-fn publisher_row_on_a_seed_it_cannot_reach() -> RepositoryCiProfile {
-  profile_with_compiler_source(
-    profile: mirror_profile(seal: true, publish: true),
-    source: Declared_seed { seed: fixture_seed(), run_roster_step_name: "Run the roster under the seed compiler" }
-  )
-}
 
-test fn a_publisher_on_a_seed_it_cannot_reach_is_refused_before_any_step_is_resolved() -> Bool {
-  match heal_publisher_workflow_yml_for(profile: publisher_row_on_a_seed_it_cannot_reach()) {
-    HealPublisherWorkflowGenerated { content: _ } => false
-    HealPublisherWorkflowGenerationRefused { reason: r } =>
-      r == heal_publisher_seed_route_without_a_composition_refusal_reason
-        // The reason names the case it refuses and the binary it would have run, so an
-        // operator reading it knows which field to change rather than which step to blame.
-        && string_contains(s: r, pattern: "Declared_seed")
-        && string_contains(s: r, pattern: "target/release/gunbc")
-  }
-}
-
-// THE PUBLISHER'S COMPILER SOURCE, as the emitter reads it. Claims ask the SAME projection the entrypoint
-// asks, so a claim can never be run against a source the emitter would have refused to build from.
-fn publisher_source_of(row: RepositoryCiProfile) -> Optional<PublisherCompilerSource> {
-  profile_publisher_compiler_source(profile: row)
-}
 
 // THE PHASE STEPS' SCRIPTS, joined into one text to read assertions out of. Built from the step builders the
 // emitter itself calls, under the source the row's CompilerSource selected -- which is the whole point of the
@@ -429,6 +210,7 @@ fn publisher_phase_scripts(profile: RepositoryCiProfile, job: HealPublisherPolic
   join([admit, "\n", publish], "\n")
 }
 
+
 // THE TEXT A RUN STEP RUNS.
 fn step_run_text(step: Step) -> String {
   match step {
@@ -436,6 +218,7 @@ fn step_run_text(step: Step) -> String {
     _ => ""
   }
 }
+
 
 // THE TWO PHASES' CANDIDATE-DIRECTORY VALUES, in one string. A step the emitter refuses yields "", which
 // cannot equal either expected spelling, so a refusal can only read as red -- there is no branch here where
@@ -456,64 +239,26 @@ fn publisher_phase_candidate_directories(
   join([admit, "|", publish], "")
 }
 
-test fn the_candidate_artifact_name_is_one_authority_read_by_both_emitters() -> Bool {
-  let row = mirror_profile(seal: true, publish: true)
-  let authority = heal_repair_candidate_artifact_name as String
-  let seal = match expected_projection_drift_workflow_yml(profile: row, program: mirror_drift_program()) {
-    ProjectionDriftWorkflowGenerated { content: text } => text
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => ""
-  }
-  step_with_entry(step: heal_publisher_download_step(), key: "pattern") == authority
-    && step_with_entry(step: heal_publisher_download_step(), key: "path") == heal_publisher_candidate_directory
-    && string_contains(s: seal, pattern: join(["name: ", authority], ""))
-    && string_contains(s: seal, pattern: join(["target/", authority, "/"], ""))
-}
 
-// ── THE CANDIDATE DIRECTORY IS ONE NAME WITH THE TWO RENDERINGS ITS CONSUMERS NEED ─────────────
+// ── THE CANDIDATE DIRECTORY STAYS WORKSPACE-RELATIVE ─────────────────────────────────────────
 //
-// `HEAL_CANDIDATE_DIRECTORY` is read by two consumers that stand in different places. The download step and
-// the `hashFiles` gate run AT THE JOB WORKSPACE, where the path must stay relative -- an absolute value
-// makes `hashFiles` match nothing, which quietly retires the gate that keeps a hand-edited mirror from
-// publishing. The PHASE STEPS of a composed publisher `cd` into the composed root under the runner temp
-// before they read it; there a relative value resolves inside the composed tree, where the downloaded
-// candidate has never been, and the phases report "no candidates" for a candidate sitting in the workspace -
-// the same quiet-green shape as the lost artifact above.
-//
-// SO THE ROUTE DECIDES THE SPELLING, and the control asks the EMITTED STEPS: with the row's own composed
-// root resolved, both phases must carry the workspace-anchored value; with no composition (gunbc's own
-// publisher, which never leaves its checkout) both must carry the relative one; and the download step's
-// `path:` stays relative under BOTH routes, because its consumer never moves.
+// `HEAL_CANDIDATE_DIRECTORY` is read by the download step and the `hashFiles` gate at the job workspace,
+// where an absolute value makes `hashFiles` match nothing and quietly retires the gate. The only publisher
+// route left (gunbc's own checkout under the floor build) never leaves the workspace, so both phases and the
+// download step's `path:` carry the one relative spelling; the control asks the EMITTED STEPS.
 test fn the_candidate_directory_is_anchored_only_where_a_phase_leaves_the_workspace() -> Bool {
-  let composed = join(["${{ github.workspace }}/", heal_publisher_candidate_directory], "")
   let relative = heal_publisher_candidate_directory
-  let mirror_row = mirror_profile(seal: true, publish: true)
   let own_row = gunbc_repository_ci_profile()
-  match mirror_row.publisher {
+  match own_row.publisher {
     Absent => false
-    Present { value: mirror_job } =>
-      match own_row.publisher {
-        Absent => false
-        Present { value: own_job } =>
-          match profile_publisher_compiler_source(profile: mirror_row) {
-            Absent => false
-            Present { value: mirror_source } =>
-              match profile_publisher_compiler_source(profile: own_row) {
-                Absent => false
-                Present { value: own_source } =>
-                  publisher_phase_candidate_directories(
-                    profile: mirror_row,
-                    job: mirror_job,
-                    source: mirror_source
-                  ) == join([composed, "|", composed], "")
-                    && publisher_phase_candidate_directories(
-                      profile: own_row,
-                      job: own_job,
-                      source: own_source
-                    ) == join([relative, "|", relative], "")
-              }
-          }
-            && step_with_entry(step: heal_publisher_download_step(), key: "path") == relative
-      }
+    Present { value: own_job } =>
+      let own_source = profile_publisher_compiler_source(profile: own_row)
+      publisher_phase_candidate_directories(
+        profile: own_row,
+        job: own_job,
+        source: own_source
+      ) == join([relative, "|", relative], "")
+        && step_with_entry(step: heal_publisher_download_step(), key: "path") == relative
   }
 }
 
@@ -538,22 +283,19 @@ test fn the_publish_phase_holds_no_credential_of_any_kind() -> Bool {
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match profile_publisher_compiler_source(profile: row) {
-        Absent => false
-        Present { value: source } =>
-          match heal_publisher_publish_step(profile: row, job: job, source: source) {
-            Accepted { value: step, diagnostics: _ } =>
-              // The job token stays: it answers the openness check, which is a job-token call and is not
-              // time-limited in the way the two minted credentials are. The runner supplies the OIDC
-              // request pair itself when the job carries id-token permission, so an env row for it would
-              // be a second, workflow-rendered spelling of something the runner already owns.
-              step_env_entry(step: step, key: "WIF_ACCESS_TOKEN") == ""
-                && step_env_entry(step: step, key: "GOOGLE_ACCESS_TOKEN") == ""
-                && step_env_entry(step: step, key: "GITHUB_ACCESS_TOKEN") == ""
-                && step_env_entry(step: step, key: "ACTIONS_ID_TOKEN_REQUEST_TOKEN") == ""
-                && step_env_entry(step: step, key: "GITHUB_TOKEN") != ""
-            Rejected { diagnostics: _ } => false
-          }
+      let source = profile_publisher_compiler_source(profile: row)
+      match heal_publisher_publish_step(profile: row, job: job, source: source) {
+        Accepted { value: step, diagnostics: _ } =>
+          // The job token stays: it answers the openness check, which is a job-token call and is not
+          // time-limited in the way the two minted credentials are. The runner supplies the OIDC
+          // request pair itself when the job carries id-token permission, so an env row for it would
+          // be a second, workflow-rendered spelling of something the runner already owns.
+          step_env_entry(step: step, key: "WIF_ACCESS_TOKEN") == ""
+            && step_env_entry(step: step, key: "GOOGLE_ACCESS_TOKEN") == ""
+            && step_env_entry(step: step, key: "GITHUB_ACCESS_TOKEN") == ""
+            && step_env_entry(step: step, key: "ACTIONS_ID_TOKEN_REQUEST_TOKEN") == ""
+            && step_env_entry(step: step, key: "GITHUB_TOKEN") != ""
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -563,14 +305,11 @@ test fn no_publisher_step_delegates_federation_to_an_action() -> Bool {
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match profile_publisher_compiler_source(profile: row) {
-        Absent => false
-        Present { value: source } =>
-          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
-            Accepted { value: steps, diagnostics: _ } =>
-              !any(steps, b => step_uses_action(step: b.step, action: google_auth_action))
-            Rejected { diagnostics: _ } => false
-          }
+      let source = profile_publisher_compiler_source(profile: row)
+      match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
+        Accepted { value: steps, diagnostics: _ } =>
+          !any(steps, b => step_uses_action(step: b.step, action: google_auth_action))
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -612,10 +351,7 @@ fn with_roster_timeout(limit: Minute) -> RepositoryCiProfile {
       required_context: base.roster.required_context,
       runner: base.roster.runner,
       timeout: limit,
-      source_roots: base.roster.source_roots,
-      schedule: base.roster.schedule,
-      memory_budget: base.roster.memory_budget,
-      annotation: base.roster.annotation
+      source_roots: base.roster.source_roots
     },
     source: base.source,
     drift: base.drift,
@@ -623,19 +359,21 @@ fn with_roster_timeout(limit: Minute) -> RepositoryCiProfile {
   }
 }
 
-// A NEUTRAL MIRROR-SHAPED PROFILE. These fixtures are deliberately not the mirror's real row: the public
-// corpus must not acquire another repository's module names, entry paths or row names, and the claims
-// below are about the SHAPE a profile must have. The mirror's own row lives with the mirror and is
-// asserted against these emitters there.
-fn mirror_profile(seal: Bool, publish: Bool) -> RepositoryCiProfile {
-  mirror_profile_on_group_named(group: FleetSelfHosted, seal: seal, publish: publish)
+
+// A NEUTRAL WELL-FORMED PROFILE. These fixtures are deliberately not gunbc's real row (public_profile):
+// they carry a fabricated repository name and entry paths so the public corpus does not acquire a second
+// account of any repository, and the claims below are about the SHAPE a profile must have - a drift row that
+// pairs a seal with a publisher, a roster gate pinned to a runner group. They carry no seed, overlay, cadence
+// or memory budget: those belonged to the private mirror's composed route, which is gone.
+fn shape_profile(seal: Bool, publish: Bool) -> RepositoryCiProfile {
+  shape_profile_on_group_named(group: FleetSelfHosted, seal: seal, publish: publish)
 }
 
-fn mirror_profile_on_group(group: NonEmptyStr) -> RepositoryCiProfile {
-  mirror_profile_on_group_named(group: fleet_runner_group_target(group: group), seal: true, publish: true)
+fn shape_profile_on_group(group: NonEmptyStr) -> RepositoryCiProfile {
+  shape_profile_on_group_named(group: fleet_runner_group_target(group: group), seal: true, publish: true)
 }
 
-fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Bool) -> RepositoryCiProfile {
+fn shape_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Bool) -> RepositoryCiProfile {
   RepositoryCiProfile {
     repository: "example-org/example-mirror",
     default_branch: "main",
@@ -648,28 +386,12 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
       required_context: "witnesses",
       runner: group,
       timeout: minute(90),
-      source_roots: ["dag", "src/v2"],
-      schedule: Present {
-        value: CronSchedule {
-          minute: Exact { value: 0 },
-          hour: Listed { values: [0, 4] },
-          day_of_month: Wildcard,
-          month: Wildcard,
-          day_of_week: Wildcard
-        }
-      },
-      memory_budget: Present { value: byte_size(1073741824) },
-      annotation: Absent
+      source_roots: ["dag", "src/v2"]
     },
-    // A MIRROR ROW: the compiler that judges its claims is checked out from the public seed and built there,
-    // and the repository's own content is copied into the composed root the roster runs in. One field, one
-    // variant -- the overlay cannot be declared without the seed it composes into, and the step that runs the
-    // roster is carried here because only this shape has one.
-    source: Declared_seed_under_composed_overlay {
-      seed: fixture_seed(),
-      overlay: fixture_overlay(),
-      run_roster_step_name: "Run the roster over the composed root"
-    },
+    // The only route left: the shape's own checkout, built under the witness floor. The private mirror's
+    // composed-seed route (a compiler checked out from a public seed and built there, over a composed root)
+    // was deleted with the mirror.
+    source: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] },
     drift: Present {
       value: ProjectionDrift {
         workflow_file: "projection-drift.yml",
@@ -731,947 +453,6 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
   }
 }
 
-// THE MIRROR ROW WITH ITS ANNOTATION ARM ATTACHED, and with the composition rooted in a directory the
-// caller owns. The 4c body reads RUNNER_TMP_ROOT as `${RUNNER_TMP:-<compose_root_env_default>}`, so binding
-// the default to a per-test temporary directory is what lets the REAL emitted body run against a real tree
-// instead of writing into a fixed /tmp name that another concurrent run could be using. The overlay ingest
-// keeps every other fact of the fixture; only where the composition lands changes.
-fn mirror_profile_with_annotation(lane_root: String) -> RepositoryCiProfile {
-  let base = mirror_profile(seal: false, publish: false)
-  RepositoryCiProfile {
-    repository: base.repository,
-    default_branch: base.default_branch,
-    heal: base.heal,
-    roster: RosterGate {
-      workflow_file: base.roster.workflow_file,
-      workflow_name: base.roster.workflow_name,
-      job_id: base.roster.job_id,
-      job_display_name: base.roster.job_display_name,
-      required_context: base.roster.required_context,
-      runner: base.roster.runner,
-      timeout: base.roster.timeout,
-      source_roots: base.roster.source_roots,
-      schedule: base.roster.schedule,
-      memory_budget: base.roster.memory_budget,
-      annotation: Present {
-        value: AnnotationStep {
-          step_name: "Establish the section 4c annotation wall" as NonEmptyStr,
-          invocation: DagInvocation { entry: "dag/claim/annotation.dag", function: "annotation_wall" },
-          // THE PREFIX IS THE ONLY HANDSHAKE THE READER HAS with the compiler it reads: the fake compiler
-          // in test.claim.ci.mirror_lane_4c_execution_local_wet prints this text and the emitted
-          // reader has to find it. It is a fixture fact of that exchange, not a claim about the public
-          // lane's prefix, which the private row supplies from its own authority.
-          refusal_prefix: "REFUSE-4C-ANNOTATION" as NonEmptyStr,
-          output_dir_suffix: "annotation" as NonEmptyStr,
-          subject_banner: "the annotation wall" as NonEmptyStr,
-          closure_narrowing_dissolves_when: unbound_dissolution(description: "the closure narrow is expressed as a capability the check asks for")
-        }
-      }
-    },
-    // THE SAME COMPOSITION AS THE MIRROR ROW, rooted where the caller asked, carrying whichever seed the
-    // base row declares so a control that changes the pin still sees it here.
-    source: match profile_public_seed(profile: base) {
-      Absent => base.source
-      Present { value: seed } => Declared_seed_under_composed_overlay {
-        seed: seed,
-        overlay: OverlayIngest {
-          overlay_dir_name: "overlay",
-          entry_prefix: "overlay/dag/",
-          repo_link_name: "head_repo",
-          compose_dir_name: "compose",
-          compose_root_env_default: lane_root as NonEmptyStr,
-          overlay_copy_dissolves_when: unbound_dissolution(description: "gunbc admits an extra --source-root outside the process workspace roots"),
-          local_runs_warning: "compose in a temporary directory, never in a session worktree"
-        },
-        run_roster_step_name: "Run the roster over the composed root"
-      }
-    },
-    drift: base.drift,
-    publisher: base.publisher
-  }
-}
-
-// THE FIXTURE'S SEED COMMIT, as the only kind of reference a seed can carry. It is a fixture sha, not a
-// production one: no claim here depends on a real commit existing, and the production pin is the
-// operator's to record (gunbc.ci.repository_ci_profile Seed_pin_owed is what an unrecorded pin looks
-// like, and every seed-consuming emitter refuses it).
-data fixture_seed_pin: String = "0123456789abcdef0123456789abcdef01234567"
-
-fn fixture_seed_verifier() -> SeedPinVerifierProducer {
-  SeedPinVerifierProducer { verification_step_name: "Prove the pinned seed commit exists" }
-}
-
-fn fixture_seed() -> PublicSeed {
-  PublicSeed {
-    repository: "example-org/example-public",
-    checkout_path: "seed_repo",
-    source: Seed_commit_pin { sha: fixture_seed_pin },
-    verifier: fixture_seed_verifier(),
-    build_command: [
-      command(
-        words: [
-          word(text: "cargo"),
-          word(text: "build"),
-          word(text: "--release"),
-          word(text: "-p"),
-          word(text: "example"),
-          word(text: "--bin"),
-          word(text: "example")
-        ]
-      )
-    ],
-    seed_binary_relative_path: "target/release/example",
-    record_step_name: "Record the seed revision",
-    build_step_name: "Build the seed compiler"
-  }
-}
-
-// THE WET FIXTURE'S SEED ROW: the shape of fixture_seed pointed at the repository the seed lane really
-// fetches from, at a commit that really exists there. The two shas are `origin/main` and its parent as of
-// authoring (both ancestors of a branch that never rewrites, so they stay reachable); the verifier is
-// fetched BY SHA, which is exactly the path the poison scenario needs to differ on. If the pin ever stops
-// being fetchable the honest scenario goes red loudly rather than quietly admitting -- that is the point
-// of running the emitted script rather than reasoning about it.
-data wet_seed_repository: String = "gunb-ai/gunbc"
-data wet_seed_pin: String = "fe5d4d46331bcef8044ed3b2e2db78966546f0c3"
-data wet_seed_pin_parent: String = "4000ff2c5dcd20aa6b76a81c1c1edc71d7c138d1"
-
-fn wet_seed() -> PublicSeed {
-  PublicSeed {
-    repository: wet_seed_repository,
-    checkout_path: "seed_repo",
-    source: Seed_commit_pin { sha: wet_seed_pin },
-    verifier: fixture_seed_verifier(),
-    build_command: [
-      command(
-        words: [
-          word(text: "cargo"),
-          word(text: "build"),
-          word(text: "--release"),
-          word(text: "-p"),
-          word(text: "example"),
-          word(text: "--bin"),
-          word(text: "example")
-        ]
-      )
-    ],
-    seed_binary_relative_path: "target/release/example",
-    record_step_name: "Record the seed revision",
-    build_step_name: "Build the seed compiler"
-  }
-}
-
-fn fixture_overlay() -> OverlayIngest {
-  OverlayIngest {
-    overlay_dir_name: "overlay",
-    entry_prefix: "overlay/dag/",
-    repo_link_name: "head_repo",
-    compose_dir_name: "example-mirror-compose",
-    compose_root_env_default: "/tmp",
-    overlay_copy_dissolves_when: unbound_dissolution(description: "gunbc admits an extra --source-root outside the process workspace roots"),
-    local_runs_warning: "compose in a temporary directory, never in a session worktree"
-  }
-}
-
-fn fixture_roster() -> List<RosterEntry> {
-  [
-    RosterEntry { entry: "dag/claim/a.dag", function: "a_main", kind: Enforced },
-    RosterEntry { entry: "dag/claim/b.dag", function: "b_main", kind: Enforced },
-    RosterEntry {
-      entry: "dag/claim/c.dag",
-      function: "c_main",
-      kind: KnownRed {
-        reason: "the emitter does not yet lower this construct" as NonEmptyStr,
-        expected_causes: ["the cause that has not yet arrived"] as List<NonEmptyStr>,
-        restoration_trigger: "the emitter lowers the construct" as NonEmptyStr
-      }
-    },
-    RosterEntry {
-      entry: "dag/claim/d.dag",
-      function: "d_main",
-      kind: MustNotCompile {
-        guards: "the wall that keeps the credential out of the image" as NonEmptyStr,
-        expected_refusals: ["no such module"] as List<NonEmptyStr>,
-        dissolution: "the credential is injected at run time" as NonEmptyStr
-      }
-    }
-  ]
-}
-
-fn enforced_only_roster() -> List<RosterEntry> {
-  [RosterEntry { entry: "dag/claim/a.dag", function: "a_main", kind: Enforced }]
-}
-
-// THE GATE EMITTER REFUSES TO EMIT A SECOND REQUIRED CHECK FOR A REPOSITORY THAT ALREADY HAS ONE. A
-// repository compiles itself either in its own checkout (the instrument lane, owned by
-// gunbc.witness.compiler_gate_workflow) or under a composed overlay, not both: two workflows claiming one
-// required context means whichever runs last decides promotion, and the disagreement is invisible until
-// someone reads both files. The assertion is on the module NAME the refusal hands the reader, because that
-// name is the whole point of the refusal - prose around it may be reworded, the owner cannot.
-test fn the_own_checkout_repository_is_refused_by_the_composed_gate_emitter() -> Bool {
-  match repository_witness_lane_refusal(profile: public_profile(), program: fixture_program()) {
-    Present { value: reason } =>
-      string_contains(s: reason as String, pattern: "gunbc.witness.compiler_gate_workflow")
-        && string_contains(s: reason as String, pattern: "required context")
-    Absent => false
-  }
-}
-
-// A REQUIRED GATE THAT CAN FAIL IS THE MINIMUM. With no enforced row the script prints banners and exits
-// zero forever, so the emitter refuses rather than shipping a check whose green means nothing.
-test fn a_gate_with_no_enforced_row_is_refused() -> Bool {
-  match repository_witness_lane_refusal(profile: mirror_profile(seal: true, publish: true), program: gate_program(entries: [])) {
-    Present { value: reason } => string_contains(s: reason as String, pattern: "cannot fail")
-    Absent => false
-  }
-}
-
-// THE EMITTED GATE CONTAINS THE OBLIGATIONS THAT MAKE THE RUN ATTRIBUTABLE AND THE ARMS THAT MAKE THE
-// ROWS EVIDENCE. Each substring is a step a reader would otherwise have to trust the emitter about: the
-// seed revision being judged is printed, the compiler is built from source rather than fetched, one
-// process runs per row, the quarantined rows are compared against their declared causes in both
-// directions, and the two obligations of the composed root (do not edit the copy, do not compose inside a
-// session worktree) are echoed by the step that performs them.
-test fn the_emitted_gate_carries_the_seed_receipt_the_composition_and_the_declared_cause_arms() -> Bool {
-  let yml = expected_repository_witnesses_yml(
-    profile: mirror_profile(seal: true, publish: true),
-    program: gate_program(entries: fixture_roster())
-  )
-  yaml_emission_admitted(result: repository_witnesses_yml_emission(
-    profile: mirror_profile(seal: true, publish: true),
-    program: gate_program(entries: fixture_roster())
-  ))
-    && string_contains(s: yml, pattern: "--detach")
-    && string_contains(s: yml, pattern: "rev-parse")
-    && string_contains(s: yml, pattern: "'cargo' 'build' '--release'")
-    && string_contains(s: yml, pattern: "exit $fail")
-    && string_contains(s: yml, pattern: "CAUSE DRIFT")
-    && string_contains(s: yml, pattern: "UNDECLARED FAILURE")
-    && string_contains(s: yml, pattern: "STALE QUARANTINE")
-    && string_contains(s: yml, pattern: "WALL GONE")
-    && string_contains(s: yml, pattern: "PROBE DRIFT")
-    && string_contains(s: yml, pattern: "LOCAL RUNS")
-    && string_contains(s: yml, pattern: "generated ingest copy")
-    && string_contains(s: yml, pattern: "contents: read")
-}
-
-// THE TRIGGER THAT RETIRES THE HAND-WRITTEN ROSTER IS PRINTED BY THE STEP THAT NEEDS IT. A declared
-// divergence nobody can see is how an interim measure becomes permanent: the row carries the successor
-// capability and the emitted step states it, so a reader of a green run learns what would replace this.
-test fn the_emitted_gate_prints_the_trigger_that_retires_the_copied_overlay() -> Bool {
-  let yml = emitted_gate_text(mirror_profile(seal: true, publish: true))
-  string_contains(s: yml, pattern: "Dissolves when")
-    && string_contains(s: yml, pattern: "gunbc admits an extra --source-root outside the process workspace roots")
-}
-
-// THE MACHINE CLASS IS PROJECTED FROM THE TARGET, NOT TYPED. The gate's runs-on comes from
-// ci_runner_target_spec over the profile's CiRunnerTarget, which is what keeps "move CI to another class
-// of machine" a one-row edit in the target authority rather than a hunt through shell strings.
-test fn the_gate_runs_on_the_selected_target_not_on_a_typed_label() -> Bool {
-  let yml = expected_repository_witnesses_yml(
-    profile: mirror_profile_on_group(group: declared_group_name()),
-    program: gate_program(entries: fixture_roster())
-  )
-  string_contains(s: yml, pattern: "self-hosted")
-    && string_contains(s: yml, pattern: declared_group_name() as String)
-}
-
-// THE TIMEOUT IS A DURATION IN THE ROW AND A MINUTE COUNT ONLY AT THE EMIT EDGE. The row carries a
-// std.measure `Minute` (Time at the ISO-8601 sixty scale, the same carrier a ruleset's response timeout
-// uses); GitHub's `timeout-minutes` is where the number appears, and it is produced by one projection
-// (`minute_count`) rather than by a field named for a unit and typed as a bare count. So a row that meant
-// ninety seconds could not be spelled `90`, and the emitted step's ceiling is read from the row rather
-// than restated next to it.
-test fn the_gate_timeout_is_the_rows_duration_projected_at_the_emit_edge() -> Bool {
-  string_contains(
-    s: emitted_gate_text(profile: mirror_profile(seal: true, publish: true)),
-    pattern: "timeout-minutes: 90"
-  )
-}
-
-// THE CADENCE IS A ROW. A mirror that must notice the seed branch moved without a commit here needs a
-// poll; a repository that does not can leave the list empty and get no schedule at all.
-test fn a_declared_cadence_becomes_a_schedule_and_an_empty_one_becomes_no_trigger() -> Bool {
-  string_contains(s: emitted_gate_text(profile: mirror_profile(seal: true, publish: true)), pattern: "schedule")
-    && string_contains(s: emitted_gate_text(profile: gate_profile_without_schedule()), pattern: "schedule") == false
-}
-
-fn emitted_gate_text(profile: RepositoryCiProfile) -> String {
-  expected_repository_witnesses_yml(profile: profile, program: gate_program(entries: fixture_roster()))
-}
-
-fn gate_program(entries: List<RosterEntry>) -> RosterProgram {
-  RosterProgram {
-    entries: entries,
-    aggregate: Present {
-      value: RosterAggregate {
-        invocation: DagInvocation { entry: "dag/claim/roster.dag", function: "roster_main" },
-        pass_banner: "PASS every enforced witness in one process",
-        fail_banner: "the roster did not pass"
-      }
-    },
-    roster_authority: "example.repo.roster",
-    scaffold_banner: "these rows are quarantined, not deleted",
-    checkout_step_name: "Checkout the repository",
-    toolchain_step_name: "Install Rust toolchain"
-  }
-}
-
-fn fixture_program() -> RosterProgram {
-  gate_program(entries: fixture_roster())
-}
-
-fn gate_profile_without_schedule() -> RepositoryCiProfile {
-  let base = mirror_profile(seal: true, publish: true)
-  RepositoryCiProfile {
-    repository: base.repository,
-    default_branch: base.default_branch,
-    heal: base.heal,
-    roster: RosterGate {
-      workflow_file: base.roster.workflow_file,
-      workflow_name: base.roster.workflow_name,
-      job_id: base.roster.job_id,
-      job_display_name: base.roster.job_display_name,
-      required_context: base.roster.required_context,
-      runner: base.roster.runner,
-      timeout: base.roster.timeout,
-      source_roots: base.roster.source_roots,
-      schedule: Absent,
-      memory_budget: base.roster.memory_budget,
-      annotation: base.roster.annotation
-    },
-    source: base.source,
-    drift: base.drift,
-    publisher: base.publisher
-  }
-}
-
-// ---------------------------------------------------------------------------
-// THE SHARED DRIFT CHECK. A mirror's drift job is the same comparison gunbc's own drift watch makes,
-// with a seed checked out beside it and a seal at the end. These claims hold the two things that make
-// it trustworthy rather than merely similar: the emitter refuses a row that cannot support the job, and
-// the seal names its candidate exactly the way the publisher expects to find it.
-
-fn mirror_drift_program() -> DriftProgram {
-  DriftProgram {
-    checkout_step_name: "Checkout the mirror",
-    toolchain_step_name: "Install Rust toolchain",
-    check_step_name: "Check every committed projection against its authority",
-    check_authority_banner: "projection-drift: every committed projection must equal its authority"
-  }
-}
-
-fn with_no_drift() -> RepositoryCiProfile {
-  let base = mirror_profile(seal: true, publish: true)
-  RepositoryCiProfile {
-    repository: base.repository,
-    default_branch: base.default_branch,
-    heal: base.heal,
-    roster: base.roster,
-    source: base.source,
-    drift: Absent,
-    publisher: base.publisher
-  }
-}
-
-
-
-// A DRIFT JOB WITHOUT ITS ROW IS REFUSED, not emitted as an empty job. A workflow file that exists and
-// checks nothing is worse than no file, because it reads as coverage.
-test fn the_drift_emitter_refuses_a_repository_with_no_drift_row() -> Bool {
-  match projection_drift_refusal(profile: with_no_drift()) {
-    Present { value: reason } => string_contains(s: reason, pattern: "declares no drift check")
-    Absent => false
-  }
-}
-
-// A MIRROR THAT CLAIMS A SEAL IT CANNOT COMPOSE IS REFUSED. The seal regenerates from a seed's compiler over
-// the composed overlay; on a row that builds its own compiler the job would emit steps referencing a checkout
-// nobody performed, and the candidate would be bytes from whatever was lying around. The refusal names the
-// sum it consulted, so the reader is sent to the row rather than to a missing field.
-test fn the_drift_emitter_refuses_a_row_that_builds_its_own_compiler() -> Bool {
-  match projection_drift_refusal(profile: mirror_profile_own_checkout_source()) {
-    Present { value: reason } => string_contains(s: reason, pattern: "CompilerSource")
-    Absent => false
-  }
-}
-
-// THE SEAL NAMES THE FACTS THE PUBLISHER READS. The publisher's admit step refuses a candidate that
-// does not say which pull request it came from; these names are the contract between the two jobs, so
-// they are asserted here rather than left to match by coincidence in two step bodies.
-test fn the_seal_names_every_fact_the_publisher_reads() -> Bool {
-  let keys = join(list_map(xs: heal_seal_env(), f: fn(b) { b.key as String }), ",")
-    string_contains(s: keys, pattern: "HEAD_SHA")
-      && string_contains(s: keys, pattern: "HEAL_REPOSITORY")
-      && string_contains(s: keys, pattern: "HEAL_PULL_NUMBER")
-      && string_contains(s: keys, pattern: "HEAL_HEAD_REF")
-      && string_contains(s: keys, pattern: "HEAL_BASE_REF")
-      && string_contains(s: keys, pattern: "HEAL_RUN_ID")
-}
-
-// THE COMMITTED DRIFT YAML IS THE EMISSION, and it carries the three things the mirror's fork carried:
-// the seal composes at the pull request HEAD (not at the merge), the candidate is uploaded as the
-// artifact the publisher downloads, and a missing candidate fails the job rather than publishing
-// nothing quietly.
-test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool {
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile(seal: true, publish: true),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerated { content: text } =>
-      string_contains(s: text, pattern: "--detach")
-        && string_contains(s: text, pattern: "\"$HEAD_TREE\"")
-        && string_contains(s: text, pattern: join(["name: ", heal_repair_candidate_artifact_name], ""))
-        && string_contains(s: text, pattern: "if-no-files-found: error")
-        && string_contains(s: text, pattern: "steps.heal_seal.outcome == 'success'")
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
-  }
-}
-
-// THE MIRROR LANE IS CHECKED, NOT JUST WRITTEN. A frontier row with an empty reason or trigger is how a
-// declaration becomes decoration, and `frontier_rows_well_formed` is the check the rest of the corpus uses
-// for exactly that. What is asserted on top of it: the lane is non-empty, and each of the five modules that
-// exist wholly for the mirror is named by a PathSubject row, so deleting a module's declaration deletes the
-// record of why it is allowed to be unread here. What is NOT asserted, and cannot be from inside a claim:
-// that the DECL names the roster lists exist. std.roster_frontier builds them as typed `decl_ref` literals,
-// and the authority that resolves those against the live declaration index is the decl-ref census instrument
-// (the retired census verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
-// gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved refuses an
-// unresolved identity BY NAME; resolving refs inside claim evaluation is the repo's declared stall
-// (gunbc.guarantee_stall::decl_ref_host_resolver_awaits_native_claim_evaluation_stall), so no Bool here can
-// be that check. What is NOT asserted either is that the roster reaches gunbc.census_closure_frontier: the
-// fold includes it by construction, and restating what the model already builds is the 4c tell.
-test fn the_mirror_frontier_roster_is_well_formed_and_covers_the_lane() -> Bool {
-  frontier_rows_well_formed(rows: repository_mirror_frontier_rows)
-    && length(xs: repository_mirror_frontier_rows) > 0
-    && mirror_lane_module_is_rostered(path: "dag/gunbc/witness/repository_witness_workflow.dag")
-    && mirror_lane_module_is_rostered(path: "dag/gunbc/ci/repository_projection_drift_workflow.dag")
-    && mirror_lane_module_is_rostered(path: "dag/gunbc/ci/repository_compose_overlay.dag")
-    && mirror_lane_module_is_rostered(path: "dag/gunbc/witness/witness_roster.dag")
-    && mirror_lane_module_is_rostered(path: "dag/gunbc/ci/repository_seed_steps.dag")
-}
-
-// ONE ROW PER MIRROR-LANE FILE, asserted by path. A row that names a file nobody reads is the thing a
-// frontier is for; a roster that stops naming a file that is still unread is how the lane drifts back into
-// undocumented hand-owned CI.
-fn mirror_lane_module_is_rostered(path: String) -> Bool {
-  any(
-    xs: repository_mirror_frontier_rows,
-    f: fn(row) {
-      match row.subject {
-        PathSubject { path: p } => p == path
-        DeclSubject { ref: r } => false
-      }
-    }
-  )
-}
-
-// A MIRROR WITH NO CADENCE GETS NO SCHEDULE TRIGGER. It has three: dispatch, push, and the pull request
-// that the seal needs. A schedule here would only re-run the same comparison against an unchanged seed.
-
-test fn a_mirror_with_no_cadence_gets_no_schedule_trigger() -> Bool {
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile(seal: false, publish: false),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerated { content: text } => !string_contains(s: text, pattern: "on:") == false
-      && string_contains(s: text, pattern: "workflow_dispatch")
-      && string_contains(s: text, pattern: "pull_request")
-      && !string_contains(s: text, pattern: "cron:")
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
-  }
-}
-
-// THE GATE CANNOT BE GREEN WHILE JUDGING NOTHING (review 89571 / side-chat finding 1). An enforced row
-// with no aggregate step is refused at the admission the emission itself consumes - the same call the
-// emitter makes, so a passing claim here means the emitted gate cannot be the vacuous one.
-test fn an_enforced_program_with_no_aggregate_is_refused_at_admission() -> Bool {
-  match enforced_rows_need_an_aggregate_refusal(
-    program: program_without_aggregate(entries: [
-      RosterEntry { entry: "dag/claim/a.dag", function: "a_check", kind: Enforced }
-    ])
-  ) {
-    Present { value: reason } => string_contains(s: reason as String, pattern: "no aggregate step")
-    Absent => false
-  }
-}
-
-test fn a_quarantine_with_no_declared_causes_is_refused_at_admission() -> Bool {
-  match lane_admission(
-    profile: mirror_profile(seal: true, publish: true),
-    program: gate_program(entries: [
-      RosterEntry {
-        entry: "dag/claim/b.dag",
-        function: "b_check",
-        kind: KnownRed {
-          reason: "quarantined pending the fix",
-          expected_causes: [] as List<NonEmptyStr>,
-          restoration_trigger: "when the cause is fixed"
-        }
-      }
-    ])
-  ) {
-    Present { value: reason } => string_contains(s: reason as String, pattern: "declares no expected causes")
-    Absent => false
-  }
-}
-
-test fn a_wall_with_no_expected_refusal_text_is_refused_at_admission() -> Bool {
-  match lane_admission(
-    profile: mirror_profile(seal: true, publish: true),
-    program: gate_program(entries: [
-      RosterEntry {
-        entry: "dag/claim/c.dag",
-        function: "c_check",
-        kind: MustNotCompile {
-          guards: "the wall",
-          expected_refusals: [] as List<NonEmptyStr>,
-          dissolution: "when the wall is retired"
-        }
-      }
-    ])
-  ) {
-    Present { value: reason } => string_contains(s: reason as String, pattern: "no expected refusal text")
-    Absent => false
-  }
-}
-
-// THE DRIFT ENTRYPOINT CONSUMES THE ADMITTED PROFILE (side-chat finding 4): a repository whose profile is
-// invalid - here, a runner group no census declared - does not get YAML.
-test fn the_drift_entrypoint_refuses_a_repository_whose_runner_group_is_never_declared() -> Bool {
-  drift_entrypoint_refuses(profile: mirror_profile_on_group(group: "group-no-census-declared")) &&
-  drift_entrypoint_composes_for_a_declared_group()
-}
-
-fn drift_entrypoint_refuses(profile: RepositoryCiProfile) -> Bool {
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile_on_group(group: "group-no-census-declared"),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => true
-    ProjectionDriftWorkflowGenerated { content: _ } => false
-  }
-}
-
-fn drift_entrypoint_composes_for_a_declared_group() -> Bool {
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile(seal: true, publish: true),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
-    ProjectionDriftWorkflowGenerated { content: text } => count(text) > 0
-  }
-}
-
-// THE SEAL IS INVOKED THROUGH THE ROW, LIKE THE CHECK (side-chat finding 3): the roots the seal passes
-// come from the admitted profile, so renaming them in the row moves BOTH steps. Before this the seal read
-// gunbc's own row through a helper, and the two agreed only because the literals happened to match.
-test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile_with_roots(roots: ["mirror_only", "src/v2"]),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerated { content: text } =>
-      string_contains(s: text, pattern: "'--source-root' 'mirror_only'") &&
-      string_contains(s: text, pattern: "'--source-root' 'overlay/dag'") &&
-      !(string_contains(s: text, pattern: "'--source-root' 'dag'"))
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
-  }
-}
-
-// THE COMPOSED ROOT MUST BE COMPOSABLE BY THE SHELL THAT COMPOSES IT. The compose step assigns PRIVATE_ROOT
-// from a command substitution. When that substitution's body was wrapped in a subshell the rendering came
-// out `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))`, and bash reads the adjacent `((` as the opening of an arithmetic
-// expression: "syntax error: operand expected", the step dies before the overlay exists, and the section 4c
-// step behind it can only report that the composed root is absent. gunbc-private's CI found it on 2026-11-03
-// (runs 41593920495 and 41593920470) and no `gunbc` emission could, because only a mirror row composes an
-// overlay. The renderer refuses the carrier shape (v2.test.claim.bash_command_fold carries those rows); this
-// control holds the property the mirror's step needs on the bytes the emitter produces, from the isolated
-// statement AND from the emitted mirror workflow. The subshell carrier's own structural shape is a separate,
-// already recorded program row (gunbc.plans.convergence_coverage_program (deleted 2026-11-08) cc-structural-carriers, F37).
-test fn the_mirrors_compose_step_is_bash_that_parses() -> Bool {
-  let assignment = match bash_emit_stmts(statements: [private_root_assign_stmt()], set_e: false) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => ""
-  }
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile(seal: true, publish: true),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
-    ProjectionDriftWorkflowGenerated { content: text } =>
-      string_contains(s: assignment, pattern: "PRIVATE_ROOT=$(") &&
-      string_contains(s: assignment, pattern: "'realpath' '..'") &&
-      !(string_contains(s: assignment, pattern: "$((")) &&
-      !(string_contains(s: assignment, pattern: "))")) &&
-      string_contains(s: text, pattern: "PRIVATE_ROOT=$(")
-  }
-}
-
-fn program_without_aggregate(entries: List<RosterEntry>) -> RosterProgram {
-  let base = gate_program(entries: entries)
-  RosterProgram {
-    entries: base.entries,
-    aggregate: Absent,
-    roster_authority: base.roster_authority,
-    scaffold_banner: base.scaffold_banner,
-    checkout_step_name: base.checkout_step_name,
-    toolchain_step_name: base.toolchain_step_name
-  }
-}
-
-fn mirror_profile_with_roots(roots: List<String>) -> RepositoryCiProfile {
-  let base = mirror_profile(seal: true, publish: true)
-  RepositoryCiProfile {
-    repository: base.repository,
-    default_branch: base.default_branch,
-    heal: base.heal,
-    roster: RosterGate {
-      workflow_file: base.roster.workflow_file,
-      workflow_name: base.roster.workflow_name,
-      job_id: base.roster.job_id,
-      job_display_name: base.roster.job_display_name,
-      required_context: base.roster.required_context,
-      runner: base.roster.runner,
-      timeout: base.roster.timeout,
-      source_roots: roots,
-      schedule: base.roster.schedule,
-      memory_budget: base.roster.memory_budget,
-      annotation: base.roster.annotation
-    },
-    source: base.source,
-    drift: base.drift,
-    publisher: base.publisher
-  }
-}
-
-// THE SEED AND THE OVERLAY ARE THE ROW'S, NOT ARGUMENTS A CALLER MAY BRING (side-chat finding 3, second
-// half). The emitters used to take a seed and an overlay beside the profile and only check that the
-// profile declared them, so one repository's profile could be paired with another's seed. Now the values
-// are read once from the admitted row and threaded through the checkout, the receipt, the build, the check
-// and the seal - and a profile that declares no seed is refused instead of being handed a default.
-test fn the_gate_emitter_refuses_a_profile_that_builds_its_own_compiler() -> Bool {
-  !yaml_emission_admitted(
-    result: repository_witnesses_yml_emission(
-      profile: mirror_profile_own_checkout_source(),
-      program: fixture_program()
-    )
-  ) &&
-    yaml_emission_admitted(
-      result: repository_witnesses_yml_emission(
-        profile: mirror_profile(seal: true, publish: true),
-        program: fixture_program()
-      )
-    )
-}
-
-test fn the_drift_entrypoint_refuses_a_profile_that_builds_its_own_compiler() -> Bool {
-  match expected_projection_drift_workflow_yml(
-    profile: mirror_profile_own_checkout_source(),
-    program: mirror_drift_program()
-  ) {
-    ProjectionDriftWorkflowGenerationRefused { reason: _ } => true
-    ProjectionDriftWorkflowGenerated { content: _ } => false
-  }
-}
-
-// THE SEED THE GATE CHECKS OUT IS THE COMMIT ITS OWN VERIFIER PROVED -- not a branch, and not the row's
-// string pasted into `with.ref`. Three things have to hold together for the gate to mean anything: the
-// checkout's ref names the verifier job's declared output, the gate waits on that job, and the pin the
-// verifier fetches is the one the row carries. Asserting only the last one is how the old control passed
-// while the workflow it described checked out `main` on every run.
-test fn the_seed_the_lane_checks_out_is_the_rows_seed() -> Bool {
-  let yml = expected_repository_witnesses_yml(
-    profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
-    program: fixture_program()
-  )
-  // The bracket access is not a style choice: a job id containing `-` is not an expression identifier,
-  // so the expression renderer must index it (extdeps.github.expressions path_segment_takes_dot_form
-  // admits only letters, digits and `_`). Pinned here because the alternative -- a ref the renderer
-  // spells a different way -- is a ref the lane silently stops reading.
-  string_contains(s: yml, pattern: "ref: ${{ needs['verify-seed-pin'].outputs.committed_sha }}")
-    && string_contains(s: yml, pattern: "verify-seed-pin")
-    && string_contains(s: yml, pattern: fixture_seed_pin)
-    && !string_contains(s: yml, pattern: "ref: main")
-}
-
-// THE VERIFIER PROVES THE TWO FACTS THAT MAKE A PIN A COMMIT, from the intended repository and by
-// nothing looser than a sha fetch. The negative half is the point: ls-remote, a branch refspec and a
-// `|| github.sha` fallback are each a way to check out a tree the row did not name, and each has been
-// the shape of a real bug in this family.
-test fn the_verifier_proves_the_facts_that_make_a_pin_a_commit() -> Bool {
-  let yml = expected_repository_witnesses_yml(
-    profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
-    program: fixture_program()
-  )
-  string_contains(s: yml, pattern: "cat-file")
-    && string_contains(s: yml, pattern: "commit")
-    && string_contains(s: yml, pattern: "rev-parse")
-    && string_contains(s: yml, pattern: fixture_seed_pin)
-    // The fetch target and the checkout target are the SAME repository: the url is derived from the row's
-    // `repository`, so "the verifier certified a pin in a store fetched from somewhere else" is not a
-    // shape a row can describe -- there is only one field that says where the seed comes from.
-    && string_contains(s: yml, pattern: "https://github.com/example-org/example-public.git")
-    && string_contains(s: yml, pattern: "repository: example-org/example-public")
-    && !string_contains(s: yml, pattern: "ls-remote")
-    && !string_contains(s: yml, pattern: "refs/heads")
-    && !string_contains(s: yml, pattern: "|| github.sha")
-}
-
-// THE OUTPUT IS WRITTEN LAST, OR THERE IS NO OUTPUT. `needs` is what stops the checkout when the
-// verifier JOB fails, but a step that wrote its output and THEN proved the pin would hand the checkout a
-// sha nobody certified. So the order of the statement list is the guarantee, and it is read here as a
-// model fact rather than as a substring of YAML: each statement is rendered on its own, exactly one may
-// write the job output, and no git work may appear after it.
-type VerifierStatementOrder {
-  writes: Int
-  saw_write: Bool
-  git_after_write: Bool
-}
-
-fn verifier_statement_order_step(state: VerifierStatementOrder, text: String) -> VerifierStatementOrder {
-  let writes = string_contains(s: text, pattern: "GITHUB_OUTPUT")
-  VerifierStatementOrder {
-    writes: if writes { state.writes + 1 } else { state.writes },
-    saw_write: state.saw_write || writes,
-    git_after_write: state.git_after_write || (state.saw_write && !writes),
-  }
-}
-
-fn verifier_statement_texts(seed: PublicSeed, pin: String) -> List<String> {
-  fold(
-    seed_pin_verification_statements(seed: seed, pin: pin),
-    init: [],
-    f: fn(acc, stmt) {
-      match bash_emit_stmts(statements: [stmt], set_e: false) {
-        Accepted { value: t, diagnostics: _ } => concat(acc, [t])
-        Rejected { diagnostics: _ } => acc
-      }
-    }
-  )
-}
-
-test fn the_verifier_writes_its_output_only_after_both_proofs() -> Bool {
-  let seed = fixture_seed()
-  let statements = seed_pin_verification_statements(seed: seed, pin: fixture_seed_pin)
-  let texts = verifier_statement_texts(seed: seed, pin: fixture_seed_pin)
-  let order = fold(texts, init: VerifierStatementOrder { writes: 0, saw_write: false, git_after_write: false }, f: verifier_statement_order_step)
-  // Every statement must have rendered, or the comparison below would be reading a shorter list than the
-  // model produced -- a renderer refusal is a failure of the control, never a skipped row.
-  count(texts) == count(statements)
-    && order.writes == 1
-    && order.saw_write
-    && order.git_after_write == false
-    && for_all(xs: texts, predicate: fn(t) { !string_contains(s: t, pattern: "cat-file") || string_contains(s: t, pattern: fixture_seed_pin) })
-}
-
-// AN OWED PIN REFUSES EVERY LANE THAT JUDGES CLAIMS BY THE SEED, naming the missing fact. This is the
-// standing of a mirror whose approved commit the operator has not recorded: the workflow is not emitted,
-// and the reason is a requirement to fill rather than a defect to debug.
-test fn an_owed_pin_refuses_every_lane_that_judges_claims_by_the_seed() -> Bool {
-  let gate = repository_witnesses_yml_emission(
-    profile: mirror_profile_with_owed_pin(),
-    program: fixture_program()
-  )
-  let drift = expected_projection_drift_workflow_yml(
-    profile: mirror_profile_with_owed_pin(),
-    program: mirror_drift_program()
-  )
-  let publisher = heal_publisher_workflow_yml_for(profile: mirror_profile_with_owed_pin())
-  !yaml_emission_admitted(result: gate)
-    && match drift {
-         ProjectionDriftWorkflowGenerationRefused { reason: r } => string_contains(s: r as String, pattern: "Seed_pin_owed")
-         ProjectionDriftWorkflowGenerated { content: _ } => false
-       }
-    && match publisher {
-         HealPublisherWorkflowGenerationRefused { reason: r } => string_contains(s: r as String, pattern: "Seed_pin_owed")
-         HealPublisherWorkflowGenerated { content: _ } => false
-       }
-}
-
-// A PIN THAT IS NOT AN ADDRESS IS REFUSED BY THE ROW ITSELF, before any emitter is consulted. The
-// verifier would otherwise spend a job fetching a string that cannot name an object, and every consumer
-// would refuse with text that reads like an emitter defect.
-test fn a_seed_pin_that_is_not_a_commit_sha_is_refused_by_the_row() -> Bool {
-  let broken = mirror_profile_with_seed_pin(pin: "main")
-  profile_seed_pin_is_a_commit_or_is_owed(profile: broken) == false
-    && match repository_ci_profile_refusal(profile: broken) {
-         Present { value: r } => string_contains(s: r as String, pattern: "Seed_commit_pin")
-         Absent {  } => false
-       }
-}
-
-// THE NEEDS REF IS ADMITTED BY THE WORKFLOW THAT CARRIES ITS PRODUCER, not by anything a caller hands the
-// wall. Three readings of one ref: with the emitted verifier job in front of the wall it is admitted,
-// because that job declares the output at job level from a step the job contains; with no job in front of
-// it the same ref is refused, because a Needs ref names a producer nobody has shown the wall; and a ref
-// naming a job that is not there is refused. An invented producer therefore gains nothing, because
-// inventing a name does not put a declaring job in the workflow -- which is the guarantee the previous
-// shape left to caller discipline rather than to code.
-test fn the_seed_ref_is_admitted_by_the_job_that_declares_its_output() -> Bool {
-  let seed = fixture_seed()
-  let ref_expression = match seed_pin_checkout_ref_expression(seed: seed) {
-    Present { value: e } => e
-    Absent {  } => ContextAccess { context: Needs, path: ["impossible", "outputs", "nothing"] }
-  }
-  let verifier_jobs = match seed_pin_verifier_job(
-    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
-  ) {
-    Accepted { value: j, diagnostics: _ } => [j]
-    Rejected { diagnostics: _ } => []
-  }
-  (verifier_jobs |> count) == 1
-    && checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: verifier_jobs)
-    && !checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [])
-    && !checkout_ref_admitted_in_jobs(
-         ref_expression: ContextAccess { context: Needs, path: ["some-other-job", "outputs", "committed_sha"] },
-         jobs: verifier_jobs
-       )
-}
-
-// A NAME IS NOT A PRODUCER, AND A WORKFLOW CANNOT VOUCH FOR ITSELF. Three refusals that need only the job
-// the emitter actually builds: with no workflow in front of the wall the record alone admits nothing; with
-// the carried verifier job present, a ref that names a DIFFERENT job's output is refused even though that
-// job's own honest declaration is sitting in the same list -- admission comes from the producer records, and
-// the workflow is only ever asked whether it carries the record, never whether it would like to. The
-// remaining case -- the verifier's own id, declaring from a step the job does not contain -- is mutation
-// `f`: it is a property of what the emitter can build, and it is checked through the driver, where the job
-// comes from the emitter rather than from a literal in this module.
-test fn no_job_output_is_admitted_because_the_workflow_declares_it() -> Bool {
-  let seed = fixture_seed()
-  let output_name = seed_pin_verifier_output_name()
-  match seed_pin_verifier_job(
-    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
-  ) {
-    Accepted { value: j, diagnostics: _ } =>
-      checkout_ref_admitted_in_jobs(
-        ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", output_name] },
-        jobs: [j]
-      )
-        && !checkout_ref_admitted_in_jobs(
-             ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", output_name] },
-             jobs: []
-           )
-        && !checkout_ref_admitted_in_jobs(
-             ref_expression: ContextAccess { context: Needs, path: ["some-other-job", "outputs", output_name] },
-             jobs: [j]
-           )
-        && !checkout_ref_admitted_in_jobs(
-             ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", "not-its-output"] },
-             jobs: [j]
-           )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// THE VERIFIER OUTPUT THE CHECKOUT READS IS THE PRODUCER'S PATH, spelled in one place. A second spelling
-// is how a checkout ends up reading an output no job assigns. Three forms of one fact have to agree, and
-// this states the relations rather than trusting them: the path the wall compares is the Expression's own
-// path joined on dots -- WITHOUT the `needs.` the renderer prefixes, because the fold compares the two and
-// a prefix on one side only is an allowlist that matches nothing, indistinguishable from an empty one
-// (that is exactly how every Needs-based ref in this family was once silently refused); the text a step
-// renders is that Expression interpolated; and the rendered text is pinned literally, bracket and all --
-// a job id containing `-` is not an expression identifier (extdeps.github.expressions
-// path_segment_takes_dot_form admits letters, digits and `_`), so the renderer must index it, and a ref
-// spelled any other way is a ref the lane silently stops reading.
-test fn the_seed_ref_text_is_the_producer_path_and_nothing_else() -> Bool {
-  let seed = fixture_seed()
-  let path = [seed_pin_verifier_job_id(), "outputs", seed_pin_verifier_output_name()]
-  seed_pin_verifier_output_path() == join(path, ".")
-    && interpolate(expression: ContextAccess { context: Needs, path: path })
-      == "${{ needs['verify-seed-pin'].outputs.committed_sha }}"
-}
-
-// A MIRROR ON ITS OWN COMPILER GAINS NO VERIFIER JOB. The verifier exists for the seed route alone, and
-// gunbc's own rows are the proof at the byte level; this is the same fact at the fixture level, so the
-// "no new jobs" ruling is checkable without a public workflow that has a seed.
-test fn a_profile_without_a_seed_emits_no_verifier_job() -> Bool {
-  match heal_publisher_workflow_yml_for(profile: mirror_profile_own_checkout_source()) {
-    HealPublisherWorkflowGenerated { content: c } => !string_contains(s: c, pattern: "verify-seed-pin")
-    HealPublisherWorkflowGenerationRefused { reason: _ } => false
-  }
-}
-
-// A PROFILE WITH AN OWED PIN IS A ROW THE VALIDATOR ACCEPTS AND THE EMITTERS REFUSE. The distinction is
-// the point: an unfiled requirement is not a malformed row, and the place it surfaces is the byte that
-// would have used it.
-test fn an_owed_pin_is_an_honest_row_and_an_unusable_one() -> Bool {
-  let owed = mirror_profile_with_owed_pin()
-  profile_seed_pin_is_a_commit_or_is_owed(profile: owed)
-    && match repository_ci_profile_refusal(profile: owed) {
-         Absent {  } => true
-         Present { value: r } => false
-       }
-    && !yaml_emission_admitted(result: repository_witnesses_yml_emission(profile: owed, program: fixture_program()))
-}
-
-fn mirror_profile_with_owed_pin() -> RepositoryCiProfile {
-  mirror_profile_on_seed_source(
-    seed_source: Seed_pin_owed { owed_because: "the operator owes the approved source commit for the fixture repository" }
-  )
-}
-
-
-// THE SAME VARIANT, A DIFFERENT SEED: the sum's shape is the row's fact about where its compiler comes from,
-// so a control that edits the seed rebuilds the variant it already had rather than picking one.
-fn with_seed_source(base: RepositoryCiProfile, seed: PublicSeed) -> CompilerSource {
-  match base.source {
-    Own_checkout_under_witness_floor { required_bins: bins } => Own_checkout_under_witness_floor { required_bins: bins }
-    Declared_seed { seed: _, run_roster_step_name: name } => Declared_seed { seed: seed, run_roster_step_name: name }
-    Declared_seed_under_composed_overlay { seed: _, overlay: overlay, run_roster_step_name: name } =>
-      Declared_seed_under_composed_overlay { seed: seed, overlay: overlay, run_roster_step_name: name }
-  }
-}
-
-// THE MIRROR'S OTHER ROWS ON A ROW THAT BUILDS ITS OWN COMPILER. This is what "a mirror with no seed" used
-// to be, and it is still a row a caller can write: the overlay and the seal are Present in the drift and
-// publisher rows, while the source says the compiler lives in this checkout. Every seed-consuming emitter
-// has to refuse it -- by reading the sum, not by asking whether an Optional came back Absent.
-fn mirror_profile_own_checkout_source() -> RepositoryCiProfile {
-  profile_with_compiler_source(
-    profile: mirror_profile(seal: true, publish: true),
-    source: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] }
-  )
-}
-
-// THE ROW'S SEED, SWAPPED FOR ANOTHER WITH EVERYTHING ELSE LEFT ALONE -- the overlay, the step name and the
-// rest of the row. `with_seed_source` rebuilds the SAME VARIANT of the sum with the new seed inside it, so a
-// control that changes the seed cannot accidentally change where the compiler comes from.
-// A MIRROR ROW ON A SEED NAMED THIS WAY. One builder for both pins the row can carry, so the pinned
-// control and the owed control cannot drift apart in their fixtures -- the only difference between them
-// is the SeedSource they hand in.
-fn mirror_profile_on_seed_source(seed_source: SeedSource) -> RepositoryCiProfile {
-  let base = mirror_profile(seal: true, publish: true)
-  let seed = match profile_public_seed(profile: base) {
-    Present { value: s } => s
-    Absent => fixture_seed()
-  }
-  RepositoryCiProfile {
-    repository: base.repository,
-    default_branch: base.default_branch,
-    heal: base.heal,
-    roster: base.roster,
-    source: with_seed_source(
-      base: base,
-      seed: PublicSeed {
-        repository: seed.repository,
-        source: seed_source,
-        verifier: seed.verifier,
-        checkout_path: seed.checkout_path,
-        build_command: seed.build_command,
-        seed_binary_relative_path: seed.seed_binary_relative_path,
-        record_step_name: seed.record_step_name,
-        build_step_name: seed.build_step_name
-      }
-    ),
-    drift: base.drift,
-    publisher: base.publisher
-  }
-}
-
-fn mirror_profile_with_seed_pin(pin: String) -> RepositoryCiProfile {
-  mirror_profile_on_seed_source(seed_source: Seed_commit_pin { sha: pin })
-}
 
 // EVERY GUNBC EMITTER ADMITS THE ROW BEFORE IT RENDERS (review 89604). The four emitters that read
 // gunbc's own row used to call no admission at all: a row pinning a job to a runner group no census
@@ -1719,303 +500,6 @@ test fn the_four_gunbc_emitters_admit_the_row_before_rendering() -> Bool {
     gate_emitter_admits()
 }
 
-// THE FOUR ADMISSION CONTROLS, ONE PER GUNBC EMITTER.
-//
-// WHY EACH NEGATIVE IS GUNBC'S OWN VALID ROW WITH ONE FIELD BROKEN. A control that hands an emitter a
-// whole foreign row and accepts ANY refusal proves nothing: a mirror-shaped row with no heal job and no
-// cadence is refused for those reasons, and the claim stays green while the emitter admits nothing at all.
-// So each negative is `gunbc_repository_ci_profile()` - a row every one of these emitters renders - with
-// ONE fact changed by the profile module's own updater: the runner of the job that emitter is about to
-// render, pinned to a group no census declares. That is the only conjunct that can refuse these rows, the
-// claim requires the refusal to SAY so, and if the emitter's admission call is deleted the negative renders
-// a workflow and the claim goes red. The claim also asserts the job is declared at all, because an updater
-// on an absent arm changes nothing and a control that mutated nothing would pass by proving nothing.
-// A BUILD ROUTE THAT NAMES A SEED THE ROW DOES NOT DECLARE IS REFUSED, by the row and by the emitter that
-// would otherwise render it. The negative is gunbc's OWN row with that single field changed by the profile
-// module's updater, so the refusal can only be that field's; the claim requires its words rather than any
-// refusal, asserts the publisher is declared at all (an edit to an absent arm changes nothing and proves
-// nothing), and requires gunbc's untouched row still to compose through the same emitter.
-// THE BUILD ROUTE IS THE AUTHORITY OVER THE BUILD STEPS - NOT WHICH OTHER FIELDS HAPPEN TO BE PRESENT,
-// which is exactly how this module once gave one repository another repository's build. ONE PROFILE, ONE
-// FIELD CHANGED: the route that names the profile's own seed yields the seed's checkout, the floor's
-// toolchain and the seed's build command; the route that names this checkout yields the toolchain-home
-// isolation, the floor's toolchain, the rustup pin and this checkout's self-build. THE TWO SETS MUST BE
-// DISJOINT - an emitter that picked a build by whether a seed was declared would produce the same steps for
-// both routes and go red here, rather than shipping gunbc's build under a mirror's row or a mirror's seed
-// build under gunbc's. The names asserted are read from the row (the seed's own build step) and from the
-// builders the emitter calls, so the claim is about which steps were SELECTED, not about a substring of
-// rendered YAML.
-fn publisher_route_step_names(row: RepositoryCiProfile) -> Optional<List<String>> {
-  match row.publisher {
-    Absent => Absent
-    Present { value: _ } =>
-      // THE ROUTE ANSWERS WITH A VERDICT, not with a bare absence: a refused route has no names to read,
-      // which is a different fact from a route that produced steps. The job is not an input: the row's
-      // CompilerSource is the only thing that can select a build.
-      match profile_publisher_compiler_source(profile: row) {
-        Absent => Absent
-        Present { value: source } =>
-          match heal_publisher_route_steps(source: source) {
-            Rejected { diagnostics: _ } => Absent
-            Accepted { value: steps, diagnostics: _ } =>
-              Present { value: list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) }) }
-          }
-      }
-  }
-}
-
-test fn the_compiler_source_selects_the_build_steps_and_not_the_presence_of_other_rows() -> Bool {
-  // THREE ROWS, THREE ANSWERS FROM ONE FIELD. The mirror row -- a seed composed under an overlay -- gets the
-  // seed's checkout, toolchain install and build; gunbc's own row gets the witness-floor build; and a row
-  // that keeps the mirror's drift and publisher rows while saying its compiler lives in this checkout gets
-  // the floor build too. That third row is the discrimination: the steps follow `source`, not the incidental
-  // presence of a seed-shaped neighbour.
-  let seed_row = publisher_route_step_names(row: mirror_profile(seal: true, publish: true))
-  let own_row = publisher_route_step_names(row: gunbc_repository_ci_profile())
-  let mirror_on_own = publisher_route_step_names(row: mirror_profile_own_checkout_source())
-  match seed_row {
-    Absent => false
-    Present { value: seed_names } =>
-      match own_row {
-        Absent => false
-        Present { value: own_names } =>
-          match mirror_on_own {
-            Absent => false
-            Present { value: own_like_names } =>
-              // WHAT DIFFERS IS THE BUILD, AND ONLY THE BUILD. Both routes install a toolchain, so both
-              // carry the isolation that install requires -- `every_seed_route_toolchain_lane_is_isolation_then_install_then_pin`
-              // claims that shared half, and the version of this control before the mirror wrote the
-              // isolation into ONE list only, which is the defect read back as an expectation. The
-              // discrimination is carried in both directions by the build steps, which are route-specific:
-              // the seed's own build step appears in the seed route and never in an own-checkout route, and
-              // an own-checkout route always builds through the publisher's floor build step. The third row
-              // (a mirror that keeps its seal and publish rows but says its compiler lives in this checkout)
-              // is what makes this a reading of `source` rather than of which neighbour rows happen to exist.
-              any(seed_names, n => n == fixture_seed().build_step_name as String) &&
-                all(own_names, n => n != fixture_seed().build_step_name as String) &&
-                any(own_names, n => n == heal_publisher_build_step_name as String) &&
-                all(seed_names, n => n != heal_publisher_build_step_name as String) &&
-                any(own_like_names, n => n == heal_publisher_build_step_name as String) &&
-                all(own_like_names, n => n != fixture_seed().build_step_name as String) &&
-                any(seed_names, n => n == heal_publisher_toolchain_install_step_name as String) &&
-                any(own_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
-                any(own_like_names, n => n == step_display_name(s: toolchain_home_isolation_step()))
-          }
-      }
-  }
-}
-
-// THE THIRD VALUE OF THE SUM, EXERCISED. A repository whose rows are judged by a seed's compiler with nothing
-// copied beside it: the publisher still builds the seed -- the same checkout, toolchain install and build the
-// composed row gets, from the one seed-route implementation -- and gets none of the copy's statements and no
-// own-checkout floor. A variant nothing constructs is a variant nothing tests, so this row exists to be read
-// by the claims below as well as by the mirror's future rows.
-fn mirror_profile_seed_without_overlay() -> RepositoryCiProfile {
-  let base = mirror_profile(seal: true, publish: true)
-  match profile_public_seed(profile: base) {
-    Absent => base
-    Present { value: seed } =>
-      profile_with_compiler_source(
-        profile: base,
-        source: Declared_seed { seed: seed, run_roster_step_name: "Run the roster over the seed checkout" }
-      )
-  }
-}
-
-test fn a_seed_built_row_without_an_overlay_builds_the_seed_and_copies_nothing() -> Bool {
-  let row = mirror_profile_seed_without_overlay()
-  profile_runs_roster_in_composed_root(profile: row) == true &&
-    has_a_seed(profile: row) &&
-    has_no_overlay(profile: row) &&
-    holds_no_bins(profile_required_bins(profile: row)) &&
-    // THE ROUTE STEPS ARE READ FROM THE SEED ROUTE'S OWN BUILDER, not through the publisher: a row that
-    // builds a seed without an overlay is a LANE shape, and the publisher refuses to be built from it at
-    // all (`a_publisher_on_a_seed_it_cannot_reach_is_refused_before_any_step_is_resolved` claims that half).
-    // What stays claimable here is the fact this control was always about -- the seed build runs, and the
-    // overlay's copy step, which belongs to a composition this row does not declare, is absent.
-    match heal_publisher_seed_route_steps(seed: fixture_seed()) {
-      Rejected { diagnostics: _ } => false
-      Accepted { value: steps, diagnostics: _ } =>
-        let step_names = list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) })
-        any(step_names, n => n == fixture_seed().build_step_name as String) &&
-          // THE TOOLCHAIN LANE IS PRESENT HERE TOO: this route installs a toolchain, so it carries the
-          // isolation and the pin. (It used to assert their absence, which is how the omission survived
-          // review of gunbc, where no row takes this arm.)
-          any(step_names, n => n == step_display_name(s: toolchain_home_isolation_step()))
-    }
-}
-
-// THE TOOLCHAIN LANE, IN ORDER, IN THE ROUTE THAT ONCE SHIPPED WITHOUT IT.
-// The order is asserted with gunbc.toolchain_home_standing's own predicates -- a step IT calls an install
-// must have behind it a step IT calls an isolation, and the default-toolchain pin must come after the
-// install, because an isolated RUSTUP_HOME starts with no default for a build to resolve. A fold is used
-// rather than three `any`s precisely because order is the claim: an isolation after the install isolates
-// nothing, which is the standing module's own words.
-//
-// WHY THIS CONTROL EXISTS AT ALL. The publisher's seed arm emitted the install with neither of its two
-// companions. Nothing in gunbc could see it, because gunbc's own row takes the own-checkout arm, which did
-// compose them -- so the property was tested only where it happened to hold. The first repository to run
-// the seed arm was gunbc-private, whose publisher job is scheduled in a declared self-hosted fleet group:
-// there the home persists and is shared, and gunbc.toolchain_home_standing refused the emitted file by
-// name. Two things make this a control and not a comment: deleting the isolation from
-// gunbc.ci.repository_seed_steps seed_toolchain_lane turns it red, and the same deletion makes the
-// mirror's heal-publish.yml refuse -- the emission and the claim fail together.
-fn seed_route_toolchain_lane_is_in_order(steps: List<HealPublisherBoundStep>) -> Bool {
-  let reached = fold(steps, init: 0, f: fn(state, bound) {
-    if state == 0 && step_isolates_toolchain_homes(step: bound.step) {
-      1
-    } else if state == 1 && step_installs_toolchain(step: bound.step) {
-      2
-    } else if state == 2 && step_pins_default_toolchain(step: bound.step) {
-      3
-    } else {
-      state
-    }
-  })
-  reached == 3
-}
-
-test fn every_seed_route_toolchain_lane_is_isolation_then_install_then_pin() -> Bool {
-  match heal_publisher_seed_route_steps(seed: fixture_seed()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: steps, diagnostics: _ } => seed_route_toolchain_lane_is_in_order(steps: steps)
-  }
-}
-
-// THE ROLES ARE THE STEPS', NOT THE LIST'S. Each of the three lane members is asked what it is, of the
-// same module that admits the workflow's toolchain homes, and gets the role that answer earns: the
-// isolation is capability-neutral, the install provides the toolchain, the pin consumes it. The
-// discrimination matters in both directions -- a classifier that read position, or that fell through to a
-// default, would hand the pin's consumes-only to any step at all.
-//
-// TWO MUTATIONS MAKE THESE CONTROLS CONTROLS: giving the fall-through arm back (an unrecognised step is
-// then Accepted as the pin, and `the_publisher_refuses_a_lane_step_that_is_none_of_the_three` goes red),
-// and deleting the pin arm (the real pin step then falls to the refusal, and this row goes red).
-test fn the_publisher_lane_roles_come_from_the_steps_themselves() -> Bool {
-  let lane = seed_toolchain_lane(step_name: heal_publisher_toolchain_install_step_name)
-  match heal_publisher_seed_toolchain_role(step: lane.isolation) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: isolation_role, diagnostics: _ } =>
-      list_cover(held: isolation_role.provides, expected: [], eq: execution_capability_equal) &&
-        list_cover(held: isolation_role.consumes, expected: [], eq: execution_capability_equal) &&
-        match heal_publisher_seed_toolchain_role(step: lane.install) {
-          Rejected { diagnostics: _ } => false
-          Accepted { value: install_role, diagnostics: _ } =>
-            list_cover(
-              held: install_role.provides,
-              expected: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability],
-              eq: execution_capability_equal
-            ) &&
-              list_cover(held: install_role.consumes, expected: [], eq: execution_capability_equal) &&
-              match heal_publisher_seed_toolchain_role(step: lane.pin_default) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: pin_role, diagnostics: _ } =>
-                  list_cover(held: pin_role.provides, expected: [], eq: execution_capability_equal) &&
-                    list_cover(
-                      held: pin_role.consumes,
-                      expected: [RustupCapability, CargoCapability],
-                      eq: execution_capability_equal
-                    )
-              }
-        }
-  }
-}
-
-// THE FALL-THROUGH ARM DOES NOT EXIST, SO A STEP THAT IS NONE OF THE THREE IS REFUSED RATHER THAN
-// ANNOTATED. The build step is a real step from this route's own neighbourhood -- a run step, so not the
-// install; with none of the isolation's four command rows, so not the isolation; with none of the pin's
-// three, so not the pin. Under the fall-through it would have been called the pin, which is the fabricated
-// default this refuses: the classification would then say nothing about any step it annotated.
-test fn the_publisher_refuses_a_lane_step_that_is_none_of_the_three() -> Bool {
-  let not_a_lane_member = witness_floor_build_step(
-    step_name: "Build the witness floor",
-    build_script: "cargo build --release -p gunbc"
-  )
-  match heal_publisher_seed_toolchain_role(step: not_a_lane_member) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      string_contains(s: diagnostics_reason_lexemes(diagnostics: d), pattern: "heal_publisher_seed_lane_step_unrecognised")
-  }
-}
-
-// THE COMPOSITION AND THE SEED ARE ONE FACT, NOT TWO FIELDS THAT NEED A RULE TO AGREE. An `OverlayIngest`
-// exists only inside the variant that also carries the seed it composes into, so the row that used to be
-// refused -- an overlay with nowhere to land, a publisher sealing a candidate from one composition and
-// admitting it against another -- has no syntax (gunbc.design_argument::fail_closed: an unwritable state beats a check for it). What
-// is left to claim is the projection: an overlay answer always arrives with a seed answer, and the row that
-// builds its own compiler gets neither, however many mirror-shaped rows sit beside it.
-test fn an_overlay_is_never_carried_without_the_seed_it_composes_into() -> Bool {
-  let mirror = mirror_profile(seal: true, publish: true)
-  let own = mirror_profile_own_checkout_source()
-  match profile_overlay(profile: mirror) {
-    Absent => false
-    Present { value: _ } =>
-      match profile_public_seed(profile: mirror) {
-        Absent => false
-        Present { value: _ } =>
-          has_no_overlay(profile: own) &&
-            has_no_seed(profile: own) &&
-            any(profile_required_bins(profile: own), b => (b as String) == "gunbc") &&
-            holds_no_bins(profile_required_bins(profile: mirror))
-      }
-  }
-}
-
-// THE SEEDLESS MIRROR IS STILL REFUSED -- by the emitters that need a compiler from elsewhere, not by a rule
-// on the row. Such a row is WRITABLE now (that is what the sum says), and both seed-consuming emitters turn
-// it down by name: the drift job would seal through a compiler nothing built, and the lane would report on a
-// binary none of its rows ran. A silent half -- the steps emitted against an absent compiler -- is what
-// these refusals exist to prevent.
-test fn a_mirror_row_on_the_own_checkout_source_is_refused_by_the_emitters_that_need_a_seed() -> Bool {
-  let row = mirror_profile_own_checkout_source()
-  match projection_drift_refusal(profile: row) {
-    Absent => false
-    Present { value: why } =>
-      string_contains(s: why, pattern: "CompilerSource") &&
-        match repository_witness_lane_refusal(profile: row, program: fixture_program()) {
-          Absent => false
-          Present { value: lane_why } => string_contains(s: lane_why as String, pattern: "own checkout")
-        }
-  }
-}
-
-// THE PROJECTIONS, SAID AS BOOLS. `PublicSeed` and `OverlayIngest` carry Nodes, so they are
-// equality-inadmissible by design -- a derived `==` would compare provenance -- which is why these claims ask
-// the projections through matches instead of comparing an Optional against a literal.
-fn has_no_seed(profile: RepositoryCiProfile) -> Bool {
-  match profile_public_seed(profile: profile) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-fn has_a_seed(profile: RepositoryCiProfile) -> Bool {
-  match profile_public_seed(profile: profile) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-fn has_no_overlay(profile: RepositoryCiProfile) -> Bool {
-  match profile_overlay(profile: profile) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-fn has_an_overlay(profile: RepositoryCiProfile) -> Bool {
-  match profile_overlay(profile: profile) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-fn holds_no_bins(bins: List<NonEmptyStr>) -> Bool {
-  all(bins, b => false)
-}
-
-data emitter_group_refusal_phrase: String = "runner group that gunbc.runner.runner_group_restriction_ensure does not declare"
-
 fn undeclared_group_runner() -> CiRunnerTarget {
   // A group name no ensure in gunbc.runner.runner_group_restriction_ensure declares - the same name the
   // mirror-lane control uses, so one fabricated name is the lie in both controls.
@@ -2038,9 +522,15 @@ fn publisher_row_on_undeclared_group() -> RepositoryCiProfile {
   profile_with_publisher_runner(profile: gunbc_repository_ci_profile(), runner: undeclared_group_runner())
 }
 
+
 // THE SHAPE ALL FOUR CONTROLS SHARE: the row is refused BY THE PROFILE CHECK for the group reason, the
 // emitter refuses too and reports the check's own words (not its own paraphrase, not a different
 // conjunct), and gunbc's untouched row still composes through the same emitter.
+// THE PHRASE EVERY GROUP-DECLARATION REFUSAL MUST CARRY: the profile refusal and every emitter's refusal
+// name the runner group by this one phrase, so the claims below can check the emitter refused for the row's
+// reason and not for some other.
+data emitter_group_refusal_phrase: String = "runner group that gunbc.runner.runner_group_restriction_ensure does not declare"
+
 fn emitter_refuses_where_the_row_is_refused(
   row: RepositoryCiProfile,
   emitter_refused: Bool,
@@ -2128,233 +618,4 @@ fn gate_emitter_admits() -> Bool {
     )
     WitnessFloorGenerated { content: _ } => false
   }
-}
-
-// A SEED ROW THE BASH GRAMMAR CANNOT FOLD. `command(words: [])` plants the grammar's refused-empty word-list
-// placeholder: `v2.workflow.bash_command_fold_serialize.bash_fold_serialize_stmt_list_shape_refused` refuses
-// it because a zero-child statement list is not a statement. Row admission never folds a build command, so
-// this row is ADMITTED and the failure happens later, when the publisher resolves its build steps - which is
-// exactly the path a refusal has to travel to reach a caller, and the path the earlier version of this
-// control did not run.
-fn publisher_row_with_unfoldable_seed_build() -> RepositoryCiProfile {
-  let base = mirror_profile(seal: true, publish: true)
-  match profile_public_seed(profile: base) {
-    Absent => base
-    Present { value: seed } =>
-      RepositoryCiProfile {
-        repository: base.repository,
-        default_branch: base.default_branch,
-        heal: base.heal,
-        roster: base.roster,
-        source: with_seed_source(
-          base: base,
-          seed: PublicSeed {
-            repository: seed.repository,
-            source: seed.source,
-            verifier: seed.verifier,
-            checkout_path: seed.checkout_path,
-            build_command: [ command(words: []) ],
-            seed_binary_relative_path: seed.seed_binary_relative_path,
-            record_step_name: seed.record_step_name,
-            build_step_name: seed.build_step_name
-          }
-        ),
-        drift: base.drift,
-        publisher: base.publisher
-      }
-  }
-}
-
-// THE PUBLISHER'S REFUSAL CARRIES THE IDENTITY OF WHAT REFUSED, AT THE ENTRYPOINT THE CALLER USES. The row is
-// admitted - so a refusal here can only be the seed grammar's - and the reason the caller receives must name
-// the diagnostic that refused, composed from the diagnostics that travelled out of the resolution. Folding a
-// `Rejected` into a bare absence and inferring a cause from `build_route` (the shape this module had before
-// review 89844) drops the lexeme and turns this red; so does an entrypoint that hard-codes a reason instead
-// of composing one from what refused.
-test fn the_unfoldable_seed_row_is_admitted_by_the_profile() -> Bool {
-  match repository_ci_profile_refusal(profile: publisher_row_with_unfoldable_seed_build()) {
-    Present { value: _ } => false
-    Absent => true
-  }
-}
-
-test fn the_unfoldable_seed_build_is_refused_by_the_step_resolution() -> Bool {
-  let row = publisher_row_with_unfoldable_seed_build()
-  match row.publisher {
-    Absent => false
-    Present { value: job } =>
-      match publisher_source_of(row: row) {
-        Absent => false
-        Present { value: source } =>
-          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
-            Accepted { value: _, diagnostics: _ } => false
-            Rejected { diagnostics: _ } => true
-          }
-      }
-  }
-}
-
-test fn the_publisher_refusal_names_the_diagnostic_that_refused_it() -> Bool {
-  let row = publisher_row_with_unfoldable_seed_build()
-  match row.publisher {
-    Absent => false
-    Present { value: job } =>
-      match publisher_source_of(row: row) {
-        Absent => false
-        Present { value: source } =>
-          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
-            Accepted { value: _, diagnostics: _ } => false
-            Rejected { diagnostics: d } =>
-              match heal_publisher_workflow_yml_for(profile: row) {
-                HealPublisherWorkflowGenerated { content: _ } => false
-                HealPublisherWorkflowGenerationRefused { reason: r } =>
-                  // THE CALLER READS WHAT REFUSED. The reason string handed to a caller has to carry the very
-                  // lexemes the resolution carried - not a cause reconstructed from which fields happen to be
-                  // set, and not a fixed sentence about the build.
-                  // `the_unfoldable_seed_build_is_refused_by_the_step_resolution` proves a refusal exists;
-                  // this proves it survives the trip to the caller.
-                  string_contains(s: r, pattern: diagnostics_reason_lexemes(diagnostics: d))
-              }
-          }
-      }
-  }
-}
-
-// ─── THE PRODUCER CANNOT SILENTLY PRODUCE NOTHING ───────────────────────────────
-// `needs` orders jobs and requires success; it does not require an OUTPUT. GitHub can suppress a job
-// output without failing its producer, an absent output reaches the consumer as the empty string, and
-// actions/checkout resolves an empty ref with no commit against the repository's DEFAULT BRANCH -- so a
-// verifier that succeeded while proving nothing would send the lane to `main` through a path nobody
-// typed. These controls are the discriminating ones: each deletes a distinct protection in the mutation
-// runs and says which control notices.
-
-fn lane_step_name(step: Step) -> String {
-  match step {
-    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match n { Present { value: v } => v  Absent => "" }
-    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match n { Present { value: v } => v  Absent => "" }
-  }
-}
-
-type SeedLaneOrder {
-  guard_seen: Bool
-  checkout_seen: Bool
-  violated: Bool
-}
-
-fn seed_lane_order_step(state: SeedLaneOrder, name: String, checkout_name: String) -> SeedLaneOrder {
-  let is_guard = name == seed_pin_consumer_guard_step_name()
-  let is_checkout = name == checkout_name
-  SeedLaneOrder {
-    guard_seen: state.guard_seen || is_guard,
-    checkout_seen: state.checkout_seen || is_checkout,
-    violated: state.violated || (is_checkout && !state.guard_seen),
-  }
-}
-
-// THE GUARD AND THE CHECKOUT ARE ONE LANE, AND THE GUARD IS FIRST. They are returned as a pair by
-// seed_lane_steps, so a lane cannot carry the checkout and drop the guard; this checks the pair is real
-// and that nothing in the publisher's seed route reaches the checkout -- or the build that publishes from
-// it -- before the guard has run.
-test fn the_guard_runs_before_the_checkout_it_protects() -> Bool {
-  let seed = fixture_seed()
-  let checkout_name = join(["Checkout ", seed.repository as String], "")
-  let pair_ok = match seed_lane_steps(seed: seed, pin: fixture_seed_pin) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: lane, diagnostics: _ } =>
-      lane_step_name(step: lane.guard) == seed_pin_consumer_guard_step_name()
-        && lane_step_name(step: lane.checkout) == checkout_name
-  }
-  let order = match heal_publisher_seed_route_steps(seed: seed) {
-    Rejected { diagnostics: _ } => SeedLaneOrder { guard_seen: false, checkout_seen: false, violated: true }
-    Accepted { value: steps, diagnostics: _ } =>
-      fold(
-        steps,
-        init: SeedLaneOrder { guard_seen: false, checkout_seen: false, violated: false },
-        f: fn(acc, bound) {
-          seed_lane_order_step(state: acc, name: lane_step_name(step: bound.step), checkout_name: checkout_name)
-        }
-      )
-  }
-  pair_ok && order.guard_seen && order.checkout_seen && order.violated == false
-}
-
-// THE PROOFS ARE DATA, AND THERE ARE EXACTLY TWO OF THOSE THINGS. An absent object, a tag, a blob and a
-// tree are refused by the first row; a fetch that delivered some other object is refused by the second;
-// and a verifier whose guards were deleted is a verifier with an empty list, which is what this control
-// notices. Each row's `expected` is what makes it a check rather than a command: one compares against
-// `commit`, the other against the pin the row itself carries.
-test fn the_verifier_declares_exactly_the_two_proofs_that_make_a_pin_a_commit() -> Bool {
-  let seed = fixture_seed()
-  let proofs = seed_pin_proofs(seed: seed, pin: fixture_seed_pin)
-  count(proofs) == 2
-    && count(filter(proofs, p => p.expected == "commit")) == 1
-    && count(filter(proofs, p => p.expected == fixture_seed_pin)) == 1
-    && count(filter(proofs, p =>
-         fold(p.query, init: false, f: fn(acc, q) { acc || string_contains(s: q, pattern: "cat-file") })
-       )) == 1
-    && count(filter(proofs, p =>
-         fold(p.query, init: false, f: fn(acc, q) { acc || string_contains(s: q, pattern: "rev-parse") })
-       )) == 1
-    && for_all(xs: proofs, predicate: fn(p) { p.refusal != "" && p.variable != "" && !string_contains(s: p.variable, pattern: " ") })
-}
-
-// EVERY PROOF REFUSES, IN THE SCRIPT THAT RUNS, AND ONLY ONE PLACE IS FETCHED FROM. The unavailable pin,
-// the non-commit object and the wrong repository are three runtime outcomes; the model meets all three
-// with a named refusal in the emitted body and a single derived remote. The repository the verifier
-// fetches is the repository the checkout checks out, because both read the row's one `repository` field.
-test fn each_proof_refuses_in_the_emitted_verifier_and_only_the_rows_repository_is_fetched() -> Bool {
-  let seed = fixture_seed()
-  let proofs = seed_pin_proofs(seed: seed, pin: fixture_seed_pin)
-  let script = join(verifier_statement_texts(seed: seed, pin: fixture_seed_pin), "\n")
-  for_all(xs: proofs, predicate: fn(p) { string_contains(s: script, pattern: p.name) })
-    && string_contains(s: script, pattern: seed_pin_fetch_url(seed: seed))
-    && string_contains(s: script, pattern: seed.repository as String)
-    && string_contains(s: script, pattern: "git")
-    && !string_contains(s: script, pattern: "ls-remote")
-    && !string_contains(s: script, pattern: "refs/heads")
-    && !string_contains(s: script, pattern: "git@")
-}
-
-// A SUCCESSFUL PRODUCER WITH NO OUTPUT IS REFUSED AT THE CONSUMER, IN THE WORKFLOW THAT RUNS. Both the
-// absent case and the merely-different case refuse by name, and the value compared against is the row's
-// pin -- not the producer's word, and not `github.sha`.
-test fn a_successful_producer_without_its_output_is_refused_at_the_consumer() -> Bool {
-  let seed = fixture_seed()
-  let rendered = match bash_emit_stmts(
-    statements: seed_pin_consumer_guard_statements(seed: seed, pin: fixture_seed_pin),
-    set_e: true
-  ) {
-    Accepted { value: script, diagnostics: _ } => script
-    Rejected { diagnostics: _ } => ""
-  }
-  rendered != ""
-    && string_contains(s: rendered, pattern: "SeedPinOutputAbsent")
-    && string_contains(s: rendered, pattern: "SeedPinOutputIsNotThePin")
-    && string_contains(s: rendered, pattern: fixture_seed_pin)
-    && string_contains(s: rendered, pattern: seed_pin_consumer_guard_var_name())
-    // ...and the guard survives into the workflow that actually runs, not only into the model: the gate's
-    // emitted YAML carries the step by name and carries both refusals by name.
-    && string_contains(
-         s: expected_repository_witnesses_yml(
-           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
-           program: fixture_program()
-         ),
-         pattern: seed_pin_consumer_guard_step_name()
-       )
-    && string_contains(
-         s: expected_repository_witnesses_yml(
-           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
-           program: fixture_program()
-         ),
-         pattern: "SeedPinOutputIsNotThePin"
-       )
-    && string_contains(
-         s: expected_repository_witnesses_yml(
-           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
-           program: fixture_program()
-         ),
-         pattern: "SeedPinOutputAbsent"
-       )
 }

@@ -361,7 +361,7 @@ fn population_parse_accepted(tally: PopulationParse, key: String, source_digest:
         accepted_receipts: match tally.compiler {
           Absent => tally.accepted_receipts
           Present { value: compiler } => Cons {
-            head: parse_verdict_stored_accepted_line(source_digest: source_digest, compiler: compiler),
+            head: parse_verdict_stored_accepted_line(module_path: key, source_digest: source_digest, compiler: compiler),
             tail: tally.accepted_receipts
           }
         },
@@ -381,7 +381,7 @@ fn population_parse_standing(tally: PopulationParse, key: String, source_digest:
       match tally.compiler {
         Absent => Absent
         Present { value: i_head } =>
-          match parse_verdict_standing(i_head: i_head, i_base: base.i_base, receipt_lines: base.receipt_lines, source_digest: source_digest) {
+          match parse_verdict_standing(i_head: i_head, i_base: base.i_base, receipt_lines: base.receipt_lines, module_path: key, source_digest: source_digest) {
             Reused =>
               match roster_cause(roster: tally.roster, key: key) {
                 Present { value: _ } => Present { value: MissDeclaredRefused }
