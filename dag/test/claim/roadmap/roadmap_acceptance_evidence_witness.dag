@@ -275,7 +275,7 @@ test fn a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_first_a
     let e3 = match other {
       CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => claim(join([
         "a DIFFERENT retirement of a retired node refuses, located at '", step, "' ('", reason, "')", ""], ""),
-        count(step) > 0 && count(reason) > 0)
+        (step as String) != "" && (reason as String) != "")
       CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("a second retirement of a retired node was admitted", false)
       CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => claim("a second retirement answered an operation that never recorded it", false)
     }
