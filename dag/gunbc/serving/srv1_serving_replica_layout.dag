@@ -6,6 +6,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_brace_group_from_stmts, bash_build_with_redir_stdout_append_file,
   bash_build_with_redir_stdout_to_stderr, bash_build_with_redir_from_file,
   bash_build_word_bare, bash_build_word_var_bare, bash_build_word_concat_from_nodes,
+  bash_build_assign,
   bash_build_word_double_quoted, bash_build_word_cmdsubst,
   bash_build_word_positional_all, bash_build_word_array_expansion, bash_build_word_kinded
 }
@@ -1213,21 +1214,28 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
       srv1_bash_bare(text: "--format=csv,noheader")
     ])
   )
-  let start_message = concat(
-    concat(concat(concat("START srv1 gpu", to_string(replica.index)), " "), srv1_replica_gpu_uuid_text(replica: replica)),
-    concat(concat(concat(" (driver ", ""), ""), "")
+  // The stamp every event line opens with. The installed artifact writes UTC from
+  // `date -u +%FT%TZ`; the format string is the one in those bytes and in
+  // bash_emit_constructs.dag's `ev_echo_argument_golden`, and it is a bare word because
+  // none of its characters are shell meta-characters.
+  let event_stamp = bash_build_word_cmdsubst(
+    body: bash_build_command_from_word_nodes(words: [
+      srv1_bash_bare(text: "date"),
+      srv1_bash_bare(text: "-u"),
+      srv1_bash_bare(text: "+%FT%TZ")
+    ])
   )
   let logger = srv1_bash_unwrap(
-    b: bash_build_function_def(
+    built: bash_build_function_def(
       name: "ev",
       body: [
         bash_build_with_redir_stdout_append_file(
           inner: bash_build_command_from_word_nodes(words: [
             srv1_bash_bare(text: "echo"),
             srv1_bash_quoted(parts: [
-              driver_probe,
+              event_stamp,
               bash_build_word_lit(text: " "),
-              srv1_bash_unwrap(b: bash_build_word_positional_all(which: "*"))
+              srv1_bash_unwrap(built: bash_build_word_positional_all(which: "*"))
             ])
           ]),
           path: srv1_bash_d_suffix(suffix: "events.log")
@@ -1236,7 +1244,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
     )
   )
   let setup = srv1_bash_unwrap(
-    b: bash_build_seq_from_stmts(stmts: [
+    built: bash_build_seq_from_stmts(stmts: [
       bash_build_assign(name: "D", value: srv1_bash_bare(text: config.tls_material.container_dir as String)),
       logger
     ])
@@ -1311,7 +1319,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
     inner: bash_build_with_redir_stdout_append_file(
       inner: bash_build_command_from_word_nodes(words: [
         srv1_bash_bare(text: "exec"),
-        srv1_bash_unwrap(b: bash_build_word_array_expansion(name: "ENGINE_ARGS"))
+        srv1_bash_unwrap(built: bash_build_word_array_expansion(name: "ENGINE_ARGS"))
       ]),
       path: srv1_bash_d_suffix(suffix: "serve.log")
     )
