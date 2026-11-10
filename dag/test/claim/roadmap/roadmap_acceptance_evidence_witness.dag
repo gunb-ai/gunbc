@@ -355,49 +355,91 @@ test fn a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_
   })
 }
 
+// THE MIGRATION VERIFIER, facet by facet. Each check is its own named claim, because a single Bool over
+// seven assertions says only that something is wrong; the refusal the runbook prints has to say WHICH.
+// The verifier compares COMPLETE canonical facts (roadmap_acceptance_receipt_members), counts them as a
+// multiset, checks closedness in both directions against the manifest's own replay, and reads the retired
+// roster. `node_verified` is the node every scenario here accepts; `manifest_replay_closed` is the
+// closedness the manifest's live receipts already imply for it.
 
-// DISCRIMINATING (finding 1): THE VERIFIER PRESERVES THE EXPORTED FACTS, NOT THEIR NAMES. Every
-// refusal of the migration gate is witnessed directly, over constructed lists, with the exact number of
-// problems it must report and the text that must name the fact:
-//   AGREEMENT reports nothing; SWAPPED EVIDENCE reports two problems (the manifest's fact is missing and
-//   the log holds a fact the manifest never named) even though the standing folds the same; A FACT HELD
-//   TWICE in the manifest against once in the log reports its counts (`any` membership cannot see that);
-//   A CLOSED NODE THE MANIFEST NEVER ACCEPTED refuses as loudly as a lost one; A MANIFEST THAT DOES NOT
-//   REPLAY refuses instead of becoming an empty expectation; and a RETIRED node the log does not hold
-//   refuses. Each case differs from a passing one in exactly one thing.
-test fn a_migrated_event_with_swapped_evidence_disagrees_with_the_manifest() -> Bool {
-  let accepted = [AcceptanceRecorded { receipt: sample_receipt("node-multiset") }] as List<RoadmapAcceptanceEvent>
-  let swapped = [AcceptanceRecorded { receipt: sample_receipt_other_executed_day("node-multiset") }] as List<RoadmapAcceptanceEvent>
-  let revoked = [AcceptanceRevoked {
+fn verifier_events_accepted() -> List<RoadmapAcceptanceEvent> {
+  [AcceptanceRecorded { receipt: sample_receipt("node-multiset") }] as List<RoadmapAcceptanceEvent>
+}
+
+fn verifier_events_swapped() -> List<RoadmapAcceptanceEvent> {
+  [AcceptanceRecorded { receipt: sample_receipt_other_executed_day("node-multiset") }] as List<RoadmapAcceptanceEvent>
+}
+
+fn verifier_events_revoked_alone() -> List<RoadmapAcceptanceEvent> {
+  [AcceptanceRevoked {
     exact_prior_receipt: sample_receipt("node-multiset"),
     disposition: AcceptanceNodeRemainsSuperseded,
     reason: "the floor cut retired this work's subject" as NonEmptyStr,
     revoked_by: "briansrls" as NonEmptyStr,
     revoked_on: "2026-09-13" as NonEmptyStr,
   }] as List<RoadmapAcceptanceEvent>
-  let node = "node-multiset"
-  let agrees = roadmap_acceptance_migration_problems(wanted: accepted, held: accepted, closed_nodes: [node], not_retired: [] as List<String>)
-  let evidence_swapped = roadmap_acceptance_migration_problems(wanted: accepted, held: swapped, closed_nodes: [node], not_retired: [] as List<String>)
-  let held_once = roadmap_acceptance_migration_problems(wanted: concat(accepted, accepted), held: accepted, closed_nodes: [node], not_retired: [] as List<String>)
-  let lost = roadmap_acceptance_migration_problems(wanted: accepted, held: [] as List<RoadmapAcceptanceEvent>, closed_nodes: [] as List<String>, not_retired: [] as List<String>)
-  let invented_closed = roadmap_acceptance_migration_problems(wanted: accepted, held: accepted, closed_nodes: [node, "node-the-manifest-never-accepted"], not_retired: [] as List<String>)
-  let unorderable = roadmap_acceptance_migration_problems(wanted: revoked, held: revoked, closed_nodes: [] as List<String>, not_retired: [] as List<String>)
-  let roster_gap = roadmap_acceptance_migration_problems(wanted: accepted, held: accepted, closed_nodes: [node], not_retired: ["node-never-retired"])
-  let c1 = claim("agreement between the manifest and the log reports no problem at all", count(agrees) == 0)
-  let c2 = claim("swapped evidence refuses on both sides of the difference", count(evidence_swapped) == 2
-    && any(evidence_swapped, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
-    && any(evidence_swapped, pr => string_contains(s: pr, pattern: "expected 0, the log holds 1")))
-  let c3 = claim("a fact the manifest names twice against one copy in the log reports its counts",
-    count(held_once) >= 1 && any(held_once, pr => string_contains(s: pr, pattern: "expected 2, the log holds 1")))
-  let c4 = claim("an acceptance the log lost refuses as a missing fact and an unmet closedness",
-    count(lost) == 2 && any(lost, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
-    && any(lost, pr => string_contains(s: pr, pattern: "node-multiset"))
-    && any(lost, pr => string_contains(s: pr, pattern: "the log does not say so")))
-  let c5 = claim("a node the log calls closed that the manifest never accepted refuses",
-    count(invented_closed) == 1 && any(invented_closed, pr => string_contains(s: pr, pattern: "node-the-manifest-never-accepted")))
-  let c6 = claim("a manifest that does not replay REFUSES rather than certifying an empty expectation",
-    count(unorderable) == 1 && any(unorderable, pr => string_contains(s: pr, pattern: "does not replay")))
-  let c7 = claim("a node the runbook claims retired that the log does not hold retired refuses",
-    count(roster_gap) == 1 && any(roster_gap, pr => string_contains(s: pr, pattern: "node-never-retired")))
-  c1 && c2 && c3 && c4 && c5 && c6 && c7
+}
+
+fn verifier_closed() -> List<String> { ["node-multiset"] }
+fn verifier_nothing() -> List<String> { [] }
+
+test fn a_migration_verifier_agrees_when_the_log_holds_what_the_manifest_names() -> Bool {
+  claim("agreement between the manifest and the log reports no problem at all",
+    count(roadmap_acceptance_migration_problems(
+      wanted: verifier_events_accepted(), held: verifier_events_accepted(),
+      closed_nodes: verifier_closed(), not_retired: verifier_nothing())) == 0)
+}
+
+test fn a_migration_verifier_refuses_swapped_evidence_on_both_sides_of_the_difference() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_events_swapped(),
+    closed_nodes: verifier_closed(), not_retired: verifier_nothing())
+  claim("swapped evidence refuses on both sides of the difference", count(problems) == 2
+    && any(problems, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
+    && any(problems, pr => string_contains(s: pr, pattern: "expected 0, the log holds 1")))
+}
+
+test fn a_migration_verifier_counts_a_fact_the_manifest_names_twice_against_one_copy() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: concat(verifier_events_accepted(), verifier_events_accepted()), held: verifier_events_accepted(),
+    closed_nodes: verifier_closed(), not_retired: verifier_nothing())
+  claim("a fact the manifest names twice against one copy in the log reports its counts",
+    count(problems) >= 1 && any(problems, pr => string_contains(s: pr, pattern: "expected 2, the log holds 1")))
+}
+
+test fn a_migration_verifier_refuses_an_acceptance_the_log_lost_with_its_closedness() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_nothing_events(),
+    closed_nodes: verifier_nothing(), not_retired: verifier_nothing())
+  claim("an acceptance the log lost refuses as a missing fact and an unmet closedness",
+    count(problems) == 2 && any(problems, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
+    && any(problems, pr => string_contains(s: pr, pattern: "node-multiset"))
+    && any(problems, pr => string_contains(s: pr, pattern: "the log does not say so")))
+}
+
+// The empty held-list typed once, so a reader cannot mistake a dropped argument for a typo.
+fn verifier_nothing_events() -> List<RoadmapAcceptanceEvent> { [] as List<RoadmapAcceptanceEvent> }
+
+test fn a_migration_verifier_refuses_a_closed_node_the_manifest_never_accepted() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_events_accepted(),
+    closed_nodes: concat(verifier_closed(), ["node-the-manifest-never-accepted"]), not_retired: verifier_nothing())
+  claim("a node the log calls closed that the manifest never accepted refuses",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-the-manifest-never-accepted")))
+}
+
+test fn a_migration_verifier_refuses_a_manifest_that_does_not_replay() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_revoked_alone(), held: verifier_events_revoked_alone(),
+    closed_nodes: verifier_nothing(), not_retired: verifier_nothing())
+  claim("a manifest that does not replay REFUSES rather than certifying an empty expectation",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "does not replay")))
+}
+
+test fn a_migration_verifier_refuses_a_retired_node_the_log_does_not_hold_retired() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_events_accepted(),
+    closed_nodes: verifier_closed(), not_retired: ["node-never-retired"])
+  claim("a node the runbook claims retired that the log does not hold retired refuses",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-never-retired")))
 }
