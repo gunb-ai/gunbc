@@ -23,6 +23,8 @@ module gunbc.machine_intake.megarac_media_row_reading
 
 import std.algebra { string_contains }
 import std.types { Bool, Int, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 type MegaRacMediaRowReceipt {
   run_id: NonEmptyStr
@@ -250,7 +252,7 @@ type MegaRacUiMediaRowRendering {
   artifact_path: NonEmptyStr
   artifact_sha256: NonEmptyStr
   asset_path: NonEmptyStr
-  asset_octets: Int
+  asset_octets: ByteSize
   // `255==s?"N/A":s` -- the session cell. "N/A" on the page IS the no-session marker on the wire.
   session_rule: NonEmptyStr
   session_rule_octet: Int
@@ -278,7 +280,7 @@ data mtcollins1_ui_media_row_rendering: MegaRacUiMediaRowRendering = MegaRacUiMe
   artifact_path: "artifacts/bmc/mtcollins1-ui-status-asset-observation-run-42592868662/mtcollins1-ui-status-asset-observation.txt" as NonEmptyStr,
   artifact_sha256: "b4b2aa31cc3b06277eafd68a5249e95c0814077e48b70f5e56437c20f867393c" as NonEmptyStr,
   asset_path: "/source.min.js" as NonEmptyStr,
-  asset_octets: 6609861,
+  asset_octets: byte_size(count: 6609861),
   session_rule: "255==s?\"N/A\":s" as NonEmptyStr,
   session_rule_octet: 3180840,
   session_rendered_absent: "N/A" as NonEmptyStr,
@@ -293,6 +295,62 @@ data mtcollins1_ui_media_row_rendering: MegaRacUiMediaRowRendering = MegaRacUiMe
   image_name_rule: "\"\"!=i&&this.$(\".image_name\").html(i)" as NonEmptyStr,
   image_name_rule_octet: 3180247,
   artifact_lines: "25-34 (renderer windows), 176-179 (lmedia block 0)" as NonEmptyStr,
+}
+
+// HOW THE SAME RENDERER DRAWS 100, AND THE CATALOGUE STRING IT DRAWS IT WITH. fleet-converge run 42783677276
+// (srv1) re-read the same asset -- same path, same 6609861 octets, the renderer windows identical to run
+// 42592868662's -- with the reader extended to every member of the lmedia blocks (#16231). Two facts, both
+// octet-addressed in the committed artifact named below:
+//   - the 100 branch: `"100"==r&&(l=!0,...html(a.t("lmedia:status_"+r)))` -- the code's own catalogue
+//     string, and NOT lmedia:halted, which the renderer prefixes to every code other than 0, 1 and 100
+//     (`1!=r&&0!=r&&100!=r&&`). The rule keys on the wire alone; the session cell plays no part in it.
+//   - lmedia:status_100 in the English block (block 0) is " Starting..".
+// STANDING IS A FIELD, NOT THIS COMMENT: `standing` is extdeps.external_authority's CitedFigureStanding, and
+// for this reading it is TranscribedUncited -- the strings are raw occurrences in the asset's first lmedia
+// block, the reader's own Candidate grade (gunbc.machine_intake.mtcollins1_ui_status_asset_observation), and
+// the read obligation names what would bind the label to a row: an operator reading of a live row at 100.
+// Not ObservedByReceipt: that arm's sealed mint is for folds whose reading binds, and a raw occurrence does
+// not. The one consumer, extdeps.bmc.megarac's 0.45 arm for 100 (its ground row
+// megarac_0_45_redirection_100_ground points here), is admissible on that standing only because Connecting
+// can only wait and never admits Started; promoting the standing is an edit to this field, visible as one.
+type MegaRacUiStatusBranchReading {
+  run_id: NonEmptyStr
+  artifact_path: NonEmptyStr
+  artifact_sha256: NonEmptyStr
+  asset_path: NonEmptyStr
+  asset_octets: ByteSize
+  wire: Int
+  branch_rule: NonEmptyStr
+  branch_rule_octet: Int
+  halted_exemption_rule: NonEmptyStr
+  halted_exemption_rule_octet: Int
+  label_key: NonEmptyStr
+  label: NonEmptyStr
+  label_octet: Int
+  label_block: Int
+  artifact_lines: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data mtcollins1_ui_status_100_rendering: MegaRacUiStatusBranchReading = MegaRacUiStatusBranchReading {
+  run_id: "42783677276" as NonEmptyStr,
+  artifact_path: "artifacts/bmc/mtcollins1-ui-status-asset-observation-run-42783677276/mtcollins1-ui-status-asset-observation.txt" as NonEmptyStr,
+  artifact_sha256: "bf6b28acc09ca4015669c43f674b9ab62ccd42cf11f35c3912fd80fef66e54e7" as NonEmptyStr,
+  asset_path: "/source.min.js" as NonEmptyStr,
+  asset_octets: byte_size(count: 6609861),
+  wire: 100,
+  branch_rule: "\"100\"==r&&(l=!0,this.$(\".redirection_status\").html(a.t(\"lmedia:status_\"+r)))" as NonEmptyStr,
+  branch_rule_octet: 3180635,
+  halted_exemption_rule: "1!=r&&0!=r&&100!=r&&" as NonEmptyStr,
+  halted_exemption_rule_octet: 3180332,
+  label_key: "status_100" as NonEmptyStr,
+  label: " Starting.." as NonEmptyStr,
+  label_octet: 5488482,
+  label_block: 0,
+  artifact_lines: "29-36 (renderer windows), 195 (lmedia block 0, status_100)" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "an operator reading of a live redirection_status 100 row on 0.45, binding lmedia:status_100 to what the page drew for that row (the catalogue member is a raw occurrence, claim=raw_member_shaped_occurrence_not_binding)" as NonEmptyStr,
+  },
 }
 
 // THE OPERATOR'S READING OF THE STATUS-0 ROW. On 2026-11-09 the operator opened mtcollins1's Image
