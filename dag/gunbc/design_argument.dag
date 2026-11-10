@@ -863,7 +863,7 @@ data continuous_generalization: DesignRow = design_row(
 data planning_has_one_home: DesignRow = design_row(
   name: "planning_has_one_home",
   title: "Planning has one home",
-  statement: "A plan is a typed fact with one home: its `.dag` carrier in this repository is the only planning authority, every surface that shows a plan renders it rather than keeping a copy, nothing on the build or generation path reads it, and a plan or planning store with no live consumer is deleted rather than kept.",
+  statement: "A plan is a typed fact with one home: its `.dag` carrier in this repository is the only planning authority, every surface that shows a plan must render it rather than keep a copy, no build or generated output may depend on it, and a plan or planning store with no live consumer is deleted rather than kept.",
   premises: ["single_authority", "minimize_redundancy", "consumption", "how_to_work"],
   review: NotReviewableOnChange { reason: "a second planning home is judged by single-authority (a fork of what is planned), a plan nothing reads by consumption, and plan data on a build path by how-to-work (cost spent on every change for no consumer)" },
 )
