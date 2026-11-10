@@ -74,8 +74,7 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //                 reason names and each needs its own diagnosis; neither is assumed to be the other.
 
 import v2.compiler.eval { eval, inputs_root_only }
-import v2.compiler.infer { infer, inferred_facts_resolved_type_optional }
-import v2.lens.structural_resolution { inferred_facts_for_node }
+import v2.compiler.infer { infer, inferred_facts_resolved_type_optional, inferred_facts_witness_for_node }
 import v2.std.witness { Holds, Violates }
 import v2.std.integer { integer_int_type_node }
 import v2.compiler.inferred_tree { InferredTree }
@@ -417,6 +416,11 @@ fn cecf_declared_shape(src: String) -> String {
 }
 
 // The operand node's OWN declared type -- what the acceptance gate compares the stamped type against.
+// The facts come from the checker's own reader (v2.compiler.infer inferred_facts_witness_for_node, the
+// module that writes them), NOT from the structural lens over the same data: at this head that lens does
+// not load on its own (unresolved InferredTree / InferredFacts / DependencyView /
+// ConstructionJustification, 17 closure diagnostics, read at a53d0954, invocation fcb7fb3a), so importing
+// it brings the whole lens's errors into this closure.
 fn cecf_operand_declared_shape(src: String) -> String {
   match cecf_check(src: src) {
     Accepted { value: t, diagnostics: _ } =>
@@ -426,7 +430,7 @@ fn cecf_operand_declared_shape(src: String) -> String {
           match cecf_cast_operand(n: c) {
             Absent => "no_operand"
             Present { value: o } =>
-              match inferred_facts_for_node(tree: t, node: o) {
+              match inferred_facts_witness_for_node(tree: t, node: o) {
                 Violates { diagnostic: _ } => "no_facts"
                 Holds { value: f } =>
                   match inferred_facts_resolved_type_optional(facts: f) {
