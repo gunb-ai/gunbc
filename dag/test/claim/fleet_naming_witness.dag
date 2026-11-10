@@ -118,6 +118,7 @@ import gunbc.fleet.fleet_naming {
   provider_endpoint_text,
 }
 import gunbc.fleet.fleet_endpoint {
+  service_endpoint_https_url,
   AdministerMember,
   ApprovalBroker,
   DeploymentRiskApi,
