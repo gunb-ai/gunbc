@@ -340,9 +340,7 @@ fn floor_resolved_head(policy: DiffPolicy) -> String {
   floor_env_override_or(env_name: "GUNBC_CI_DIFF_HEAD" as NonEmptyStr, default: policy.head)
 }
 
-// THE OPERATOR-OVERRIDE BASELINE'S ENVIRONMENT NAME, declared once: read above, and set by every caller
-// that must name its own base commit (gunbc.heal_workflow's mirror round, which scopes to the pull
-// request's changes since its base; gunbc.plans.read_set_convergence P2).
+// THE OPERATOR-OVERRIDE BASELINE'S ENVIRONMENT NAME, declared once and read above.
 data floor_ci_diff_base_env_name: NonEmptyStr = "GUNBC_CI_DIFF_BASE"
 
 fn floor_diff_mode_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> DiffMode {

@@ -4497,9 +4497,9 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // SCOPED TO WHAT THE PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2): `--regen-affected-scope`
 // adjudicates, writes and digests only the mirrors gunbc.regen_affected_set names for this edit; an edit
 // that reaches no mirror selects none, and an edit under a generation input is the whole population, by
-// the bound's own arms. The edit is the pull request's changes since its base commit, named by the step
-// (gunbc.heal_workflow heal_stage0_round_step). A departed module is named by its layout path, so a
-// deletion scopes like an edit.
+// the bound's own arms. The edit is the exact two-dot difference between the base commit the round
+// bootstraps from (gunbc.heal_workflow heal_stage0_round_step) and HEAD. An added or deleted module, or an
+// edited seed build input (gunbc.seed_build_inputs), is the whole population.
 fn gunbc_ci_stage0_round_invoke() -> String {
   concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2")
 }

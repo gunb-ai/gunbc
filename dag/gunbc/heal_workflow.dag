@@ -32,7 +32,6 @@ import gunbc.toolchain_home_standing {
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
-import v2.workflow.floor_diff_observe { floor_ci_diff_base_env_name }
 import gunbc.ci.repository_ci_profile { HealWorkflowPolicy, RepositoryCiProfile, repository_ci_profile_refusal }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
@@ -207,10 +206,10 @@ fn heal_checkout_step() -> Step {
 //
 // THE ROUND IS SCOPED TO THE MIRRORS THIS PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2):
 // the round runs `--regen-affected-scope` (gunbc.ci.ci_spec gunbc_ci_stage0_round_invoke), and its edit
-// observation is the pull request's changes since that same base commit -- the diff baseline's operator
-// override (v2.workflow.floor_diff_observe floor_ci_diff_base_env_name), set here from the one immutable
-// read, so a pull-request run and a manual dispatch scope against the same commit the seed bootstraps
-// from. Without it a dispatch would resolve the baseline to the head's parent and under-select.
+// observation is the exact two-dot difference between the base commit bound below -- the one the seed
+// bootstraps from -- and HEAD (required_regen_host scoped_round_change_diff). One commit is both the
+// bootstrap and the comparison, for a pull-request run and a manual dispatch alike; a merge-base diff
+// would omit what the base gained after the branch point.
 fn heal_stage0_round_step() -> Step {
   RunStep {
     name: Present { value: "Converge the stage0 mirrors to the seed's own fixed point" },
@@ -219,8 +218,7 @@ fn heal_stage0_round_step() -> Step {
     shell: none,
     env: Present {
       value: [
-        kv(key: heal_round_base_mirror_env as String, value: yaml_string(s: heal_base_sha_read)),
-        kv(key: floor_ci_diff_base_env_name as String, value: yaml_string(s: heal_base_sha_read))
+        kv(key: heal_round_base_mirror_env as String, value: yaml_string(s: heal_base_sha_read))
       ]
     },
     working_directory: none,

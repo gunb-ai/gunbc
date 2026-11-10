@@ -12088,6 +12088,48 @@ fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String>
         })
 }
 
+/// THE CHANGE A SCOPED ROUND OBSERVES (gunbc.plans.read_set_convergence P2). Inside heal the round
+/// bootstraps from one exact base commit (`HEAL_BASE_MIRROR_COMMIT`), so the change it scopes must be the
+/// exact difference between that commit and HEAD -- a two-dot `git diff <base> HEAD`, never the CI
+/// policy's merge-base form. When the base branch has moved on since the pull request diverged, a
+/// merge-base diff omits the base-only changes, and a module the base added (with its committed mirror)
+/// would be invisible to the scope while the round bootstraps from a mirror that carries it. Outside
+/// heal (no base commit bound) the observation is the floor's own diff range, as before. The report
+/// (`--regen-affected-set`) and the round read this one function, so a dry run answers what the round
+/// will scope.
+fn scoped_round_change_diff(workspace: &Path) -> Result<String, String> {
+    let bound = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
+    match bound.as_deref().map(str::trim) {
+        Some(commit) if !commit.is_empty() => exact_base_change_diff(workspace, commit),
+        _ => super::required_floor_runner::floor_git_diff_range(),
+    }
+}
+
+/// `git diff -U0 <base> HEAD`, two-dot, for one well-formed 40-hex base commit.
+fn exact_base_change_diff(workspace: &Path, base: &str) -> Result<String, String> {
+    let base = base.to_string();
+    if base.len() != 40 || !base.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!(
+            "refusal: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base} is not a 40-hex commit id, so the \
+             scoped round cannot name the exact base it diffs against"
+        ));
+    }
+    let output = Command::new("git")
+        .args(["diff", "-U0", "--no-renames", "--no-color", &base, "HEAD"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("refusal: git diff {base} HEAD could not run: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "refusal: git diff {base} HEAD failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout)
+        .map_err(|e| format!("refusal: git diff {base} HEAD is not UTF-8: {e}"))
+}
+
 /// THE BOUND AS A SCOPE, derived from the same edited population `run_regen_affected_set`
 /// reports — one producer of the selection, read by the report and by the round.
 ///
@@ -12105,7 +12147,7 @@ pub fn regen_emission_scope_for_diff(
     // refuses before the diff is read rather than being scoped by an observation blind to it.
     // `v2.workflow.regen_scope_worktree` owns the predicate and the refusal text.
     regen_scope_worktree_admitted(source_roots)?;
-    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
+    let diff_text = scoped_round_change_diff(workspace)?;
     let population = edited_population_from_diff(workspace, &diff_text);
     let bound = affected_set_bound_for(
         workspace,
@@ -12165,7 +12207,7 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
     let workspace = workspace_root();
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
-    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
+    let diff_text = scoped_round_change_diff(&workspace)?;
     let population = edited_population_from_diff(&workspace, &diff_text);
     let bound = affected_set_bound_for(
         &workspace,
@@ -12369,6 +12411,68 @@ mod regen_affected_set_tests {
         .iter()
         .map(|m| (s(m), format!("{}.rs", m.replace('.', "_"))))
         .collect()
+    }
+
+    /// THE SCOPED ROUND DIFFS AGAINST THE EXACT BASE IT BOOTSTRAPS FROM. Diverged histories: the base
+    /// commit added a module (and its mirror) after HEAD's branch point. A merge-base diff would omit
+    /// it; the two-dot diff names it (as a path HEAD lacks), so the scope's population-change arm sees it.
+    #[test]
+    fn exact_base_change_diff_includes_base_only_changes_on_diverged_histories() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-exact-base-diff-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("dag/std")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("dag/std/a.dag"), "module std.a\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "root"]);
+        git(&["checkout", "-q", "-b", "head"]);
+        std::fs::write(dir.join("dag/std/a.dag"), "module std.a\n// head edit\n").expect("write");
+        git(&["commit", "-qam", "head edit"]);
+        git(&["checkout", "-q", "main"]);
+        std::fs::write(
+            dir.join("dag/std/added_on_base.dag"),
+            "module std.added_on_base\n",
+        )
+        .expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "base adds a module"]);
+        let base = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "-q", "head"]);
+        let diff = exact_base_change_diff(&dir, &base).expect("diff");
+        let population = edited_population_from_diff(&dir, &diff);
+        assert!(
+            population
+                .population_changes
+                .contains(&"dag/std/added_on_base.dag".to_string()),
+            "the base-only module must be a population change: {:?}",
+            population.population_changes
+        );
+        let three_dot = git(&["diff", "--name-only", &format!("{base}...HEAD")]);
+        assert!(
+            !three_dot.contains("added_on_base"),
+            "control: the merge-base diff omits it ({three_dot})"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The edit reader on a synthetic diff: an existing module is named by its module line, a
