@@ -8,7 +8,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_with_redir_from_file,
   bash_build_word_bare, bash_build_word_var_bare, bash_build_word_concat_from_nodes,
   bash_build_assign,
-  bash_build_word_double_quoted, bash_build_word_cmdsubst,
+  bash_build_word_double_quoted, bash_build_word_cmdsubst, bash_build_quoted_text,
   bash_build_word_positional_all, bash_build_word_array_expansion, bash_build_word_kinded
 }
 import v2.workflow.bash_emit { bash_emit_stmt }
