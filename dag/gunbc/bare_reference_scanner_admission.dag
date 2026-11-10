@@ -43,6 +43,9 @@ data bare_reference_scanner_receipt_disposition: Disposition = Terminal {
 // bare_reference_scanner_not_growth_note. The COUNT agrees and the ENUMERATION does not, which
 // reads as an omission in the boundary rather than a narrowing of it — the verdict's own count
 // includes it. It is covered by the same admission. This is stated rather than silently assumed,
+// LATER HISTORY, RECORDED SO THIS ADMISSION IS NOT READ AS A LIVE REFERENCE: the T6 event-log change
+// deleted that builtin along with the append-only JSONL acceptance authority it projected, so the seed
+// this record judged is larger than the seed today, and nothing here claims the builtin still exists.
 // because a future scope question resolved against a two-item boundary would reach a different
 // answer than one resolved against the three the verdict counted.
 //
