@@ -111,7 +111,7 @@ fn host_request_status_response(request: HostAcceptedRequest) -> ServeWireRespon
   }
 }
 
-fn host_request_get(root: NonEmptyStr, identity: FabricIdentity, id: String) -> ServeWireResponse {
+fn host_request_get(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>, id: String) -> ServeWireResponse {
   match host_request_observe(root: root, identity: identity) {
     HostRequestPresent { request: r } => host_request_status_response(request: r)
     // Absence is not an authoritative rejection of an earlier submission.
@@ -121,7 +121,7 @@ fn host_request_get(root: NonEmptyStr, identity: FabricIdentity, id: String) -> 
 }
 
 fn host_request_put(
-  root: NonEmptyStr, identity: FabricIdentity, id: String, body: String, admit_payload: fn(String) -> Result<NonEmptyStr, String>,
+  root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>, id: String, body: String, admit_payload: fn(String) -> Result<NonEmptyStr, String>,
 ) -> ServeWireResponse {
   match admit_payload(body) {
     Err { value: reason } => host_request_outcome_response(request_id: id, outcome: OutcomeBadRequest { detail: reason }, result: JsonNull)

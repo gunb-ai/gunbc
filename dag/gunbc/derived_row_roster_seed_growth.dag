@@ -28,6 +28,7 @@ data derived_row_roster_seed_growth_justification: SeedGrowthJustification = See
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "RECURRING_FAILURE_MODE", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "RUNG_DROP", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "GUARANTEE_STALL", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "LAYOUT_NAMESPACE_ROW", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "DERIVED_ROW_ROSTERS", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "derived_roster_at", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "declares_row", field: WholeDeclaration },

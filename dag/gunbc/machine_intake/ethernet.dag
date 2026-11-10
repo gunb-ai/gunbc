@@ -96,8 +96,8 @@ type ReadingMoment
 // lanplus lan print 1, MAC Address field" into one string: a program, its channel, its arguments and
 // the output field it was read from, four named parts behind one leaf (section 2). The vocabularies
 // are closed because the corpus contains exactly these readings.
-type IpmiLanPrintField
-  = IpmiMacAddressField
+type IpmiLanPrintField =
+  | IpmiMacAddressField
 
 // THE FIELDS OF A BOOTP/DHCP EXCHANGE A LINK ADDRESS CAN BE READ OUT OF. `chaddr` and
 // Client-Ethernet-Address are distinct fields of the same packet and the capture carries both.
