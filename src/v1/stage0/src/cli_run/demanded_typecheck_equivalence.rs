@@ -279,9 +279,11 @@ fn grain_probe(
     pass: &Rc<infer::TypecheckPass>,
     si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
-    let keys_of = |fe: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>,
-                   depth: usize,
-                   out: &mut Vec<String>| {
+    fn keys_of(
+        fe: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>,
+        depth: usize,
+        out: &mut Vec<String>,
+    ) {
         let mut ks: Vec<String> = fe.local.keys().cloned().collect();
         ks.sort();
         out.push(format!("d{depth}:{}[{}]", fe.name, ks.join(",")));
@@ -290,7 +292,7 @@ fn grain_probe(
                 keys_of(parent, depth + 1, out);
             }
         }
-    };
+    }
     for tm in pass.graph.modules.iter() {
         let name = tm.module.name.clone();
         if !(name.contains("rest_exchange_replay_probe")

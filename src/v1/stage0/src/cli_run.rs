@@ -17194,9 +17194,9 @@ pub fn bind_cli_arg_text_in_ctx(
                 tm.items.iter().find(|item| {
                     item.module_item_kind
                         == crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
-                        && authored_name_at(ctx.si(), (*item).clone()) == text
+                        && authored_name_at(ctx.source_indices(), (*item).clone()) == text
                 })?;
-                Some(authored_name_at(ctx.si(), tm.module.clone()))
+                Some(authored_name_at(ctx.source_indices(), tm.module.clone()))
             }) else {
                 return Err(format!(
                     "--arg `{param}`: function `{function}` declares `{param}: {display}`, but \
@@ -17376,7 +17376,7 @@ fn std_decl_ref_item(ctx: &v1_interpreter::InterpContext) -> Option<Rc<Node>> {
         .find(|item| {
             item.module_item_kind
                 == crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration
-                && authored_name_at(ctx.si(), (*item).clone()) == "DeclarationRef"
+                && authored_name_at(ctx.source_indices(), (*item).clone()) == "DeclarationRef"
         })
         .cloned()
 }
