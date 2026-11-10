@@ -497,3 +497,57 @@ fn a_row_named_only_through_a_demanded_signature_is_realized() {
         .join()
         .unwrap();
 }
+
+// ---------------------------------------------------------------------------------------------
+// SERVICE-OPERATION METHOD SURFACE ON THE RUN GRAIN (#16156 second regression). A service reached
+// by a BRACELESS whole-module import, whose operation the demanded entry spells only inside a
+// `fn(_scope) { ... }` lambda subject, must still have its service row realized -- the reader needs
+// it to answer the operation. A cut that dropped it answers `receiver type Primitive(<service>)
+// establishes no method surface ... no declared frontier row admits it`, which is the refusal this
+// witness fails on at main and must not raise at head. The grain is run against the corpus file
+// itself, per the seed-growth precedent above (`a_row_named_only_through_a_demanded_signature_is_realized`),
+// because a fixture can show the shape of a failure but not its absence.
+
+#[test]
+fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, intern, si, modules) =
+                graph_from("dag/test/claim/rest_exchange_replay.dag");
+            let demand = grain_demand(&modules, &["rest_status_and_body_are_persistable"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let service_realized = realization.realized.contains_key("test.RestReplay");
+            let messages = grain_typecheck(&modules, &intern, &si, demand.clone());
+            let surface: Vec<String> = messages
+                .iter()
+                .filter(|m| {
+                    m.contains("RestReplay")
+                        || m.contains("method surface")
+                        || m.contains("no declared frontier row")
+                })
+                .cloned()
+                .collect();
+            eprintln!(
+                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} surface_refusals={} total={} surface={:?}",
+                service_realized,
+                surface.len(),
+                messages.len(),
+                surface
+            );
+            assert!(
+                service_realized,
+                "the service whose operation the demanded entry spells inside its lambda subject must be realized"
+            );
+            assert!(
+                surface.is_empty(),
+                "a demanded entry that spells a service operation must not refuse on the method surface: {surface:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
