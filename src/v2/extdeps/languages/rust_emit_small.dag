@@ -76,6 +76,7 @@ fn rust_emit_small_conditional_target() -> TargetModel {
         rules: [
           rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
           rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+          rust_lex_rule(token_class: ^rust_token_kw_else, text: " else"),
           rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { "),
           rust_lex_rule(token_class: ^rust_token_rbrace, text: " }")
         ],
