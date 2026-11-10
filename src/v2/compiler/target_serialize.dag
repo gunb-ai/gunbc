@@ -30,6 +30,8 @@ import v2.std.compilers.target_model {
   target_project_arrow_body_to_value_expression,
   target_project_realized_closure,
   target_project_bind_let,
+  target_project_branch_bool_if_else,
+  target_project_match,
   arrow_domain_binder_names,
   FunctionTypeAtItemReturn,
   target_value_expr_project_body_subexpression,
@@ -1282,6 +1284,40 @@ fn project_arrow_body_from_inferred_facts(
           // exactly as the sibling item-body route in target_model says it. A `let` in any other
           // position still passes Absent, so the distinction stays where it belongs.
           target_project_bind_let(
+            arrow: arrow,
+            body: body,
+            tail_return: optional_present(value: FunctionTypeAtItemReturn),
+            target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
+            handle_transform: handle_transform
+          )
+        ComputationBody { behavior: Branch } =>
+          // A BODY THAT BRANCHES BUILDS THE RETURNED CLOSURE AT ITS ARMS, WHICH IS THE SAME
+          // ITEM-RETURN POSITION AS A BARE TAIL: the arms are the only places the body's value is
+          // made, so each arm closure still owes the target's FunctionTypeRealizationRow its capture
+          // and boxing. The form dispatch below carries no position --
+          // v2.std.compilers.target_model target_value_expr_project_body_subexpression hands a
+          // Branch to target_project_branch_bool_if_else with the tail position Absent -- and an arm
+          // closure projected without it falls to the ordinary value route, which by design leaves a
+          // closure unreleased: no `move`, no box. The authority already threads the position (the
+          // sibling item-body route in target_model says it for the same reason it is said here);
+          // what was missing was a caller at THIS item body. A branch in any other position still
+          // passes Absent, so the distinction stays where it belongs.
+          target_project_branch_bool_if_else(
+            arrow: arrow,
+            body: body,
+            tail_return: optional_present(value: FunctionTypeAtItemReturn),
+            target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
+            handle_transform: handle_transform
+          )
+        ComputationBody { behavior: Match } =>
+          // The arms of a match are arms of the same shape, and the same position is threaded
+          // through target_project_match to each arm body. Rust's production target does not yet
+          // SPELL a match -- v2.test.claim.body_lowering.function_value_body_route pins that refusal
+          // -- so this arm projects the value expression and the print side refuses, which is the
+          // honest order: the projection is no longer the boundary.
+          target_project_match(
             arrow: arrow,
             body: body,
             tail_return: optional_present(value: FunctionTypeAtItemReturn),

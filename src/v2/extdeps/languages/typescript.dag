@@ -648,7 +648,9 @@ fn ts_value_expression_projection_full(
     conditional_form: TargetConditionalShape {
       if_token: ^ts_token_ternary_nop,
       then_token: ^ts_token_ternary_question,
+      then_close_token: Absent,
       else_token: ^ts_token_ternary_colon,
+      else_open_token: Absent,
       delimiting: ConditionalSelfDelimiting
     },
 
