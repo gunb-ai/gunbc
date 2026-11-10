@@ -125,7 +125,7 @@ import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_dev
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_gate, approval_device_crypto_realization }
 import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
-import std.algebra { list_sort_by_key, TotalOrder, Ordering, Less, Greater, Equal }
+import std.algebra { TotalOrder, Ordering, Less, Greater, Equal }
 import extdeps.dns.domain_name { DnsLabel }
 import std.effects { IdempotencyEvidence }
 import v2.extdeps.toolchain_interference {
@@ -6451,7 +6451,12 @@ fn tree_path_compare(a: String, b: String) -> Ordering {
 }
 
 fn sort_tree_file_hashes(entries: List<TreeFileHash>) -> List<TreeFileHash> {
-  list_sort_by_key(xs: entries, key: tree_file_hash_path, order: tree_path_total_order)
+  // Native `sort_by` kernel (stable, canonical_content_cmp on the String key): depth is
+  // constant in the entry count. The modeled list_sort_by_key recursed ~1 frame/merged
+  // element (list_at_optional at the leaf), so the fold's readback died at the 100k
+  // ceiling. tree_path_total_order == canonical String order (executed equivalence
+  // witness test/claim/runner/tree_hash_sort_equivalence), so the fed hash is unchanged.
+  entries |> sort_by(e => tree_file_hash_path(e))
 }
 
 // `<hex>  <path>` lines of sha256sum, the path rebased from the absolute `root` onto `sub`/<relative>.
@@ -6483,7 +6488,7 @@ fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>)
 // Every enumeration that must create or compare directories walks THIS spine -- the file ancestors
 // and the metadata entries below cannot drift apart in ordering or dedup discipline (gunbc.design_argument::single_authority).
 fn tree_sorted_unique_paths(xs: List<String>) -> List<String> {
-  let walked = fold(list_sort_by_key(xs: xs, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
+  let walked = fold(xs |> sort_by(p => p), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
     if w.last == p { w } else { TreeDedupWalk { last: p, out: list_snoc_item(xs: w.out, item: p) } }
   )
   walked.out
@@ -6712,7 +6717,10 @@ fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
 }
 
 fn sort_tree_metadata(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
-  list_sort_by_key(xs: entries, key: e => e.path, order: tree_path_total_order)
+  // Same native kernel as sort_tree_file_hashes and tree_sorted_unique_paths: identical
+  // order and stability, so the ancestor/metadata/hash readbacks stay in lockstep
+  // (gunbc.design_argument::single_authority). Constant interpreted depth.
+  entries |> sort_by(e => e.path)
 }
 
 fn tree_metadata_lines(entries: List<TreeMetadataEntry>) -> String {

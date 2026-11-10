@@ -1,0 +1,44 @@
+// Exercises the REAL, post-fix fold readback sort functions (no host seam is called, so
+// this is elevation-free). Proves: (1) tree_hash_lines / tree_ancestor_directories still
+// order bytewise after routing onto the native sort_by kernel, and (2) under the scratch
+// binary's lowered CALL_DEPTH_LIMIT=3000 they COMPLETION at n=8000 -- the modeled sort
+// would raise call-depth-exceeded at list_at_optional here. adhoc-551ba662-dd5, §6b.
+module test.claim.runner.install_readback_sort_probe
+
+import gunbc.host.host_effect_realize { tree_hash_lines, tree_ancestor_directories, TreeFileHash }
+import std.algebra { list_append, length, FreeMonoid }
+
+data stress: FreeMonoid<TreeFileHash> = [
+  TreeFileHash { hex: "01", path: "a/b" },
+  TreeFileHash { hex: "02", path: "a.b" },
+  TreeFileHash { hex: "03", path: "foo" },
+  TreeFileHash { hex: "04", path: "foo/bar" },
+  TreeFileHash { hex: "05", path: "foobar" },
+  TreeFileHash { hex: "06", path: "A" },
+  TreeFileHash { hex: "07", path: "a" },
+  TreeFileHash { hex: "08", path: "Z" },
+  TreeFileHash { hex: "10", path: "/root" },
+  TreeFileHash { hex: "11", path: "root" },
+  TreeFileHash { hex: "12", path: "a b" },
+  TreeFileHash { hex: "13", path: "a/b" },
+  TreeFileHash { hex: "14", path: "é" },
+  TreeFileHash { hex: "15", path: "z" },
+  TreeFileHash { hex: "16", path: "foo/bar" }
+]
+fn dbl(current: FreeMonoid<TreeFileHash>, target: Int) -> FreeMonoid<TreeFileHash> {
+  if length(xs: current) >= target { current }
+  else { dbl(current: list_append(left: current, right: current), target: target) }
+}
+test fn real_hash_lines_bytewise_order() -> Bool {
+  let l = tree_hash_lines(entries: stress)
+  starts_with(s: l, prefix: "10  /root\n") && ends_with(s: l, suffix: "14  é\n")
+}
+// Completes at scale under the lowered ceiling -> the real readback no longer nests frames per entry.
+test fn real_hash_lines_completes_at_8000() -> Bool {
+  let big = dbl(current: [TreeFileHash { hex: "aa", path: "aa/bb" }], target: 8000)
+  starts_with(s: tree_hash_lines(entries: big), prefix: "aa  ")
+}
+test fn real_ancestor_dirs_completes_at_8000() -> Bool {
+  let big = dbl(current: [TreeFileHash { hex: "aa", path: "deep/dir/tree/leaf/below/x" }], target: 8000)
+  length(xs: tree_ancestor_directories(files: big)) > 0
+}

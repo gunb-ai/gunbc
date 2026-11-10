@@ -1,0 +1,66 @@
+// Ordering-equivalence witness for routing the install fold off the MODELED
+// list_sort_by_key onto the native `sort_by` kernel (adhoc-551ba662-dd5, DESIGN §6b).
+// Executes jolly-hawk-60's condition 2: native sort_by (canonical_content_cmp) must
+// equal tree_path_total_order so the tree-hash lines -- and the sealed content hash
+// built on them -- stay byte-identical. Elevation-free: no host seam is called.
+// The stress paths hit shared prefixes, '/' vs other low bytes, case, and non-ASCII;
+// duplicate paths exercise tie-order (stability). tree_path_compare is byte-identical
+// to gunbc.host.host_effect_realize.dag:6449 tree_path_compare.
+module test.claim.runner.tree_hash_sort_equivalence
+
+import std.algebra { list_sort_by_key, list_map, FreeMonoid, TotalOrder, Ordering, Less, Greater, Equal }
+import std.content_hash { sha256_hex_of_text }
+
+data entry: FreeMonoid<Entry> = [
+  Entry { hex: "01", path: "a/b" },
+  Entry { hex: "02", path: "a.b" },
+  Entry { hex: "03", path: "foo" },
+  Entry { hex: "04", path: "foo/bar" },
+  Entry { hex: "05", path: "foobar" },
+  Entry { hex: "06", path: "A" },
+  Entry { hex: "07", path: "a" },
+  Entry { hex: "08", path: "Z" },
+  Entry { hex: "09", path: "a" },
+  Entry { hex: "10", path: "/root" },
+  Entry { hex: "11", path: "root" },
+  Entry { hex: "12", path: "a b" },
+  Entry { hex: "13", path: "a/b" },
+  Entry { hex: "14", path: "é" },
+  Entry { hex: "15", path: "z" },
+  Entry { hex: "16", path: "foo/bar" }
+]
+
+type Entry { hex: String, path: String }
+
+data tree_path_total_order: TotalOrder<String> = { compare: tree_path_compare }
+fn tree_path_compare(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+// A comparator that DIFFERS from the fold's (reversed): the RED witness.
+data reversed_order: TotalOrder<String> = { compare: reversed_compare }
+fn reversed_compare(a: String, b: String) -> Ordering {
+  if a < b { Greater } else { if a > b { Less } else { Equal } }
+}
+fn to_lines(xs: FreeMonoid<Entry>) -> String {
+  join(list_map(xs: xs, f: e => join([e.hex, "  ", e.path, "\n"], "")), "")
+}
+fn native_sorted() -> FreeMonoid<Entry> { entry |> sort_by(e => e.path) }
+fn modeled_sorted() -> FreeMonoid<Entry> {
+  list_sort_by_key(xs: entry, key: fn(e) { e.path }, order: tree_path_total_order)
+}
+fn reversed_sorted() -> FreeMonoid<Entry> {
+  list_sort_by_key(xs: entry, key: fn(e) { e.path }, order: reversed_order)
+}
+
+test fn native_and_modeled_lists_agree() -> Bool { to_lines(native_sorted()) == to_lines(modeled_sorted()) }
+test fn native_and_modeled_hashes_agree() -> Bool {
+  sha256_hex_of_text(text: to_lines(native_sorted())) == sha256_hex_of_text(text: to_lines(modeled_sorted()))
+}
+// Sanity: the agreed order is the bytewise one, not input order. Bytewise-first is the
+// '/'-leading path (0x2f), bytewise-last is the non-ASCII 'é' (0xc3 > 'z' 0x7a).
+test fn order_is_bytewise_landmark() -> Bool {
+  let n = to_lines(native_sorted())
+  starts_with(s: n, prefix: "10  /root") && ends_with(s: n, suffix: "14  é\n")
+}
+// RED: a differing order is detected -- reversed sort is NOT equal to the native order.
+test fn red_differing_order_detected() -> Bool { to_lines(native_sorted()) != to_lines(reversed_sorted()) }
