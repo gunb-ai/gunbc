@@ -3327,9 +3327,114 @@ fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: 
   concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(owner_module: info.module_name, n: leaf, registry: registry))
 }
 
-// ONE REFUSAL TEXT FOR THE AMBIGUOUS LEAF, NAMED SO THE ARMS BELOW CANNOT DRIFT APART.
-fn ambiguous_leaf_refusal(leaf: String) -> String {
-  emit_error_expr(message: concat("ambiguous leaf '", leaf, "' — two modules declare it, so no single declaration can be named"), target: Rust)
+// RESOLUTION-TIME REFUSAL FOR AN AMBIGUOUS BARE DATA VALUE-REFERENCE.
+//
+// THE RUNG THIS CLIMBS. A value-reference to a leaf whose spelling two modules declare used to be
+// bound only at emission: `lookup_item_by_leaf` answered `ItemLeafAmbiguous` and the value-ref arms
+// rendered it as a DIVERGING `panic!(...)` in the emitted crate, so the program COMPILED, the compiler
+// reported zero blocking errors, and the refusal either never ran or surfaced as rustc's misleading
+// "unreachable expression" on the next field. That is gunbc.design_argument::earliest_unjustified_boundary's
+// "wrong compiler and the wrong phase": the fact was held by `reconcile` (which built
+// `item_leaf_owner_modules` from the complete item registry) but refused by the emitter that ran later.
+// `cast_realization_diagnostics` (this module) is the established shape for the next rung -- a pass over
+// the `ResolvedGraph` that mints a located blocking `ErrorNode` BEFORE any byte is emitted. This is that
+// shape for the ambiguous leaf, so the refusal lands in the compiler that HELD the fact (DESIGN.md
+// gunbc.design_argument::fail_closed: "not at all" beats plausible output), and the emitted `panic!` branch
+// is gone rather than kept as a fallback (DESIGN.md gunbc.design_argument::replacement_migration).
+//
+// THE POPULATION IS EXACTLY THE EMITTER'S, NOT A WIDER NET. The predicate below is the emitter's own
+// decision tree lifted to resolution: a BARE (unqualified) reference, whose binding is neither a local
+// nor a match binder nor a variant (the emitter's `lookup_item_for_value_ref` consults the registry for
+// everything else), whose leaf the importing module does NOT itself declare (its own declaration is what
+// resolves it), and whose leaf name the registry's leaf-owner index says two-plus modules declare. Every
+// node this refuses is a node the emitter already rendered `panic!` for; every node it skips, the emitter
+// resolved via a qualified owner, a variant, a local, or the importing module's own declaration. So the
+// move changes WHEN the corpus's ambiguous leaves fail (compile time, located), not WHETHER. The
+// discriminating fixture `v2.test.claim.ambiguous_leaf_value_ref_compile` goes red if this pass is removed.
+fn ambiguous_leaf_value_ref_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  typed.modules |> flat_map(tm => ambiguous_leaf_value_ref_diagnostics_in_module(tm: tm, typed: typed, source_indices: source_indices))
+}
+
+fn ambiguous_leaf_value_ref_diagnostics_in_module(tm: TypedModule, typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  let module_name = authored_name_at(source_indices: source_indices, node: tm.module)
+  let value_ref_nodes = concat(
+    tm.items |> flat_map(item => item.children |> flat_map(child => ambiguous_leaf_value_ref_nodes(node: child, source_indices: source_indices))),
+    tm.items |> flat_map(item => match item.body {
+      Present { value: b } => ambiguous_leaf_value_ref_nodes(node: b, source_indices: source_indices)
+      Absent => []
+    })
+  )
+  value_ref_nodes |> flat_map(node => ambiguous_leaf_value_ref_refusal_for_node(node: node, module_name: module_name, registry: tm.item_registry, leaf_owners: typed.item_leaf_owner_modules, source_indices: source_indices))
+}
+
+// Every `ExprVar` reachable from an expression node, the same `children` + `body` descent
+// `cast_realization_diagnostics_in` uses for casts. Type annotations (`type_annotation`, `resolved_type`)
+// are deliberately NOT walked: the emitter binds a VALUE reference only from these positions, and a type
+// name is never rendered through the value-ref arms, so refusing one here would be a wider net than the
+// emitter's own.
+fn ambiguous_leaf_value_ref_nodes(node: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  let here = match node.expr_data {
+    ExprVar { binding_kind: _ } => [node]
+    _ => []
+  }
+  let nested_body = match node.body {
+    Present { value: b } => ambiguous_leaf_value_ref_nodes(node: b, source_indices: source_indices)
+    Absent => []
+  }
+  concat(here, node.children |> flat_map(c => ambiguous_leaf_value_ref_nodes(node: c, source_indices: source_indices)), nested_body)
+}
+
+// The emitter's `binding_kind` filter lifted to resolution: `lookup_item_for_value_ref` returns the
+// registry answer for every binding EXCEPT a local or a match binder, and a variant is rendered by the
+// variant arms above it. Everything else (unbound, imported, function/service value) reaches the
+// registry answer and can therefore answer `LeafAmbiguous`.
+fn value_ref_binding_reaches_leaf_owner_index(binding_kind: VarBindingKind?) -> Bool {
+  match binding_kind {
+    Absent => true
+    Present { value: LocalValueBinding } => false
+    Present { value: MatchBoundBinding } => false
+    Present { value: VariantValueBinding { parent_enum: _ } } => false
+    _ => true
+  }
+}
+
+fn ambiguous_leaf_value_ref_refusal_for_node(node: Node, module_name: String, registry: Map<String, ItemInfo>, leaf_owners: Map<String, LeafOwner>, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  match node.expr_data {
+    ExprVar { binding_kind: binding_kind } =>
+      if !(value_ref_binding_reaches_leaf_owner_index(binding_kind: binding_kind)) {
+        []
+      } else {
+        let authored = expr_var_name_at(texpr: node, source_indices: source_indices)
+        let qualifier = value_ref_qualifier_prefix(name: authored)
+        let leaf = value_ref_qualified_leaf(name: authored)
+        if qualifier != "" || leaf == "" || leaf == "none" || leaf == "None" || leaf == "true" || leaf == "false" {
+          []
+        } else if lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: leaf }) != none {
+          []
+        } else { match map_get(leaf_owners, leaf) {
+          Present { value: owner } => match owner {
+            SingleOwner { module: _ } => []
+            LeafAmbiguous => [make_error_node(
+              diagnostic: AmbiguousReference {
+                name: leaf,
+                candidates: ambiguous_leaf_owner_candidates(leaf: leaf, registry: registry),
+                span: node.span
+              },
+              module_name: module_name)]
+          }
+          Absent => []
+        }
+        }
+      }
+    _ => []
+  }
+}
+
+// The registry is the single authority for WHICH modules declare the leaf: `item_leaf_owner_modules`
+// marks the leaf ambiguous but carries no owner set, so the located diagnostic names the owners by
+// reading them back from the same rows that made it ambiguous.
+fn ambiguous_leaf_owner_candidates(leaf: String, registry: Map<String, ItemInfo>) -> List<String> {
+  map_values(registry) |> filter(info => info.name == leaf) |> map(info => info.module_name)
 }
 
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
@@ -12123,7 +12228,7 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
       match lookup_item_for_declared_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
         ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
         ItemNotFound =>
           emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
       }
@@ -12131,7 +12236,7 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
       match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
         ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
         ItemNotFound =>
           if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
           else { emit_ident(name: leaf, target: Rust) }
@@ -12193,7 +12298,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         } else { body }
       Absent =>
         match lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info) {
-          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
           ItemFound { info: info } =>
             {
               let is_data = info.kind == DataItem
@@ -12266,7 +12371,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               registry: registry,
               emit_info: emit_info
             ) {
-              ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+              ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
               ItemFound { info: info } =>
                 let is_data = info.kind == DataItem
                 if is_data { concat(emit_value_ref_ident(name: n, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
