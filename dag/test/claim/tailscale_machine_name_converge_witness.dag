@@ -65,11 +65,9 @@ import gunbc.tailscale_machine_name_converge {
 
 // A READING, NOT A NAME. Each document below is what one subject's daemon printed at one moment; the cases
 // relabel the two name members to walk a rename window forward and then back.
-data self_names_srv1_document: String =
-  "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"srv1\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
+data self_names_srv1_document: String = "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"srv1\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
 
-data self_names_srv4_document: String =
-  "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv4.tailecbe08.ts.net.\"}}"
+data self_names_srv4_document: String = "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv4.tailecbe08.ts.net.\"}}"
 
 // THE POSITIVE CONTROL for the structural cases: this document parses cleanly and has no `Self` at all, which
 // is a different repair from a document that does not parse at all.
@@ -77,26 +75,21 @@ data self_member_absent_document: String = "{\"Version\": \"1.104.2\", \"Backend
 
 data document_unreadable: String = "Self: HostName=srv1"
 
-data self_host_name_absent_document: String =
-  "{\"Version\": \"1.104.2\", \"Self\": {\"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
+data self_host_name_absent_document: String = "{\"Version\": \"1.104.2\", \"Self\": {\"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
 
-data self_host_name_empty_document: String =
-  "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
+data self_host_name_empty_document: String = "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
 
 data self_host_name_wrong_type_document: String = "{\"Self\": {\"HostName\": 7}}"
 
 // THE DNS NAME IS THE TAILNET ADDRESS, NOT THE MACHINE'S NAME. This document carries a reachable tailnet name
 // beside a name the plan does not want: it is exactly what a fold that confused the two members would pass.
-data self_dns_name_is_not_the_name_document: String =
-  "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
+data self_dns_name_is_not_the_name_document: String = "{\"Version\": \"1.104.2\", \"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
 
 // THE WINDOW, AS THE CLAIM IN THE INVOCATION ENVIRONMENT. The mode reads these words from its own environment;
 // the cases below hold the parse and the gate apart from each other.
-data claim_of_rename_window: TailscaleMachineNameWindow =
-  tailscale_machine_name_window_parse(claim: tailscale_machine_name_stage_rename_window_claim)
+data claim_of_rename_window: TailscaleMachineNameWindow = tailscale_machine_name_window_parse(claim: tailscale_machine_name_stage_rename_window_claim)
 
-data claim_of_prepare_window: TailscaleMachineNameWindow =
-  tailscale_machine_name_window_parse(claim: tailscale_machine_name_stage_prepare_window_claim)
+data claim_of_prepare_window: TailscaleMachineNameWindow = tailscale_machine_name_window_parse(claim: tailscale_machine_name_stage_prepare_window_claim)
 
 data claim_of_no_window: TailscaleMachineNameWindow = WindowUndeclared { claim: "unset" }
 
@@ -139,13 +132,13 @@ test fn the_same_plan_over_the_swapped_pair_is_the_rename_window_rollback() -> B
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
     observation: tailscale_machine_name_document(document: self_names_srv1_document)
-  );
+  )
   let back = tailscale_machine_name_plan(
     host: operator_host_srv1,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
     observation: tailscale_machine_name_document(document: self_names_srv4_document)
-  );
+  )
   match forward {
     DeviceNameChangeOwed { from_name: here, to_name: there } =>
       match back {
@@ -169,13 +162,13 @@ test fn an_apply_outside_the_rename_window_is_refused_by_the_window_gate() -> Bo
     window: claim_of_prepare_window,
     mode: ApplyInsideWindow,
     observation: tailscale_machine_name_document(document: self_names_srv1_document)
-  );
+  )
   let no_claim_at_all = tailscale_machine_name_plan(
     host: operator_host_srv4,
     window: claim_of_no_window,
     mode: ApplyInsideWindow,
     observation: tailscale_machine_name_document(document: self_names_srv1_document)
-  );
+  )
   match inside_prepare {
     PlanRefused { cause: WindowIsNotTheRenameWindow { window: claimed, mode: ApplyInsideWindow } } =>
       match no_claim_at_all {
@@ -268,13 +261,13 @@ test fn a_malformed_host_name_keeps_its_own_cause_through_the_parser() -> Bool {
 // THE NAME THE FOLD COMPARES IS `Self.HostName`, NEVER `Self.DNSName`. This is the fact the mode rests on, and
 // a fold that read the tailnet address as the machine's name would pass every other case in this file.
 test fn the_name_compared_is_the_host_name_and_never_the_dns_name() -> Bool {
-  let reading = tailscale_machine_name_document(document: self_dns_name_is_not_the_name_document);
+  let reading = tailscale_machine_name_document(document: self_dns_name_is_not_the_name_document)
   let plan_over_it = tailscale_machine_name_plan(
     host: operator_host_srv1,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
     observation: reading
-  );
+  )
   match reading {
     DeviceNameReported { name: name, dns_name: dns_name } =>
       name == "srv4"
@@ -366,7 +359,7 @@ test fn the_write_words_are_one_joined_hostname_word_not_two() -> Bool {
 // is not elevated, which is the other half of the case: a mode that wrapped both would be running a read it
 // has no reason to run as root.
 test fn the_write_carries_the_sudo_row_and_the_read_does_not() -> Bool {
-  let elevated = sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: "fox")));
+  let elevated = sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: "fox")))
   elevated == ["sudo", "-n", "tailscale", "set", "--hostname=fox"]
     && argv_command_is_sudo_elevated(command: sudo_elevate_command(command: tailscale_set_hostname_argv(name: "fox")))
     && !argv_command_is_sudo_elevated(command: tailscale_status_json_command())
@@ -377,8 +370,8 @@ test fn the_write_carries_the_sudo_row_and_the_read_does_not() -> Bool {
 // under the fleet's bootstrap principal. Two registry rows give two different routes -- a mode that spelled a
 // host would have one route and one host.
 test fn the_leg_words_are_host_free_and_the_route_comes_from_the_reach_model() -> Bool {
-  let first = administrator_ssh_target(host: operator_host_srv1);
-  let second = administrator_ssh_target(host: operator_host_srv4);
+  let first = administrator_ssh_target(host: operator_host_srv1)
+  let second = administrator_ssh_target(host: operator_host_srv4)
   match first {
     SshTargetResolved { target: one } =>
       match second {
