@@ -1,0 +1,85 @@
+module gunbc.plans.closure_consolidation
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote }
+
+fn closure_consolidation_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Goal (pinned, operator 2026-11-10):** a consumer reaches only the domain declarations and host authorities it actually needs. CI composition does not own domain behavior; the artifact registry does not duplicate producer dispatch; runtime demand does not depend on incidental whole-corpus loading. The original monolithic paths and their obsolete helpers have been removed."),
+      p(text: "**Operator direction (2026-11-10, session bold-otter-603):** consolidate by responsibility, then eliminate unnecessary work. Dissolve `gunbc.ci.ci_spec` rather than rename it; make single-artifact generation selective by construction; keep the compiler demand-closure work under one authority. This plan is the authority; PR descriptions cite it and do not restate it."),
+    ]),
+    h2(text: "1. Displaced cost"),
+    ul(items: [
+      li(text: "**One CI fact costs the fleet.** `gunbc.ci.ci_spec` (4,697 lines, 77 imports, 401 declarations) is imported by 47 modules for 175 distinct names, none used by more than four. About 125 of those names are fleet-converge mode commands, and each imports the module it runs, so a consumer that wants a release-archive name or a one-line event clause acquires spark, R2, hardware intake, live deploy and host control. The required gate reaches it through two small imports (`gunbc.heal_workflow` `heal_same_repository_clause`, `gunbc.fleet.fleet_workflow_steps` `ci_cache_cargo_step_under`)."),
+      li(text: "**One artifact costs every generator.** `gunbc.generated_artifact_emit` imports every producer, so `gunbc.instruments.generated_artifact_gate` `main_wet_one` for a single path acquires the whole generator population. Measured before #16156: about 26 to 29 minutes and 18 GB per workflow; after it, about 14 minutes up to resolve. A defect anywhere in that population stops every regeneration: on 2026-11-10 a ledger row (`gunbc.rung_drop.gunbc_run_unreached_declarations_not_realized`) and `gunbc.tools.review` each did."),
+      li(text: "**Two spellings of one relation.** `gunbc.generated_artifact` `artifact_producer` names each artifact's producer, and `gunbc.generated_artifact_emit` `artifact_generate_unadorned` dispatches to producers separately; nothing proves they agree."),
+    ]),
+    h2(text: "2. Three problems, three homes"),
+    p(text: "These are related and are not solved by one new abstraction that owns all three."),
+    ul(items: [
+      li(text: "**Domain authority versus CI adaptation versus composition.** What an operation is (its entry, credentials and receipt contract) is owned by its domain; how it becomes a workflow step is CI adaptation; which operations a workflow enrolls is composition. A CI adapter consumes a domain authority without importing unrelated operations. `gunbc.ci.ci_gate` already separates gate types and receipt semantics from execution and stays that way."),
+      li(text: "**Artifact enrollment versus implementation.** The registry identifies the artifact and its producer; selecting a producer happens before any other producer is loaded."),
+      li(text: "**Demand versus closure.** The import graph, the full dependency relation (dotted and bare references: `required_regen_host` `regen_module_edges`, `whole_pool_closure_edge_index`), the declarations realized and the host-keyed reads describe different populations. Shrinking one without the others overstates gains or breaks an implicit dependency. Reuse the relation's semantics; do not make every runtime operation walk the whole pool."),
+    ]),
+    h2(text: "3. Phases"),
+    h3(text: "P0. Inventory and baseline"),
+    p(text: "Acceptance: the full dependency relation is measured and costs are attributable to specific edges. Section 4 records it."),
+    h3(text: "P1. CI leaf extraction"),
+    p(text: "Move gates, release build, heal, retry, credential plumbing, deploy and the mtcollins1 local probe out of `gunbc.ci.ci_spec` to their domains: heal invocations beside heal orchestration, machine-specific probes beside `gunbc.machine_intake`. `gunbc.instruments.ci_gates` stops importing `CiSpec` and the gate roster from `ci_spec`. Acceptance: small consumers no longer reach `ci_spec`; every generated workflow is byte-identical."),
+    h3(text: "P2. Fleet mode decomposition"),
+    p(text: "Group mode-specific targets and invocations by domain; keep genuinely shared machinery shared. The run-step target roster (`gunbc.ci.ci_run_step_target`) moves toward a resolved symbol identity rather than hand-authored entry and function strings, without adding a whole-corpus scan to a fast-lane claim. Coordinated with `gunbc.plans.fleet_machine_authority` (the machine-registry program, #16252) so there is one fleet model. Acceptance: each mode has one authoritative definition; no duplicate target registration."),
+    h3(text: "P3. Artifact producer consolidation"),
+    p(text: "First an executed equivalence witness between `artifact_producer` and the current dispatch; then a typed producer adapter or compiler-supported entry selection that yields `ArtifactGenerationOutcome`, selected BEFORE the dispatch is loaded. `main_wet_one`'s unrostered-path and ambiguous-path refusals, the provenance header, validation and every committed-artifact byte comparison are kept; `main_wet` folds the same mechanism over its population. Acceptance: the requested producer loads without unrelated generators; output byte-identical."),
+    h3(text: "P4. Runtime demand closure"),
+    p(text: "Under the compiler demand-closure program, coordinated with session bright-ibex-807 (`gunbc.plans.read_set_convergence` answers whether a product is still valid, not what to load; if this plan adds skip-when-unchanged it consumes `v2.std.read_set` `validate_read_set`). Explicit demand edges or declared host membership for host-keyed reads (#16156, #16241); global bare-name lookup through a symbol index that keeps ambiguity and missing-name refusals. No allowlist and no silent fallback to loading the corpus. Acceptance: demand equivalence established against the wider path, with no silent omission."),
+    h3(text: "P5. Deletion and final convergence"),
+    p(text: "Each extraction removes the old export and import route in the same landing or a dependent one; no forwarding module named `ci_spec` survives. Dead declarations, scaffolds and superseded notes are deleted after classification against resolved references, registry enrollment, host reads and external invocation; authoritative operator-signed evidence is kept. Acceptance: the old boundaries are gone, not bypassed."),
+    p(text: "Landing order: P1 alongside P4; P2 after P1; P3's equivalence witness alongside, its selective execution after a sound compiler boundary; P5 after each migration and once at the end."),
+    h3(text: "Evidence each PR owes"),
+    ul(items: [
+      li(text: "A performance PR: before and after on the same pinned source and a comparable executor: wall time, phase costs, modules acquired, declarations realized, peak RSS. A smaller import count alone is not success."),
+      li(text: "A structural PR: byte equality or behavior equivalence, plus a negative witness showing the refusal still fires."),
+    ]),
+    h2(text: "4. P0 inventory"),
+    p(text: "Read at main `fd458f74e474`. The four quantities are kept apart because they are not interchangeable."),
+    ul(items: [
+      li(text: "**Import closure:** a walk of `import` lines from the entry. Not a bound in either direction: an import whose names are never referenced adds no edge to the full relation, and a bare reference adds an edge no import states."),
+      li(text: "**Full dependency relation:** `required_regen_host` `regen_module_edges` (the union of `ref_out` and `bare_out` over the whole pool), dumped once; per-entry closures and per-edge attribution are computed over it."),
+      li(text: "**Modules acquired:** the `GUNBC_READ_SET_OUT` receipt each run writes (`cli_run/demand_acquire.rs` `read_set_record`)."),
+      li(text: "**Declarations realized, phase costs, peak RSS:** the `DeclarationRealizationProfile` diagnostic, the `[pre-entry] phase=` lines and `/usr/bin/time -v`."),
+    ]),
+    h3(text: "4.1 `gunbc.ci.ci_spec` declarations"),
+    p(text: "Name-token reading over `dag/`, `src/v2/` and `src/` at the pinned revision: a candidate set, not a census. 401 declarations: 170 used outside the module, 188 internal helpers, 43 referenced nowhere. Six are used by a module that does not import them, which an import-only reading misses: `CiSpec` (`gunbc.rung_drop.floor_cut`), `ci_fmt_gate_note`, `ci_fmt_gate_line` and `gunbc_ci_heal_regen_invoke` (`gunbc.roadmap.roadmap_authority`), `site_pxe_edge_converge_receipt_path` (`gunbc.realization_census_rows`), `gunbc_ci_org_admin_app_token_prelude` (`gunbc.fleet.organization_runner_roster_read`). The 43 are P5 candidates, each checked against host-keyed reads before deletion."),
+    h3(text: "4.2 Entry baselines"),
+    p(text: "Seven entries on srv1, one at a time per lane, two lanes, one seed built from the pinned tree. The tree carried #16233's two fixes so regeneration could evaluate; they do not change what is acquired. Entries: E1 `claim_batch` over `test.claim.compiler_gate_workflow_witness` (the required gate's claims); E2, E3, E4 `main_wet_one` for `.github/workflows/witnesses.yml`, `.github/workflows/fleet-converge.yml` and `provisioning/srv1/gunbc-ghrunner.sudoers`; E5 `main_wet`; E6 `gunbc.fleet.fleet_converge_plan_cli` `fleet_converge_plan_wet` (refuses RunUnbound outside a fleet run, after compiling); E7 `claim_batch` over `test.claim.github_pull_request_decode_witness` (REST decoding over replayed fixtures)."),
+    ul(items: [
+      li(text: "**E1:** import closure 1,871 modules; full relation 1,707; 74 modules typechecked; 31 min 9 s; peak RSS 17.1 GB. Typechecked modules include `gunbc.host.host_effect_realize` (4 to 5 min alone), `gunbc.machine_intake`, `gunbc.roadmap` and `gunbc.live_deploy`."),
+      li(text: "**E2, E3, E4:** import closure 2,248; full relation 3,239; acquired 3,408 files, the SAME 3,408 for each path; 14 min 22 s to 14 min 31 s; peak RSS 11.1 to 11.2 GB; `resolve_entry_graph_inclusive` 13.5 to 13.7 min of it."),
+      li(text: "**E5:** the same 3,408 acquired; 16 min 53 s; 11.6 GB. One artifact costs 85 percent of all of them."),
+      li(text: "**E6:** import closure 2,122; full relation 1,962; acquired 2,126; 8 min 40 s; 8.7 GB; resolve 8.6 min."),
+      li(text: "**E7:** import closure 109; full relation 98; 4 min 5 s; 6.9 GB."),
+    ]),
+    h3(text: "4.3 Attribution"),
+    ul(items: [
+      li(text: "**The full relation does not attribute.** `gunbc.witness.compiler_gate_workflow` has 1,705 direct edges in it against a closure of 1,706, and `gunbc.instruments.generated_artifact_gate` 3,238 against 3,239: nearly every reachable module is a DIRECT neighbour, so cutting any one edge or removing any one module (including `gunbc.ci.ci_spec` and `gunbc.generated_artifact_emit`) drops at most one. The bare-reference half appears to join a spelling to every module that declares it rather than to the one declaration it resolves to; that is P4's first question, recorded here as a reading, not yet a finding."),
+      li(text: "**Attribution today is by the import graph and the acquired receipt.** Over imports, `gunbc.ci.ci_spec` carries 1,801 modules and `gunbc.generated_artifact_emit` 2,244; the required gate's closure falls from 1,870 to 870 without its two small imports through `ci_spec`. Each P1 and P3 landing re-measures the acquired receipt and wall time for the entries above; that, not an import count, is the success measure."),
+      li(text: "**Acquired exceeds the full relation** (3,408 against 3,239 for the generator entry): about 170 files arrive by a route that is not a reference edge, presumably host-keyed reads and probes. P4 names them."),
+    ]),
+    h3(text: "4.4 Instrument gaps found"),
+    ul(items: [
+      li(text: "`claim_batch` writes no `GUNBC_READ_SET_OUT` receipt, so a claim's acquired population is unmeasured."),
+      li(text: "`gunbc run` printed no `DeclarationRealizationProfile` for these entries, so declarations realized is unmeasured on the run path."),
+    ]),
+  ]
+}
+
+data closure_consolidation_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "closure-consolidation",
+  title: "Closure consolidation: dissolve ci_spec, select producers before loading them",
+  body: closure_consolidation_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "P5's acceptance holds: `gunbc.ci.ci_spec` no longer exists and no forwarding module recreates its fan-in; `gunbc.generated_artifact_emit` selects a producer through `artifact_producer` before loading it and the second dispatch is deleted; single-artifact generation acquires only its producer's closure, with a before-and-after receipt; this plan deletes.") }
+}
