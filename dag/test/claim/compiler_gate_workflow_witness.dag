@@ -1,9 +1,10 @@
 module test.claim.compiler_gate_workflow_witness
 
-import std.types { Bool, String }
+import std.types { Bool, Int, String }
+import std.algebra { fold_list, length }
 import extdeps.github.actions { SelfHosted, RunsOnExpression }
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted, compiler_gate_merge_path_runs_on_the_fleet, compiler_gate_merge_path_job_ids, compiler_gate_checkout_ref }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_floor_steps_after_checkout, compiler_gate_judged_tree_bound_steps, compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted, compiler_gate_merge_path_runs_on_the_fleet, compiler_gate_merge_path_job_ids, compiler_gate_checkout_ref }
 import extdeps.github.expressions { ContextAccess, Github }
 
 // THE CLAIMS OVER THE `floor` AND `generated` JOBS LEFT WITH THOSE JOBS (operator ruling 2026-10-09,
@@ -64,4 +65,26 @@ test fn the_required_job_checks_out_the_merge_ref() -> Bool {
 
 test fn w_RED_the_pull_request_head_ref_is_not_the_checkout_ref() -> Bool {
   (compiler_gate_checkout_ref == ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }) == false
+}
+
+// ── THE QUALIFICATION FLOOR CARRIES NO STEP THAT ASSEMBLES THE JUDGED TREE ─────────────────────
+//
+// compiler_gate_floor_steps_after_checkout is the required job's work reused by the qualification floor
+// (gunbc.runner.runner_qualification_floor_job), which checks out its own pinned revision and is never
+// called by another repository. The filter once named only the checkout, so the called form's caller
+// checkout and composition -- gated on an input the floor's workflow never declares -- were carried into
+// fleet-converge.yml as steps that could never run. The count is a join of the two step lists, not a
+// name match; the controls keep it from passing over an empty side.
+fn floor_steps_that_assemble_the_judged_tree() -> Int {
+  fold_list(xs: compiler_gate_floor_steps_after_checkout(), empty: 0, cons: fn(acc, s) {
+    acc + fold_list(xs: compiler_gate_judged_tree_bound_steps(), empty: 0, cons: fn(n, b) { if b.step == s { n + 1 } else { n } })
+  })
+}
+
+test fn the_qualification_floor_carries_no_step_that_assembles_the_judged_tree() -> Bool {
+  floor_steps_that_assemble_the_judged_tree() == 0
+}
+
+test fn the_judged_tree_and_the_qualification_floor_are_both_nonempty() -> Bool {
+  length(compiler_gate_judged_tree_bound_steps()) > 0 && length(compiler_gate_floor_steps_after_checkout()) > 0
 }
