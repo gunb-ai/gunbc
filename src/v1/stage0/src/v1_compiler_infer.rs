@@ -7,6 +7,8 @@ use self::BuiltinResultArguments::*;
 use self::BuiltinResultAtCall::*;
 use self::CallArgumentFormalSelection::*;
 use self::CarrierMatch::*;
+use self::DeclarationDemand::*;
+use self::DeclarationScope::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
 use self::EqualityDerivedTarget::*;
@@ -29072,34 +29074,324 @@ pub fn infer_item(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DeclarationDemand {
+    AllDeclarations,
+    OnlyDeclarations { names: Rc<HashMap<String, bool>> },
+}
+impl DeclarationDemand {
+    pub fn names(&self) -> Rc<HashMap<String, bool>> {
+        match self {
+            DeclarationDemand::AllDeclarations => panic!("no names on unit variant"),
+            DeclarationDemand::OnlyDeclarations { names: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn declares_function_body(item: Rc<Node>) -> bool {
+    ((item.body.clone() != std::option::Option::None)
+        && match item.module_item_kind.clone() {
+            ParsedModuleItemKind::ModuleItemFunction => true,
+            _ => false,
+        })
+}
+
+pub fn declaration_demanded(
+    demand: Rc<DeclarationDemand>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*demand.clone()).clone() {
+        DeclarationDemand::AllDeclarations => true,
+        DeclarationDemand::OnlyDeclarations { names: names, .. } => {
+            if declares_function_body(item.clone()) {
+                v1_rt::map_has(
+                    &names,
+                    crate::v1_std_core::authored_name_at(source_indices, item.clone()),
+                )
+            } else {
+                true
+            }
+        }
+    }
+}
+
+pub fn spelled_names_into(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = v1_rt::rc_map_insert(
+            v1_rt::rc_map_insert(
+                acc.clone(),
+                crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                true,
+            ),
+            n.name.clone(),
+            true,
+        );
+        let own = n.children.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.params.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.properties.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.uses.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = match n.body.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        };
+        let own = match n.type_annotation.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        };
+        match n.transport.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        }
+    })
+}
+
+pub fn demanded_declaration_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    seeds: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        let items = Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.extend(
+                    (*crate::v1_std_core::module_items(m.module.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let seeded = seeds.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        let fn_index = items.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<_>>>(),
+            |idx: _, item: Rc<Node>| {
+                if declares_function_body(item.clone()) {
+                    {
+                        let nm = crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            item.clone(),
+                        );
+                        v1_rt::rc_map_insert(
+                            idx.clone(),
+                            nm.clone(),
+                            v1_rt::rc_list_push(
+                                match v1_rt::map_get(&idx, nm.clone()) {
+                                    Some(l) => l.clone(),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                },
+                                item.clone(),
+                            ),
+                        )
+                    }
+                } else {
+                    idx.clone()
+                }
+            },
+        );
+        let first = items.iter().cloned().fold(
+            Rc::new(DemandWave {
+                demanded: seeded.clone(),
+                fresh: Rc::new(v1_rt::map_keys(&seeded)),
+            }),
+            |w: Rc<DemandWave>, item: Rc<Node>| {
+                if declares_function_body(item.clone()) {
+                    w
+                } else {
+                    demand_wave_add(w, item.clone(), source_indices.clone())
+                }
+            },
+        );
+        demand_wave_loop(first, fn_index, source_indices.clone())
+            .demanded
+            .clone()
+    }
+}
+
+pub fn demand_wave_add(
+    w: Rc<DemandWave>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<DemandWave> {
+    {
+        let spelled =
+            spelled_names_into(item, source_indices, v1_rt::rc_empty_map::<String, bool>());
+        Rc::new(v1_rt::map_keys(&spelled)).iter().cloned().fold(
+            w.clone(),
+            |acc: Rc<DemandWave>, nm: String| {
+                if v1_rt::map_has(&acc.demanded.clone(), nm.clone()) {
+                    acc.clone()
+                } else {
+                    Rc::new(DemandWave {
+                        demanded: v1_rt::rc_map_insert(acc.demanded.clone(), nm.clone(), true),
+                        fresh: v1_rt::rc_list_push(acc.fresh.clone(), nm.clone()),
+                    })
+                }
+            },
+        )
+    }
+}
+
+pub fn demand_wave_loop(
+    mut __tco_loop_w: Rc<DemandWave>,
+    mut __tco_loop_fn_index: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<DemandWave> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut w = __tco_loop_w;
+            #[allow(unused_mut)]
+            let mut fn_index = __tco_loop_fn_index;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            if ((w.fresh.clone().len() as i64) == 0) {
+                break w.clone();
+            } else {
+                let next = w.fresh.clone().iter().cloned().fold(
+                    Rc::new(DemandWave {
+                        demanded: w.demanded.clone(),
+                        fresh: Rc::new(vec![]),
+                    }),
+                    |acc: Rc<DemandWave>, nm: String| {
+                        match v1_rt::map_get(&fn_index, nm.clone()) {
+                            Some(l) => l.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        }
+                        .iter()
+                        .cloned()
+                        .fold(acc, |a2: Rc<DemandWave>, item: Rc<Node>| {
+                            demand_wave_add(a2, item.clone(), source_indices.clone())
+                        })
+                    },
+                );
+                {
+                    let __tco_0 = next;
+                    let __tco_1 = fn_index;
+                    let __tco_2 = source_indices;
+                    __tco_loop_w = __tco_0;
+                    __tco_loop_fn_index = __tco_1;
+                    __tco_loop_source_indices = __tco_2;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DemandWave {
+    pub demanded: Rc<HashMap<String, bool>>,
+    pub fresh: Rc<Vec<String>>,
+}
+
 pub fn infer_items(
     items: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<TypedItemResult>>> {
+    infer_items_demanded(items, scope, Rc::new(DeclarationDemand::AllDeclarations))
+}
+
+pub fn infer_items_demanded(
+    items: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    demand: Rc<DeclarationDemand>,
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
     {
         let data_values = crate::v1_compiler_infer_service::service_data_values(items.clone());
         Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
-                __result.push({
-                    let r = infer_item(item.clone(), scope.clone(), data_values.clone());
-                    Rc::new(TypedItemResult {
-                        item: r.item.clone(),
-                        emissions: infer_emissions_concat(
-                            r.emissions.clone(),
-                            infer_emissions_concat(
-                                infer_emissions_of_diagnostics(equality_item_collection_key_rows(
-                                    item.clone(),
-                                    scope.clone(),
-                                )),
-                                infer_emissions_of_diagnostics(equality_item_body_key_rows(
-                                    r.item.clone(),
-                                    scope.clone(),
-                                )),
-                            ),
-                        ),
-                    })
-                });
+                __result.push(
+                    if !declaration_demanded(
+                        demand.clone(),
+                        item.clone(),
+                        scope.type_env.source_indices.clone(),
+                    ) {
+                        Rc::new(TypedItemResult {
+                            item: Rc::new(Node {
+                                ident: std::option::Option::None,
+                                occurrence_identity: item.occurrence_identity.clone(),
+                                name: item.name.clone(),
+                                span: item.span.clone(),
+                                ident_span: item.ident_span.clone(),
+                                children: item.children.clone(),
+                                params: item.params.clone(),
+                                inferred: item.inferred.clone(),
+                                return_cardinality: item.return_cardinality.clone(),
+                                uses: item.uses.clone(),
+                                body: std::option::Option::None,
+                                connective: item.connective.clone(),
+                                transport: item.transport.clone(),
+                                properties: item.properties.clone(),
+                                type_annotation: item.type_annotation.clone(),
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: item.match_pattern.clone(),
+                                module_item_kind: item.module_item_kind.clone(),
+                                declaration_marker: item.declaration_marker.clone(),
+                                declaration: item.declaration.clone(),
+                                expr_data: Rc::new(ExprData::NoExprData),
+                            }),
+                            emissions: infer_emissions_concat_all(Rc::new(vec![])),
+                        })
+                    } else {
+                        {
+                            let r = infer_item(item.clone(), scope.clone(), data_values.clone());
+                            Rc::new(TypedItemResult {
+                                item: r.item.clone(),
+                                emissions: infer_emissions_concat(
+                                    r.emissions.clone(),
+                                    infer_emissions_concat(
+                                        infer_emissions_of_diagnostics(
+                                            equality_item_collection_key_rows(
+                                                item.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ),
+                                        infer_emissions_of_diagnostics(
+                                            equality_item_body_key_rows(
+                                                r.item.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            })
+                        }
+                    },
+                );
             }
             __result
         })
@@ -35072,51 +35364,30 @@ Rc::new(ResolvedFormal {
     }
 }
 
-pub fn build_module_context(
-    contributions: Rc<Vec<Rc<ItemContribution>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
-    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<ModuleContext> {
+pub fn type_env_over_symbol_index(env: Rc<TypeEnv>, symbol_index: Rc<SymbolIndex>) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        module_path: env.module_path.clone(),
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+        parents: env.parents.clone(),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
+        symbol_index: symbol_index.clone(),
+        unit_variant_index: env.unit_variant_index.clone(),
+        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
+        equality_by_target: env.equality_by_target.clone(),
+    })
+}
+
+pub fn service_census_registry(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>> {
     {
-        let local = fold_module_contributions(
-            contributions,
-            Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
-            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            Rc::new(vec![]),
-            env.source_indices.clone(),
-        );
-        let local_variant_fold = build_local_variants(
-            local.resolved_items.clone(),
-            env.source_indices.clone(),
-            module_name.clone(),
-            Rc::new(VariantFoldState {
-                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                collision_errors: Rc::new(vec![]),
-            }),
-        );
-        let variant_fold = merge_global_bare_variant_locals(
-            build_imported_variants(
-                resolved_imports.clone(),
-                parent_index.clone(),
-                variant_surfaces,
-                env.source_indices.clone(),
-                module_name.clone(),
-                local_variant_fold,
-            ),
-            global_variant_base,
-            env.clone(),
-        );
-        let variant_collision_errors = variant_fold.collision_errors.clone();
-        let env_variant_locals =
-            merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
-        let census_scope = Rc::new(v1_rt::map_keys(&env.symbol_index.services.clone()))
+        let scope = Rc::new(v1_rt::map_keys(&env.symbol_index.services.clone()))
             .iter()
             .cloned()
             .fold(
@@ -35171,14 +35442,64 @@ pub fn build_module_context(
                     std::option::Option::None => acc.clone(),
                 },
             );
+        scope.svc_registry.clone()
+    }
+}
+
+pub fn build_module_context(
+    contributions: Rc<Vec<Rc<ItemContribution>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    service_census: Option<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+) -> Rc<ModuleContext> {
+    {
+        let local = fold_module_contributions(
+            contributions,
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
+            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+            Rc::new(vec![]),
+            env.source_indices.clone(),
+        );
+        let local_variant_fold = build_local_variants(
+            local.resolved_items.clone(),
+            env.source_indices.clone(),
+            module_name.clone(),
+            Rc::new(VariantFoldState {
+                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                collision_errors: Rc::new(vec![]),
+            }),
+        );
+        let variant_fold = merge_global_bare_variant_locals(
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces,
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold,
+            ),
+            global_variant_base,
+            env.clone(),
+        );
+        let variant_collision_errors = variant_fold.collision_errors.clone();
+        let env_variant_locals =
+            merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
+        let census_registry = match service_census.clone() {
+            Some(c) => c.clone(),
+            std::option::Option::None => service_census_registry(env.clone()),
+        };
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
             parent_index.clone(),
             env.clone(),
-            v1_rt::rc_map_merge(
-                census_scope.svc_registry.clone(),
-                local.svc_registry.clone(),
-            ),
+            v1_rt::rc_map_merge(census_registry.clone(), local.svc_registry.clone()),
             local.svc_locals.clone(),
         );
         let parent_envs = merge_func_env_views_by_owner(Rc::new({
@@ -38389,6 +38710,32 @@ pub fn typecheck_module(
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
     equality_by_target: Rc<HashMap<String, bool>>,
 ) -> Rc<TypecheckModuleResult> {
+    typecheck_module_demanded(
+        resolved,
+        parent_index,
+        variant_surfaces,
+        source_indices,
+        intern_table,
+        symbol_index,
+        global_variant_base,
+        equality_by_target,
+        Rc::new(DeclarationDemand::AllDeclarations),
+        std::option::Option::None,
+    )
+}
+
+pub fn typecheck_module_demanded(
+    resolved: Rc<ResolvedModule>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    equality_by_target: Rc<HashMap<String, bool>>,
+    demand: Rc<DeclarationDemand>,
+    service_census: Option<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
             resolved.clone(),
@@ -38477,6 +38824,7 @@ pub fn typecheck_module(
             env.clone(),
             resolved_module_name.clone(),
             global_variant_base,
+            service_census,
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -38518,7 +38866,8 @@ pub fn typecheck_module(
             in_flight_lambda_param_names: Rc::new(vec![]),
             enclosing_declared_type_param_names: Rc::new(vec![]),
         });
-        let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope);
+        let typed_item_results =
+            infer_items_demanded(ctx.resolved_items.clone(), infer_scope, demand);
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.iter().cloned() {
@@ -39640,7 +39989,51 @@ pub fn typecheck(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypecheckPass> {
+    typecheck_scoped(
+        graph,
+        source_indices,
+        intern_table,
+        Rc::new(DeclarationScope::EveryDeclaration),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DeclarationScope {
+    EveryDeclaration,
+    ReachableFrom { requested: Rc<Vec<String>> },
+}
+impl DeclarationScope {
+    pub fn requested(&self) -> Rc<Vec<String>> {
+        match self {
+            DeclarationScope::EveryDeclaration => panic!("no requested on unit variant"),
+            DeclarationScope::ReachableFrom {
+                requested: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn typecheck_scoped(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    scope: Rc<DeclarationScope>,
+) -> Rc<TypecheckPass> {
     {
+        let demand = match (*scope.clone()).clone() {
+            DeclarationScope::EveryDeclaration => Rc::new(DeclarationDemand::AllDeclarations),
+            DeclarationScope::ReachableFrom {
+                requested: requested,
+                ..
+            } => Rc::new(DeclarationDemand::OnlyDeclarations {
+                names: demanded_declaration_names(
+                    graph.modules.clone(),
+                    requested.clone(),
+                    source_indices.clone(),
+                ),
+            }),
+        };
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<ResolvedModule>>(),
@@ -39657,6 +40050,10 @@ pub fn typecheck(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
         );
+        let service_census = service_census_registry(type_env_over_symbol_index(
+            compiler_kernel_type_env(source_indices.clone(), intern_table.clone()),
+            symbol_index.clone(),
+        ));
         let state =
             graph.modules.clone().iter().cloned().fold(
                 Rc::new(RealizeState {
@@ -39682,6 +40079,8 @@ pub fn typecheck(
                         intern_table.clone(),
                         symbol_index.clone(),
                         global_variant_base.clone(),
+                        demand.clone(),
+                        service_census.clone(),
                     )
                 },
             );
@@ -39815,6 +40214,8 @@ pub fn realize_module(
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    demand: Rc<DeclarationDemand>,
+    service_census: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -39833,6 +40234,8 @@ pub fn realize_module(
                                 intern_table.clone(),
                                 symbol_index.clone(),
                                 global_variant_base.clone(),
+                                demand.clone(),
+                                service_census.clone(),
                             )
                         },
                     );
@@ -39841,7 +40244,7 @@ pub fn realize_module(
                         dep_state.module_index.clone(),
                         source_indices.clone(),
                     );
-                    let tc_result = typecheck_module(
+                    let tc_result = typecheck_module_demanded(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         dep_state.variant_surfaces.clone(),
@@ -39850,6 +40253,8 @@ pub fn realize_module(
                         symbol_index.clone(),
                         global_variant_base.clone(),
                         dep_state.equality_by_target.clone(),
+                        demand.clone(),
+                        Some(service_census.clone()),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = crate::v1_std_core::authored_name_at(
@@ -40252,8 +40657,22 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ReconciledPass> {
+    reconcile_scoped(
+        graph,
+        source_indices,
+        intern_table,
+        Rc::new(DeclarationScope::EveryDeclaration),
+    )
+}
+
+pub fn reconcile_scoped(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    scope: Rc<DeclarationScope>,
+) -> Rc<ReconciledPass> {
     {
-        let pass = typecheck(graph, source_indices.clone(), intern_table);
+        let pass = typecheck_scoped(graph, source_indices.clone(), intern_table, scope);
         let typed = pass.graph.clone();
         let index_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
         let index = typed.modules.clone().iter().cloned().fold(
