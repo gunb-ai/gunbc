@@ -340,6 +340,109 @@ fn grain_probe(
     );
 }
 
+// TIER-1 REPLAY. check_service_method_call_node (the tier that establishes a service operation's
+// method surface, src/v1/04_service.dag @581) is GATED on the receiver node's SHAPE:
+// connective == NoConnective AND children.is_empty(), and keyed on authored_name_at(receiver).
+// The grain probes show the census registry reaches both scopes complete; the remaining suspect
+// is the receiver NODE the demanded checker saw -- a differently-shaped typed node (children
+// non-empty, a connective, or an authored name that is not `test.RestReplay`) silently skips
+// tier 1 and falls to method_existence_decision, which is exactly the observed refusal text.
+// This walks the TYPED entry body of each pass, captures every node touching the call
+// (rest_replay / test.RestReplay / RestReplay / PullRequestPage), prints its shape and its
+// stored inference, and REPLAYS the exported tier-1 function against the census registry.
+fn tier1_replay(
+    tag: &str,
+    pass: &Rc<infer::TypecheckPass>,
+    graph: &Rc<crate::v1_compiler_resolve::ModuleGraph>,
+    intern: &Rc<crate::v1_std_core::InternTable>,
+    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) {
+    fn walk(
+        n: &Rc<crate::v1_std_core::Node>,
+        depth: usize,
+        hits: &mut Vec<Rc<crate::v1_std_core::Node>>,
+    ) {
+        if depth > 12 || hits.len() > 200 {
+            return;
+        }
+        if n.name == "rest_replay"
+            || n.name == "test.RestReplay"
+            || n.name == "RestReplay"
+            || n.name == "PullRequestPage"
+        {
+            hits.push(n.clone());
+        }
+        for c in n.children.iter() {
+            walk(c, depth + 1, hits);
+        }
+        if let Some(b) = &n.body {
+            walk(b, depth + 1, hits);
+        }
+        if let Some(t) = &n.type_annotation {
+            walk(t, depth + 1, hits);
+        }
+    }
+    // The SAME authorities the production typecheck_scoped builds @21963/@21984.
+    let census = infer::build_symbol_index_census(graph.modules.clone(), si.clone());
+    let env = infer::type_env_over_symbol_index(
+        infer::compiler_kernel_type_env(si.clone(), intern.clone()),
+        census.clone(),
+    );
+    let reg = infer::service_census_registry(env);
+    let mut reg_keys: Vec<String> = reg.keys().cloned().collect();
+    reg_keys.sort();
+    for tm in pass.graph.modules.iter() {
+        if !tm
+            .module
+            .name
+            .contains("github_pull_request_decode_witness")
+        {
+            continue;
+        }
+        for item in tm.items.iter() {
+            if authored_name_at(si.clone(), item.clone())
+                != "test.claim.github_pull_request_decode_witness.decoded_pull_request"
+            {
+                continue;
+            }
+            let mut hits = Vec::new();
+            walk(item, 0, &mut hits);
+            for h in hits {
+                let inf = h
+                    .inferred
+                    .as_ref()
+                    .map(|i| match i {
+                        crate::v1_std_core::InferredNode::Resolved { node } => {
+                            format!("{}#{}c", node.name, node.children.len())
+                        }
+                        other => format!("{other:?}"),
+                    })
+                    .unwrap_or_else(|| "-".to_string());
+                let replay = infer::check_service_method_call_node(
+                    h.clone(),
+                    "PullRequestPage".to_string(),
+                    reg.clone(),
+                    si.clone(),
+                );
+                eprintln!(
+                    "TIER1_REPLAY tag={tag} node={} conn={:?} children={} auth={} inferred={inf} replay={}",
+                    tag = tag,
+                    node = h.name,
+                    conn = h.connective,
+                    children = h.children.len(),
+                    auth = authored_name_at(si.clone(), h.clone()),
+                    replay = if replay.is_some() { "PRESENT" } else { "ABSENT" },
+                );
+            }
+        }
+    }
+    eprintln!(
+        "TIER1_REPLAY tag={tag} census_registry_keys={reg_keys:?}",
+        tag = tag,
+        reg_keys = reg_keys
+    );
+}
+
 fn grain_demand(
     modules: &Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     seeds: &[&str],
@@ -955,6 +1058,8 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
             let closure_pass = route_pass(&graph, &intern, &si, &[]);
             grain_probe("demanded", &demanded_pass, &si);
             grain_probe("closure", &closure_pass, &si);
+            tier1_replay("demanded", &demanded_pass, &graph, &intern, &si);
+            tier1_replay("closure", &closure_pass, &graph, &intern, &si);
             assert!(
                 service_realized,
                 "the service whose operation decoded_pull_request spells inside its witness-frame subject must be realized"
