@@ -1,0 +1,106 @@
+module test.claim.runner.runner_microvm_network_apply_host_witness
+
+// TWO OF THE THIRTEEN SITES LIVE IN gunbc.runner.runner_microvm_network_apply, and they are the two that
+// used to read a host's NAME as if it were its IDENTITY: the dispatch's word about which host a network
+// apply is for, and the kernel's answer about which machine this process is standing on. Both now resolve
+// through the allocation's selector (gunbc.hostname_allocation) and carry the RESOLVED identity onward --
+// so these claims run the SITE's own gates rather than the helper, because a site that resolved the name
+// and then dropped the identity on the floor would still pass a helper-only witness (DESIGN:
+// witness_one_interface, witness_to_inhabitance; gunbc.plans.fleet_machine_authority section 4.4 (b*)).
+//
+// This file is deliberately tiny and imports only its subject: gunbc.runner.runner_microvm_network_apply
+// has its own witness (test.claim.runner.runner_microvm_network_apply_witness) whose 19-import closure
+// exceeds the runner's memory for one entry, and the host-identity claims do not need it.
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.runner.runner_microvm_network_apply {
+  microvm_network_apply_admission,
+  microvm_network_local_admission,
+  MicrovmNetworkApplyAdmitted,
+  MicrovmNetworkApplyRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BUTCH SHAPE, APPLIED TO ITSELF: srv14 answers "butch". An apply dispatched for srv14 on a kernel
+// answering "butch" is ONE machine, so the join agrees and the refusal that follows is about the
+// unprivileged process -- never about the name. Before this change the two spellings differed as strings
+// and this run refused as a mis-dispatch of a host that is not this host.
+test fn a_named_host_applied_on_its_own_hostname_is_not_refused_as_a_misdispatch() -> Bool {
+  match microvm_network_local_admission(
+    host: "srv14",
+    observed_host: "butch",
+    effective_uid: "1000",
+    expected_revision: "abc",
+    checked_out_revision: "abc"
+  ) {
+    MicrovmNetworkApplyAdmitted { subject: _ } => false
+    MicrovmNetworkApplyRefused { cause: c } => !c.contains("must name this host") && c.contains("administrator's root")
+  }
+}
+
+// THE RESOLVED IDENTITY IS CARRIED ONWARD, NOT THE NAME. With both spellings agreeing, the admission is
+// built under srv14 -- so the next refusal is the one srv14 deserves (it has no runner deploy row yet),
+// stated as srv14 rather than as the spelling the kernel returned.
+test fn an_agreed_host_is_admitted_under_its_resolved_identity() -> Bool {
+  match microvm_network_local_admission(
+    host: "srv14",
+    observed_host: "butch",
+    effective_uid: "0",
+    expected_revision: "abc",
+    checked_out_revision: "abc"
+  ) {
+    MicrovmNetworkApplyAdmitted { subject: s } => (s.host as String) == "srv14"
+    MicrovmNetworkApplyRefused { cause: c } => c.contains("srv14") && !c.contains("butch")
+  }
+}
+
+// TWO MACHINES, ONE RUN: a dispatch for srv14 on a kernel answering srv15's name refuses, and the refusal
+// names the machine the dispatch chose and the name this machine actually gave.
+test fn a_local_apply_on_another_hosts_name_refuses_naming_both() -> Bool {
+  match microvm_network_local_admission(
+    host: "srv14",
+    observed_host: "bobo",
+    effective_uid: "0",
+    expected_revision: "abc",
+    checked_out_revision: "abc"
+  ) {
+    MicrovmNetworkApplyAdmitted { subject: _ } => false
+    MicrovmNetworkApplyRefused { cause: c } =>
+      c.contains("must name this host") && c.contains("srv14") && c.contains("bobo")
+  }
+}
+
+// A KERNEL ANSWER NO ROSTER ANSWERS TO REFUSES, NAMING THE SPELLING IT COULD NOT PLACE -- it is never cast
+// into the identity of whichever host someone meant.
+test fn an_unresolvable_kernel_answer_refuses_rather_than_binding_anyway() -> Bool {
+  match microvm_network_local_admission(
+    host: "srv1",
+    observed_host: "totch",
+    effective_uid: "0",
+    expected_revision: "abc",
+    checked_out_revision: "abc"
+  ) {
+    MicrovmNetworkApplyAdmitted { subject: _ } => false
+    MicrovmNetworkApplyRefused { cause: c } => c.contains("must name this host") && c.contains("totch")
+  }
+}
+
+// THE DISPATCH'S WORD IS A NAME TOO: asked for "butch", the gate resolves it to srv14 and asks srv14's
+// deploy row -- so the refusal it earns is srv14's own, worded as srv14. Nothing here accepts a spelling
+// the roster does not have, and nothing here installs network rules on a host no roster named.
+test fn the_dispatch_word_resolves_before_any_host_is_bound() -> Bool {
+  match microvm_network_apply_admission(host: "butch", expected_revision: "abc", checked_out_revision: "abc") {
+    MicrovmNetworkApplyAdmitted { subject: s } => (s.host as String) == "srv14"
+    MicrovmNetworkApplyRefused { cause: c } => c.contains("srv14") && !c.contains("butch")
+  }
+}
+
+// AND A WORD NO ROSTER HAS refuses by that word, naming it.
+test fn an_unresolvable_dispatch_word_refuses_naming_it() -> Bool {
+  match microvm_network_apply_admission(host: "totch", expected_revision: "abc", checked_out_revision: "abc") {
+    MicrovmNetworkApplyAdmitted { subject: _ } => false
+    MicrovmNetworkApplyRefused { cause: c } => c.contains("totch")
+  }
+}

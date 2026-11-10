@@ -1,0 +1,223 @@
+module test.claim.observed_host_identity_witness
+
+// ONE INTERFACE FOR A THIRTEEN-SITE RULE. Every production site that used to compare or cast what
+// `hostname -s` says against a HostIdentity now asks this module the same question, so this witness
+// discriminates the rule ONCE -- a host whose hostname differs from its identity resolves to that
+// identity, and a spelling no roster answers to refuses by that spelling -- and the real-path control
+// in test.claim.ci.ci_deploy_target_host_witness runs a producer path (the deploy gate) on an observed
+// "butch". A fixture roster is used only where a witness needs a shape the fleet does not happen to
+// have today (two hosts answering one short name); the srv14/butch and srv15/bobo rows are the
+// fleet's own, so the shape witnessed is the shape in production
+// (gunbc.design_argument::witness_one_interface).
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.hostname_allocation {
+  HostnameAllocation, LegacyHostname, DrawnHumanName, HumanNameDraw, HumanName, FirstOnly,
+  gunbc_fleet_hostname_allocations,
+  ObservedHostIdentity, ObservedHostIdentityResolved, ObservedHostIdentityRefused,
+  ObservedHostIdentityRefusal, ObservedHostUnnamed, ObservedHostAmbiguous, ObservedHostUnknown,
+  observed_host_identity, observed_host_identity_in, observed_host_identity_refusal_text,
+  ObservedHostSelectorJoin, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
+  ObservedHostJoinRefusal, JoinObservedUnnamed, JoinObservedAmbiguous, JoinObservedUnknown,
+  JoinExpectedUnnamed, JoinExpectedAmbiguous, JoinExpectedUnknown, JoinHostsDisagree,
+  observed_host_selector_join, observed_host_selector_join_in, observed_host_join_refusal_text,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn legacy_row(slot: String, hostname: String) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: LegacyHostname { label: hostname as DnsLabel },
+  }
+}
+
+fn drawn_row(slot: String, first: String, entropy: Int) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: DrawnHumanName {
+      name: FirstOnly { first: first as DnsLabel },
+      draw: HumanNameDraw { entropy: entropy },
+    },
+  }
+}
+
+// THE SHAPE IN PRODUCTION, NOT A PARABLE. srv14 answers "butch" and srv15 answers "bobo" in the
+// fleet's own roster; each spelling resolves to the host it belongs to, and the two never cross.
+test fn witness_a_host_answering_its_name_resolves_to_its_identity() -> Bool {
+  match observed_host_identity(observed: "butch") {
+    ObservedHostIdentityResolved { host: h } =>
+      match observed_host_identity(observed: "bobo") {
+        ObservedHostIdentityResolved { host: other } =>
+          (h as String) == (operator_host_srv14 as String)
+            && (other as String) == (operator_host_srv15 as String)
+        ObservedHostIdentityRefused { refusal: _ } => false
+      }
+    ObservedHostIdentityRefused { refusal: _ } => false
+  }
+}
+
+// THE IDENTITY SPELLING STILL RESOLVES, because a host is addressable by what it IS as well as by
+// what it ANSWERS; both names of srv14 arrive at srv14, which is the whole point of resolving rather
+// than comparing.
+test fn witness_identity_and_hostname_are_two_names_for_one_host() -> Bool {
+  match observed_host_identity(observed: "srv14") {
+    ObservedHostIdentityResolved { host: by_identity } =>
+      match observed_host_identity(observed: "butch") {
+        ObservedHostIdentityResolved { host: by_name } => (by_identity as String) == (by_name as String)
+        ObservedHostIdentityRefused { refusal: _ } => false
+      }
+    ObservedHostIdentityRefused { refusal: _ } => false
+  }
+}
+
+// AN UNKNOWN SPELLING IS REFUSED, BY THAT SPELLING, AND IS NEVER AN IDENTITY. This is the case the
+// comparators used to read as "not the expected host" -- or, where a host happened to be named after
+// itself, as a passing check.
+test fn witness_an_unknown_spelling_refuses_naming_it() -> Bool {
+  match observed_host_identity(observed: "totch") {
+    ObservedHostIdentityRefused { refusal: r } =>
+      match r {
+        ObservedHostUnknown { observed: o } =>
+          o == "totch"
+            && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "totch")
+        ObservedHostUnnamed { observed: _ } => false
+        ObservedHostAmbiguous { observed: _, candidates: _ } => false
+      }
+    ObservedHostIdentityResolved { host: _ } => false
+  }
+}
+
+// AN EMPTY ANSWER IS A FAILED OBSERVATION, NOT THE NAMELESS HOST. The old comparators folded it into
+// their mismatch branch -- or compared two empty strings and PASSED, which is two jobs that could not
+// read their hostnames agreeing with each other and binding whatever machine they happen to be on.
+test fn witness_an_empty_answer_refuses_as_unnamed() -> Bool {
+  match observed_host_identity(observed: "   ") {
+    ObservedHostIdentityRefused { refusal: r } =>
+      match r {
+        ObservedHostUnnamed { observed: _ } =>
+          string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "named nothing")
+        ObservedHostUnknown { observed: _ } => false
+        ObservedHostAmbiguous { observed: _, candidates: _ } => false
+      }
+    ObservedHostIdentityResolved { host: _ } => false
+  }
+}
+
+// A SHORTER FORM TWO HOSTS ANSWER TO SELECTS NEITHER. The rule refuses rather than taking the first
+// match: a witness sees the refusal an operator would see, and a site that picked one would be
+// binding a machine on the order of a roster.
+test fn witness_a_short_name_two_hosts_answer_to_refuses() -> Bool {
+  let roster = [
+    drawn_row(slot: "host-twin-one", first: "damien", entropy: 707054856316),
+    drawn_row(slot: "host-twin-two", first: "damien", entropy: 707054856317),
+  ]
+  match observed_host_identity_in(allocations: roster, observed: "damien") {
+    ObservedHostIdentityRefused { refusal: r } =>
+      match r {
+        ObservedHostAmbiguous { observed: o, candidates: c } =>
+          o == "damien"
+            && c.length() == 2
+            && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "damien")
+        ObservedHostUnknown { observed: _ } => false
+        ObservedHostUnnamed { observed: _ } => false
+      }
+    ObservedHostIdentityResolved { host: _ } => false
+  }
+}
+
+// THE JOIN AGREES ACROSS THE TWO NAMES. This is the site shape the census found: a dispatch names a
+// host and the kernel answers with another name for it. It used to refuse; now both sides resolve and
+// the join carries the identity onward.
+test fn witness_the_join_agrees_between_a_selection_and_an_answer() -> Bool {
+  match observed_host_selector_join(expected: "srv14", observed: "butch") {
+    ObservedHostSelectorAgreed { host: h } => (h as String) == (operator_host_srv14 as String)
+    ObservedHostSelectorJoinRefused { cause: _ } => false
+  }
+}
+
+// TWO NAMES, TWO MACHINES: the join refuses and says which is which, in IDENTITIES rather than in
+// spellings, because an operator comparing a dispatch to the roster needs the two identities and not
+// two more names to reason about.
+test fn witness_the_join_refuses_two_different_machines_by_identity() -> Bool {
+  match observed_host_selector_join(expected: "srv14", observed: "bobo") {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      match c {
+        JoinHostsDisagree { expected: e, observed: o } =>
+          (e as String) == (operator_host_srv14 as String)
+            && (o as String) == (operator_host_srv15 as String)
+            && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "srv14")
+            && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "srv15")
+        _ => false
+      }
+    ObservedHostSelectorAgreed { host: _ } => false
+  }
+}
+
+// A DISPATCH THAT SELECTS A HOST THE ROSTER DOES NOT HAVE IS REFUSED AT THE JOIN, rather than being
+// passed down to a spec lookup that would call it "not rostered" for the wrong reason.
+test fn witness_the_join_refuses_an_unknown_selection() -> Bool {
+  match observed_host_selector_join(expected: "srv99", observed: "butch") {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      match c {
+        JoinExpectedUnknown { expected: e } =>
+          e == "srv99" && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "srv99")
+        _ => false
+      }
+    ObservedHostSelectorAgreed { host: _ } => false
+  }
+}
+
+// AND A MACHINE THAT ANSWERS WITH A SPELLING NOBODY ALLOCATED IS REFUSED BY THAT SPELLING. The
+// dispatch's own selection is a resolvable host here, so the refusal can only come from the answer.
+test fn witness_the_join_refuses_an_unknown_answer() -> Bool {
+  let roster = [legacy_row(slot: "host-alone", hostname: "lantern")]
+  match observed_host_selector_join_in(allocations: roster, expected: "host-alone", observed: "lanterns") {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      match c {
+        JoinObservedUnknown { observed: o } =>
+          o == "lanterns" && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "lanterns")
+        _ => false
+      }
+    ObservedHostSelectorAgreed { host: _ } => false
+  }
+}
+
+// A DISPATCH THAT NAMES NOTHING IS REFUSED ON ITS OWN SIDE, before the kernel is judged at all: a run
+// with no selected host has no subject to observe, and the empty kernel answer beside it must not
+// become the headline.
+test fn witness_an_empty_selection_refuses_before_the_kernel_is_judged() -> Bool {
+  match observed_host_selector_join(expected: "", observed: "") {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      match c {
+        JoinExpectedUnnamed { expected: _ } => true
+        _ => false
+      }
+    ObservedHostSelectorAgreed { host: _ } => false
+  }
+}
+
+// THE FLEET ROSTER RESOLVES EVERY HOST IT CARRIES, BY ITS OWN IDENTITY AND BY ITS OWN ALLOCATED
+// NAME. A rename that moved a name from one host to another would break this claim -- which is the
+// point: what is under test is the roster's rule, not a hand-picked pair.
+test fn witness_the_fleet_roster_resolves_every_allocated_host_by_both_names() -> Bool {
+  let unmet = filter(gunbc_fleet_hostname_allocations, row => {
+    match row.name {
+      LegacyHostname { label: l } =>
+        !resolves_as(observed: row.fleet_slot as String, want: row.fleet_slot)
+          || !resolves_as(observed: l as String, want: row.fleet_slot)
+      DrawnHumanName { name: _, draw: _ } => !resolves_as(observed: row.fleet_slot as String, want: row.fleet_slot)
+    }
+  })
+  unmet.length() == 0
+}
+
+fn resolves_as(observed: String, want: HostIdentity) -> Bool {
+  match observed_host_identity(observed: observed) {
+    ObservedHostIdentityResolved { host: h } => (h as String) == (want as String)
+    ObservedHostIdentityRefused { refusal: _ } => false
+  }
+}
