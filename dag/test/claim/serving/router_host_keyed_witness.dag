@@ -1,0 +1,120 @@
+module gunbc.test.claim.serving.router_host_keyed_witness
+
+// THE HOST-KEYED ROUTER WITNESS (B4a, item 4). It replaces the finding's closed h11/srv3/srv4 enum + three-arg
+// `router_dev_first_party_for` with a list keyed by host, and turns a throughput-unread replica into a row that
+// is NAMED but NOT IN SERVICE instead of refusing the whole router. Three claims, each discriminating:
+//
+//   1. A fourth host joins the router as a data row -- no new code in the fold, no new named anchor. The host
+//      rides the same `router_dev_first_party_for_roster` fold with an `AnchorStrataProfile` carrying a profile
+//      as data, and its row appears alongside the three that were always there.
+//   2. An unread replica -- one that has never produced a throughput reading (a host admitted but not yet
+//      serving, exactly butch-before-deploy) -- is named (its endpoint facts are present) but `in_service: false`,
+//      and its siblings' rows are untouched. The discriminator: the old projection REFUSED the entire router for
+//      one unread replica; here the fold still yields rows (not `RouterDevFirstPartyRefused`) and the siblings
+//      stay in service.
+//   3. h11, srv3 and srv4 keep their outcome: every one of their rows is still present and still in service under
+//      the host-keyed fold, identical to the hand-chained three-host derivation.
+//
+// Run (the whole floor is CI's job; this file runs alone):
+//   claim_batch --hermetic --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/serving/router_host_keyed_witness.dag \
+//     --functions <the three witness_* names, comma-joined>
+import std.types { Bool, List, String }
+import std.optional { Optional, Present, Absent }
+import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout }
+import gunbc.serving.serving_replica_profile { srv3_strata_profile }
+import gunbc.serving.router_dev_policy {
+  RouterDevHostRoster, RouterDevReplicaNaming, RouterDevUpstream,
+  RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused,
+  UpstreamHttps, AnchorStrataProfile, AnchorStrataUnread,
+  router_dev_first_party, router_dev_first_party_for_roster,
+  router_dev_h11_namings, router_dev_srv3_namings, router_dev_srv4_namings,
+}
+
+// THE THREE FIRST-PODER HOSTS AS DATA ROWS, reused across the witnesses.
+fn base_roster() -> List<RouterDevHostRoster> {
+  [
+    RouterDevHostRoster { host: "h11", layout: host_6ce85c_layout, namings: router_dev_h11_namings() },
+    RouterDevHostRoster { host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings() },
+    RouterDevHostRoster { host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings() },
+  ]
+}
+
+// A FOURTH HOST: srv4's layout (its replica group is the naming's group) with a naming whose shape is a profile
+// carried as DATA -- the generic `AnchorStrataProfile` arm, no new named anchor, no new fold argument. Its read
+// profile puts it in service.
+fn extra_read_host() -> RouterDevHostRoster {
+  RouterDevHostRoster {
+    host: "b4a-read",
+    layout: srv4_layout,
+    namings: [RouterDevReplicaNaming {
+      group: "gunbc-srv4-daily-engine", name: "b4a-read-host", scheme: UpstreamHttps,
+      host: "10.0.0.5", port: 19001, tls_name: Absent,
+      anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [],
+    }],
+  }
+}
+
+// A FIFTH HOST that has never served: its naming carries `AnchorStrataUnread`, so its shape is the throughput-
+// unread refusal and the projection names it out of service instead of refusing.
+fn extra_unread_host() -> RouterDevHostRoster {
+  RouterDevHostRoster {
+    host: "b4a-unread",
+    layout: srv4_layout,
+    namings: [RouterDevReplicaNaming {
+      group: "gunbc-srv4-daily-engine", name: "b4a-unread-host", scheme: UpstreamHttps,
+      host: "10.0.0.6", port: 19002, tls_name: Absent,
+      anchor: AnchorStrataUnread { obligation: "no throughput reading has been taken for this host" }, retiring: [],
+    }],
+  }
+}
+
+fn row_named(rows: List<RouterDevUpstream>, name: String) -> Optional<RouterDevUpstream> {
+  filter(rows, r => (r.name as String) == name) |> first()
+}
+
+fn row_in_service(rows: List<RouterDevUpstream>, name: String) -> Bool {
+  match row_named(rows, name) { Present { value: u } => u.in_service Absent => false }
+}
+
+fn row_present(rows: List<RouterDevUpstream>, name: String) -> Bool {
+  match row_named(rows, name) { Present { value: _ } => true Absent => false }
+}
+
+// CLAIM 1: a fourth host joins as a row. The fold is called with one more roster entry than the standing three;
+// the new host's row is present and in service, and the three that were always there are still present.
+test fn witness_a_fourth_host_joins_the_first_party_router_as_a_data_row() -> Bool {
+  match router_dev_first_party_for_roster(concat(base_roster(), [extra_read_host()])) {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } =>
+      let fourth_joined = row_in_service(rs, "b4a-read-host")
+      let standing_three_present = row_present(rs, "srv3-strata") && row_present(rs, "srv4-strata") && row_present(rs, "h11-05")
+      fourth_joined && standing_three_present
+  }
+}
+
+// CLAIM 2: an unread replica is named but NOT in service, and it does not refuse the router or its siblings. The
+// discriminator against the old projection (which refused the WHOLE router for one unread shape): the fold still
+// yields Rows, the unread row is present but in_service false, and srv3/srv4 keep their in-service rows.
+test fn witness_an_unread_replica_is_named_but_not_in_service_without_refusing_the_router() -> Bool {
+  match router_dev_first_party_for_roster(concat(base_roster(), [extra_unread_host()])) {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } =>
+      let named = row_present(rs, "b4a-unread-host")
+      let not_in_service = !row_in_service(rs, "b4a-unread-host")
+      let siblings_untouched = row_in_service(rs, "srv3-strata") && row_in_service(rs, "srv4-strata")
+      named && not_in_service && siblings_untouched
+  }
+}
+
+// CLAIM 3: the standing three keep their outcome under the host-keyed fold. Every h11 card and the srv3/srv4
+// Strata rows are present and in service -- identical to the hand-chained three-argument derivation. The roster
+// fold must not change what h11, srv3 and srv4 produce.
+test fn witness_h11_srv3_srv4_rows_keep_their_outcome_under_the_host_keyed_fold() -> Bool {
+  match router_dev_first_party() {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } =>
+      row_in_service(rs, "h11-05") && row_in_service(rs, "h11-07") && row_in_service(rs, "h11-08") && row_in_service(rs, "h11-88")
+      && row_in_service(rs, "srv3-strata") && row_in_service(rs, "srv4-strata")
+  }
+}

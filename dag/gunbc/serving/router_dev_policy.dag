@@ -1059,7 +1059,7 @@ fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, Rou
 // named anchor or a new `router_dev_first_party_for` argument. A profile with no throughput reading yet (a host
 // that has never served -- the not-yet-deployed case) yields an unread shape here, which the projection names but
 // keeps out of service rather than refusing the whole router.
-type RouterDevReplicaAnchor = AnchorH11Strata { bus: String } | AnchorSrv3Strata | AnchorSrv4Strata | AnchorStrataProfile { profile: ServingReplicaProfile }
+type RouterDevReplicaAnchor = AnchorH11Strata { bus: String } | AnchorSrv3Strata | AnchorSrv4Strata | AnchorStrataProfile { profile: ServingReplicaProfile } | AnchorStrataUnread { obligation: NonEmptyStr }
 
 // h11's group is the bus, prefixed -- the layout names its h11 device groups "h11-strata@<bus>", so deriving the
 // group from the bus keeps the two from drifting apart (review 92443): the bus is stated once, on the anchor.
@@ -1092,6 +1092,10 @@ fn router_dev_replica_shape(n: RouterDevReplicaNaming, admitted: Nat) -> Serving
     AnchorSrv3Strata => srv3_strata_shape()
     AnchorSrv4Strata => srv4_strata_shape()
     AnchorStrataProfile { profile: p } => replica_shape_named(p: p, deployment: n.name)
+    // A named replica whose throughput has never been read -- a host admitted but not yet serving. It carries the
+    // very refusal `serving_capacity_shape` raises for ThroughputUnread, so the projection turns it into a named
+    // not-in-service row rather than a refusal. `obligation` names whose job it is to produce the reading.
+    AnchorStrataUnread { obligation: _ } => ServingShapeRefused { deployment: n.name as String, reason: "the anchor's aggregate throughput is unread" }
   }
 }
 
@@ -1222,10 +1226,17 @@ fn router_dev_replica_projection(host: String, layout: ServingLayoutResult, nami
               fold(named, init: RouterDevReplicaProjected { rows: so_far }, f: (inner, n) =>
                 match inner {
                   RouterDevReplicaRefused { reason: r } => RouterDevReplicaRefused { reason: r }
-                  RouterDevReplicaProjected { rows: rows } => match router_dev_replica_row(n: n, admitted: c.admitted_conversations) {
-                    RouterDevShapeRefused { reason: r } => RouterDevReplicaRefused { reason: r }
-                    RouterDevShapedRow { row: u } => RouterDevReplicaProjected { rows: concat(rows, [u]) }
-                  }
+                  RouterDevReplicaProjected { rows: rows } =>
+                    if router_dev_shape_is_throughput_unread(router_dev_replica_shape(n: n, admitted: c.admitted_conversations)) {
+                      // A replica with no throughput reading is a host that has never served. Name it, keep it
+                      // out of service, and carry on -- it is excluded, not a cause to refuse its siblings.
+                      RouterDevReplicaProjected { rows: concat(rows, [router_dev_unread_row(n)]) }
+                    } else {
+                      match router_dev_replica_row(n: n, admitted: c.admitted_conversations) {
+                        RouterDevShapeRefused { reason: r } => RouterDevReplicaRefused { reason: r }
+                        RouterDevShapedRow { row: u } => RouterDevReplicaProjected { rows: concat(rows, [u]) }
+                      }
+                    }
                 })
             }
           }
@@ -1240,24 +1251,66 @@ type RouterDevFirstParty
 // THE FIRST-PARTY SET: the head, then every layout-projected host. Each host is projected by the
 // SAME rule from ITS OWN layout, and any one of them refusing refuses the whole set — a router can never be
 // rendered from a fleet that a layout does not grant.
-fn router_dev_first_party_for(h11: ServingLayoutResult, srv3: ServingLayoutResult, srv4: ServingLayoutResult) -> RouterDevFirstParty {
-  match router_dev_replica_projection(host: "h11", layout: h11, namings: router_dev_h11_namings()) {
-    RouterDevReplicaRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-    RouterDevReplicaProjected { rows: h } => match router_dev_replica_projection(host: "srv3", layout: srv3, namings: router_dev_srv3_namings()) {
-      RouterDevReplicaRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-      RouterDevReplicaProjected { rows: s3 } => match router_dev_replica_projection(host: "srv4", layout: srv4, namings: router_dev_srv4_namings()) {
-        RouterDevReplicaRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-        RouterDevReplicaProjected { rows: s4 } => match router_dev_first_party_head() {
-          RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-          RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(head, concat(h, concat(s3, s4))) }
+// A HOST'S PLACE IN THE FIRST-PARTY ROUTER (B4a): the host label its rows are keyed by, the layout that grants
+// its replicas, and the namings that name them. This is the shape the finding asked for -- the router is a list
+// keyed by host, not a fixed h11/srv3/srv4 arity. Adding a serving host is another `RouterDevHostRoster` row,
+// never a new argument to `router_dev_first_party_for` or a new named anchor.
+type RouterDevHostRoster {
+  host: String
+  layout: ServingLayoutResult
+  namings: List<RouterDevReplicaNaming>
+}
+
+// THE FLEET'S FIRST-PARTY ROSTER, as data. srv3 and srv4 join h11 here as rows; a fourth host -- another Strata
+// engine on a new machine -- is another row in this list (or one passed to router_dev_first_party_for_roster
+// directly), with no change to the fold below. The per-host name is a key, not a branch (operator ruling D2).
+fn router_dev_host_roster() -> List<RouterDevHostRoster> {
+  [
+    RouterDevHostRoster { host: "h11", layout: host_6ce85c_layout, namings: router_dev_h11_namings() },
+    RouterDevHostRoster { host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings() },
+    RouterDevHostRoster { host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings() },
+  ]
+}
+
+// THE FIRST-PARTY ROWS, FOLDED OVER A HOST-KEYED ROSTER. Every host's projection is collected in roster order; a
+// hard refusal (a naming the layout does not grant, a shape refused for a reason other than an unread throughput)
+// refuses the whole router -- fail closed, a smaller fleet is never read as the fleet. A throughput-unread replica
+// was already turned into a named-not-in-service row inside the projection, so it never reaches this refusal path
+// and cannot refuse its siblings. head (srv1's vLLM) and tail (the rented pool) bracket the projected hosts, and
+// the projections are checked before the head so a projection's reason wins, as it did when the three hosts were
+// chained by hand.
+fn router_dev_first_party_for_roster(roster: List<RouterDevHostRoster>) -> RouterDevFirstParty {
+  match fold(roster, init: RouterDevFirstPartyRows { rows: [] }, f: (acc, r) =>
+    match acc {
+      RouterDevFirstPartyRefused { reason: rr } => RouterDevFirstPartyRefused { reason: rr }
+      RouterDevFirstPartyRows { rows: so_far } =>
+        match router_dev_replica_projection(host: r.host, layout: r.layout, namings: r.namings) {
+          RouterDevReplicaRefused { reason: rr } => RouterDevFirstPartyRefused { reason: rr }
+          RouterDevReplicaProjected { rows: hr } => RouterDevFirstPartyRows { rows: concat(so_far, hr) }
         }
-      }
+    }) {
+    RouterDevFirstPartyRefused { reason: rr } => RouterDevFirstPartyRefused { reason: rr }
+    RouterDevFirstPartyRows { rows: projected } => match router_dev_first_party_head() {
+      RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+      RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(concat(head, projected), router_dev_first_party_tail()) }
     }
   }
 }
 
+// THE THREE FIRST-PARTY HOSTS AS THEY ARE TODAY, expressed as a roster and folded generically. The signature is
+// kept (the falsifier and existing readers call it with the three layouts); it no longer hardcodes the fold -- it
+// builds a roster of the same three hosts and hands it to the host-keyed fold above. h11, srv3 and srv4 therefore
+// produce exactly the rows they did when the three were chained by hand: unchanged in outcome.
+fn router_dev_first_party_for(h11: ServingLayoutResult, srv3: ServingLayoutResult, srv4: ServingLayoutResult) -> RouterDevFirstParty {
+  router_dev_first_party_for_roster([
+    RouterDevHostRoster { host: "h11", layout: h11, namings: router_dev_h11_namings() },
+    RouterDevHostRoster { host: "srv3", layout: srv3, namings: router_dev_srv3_namings() },
+    RouterDevHostRoster { host: "srv4", layout: srv4, namings: router_dev_srv4_namings() },
+  ])
+}
+
 fn router_dev_first_party() -> RouterDevFirstParty {
-  router_dev_first_party_for(h11: host_6ce85c_layout, srv3: srv3_layout, srv4: srv4_layout)
+  router_dev_first_party_for_roster(router_dev_host_roster())
 }
 
 // THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31, and srv4's row added there
