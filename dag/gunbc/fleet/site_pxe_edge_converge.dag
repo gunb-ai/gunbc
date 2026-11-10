@@ -443,9 +443,10 @@ fn site_pxe_edge_ubuntu_chain_pin_for(arch: Architecture, audience: SiteEdgeChai
   }
 }
 
-// THE CHAINS THIS EDGE SERVES, one per (architecture, audience). The Ubuntu rows' grub/grub.cfg is the
-// FALLBACK configuration: GRUB reads grub/grub.cfg-01-<mac> before it (the GRUB manual, Network), so a host
-// with an install binding gets its own configuration and every other host returns to its next boot device.
+// THE CHAINS THIS EDGE SERVES, one per (architecture, audience). The Ubuntu rows' grub/grub.cfg is the ENTRY
+// configuration (site_pxe_edge_fallback_grub_cfg): it loads grub/install/<mac>.cfg when the edge holds one for the
+// booting NIC, so a host with an install binding gets its own configuration and every other host returns to its
+// next boot device.
 // Both GRUB builds embed the prefix /grub, so the two Ubuntu chains share that one file with identical bytes.
 // aarch64 keeps the iPXE row as its default chain (EveryKnownClient); its Ubuntu chain is offered only to a
 // client an install binding names (InstallBoundClients), so an unbound arm64 client never reaches an
@@ -473,12 +474,13 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 // THE INSTALLS REQUESTED OF THIS EDGE, and the observation that srv4's name resolves from the segment. A request
 // names its client by a MAC parse and its user-data as a document; the run admits each through the public seed
 // authority, so a list of already-admitted seeds (which could only be authored by dropping refusals) never exists.
+//
+// AN INSTALL REQUEST IS WITHDRAWN ONCE ITS HOST IS INSTALLED, because the binding wipes the disk of any boot that
+// reaches it. srv14 (butch) was installed on 2026-10-30 from the arm64 live-server ISO over its BMC's USB
+// virtual-media gadget, not from this edge (its /var/log/installer reads ds=nocloud;s=/cdrom/nocloud/ and its
+// install-time block device is the "Linux File-Stor_Gadget"; read on butch 2026-11-10). Its request is withdrawn;
+// its NIC stays on the known-client roster, so a network boot of butch now finds no install and returns to disk.
 data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
-  SitePxeEdgeInstallRequest {
-    client: srv14_install_client,
-    user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall),
-    architecture: Aarch64,
-  },
   SitePxeEdgeInstallRequest {
     client: srv15_install_client,
     user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall),
@@ -898,9 +900,19 @@ fn site_pxe_edge_rendered_member_files(chains: List<SitePxeEdgePinnedChain>) -> 
 
 data site_pxe_edge_tftp_scope: FileTreeScope = FileTreeScope { root_path: site_pxe_edge_tftp_root }
 
-// THE FALLBACK GRUB CONFIGURATION, served at grub/grub.cfg: it boots nothing and installs nothing. GRUB's
+// THE ENTRY GRUB CONFIGURATION, served at grub/grub.cfg, the one file the signed network GRUB reads. It boots
+// nothing itself: it hands a client its own install configuration when the edge holds one, and otherwise GRUB's
 // `exit` returns to the firmware, which tries the next boot device.
-data site_pxe_edge_fallback_grub_cfg: String = "# gunbc.fleet.site_pxe_edge_converge: no install binding for this client; return to the next boot device\nexit\n"
+//
+// WHY IT LOOKS THE CLIENT UP ITSELF. The signed network GRUB does not search per-MAC names. Its embedded memdisk
+// configuration loads $prefix/grub.cfg directly, so the GNU GRUB manual's grub.cfg-01-<mac> search never runs.
+// Measured on srv4's edge, 2026-10-30 13:21Z and 13:26Z (artifacts/pxe/srv15-pxe-attempt-2026-10-30): srv15's PXE
+// client fetched bootaa64.efi, grubaa64.efi, grub/arm64-efi/*.lst and then grub/grub.cfg, never
+// grub/grub.cfg-01-9c-6b-00-e7-ca-63, which held its install binding, and then left for its next boot device. So
+// the per-host file is reached from here by GRUB's own variable for the booting NIC, net_default_mac (lower-case,
+// colon-separated, the spelling render_mac_address writes). `-s` opens the file, which works over TFTP; `-e` and
+// `-f` list a directory, which TFTP cannot.
+data site_pxe_edge_fallback_grub_cfg: String = "# gunbc.fleet.site_pxe_edge_converge: this client's install binding if the edge holds one, else the next boot device\nif [ -s $prefix/install/$net_default_mac.cfg ]; then configfile $prefix/install/$net_default_mac.cfg; fi\nexit\n"
 
 // ── The install surface: the HTTP-served installer image and per-host install bindings ────────────
 // merry-fox-82's conditions (msg_42e15131), each realized here: the HTTP unit binds srv4's onboarding address
@@ -1105,8 +1117,8 @@ fn site_pxe_edge_image_standing(image: SitePxeEdgeInstallerImage, observation: S
   }
 }
 
-// WHY ONE HOST'S BINDING IS WITHHELD. A withheld binding renders no grub.cfg-01-<mac> and no seed, so that
-// host reaches the fallback configuration and boots its next device.
+// WHY ONE HOST'S BINDING IS WITHHELD. A withheld binding renders no grub/install/<mac>.cfg and no seed, so that
+// host's entry configuration finds nothing to load and it boots its next device.
 type SitePxeEdgeInstallRefusal
   = InstallClientNotOnRoster { mac: Eui48Address }
   | InstallImageNotServable { standing: SitePxeEdgeImageStanding }
@@ -1129,10 +1141,10 @@ fn site_pxe_edge_install_refusals(binding: SitePxeEdgeInstallBinding, roster: Si
     + (match install { Present { value: _ } => [] Absent => [InstallChainNotServable] })
 }
 
-// GRUB's per-MAC configuration name: "01-" (the Ethernet hardware type) and the MAC in lower-case hex, dashes
-// between octets (the GRUB manual, Network).
+// ONE HOST'S INSTALL CONFIGURATION, at the path the entry configuration (site_pxe_edge_fallback_grub_cfg) builds
+// from GRUB's net_default_mac: grub/install/<mac>.cfg, the MAC as render_mac_address writes it.
 fn site_pxe_edge_grub_mac_path(mac: Eui48Address) -> NonEmptyStr {
-  concat("grub/grub.cfg-01-", join(split(s: render_mac_address(addr: mac) as String, delimiter: ":"), "-")) as NonEmptyStr
+  join(["grub/install/", render_mac_address(addr: mac) as String, ".cfg"], "") as NonEmptyStr
 }
 
 data site_pxe_edge_seed_root: String = "seed/"

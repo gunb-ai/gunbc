@@ -24,7 +24,7 @@ import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
 import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeFailed, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
-import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
@@ -120,6 +120,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   IpxeBuildSource,
   VerifiedMediaSource,
   site_pxe_edge_fallback_grub_cfg,
+  site_pxe_edge_grub_mac_path,
   SitePxeEdgeInstallBinding,
   SitePxeEdgeInstallStanding,
   InstallAdmitted,
@@ -714,9 +715,26 @@ fn with_one_differing(chain: SitePxeEdgePinnedChain, path: String) -> List<SiteP
   map(observed_at_pins(chain: chain), o => if (o.served_path as String) == path { SitePxeEdgeMemberObservation { served_path: o.served_path, digest: ChainloaderDigestObserved { digest: digest_b } } } else { o })
 }
 
-// THE PRODUCTION amd64 ROW IS PINNED ON THE FALLBACK CONFIGURATION: every blob member is pinned from the verified
-// ISO, and grub/grub.cfg is the fallback that boots and installs nothing -- a host only installs through its own
-// grub.cfg-01-<mac>, rendered from an admitted install binding.
+// THE PRODUCTION amd64 ROW IS PINNED ON THE ENTRY CONFIGURATION: every blob member is pinned from the verified
+// ISO, and grub/grub.cfg boots and installs nothing itself -- a host only installs through its own
+// grub/install/<mac>.cfg, rendered from an admitted install binding.
+// THE ENTRY CONFIGURATION REACHES THE FILE THE EDGE RENDERS. GRUB's prefix is /grub and net_default_mac is the
+// booting NIC in render_mac_address's spelling, so substituting both into grub/grub.cfg must yield exactly the
+// path site_pxe_edge_grub_mac_path names for that client, guarded by `-s` and followed by `exit`. A per-MAC file
+// name the entry configuration never builds (the grub.cfg-01-<mac> the signed GRUB never searched) turns this red.
+test fn the_entry_configuration_loads_the_path_the_edge_renders() -> Bool {
+  match parse_mac_address(text: "9c:6b:00:e7:ca:63") {
+    MacParseFailed { error: _ } => false
+    MacParsed { address: mac } => {
+      let booted = replace(replace(site_pxe_edge_fallback_grub_cfg, "$prefix", "/grub"), "$net_default_mac", render_mac_address(addr: mac) as String)
+      let host_path = concat("/", site_pxe_edge_grub_mac_path(mac: mac) as String)
+      contains(booted, concat("if [ -s ", concat(host_path, " ]; then configfile ")))
+        && contains(booted, concat("configfile ", concat(host_path, "; fi\nexit")))
+        && !contains(site_pxe_edge_fallback_grub_cfg, "grub.cfg-01-")
+    }
+  }
+}
+
 test fn the_landed_amd64_row_is_pinned_on_the_fallback_configuration() -> Bool {
   length(ubuntu_noble_amd64_network_boot_member_pins()) == 4
     && (match skip(xs: site_pxe_edge_chain_pins, n: 1).first() {
@@ -900,7 +918,7 @@ test fn the_installer_image_is_the_media_rows_digest() -> Bool {
 }
 
 // X86 INSTALL ADMITTED: a known x86 client, the image read back at its digest and srv4's name observed resolving --
-// its own grub.cfg-01-<mac> names the image and ITS seed on srv4 by name (no address literal), and its NoCloud
+// its own grub/install/<mac>.cfg names the image and ITS seed on srv4 by name (no address literal), and its NoCloud
 // documents land under its MAC; the HTTP unit comes with it.
 test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Bool {
   match x86_roster(macs: [x86_mac]) {
@@ -913,7 +931,7 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
           let files = install_files_of(b: b, image: servable_image())
           let grub = grub_of(b: b)
           admitted(st: st)
-            && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe")
+            && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e3:f7:fe.cfg")
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data")
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/meta-data")
             && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service")
@@ -936,7 +954,7 @@ test fn each_install_file_write_creates_its_own_parent_directory() -> Bool {
   with_binding(mac: x86_mac, claim: b => {
     let files = install_files_of(b: b, image: servable_image())
     any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe"])
-      && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub"])
+      && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e3:f7:fe.cfg" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub/install"])
       && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/etc/systemd/system"])
   })
 }
@@ -1015,16 +1033,24 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   }
 }
 
-// THE PRODUCTION HEAD'S REQUESTS, srv14 and srv15, are admitted by the public seed authority, which refuses any
-// credential field by name, and each binds its own measured NIC to the arm64 chain exactly once: nothing is withheld
-// and no gate cause is raised. Dropping either row, or giving both the same NIC, turns this red.
-test fn the_production_requests_bind_srv14_and_srv15_from_admitted_seeds() -> Bool {
+// THE PRODUCTION HEAD'S REQUEST, srv15, is admitted by the public seed authority, which refuses any credential
+// field by name, and binds its own measured NIC to the arm64 chain exactly once: nothing is withheld and no gate
+// cause is raised. srv14 is installed, so its NIC binds no install at all: restoring its request (a wipe of an
+// installed host on its next network boot) or dropping srv15's turns this red.
+test fn the_production_requests_bind_srv15_and_not_the_installed_srv14() -> Bool {
   let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
-    && production_request_binds_once(client: srv14_install_client, bindings: bindings)
+    && production_request_binds_none(client: srv14_install_client, bindings: bindings)
     && production_request_binds_once(client: srv15_install_client, bindings: bindings)
+}
+
+fn production_request_binds_none(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
+  match client {
+    MacParsed { address: mac } => length(filter(bindings, b => public_nocloud_seed_client_mac(seed: b.seed) == mac)) == 0
+    MacParseFailed { error: _ } => false
+  }
 }
 
 fn production_request_binds_once(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
@@ -1306,7 +1332,7 @@ test fn the_install_chain_resolves_per_architecture() -> Bool {
   }
 }
 
-// AN ARM64 BINDING BOOTS THE ARM64 KERNEL: its grub.cfg-01-<mac> names arm64/vmlinuz and arm64/initrd and the arm64
+// AN ARM64 BINDING BOOTS THE ARM64 KERNEL: its grub/install/<mac>.cfg names arm64/vmlinuz and arm64/initrd and the arm64
 // ISO, not the amd64 members at the TFTP root.
 test fn an_arm64_binding_renders_the_arm64_members() -> Bool {
   match production_pinned(index: 2) {
@@ -1337,7 +1363,7 @@ test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -
       match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
         Absent => false
         Present { value: cfg } =>
-          contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+          contains(cfg.content, concat(concat("dhcp-host=", render_mac_address(addr: mtcollins1_host_nic_mac) as String), ",set:onboarding-known"))
             && contains(cfg.content, concat(concat("dhcp-host=", srv14_host_nic_mac as String), ",set:onboarding-known"))
             && contains(cfg.content, concat(concat("dhcp-host=", srv15_host_nic_mac as String), ",set:onboarding-known"))
       }
