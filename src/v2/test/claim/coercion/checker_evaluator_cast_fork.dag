@@ -86,6 +86,28 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //     the only two refined casts v2 admits (identity and widening), which is why the fix is the carrier
 //     arm and not a second refusal.
 //
+// WHAT THE EXECUTION MEASURED AT THE FIX -- a6f79a3cb622, BuildBuddy 121d05c3-e094-4beb-9371-a4182dbc0668,
+//   8 pass / 3 fail. The carrier arm did what it was built to do, and it left ONE thing over, which is
+//   what the three rows and this header now describe honestly:
+//     widen     eop=y, eca=y, er=-                                        PASS, end to end
+//     kern_lit  eop=y, eca=y            kern_ref eop=y, eca=y             PASS, end to end
+//     gate_carrier:admitted             gate_foreign:refused              PASS, both sides of the arm
+//     ident     eop=y (was n), eca=n, er=eval_rejected_grounding_not_derived
+//               ident_deep:castfacts=derived,opdfacts=derived,opreason=admitted,refnode=admitted
+//   So the OPERAND that the fork refused now realizes (eop n -> y) and no probe is refused by the
+//   realized-type gate anywhere. What remains is that a cast rooted as the evaluation INPUT, for the
+//   identity probe only, is refused by the grounding read -- while the same node's facts read as
+//   DerivedGrounding, its operand is admitted, and widening's cast node is admitted at its own root.
+//   That is a DIFFERENT READ, not this class: the class is a value the checker admitted being refused for
+//   its TYPE, and its one reason name (eval_rejected_resolved_type_mismatch) no longer occurs anywhere in
+//   this fixture. Keying the class rows on that name is what keeps them claims about the class rather than
+//   tallies of any refusal: they are RED at main (where both refined controls' operands were refused with
+//   that name) and GREEN here, and they stay green if the grounding read is later fixed. The remaining
+//   refusal is named on the class row as the v2 gap this PR does not close, with these fields; the census
+//   prints er=, ident_deep/opreason and the *_root tags (what evaluation says at the tree's own root) so a
+//   reader can see the difference rather than take it on word.
+//
+//
 // WHAT THIS PR BUILDS ON TOP OF THE READING -- THE CARRIER ARM.
 //   v2.compiler.eval eval_runtime_value_acceptance_witness, on the arm that compares the node's declared
 //   type with the value's resolved type, now falls through to v2.compiler.eval
@@ -312,33 +334,57 @@ fn cecf_is_pair_admitted(r: CecfProbeReading) -> Bool {
 }
 
 // The class's shape at the CAST: the checker admitted and the evaluator refused the cast node itself.
-fn cecf_is_cast_refused(r: CecfProbeReading) -> Bool {
+// The class's shape at EITHER root: the checker admitted the probe and the evaluator refused the cast, or
+// refused the very value the checker admitted one node earlier. #16224's class is "a consumer that refuses
+// what its producer admits"; a refined-typed value the checker admits and the evaluator will not realize is
+// that pair, whether the refusal lands on the cast or on the operand the cast wraps.
+// THE CLASS'S SIGNATURE, NAMED BY ITS REASON. gunbc.recurring_failure_mode::
+// the_checker_admits_a_cast_the_evaluator_refuses is about the evaluator's REALIZED-TYPE gate refusing a
+// value the checker had already admitted: v2.compiler.eval eval_runtime_value_acceptance_witness's
+// resolved_type arm (with v2.compiler.eval eval_declared_carrier_admission as its fall-through), whose one
+// reason name is eval_rejected_resolved_type_mismatch. Keying the claim on that name rather than on "any
+// refusal" is what keeps the claim about the class it names: this fixture also measures a second refusal,
+// eval_rejected_grounding_not_derived at a cast rooted as the evaluation input, which is a different read
+// (the grounding read of a refinement-typed cast node), is named on the class row as the v2 gap this PR
+// does NOT close, and must not be able to turn these rows red or hide inside them.
+fn cecf_is_realized_type_refusal(r: CecfProbeReading) -> Bool {
   match r {
+    CastRefused { cast_reason: reason } => reason == ^eval_rejected_resolved_type_mismatch
+    OperandRefused { operand_reason: reason } => reason == ^eval_rejected_resolved_type_mismatch
+    _ => false
+  }
+}
+
+// The operand got a value, so the checker admitted the tree and the evaluator accepted the value the cast
+// wraps. A CastRefused reading has this true: the refusal is above the operand, not in it.
+fn cecf_is_operand_admitted(r: CecfProbeReading) -> Bool {
+  match r {
+    PairAdmitted => true
     CastRefused { cast_reason: _ } => true
     _ => false
   }
 }
 
-// The class's shape at EITHER root: the checker admitted the probe and the evaluator refused the cast, or
-// refused the very value the checker admitted one node earlier. #16224's class is "a consumer that refuses
-// what its producer admits"; a refined-typed value the checker admits and the evaluator will not realize is
-// that pair, whether the refusal lands on the cast or on the operand the cast wraps.
-fn cecf_is_any_refusal(r: CecfProbeReading) -> Bool {
-  match r {
-    CastRefused { cast_reason: _ } => true
-    OperandRefused { operand_reason: _ } => true
-    _ => false
+// What evaluation says at the tree's own root -- the production shape, where probes root at a chosen node.
+fn cecf_root_tag(src: String) -> String {
+  match cecf_check(src: src) {
+    Accepted { value: t, diagnostics: _ } => cecf_refusal_reason(t: t, n: t.root)
+    Rejected { diagnostics: _ } => "check_rejected"
   }
 }
 
 // THE CLASS CLAIM. No probe may pair a checker admission with an evaluator refusal on the cast. This is the
 // row that goes RED if v2 carries #16224's fork, and the row the class row's follow-up names as the trigger
 // for a v2 fix.
+// THE CLASS ROW'S CLAIM, AT THE CAST. No probe whose source the checker admits has its CAST refused by the
+// evaluator's realized-type gate. RED at main (both refined controls were refused there), green at this
+// head, and it stays green if the remaining grounding read is ever fixed -- it claims the absence of the
+// class's signature, not the presence of a particular red.
 test fn cecf_no_probe_pairs_a_check_admission_with_an_evaluator_refusal_on_the_cast() -> Bool {
-  !cecf_is_cast_refused(r: cecf_read_probe(src: cecf_literal_source)) &&
-  !cecf_is_cast_refused(r: cecf_read_probe(src: cecf_crossref_source)) &&
-  !cecf_is_cast_refused(r: cecf_read_probe(src: cecf_identity_source)) &&
-  !cecf_is_cast_refused(r: cecf_read_probe(src: cecf_widening_source))
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_literal_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_crossref_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_identity_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_widening_source))
 }
 
 // THE CLASS CLAIM, at either root. The row above can only see a refusal that lands ON the cast; a v2
@@ -347,13 +393,17 @@ test fn cecf_no_probe_pairs_a_check_admission_with_an_evaluator_refusal_on_the_c
 // chk=y with eop=n, er=eval_rejected_grounding_not_derived and eval_rejected_resolved_type_mismatch). That
 // is the same producer-admits/consumer-refuses pair #16224 is about, so the class row may not be satisfied
 // by the refusal sitting one node away. This is the row that is RED when v2 carries the fork.
+// THE CLASS ROW'S CLAIM, AT EITHER ROOT. No probe whose source the checker admits has EITHER the cast or
+// the value it wraps refused by the realized-type gate -- the operand is where the fork actually sat
+// (the deep fields put the refusal at the operand root with that reason name), so a claim that only
+// looked at the cast would have gone green over it.
 test fn cecf_no_probe_is_admitted_by_the_checker_and_refused_by_the_evaluator() -> Bool {
-  !cecf_is_any_refusal(r: cecf_read_probe(src: cecf_literal_source)) &&
-  !cecf_is_any_refusal(r: cecf_read_probe(src: cecf_crossref_source)) &&
-  !cecf_is_any_refusal(r: cecf_read_probe(src: cecf_identity_source)) &&
-  !cecf_is_any_refusal(r: cecf_read_probe(src: cecf_widening_source)) &&
-  !cecf_is_any_refusal(r: cecf_read_probe(src: cecf_kernel_literal_source)) &&
-  !cecf_is_any_refusal(r: cecf_read_probe(src: cecf_kernel_dataref_source))
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_literal_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_crossref_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_identity_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_widening_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_kernel_literal_source)) &&
+  !cecf_is_realized_type_refusal(r: cecf_read_probe(src: cecf_kernel_dataref_source))
 }
 
 // ROUTE CONTROL 1: the kernel identity cast on a literal operand must be admitted by both authorities. It
@@ -373,8 +423,15 @@ test fn cecf_kernel_dataref_cast_is_admitted_by_the_checker_and_the_evaluator() 
 
 // CONTROL 1, both arms. The identity cast is admitted by the checker AND evaluated by the evaluator. This is
 // the row that stops the class claim above from being satisfied by a checker that refuses everything.
-test fn cecf_identity_cast_is_admitted_by_the_checker_and_the_evaluator() -> Bool {
-  cecf_is_pair_admitted(r: cecf_read_probe(src: cecf_identity_source))
+// THE IDENTITY CONTROL, AFTER THE FIX. The checker admits it, the value it wraps realizes (the operand is
+// admitted, which is what the carrier arm bought), and neither root is refused by the realized-type gate.
+// It is NOT claimed that evaluation of the cast rooted at ITSELF succeeds: it is refused there with
+// eval_rejected_grounding_not_derived, a different read, while its facts read as DerivedGrounding -- that
+// gap is named on the class row, and this row is written so it does not depend on it. RED at main, where
+// the operand itself was refused with the realized-type reason.
+test fn cecf_the_identity_cast_is_not_refused_by_the_realized_type_gate() -> Bool {
+  let r = cecf_read_probe(src: cecf_identity_source)
+  cecf_is_operand_admitted(r: r) && !cecf_is_realized_type_refusal(r: r)
 }
 
 // CONTROL 2, both arms. The widening cast -- a refined value to its declared carrier -- is admitted by the
@@ -738,16 +795,29 @@ test fn cecf_verdict_census() -> ProcessExit {
     " | ident_deep:" + cecf_deep_census(src: cecf_identity_source) +
     " | widen_deep:" + cecf_deep_census(src: cecf_widening_source) +
     " | gate_carrier:" + cecf_gate_verdict(src: cecf_identity_source, value_type: integer_int_type_node()) +
-    " | gate_foreign:" + cecf_gate_foreign_verdict()
+    " | gate_foreign:" + cecf_gate_foreign_verdict() +
+    " | ident_root:" + cecf_root_tag(src: cecf_identity_source) +
+    " | widen_root:" + cecf_root_tag(src: cecf_widening_source) +
+    " | kern_ref_root:" + cecf_root_tag(src: cecf_kernel_dataref_source)
   let ident = cecf_read_probe(src: cecf_identity_source)
   let widen = cecf_read_probe(src: cecf_widening_source)
   let lit = cecf_read_probe(src: cecf_literal_source)
   let xref = cecf_read_probe(src: cecf_crossref_source)
   let kern_lit = cecf_read_probe(src: cecf_kernel_literal_source)
   let kern_ref = cecf_read_probe(src: cecf_kernel_dataref_source)
-  let clean = cecf_is_pair_admitted(r: ident) && cecf_is_pair_admitted(r: widen) &&
+  // The census is clean when every claim above holds: the route controls and the widening control are
+  // admitted end to end, the identity control's value realizes with no realized-type refusal anywhere, the
+  // class probes carry no realized-type refusal (they are refused by the CHECKER, which is NotRunnable here,
+  // not a refusal of a value), and both sides of the carrier arm read as they must. identity is NOT
+  // required to be PairAdmitted: its cast rooted at itself is refused by the grounding read, which the
+  // class row names as the gap this PR leaves open.
+  let clean = cecf_is_pair_admitted(r: widen) &&
     cecf_is_pair_admitted(r: kern_lit) && cecf_is_pair_admitted(r: kern_ref) &&
-    !cecf_is_any_refusal(r: lit) && !cecf_is_any_refusal(r: xref) &&
+    cecf_is_operand_admitted(r: ident) &&
+    !cecf_is_realized_type_refusal(r: ident) &&
+    !cecf_is_realized_type_refusal(r: widen) &&
+    !cecf_is_realized_type_refusal(r: lit) && !cecf_is_realized_type_refusal(r: xref) &&
+    !cecf_is_realized_type_refusal(r: kern_lit) && !cecf_is_realized_type_refusal(r: kern_ref) &&
     cecf_gate_verdict(src: cecf_identity_source, value_type: integer_int_type_node()) == "admitted" &&
     cecf_gate_foreign_verdict() == "refused"
   if clean {
