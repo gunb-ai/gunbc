@@ -429,6 +429,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::RefinementCastRefused { .. } => "RefinementCastRefused",
         CompilerDiagnostic::CastRealizationRefused { .. } => "CastRealizationRefused",
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
@@ -584,6 +585,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         } => format!("{service}.{operation}"),
         // The NAME is the refusal fact, which names the uncastable pair: the burn-down is the
         // list of cast routes awaiting a declaration or a realization.
+        // The NAME is the TARGET carrier: the burn-down this feeds is the list of refined Int carriers
+        // still awaiting a checked constructor, keyed by the carrier the author targeted.
+        CompilerDiagnostic::RefinementCastRefused { target, .. } => target.clone(),
         CompilerDiagnostic::CastRealizationRefused {
             missing_realization_fact,
             ..
@@ -645,6 +649,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         // The refusal carries the target NAME and the missing realization FACT, not a rendered
         // type-shape pair: like the pairless classes its arm is None, and the census model's
         // `Absent` is the honest reading.
+        CompilerDiagnostic::RefinementCastRefused { .. } => None,
         CompilerDiagnostic::CastRealizationRefused { .. } => None,
         CompilerDiagnostic::CircularDependency { .. } => None,
         CompilerDiagnostic::ComplexityUnknown { .. } => None,

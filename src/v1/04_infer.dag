@@ -9040,8 +9040,7 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         // (no implicit route that needs a proof, DESIGN 4) turns the run-time latent outage into a located refusal.
         // A bare literal written directly in the refined position needs no cast and is judged by the refinement wall;
         // a value already on another carrier crosses only through a checked constructor.
-        let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- a value on ", source_name, " reaches ", target_name, " only through a checked constructor (or write a bare literal in the refined position, which needs no cast)")
-        let diag = InternalError { message: msg, span: span }
+        let diag = RefinementCastRefused { source: source_name, target: target_name, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
       else {

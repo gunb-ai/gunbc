@@ -51,11 +51,13 @@ data probe_as_int_source: String = concat(
   "fn probe_widen() -> Int { probe_chan() as Int }\n"
 )
 
-// The class the arm reports its refusal under, read off the executed census (invocation 8166330c at the
-// heal mirror head 796f58b9), not chosen. It is a fourth mechanism, distinct from TypeMismatch (the
-// refinement wall on out-of-range literals), CastRealizationRefused (cross-kernel) and
-// WhereRefinementUnenforced (the non-literal advisory).
-data arm_refusal_class: String = "InternalError"
+// The class the arm reports its refusal under -- the typed CompilerDiagnostic variant this arm emits,
+// asserted BY NAME (not "any blocking row"): a RefinementCastRefused, NOT InternalError (that variant is
+// reserved for a compiler fault; a refusal of user source names its own reason -- DESIGN fail_closed). It
+// is a fourth refusal mechanism, distinct from TypeMismatch (the refinement wall on out-of-range
+// literals), CastRealizationRefused (cross-kernel) and WhereRefinementUnenforced (the non-literal
+// advisory). The class string is what compile_clean.rs's class match reports for the variant.
+data arm_refusal_class: String = "RefinementCastRefused"
 
 fn total_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

@@ -93,13 +93,14 @@ fn blocking_type_mismatch_count(source: String) -> Int {
   }
 }
 
-// The class the validate_cast refinement-cast arm reports under -- InternalError, read off the executed
-// census (invocation 8166330c at the heal mirror head 796f58b9), not chosen. A blocking row of this class
-// on a cast shape is what the arm contributes; the TypeMismatch rows above (the refinement wall) are a
-// different mechanism and stay additive alongside it.
+// The class the validate_cast refinement-cast arm reports under -- the typed CompilerDiagnostic variant
+// RefinementCastRefused, asserted BY NAME (not "any blocking row"). It is NOT InternalError: that variant
+// is reserved for a compiler fault, and a refusal of user source names its own reason (DESIGN fail_closed).
+// A blocking row of this class on a cast shape is what the arm contributes; the TypeMismatch rows above
+// (the refinement wall) are a different mechanism and stay additive alongside it.
 fn blocking_refinement_cast_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "InternalError"))
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "RefinementCastRefused"))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
