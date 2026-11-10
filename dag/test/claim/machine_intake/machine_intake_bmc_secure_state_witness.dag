@@ -114,7 +114,6 @@ import gunbc.machine_intake.bmc_secure {
   ConjunctionFinding,
   BreakGlassGenerationRejected,
   AccountStateForOtherBreakGlassReference,
-  AccountStateHasNoBreakGlassGeneration,
   BmcAccountStateObservation,
   BmcSecureStateInspected,
   BmcSecureStateUnobserved,
@@ -978,7 +977,6 @@ fn state_refusal_label(c: BmcSecureStateRefusal) -> String {
       }
     AccountRetentionNotGoalBound { retained: _, goal: _ } => "retention-not-goal-bound"
     AccountStateForOtherBreakGlassReference { goal: _, observed: _ } => "other-break-glass-reference"
-    AccountStateHasNoBreakGlassGeneration { goal: _ } => "no-break-glass-generation"
   }
 }
 
