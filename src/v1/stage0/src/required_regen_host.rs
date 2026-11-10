@@ -8757,20 +8757,6 @@ pub fn run_regen_round_cost(
     // loaded first.
     let liveness_model = SupervisedSubjectModel::load(source_roots)?;
 
-    // THE SCOPE IS DECIDED BEFORE THE TREE IS TOUCHED (gunbc.plans.read_set_convergence P2). It is
-    // asked of a child (`emission_scope_in_child`; the index dies there), or, in the re-exec'd image of
-    // the same round, read from the receipt that child wrote. Computing it writes nothing to the tree.
-    // A scope that selects no committed mirror is a successful round that does no work; it returns
-    // after the journal recovery below (see there). The generation's own NoAffectedMirrors receipt
-    // describes the same state; reaching it from inside the convergence loop would read as a failed
-    // first generation.
-    let scope = if !affected_scope {
-        RegenEmissionScope::WholePopulation
-    } else if handoff_in.is_some() {
-        carried_emission_scope(&workspace)?
-    } else {
-        emission_scope_in_child(&workspace, source_roots, &liveness_model)?
-    };
     let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
         .as_ref()
         .and_then(|carried| carried.round_subject.clone());
@@ -8800,6 +8786,25 @@ pub fn run_regen_round_cost(
             restore_regen_convergence_journal_for_subject(&workspace, subject)?;
         }
     }
+
+    // THE SCOPE IS DECIDED AFTER RECOVERY AND BEFORE THE ROUND WRITES ANYTHING (gunbc.plans.read_set_convergence
+    // P2). It reads the mirror roster on disk (`committed_generated_basenames`), so it must read the
+    // RECOVERED tree: an interrupted earlier round can have restored a base mirror that HEAD deleted,
+    // and a scope computed over that leftover would treat the deleted mirror as an existing one and
+    // could select nothing where the clean tree selects the whole population. It is asked of a child
+    // (`emission_scope_in_child`; the index dies there), or, in the re-exec'd image of the same round
+    // (which skips recovery by design and carries its parent's tree), read from the receipt that child
+    // wrote. Computing it writes nothing to the tree. A scope that selects no committed mirror is a
+    // successful round that does no work (below). The generation's own NoAffectedMirrors receipt
+    // describes the same state; reaching it from inside the convergence loop would read as a failed
+    // first generation.
+    let scope = if !affected_scope {
+        RegenEmissionScope::WholePopulation
+    } else if handoff_in.is_some() {
+        carried_emission_scope(&workspace)?
+    } else {
+        emission_scope_in_child(&workspace, source_roots, &liveness_model)?
+    };
 
     // THE ZERO-WORK ROUND IS ADMITTED ONLY AFTER RECOVERY. A scope that selects no committed mirror is
     // a successful round that does no work -- but an interrupted earlier round may have left a journal
