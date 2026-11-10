@@ -78,7 +78,7 @@ import v1.compiler.infer {
   resolved_type_name
 }
 
-import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo, empty_type_summary_index }
+import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
@@ -267,8 +267,7 @@ fn empty_emit_scope() -> InferScope {
     lambda_param_provenance: empty_map(),
     caller_decl_name: "",
     in_flight_lambda_param_names: [],
-    enclosing_declared_type_param_names: [],
-    type_summaries: empty_type_summary_index()
+    enclosing_declared_type_param_names: []
   }
 }
 
@@ -285,8 +284,7 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     lambda_param_provenance: empty_map(),
     caller_decl_name: "",
     in_flight_lambda_param_names: [],
-    enclosing_declared_type_param_names: [],
-    type_summaries: empty_type_summary_index()
+    enclosing_declared_type_param_names: []
   }
 }
 
