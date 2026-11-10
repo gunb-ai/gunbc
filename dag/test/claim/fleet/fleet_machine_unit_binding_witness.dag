@@ -23,6 +23,7 @@ import gunbc.machine_intake.subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   qualification_subject_of,
+  bind_unit_key,
 }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_identity_inputs,
@@ -32,7 +33,7 @@ import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia, HostUnitUnobserved, resolve_host_unit }
-import gunbc.host.physical_machine_binding { PhysicalMachineRefused, PhysicalMachineSubjectUnitMismatch, PhysicalMachineAdmitted, physical_machine_admission }
+import gunbc.host.physical_machine_binding { PhysicalMachineRefused, PhysicalMachineSubjectUnitMismatch, PhysicalMachineUnitKeyRefused, PhysicalMachineAdmitted, physical_machine_admission }
 import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitEvidence,
   MachineUnitBound,
@@ -44,6 +45,7 @@ import gunbc.fleet.fleet_machine_unit_binding {
   machine_unit_admission_refusals,
   machine_unit_standing,
   machine_unit_standing_in,
+  bound_unit_keys_except_in,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -89,7 +91,7 @@ test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Boo
     evidence(m: "fixture-c", fru: "SERIAL-THREE", smbios: "SERIAL-THREE"),
     evidence(m: "fixture-b", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
   ])
-  let once = map(admission.bound_keys, k => k as String) == ["BR80S6102300049", "SERIAL-THREE"]
+  let once = map(admission.bound, b => b.unit as String) == ["BR80S6102300049", "SERIAL-THREE"]
   let second = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-b")) {
     Present { value: u } => match u {
       UnitKeyRefused { cause: c } => match c {
@@ -125,8 +127,10 @@ test fn contradictory_serial_readings_refuse() -> Bool {
   }
 }
 
-// RED: a machine's evidence given twice is reported, and its first binding stands.
-test fn repeated_evidence_for_one_machine_is_reported() -> Bool {
+// RED: a machine's evidence given twice with DIFFERENT serials is re-judged over all its readings, so it is
+// refused with bind_unit_key's BoardSerialContradictory, reported as repeated, holds no binding, and the
+// downstream physical-machine admission refuses to seal against the first serial.
+test fn repeated_contradictory_evidence_leaves_no_actionable_binding() -> Bool {
   let admission = admit_machine_units(evidence: [
     evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
     evidence(m: "fixture-a", fru: "SERIAL-TWO", smbios: "SERIAL-TWO"),
@@ -137,14 +141,68 @@ test fn repeated_evidence_for_one_machine_is_reported() -> Bool {
     MachineUnitRefused { machine: _, cause: _ } => false
     MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
   })
-  let first_stands = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
-    Present { value: u } => match u {
-      UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
-      UnitKeyRefused { cause: _ } => false
-    }
+  let unbound = admission.bound.length() == 0
+  match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
+    Present { value: u } =>
+      reported && unbound
+        && (match u {
+          UnitKeyRefused { cause: c } => match c {
+            BoardSerialContradictory { observations: o } => o.length() == 4
+            _ => false
+          }
+          UnitKeyBound { key: _ } => false
+        })
+        && (match physical_machine_admission(
+          host: machine(label: "fixture-a"),
+          unit_standing: u,
+          current_subject: Present { value: subject_for(unit: "SERIAL-ONE" as UnitKey) },
+          fleet: Absent,
+          control: Absent,
+        ) {
+          PhysicalMachineRefused { cause: PhysicalMachineUnitKeyRefused { cause: _ } } => true
+          _ => false
+        })
     Absent => false
   }
-  reported && first_stands
+}
+
+// A repeated row whose readings AGREE is reported but still binds its one serial: a reading repeated is not a
+// contradiction, and the fold invents no refusal bind_unit_key does not have. The serial is bound once.
+test fn repeated_agreeing_evidence_is_reported_and_binds_once() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
+    evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
+  ])
+  let reported = machine_unit_admission_refusals(standings: admission.standings).length() == 1
+  let once = map(admission.bound, b => b.unit as String) == ["SERIAL-ONE"]
+  reported && once
+}
+
+// RE-ENTRY: an admitted machine read again binds its own serial (its own binding is not among the other units),
+// while a second machine claiming that serial still refuses as duplicated.
+test fn an_admitted_machine_rereads_its_own_serial_and_another_still_refuses() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
+    evidence(m: "fixture-c", fru: "SERIAL-THREE", smbios: "SERIAL-THREE"),
+  ])
+  let reread = bind_unit_key(
+    inputs: evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE").inputs,
+    other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-a")),
+  )
+  let rival = bind_unit_key(
+    inputs: evidence(m: "fixture-b", fru: "SERIAL-ONE", smbios: "SERIAL-ONE").inputs,
+    other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-b")),
+  )
+  (match reread {
+    UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
+    UnitKeyRefused { cause: _ } => false
+  }) && (match rival {
+    UnitKeyRefused { cause: c } => match c {
+      BoardSerialDuplicatedAcrossUnits { serial: d } => (d as String) == "SERIAL-ONE"
+      _ => false
+    }
+    UnitKeyBound { key: _ } => false
+  })
 }
 
 // A REGISTERED MACHINE WITH NO READING is absent from A2, and its backing row stays unobserved with its read

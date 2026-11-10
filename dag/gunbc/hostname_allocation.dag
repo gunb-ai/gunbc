@@ -351,10 +351,54 @@ data fleet_machine_registry: List<HostnameAllocation> = [
 // membership; there is no second roster list to keep in step (it used to be authored beside the rows in
 // gunbc.fleet.fleet_host_identity, a restatement of the kind
 // gunbc.recurring_failure_mode::a_target_roster_restates_the_labels_its_bindings_name records).
-data operator_hosts: List<HostIdentity> = map(fleet_machine_registry, m => m.fleet_slot)
+// THE OPERATIONAL ROSTER IS THE ADMITTED REGISTRY, NOT ITS ROWS. Membership is read through
+// hostname_allocation_admission like every other read of the registry, so a registry with a colliding
+// handle, current name or pending name admits no machine -- not even one outside the collision -- and an
+// effect entry that asks for its host is told why (gunbc.design_argument::fail_closed).
+type OperatorHostLookup
+  = OperatorHostFound { host: HostIdentity }
+  | OperatorHostNotRegistered { label: String }
+  | OperatorHostRegistryRefused { key: String }
+
+fn operator_host_lookup_in(allocations: List<HostnameAllocation>, label: String) -> OperatorHostLookup {
+  match hostname_allocation_admission(allocations: allocations) {
+    AllocationPrimaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
+    AllocationSecondaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
+    AllocationAdmitted { roster: _ } =>
+      match filter(allocations, m => (m.fleet_slot as String) == label).first() {
+        Present { value: m } => OperatorHostFound { host: m.fleet_slot }
+        Absent => OperatorHostNotRegistered { label: label }
+      }
+  }
+}
+
+fn operator_host_lookup(label: String) -> OperatorHostLookup {
+  operator_host_lookup_in(allocations: fleet_machine_registry, label: label)
+}
+
+// WHAT AN EFFECT ENTRY SAYS WHEN IT ADMITS NO HOST, once, so each entry prefixes its own name and none
+// writes its own sentence about a refused registry.
+fn operator_host_lookup_refusal(lookup: OperatorHostLookup) -> String? {
+  match lookup {
+    OperatorHostFound { host: _ } => Absent
+    OperatorHostNotRegistered { label: l } => Present { value: concat("no operator host is named ", l) }
+    OperatorHostRegistryRefused { key: k } =>
+      Present { value: join(["the fleet machine registry is refused (", k, " is claimed twice), so no machine is admitted"], "") }
+  }
+}
+
+data operator_hosts: List<HostIdentity> = match hostname_allocation_admission(allocations: fleet_machine_registry) {
+  AllocationAdmitted { roster: _ } => map(fleet_machine_registry, m => m.fleet_slot)
+  AllocationPrimaryKeyRepeated { key: _ } => []
+  AllocationSecondaryKeyRepeated { key: _ } => []
+}
 
 fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
-  operator_hosts |> filter(h => (h as String) == (label as String)) |> first()
+  match operator_host_lookup(label: label as String) {
+    OperatorHostFound { host: h } => Present { value: h }
+    OperatorHostNotRegistered { label: _ } => Absent
+    OperatorHostRegistryRefused { key: _ } => Absent
+  }
 }
 
 // A PENDING NAME IS RESERVED BUT NOT ANSWERED TO. An accepted next_name must not be drawn again for

@@ -14,7 +14,10 @@ import extdeps.nvidia.system_management_interface {
   parse_gpu_power_state, smi_effect_outcome,
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.hostname_allocation { operator_hosts }
+import gunbc.hostname_allocation {
+  OperatorHostLookup, OperatorHostFound, OperatorHostNotRegistered, OperatorHostRegistryRefused,
+  operator_host_lookup, operator_host_lookup_refusal,
+}
 import gunbc.fleet.board_function_converge { running_as_root }
 import gunbc.serving.gpu_power_state_policy {
   GpuCapAdmission, GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending,
@@ -220,13 +223,18 @@ fn gpu_cap_converge_refused(reason: String) -> CliWireResponse {
   CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
 }
 
-// THE ENTRY. `host` names the machine in operator_hosts; exit 0 means every admitted cap on it is observed in
+// THE ENTRY. `host` names a machine of the admitted registry (operator_host_lookup); exit 0 means every admitted cap on it is observed in
 // place. Any refusal exits non-zero with every line printed, which fails the unit, which keeps the units that
 // Require it from starting.
 fn gpu_power_cap_converge_cli(host: NonEmptyStr) -> CliWireResponse {
-  match filter(operator_hosts, h => (h as String) == (host as String)).first() {
-    Absent => gpu_cap_converge_refused(reason: concat("gpu power-cap converge: no operator host is named ", host as String))
-    Present { value: identity } =>
+  gpu_power_cap_converge_cli_over(lookup: operator_host_lookup(label: host as String))
+}
+
+// The entry over an already-taken registry lookup, so a witness can hand it a refused registry and see the
+// effect refuse before anything is read or written.
+fn gpu_power_cap_converge_cli_over(lookup: OperatorHostLookup) -> CliWireResponse {
+  match lookup {
+    OperatorHostFound { host: identity } =>
       if !running_as_root() { gpu_cap_converge_refused(reason: "gpu power-cap converge sets device limits, so it runs as root") }
       else {
         let lines = gpu_cap_lines_over(admissions: gpu_cap_admissions_on(host: identity), ports: host_gpu_cap_ports())
@@ -237,5 +245,14 @@ fn gpu_power_cap_converge_cli(host: NonEmptyStr) -> CliWireResponse {
           CliWirePrintable { bytes: text, exit: ExitSuccess }
         }
       }
+    OperatorHostNotRegistered { label: _ } => gpu_power_cap_converge_cli_host_refused(lookup: lookup)
+    OperatorHostRegistryRefused { key: _ } => gpu_power_cap_converge_cli_host_refused(lookup: lookup)
+  }
+}
+
+fn gpu_power_cap_converge_cli_host_refused(lookup: OperatorHostLookup) -> CliWireResponse {
+  match operator_host_lookup_refusal(lookup: lookup) {
+    Present { value: r } => gpu_cap_converge_refused(reason: concat("gpu power-cap converge: ", r))
+    Absent => gpu_cap_converge_refused(reason: "gpu power-cap converge: the registry lookup admitted no machine")
   }
 }

@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_machine_unit_binding
 
-import std.types { List, Map, NonEmptyStr, String }
+import std.types { Bool, List, Map, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject {
@@ -33,7 +33,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 //
 // Consumers that ADMIT a machine read its standing through machine_unit_standing: gunbc.fleet.fleet_enrollment
 // (HostBacking.unit, physical_machine_binding's fleet axis), gunbc.host.managed_host (axis 1 of the sealed
-// record) and gunbc.machine_intake.arrival_converge (fleet_bound_unit_keys as other_units). A machine's own
+// record) and gunbc.machine_intake.arrival_converge (fleet_bound_unit_keys_except as other_units). A machine's own
 // observation module still reads the key its readings bind (mtcollins1_unit_key_standing labels the ports it
 // observed on that board); that is the reading this fold consumes, not a second admission.
 
@@ -49,84 +49,131 @@ type MachineUnitStanding
   | MachineEvidenceRepeated { machine: HostIdentity }
 
 // THE ADMISSION IS ONE LINEAR FOLD (gunbc.design_argument::how_to_work: a copied accumulator or a quadratic
-// fold is always fixed). The state carries what each step needs instead of rescanning the prefix: the
-// bound unit keys by spelling (and who holds each), the machines already given a standing, and the
-// standings in reverse, prepended and reversed once at the end -- the prepend-then-reverse idiom
-// gunbc.repository_census_coverage states. bind_unit_key stays the authority on the binding and its
-// refusals: it is asked for the machine's key with no other units, and only when that key is already held
-// is it asked again with the one colliding key, so the duplicate refusal is still its own cause.
+// fold is always fixed). The state carries what each step needs instead of rescanning the prefix: which
+// machine first claimed each observed serial, each machine's readings and standing, and the standings in
+// reverse, prepended and reversed once at the end -- the prepend-then-reverse idiom
+// gunbc.repository_census_coverage states. bind_unit_key stays the authority on the binding and every
+// refusal: it is asked for the machine's key with no other units, and only when that key is already claimed
+// is it asked again with the one colliding key, so the duplicate refusal is its own cause.
+//
+// A MACHINE'S EVIDENCE GIVEN TWICE IS RE-JUDGED, NOT FIRST-WINS. The second row's readings are joined to the
+// first's and bind_unit_key judges all of them, so readings that disagree refuse with its own
+// BoardSerialContradictory and the machine holds no actionable binding; the repetition is reported as
+// MachineEvidenceRepeated either way. Readings that agree on one serial still bind it: a reading repeated is
+// not a contradiction, and this fold does not invent a refusal the binding authority does not have. A serial
+// a now-refused machine claimed stays claimed, so no other machine binds it while its owner is unresolved.
 type MachineUnitAdmissionBuild {
-  holders: Map<String, HostIdentity>
+  claimed_by: Map<String, HostIdentity>
+  inputs_by_machine: Map<String, UnitIdentityInputs>
   standing_by_machine: Map<String, UnitKeyStanding>
-  bound_reversed: List<UnitKey>
   standings_reversed: List<MachineUnitStanding>
 }
 
 type MachineUnitAdmission {
   standings: List<MachineUnitStanding>
   standing_by_machine: Map<String, UnitKeyStanding>
-  bound_keys: List<UnitKey>
+  bound: List<MachineUnitBinding>
 }
 
-fn with_standing(b: MachineUnitAdmissionBuild, s: MachineUnitStanding, machine: HostIdentity, u: UnitKeyStanding) -> MachineUnitAdmissionBuild {
+type MachineUnitBinding {
+  machine: HostIdentity
+  unit: UnitKey
+}
+
+fn record_standing(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, s: MachineUnitStanding, u: UnitKeyStanding, claim: UnitKey?) -> MachineUnitAdmissionBuild {
   MachineUnitAdmissionBuild {
-    holders: b.holders,
-    standing_by_machine: map_insert(b.standing_by_machine, machine as String, u),
-    bound_reversed: b.bound_reversed,
+    claimed_by: match claim {
+      Present { value: k } => map_insert(b.claimed_by, k as String, e.machine)
+      Absent => b.claimed_by
+    },
+    inputs_by_machine: map_insert(b.inputs_by_machine, e.machine as String, inputs),
+    standing_by_machine: map_insert(b.standing_by_machine, e.machine as String, u),
     standings_reversed: concat([s], b.standings_reversed),
   }
 }
 
-fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> MachineUnitAdmissionBuild {
-  match map_get(b.standing_by_machine, e.machine as String) {
-    Present { value: _ } =>
-      MachineUnitAdmissionBuild {
-        holders: b.holders,
-        standing_by_machine: b.standing_by_machine,
-        bound_reversed: b.bound_reversed,
-        standings_reversed: concat([MachineEvidenceRepeated { machine: e.machine }], b.standings_reversed),
-      }
-    Absent =>
-      match bind_unit_key(inputs: e.inputs, other_units: []) {
-        UnitKeyRefused { cause: c } =>
-          with_standing(b: b, s: MachineUnitRefused { machine: e.machine, cause: c }, machine: e.machine, u: UnitKeyRefused { cause: c })
-        UnitKeyBound { key: k } =>
-          match map_get(b.holders, k as String) {
-            Absent =>
-              MachineUnitAdmissionBuild {
-                holders: map_insert(b.holders, k as String, e.machine),
-                standing_by_machine: map_insert(b.standing_by_machine, e.machine as String, UnitKeyBound { key: k }),
-                bound_reversed: concat([k], b.bound_reversed),
-                standings_reversed: concat([MachineUnitBound { machine: e.machine, unit: k }], b.standings_reversed),
+// The reported standing: a repeated row reports the repetition; the judged standing is in the map either way.
+fn noted(repeated: Bool, s: MachineUnitStanding) -> MachineUnitStanding {
+  if repeated {
+    MachineEvidenceRepeated { machine: match s {
+      MachineUnitBound { machine: m, unit: _ } => m
+      MachineUnitRefused { machine: m, cause: _ } => m
+      MachineUnitSerialHeldByAnother { machine: m, holder: _, serial: _ } => m
+      MachineEvidenceRepeated { machine: m } => m
+    } }
+  } else {
+    s
+  }
+}
+
+// One machine's readings judged by bind_unit_key against the serials OTHER machines already claim.
+fn judge_machine(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence, inputs: UnitIdentityInputs, repeated: Bool) -> MachineUnitAdmissionBuild {
+  match bind_unit_key(inputs: inputs, other_units: []) {
+    UnitKeyRefused { cause: c } =>
+      record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+    UnitKeyBound { key: k } =>
+      match map_get(b.claimed_by, k as String) {
+        Present { value: holder } =>
+          if (holder as String) == (e.machine as String) {
+            record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Absent)
+          } else {
+            match bind_unit_key(inputs: inputs, other_units: [k]) {
+              UnitKeyRefused { cause: c } => match c {
+                BoardSerialDuplicatedAcrossUnits { serial: dup } =>
+                  record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                BoardSerialAbsent => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
+                BoardSerialContradictory { observations: _ } => record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitRefused { machine: e.machine, cause: c }), u: UnitKeyRefused { cause: c }, claim: Absent)
               }
-            Present { value: holder } =>
-              match bind_unit_key(inputs: e.inputs, other_units: [k]) {
-                UnitKeyRefused { cause: c } => match c {
-                  BoardSerialDuplicatedAcrossUnits { serial: dup } =>
-                    with_standing(b: b, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: dup }, machine: e.machine, u: UnitKeyRefused { cause: c })
-                  BoardSerialAbsent => with_standing(b: b, s: MachineUnitRefused { machine: e.machine, cause: c }, machine: e.machine, u: UnitKeyRefused { cause: c })
-                  BoardSerialContradictory { observations: _ } => with_standing(b: b, s: MachineUnitRefused { machine: e.machine, cause: c }, machine: e.machine, u: UnitKeyRefused { cause: c })
-                }
-                // Unreachable: the key is held, so bind_unit_key refuses it as duplicated. Listed so the
-                // match stays closed; binding it again would let two machines hold one unit, so it refuses.
-                UnitKeyBound { key: _ } =>
-                  with_standing(b: b, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: k as NonEmptyStr }, machine: e.machine, u: UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: k as NonEmptyStr } })
-              }
+              // Unreachable: the key is another machine's, so bind_unit_key refuses it as duplicated. Listed so
+              // the match stays closed; binding it would let two machines hold one unit, so it refuses.
+              UnitKeyBound { key: _ } =>
+                record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitSerialHeldByAnother { machine: e.machine, holder: holder, serial: k as NonEmptyStr }), u: UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: k as NonEmptyStr } }, claim: Absent)
+            }
           }
+        Absent =>
+          record_standing(b: b, e: e, inputs: inputs, s: noted(repeated: repeated, s: MachineUnitBound { machine: e.machine, unit: k }), u: UnitKeyBound { key: k }, claim: Present { value: k })
       }
+  }
+}
+
+fn machine_unit_step(b: MachineUnitAdmissionBuild, e: MachineUnitEvidence) -> MachineUnitAdmissionBuild {
+  match map_get(b.inputs_by_machine, e.machine as String) {
+    Absent => judge_machine(b: b, e: e, inputs: e.inputs, repeated: false)
+    Present { value: prior } =>
+      judge_machine(b: b, e: e, inputs: UnitIdentityInputs {
+        bmc_endpoint: prior.bmc_endpoint,
+        board_serial_observations: concat(prior.board_serial_observations, e.inputs.board_serial_observations),
+      }, repeated: true)
+  }
+}
+
+// A machine's binding as the fold LEFT it: a machine first bound and later refused does not appear.
+fn final_binding(standing_by_machine: Map<String, UnitKeyStanding>, s: MachineUnitStanding) -> List<MachineUnitBinding> {
+  match s {
+    MachineUnitBound { machine: m, unit: _ } => match map_get(standing_by_machine, m as String) {
+      Present { value: u } => match u {
+        UnitKeyBound { key: k } => [MachineUnitBinding { machine: m, unit: k }]
+        UnitKeyRefused { cause: _ } => []
+      }
+      Absent => []
+    }
+    MachineUnitRefused { machine: _, cause: _ } => []
+    MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => []
+    MachineEvidenceRepeated { machine: _ } => []
   }
 }
 
 fn admit_machine_units(evidence: List<MachineUnitEvidence>) -> MachineUnitAdmission {
   let built = fold(
     evidence,
-    init: MachineUnitAdmissionBuild { holders: empty_map(), standing_by_machine: empty_map(), bound_reversed: [], standings_reversed: [] },
+    init: MachineUnitAdmissionBuild { claimed_by: empty_map(), inputs_by_machine: empty_map(), standing_by_machine: empty_map(), standings_reversed: [] },
     f: (b, e) => machine_unit_step(b: b, e: e),
   )
+  let standings = reverse(built.standings_reversed)
   MachineUnitAdmission {
-    standings: reverse(built.standings_reversed),
+    standings: standings,
     standing_by_machine: built.standing_by_machine,
-    bound_keys: reverse(built.bound_reversed),
+    bound: flat_map(standings, s => final_binding(standing_by_machine: built.standing_by_machine, s: s)),
   }
 }
 
@@ -151,10 +198,16 @@ fn machine_unit_standing(machine: HostIdentity) -> UnitKeyStanding? {
   machine_unit_standing_in(admission: fleet_machine_unit_admission, machine: machine)
 }
 
-// THE UNIT KEYS THE FLEET HAS BOUND, for an intake step that must refuse a serial another admitted machine
-// already holds (gunbc.machine_intake.arrival_converge passes these as bind_unit_key's other_units).
-fn fleet_bound_unit_keys() -> List<UnitKey> {
-  fleet_machine_unit_admission.bound_keys
+// THE UNIT KEYS OTHER MACHINES HOLD, for an intake step reading `machine` that must refuse a serial another
+// admitted machine holds (gunbc.machine_intake.arrival_converge passes these as bind_unit_key's other_units).
+// The subject's own binding is excluded, so re-reading an admitted machine binds its own serial again while a
+// second machine claiming that serial still refuses.
+fn bound_unit_keys_except_in(admission: MachineUnitAdmission, machine: HostIdentity) -> List<UnitKey> {
+  flat_map(admission.bound, b => if (b.machine as String) == (machine as String) { [] } else { [b.unit] })
+}
+
+fn fleet_bound_unit_keys_except(machine: HostIdentity) -> List<UnitKey> {
+  bound_unit_keys_except_in(admission: fleet_machine_unit_admission, machine: machine)
 }
 
 fn machine_unit_admission_refusals(standings: List<MachineUnitStanding>) -> List<MachineUnitStanding> {
