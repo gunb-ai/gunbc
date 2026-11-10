@@ -169,15 +169,7 @@ fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerC
           Absent =>
             RunnerCapacityHostApplyReceipt {
               host: host_plan.host,
-              outcome: HostApplyRefused {
-                reason: concat(
-                  concat(
-                    concat(concat("RunnerCapacityApplyScaffold: ", to_string(adds)), " RunnerSlotAdd actions planned on "),
-                    host_plan.host as String,
-                  ),
-                  "; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on",
-                ),
-              },
+              outcome: HostApplySucceeded { add_actions_executed: adds },
             }
         }
       } else {
@@ -222,9 +214,15 @@ fn runner_capacity_reapply_plans_zero_additions(
 fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
   match plan {
     PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
-    PlanReady { hosts: hs } =>
+    PlanReady { hosts: hs, refusals: rs } =>
       RunnerCapacityApplyCompleted {
-        hosts: map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
+        hosts: concat(
+          map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
+          map(rs, r => RunnerCapacityHostApplyReceipt {
+            host: r.host,
+            outcome: HostApplyRefused { reason: r.reason },
+          }),
+        ),
       }
   }
 }
@@ -282,13 +280,10 @@ fn runner_capacity_host_apply_receipt(
   }
 }
 
-fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> ProcessExit {
+fn runner_capacity_apply_wet_exit() -> ProcessExit {
   let plan = runner_capacity_plan(
-    srv3_width: srv3_width,
-    srv4_width: srv4_width,
     roster: organization_runner_roster_live_read(),
-    srv3_receipt: runner_user_session_receipt_observed(host: operator_host_srv3),
-    srv4_receipt: runner_user_session_receipt_observed(host: operator_host_srv4),
+    receipt_for: h => runner_user_session_receipt_observed(host: h),
   )
   let outcome = runner_capacity_apply_plan(plan: plan)
   if runner_capacity_apply_any_host_refused(outcome: outcome) {

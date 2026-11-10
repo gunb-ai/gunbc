@@ -1,10 +1,12 @@
 module gunbc.runner.runner_capacity_plan
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { list_push }
 import std.nat { Nat, nat_range_inclusive }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence,
@@ -46,6 +48,8 @@ import gunbc.runner.runner_slot_allocation {
   RunnerSlotPurpose,
   SlotServesGitHubActions,
   SlotServesFabricExecution,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
 
 // SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width,
@@ -84,8 +88,13 @@ type RunnerCapacityHostPlan {
   actions: List<RunnerCapacityAction>
 }
 
+type HostCapacityPlanRefusal {
+  host: HostIdentity
+  reason: String
+}
+
 type RunnerCapacityPlan
-  = PlanReady { hosts: List<RunnerCapacityHostPlan> }
+  = PlanReady { hosts: List<RunnerCapacityHostPlan>, refusals: List<HostCapacityPlanRefusal> }
   | PlanRefused { reason: String }
 
 // THE FIFTH BUCKET, AND THE ONE THAT MADE THE OTHER FOUR ACADEMIC. This recognized exactly "7",
@@ -526,7 +535,7 @@ fn validate_observed_github_slot_members(
 
 type HostCapacityPlanOutcome
   = HostCapacityPlanReady { plan: RunnerCapacityHostPlan }
-  | HostCapacityPlanRefused { reason: String }
+  | HostCapacityPlanRefused { host: HostIdentity, reason: String }
 
 // THE OUTCOME CARRIES ITS REASON RATHER THAN BEING OPTIONAL. This returned RunnerCapacityHostPlan?
 // and answered `none` for roster-unavailable, so every future refusal cause would have collapsed
@@ -548,6 +557,7 @@ fn plan_runner_capacity_host(
   match committed_slot_identities(host: host) {
     CommittedPopulationWidthUnresolved { host: _, cause: c } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["refusing to plan runner capacity for this host: ", runner_width_unresolved_cause_text(cause: c)], "")
       }
     CommittedPopulationDerived { members: members } =>
@@ -572,18 +582,22 @@ fn plan_runner_capacity_host_over_population(
   match observed_github_slot_identities(host: host, roster: roster) {
     GitHubSlotPopulationUnreadable { reason: r } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["runner roster read unavailable, refusing to plan against an observation that could not be taken: ", r], "")
       }
     GitHubSlotPopulationDuplicateRegistration { slot: d } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["the organization holds more than one self-hosted runner registration decoding to slot ", runner_slot_instance_name(slot: d), ", so the observed population is not a set and its count would over-state the slots actually held"], "")
       }
     GitHubSlotPopulationForeignRegistration { registration_name: n } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["the organization holds a self-hosted runner registration that resolves to no committed fleet slot, so the observed population cannot be accounted for and planning would either add a slot GitHub already holds or silently under-count: ", n as String], "")
       }
     GitHubSlotPopulationHostWidthUnresolved { registration_name: n, host: uh, cause: c } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join([
           "the organization holds the self-hosted runner registration ", n as String,
           ", which belongs to ", uh as String,
@@ -628,15 +642,17 @@ fn plan_runner_capacity_host_against_observation(
     WidthAdmitted { width: admitted } =>
       match validate_observed_github_slot_members(host: host, observed: observed) {
         SlotPopulationRefused { reason: r } =>
-          HostCapacityPlanRefused { reason: r }
+          HostCapacityPlanRefused { host: host, reason: r }
         SlotPopulationReconciled =>
           match connectivity_actions_for_observed(roster: roster, receipt: receipt, observed: observed) {
             ConnectivityActionsRosterUnavailable { reason: _ } =>
               HostCapacityPlanRefused {
+                host: host,
                 reason: "runner roster read unavailable: refusing to plan destructive runner capacity actions against an observation that could not be taken"
               }
             ConnectivityActionsUnaccountedRegistration { slot: s } =>
               HostCapacityPlanRefused {
+                host: host,
                 reason: join(["GitHub holds a registration for slot ", runner_slot_instance_name(slot: s), " that has no local runner incarnation, so this host's population cannot be accounted for: planning against it would either ignore a live registration or propose adding a slot GitHub already holds"], "")
               }
             ConnectivityActionsPlanned { actions: repairs } =>
@@ -657,27 +673,53 @@ fn plan_runner_capacity_host_against_observation(
   }
 }
 
-fn runner_capacity_plan(
-  srv3_width: Int,
-  srv4_width: Int,
+type PlanFoldAccum {
+  ready: List<RunnerCapacityHostPlan>
+  refused: List<HostCapacityPlanRefusal>
+}
+
+fn runner_capacity_plan_for_host(
+  host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
-  srv3_receipt: RunnerUserSessionReceiptInput,
-  srv4_receipt: RunnerUserSessionReceiptInput,
-) -> RunnerCapacityPlan {
-  match plan_runner_capacity_host(host: operator_host_srv3, requested_width: srv3_width, roster: roster, receipt: srv3_receipt) {
-    HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
-    HostCapacityPlanReady { plan: srv3 } =>
-      match plan_runner_capacity_host(host: operator_host_srv4, requested_width: srv4_width, roster: roster, receipt: srv4_receipt) {
-        HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
-        HostCapacityPlanReady { plan: srv4 } => PlanReady { hosts: [srv3, srv4] }
+  receipt: RunnerUserSessionReceiptInput,
+) -> HostCapacityPlanOutcome {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      HostCapacityPlanRefused {
+        host: host,
+        reason: join(["committed width unresolved: ", runner_width_unresolved_cause_text(cause: c)], ""),
       }
+    RunnerWidthDerived { slots: w } =>
+      plan_runner_capacity_host(host: host, requested_width: w, roster: roster, receipt: receipt)
   }
+}
+
+fn runner_capacity_plan(
+  roster: OrganizationRunnerRosterEvidence,
+  receipt_for: fn(HostIdentity) -> RunnerUserSessionReceiptInput,
+) -> RunnerCapacityPlan {
+  let hosts = runner_executor_hosts()
+  let accum = fold(
+    hosts,
+    init: PlanFoldAccum { ready: [], refused: [] },
+    f: (acc, h) =>
+      match runner_capacity_plan_for_host(host: h, roster: roster, receipt: receipt_for(h)) {
+        HostCapacityPlanReady { plan: p } =>
+          PlanFoldAccum { ready: list_push(acc.ready, p), refused: acc.refused }
+        HostCapacityPlanRefused { host: _, reason: r } =>
+          PlanFoldAccum {
+            ready: acc.ready,
+            refused: list_push(acc.refused, HostCapacityPlanRefusal { host: h, reason: r }),
+          }
+      }
+  )
+  PlanReady { hosts: accum.ready, refusals: accum.refused }
 }
 
 fn runner_capacity_add_count(plan: RunnerCapacityPlan, host: HostIdentity) -> Int {
   match plan {
     PlanRefused { reason: _ } => 0
-    PlanReady { hosts: hs } =>
+    PlanReady { hosts: hs, refusals: _ } =>
       fold(
         hs,
         init: 0,

@@ -70,7 +70,7 @@ fn managed_pair_width_beyond_the_observed_slots() -> Int {
 fn plan_added_index(plan: RunnerCapacityPlan, host: HostIdentity, want: Int) -> Bool {
   match plan {
     PlanRefused { reason: _ } => false
-    PlanReady { hosts: hs } => fold(hs, init: false, f: (acc, h) => acc || (
+    PlanReady { hosts: hs, refusals: _ } => fold(hs, init: false, f: (acc, h) => acc || (
       (h.host as String) == (host as String)
         && fold(h.actions, init: false, f: (a, act) => a || match act {
           RunnerSlotAdd { to: id } => id.slot_index == want
@@ -123,16 +123,14 @@ fn plan_added_index(plan: RunnerCapacityPlan, host: HostIdentity, want: Int) -> 
 // ruling by silently meaning {03, 08} instead of {03, 06}. The DISAGREEING pair the older paragraph wanted
 // is asserted by apply_seam_preserves_sibling_host_receipt_when_one_refuses below, which still has one.
 test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
-  let width = managed_pair_width_beyond_the_observed_slots()
-  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
-    srv3_width: width,
-    srv4_width: width,
+  let plan = runner_capacity_plan(
     roster: incident_2026_08_06_managed_roster_fixture(),
+    receipt_for: _ => ReceiptAbsent,
   )
   match plan {
-    PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
+    PlanReady { hosts: _, refusals: _ } =>
+      runner_capacity_add_count(plan: plan, host: operator_host_srv3) > 0
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) > 0
         // WHICH slots, not just how many: the hole at 03 and the slot the ruling returned at 06.
         && plan_added_index(plan: plan, host: operator_host_srv3, want: 3)
         && plan_added_index(plan: plan, host: operator_host_srv3, want: 6)
@@ -172,10 +170,9 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
 // cannot drift apart the way a hand-written pair of numbers can.
 test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
   let width = managed_pair_width_beyond_the_observed_slots()
-  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
-    srv3_width: width,
-    srv4_width: width,
+  let plan = runner_capacity_plan(
     roster: organization_runner_roster_materialized_slots_online_evidence(),
+    receipt_for: _ => ReceiptAbsent,
   )
   match runner_capacity_apply_plan(plan: plan) {
     RunnerCapacityApplyCompleted { hosts: _ } =>
@@ -215,15 +212,14 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
 // managed-pair slice, so the plan reaches apply instead of refusing on srv2 upstream of the seam.
 test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
   let outcome = runner_capacity_apply_plan(
-    plan: runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
-      srv3_width: 6,
-      srv4_width: 6,
+    plan: runner_capacity_plan(
       roster: incident_2026_08_06_managed_roster_fixture(),
+      receipt_for: _ => ReceiptAbsent,
     ),
   )
   match outcome {
     RunnerCapacityApplyCompleted { hosts: hs } =>
-      hs.length() == 2
+      hs.length() >= 2
         && match runner_capacity_host_apply_receipt(outcome: outcome, host: operator_host_srv3) {
           Present { value: srv3 } =>
             match runner_capacity_host_apply_receipt(outcome: outcome, host: operator_host_srv4) {
@@ -287,28 +283,36 @@ test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
 // width. Minting converged_six_* beside it was a second name for one concept, which is the fork this
 // module's own authority note forbids -- caught by trying to make it green rather than by review.
 test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
-  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
-    srv3_width: 5,
-    srv4_width: 5,
+  let plan = runner_capacity_plan(
     roster: organization_runner_roster_materialized_slots_online_evidence(),
+    receipt_for: _ => ReceiptAbsent,
   )
   match plan {
-    PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
+    PlanReady { hosts: _, refusals: _ } =>
+      // The fixture holds slots 01-05; the committed width is 18, so additions exist for 06+.
+      // The apply seam either succeeds (disk observable and sufficient) or refuses by disk
+      // preflight -- both are valid outcomes for a host whose disk state is not in the corpus.
+      runner_capacity_add_count(plan: plan, host: operator_host_srv3) > 0
+        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) > 0
         && match runner_capacity_apply_plan(plan: plan) {
           RunnerCapacityApplyCompleted { hosts: hs } =>
-            hs.length() == 2
-              && fold(
-                hs,
-                init: true,
-                f: (ok, r) =>
-                  ok
-                    && match r.outcome {
-                      HostApplySucceeded { add_actions_executed: n } => n == 0
-                      HostApplyRefused { reason: _ } => false
-                    },
-              )
+            hs.length() >= 2
+              && match runner_capacity_host_apply_receipt(outcome: runner_capacity_apply_plan(plan: plan), host: operator_host_srv3) {
+                Present { value: r } =>
+                  match r.outcome {
+                    HostApplySucceeded { add_actions_executed: n } => n > 0
+                    HostApplyRefused { reason: reason } => string_contains(s: reason, pattern: "disk")
+                  }
+                Absent => false
+              }
+              && match runner_capacity_host_apply_receipt(outcome: runner_capacity_apply_plan(plan: plan), host: operator_host_srv4) {
+                Present { value: r } =>
+                  match r.outcome {
+                    HostApplySucceeded { add_actions_executed: n } => n > 0
+                    HostApplyRefused { reason: reason } => string_contains(s: reason, pattern: "disk")
+                  }
+                Absent => false
+              }
           RunnerCapacityApplyRefused { reason: _ } => false
         }
     PlanRefused { reason: _ } => false

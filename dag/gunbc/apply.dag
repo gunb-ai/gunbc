@@ -14,7 +14,6 @@ import gunbc.runner.runner_capacity_plan {
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.runner.runner_capacity_realize { runner_capacity_apply_wet_exit }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 
 // TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child
 // workflow only. RunnerCapacity plan half is PR A (#7939 runner_capacity_plan); ADD execution
@@ -49,7 +48,7 @@ fn parse_apply_workflow(value: String) -> ApplyWorkflowParse {
 
 fn runner_capacity_plan_exit(plan: RunnerCapacityPlan) -> ProcessExit {
   match plan {
-    PlanReady { hosts: _ } => ExitSuccess
+    PlanReady { hosts: _, refusals: _ } => ExitSuccess
     PlanRefused { reason: r } => exit_failure(reason: r)
   }
 }
@@ -62,32 +61,14 @@ fn apply_runner_capacity_plan(
   match parse_apply_mode(value: mode) {
     ModeParseRefused { reason: r } => exit_failure(reason: r)
     ModeParsed { mode: Apply } =>
-      match parse_positive_width(value: srv3_width) {
-        Absent => exit_failure(reason: "srv3_width must be a positive integer")
-        Present { value: w3 } =>
-          match parse_positive_width(value: srv4_width) {
-            Absent => exit_failure(reason: "srv4_width must be a positive integer")
-            Present { value: w4 } => runner_capacity_apply_wet_exit(srv3_width: w3, srv4_width: w4)
-          }
-      }
+      runner_capacity_apply_wet_exit()
     ModeParsed { mode: Plan } =>
-      match parse_positive_width(value: srv3_width) {
-        Absent => exit_failure(reason: "srv3_width must be a positive integer")
-        Present { value: w3 } =>
-          match parse_positive_width(value: srv4_width) {
-            Absent => exit_failure(reason: "srv4_width must be a positive integer")
-            Present { value: w4 } =>
-              runner_capacity_plan_exit(
-                plan: runner_capacity_plan(
-                  srv3_width: w3,
-                  srv4_width: w4,
-                  roster: organization_runner_roster_live_read(),
-                  srv3_receipt: runner_user_session_receipt_observed(host: operator_host_srv3),
-                  srv4_receipt: runner_user_session_receipt_observed(host: operator_host_srv4),
-                )
-              )
-          }
-      }
+      runner_capacity_plan_exit(
+        plan: runner_capacity_plan(
+          roster: organization_runner_roster_live_read(),
+          receipt_for: h => runner_user_session_receipt_observed(host: h),
+        )
+      )
   }
 }
 
