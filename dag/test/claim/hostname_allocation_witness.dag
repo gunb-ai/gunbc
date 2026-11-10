@@ -28,6 +28,7 @@ import gunbc.hostname_allocation {
   HostSelectorResolved,
   HostSelectorAmbiguous,
   HostSelectorUnknown,
+  HostSelectorRegistryRefused,
   human_name_canonical_hostname,
   draw_human_name,
   canonical_hostname_for_fleet_slot,
@@ -262,16 +263,19 @@ test fn witness_identity_and_name_resolve_to_one_host() -> Bool {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_183527 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let by_identity = match resolve_host_selector(selector: "host-183527") {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_183527 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let legacy = match resolve_host_selector(selector: "srv3") {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_srv3 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   by_name && by_identity && legacy
 }
@@ -286,11 +290,13 @@ test fn witness_ambiguous_short_name_selects_nothing() -> Bool {
       c.length() == 2 && any(c, x => (x as String) == "ada-smith") && any(c, x => (x as String) == "ada-jones")
     HostSelectorResolved { host: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let full = match resolve_host_selector_in(allocations: roster, selector: "ada-jones") {
     HostSelectorResolved { host: h } => (h as String) == "x2"
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   short && full
 }
@@ -298,6 +304,7 @@ test fn witness_ambiguous_short_name_selects_nothing() -> Bool {
 test fn witness_unknown_selector_is_unknown() -> Bool {
   match resolve_host_selector(selector: "nobody-here") {
     HostSelectorUnknown { selector: s } => s == "nobody-here"
+    HostSelectorRegistryRefused { key: _ } => false
     HostSelectorResolved { host: _ } => false
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
@@ -308,11 +315,13 @@ test fn witness_butch_and_its_identity_resolve_to_srv14() -> Bool {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_srv14 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let by_identity = match resolve_host_selector(selector: "srv14") {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_srv14 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   by_name && by_identity
 }
@@ -322,11 +331,13 @@ test fn witness_butch_and_its_identity_resolve_to_srv14() -> Bool {
 test fn witness_owen_and_host_94c81d_name_no_host() -> Bool {
   let by_name = match resolve_host_selector(selector: "owen") {
     HostSelectorUnknown { selector: s } => s == "owen"
+    HostSelectorRegistryRefused { key: _ } => false
     HostSelectorResolved { host: _ } => false
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
   let by_identity = match resolve_host_selector(selector: "host-94c81d") {
     HostSelectorUnknown { selector: s } => s == "host-94c81d"
+    HostSelectorRegistryRefused { key: _ } => false
     HostSelectorResolved { host: _ } => false
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
@@ -355,6 +366,7 @@ test fn witness_every_pending_draw_is_what_the_allocator_yields() -> Bool {
 test fn witness_pending_name_is_reserved_but_does_not_resolve() -> Bool {
   let unresolved = match resolve_host_selector(selector: "fox") {
     HostSelectorUnknown { selector: s } => s == "fox"
+    HostSelectorRegistryRefused { key: _ } => false
     HostSelectorResolved { host: _ } => false
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
@@ -405,4 +417,16 @@ test fn witness_distinct_pending_names_admit() -> Bool {
     Absent => false
   }
   admitted && serves
+}
+
+// A COLLIDING REGISTRY RESOLVES NO SELECTOR, not even one naming a machine outside the collision, and the
+// refusal names the colliding key.
+test fn witness_a_colliding_registry_resolves_no_selector() -> Bool {
+  let roster = [allocation_fixture(slot: "a", hostname: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox"), allocation_fixture(slot: "c", hostname: "c1")]
+  match resolve_host_selector_in(allocations: roster, selector: "c1") {
+    HostSelectorRegistryRefused { key: k } => k == "fox"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
 }

@@ -463,6 +463,7 @@ type HostSelectorResolution
   = HostSelectorResolved { host: HostIdentity }
   | HostSelectorAmbiguous { selector: String, candidates: List<DnsLabel> }
   | HostSelectorUnknown { selector: String }
+  | HostSelectorRegistryRefused { key: String }
 
 fn resolution_of_matches(selector: String, matches: List<HostnameAllocation>) -> HostSelectorResolution? {
   match matches.first() {
@@ -479,7 +480,18 @@ fn resolution_of_matches(selector: String, matches: List<HostnameAllocation>) ->
   }
 }
 
+// A SELECTOR RESOLVES ONLY AGAINST AN ADMITTED REGISTRY, like every other read of it: a registry that
+// hostname_allocation_admission refuses resolves nothing and names the colliding key, rather than
+// answering Unknown or picking a row by authoring order.
 fn resolve_host_selector_in(allocations: List<HostnameAllocation>, selector: String) -> HostSelectorResolution {
+  match hostname_allocation_admission(allocations: allocations) {
+    AllocationPrimaryKeyRepeated { key: k } => HostSelectorRegistryRefused { key: k }
+    AllocationSecondaryKeyRepeated { key: k } => HostSelectorRegistryRefused { key: k }
+    AllocationAdmitted { roster: _ } => resolve_host_selector_in_admitted(allocations: allocations, selector: selector)
+  }
+}
+
+fn resolve_host_selector_in_admitted(allocations: List<HostnameAllocation>, selector: String) -> HostSelectorResolution {
   let exact = filter(allocations, a =>
     (a.fleet_slot as String) == selector || (allocated_canonical_hostname(allocation: a) as String) == selector
   )
