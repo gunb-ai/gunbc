@@ -6,7 +6,9 @@ import gunbc.ci.ci_gate { gate_receipt_exit, gate_receipt_failure_detail, GateNo
 
 // The floor compile-clean receipt produce/install chain had no executing route after
 // `run_required_floor` was deleted. The surfaces were removed rather than aliased onto
-// `witness_layer_roots_compile_clean_check` (a resolve check). This gate is still named
+// `witness_layer_roots_compile_clean_check` (a resolve check; that builtin and its scope
+// authority `gunbc.instruments.dag_compile_clean_scope` were themselves deleted in read-set
+// convergence P0, gunbc.plans.read_set_convergence C3). This gate is still named
 // by `ci_spec` `DagCompileCleanGate`; it answers GateNotRun so a caller cannot read a
 // missing receipt as a compile-clean verdict.
 
