@@ -59,9 +59,13 @@ data probe_as_int_source: String = concat(
 // the fork. Declaration-keyed identity does NOT compare equal, so the arm fires. Its own base shares the
 // same imports and one dead fn, so the count is a clean differential of just the added cast.
 data probe_same_leaf_base_source: String = concat(
-  "module p\nimport std.types { Int }\n"
-  "import test.fixture.refined_int_cast_fork_a { make_a }\n"
-  "import test.fixture.refined_int_cast_fork_b { Port }\n"
+  concat(
+    concat(
+      "module p\nimport std.types { Int }\n",
+      "import test.fixture.refined_int_cast_fork_a { make_a }\n"
+    ),
+    "import test.fixture.refined_int_cast_fork_b { Port }\n"
+  ),
   "fn probe_keep() -> Int { 0 }\n"
 )
 
