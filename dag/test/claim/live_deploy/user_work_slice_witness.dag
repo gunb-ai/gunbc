@@ -72,7 +72,7 @@ import gunbc.compute.unit_bounds {
 import gunbc.runner.runner_unit { runner_unit_prefix }
 import gunbc.gunbc_cli_command { gunbc_test_user_work_scope_command }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
-import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance, srv1_live_dashboard_instance }
 import gunbc.host.host_converge {
   user_manager_backstop_for, UserManagerBackstopNotOwed, UserManagerBackstopDerived,
   UserManagerBackstopRefused, user_manager_instance_unit,
@@ -84,7 +84,11 @@ import gunbc.host.host_converge {
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import gunbc.live_deploy.spec {
   gunbc_tree_sync_unit_name, gunbc_repository_convergence_slice_unit_name,
+  srv1_live_deployment_names, deployment_slice_unit_name,
+  deployment_belt_exit_drain_service_unit_name,
+  declared_system_slice_memory_maxes_including_deployment,
 }
+import gunbc.live_deploy.slice_bounds { live_deploy_slice_memory_max }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
@@ -616,6 +620,45 @@ test fn declared_system_slice_caps_are_the_slice_bound_rows() -> Bool {
     && any(rows, r => byte_size_count(b: r.memory_max) == byte_size_count(b: approval_broker_slice_memory_max))
     && any(rows, r => (r.unit as String) == (attempt_worker_slice_unit_name as String)
       && byte_size_count(b: r.memory_max) == byte_size_count(b: attempt_worker_slice_memory_max))
+}
+
+// The srv1 daily-workspace belt oneshots (belt-exit, -belt-discovery, -belt-credential-recovery)
+// start as named .service units under the DEPLOYMENT slice. That slice is capped at boot by
+// gunbc.live_deploy.emit (MemoryMax= live_deploy_slice_memory_max), so a belt .service under it owes
+// the same classification as a unit under any other capped system slice: ExemptSystemUnit, named
+// from the cgroup TEXT. The bound is read live, so the only thing the model owes is that the
+// deployment slice be RECOGNIZED as a system slice carrying a finite cap. Its name is not a
+// constant -- deployment_slice_unit_name(srv1_live_deployment_names(srv1_live_dashboard_instance()))
+// derives it per deployment -- so the census must derive it, never hand-type it. RED until the
+// deployment slice joins the census gunbc.compute.unit_bounds recognized_system_slice consults: today
+// it answers UncappedSystemSlice, the srv1 belt refusal.
+test fn belt_exit_under_the_modeled_deployment_slice_is_exempt() -> Bool {
+  let names = srv1_live_deployment_names(instance: srv1_live_dashboard_instance())
+  let slice = deployment_slice_unit_name(names: names) as String
+  let unit = deployment_belt_exit_drain_service_unit_name(names: names) as String
+  let cg = join(["0::/", slice, "/", unit], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: live_deploy_slice_memory_max }) {
+    ExemptSystemUnit { unit: u, slice: s, bound: b } =>
+      u == unit && s == slice
+        && byte_size_count(b: b) == byte_size_count(b: live_deploy_slice_memory_max)
+    _ => false
+  }
+}
+
+// CONTROL for the cause, so the fix cannot pass by exempting every capped slice: recognition, not
+// the live cap, is what admits a named .service under a slice. A .service under a slice the model
+// does NOT recognize refuses UncappedSystemSlice even with a finite live memory.max -- the exact arm
+// the srv1 belt oneshots fell into. This slice is never modeled, so it holds before and after the
+// fix; together with the exemption above it pins that the deployment slice is admitted from its own
+// declaration, not by widening the standing fold.
+test fn a_named_service_under_an_unrecognized_slice_refuses_even_with_a_live_cap() -> Bool {
+  let slice = "gunbc-not-a-modeled-slice.slice"
+  let unit = "gunbc-not-a-modeled-unit.service"
+  let cg = join(["0::/", slice, "/", unit], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: byte_size(1) }) {
+    UncappedSystemSlice { unit: u, slice: s } => u == unit && s == slice
+    _ => false
+  }
 }
 
 test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
@@ -1269,13 +1312,15 @@ test fn every_emitted_fci1_runner_pipes_the_unit_output_to_the_caller() -> Bool 
 
 // THE SEED'S LIST IS THE DECLARED ROWS, IN BOTH DIRECTIONS. `RECOGNIZED_SYSTEM_SLICES` in the
 // hand-retained seed (a declared seed-retained row of v2.compiler.self_host.seed_retention_frontier,
-// so no stage0 regen rewrites it) must equal the capped rows of `declared_system_slice_memory_maxes`
-// followed by the sessions slice, byte for byte. The older mirror claim checks that each declared
+// so no stage0 regen rewrites it) must equal the capped rows of
+// `gunbc.live_deploy.spec declared_system_slice_memory_maxes_including_deployment` (the slice_bounds
+// fleet roster plus the derived deployment-slice row) followed by the sessions slice, byte for byte.
+// The older mirror claim checks that each declared
 // capped unit appears in the seed; this one also refuses a seed literal no row declares, and any
 // reordering, so the two sources cannot drift apart in either direction.
 test fn the_seed_slice_list_equals_the_declared_capped_rows_plus_sessions() -> Bool {
   let seed = filesystem_read(path: seed_user_work_scope_path).content
-  let capped = declared_system_slice_memory_maxes() |> filter(row => byte_size_count(b: row.memory_max) > 0)
+  let capped = declared_system_slice_memory_maxes_including_deployment() |> filter(row => byte_size_count(b: row.memory_max) > 0)
   let rendered = join(
     concat(
       map(capped, row => join(["    \"", row.unit as String, "\",\n"], "")),

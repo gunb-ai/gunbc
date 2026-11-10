@@ -43,6 +43,9 @@ import gunbc.live_deploy.slice_bounds {
   attempt_worker_slice_unit_name,
   repository_convergence_slice_unit_name,
   approval_broker_slice_unit_name,
+  DeclaredSliceMemoryMax,
+  declared_system_slice_memory_maxes,
+  live_deploy_slice_memory_max,
 }
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
@@ -682,6 +685,32 @@ fn deployment_systemd_unit_path(names: DeploymentNames) -> NonEmptyStr {
 // name per deployment identity, so a twin instance gets its own slice rather than sharing a bound.
 fn deployment_slice_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), ".slice"], "") as NonEmptyStr
+}
+
+// The deployment slice is capped at boot by gunbc.live_deploy.emit (MemoryMax= live_deploy_slice_memory_max,
+// MemoryHigh= / MemorySwapMax= alongside), exactly like a fleet system slice. So a named .service
+// under it -- a belt oneshot -- owes the same classification as a unit under any other capped system
+// slice: gunbc.compute.unit_bounds recognized_system_slice must admit it, or a belt unit refuses
+// UncappedSystemSlice at start despite a finite live memory.max (the srv1 daily-workspace belt refusal).
+// Its unit NAME is not a constant -- it is derived per deployment from the daily-workspace instance's
+// DeploymentNames by deployment_slice_unit_name above -- so the census must derive it, never hand-type
+// it. spec is the single home that can compose the row: it imports gunbc.live_deploy.slice_bounds for
+// the cap and gunbc.roadmap.roadmap_dashboard_instance for the instance, and owns the naming fold.
+// (slice_bounds stays a leaf and must NOT import spec -- spec imports slice_bounds -- the import cycle the
+// census cannot cross from its own side, so the deployment row is contributed here and read back by
+// gunbc.compute.unit_bounds.) This adds no memory budget: the cap is the value emit already writes.
+fn declared_deployment_system_slice_row() -> DeclaredSliceMemoryMax {
+  DeclaredSliceMemoryMax {
+    unit: deployment_slice_unit_name(names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance())),
+    memory_max: live_deploy_slice_memory_max,
+  }
+}
+
+// THE census gunbc.compute.unit_bounds recognized_system_slice reads: the fleet-wide rows slice_bounds
+// declares, plus the derived deployment-slice row. A census that hand-typed the deployment slice would
+// drift the moment the deployment was renamed; composing it here keeps the name single-sourced.
+fn declared_system_slice_memory_maxes_including_deployment() -> List<DeclaredSliceMemoryMax> {
+  concat(declared_system_slice_memory_maxes(), [declared_deployment_system_slice_row()])
 }
 
 fn deployment_slice_unit_path(names: DeploymentNames) -> NonEmptyStr {
