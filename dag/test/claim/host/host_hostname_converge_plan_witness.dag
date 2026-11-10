@@ -200,3 +200,42 @@ test fn direction_is_a_closed_choice() -> Bool {
     && rollback_resolves
     && free_text_refused
 }
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE DRY RUN AGAINST srv2, FOLDED HERE RATHER THAN ASSUMED (P8a acceptance: "plan srv2 against its
+// current name, expecting Noop or a stated baseline conflict"). The three names are the ones the mode
+// would carry on a `mode=hostname_converge host=srv2` dispatch, each read from its own single authority:
+//
+//   live     "srv2"              — read read-only over SSH (`hostname -s`) from srv2 itself on
+//                                  2026-11-10, the same read the mode's own read-back step performs;
+//   desired  "srv2"              — gunbc.hostname_allocation canonical_hostname_for_fleet_slot through
+//                                  gunbc.deployed_intent_v1 deployed_intent_v1_from_fleet_slot, i.e. the
+//                                  one function P2 re-sources from the registry's human name;
+//   base     "alstrad8d-1l2t-2"   — the committed gunbc.deployed_intent_v0 row for srv2's slot, the
+//                                  pre-2026-07 name the baseline blocker is about.
+//
+// THE ANSWER IS NOOP, and it is Noop for the right reason: the live name already equals the desired name.
+// That is also the case that shows the fold does NOT mistake a stale baseline for a conflict once the
+// machine is already where it should be — a baseline drift alone must never schedule a write.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+data srv2_stored_base: NonEmptyStr = "alstrad8d-1l2t-2"
+data srv2_live_name: NonEmptyStr = "srv2"
+data srv2_desired_name: NonEmptyStr = "srv2"
+
+test fn srv2_dry_run_against_its_current_name_is_noop() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: srv2_stored_base, desired: srv2_desired_name, live: srv2_live_name) {
+    NoopPlan { live: l } => l == srv2_live_name && l == srv2_desired_name
+    _ => false
+  }
+}
+
+// AND THE SAME HOST WITH ITS BASELINE RE-ADOPTED still says Noop: adopting the live name as the base
+// changes what a FUTURE divergence would guard on, not what is written now. If this leg failed, the
+// re-adopt would be a write in disguise.
+test fn srv2_after_readopt_still_noop() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: srv2_live_name, desired: srv2_desired_name, live: srv2_live_name) {
+    NoopPlan { live: l } => l == srv2_live_name
+    _ => false
+  }
+}

@@ -76,6 +76,12 @@ data hostname_converge_direction_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAM
 data hostname_converge_readopt_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_READOPT"
 data hostname_converge_attempt_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_ATTEMPT"
 
+// THE TWO GATES TRAVEL AS ENVIRONMENT NAMES TOO, so the emitted step and the entry read the same
+// spelling. `confirm` is what separates a dry plan from a hostnamectl write, and `mode` is what the
+// build job's dispatch gate reads before anything is scheduled.
+data hostname_converge_confirm_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_CONFIRM"
+data hostname_converge_mode_env_name: NonEmptyStr = "GUNBC_HOSTNAME_CONVERGE_MODE"
+
 // THE DIRECTION IS TYPED, not a name a dispatch may carry: the rename window's rollback is "put the
 // previous name back", and the only previous name this code may write is the committed baseline. A
 // free-string rollback target would let a dispatch name ANY hostname — the exact failure the
@@ -571,20 +577,21 @@ type HostnameConvergePlanStep
 fn hostname_converge_plan_step(request: HostnameConvergeRequest) -> HostnameConvergePlanStep {
   match hostname_converge_live(request: request) {
     LiveRefused { cause: c } => PlanRefused { cause: c }
-    Live { name: live } =>
-      match hostname_converge_fold(request: request, live: live) {
-        p =>
-          Planned {
-            plan: p,
-            live: live,
-            stamp: hostname_converge_plan_stamp(
-              target: request.target,
-              peer: request.peer,
-              direction: request.direction,
-              plan: p,
-            ),
-          }
-      }
+    Live { name: live } => hostname_converge_planned(request: request, live: live)
+  }
+}
+
+fn hostname_converge_planned(request: HostnameConvergeRequest, live: NonEmptyStr) -> HostnameConvergePlanStep {
+  let plan = hostname_converge_fold(request: request, live: live)
+  Planned {
+    plan: plan,
+    live: live,
+    stamp: hostname_converge_plan_stamp(
+      target: request.target,
+      peer: request.peer,
+      direction: request.direction,
+      plan: plan,
+    ),
   }
 }
 
@@ -602,9 +609,11 @@ fn hostname_converge_apply_step(request: HostnameConvergeRequest) -> HostnameCon
   match hostname_converge_live(request: request) {
     LiveRefused { cause: c } => ApplyRefused { cause: c }
     Live { name: live_before } =>
-      match hostname_converge_fold(request: request, live: live_before) {
-        p => hostname_converge_apply_folded(request: request, plan: p, live_before: live_before)
-      }
+      hostname_converge_apply_folded(
+        request: request,
+        plan: hostname_converge_fold(request: request, live: live_before),
+        live_before: live_before,
+      )
   }
 }
 
@@ -799,8 +808,7 @@ fn hostname_converge_readopt_judge(
       live: live,
       base: base,
       desired: desired,
-      reason:
-        "the live name is not the desired name, so it is not a confirmed target state and cannot become the baseline",
+      reason: "the live name is not the desired name, so it is not a confirmed target state and cannot become the baseline",
     }
   }
 }

@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_converge_workflow
 import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
-import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_hostname_converge_dispatch_admission_invoke, gunbc_ci_hostname_converge_plan_invoke, gunbc_ci_hostname_converge_apply_invoke, gunbc_ci_hostname_converge_read_back_invoke, gunbc_ci_hostname_converge_readopt_invoke, gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
 // The row this step reads is declared over there; naming it in the import list is what gives the effect
@@ -8527,252 +8527,209 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────
-// THE PEER-RUN HOSTNAME CONVERGE JOB (gunbc.plans.fleet_machine_authority P8a).
+// THE HOSTNAME-CONVERGE MODE — a peer-run rename of one host's Linux hostname, host-generic (P8a,
+// gunbc.plans.fleet_machine_authority).
 //
-// WHY IT IS A JOB OF ITS OWN, AND WHY ITS runs-on IS NOT THE TARGET'S LABEL. Every other host-scoped
-// job in this workflow is pinned to `github.event.inputs.host` — the machine it converges. That pin is
-// correct right up until the mode renames the machine: a job whose only route to a runner is the label
-// of the host it is renaming cannot survive the rename it performs, and during the window the label it
-// asks for is exactly the label being retired. So this job is scheduled on the PEER, and reaches the
-// target over the fleet's own SSH edge. `host` stays the TARGET (it is what the mutation concurrency
-// group keys on, so renames of one host serialize against each other); `hostname_converge_peer` is the
-// executor. They are separate inputs because they are separate machines.
+// TWO THINGS MAKE THIS MODE DIFFERENT FROM EVERY OTHER MODE IN THIS WORKFLOW, and both are about
+// WHERE IT RUNS.
+//
+// It runs on a PEER. The target's own fleet-converge job is pinned to the target's own runner label
+// (fleet_converge_host_runner_label_expression), and during a rename window that label is exactly
+// what is being renamed — the job that would fix the name is scheduled on a label that no longer
+// exists. So this job takes its runner from a SEPARATE input, `hostname_converge_peer`, whose options
+// are gunbc.host.host_hostname_converge hostname_converge_peer_options — never the target's label,
+// and never the executor's `hostname -s`, which reports the box a runner happens to sit on rather
+// than the box the dispatch named. The peer reaches the target over the existing fleet SSH reach
+// model (gunbc.host.host_hostname_converge hostname_converge_resolve → fleet_ssh_target_at_standard_port);
+// no step in this job hand-spells a target address.
+//
+// The plan and the apply are SEPARATE GATED STEPS. `if: <mode>` runs the dry plan, which reads the
+// live name and folds it against the stored baseline and the desired name. The apply additionally
+// requires `hostname_converge_confirm == 'converge'`, and the CLI entry checks that environment value
+// again before it will invoke the compare-and-set — a gate asserted only in YAML is a gate a hand
+// invocation walks past. The read-back is a THIRD step, independent of the apply's own report: it
+// reads the name from the target again and fails on a mismatch, so a green apply cannot certify
+// itself. The reverse direction (`hostname_converge_direction == 'rollback'`, the previous name
+// restored) is the rename window's rollback, so the window and its undo travel as one mode.
+//
+// A rename whose stored baseline still names the PRE-2026-07 name is a genuine three-way conflict,
+// not a no-op — the live name matches neither the baseline nor the desired name. This mode refuses it
+// as ConflictPlan naming both, and the separate `hostname_converge_readopt == 'adopt'` step is the
+// only way it is admitted: an explicit, typed adoption that records the observed live name as the new
+// base. The default `refuse` leaves the stored baseline untouched, because silently rewriting a
+// baseline is how a wrong rename becomes invisible (gunbc.design_argument::fail_closed).
+//
+// No per-host entry lives here: srv1 and srv2 were the only two hosts with wet leaves
+// (host_identity_assimilate_srv1_wet / _srv2_wet, host_identity_adopt_srv1_wet / _srv2_wet), they are
+// deleted, and both are rows of gunbc.deployed_intent_v0 gunbc_deployed_intent_v0_persisted_rows that
+// this one generic mode takes as inputs (gunbc.design_argument::root_generalization).
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 
 data fleet_converge_hostname_converge_step_if: String = fleet_converge_mode_step_if(mode: HostnameConverge)
 
-// THE APPLY STEP IS GATED TWICE: on the mode, and on the dispatch having chosen `converge`. A dispatch
-// that picks the mode without saying the word folds the plan and reads the name back and never writes —
-// which is what makes a dry run against a real host the safe thing it looks like. The entry checks the
-// same environment again, so the lock is not only in the emitted YAML.
-data fleet_converge_hostname_converge_apply_step_if: String = join(
-  [fleet_converge_mode_step_if(mode: HostnameConverge), " && github.event.inputs.hostname_converge_confirm == 'converge'"],
-  "",
-)
+// THE APPLY IS A SECOND GATE, INSIDE THE MODE. The dry plan runs on any mode=hostname_converge
+// dispatch; the apply additionally requires the dispatched confirmation.
+data fleet_converge_hostname_converge_confirm_if: String = "github.event.inputs.hostname_converge_confirm == 'converge'"
+data fleet_converge_hostname_converge_apply_step_if: String = join([fleet_converge_hostname_converge_step_if, fleet_converge_hostname_converge_confirm_if], " && ")
 
-// THE RE-ADOPT STEP HAS ITS OWN GATE, separate from actuation, because writing a hostname and moving
-// the committed baseline are different authorities over different data.
-data fleet_converge_hostname_converge_readopt_step_if: String = join(
-  [fleet_converge_mode_step_if(mode: HostnameConverge), " && github.event.inputs.hostname_converge_readopt == 'adopt'"],
-  "",
-)
+// THE BASELINE ADOPTION IS A THIRD GATE: it is the only step that may rewrite a stored baseline, so
+// it asks for its own confirmation and its CLI entry refuses without it.
+data fleet_converge_hostname_converge_readopt_if: String = "github.event.inputs.hostname_converge_readopt == 'adopt'"
+data fleet_converge_hostname_converge_readopt_step_if: String = join([fleet_converge_hostname_converge_step_if, fleet_converge_hostname_converge_readopt_if], " && ")
 
-// THE PEER LABEL, built the same closed way the observer label is: a format-injected JSON array so a
-// dispatch cannot break out of the label set, and the value comes from the dispatch rather than from
-// `hostname -s` on whatever box the job landed on.
-data fleet_converge_hostname_converge_peer_runner_expression_body: String =
-  "fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.hostname_converge_peer))"
-
-data fleet_converge_hostname_converge_peer_runner_expression: String = join(
-  ["${{ ", fleet_converge_hostname_converge_peer_runner_expression_body, " }}"],
-  "",
-)
+// THE PEER RUNNER LABEL IS CHOSEN BY THE DISPATCH, and it is the one runner expression in this
+// workflow that must not be fleet_converge_host_runner_expression_body: keying it to `host` would put
+// the rename back on the box whose label is being renamed.
+data fleet_converge_hostname_converge_peer_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.hostname_converge_peer))"
+data fleet_converge_hostname_converge_peer_runner_expression: String = join(["${{ ", fleet_converge_hostname_converge_peer_runner_expression_body, " }}"], "")
 
 fn fleet_converge_hostname_converge_runner_spec() -> RunnerSpec {
   RunsOnExpression { expression: fleet_converge_hostname_converge_peer_runner_expression }
 }
 
+// THE TARGET, THE PEER, THE DIRECTION AND THE GATES TRAVEL AS ENVIRONMENT, each named once in
+// gunbc.host.host_hostname_converge so a step and its entry cannot drift apart
+// (gunbc.design_argument::single_authority).
+fn fleet_converge_hostname_converge_step_env() -> List<YamlKeyValue> {
+  [
+    kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: join(["${{ ", fleet_host_input_expression, " }}"], ""))),
+    kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_peer }}")),
+    kv(key: hostname_converge_direction_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_direction }}")),
+    kv(key: hostname_converge_readopt_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_readopt }}")),
+    kv(key: hostname_converge_attempt_env_name as String, value: yaml_string(s: "${{ github.run_id }}-${{ github.run_attempt }}")),
+  ]
+}
+
+fn fleet_converge_hostname_converge_plan_step() -> Step {
+  RunStep {
+    name: "plan hostname converge (read-only)",
+    id: Present { value: "hostname-converge-plan" },
+    run: gunbc_ci_hostname_converge_plan_invoke(),
+    shell: ShellBash,
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
+    continue_on_error: Present { value: false },
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
+  }
+}
+
+fn fleet_converge_hostname_converge_apply_step() -> Step {
+  RunStep {
+    name: "apply hostname converge (compare-and-set over fleet SSH)",
+    id: Present { value: "hostname-converge-apply" },
+    run: gunbc_ci_hostname_converge_apply_invoke(),
+    shell: ShellBash,
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_apply_step_if },
+    continue_on_error: Present { value: false },
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
+  }
+}
+
+// THE READ-BACK IS NOT THE APPLY'S OWN REPORT. It re-reads the live name and fails on a mismatch, so
+// a step that wrote the wrong name cannot pass by believing itself.
+fn fleet_converge_hostname_converge_read_back_step() -> Step {
+  RunStep {
+    name: "read back the hostname (independent of the apply)",
+    id: Present { value: "hostname-converge-read-back" },
+    run: gunbc_ci_hostname_converge_read_back_invoke(),
+    shell: ShellBash,
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
+    continue_on_error: Present { value: false },
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
+  }
+}
+
+fn fleet_converge_hostname_converge_readopt_step() -> Step {
+  RunStep {
+    name: "re-adopt the hostname baseline (explicit, typed; refuses by default)",
+    id: Present { value: "hostname-converge-readopt" },
+    run: gunbc_ci_hostname_converge_readopt_invoke(),
+    shell: ShellBash,
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_readopt_step_if },
+    continue_on_error: Present { value: false },
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
+  }
+}
+
+fn fleet_converge_hostname_converge_receipt_upload_step() -> Step {
+  UsesStep {
+    name: "upload hostname converge receipt",
+    id: Present { value: "hostname-converge-upload-receipt" },
+    uses: upload_artifact_action,
+    with: Present {
+      value: workflow_artifact_upload_with(
+        name: "hostname-converge",
+        path: hostname_converge_receipt_path as String,
+        retention_days: Present { value: 30 },
+        compression_level: none,
+        absence: AbsenceRefused
+      )
+    },
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
+    continue_on_error: Present { value: false },
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes },
+  }
+}
+
+// THE DISPATCH GATE RUNS IN THE BUILD JOB, BEFORE THIS JOB IS QUEUED: a peer that is also the target,
+// or a peer no runner carries, fails there rather than parking a rename in a queue nothing will drain.
+fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
+  RunStep {
+    name: "hostname converge dispatch admission (wet: refuses a peer that is the target, or an unallocated peer)",
+    id: Present { value: "hostname-converge-dispatch-admission" },
+    run: gunbc_ci_hostname_converge_dispatch_admission_invoke(),
+    shell: ShellBash,
+    env: Present {
+      value: [
+        kv(key: hostname_converge_mode_env_name as String, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
+        kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: join(["${{ ", fleet_host_input_expression, " }}"], ""))),
+        kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_peer }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
+  }
+}
+
 fn fleet_converge_hostname_converge_job() -> Job {
   Job {
-    id: "hostname-converge",
-    name: Present { value: "Fleet Converge · Hostname Converge (from peer)" },
-    runs_on: fleet_converge_hostname_converge_runner_spec(),
-    environment: Present {
-      value: EnvironmentRef {
-        name: fleet_converge_fleet_ssh_environment,
-        url: none,
-      },
+    id: fleet_converge_mode_job_id(mode: HostnameConverge) as String,
+    name: Present { value: "hostname-converge" },
+    needs: Present { value: [fleet_converge_release_bins_job_id as String] },
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_host_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
     },
+    permissions: none,
+    runner: fleet_converge_hostname_converge_runner_spec(),
+    container: none,
+    env: Present { value: github_workspace_exports() },
+    environment: none,
+    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
     steps: concat(
-      fleet_converge_event_sha_consumer_prelude_steps(),
+      concat(event_sha_consumer_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]),
       [
-        ci_release_bins_download_step(
-          implicit_inputs: ci_release_bins_unpack_verify_implicit_inputs_step()
-        ),
         fleet_converge_hostname_converge_plan_step(),
         fleet_converge_hostname_converge_apply_step(),
         fleet_converge_hostname_converge_read_back_step(),
         fleet_converge_hostname_converge_readopt_step(),
         fleet_converge_hostname_converge_receipt_upload_step(),
-      ],
+      ]
     ),
-    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostnameConverge)),
-    env: none,
-    outputs: none,
-    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
-    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none,
-  }
-}
-
-// THE ENVIRONMENT EVERY STEP OF THIS JOB CARRIES. The target selector, the executing peer and the
-// direction arrive from the dispatch; the entry reads them and resolves the pair itself. No step here
-// spells a hostname, and none of them asks the executor which machine it is.
-fn fleet_converge_hostname_converge_step_env() -> StepEnv {
-  StepEnv {
-    values: [
-      kv(
-        key: hostname_converge_target_env_name,
-        value: StepEnvValueString { value: StepEnvValueContext { expression: "github.event.inputs.host", name: none } },
-      ),
-      kv(
-        key: hostname_converge_peer_env_name,
-        value: StepEnvValueString {
-          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_peer", name: none },
-        },
-      ),
-      kv(
-        key: hostname_converge_direction_env_name,
-        value: StepEnvValueString {
-          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_direction", name: none },
-        },
-      ),
-      kv(
-        key: hostname_converge_confirm_env_name,
-        value: StepEnvValueString {
-          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_confirm", name: none },
-        },
-      ),
-      kv(
-        key: hostname_converge_readopt_env_name,
-        value: StepEnvValueString {
-          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_readopt", name: none },
-        },
-      ),
-      kv(
-        key: hostname_converge_attempt_env_name,
-        value: StepEnvValueString { value: StepEnvValueContext { expression: "github.run_id", name: none } },
-      ),
-    ],
-  }
-}
-
-// STEP ONE — THE DRY PLAN. Always runs with the mode; exits 0 whatever the fold says, because the plan
-// step's job is to SAY what the state means. A baseline conflict is a stated outcome here, not a
-// failure; the step that would have acted is where a refusal turns red.
-fn fleet_converge_hostname_converge_plan_step() -> Step {
-  RunStep {
-    name: Present { value: "Converge hostname on the target from the peer (dry plan)" },
-    env: Present { value: fleet_converge_hostname_converge_step_env() },
-    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
-    continue_on_error: none,
-    command: Present { value: gunbc_ci_hostname_converge_plan_invoke() },
-    uses: none,
-    with: none,
-    id: none,
-    working_directory: none,
-    shell: Present { value: Bash },
-    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
-  }
-}
-
-// STEP TWO — THE WET APPLY, behind the dispatch confirmation.
-fn fleet_converge_hostname_converge_apply_step() -> Step {
-  RunStep {
-    name: Present { value: "Converge hostname on the target from the peer (wet apply, confirmed dispatch only)" },
-    env: Present { value: fleet_converge_hostname_converge_step_env() },
-    if_condition: Present { value: fleet_converge_hostname_converge_apply_step_if },
-    continue_on_error: none,
-    command: Present { value: gunbc_ci_hostname_converge_apply_invoke() },
-    uses: none,
-    with: none,
-    id: none,
-    working_directory: none,
-    shell: Present { value: Bash },
-    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
-  }
-}
-
-// STEP THREE — THE INDEPENDENT READ-BACK. It runs whether or not the apply was unlocked, because what
-// it reports is the machine's answer and not the apply's: a step that only ran after a write would
-// certify the write instead of the host.
-fn fleet_converge_hostname_converge_read_back_step() -> Step {
-  RunStep {
-    name: Present { value: "Read the target's hostname back over a fresh fleet SSH call" },
-    env: Present { value: fleet_converge_hostname_converge_step_env() },
-    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
-    continue_on_error: none,
-    command: Present { value: gunbc_ci_hostname_converge_read_back_invoke() },
-    uses: none,
-    with: none,
-    id: none,
-    working_directory: none,
-    shell: Present { value: Bash },
-    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
-  }
-}
-
-// THE TYPED RE-ADOPT, behind its own gate. It admits only where the live name already is the desired
-// name, and what it emits is the DeployedIntentV0 the operator commits — the committed baseline is never
-// rewritten by a run.
-fn fleet_converge_hostname_converge_readopt_step() -> Step {
-  RunStep {
-    name: Present { value: "Re-adopt the committed hostname baseline (typed step, own dispatch gate)" },
-    env: Present { value: fleet_converge_hostname_converge_step_env() },
-    if_condition: Present { value: fleet_converge_hostname_converge_readopt_step_if },
-    continue_on_error: none,
-    command: Present { value: gunbc_ci_hostname_converge_readopt_invoke() },
-    uses: none,
-    with: none,
-    id: none,
-    working_directory: none,
-    shell: Present { value: Bash },
-    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
-  }
-}
-
-fn fleet_converge_hostname_converge_receipt_upload_step() -> Step {
-  ci_upload_artifact_always_step_with_retention(
-    name: "fleet-converge-hostname-converge-receipt",
-    path: hostname_converge_receipt_path,
-    retention_days: fleet_converge_receipt_retention_days,
-    if_condition: Present {
-      value: join(
-        [
-          "always() && ",
-          fleet_converge_dispatch_mode_is(mode: HostnameConverge),
-          " && github.event.inputs.host != ''",
-        ],
-        "",
-      )
-    },
-  )
-}
-
-// THE DISPATCH GATE, RUN IN THE BUILD JOB. Same reason the reset observer's gate is there and not here:
-// this job's runs-on is resolved before any of its steps exist, so a gate inside it is unreachable in
-// exactly the state it would diagnose. `build` carries generic labels, is always schedulable, and every
-// host-scoped job needs it — the check costs nothing on every other mode and refuses with a cause on
-// this one.
-fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
-  RunStep {
-    name: Present { value: "Hostname-converge dispatch admission: refuse an unnamed executing peer before anything is scheduled" },
-    env: Present {
-      value: StepEnv {
-        values: [
-          kv(
-            key: hostname_converge_mode_env_name,
-            value: StepEnvValueString { value: StepEnvValueContext { expression: "github.event.inputs.mode", name: none } },
-          ),
-          kv(
-            key: hostname_converge_peer_env_name,
-            value: StepEnvValueString {
-              value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_peer", name: none },
-            },
-          ),
-        ],
-      },
-    },
-    if_condition: Present { value: fleet_converge_dispatch_event_if },
-    continue_on_error: none,
-    command: Present { value: gunbc_ci_hostname_converge_dispatch_admission_invoke() },
-    uses: none,
-    with: none,
-    id: none,
-    working_directory: none,
-    shell: Present { value: Bash },
-    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
   }
 }

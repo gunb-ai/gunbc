@@ -89,8 +89,10 @@ import gunbc.host.host_hostname_converge {
   hostname_converge_refusal_line,
   hostname_converge_resolve,
   hostname_converge_attempt_env_name,
+  hostname_converge_confirm_env_name,
   hostname_converge_direction_env_name,
   hostname_converge_mode,
+  hostname_converge_mode_env_name,
   hostname_converge_peer_env_name,
   hostname_converge_readopt_env_name,
   hostname_converge_target_env_name,
@@ -1006,8 +1008,6 @@ fn converge_cli_provider_guest_receipt(host: String, intent: HostEnrollmentInten
 // on one host rather than whatever dispatch happens to fire (gunbc.design_argument::fail_closed).
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 
-data hostname_converge_confirm_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_CONFIRM"
-data hostname_converge_mode_env_name: NonEmptyStr = "MODE"
 
 fn hostname_converge_env_value(name: NonEmptyStr) -> String {
   match shell.Env.Get(name: name).value {
@@ -1100,15 +1100,14 @@ fn hostname_converge_plan_exit(request: HostnameConvergeRequest) -> ProcessExit 
 fn fleet_converge_hostname_converge_apply_wet() -> ProcessExit {
   if hostname_converge_env_value(name: hostname_converge_confirm_env_name) != "converge" {
     return hostname_converge_refusal_exit(
-      line:
-        join(
-          [
-            "hostname_converge refused: the apply step requires the dispatch confirmation `converge` and this",
-            " dispatch did not carry it, so no hostnamectl write was attempted on any host",
-            "",
-          ],
+      line: join(
+        [
+          "hostname_converge refused: the apply step requires the dispatch confirmation `converge` and this",
+          " dispatch did not carry it, so no hostnamectl write was attempted on any host",
           "",
-        ),
+        ],
+        "",
+      ),
       step: "apply",
     )
   }

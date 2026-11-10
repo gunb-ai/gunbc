@@ -2,7 +2,7 @@ module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 
 // AN INHABITANCE CONTROL OVER THE REAL EMITTER (gunbc.plans.fleet_machine_authority P8a acceptance).
 // Everything asserted here reads the workflow the emitter actually produces — `fleet_converge_jobs()`,
-// `fleet_converge_dispatch_input_rows()`, `fleet_converge_workflow_mode_wire()` — because the claim this
+// `fleet_converge_dispatch_inputs`, `fleet_converge_workflow_mode_wire()` — because the claim this
 // mode exists to earn is "the fleet-converge workflow gained a peer-run hostname converge mode". A test
 // over a hand-written Job would prove the shape of a Job, which is a tautology; the only way a mode can
 // be absent from the thing that runs is for it to be missing from the thing that emits
@@ -19,7 +19,7 @@ import std.optional { Absent, Present }
 import extdeps.github.actions { DispatchInputType, InputChoice, Job, RunsOnExpression, SelfHosted, Step, RunStep }
 import gunbc.fleet.fleet_converge_workflow {
   HostnameConverge,
-  fleet_converge_dispatch_input_rows,
+  fleet_converge_dispatch_inputs,
   fleet_converge_jobs,
   fleet_converge_hostname_converge_apply_step,
   fleet_converge_hostname_converge_job,
@@ -77,15 +77,15 @@ fn step_if_text(step: Step) -> String {
 }
 
 fn runs_on_text(job: Job) -> String {
-  match job.runs_on {
+  match job.runner {
     RunsOnExpression { expression: e } => e
     SelfHosted { labels: ls } => join(ls, ",")
-    HostedRunner { label: l } => l as String
+    HostedRunner { label: _ } => "hosted"
   }
 }
 
 fn dispatch_input_options(name: String) -> List<String> {
-  match filter(fleet_converge_dispatch_input_rows(), r => r.name == name).first() {
+  match filter(fleet_converge_dispatch_inputs, r => r.name == name).first() {
     Absent => []
     Present { value: r } =>
       match r.type {
@@ -96,7 +96,7 @@ fn dispatch_input_options(name: String) -> List<String> {
 }
 
 fn dispatch_input_default(name: String) -> String {
-  match filter(fleet_converge_dispatch_input_rows(), r => r.name == name).first() {
+  match filter(fleet_converge_dispatch_inputs, r => r.name == name).first() {
     Absent => ""
     Present { value: r } =>
       match r.default {
@@ -110,7 +110,7 @@ fn dispatch_input_default(name: String) -> String {
 // gunbc.host.host_hostname_converge, so a mode that drifted from the module that owns it is caught here
 // rather than in a dispatch that silently selects nothing.
 test fn the_mode_is_rostered_and_wires_to_the_subject_string() -> Bool {
-  any(fleet_converge_workflow_modes(), m => fleet_converge_workflow_mode_wire(mode: m) == hostname_converge_mode)
+  any(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == hostname_converge_mode)
 }
 
 test fn the_mode_names_a_job_of_its_own() -> Bool {
