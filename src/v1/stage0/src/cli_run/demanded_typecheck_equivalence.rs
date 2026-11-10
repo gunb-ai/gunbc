@@ -1376,8 +1376,7 @@ fn ctx_svc_registry_decides_the_service_op_leaf() {
             let claim_name =
                 crate::v1_std_core::authored_name_at(si.clone(), claim.module.clone());
             let contributions: Rc<Vec<Rc<crate::v1_compiler_infer::ItemContribution>>> = Rc::new(
-                claim
-                    .items
+                crate::v1_std_core::module_items(claim.module.clone())
                     .iter()
                     .map(|item| {
                         crate::v1_compiler_infer::analyze_item(
@@ -1392,11 +1391,11 @@ fn ctx_svc_registry_decides_the_service_op_leaf() {
                 [("demanded", vec!["decoded_pull_request".to_string()]), ("closure", vec![])]
             {
                 let scope = if requested.is_empty() {
-                    crate::v1_compiler_infer::DeclarationScope::EveryDeclaration
+                    Rc::new(crate::v1_compiler_infer::DeclarationScope::EveryDeclaration)
                 } else {
-                    crate::v1_compiler_infer::DeclarationScope::ReachableFrom {
-                        requested: Rc::new(requested.clone()),
-                    }
+                    Rc::new(crate::v1_compiler_infer::DeclarationScope::ReachableFrom {
+                        requested: Rc::new(requested.iter().map(|x| x.to_string()).collect()),
+                    })
                 };
                 let pass = crate::v1_compiler_infer::typecheck_scoped(
                     graph.clone(),
@@ -1404,19 +1403,15 @@ fn ctx_svc_registry_decides_the_service_op_leaf() {
                     intern.clone(),
                     scope,
                 );
-                let parent_index: Rc<std::collections::HashMap<String, Rc<crate::v1_compiler_infer::TypedModule>>> =
-                    Rc::new(
-                        pass.graph
-                            .modules
-                            .iter()
-                            .map(|tm| {
-                                (
-                                    crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone()),
-                                    tm.clone(),
-                                )
-                            })
-                            .collect(),
+                let mut parent_index =
+                    crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_compiler_infer::TypedModule>>();
+                for tm in pass.graph.modules.iter() {
+                    parent_index = crate::v1_rt::rc_map_insert(
+                        parent_index.clone(),
+                        crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone()),
+                        tm.clone(),
                     );
+                }
                 let ctx = crate::v1_compiler_infer::build_module_context(
                     contributions.clone(),
                     parent_index.clone(),
@@ -1424,7 +1419,10 @@ fn ctx_svc_registry_decides_the_service_op_leaf() {
                     claim.resolved_imports.clone(),
                     env.clone(),
                     claim_name.clone(),
-                    symbol_index.global_bare.clone(),
+                    crate::v1_compiler_infer::build_global_bare_variant_locals(
+                        symbol_index.global_bare.clone(),
+                        si.clone(),
+                    ),
                     census.clone(),
                 );
                 let svc_keys: Vec<String> = ctx
