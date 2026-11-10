@@ -17956,25 +17956,6 @@ fn trace_emit(channel: OutputChannel, line: &str) {
     }
 }
 
-/// Census hygiene marker for the `[shell]` emit family — kept after the wiring flip so
-/// the observation_emit_census roster cannot go stale.
-pub const SHELL_CENSUS_MARKER: &str = "[shell]";
-
-/// Census hygiene marker for the `[file]` emit family — the mirror of SHELL_CENSUS_MARKER,
-/// kept for the same reason: the `[file]` raw shape is gone from the seed and
-/// `gunbc.observation_emit_census`'s `[file]` row must still find its MARKER, or the
-/// bidirectional roster check goes stale without reddening.
-///
-/// IT IS NOT THE ROW'S `producer`, and an earlier draft of this comment said it was. The
-/// census keeps those as separate obligations with separate fields: `marker` feeds
-/// census_marker_present, while `producer` is the DeclarationRef of the declaration that
-/// actually EMITS the line and feeds w_every_named_producer_symbol_is_present_in_the_seed.
-/// This constant emits nothing — it is the retired spelling kept as a presence anchor — so
-/// naming it as the producer would let all seven call sites in `dispatch_file` be deleted
-/// while the census still reported the family migrated. `file_trace_site` names
-/// `dispatch_file`; this constant anchors the marker.
-pub const FILE_CENSUS_MARKER: &str = "[file]";
-
 /// Mirror of `gunbc.observation_seed_render.seed_file_effect_begin_line`.
 ///
 /// The `[file]` family's seven emit sites all fire BEFORE their effect, so the subject is the
@@ -18005,7 +17986,6 @@ pub fn render_file_effect_begin_line_mirror(
     clause: &str,
     emoji: bool,
 ) -> String {
-    let _ = FILE_CENSUS_MARKER;
     let glyph = if emoji { "🔄" } else { "◐" };
     let detail = if clause.is_empty() {
         String::new()
@@ -18071,14 +18051,12 @@ fn shell_obs_human_duration(ms: u64) -> String {
 
 /// Mirror of `gunbc.observation_seed_render.shell_effect_begin_line`.
 pub fn render_shell_effect_begin_line_mirror(intent: &str, emoji: bool) -> String {
-    let _ = SHELL_CENSUS_MARKER;
     let glyph = if emoji { "🔄" } else { "◐" };
     format!("{glyph} started {intent}")
 }
 
 /// Mirror of `gunbc.observation_seed_render.shell_effect_done_line`.
 pub fn render_shell_effect_done_line_mirror(intent: &str, elapsed_ms: u64, emoji: bool) -> String {
-    let _ = SHELL_CENSUS_MARKER;
     let glyph = if emoji { "✅" } else { "✓" };
     format!(
         "{glyph} {intent} done in {}",
@@ -18095,7 +18073,6 @@ pub fn render_shell_effect_failed_line_mirror(
     elapsed_ms: u64,
     emoji: bool,
 ) -> String {
-    let _ = SHELL_CENSUS_MARKER;
     let glyph = if emoji { "❌" } else { "✗" };
     format!(
         "{glyph} {intent} failed: $ {argv_collapsed} (exit={exit_code}) in {}",

@@ -103,8 +103,8 @@ import std.optional { Absent, Optional, Present }
 // gunbc.recurring_failure_mode lowering_rebuilds_an_authored_atom_without_its_occurrence).
 //
 // DECLARED FRONTIER (gunbc.design_argument::consumption). This change has no production consumer. The named consumer
-// is v2.compiler.reference_conservation conservation_against_tree, reached from the census entry
-// v2.compiler.reference_conservation_census reference_conservation_census_for_paths: it reads
+// is v2.compiler.reference_conservation conservation_against_tree (its corpus census entry was
+// deleted in the census retirement, gunbc.design_ruling bad_process_is_worse_than_no_process): it reads
 // dag_occurrence_roles to count binders and non-module-scope labels as a typed excluded population
 // instead of locus_erased. TRIGGER: the census change stacked directly on this one (XL-2
 // LoweringOccurrenceProjection PR 3b). If that change does not land, this module is removed with it.

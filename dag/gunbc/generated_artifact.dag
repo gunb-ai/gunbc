@@ -399,9 +399,9 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // the artifact is AUTHORED: a `target/release/gunbc` argv in witnesses.yml is a literal in
 // gunbc.witness.witness_floor_workflow, not a fact about the YAML. So the workflow YAML, .gitattributes, the
 // git hooks and the committed stage0 mirrors are not four consumer media with no declaration
-// identity (gunbc.v1.v1_consumer_census ConsumerMedium WorkflowArgv, GitHookScript,
-// CommittedGeneratedMirror): each is the .dag medium seen through a producer, and a consumer census
-// that keys the .dag population at declaration grain already holds their rows. What that reduction
+// identity (the retired v1 consumer census's ConsumerMedium WorkflowArgv, GitHookScript,
+// CommittedGeneratedMirror): each is the .dag medium seen through a producer, and any consumer
+// reading that keys the .dag population at declaration grain already holds their rows. What that reduction
 // needs to be SOUND is exactly this map plus the join below: an artifact whose producer is not a
 // declaration in the .dag population would be a generated file whose v1 references no declaration
 // join can see, and it has to refuse by name rather than be swept by a second scanner -- a scanner
@@ -417,7 +417,8 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // WHO CONSUMES THE JOIN, AND WHEN (gunbc.design_argument::consumption, a declared frontier). Today the executing
 // consumer is test.claim.generated_artifact_producer_coverage_witness on the required floor,
 // which refuses a push that leaves any registry row's producer unresolvable. The census-side
-// consumer is gunbc.v1.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
+// consumer was gunbc.v1.v1_consumer_census v1_consumer_population_for (deleted in the census
+// retirement, gunbc.design_ruling bad_process_is_worse_than_no_process): it counted WorkflowArgv,
 // GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when
 // every_generated_artifact_producer_covered holds over the same pool roots its .dag-medium producer
 // folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that

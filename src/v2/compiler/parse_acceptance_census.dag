@@ -26,8 +26,8 @@ import v2.std.text { String }
 // WHETHER THE V2 PARSER ACCEPTS A FILE, AND IF NOT, WHY AND WHERE. One line per listed path: the path,
 // then `accepted`, or `refused <fatal reason> <start>..<end>` for the fatal diagnostic, or
 // `unreadable`. Tokenize and parse only, against the prepared dag grammar -- the question a grammar
-// change answers, without paying normalize and conservation per file (for that, the heavier
-// v2.compiler.reference_conservation_census). Driven as
+// change answers, without paying normalize and conservation per file (that heavier corpus census
+// was deleted in the census retirement). Driven as
 //   gunbc run --source-root dag --source-root src/v2 --entry src/v2/compiler/parse_acceptance_census.dag
 //     --function parse_acceptance_census_for_paths --arg paths_csv=<comma-separated paths>
 // and run once per grammar under comparison: the lines of two runs join by path.

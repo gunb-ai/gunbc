@@ -12055,16 +12055,6 @@ fn note_interface_hash(
     );
 }
 
-/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
-/// raw `[typecheck-attribution]` key=value shape dissolves into the observation projection.
-#[allow(dead_code)]
-pub const TYPECHECK_ATTRIBUTION_CENSUS_MARKER: &str = "[typecheck-attribution]";
-
-/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
-/// raw `[measurement] … bytes (VmHWM)` dump dissolves into `ci_measurement_rss_line`.
-#[allow(dead_code)]
-pub const MEASUREMENT_CENSUS_MARKER: &str = "[measurement]";
-
 const MEASUREMENT_UNREADABLE_CAUSE: &str = "no /proc/self/status";
 
 fn measurement_human_bytes(bytes: u64) -> String {
@@ -12087,7 +12077,6 @@ pub fn render_peak_rss_line_mirror_with_cause(
     unreadable_cause: &str,
     emoji: bool,
 ) -> String {
-    let _ = MEASUREMENT_CENSUS_MARKER;
     let glyph = if emoji { "🕐" } else { "◷" };
     let rss = match rss_bytes {
         Some(b) => measurement_human_bytes(b),
@@ -14599,7 +14588,6 @@ fn reconcile_with_typed_cache(
                                         .set(index.typed_cache_readmissions.get() + 1);
                                 }
                                 if phase_profile::phase_profile_enabled() {
-                                    let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                                     eprintln!(
                                         "{}",
                                         render_typecheck_begin_line_mirror(
@@ -14681,7 +14669,6 @@ fn reconcile_with_typed_cache(
                                 });
                                 let module_tc_ms = module_tc_elapsed.as_millis();
                                 if module_tc_ms >= 2_000 {
-                                    let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                                     eprintln!(
                                         "{}",
                                         render_typecheck_concluded_line_mirror(

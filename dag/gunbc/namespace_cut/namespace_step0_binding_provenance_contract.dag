@@ -40,9 +40,10 @@ data step0_census_denominator_law: NonEmptyStr = "the census denominator is the 
 // SameSpellingInTwoModules beside TypeReference and OrdinaryFunctionCall, and that row is not a way
 // of WRITING a reference at all -- it is a shape of the NAME POOL the reference resolves against.
 // Holding both on one axis made the roster unable to say the true and more alarming thing, which is
-// that a homonym can occur under ANY family. It now lives on the binding-topology axis in
-// gunbc.namespace_cut.namespace_step0_census_calibration, where it composes with all ten rows below rather than
-// standing beside six of them.
+// that a homonym can occur under ANY family. It moved to the binding-topology axis of
+// gunbc.namespace_cut.namespace_step0_census_calibration, which was deleted with the
+// reference-occurrence census in the census retirement (gunbc.design_ruling
+// bad_process_is_worse_than_no_process); no successor holds that axis.
 //
 // AND THE ROSTER IS NEVER INFERRED FROM OBSERVED ROWS. A roster derived from what the diagnostics
 // produced can only contain what the instrument already sees, so it can never name the family the
@@ -213,10 +214,10 @@ data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may
 // denominator derived from the observation walk.
 //
 // THE STANDING IS CITED AND NOT TRANSCRIBED. The verdict, the per-family observation table and the
-// defect roster live in gunbc.namespace_cut.namespace_step0_census_calibration, and the executing instrument that
-// re-derives them is step0_calibration_probe in that module's witness. Copying its numbers here
-// would put a second authority beside the one that measures them.
-data step0_census_candidate_producer_standing: NonEmptyStr = "the reference-occurrence producer's coverage of the family roster is REFUTED, not merely unestablished: gunbc.namespace_cut.namespace_step0_census_calibration records families for which it emits no denominator row and a non-reference for which it emits one, and that module's step0_calibration_standing is the sole authority for the verdict" as NonEmptyStr
+// defect roster lived in gunbc.namespace_cut.namespace_step0_census_calibration, whose instrument and
+// candidate producer were deleted in the census retirement; the standing below records the verdict
+// they reached and that nothing re-derives it now.
+data step0_census_candidate_producer_standing: NonEmptyStr = "the reference-occurrence producer's coverage of the family roster is REFUTED, not merely unestablished: gunbc.namespace_cut.namespace_step0_census_calibration records families for which it emits no denominator row and a non-reference for which it emits one, and that module's step0_calibration_standing is the sole authority for the verdict RETIRED 2026-11-10: the calibration module and the reference-occurrence producer it judged were both deleted in the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process), so this standing is a dated verdict with no executing re-derivation." as NonEmptyStr
 
 // A STATEMENT COUNT IS NOT AN EDGE COUNT, AND THE DIFFERENCE IS NOT ROUNDING. The strip reports
 // removed STATEMENTS, and a braced list binds several names in one statement -- so an edge or

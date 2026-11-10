@@ -150,14 +150,14 @@ type MalformedBridgeRow {
   name: String
 }
 
-// The Observed arm's block (ObservedArmUnexercisedOnRequiredRoute) is retired: the required
-// floor now executes it over a MEASURED fixture root (gunbc#11265 keyed whole-root admission on
-// the root's own row; whole_corpus_compile_xl1_fixture_root_demand is that row), and the
-// controls that read it are enrolled in test.claim.legacy_repair_tap_live_bridge_witness. The
-// variant went with its block: a cause nothing constructs is a dangling declaration (gunbc.design_argument::consumption).
+// ObservedArmProducerRetired is the producer loss the capability arm below was declared for: the
+// Observed arm's only producer, v2.workflow.legacy_repair_tap, and its seed builtin
+// emit_rust_reference_derived_rows_bridge were deleted in the census retirement
+// (gunbc.design_ruling bad_process_is_worse_than_no_process), so no route produces a live capture.
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision {}
   | BridgeRowSpellingEmpty { malformed: List<MalformedBridgeRow> }
+  | ObservedArmProducerRetired { retired_by: NonEmptyStr }
 
 // THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
 // different owners and different repairs: a source-set mismatch means the tree was not the one
@@ -346,36 +346,25 @@ fn capture_legacy_baseline<O, R>(
   }
 }
 
-// THE MILESTONE'S POPULATION, AND IT IS DELIBERATELY NOT A ROSTER OF ROWS. There is no committed
-// list of captures: a plain (base, identity) row is a relabeling constructor. Persistence stores
-// the capture carrier itself (v2.workflow.legacy_baseline_persisted_observation).
-//
 // CAPABILITY IS WHETHER A LIVE CAPTURE OF A NAMED BASE CAN BE TAKEN, not whether the fold can mint
-// given caller-supplied rows. Fixtures already drive capture_legacy_baseline to LegacyBaselineCaptured.
-// The executing producer is v2.workflow.legacy_repair_tap persist_named_base_from_primary_root_tap:
-// it materializes CheckoutMaterialization.requested (a GitObjectId) through
-// emit_rust_reference_derived_rows_bridge into LegacyRepairObservation + RepairSiteRoster and the
-// tap's binding rows. CaptureAvailable is not ACT-0's BaselineCaptureReceipt and is not a
-// corpus-oracle claim. CaptureBlocked remains the typed arm for a later producer loss;
-// ObserverNeverReachedDecision is the remaining refuse cause.
+// given caller-supplied rows. Fixtures still drive capture_legacy_baseline to LegacyBaselineCaptured.
+// CaptureAvailable is not ACT-0's BaselineCaptureReceipt and is not a corpus-oracle claim.
 type LegacyBaselineCaptureCapability
   = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
   | CaptureAvailable
 
 // THE CAPABILITY IS A REPORT OF EXECUTED EVIDENCE ON A REQUIRED ROUTE, NOT A CONSTANT BY FIAT.
-// Both arms of the tap now execute on the required floor: the refusal arms as before, and the
-// Observed arm over the measured XL-4 fixture root, acquired once at preparation as the
-// prepared effect input test.claim.legacy_repair_tap_live_bridge_witness.xl1_fixture_root_tap
-// and read by a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and
-// the_live_census_over_the_measured_fixture_root_counts_its_rows (first executed there on
-// gunbc#11461 run 35181521483: the floor's own [floor-phase] prepared-effect-input-acquire
-// line carries disposition=Xl1PrimaryRootObserved). That is the evidence CaptureAvailable
-// reports; delete the Observed arm of compile_xl1_primary_root_tap, or the fixture root's
-// measured row, and those controls red before this constant can lie (review 66841, 67146).
-// The stage carrier folds this into StageXL1BaselineCapture; the base-specific capture
-// (a PersistedLegacyBaseline against the pinned pre-cut base) stays the milestone's question.
+// It read CaptureAvailable while v2.workflow.legacy_repair_tap's Observed arm executed over the
+// measured XL-4 fixture root (gunbc#11461 run 35181521483). That producer was deleted on 2026-11-10,
+// so the capability reads CaptureBlocked with the typed cause rather than keeping a claim nothing
+// executes. The stage carrier folds this into StageXL1BaselineCapture.
 fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
-  CaptureAvailable
+  CaptureBlocked {
+    phase: RepairCensusPhase,
+    cause: ObservedArmProducerRetired {
+      retired_by: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process) deleted v2.workflow.legacy_repair_tap and its seed builtin emit_rust_reference_derived_rows_bridge" as NonEmptyStr
+    }
+  }
 }
 
 fn capture_blocked_reason(c: LegacyBaselineCaptureCapability) -> List<String> {
@@ -401,5 +390,6 @@ fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
     ObserverNeverReachedDecision {} => "the observer never reached its decision stage"
     BridgeRowSpellingEmpty { malformed: m } =>
       concat("the repair bridge emitted a row with an empty spelling (", concat(to_string(length(xs: m)), " row(s), located by index)"))
+    ObservedArmProducerRetired { retired_by: r } => concat("the Observed arm's producer was retired: ", r as String)
   }
 }

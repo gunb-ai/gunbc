@@ -1131,24 +1131,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
-      identity: "rn_81MBTXHVQFB0HJ6XPA0WXEGVVW",
-      id: "observation-raw-print-retirement",
-      owner: "ci-observation",
-      carriers: carrier(path: "docs/plans/progress-observation-design.md"),
-      line: ticket(t: updated(t: fields(
-        headline: "Remove the old raw progress printing",
-        boundary: "Once the above work, inventory every place that prints progress directly and either move it over or mark it as real program output.",
-        displaced_cost: "Two competing status channels means neither can be trusted, and formatting decisions stay scattered across the codebase.",
-        first_slice: "Classify every remaining print site and migrate one family.",
-        red_control: "A newly added unclassified progress print is flagged.",
-        out_of_scope: "A program's actual output — the thing you asked for — is not progress and stays as it is.",
-        handback: "The inventory at zero unclassified."
-      ), on: "2026-09-30", note: "Not yet centered: needs a centering plan and a closing contract. The bound contract named the observation_emit_census acceptance claim, which was deleted with the census (gunbc.design_ruling bad_process_is_worse_than_no_process), so the node is unbound until a contract names an executing check.")),
-      dispatch: dispatchable(),
-      parent: in_project(project: "debt-payoff", contribution: "Driving unclassified raw prints to zero removes the untyped progress channel competing with std.observation."),
-    ),
-
-    roadmap_node(
       identity: "rn_ZD63T58V6YJR8Y3TJJ090QAZVF",
       id: "parse-node-source-extent",
       owner: "parse",

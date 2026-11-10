@@ -794,9 +794,8 @@ fn observation_no_op_explanation(n: SelectionNoOp) -> NonEmptyStr {
 // current=16111669248 with no subject attached, which is precisely the line that was present
 // throughout the ten-minute crawl window and told the operator nothing. That emitter is gone
 // (#9228) and its raw successor is cli_run.rs spawn_floor_heartbeat, carried by
-// gunbc.observation_emit_census as the [floor-heartbeat] frontier row, so the example is a captured
-// shape rather than a live one — the contract it grounds is unchanged, and the successor is exactly
-// what the census row is open against. A projection states the magnitude at a scale a human reads
+// the retired observation emit census as a frontier row, so the example is a captured shape rather
+// than a live one — the contract it grounds is unchanged. A projection states the magnitude at a scale a human reads
 // and attaches the subject it belongs to. This contract is stated on the model so the P3 census has
 // an authority to check against; the renderers that satisfy it are P1 and later.
 
