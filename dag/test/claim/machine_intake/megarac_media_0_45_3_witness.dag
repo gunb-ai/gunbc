@@ -24,6 +24,7 @@ import extdeps.bmc.megarac {
   RedirectionPresenting,
   RedirectionKnownStopped,
   RedirectionKnownNotActive,
+  megarac_0_45_redirection_100_ground,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq }
 import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruNotRead }
@@ -42,7 +43,9 @@ import gunbc.megarac_media_model {
   megarac_start_media_interval,
   MegaRacMediaWorld, MegaRacImage, MegaRacShare,
 }
-import extdeps.external_authority { TranscribedUncited }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import std.decl_ref { NamedField }
+import std.measure { byte_size_count }
 import gunbc.machine_intake.megarac_media_row_reading {
   boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
   boot_run_41573858366_end_media_row, boot_run_42663208460_end_media_row,
@@ -1211,9 +1214,27 @@ test fn w_100_at_the_read_build_is_connecting_on_the_vendors_rendering() -> Bool
         && !string_contains(s: mtcollins1_ui_status_100_rendering.branch_rule as String, pattern: "lmedia:halted")
         && string_contains(s: mtcollins1_ui_status_100_rendering.halted_exemption_rule as String, pattern: "100!=r")
         && (mtcollins1_ui_status_100_rendering.asset_path as String) == (mtcollins1_ui_media_row_rendering.asset_path as String)
-        && mtcollins1_ui_status_100_rendering.asset_octets == mtcollins1_ui_media_row_rendering.asset_octets
+        && byte_size_count(b: mtcollins1_ui_status_100_rendering.asset_octets) == byte_size_count(b: mtcollins1_ui_media_row_rendering.asset_octets)
         && !string_contains(s: mtcollins1_ui_status_100_rendering.label as String, pattern: mtcollins1_ui_media_row_rendering.halted_label as String)
   }
+}
+
+// THE ARM'S GROUND IS A TYPED BET, AND THE ARM POINTS AT IT. extdeps.bmc.megarac's ground row for the 0.45 arm
+// names the `standing` field of this reading, and that standing is TranscribedUncited with a nonempty read
+// obligation -- the Candidate grade carried in the type, not in a comment. RED if the standing is promoted
+// (CitedToAuthority or ObservedByReceipt) without an operator reading, or if the ground row stops naming it.
+test fn w_the_0_45_connecting_arm_rests_on_a_typed_uncited_standing() -> Bool {
+  (megarac_0_45_redirection_100_ground.module_path as String) == "gunbc.machine_intake.megarac_media_row_reading"
+    && (megarac_0_45_redirection_100_ground.decl_name as String) == "mtcollins1_ui_status_100_rendering"
+    && match megarac_0_45_redirection_100_ground.field {
+      NamedField { field_name: f } => (f as String) == "standing"
+      _ => false
+    }
+    && match mtcollins1_ui_status_100_rendering.standing {
+      TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: "operator reading of a live redirection_status 100 row")
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
 }
 
 // AND IT ONLY WAITS: THE ARM CAN NEVER ADMIT STARTED. Boot 10's exact row -- the wanted image at 100 beside the

@@ -1,6 +1,6 @@
 module extdeps.bmc.megarac
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
@@ -314,10 +314,10 @@ fn megarac_redirection_status_of_wire(
     // alone and exempt from the lmedia:halted ("Stopped") prefix every other code but 0 and 1 takes
     // (`1!=r&&0!=r&&100!=r&&` at octet 3180332) -- and the English catalogue block of the same asset spells
     // lmedia:status_100 " Starting.." (octet 5488482). Boot 10 (run 42756688400) read it on the wanted image
-    // beside the no-session marker, right after an accepted StartMedia. THE STANDING IS THE CATALOGUE LABEL:
-    // a raw occurrence in the asset's first lmedia block, Candidate-grade (the reader's own term,
-    // gunbc.machine_intake.mtcollins1_ui_status_asset_observation), and no operator reading of a 100 row is
-    // committed yet. That is enough for THIS arm because of what Connecting can do downstream: it only WAITS.
+    // beside the no-session marker, right after an accepted StartMedia. THE STANDING IS TYPED, NOT STATED
+    // HERE: megarac_0_45_redirection_100_ground names the reading's `standing` field, which is
+    // TranscribedUncited with its read obligation (a Candidate-grade catalogue label, no operator reading of a
+    // 100 row). That is enough for THIS arm because of what Connecting can do downstream: it only WAITS.
     // Readiness is established by a Started row with a bound session and by nothing else
     // (gunbc.machine_intake.megarac_media_attach readiness_standing), so a row at 100 is pending inside the
     // bounded window and, if it never moves, the attempt refuses as MegaRacReadinessTimedOut ("did not reach
@@ -335,6 +335,16 @@ fn megarac_redirection_status_of_wire(
     RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
   }
 }
+
+// THE GROUND OF THE 0.45 ARM FOR 100, AS A REFERENCE. The reading lives downstream, in the observing layer, and
+// this module points at it and never imports it (extdeps.external_authority, the ObservedReceipt law); the
+// reference is to the reading's typed standing, so the arm's evidence grade is one resolvable symbol, and
+// test.claim.machine_intake.megarac_media_0_45_3_witness joins this row to that standing.
+data megarac_0_45_redirection_100_ground: DeclarationRef = decl_field_ref(
+  module_path: "gunbc.machine_intake.megarac_media_row_reading",
+  decl_name: "mtcollins1_ui_status_100_rendering",
+  field_name: "standing",
+)
 
 // THE NO-SESSION MARKER, AS THIS CONTROLLER REPORTS IT. A media row carries the redirection SESSION index
 // beside its status, and this controller answers 255 there when NO redirection session is active: boot run
