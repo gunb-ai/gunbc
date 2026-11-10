@@ -274,6 +274,11 @@ test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
     // four-fifths of the other
     && arms_within(list: unloaded, at_bytes: byte_size(4 * 1024 * 1024), numerator: 8, denominator: 10)
     && arms_within(list: unloaded, at_bytes: byte_size(64 * 1024 * 1024), numerator: 8, denominator: 10)
+    // THE DISCRIMINATING HALF, said as arithmetic: the same band FAILS on the loaded pair at those two sizes,
+    // which is what "the penalty did not survive an unloaded host" means. A reader who wants the figures reads
+    // the reading rows; a hypothesis string is not allowed to be where the comparison lives.
+    && !arms_within(list: srv1_collective_transport_readings, at_bytes: byte_size(4 * 1024 * 1024), numerator: 8, denominator: 10)
+    && !arms_within(list: srv1_collective_transport_readings, at_bytes: byte_size(64 * 1024 * 1024), numerator: 8, denominator: 10)
     // the obligation now names the run it was executed in, the confounder that had to be removed, and the
     // fact that it was the re-run the earlier pair asked for
     && any(srv1_collective_read_executed_2026_11_09.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))

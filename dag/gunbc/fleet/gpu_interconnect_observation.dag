@@ -551,7 +551,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
 // WHAT THE OBLIGATION OWED, AND WHAT IT STILL OWES. The row keeps its obligation meaning: a reader who
 // reaches it by name gets an open task, never a finished one. The run that discharged the unloaded re-run
 // lives in srv1_collective_read_executed_2026_11_09 below, under a name that says it is a record.
-data srv1_collective_read_obligation: NonEmptyStr = "STILL OWED, after the 2026-11-09 unloaded re-run (recorded in srv1_collective_read_executed_2026_11_09): (1) the claim that the missing P2P path explains the gap between TP=2 and 2xTP=1 is NOT settled -- it needs the SAME instrument read across the two topologies on this host (a TP=2 group and a 2xTP=1 pair), which no reading here does; (2) both runs took the arms in the same order (default first, NCCL_P2P_DISABLE=1 second), so an order or warm-up effect is not excluded -- reverse the arm order; (3) neither run names the transport NCCL selected beyond the printed via-SHM/direct line and isAllDirectP2p 0 -- a run with NCCL_DEBUG_SUBSYS=TRANSPORT would say which path carried the bytes. The 2x delta at 256 KiB and above is NOT one of the open items: it did not survive an unloaded host, and the row below records that."
+data srv1_collective_read_obligation: NonEmptyStr = "STILL OWED, after the 2026-11-09 unloaded re-run (recorded in srv1_collective_read_executed_2026_11_09): (1) the claim that the missing P2P path explains the gap between TP=2 and 2xTP=1 is NOT settled -- it needs the SAME instrument read across the two topologies on this host (a TP=2 group and a 2xTP=1 pair), which no reading here does; (2) both runs took the arms in the same order (default first, NCCL_P2P_DISABLE=1 second), so an order or warm-up effect is not excluded -- reverse the arm order; (3) neither run names the transport NCCL selected beyond the printed via-SHM/direct line and isAllDirectP2p 0 -- a run with NCCL_DEBUG_SUBSYS=TRANSPORT would say which path carried the bytes. The separation between the arms at 256 KiB and above is NOT one of the open items: it did not survive an unloaded host -- the comparison is arithmetic in the witness, not a figure repeated here -- and the row below records the run that showed it."
 
 // THE RUN RECORD, named as one: window, what had to be stopped to take the read, the measurement
 // interval, and the reading rows it summarises. Kept separate from the obligation so an open task cannot
@@ -626,6 +626,28 @@ fn srv1_collective_read_measurement_duration(run: Srv1CollectiveReadRun) -> Seco
 // instead of quietly comparing different runs.
 data srv1_nccl_arm_default: NonEmptyStr = "no-flag default" as NonEmptyStr
 data srv1_nccl_arm_p2p_disabled: NonEmptyStr = "NCCL_P2P_DISABLE=1" as NonEmptyStr
+
+// THE SAME INSTRUMENT, ONE CLAUSE DIFFERENT. The 2026-11-09 re-run used the identical docker/torchrun command as
+// the 2026-11-08 sweep -- same image digest, same two --device pins, same ports, same debug subsys -- with one
+// difference that is the whole point of the run: neither serving replica was holding memory. It is written as a
+// second line rather than an edit of the first because both readings are kept side by side; a reader comparing
+// them should see exactly one clause change and nothing else. The arm is named the same way the harness named
+// it (-e ARM=...), and the row-level env_arm field carries the shared arm label.
+fn nccl_unloaded_arm_instrument(arm: NonEmptyStr, port: NonEmptyStr, printed: NonEmptyStr) -> NonEmptyStr {
+  string_concat_join(
+    fields: [
+      "docker run --rm --network host --ipc host --shm-size=2g --device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 --device nvidia.com/gpu=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 -v /home/briansrls/lil:/lil:ro -e ARM=",
+      arm as String,
+      " -e MASTER_ADDR=127.0.0.1 -e MASTER_PORT=",
+      port as String,
+      " -e NCCL_DEBUG=INFO -e NCCL_DEBUG_SUBSYS=INIT,P2P,SHM,NET --entrypoint torchrun 2ad6245e058d --nnodes=1 --nproc-per-node=2 --master_addr=127.0.0.1 --master_port=",
+      port as String,
+      " /lil/nccl_test.py on srv1 (image 2ad6245e058d, torch 2.14.0a0+4fdf77b940.nv26.08, CUDA 13.4; rank 0 was cuda 0 = GPU-7b58568e, rank 1 cuda 1 = GPU-96b749dc). NEITHER serving replica loaded: lil-replica@0 and lil-replica@1 were stopped and their containers removed for the window 2026-11-09T22:39:48Z..22:47:37Z, which is the confounder this re-run removes relative to the 2026-11-08 sweep. Printed line: ",
+      printed as String,
+    ],
+    separator: "",
+  ) as NonEmptyStr
+}
 
 data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTransportReading> = [
   CollectiveTransportReading {
@@ -785,9 +807,9 @@ data srv1_interconnect_explanations: List<InterconnectExplanation> = [
   // "therefore the arms are interchangeable" -- the numbers say they are not, and say nothing yet about why.
   InterconnectExplanation {
     host: operator_host_srv1,
-    subject: "why NCCL_P2P_DISABLE=1 costs about half the bandwidth when neither arm has P2P" as NonEmptyStr,
+    subject: "why the 2026-11-08 loaded pair separated by about 2x between the arms when neither arm has P2P" as NonEmptyStr,
     standing: Hypothesis {
-      claim: "AS REFINED BY THE UNLOADED RE-RUN OF 2026-11-09T22:40Z, this no longer claims the switch is expensive. Loaded (2026-11-08T22:22Z) the default arm reached 4.79/12.24/12.45 GB/s at 256 KiB/4 MiB/64 MiB and the disabled arm 1.79/5.17/5.83 GB/s; unloaded (srv1_collective_transport_readings_unloaded_2026_11_09) the same arms reach 4.61/11.99/12.21 and 4.02/12.11/12.42 GB/s -- a few percent apart, the disabled arm marginally faster at the two large sizes. So NCCL_P2P_DISABLE=1 does NOT cost half the bandwidth on this host: the 2026-11-08 delta was a property of the machine at that moment (both cards serving a replica, arms run seconds apart in a fixed order), not of the flag. What remains unexplained is the loaded delta itself." as NonEmptyStr,
+      claim: "AS REFINED BY THE UNLOADED RE-RUN OF 2026-11-09T22:40Z, this no longer claims the flag is expensive. Read with both serving replicas holding memory (2026-11-08T22:22Z, srv1_collective_transport_readings) the two arms separate at every size from 256 KiB up; read with neither replica loaded (srv1_collective_transport_readings_unloaded_2026_11_09) they do not separate at all, and the disabled arm is marginally ahead at the two largest sizes. WHERE THE COMPARISON LIVES: the witness claim the_unloaded_re_run_does_not_reproduce_the_switch_penalty decides it -- the two arms stay inside four-fifths of each other at 4 MiB and 64 MiB unloaded, and the same band fails on the loaded pair -- so this string states the result and carries no figure that could go stale against the rows. NCCL_P2P_DISABLE=1 therefore does NOT cost half the bandwidth on this host: the 2026-11-08 separation was a property of the machine at that moment (both cards serving a replica, arms run seconds apart in a fixed order), not of the flag. What remains unexplained is the loaded separation itself." as NonEmptyStr,
       would_be_settled_by: "the loaded pair re-run with the arms in the REVERSED order (the cheaper experiment than any new instrument: order is the one thing the 2026-11-08 pair did not vary), plus NCCL_DEBUG_SUBSYS=TRANSPORT on both arms, which is the only reading that shows what each channel actually opened. The unloaded half of the original condition is now executed and answered: the delta does not survive it." as NonEmptyStr,
     },
   },
