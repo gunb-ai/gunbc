@@ -390,7 +390,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
         p(text: "**P12, the new-machine acceptance (W4)** (program-level; depends on smart-crane-730's PXE delivery and `managed_host_network_install`)."),
         ul(items: [
           li(text: "**Scope:** introduce a previously uninstalled machine using only a registry row and observed hardware facts. PXE is selected where the site's capabilities admit it; then install, qualify, enroll as a runner, derive its capacity, and execute a real job."),
-          li(text: "**Gap:** `gunbc.fleet.fleet_host_backing` `OwnedOsDelivery` has no PXE arm (it has virtual media, appliance image and RAM image), and `gunbc.host.host_assimilation_program` selects install phases for virtual media specifically. Who adds the PXE arm is coordinated with smart-crane-730 and is not assumed here."),
+          li(text: "**Gap:** `gunbc.fleet.fleet_host_backing` `OwnedOsDelivery` has no PXE arm (it has virtual media, appliance image and RAM image), and `gunbc.host.host_assimilation_program` selects install phases for virtual media specifically. smart-crane-730 adds the network-install arm and delivery-keyed phase selection in its PXE 2c (the one-shot install workflow, after PXE 0, 2a and 2b; carrier `gunbc.plans.new_server_bringup`, 2026-11-10). P12's live form consumes it."),
           li_blocks(blocks: [
             p(text: "**Acceptance, in two forms:**"),
             ul(items: [
