@@ -115,7 +115,7 @@ fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
     node: node as NonEmptyStr as RoadmapNodeId,
     criteria_digest: roadmap_criteria_digest(t: witness_ticket()),
     red_control: RedControlExecuted {
-      witness_module: "test/claim/roadmap/roadmap_operator_close_retire_witness" as NonEmptyStr,
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
       executed_on: "2026-11-03",
     },
@@ -131,7 +131,7 @@ fn sample_receipt_on(node: String, day: String) -> RoadmapAcceptanceReceipt {
     node: node as NonEmptyStr as RoadmapNodeId,
     criteria_digest: roadmap_criteria_digest(t: witness_ticket()),
     red_control: RedControlExecuted {
-      witness_module: "test/claim/roadmap/roadmap_operator_close_retire_witness" as NonEmptyStr,
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
       executed_on: "2026-11-03",
     },
@@ -148,7 +148,7 @@ fn sample_receipt_other_executed_day(node: String) -> RoadmapAcceptanceReceipt {
     node: node as NonEmptyStr as RoadmapNodeId,
     criteria_digest: roadmap_criteria_digest(t: witness_ticket()),
     red_control: RedControlExecuted {
-      witness_module: "test/claim/roadmap/roadmap_operator_close_retire_witness" as NonEmptyStr,
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
       executed_on: "2026-11-06",
     },
@@ -226,7 +226,7 @@ test fn a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first
       Present { value: wanted } => match retry {
         CarrierClosed { result: EventAlreadyPresent { id }, close: _ } => claim("the retry answered the FIRST recording rather than conflicting", (id as String) == wanted)
         CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the retry appended a SECOND event for one operation", false)
-        CarrierClosed { result: EventAppendRefused { id: _, step, reason , close: _ } => claim(join([
+        CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => claim(join([
           "the retry was refused at '", step, "' ('", reason,
           "') — an interrupted migration could not be finished by replaying it", ""], ""), false)
       }
@@ -262,14 +262,14 @@ test fn a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_first_a
     let e2 = match replayed {
       CarrierClosed { result: EventAlreadyPresent { id: _ }, close: _ } => claim("the replayed retirement answered the first recording", true)
       CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the replayed retirement appended a second retirement", false)
-      CarrierClosed { result: EventAppendRefused { id: _, step, reason , close: _ } => claim(join([
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => claim(join([
         "the replayed retirement was refused at '", step, "' ('", reason, "')", ""], ""), false)
     }
     let other = roadmap_event_append(layout: layout,
       event: retirement_event(node: node, reason: "a second retirement naming a different reason"),
       operation: roadmap_retirement_operation_identity(node: "node-retirement-identity", reason: "a second retirement naming a different reason"))
     let e3 = match other {
-      CarrierClosed { result: EventAppendRefused { id: _, step, reason , close: _ } => claim(join([
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => claim(join([
         "a DIFFERENT retirement of a retired node refuses, located at '", step, "' ('", reason, "')", ""], ""),
         count(step) > 0 && count(reason) > 0)
       CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("a second retirement of a retired node was admitted", false)
@@ -327,12 +327,12 @@ test fn a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_
       command: acceptance_command_with_evidence(node: "node-evidence-absent-old", day: before, evidence: NoPullRequest))
     let c_admitted = match admitted {
       CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("an acceptance recorded before the cutoff is admitted without a pull request", true)
-      CarrierClosed { result: EventAppendRefused { id: _, step, reason , close: _ } => claim(join(["the migration's own case was refused at '", step, "' ('", reason, "')"], ""), false)
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => claim(join(["the migration's own case was refused at '", step, "' ('", reason, "')"], ""), false)
       _ => claim("the migration's own case did not append", false) }
     let refused_after = issue_command_apply(layout: layout, recorded_at: "2026-11-04T08:00:01Z",
       command: acceptance_command_with_evidence(node: "node-evidence-absent-new", day: after, evidence: NoPullRequest))
     let c_refused_after = match refused_after {
-      CarrierClosed { result: EventAppendRefused { id: _, step, reason , close: _ } => claim(join([
+      CarrierClosed { result: EventAppendRefused { id: _, step, reason }, close: _ } => claim(join([
         "an acceptance with no pull request refuses on or after the cutoff, located at '", step, "' ('", reason, "')"], ""),
         step == "receipt" && string_contains(s: reason, pattern: "pull request"))
       _ => claim("an acceptance with no pull request was admitted on or after the cutoff", false) }

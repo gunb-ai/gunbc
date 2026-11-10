@@ -716,7 +716,7 @@ test fn a_duplicate_acceptance_of_one_node_refuses_the_whole_load_located() -> B
         receipt: receipt, evidence: earned(facts) },
       recorded_at: "2026-11-04T08:00:01Z")
     let e2 = match second { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
-      CarrierClosed { result: EventAppendRefused { step: _, reason: _ }, close: _ } => claim("the writer itself refused the duplicate at the chain", true) }
+      CarrierClosed { result: EventAppendRefused { id: _, step: _, reason: _ }, close: _ } => claim("the writer itself refused the duplicate at the chain", true) }
     match roadmap_operator_close_history(layout: layout) {
       RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => e1 && e2 && claim("the replay refuses the duplicate, located: " + d, count(d) > 0)
       RoadmapAcceptanceEventHistoryLoaded { events: evs } => e1 && e2 && claim("the log never holds two acceptances of one node",
