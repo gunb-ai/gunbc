@@ -209,10 +209,9 @@ import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnix
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
   roadmap_ingress_function, approval_broker_ingress_function,
-  fabric_storage_ingress_entry_file, fabric_storage_ingress_function, fabric_storage_handler_function,
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
+  deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
   gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path,
   deployment_owns_the_host_approval_broker,
@@ -674,43 +673,6 @@ fn live_deploy_agent_door_unit_file(
           )
         }
       }
-  }
-}
-
-// THE FABRIC DB ENDPOINT'S UNIT: `gunbc run` on gunbc.fabric.fabric_storage_ingress, answering every request through the ONE .dag handler
-// gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
-// route to it (FabricStorageServeMapping), which is the deployment fact extdeps.tailscale.identity says
-// the identity header's trust rests on. Same principal, slice, tree, binary and declared evaluation
-// caps as the dashboard's unit: a request is one store operation on local files, and the caps turn an
-// unbounded hold of the serial accept loop into a typed refusal exactly as they do there. The process
-// keeps no state between requests -- the store is the files under the ensured fabric DB directory --
-// so Restart=on-failure loses nothing.
-fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding, door_socket: NonEmptyStr) -> SystemdUnitFile {
-  let svc = spec.service
-  ServiceUnitFile {
-    unit: [
-      Description { text: "gunbc fabric DB endpoint (gunbc run, ingress binding)" as NonEmptyStr },
-      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
-    ],
-    service: concat([
-      ServiceType { mode: SimpleMode },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
-      WorkingDirectory { path: svc.repo_root },
-    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
-      ExecStart { command: live_deploy_ingress_execstart(
-        binary: fixed_serve_binary_path(binary: svc.serve_binary),
-        entry: fabric_storage_ingress_entry_file, binding_function: fabric_storage_ingress_function,
-        handler: fabric_storage_handler_function,
-        listener: HttpIngressUnixSocket { path: door_socket, mode: http_ingress_unix_socket_mode },
-        revision: revision,
-        cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
-      ) },
-      Restart { policy: "on-failure" as NonEmptyStr },
-    ])),
-    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
 

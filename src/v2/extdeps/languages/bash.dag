@@ -1762,13 +1762,13 @@ data bash_stmt_brace_group_emitted: Node = bash_conj_emitted_from_tokens(
 )
 
 fn bash_stmt_brace_group_source_text(body: String) -> String {
-  concat("{ ", concat(body, "; }"))
+  concat(bash_kw_brace_group_open_text, concat(body, bash_kw_brace_group_close_text))
 }
 
 fn bash_stmt_brace_group_lex() -> LexRules {
   phrase_to_lex_rules(p: phrase([
-    span(text: "{ ", class: ^bash_token_brace_group_open),
-    span(text: "; }", class: ^bash_token_brace_group_close)
+    span(text: bash_kw_brace_group_open_text, class: ^bash_token_brace_group_open),
+    span(text: bash_kw_brace_group_close_text, class: ^bash_token_brace_group_close)
   ]))
 }
 
@@ -2725,4 +2725,916 @@ fn bash_redir_stderr_to_file_source_text(path: String) -> String {
 
 fn bash_redir_from_file_source_text(path: String) -> String {
   concat("< ", path)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Compound commands, comments, words that must not be quoted, and arrays.
+//
+// The upstream authority for every spelling below is the GNU Bash Reference
+// Manual; the node is cited per construct. These rows exist because srv1's
+// replica boot path (v2.gunbc.serving.srv1_serving_replica_layout) is built
+// from them and the lane could not spell them: a shell function definition, a
+// case statement, an array assignment with "${A[@]}" expansion, comment lines,
+// a for loop, and words that must reach the byte stream UNQUOTED. Each is a
+// node kind with a builder and a serializer arm; none is a raw string.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The keyword spellings live in ONE place. Each is a row of its own; the emit
+// side reads the row to spell the token, and
+// v2.extdeps.languages.bash_command_fold reads the SAME row when it declares
+// the construct's ingest-only lexical classes. A second spelling of `case`,
+// `esac`, `;;`, `for` would be a second authority over bytes bash owns, so
+// there is none.
+data bash_kw_case_text: String = "case "
+data bash_kw_case_in_text: String = " in"
+data bash_kw_case_pattern_sep_text: String = ")"
+data bash_kw_case_clause_sep_text: String = ";;"
+data bash_kw_case_clause_indent_text: String = "\n  "
+data bash_kw_case_block_lead_text: String = "\n    "
+data bash_kw_case_inline_lead_text: String = " "
+data bash_kw_case_arm_newline_text: String = "\n"
+data bash_kw_esac_text: String = "esac"
+data bash_kw_for_text: String = "for "
+data bash_kw_in_text: String = " in "
+// Bash manual, node "Looping Constructs":
+//   for name [ [in [words ...] ] ; ] do commands; done
+// The form this lane emits always supplies the word list, so the loop needs
+// TWO list terminators, not one: the ';' that ends the word list before 'do',
+// and the ';' that ends the command list before 'done'. Each travels in the
+// spelling of the keyword that FOLLOWS it -- "; do " and "; done" -- exactly as
+// the brace group's "; }" carries its own. Drop the first and bash keeps
+// reading words, never sees the 'do' keyword, and fails at 'done'.
+data bash_kw_do_text: String = "; do "
+data bash_kw_done_text: String = "; done"
+// The brace group's delimiters and the function definition's parameter-list
+// parens are spelled ONCE here. srv1's container command emits a function whose
+// compound-command is a brace group; the brace-group statement and the function
+// definition read these SAME rows rather than each carrying a copy, and
+// v2.extdeps.languages.bash_command_fold reads them again when it declares the
+// fold's emit- and ingest-side lexical classes for these tokens.
+data bash_kw_func_paren_open_text: String = "("
+data bash_kw_func_paren_close_text: String = ")"
+data bash_kw_brace_group_open_text: String = "{ "
+data bash_kw_brace_group_close_text: String = "; }"
+
+// ── function definition ────────────────────────────────────────────────────
+// Bash manual, node "Shell Functions": a function is defined as
+//   name () compound-command [redirection]
+// (the optional `function` keyword is an alternate spelling of the same
+// definition). srv1's container command uses the name () form, whose
+// compound-command is the brace group of node "Grouping Commands"
+// ("{ list; }") — so the braces are the SAME token classes the brace-group row
+// above spells, read a second time rather than respelled.
+fn bash_stmt_function_def_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_function_def_name },
+    FixedToken { token_class: ^bash_token_func_paren_open },
+    FixedToken { token_class: ^bash_token_func_paren_close },
+    FixedToken { token_class: ^bash_token_brace_group_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_function_def_body },
+    FixedToken { token_class: ^bash_token_brace_group_close }
+  ]
+}
+
+data bash_stmt_function_def_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_function_def_tokens()
+
+data bash_stmt_function_def_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_function_def_tokens_carried
+)
+
+fn bash_stmt_function_def_source_text(name: String, body: String) -> String {
+  concat(name, concat(bash_kw_func_paren_open_text, concat(bash_kw_func_paren_close_text, concat(bash_kw_brace_group_open_text, concat(body, bash_kw_brace_group_close_text)))))
+}
+
+fn bash_stmt_function_def_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: bash_kw_func_paren_open_text, class: ^bash_token_func_paren_open),
+    span(text: bash_kw_func_paren_close_text, class: ^bash_token_func_paren_close),
+    span(text: bash_kw_brace_group_open_text, class: ^bash_token_brace_group_open),
+    span(text: bash_kw_brace_group_close_text, class: ^bash_token_brace_group_close)
+  ]))
+}
+
+data bash_stmt_function_def_lex_carried: LexRules = bash_stmt_function_def_lex()
+
+fn bash_stmt_function_def_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_function_def,
+    lhs: ^bash_production_stmt_function_def,
+    tokens: bash_stmt_function_def_tokens_carried,
+    emitted: bash_stmt_function_def_emitted
+  )
+}
+
+fn bash_stmt_function_def_binding_spellings(name: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_function_def_name, name),
+    ^bash_stmt_function_def_body, body)
+}
+
+fn bash_stmt_function_def_target_model(name: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_function_def_translation_rules_node(),
+    source_literal: ^bash_stmt_function_def_source_literal,
+    production_name: ^bash_production_stmt_function_def,
+    tokens: bash_stmt_function_def_tokens_carried,
+    source_text: bash_stmt_function_def_source_text(name: name, body: body),
+    lex: bash_stmt_function_def_lex_carried,
+    binding_spellings: bash_stmt_function_def_binding_spellings(name: name, body: body)
+  )
+}
+
+// ── case statement ─────────────────────────────────────────────────────────
+// Bash manual, node "Conditional Constructs" (the case command):
+//   case word in
+//       [ [(] pattern [| pattern] command-list ;;]…
+//   esac
+// The optional leading "(" and the "|" alternation are NOT modeled here: this
+// lane spells only what its consumers emit, and a builder that cannot be
+// called wrongly is better than a production nobody exercises.
+//
+// The keyword texts are the bash_kw_*_text rows above — the same rows the
+// fold's ingest-only lexical classes read. The arm body's own newlines and the
+// four-space indent are NOT grammar: bash accepts either a newline or a ';'
+// between commands (node "Lists"), so the block arm spells the newline form and
+// the inline arm the ';' form, and the indentation is this lane's chosen layout
+// for a multi-line arm, carried in the clause separator's spelling.
+fn bash_stmt_case_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_ingest_kw_case },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_case_word },
+    FixedToken { token_class: ^bash_ingest_case_in_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_case_arms },
+    FixedToken { token_class: ^bash_ingest_case_arm_newline },
+    FixedToken { token_class: ^bash_ingest_kw_esac }
+  ]
+}
+
+data bash_stmt_case_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_case_tokens()
+
+data bash_stmt_case_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_case_tokens_carried
+)
+
+fn bash_stmt_case_source_text(word: String, arms: String) -> String {
+  concat(
+    bash_kw_case_text,
+    concat(word, concat(
+      bash_kw_case_in_text,
+      concat(arms, concat(bash_kw_case_arm_newline_text, bash_kw_esac_text)))))
+}
+
+fn bash_stmt_case_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: bash_kw_case_text, class: ^bash_ingest_kw_case),
+    span(text: bash_kw_case_in_text, class: ^bash_ingest_case_in_kw),
+    span(text: bash_kw_case_arm_newline_text, class: ^bash_ingest_case_arm_newline),
+    span(text: bash_kw_esac_text, class: ^bash_ingest_kw_esac)
+  ]))
+}
+
+data bash_stmt_case_lex_carried: LexRules = bash_stmt_case_lex()
+
+fn bash_stmt_case_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_case,
+    lhs: ^bash_production_stmt_case,
+    tokens: bash_stmt_case_tokens_carried,
+    emitted: bash_stmt_case_emitted
+  )
+}
+
+fn bash_stmt_case_binding_spellings(word: String, arms: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_case_word, word),
+    ^bash_stmt_case_arms, arms)
+}
+
+fn bash_stmt_case_target_model(word: String, arms: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_case_translation_rules_node(),
+    source_literal: ^bash_stmt_case_source_literal,
+    production_name: ^bash_production_stmt_case,
+    tokens: bash_stmt_case_tokens_carried,
+    source_text: bash_stmt_case_source_text(word: word, arms: arms),
+    lex: bash_stmt_case_lex_carried,
+    binding_spellings: bash_stmt_case_binding_spellings(word: word, arms: arms)
+  )
+}
+
+// A case arm, block form: two-space pattern indent, body on its own lines at a
+// four-space indent, ';;' on its own line.
+fn bash_stmt_case_clause_block_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_ingest_case_clause_indent },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_case_clause_pattern },
+    FixedToken { token_class: ^bash_ingest_case_pattern_sep },
+    FixedToken { token_class: ^bash_ingest_case_block_lead },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_case_clause_body },
+    FixedToken { token_class: ^bash_ingest_case_block_lead },
+    FixedToken { token_class: ^bash_ingest_kw_case_clause_sep }
+  ]
+}
+
+data bash_stmt_case_clause_block_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_case_clause_block_tokens()
+
+data bash_stmt_case_clause_block_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_case_clause_block_tokens_carried
+)
+
+fn bash_stmt_case_clause_block_source_text(pattern: String, body: String) -> String {
+  concat(
+    bash_kw_case_clause_indent_text,
+    concat(pattern, concat(
+      bash_kw_case_pattern_sep_text,
+      concat(bash_kw_case_block_lead_text, concat(
+        body, concat(bash_kw_case_block_lead_text,
+          bash_kw_case_clause_sep_text))))))
+}
+
+fn bash_stmt_case_clause_block_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: bash_kw_case_clause_indent_text, class: ^bash_ingest_case_clause_indent),
+    span(text: bash_kw_case_pattern_sep_text, class: ^bash_ingest_case_pattern_sep),
+    span(text: bash_kw_case_block_lead_text, class: ^bash_ingest_case_block_lead),
+    span(text: bash_kw_case_clause_sep_text, class: ^bash_ingest_kw_case_clause_sep)
+  ]))
+}
+
+data bash_stmt_case_clause_block_lex_carried: LexRules = bash_stmt_case_clause_block_lex()
+
+fn bash_stmt_case_clause_block_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_case_clause_block,
+    lhs: ^bash_production_stmt_case_clause_block,
+    tokens: bash_stmt_case_clause_block_tokens_carried,
+    emitted: bash_stmt_case_clause_block_emitted
+  )
+}
+
+fn bash_stmt_case_clause_block_binding_spellings(pattern: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_case_clause_pattern, pattern),
+    ^bash_stmt_case_clause_body, body)
+}
+
+fn bash_stmt_case_clause_block_target_model(pattern: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_case_clause_block_translation_rules_node(),
+    source_literal: ^bash_stmt_case_clause_block_source_literal,
+    production_name: ^bash_production_stmt_case_clause_block,
+    tokens: bash_stmt_case_clause_block_tokens_carried,
+    source_text: bash_stmt_case_clause_block_source_text(pattern: pattern, body: body),
+    lex: bash_stmt_case_clause_block_lex_carried,
+    binding_spellings: bash_stmt_case_clause_block_binding_spellings(pattern: pattern, body: body)
+  )
+}
+
+// A case arm, inline form: pattern, body separated from it by a space, ';;' on
+// the same line. Same keywords, different command separators — both are legal
+// bash (node "Lists" allows ';' or newline between commands).
+fn bash_stmt_case_clause_inline_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_ingest_case_clause_indent },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_case_clause_pattern },
+    FixedToken { token_class: ^bash_ingest_case_pattern_sep },
+    FixedToken { token_class: ^bash_ingest_case_inline_lead },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_case_clause_body },
+    FixedToken { token_class: ^bash_ingest_case_inline_lead },
+    FixedToken { token_class: ^bash_ingest_kw_case_clause_sep }
+  ]
+}
+
+data bash_stmt_case_clause_inline_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_case_clause_inline_tokens()
+
+data bash_stmt_case_clause_inline_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_case_clause_inline_tokens_carried
+)
+
+fn bash_stmt_case_clause_inline_source_text(pattern: String, body: String) -> String {
+  concat(
+    bash_kw_case_clause_indent_text,
+    concat(pattern, concat(
+      bash_kw_case_pattern_sep_text,
+      concat(bash_kw_case_inline_lead_text, concat(
+        body, concat(bash_kw_case_inline_lead_text,
+          bash_kw_case_clause_sep_text))))))
+}
+
+fn bash_stmt_case_clause_inline_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: bash_kw_case_clause_indent_text, class: ^bash_ingest_case_clause_indent),
+    span(text: bash_kw_case_pattern_sep_text, class: ^bash_ingest_case_pattern_sep),
+    span(text: bash_kw_case_inline_lead_text, class: ^bash_ingest_case_inline_lead),
+    span(text: bash_kw_case_clause_sep_text, class: ^bash_ingest_kw_case_clause_sep)
+  ]))
+}
+
+data bash_stmt_case_clause_inline_lex_carried: LexRules = bash_stmt_case_clause_inline_lex()
+
+fn bash_stmt_case_clause_inline_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_case_clause_inline,
+    lhs: ^bash_production_stmt_case_clause_inline,
+    tokens: bash_stmt_case_clause_inline_tokens_carried,
+    emitted: bash_stmt_case_clause_inline_emitted
+  )
+}
+
+fn bash_stmt_case_clause_inline_binding_spellings(pattern: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_case_clause_pattern, pattern),
+    ^bash_stmt_case_clause_body, body)
+}
+
+fn bash_stmt_case_clause_inline_target_model(pattern: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_case_clause_inline_translation_rules_node(),
+    source_literal: ^bash_stmt_case_clause_inline_source_literal,
+    production_name: ^bash_production_stmt_case_clause_inline,
+    tokens: bash_stmt_case_clause_inline_tokens_carried,
+    source_text: bash_stmt_case_clause_inline_source_text(pattern: pattern, body: body),
+    lex: bash_stmt_case_clause_inline_lex_carried,
+    binding_spellings: bash_stmt_case_clause_inline_binding_spellings(pattern: pattern, body: body)
+  )
+}
+
+// ── comment ────────────────────────────────────────────────────────────────
+// Bash manual, node "Comments": a word that begins with '#' causes the shell to
+// ignore that word and the rest of the line. The #! at the head of a script is
+// the same comment shape to the shell (the interpreter line is read by exec(3),
+// not by bash), so it is a comment statement too. The text is emitted verbatim
+// and the builder refuses anything that is not a single complete comment line.
+fn bash_stmt_comment_tokens() -> List<ConcreteSyntaxToken> {
+  [BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_comment_text }]
+}
+
+data bash_stmt_comment_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_comment_tokens()
+
+data bash_stmt_comment_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_comment_tokens_carried
+)
+
+fn bash_stmt_comment_source_text(text: String) -> String {
+  text
+}
+
+fn bash_stmt_comment_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([]))
+}
+
+data bash_stmt_comment_lex_carried: LexRules = bash_stmt_comment_lex()
+
+fn bash_stmt_comment_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_comment,
+    lhs: ^bash_production_stmt_comment,
+    tokens: bash_stmt_comment_tokens_carried,
+    emitted: bash_stmt_comment_emitted
+  )
+}
+
+fn bash_stmt_comment_binding_spellings(text: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_comment_text, text)
+}
+
+fn bash_stmt_comment_target_model(text: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_comment_translation_rules_node(),
+    source_literal: ^bash_stmt_comment_source_literal,
+    production_name: ^bash_production_stmt_comment,
+    tokens: bash_stmt_comment_tokens_carried,
+    source_text: bash_stmt_comment_source_text(text: text),
+    lex: bash_stmt_comment_lex_carried,
+    binding_spellings: bash_stmt_comment_binding_spellings(text: text)
+  )
+}
+
+// ── for loop ───────────────────────────────────────────────────────────────
+// Bash manual, node "Looping Constructs":
+//   for name [ [in [words …] ; ] do commands; done
+// srv1's launcher polls with the 'for name in words; do commands; done' form.
+fn bash_stmt_for_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_ingest_kw_for },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_for_name },
+    FixedToken { token_class: ^bash_ingest_kw_in },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_for_words },
+    FixedToken { token_class: ^bash_ingest_kw_do },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_for_body },
+    FixedToken { token_class: ^bash_ingest_kw_done }
+  ]
+}
+
+data bash_stmt_for_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_for_tokens()
+
+data bash_stmt_for_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_for_tokens_carried
+)
+
+fn bash_stmt_for_source_text(name: String, words: String, body: String) -> String {
+  concat(
+    bash_kw_for_text,
+    concat(name, concat(
+      bash_kw_in_text,
+      concat(words, concat(
+        bash_kw_do_text,
+        concat(body, bash_kw_done_text))))))
+}
+
+fn bash_stmt_for_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: bash_kw_for_text, class: ^bash_ingest_kw_for),
+    span(text: bash_kw_in_text, class: ^bash_ingest_kw_in),
+    span(text: bash_kw_do_text, class: ^bash_ingest_kw_do),
+    span(text: bash_kw_done_text, class: ^bash_ingest_kw_done)
+  ]))
+}
+
+data bash_stmt_for_lex_carried: LexRules = bash_stmt_for_lex()
+
+fn bash_stmt_for_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_for,
+    lhs: ^bash_production_stmt_for,
+    tokens: bash_stmt_for_tokens_carried,
+    emitted: bash_stmt_for_emitted
+  )
+}
+
+fn bash_stmt_for_binding_spellings(name: String, words: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), ^bash_stmt_for_name, name),
+      ^bash_stmt_for_words, words),
+    ^bash_stmt_for_body, body)
+}
+
+fn bash_stmt_for_target_model(name: String, words: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_for_translation_rules_node(),
+    source_literal: ^bash_stmt_for_source_literal,
+    production_name: ^bash_production_stmt_for,
+    tokens: bash_stmt_for_tokens_carried,
+    source_text: bash_stmt_for_source_text(name: name, words: words, body: body),
+    lex: bash_stmt_for_lex_carried,
+    binding_spellings: bash_stmt_for_binding_spellings(name: name, words: words, body: body)
+  )
+}
+
+// ── array assignment ──────────────────────────────────────────────────────
+// Bash manual, node "Arrays": an array is created by
+//   name=(word1 word2 …)
+// The elements are words, so they keep whatever quoting their own kinds give
+// them — an element is never flattened into a raw string.
+fn bash_stmt_array_assign_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_array_assign_name },
+    FixedToken { token_class: ^bash_token_assign_eq },
+    FixedToken { token_class: ^bash_token_array_paren_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_array_assign_elements },
+    FixedToken { token_class: ^bash_token_array_paren_close }
+  ]
+}
+
+data bash_stmt_array_assign_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_array_assign_tokens()
+
+data bash_stmt_array_assign_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_array_assign_tokens_carried
+)
+
+fn bash_stmt_array_assign_source_text(name: String, elements: String) -> String {
+  concat(name, concat("=(", concat(elements, ")")))
+}
+
+fn bash_stmt_array_assign_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "=", class: ^bash_token_assign_eq),
+    span(text: "(", class: ^bash_token_array_paren_open),
+    span(text: ")", class: ^bash_token_array_paren_close)
+  ]))
+}
+
+data bash_stmt_array_assign_lex_carried: LexRules = bash_stmt_array_assign_lex()
+
+fn bash_stmt_array_assign_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_array_assign,
+    lhs: ^bash_production_stmt_array_assign,
+    tokens: bash_stmt_array_assign_tokens_carried,
+    emitted: bash_stmt_array_assign_emitted
+  )
+}
+
+fn bash_stmt_array_assign_binding_spellings(name: String, elements: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_array_assign_name, name),
+    ^bash_stmt_array_assign_elements, elements)
+}
+
+fn bash_stmt_array_assign_target_model(name: String, elements: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_array_assign_translation_rules_node(),
+    source_literal: ^bash_stmt_array_assign_source_literal,
+    production_name: ^bash_production_stmt_array_assign,
+    tokens: bash_stmt_array_assign_tokens_carried,
+    source_text: bash_stmt_array_assign_source_text(name: name, elements: elements),
+    lex: bash_stmt_array_assign_lex_carried,
+    binding_spellings: bash_stmt_array_assign_binding_spellings(name: name, elements: elements)
+  )
+}
+
+// ── word kinds ─────────────────────────────────────────────────────────────
+// A word is emitted through its kind's spelling transform. Three kinds are
+// added, all of them things srv1 needs and the lane could not say:
+//
+//  * bare — an UNQUOTED literal. The lane's other literal kind single-quotes
+//    everything (its own golden is "'true' 2>&1"), and for the installed srv1
+//    scripts that is a different file. A bare word is legal only where nothing
+//    would split or expand it, so the builder is a checked constructor.
+//  * array expansion — "${name[@]}" (node "Arrays": each member becomes a
+//    separate word when the expansion is inside double quotes). Load-bearing:
+//    without it an emitted exec re-splits the engine arguments.
+//  * parameter expansions that are not a plain $name: the positional error form
+//    ${1:?word} and the positional-all words $* / $@ (node "Shell Parameters").
+
+fn bash_word_bare_tokens() -> List<ConcreteSyntaxToken> {
+  [BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_bare_text }]
+}
+
+data bash_word_bare_tokens_carried: List<ConcreteSyntaxToken> = bash_word_bare_tokens()
+
+data bash_word_bare_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_bare_tokens_carried
+)
+
+fn bash_word_bare_source_text(text: String) -> String {
+  text
+}
+
+fn bash_word_bare_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([]))
+}
+
+data bash_word_bare_lex_carried: LexRules = bash_word_bare_lex()
+
+fn bash_word_bare_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_bare,
+    lhs: ^bash_production_word_bare,
+    tokens: bash_word_bare_tokens_carried,
+    emitted: bash_word_bare_emitted
+  )
+}
+
+fn bash_word_bare_binding_spellings(text: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_bare_text, text)
+}
+
+fn bash_word_bare_target_model(text: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_bare_translation_rules_node(),
+    source_literal: ^bash_word_bare_source_literal,
+    production_name: ^bash_production_word_bare,
+    tokens: bash_word_bare_tokens_carried,
+    source_text: bash_word_bare_source_text(text: text),
+    lex: bash_word_bare_lex_carried,
+    binding_spellings: bash_word_bare_binding_spellings(text: text)
+  )
+}
+
+// Bash manual, node "Arrays": "${name[@]}" expands to every member of name,
+// each member a separate word. The double quotes are part of the kind: the
+// per-member word-ness only holds inside them (node "Quotes").
+fn bash_word_array_expansion_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_array_expand_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_array_expansion_name },
+    FixedToken { token_class: ^bash_token_array_expand_all }
+  ]
+}
+
+data bash_word_array_expansion_tokens_carried: List<ConcreteSyntaxToken> = bash_word_array_expansion_tokens()
+
+data bash_word_array_expansion_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_array_expansion_tokens_carried
+)
+
+fn bash_word_array_expansion_source_text(name: String) -> String {
+  concat("\"$\{", concat(name, "[@]}\""))
+}
+
+fn bash_word_array_expansion_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "\"$\{", class: ^bash_token_array_expand_open),
+    span(text: "[@]}\"", class: ^bash_token_array_expand_all)
+  ]))
+}
+
+data bash_word_array_expansion_lex_carried: LexRules = bash_word_array_expansion_lex()
+
+fn bash_word_array_expansion_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_array_expansion,
+    lhs: ^bash_production_word_array_expansion,
+    tokens: bash_word_array_expansion_tokens_carried,
+    emitted: bash_word_array_expansion_emitted
+  )
+}
+
+fn bash_word_array_expansion_binding_spellings(name: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_array_expansion_name, name)
+}
+
+fn bash_word_array_expansion_target_model(name: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_array_expansion_translation_rules_node(),
+    source_literal: ^bash_word_array_expansion_source_literal,
+    production_name: ^bash_production_word_array_expansion,
+    tokens: bash_word_array_expansion_tokens_carried,
+    source_text: bash_word_array_expansion_source_text(name: name),
+    lex: bash_word_array_expansion_lex_carried,
+    binding_spellings: bash_word_array_expansion_binding_spellings(name: name)
+  )
+}
+
+// Bash manual, node "Shell Parameters": ${parameter:?word} — if parameter is
+// unset or null the shell prints word and aborts. srv1 uses it to require the
+// replica index argument: ${1:?usage: …}.
+fn bash_word_param_error_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_param_brace_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_param_error_index },
+    FixedToken { token_class: ^bash_token_param_error_op },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_param_error_word },
+    FixedToken { token_class: ^bash_token_param_brace_close }
+  ]
+}
+
+data bash_word_param_error_tokens_carried: List<ConcreteSyntaxToken> = bash_word_param_error_tokens()
+
+data bash_word_param_error_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_param_error_tokens_carried
+)
+
+fn bash_word_param_error_source_text(index: String, word: String) -> String {
+  concat("$\{", concat(index, concat(":?", concat(word, "}"))))
+}
+
+fn bash_word_param_error_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "$\{", class: ^bash_token_param_brace_open),
+    span(text: ":?", class: ^bash_token_param_error_op),
+    span(text: "}", class: ^bash_token_param_brace_close)
+  ]))
+}
+
+data bash_word_param_error_lex_carried: LexRules = bash_word_param_error_lex()
+
+fn bash_word_param_error_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_param_error,
+    lhs: ^bash_production_word_param_error,
+    tokens: bash_word_param_error_tokens_carried,
+    emitted: bash_word_param_error_emitted
+  )
+}
+
+fn bash_word_param_error_binding_spellings(index: String, word: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_word_param_error_index, index),
+    ^bash_word_param_error_word, word)
+}
+
+fn bash_word_param_error_target_model(index: String, word: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_param_error_translation_rules_node(),
+    source_literal: ^bash_word_param_error_source_literal,
+    production_name: ^bash_production_word_param_error,
+    tokens: bash_word_param_error_tokens_carried,
+    source_text: bash_word_param_error_source_text(index: index, word: word),
+    lex: bash_word_param_error_lex_carried,
+    binding_spellings: bash_word_param_error_binding_spellings(index: index, word: word)
+  )
+}
+
+// Bash manual, node "Shell Parameters": $* is the positional parameters as one
+// word, $@ as separate words. Only these two names are accepted; anything else
+// is a plain variable and belongs to the var word kind.
+fn bash_word_positional_all_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_dollar },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_positional_all_name }
+  ]
+}
+
+data bash_word_positional_all_tokens_carried: List<ConcreteSyntaxToken> = bash_word_positional_all_tokens()
+
+data bash_word_positional_all_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_positional_all_tokens_carried
+)
+
+fn bash_word_positional_all_source_text(name: String) -> String {
+  concat("$", name)
+}
+
+fn bash_word_positional_all_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "$", class: ^bash_token_dollar)
+  ]))
+}
+
+data bash_word_positional_all_lex_carried: LexRules = bash_word_positional_all_lex()
+
+fn bash_word_positional_all_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_positional_all,
+    lhs: ^bash_production_word_positional_all,
+    tokens: bash_word_positional_all_tokens_carried,
+    emitted: bash_word_positional_all_emitted
+  )
+}
+
+fn bash_word_positional_all_binding_spellings(name: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_positional_all_name, name)
+}
+
+fn bash_word_positional_all_target_model(name: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_positional_all_translation_rules_node(),
+    source_literal: ^bash_word_positional_all_source_literal,
+    production_name: ^bash_production_word_positional_all,
+    tokens: bash_word_positional_all_tokens_carried,
+    source_text: bash_word_positional_all_source_text(name: name),
+    lex: bash_word_positional_all_lex_carried,
+    binding_spellings: bash_word_positional_all_binding_spellings(name: name)
+  )
+}
+
+// ── unquoted variable word ────────────────────────────────────────────────
+// Bash manual, node "Shell Parameters": $parameter substitutes the value of
+// parameter. Quoting it is a separate choice the lane already models ("$NAME");
+// this kind is the same expansion WITHOUT the quotes, which is what the
+// launcher's 'case $IDX in' and the container command's '$D/events.log' hold.
+// The name is gated on the manual's definition of a Name (node "Definitions"),
+// so nothing that would split or expand can ride in it.
+fn bash_word_var_bare_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_dollar },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_var_bare_name }
+  ]
+}
+
+data bash_word_var_bare_tokens_carried: List<ConcreteSyntaxToken> = bash_word_var_bare_tokens()
+
+data bash_word_var_bare_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_var_bare_tokens_carried
+)
+
+fn bash_word_var_bare_source_text(name: String) -> String {
+  concat("$", name)
+}
+
+fn bash_word_var_bare_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "$", class: ^bash_token_dollar)
+  ]))
+}
+
+data bash_word_var_bare_lex_carried: LexRules = bash_word_var_bare_lex()
+
+fn bash_word_var_bare_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_var_bare,
+    lhs: ^bash_production_word_var_bare,
+    tokens: bash_word_var_bare_tokens_carried,
+    emitted: bash_word_var_bare_emitted
+  )
+}
+
+fn bash_word_var_bare_binding_spellings(name: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_var_bare_name, name)
+}
+
+fn bash_word_var_bare_target_model(name: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_var_bare_translation_rules_node(),
+    source_literal: ^bash_word_var_bare_source_literal,
+    production_name: ^bash_production_word_var_bare,
+    tokens: bash_word_var_bare_tokens_carried,
+    source_text: bash_word_var_bare_source_text(name: name),
+    lex: bash_word_var_bare_lex_carried,
+    binding_spellings: bash_word_var_bare_binding_spellings(name: name)
+  )
+}
+
+// ── double-quoted word ────────────────────────────────────────────────────
+// Bash manual, node "Quotes": inside double quotes, command substitution and
+// parameter expansion are still performed and every other metacharacter loses
+// its meaning. That is exactly the envelope of a quoted word here: its parts are
+// expansions and inert text, joined with NOTHING between them — a space would
+// split the word. The launcher's '${1:?…}' guard and the container command's
+// 'echo "$(date -u +%FT%TZ) $*"' logger are both this shape, and neither is
+// expressible as a single-quoted literal, which is what the lane's other literal
+// kind would have made them.
+fn bash_word_double_quoted_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_double_quote_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_double_quoted_parts },
+    FixedToken { token_class: ^bash_token_double_quote_close }
+  ]
+}
+
+data bash_word_double_quoted_tokens_carried: List<ConcreteSyntaxToken> = bash_word_double_quoted_tokens()
+
+data bash_word_double_quoted_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_double_quoted_tokens_carried
+)
+
+fn bash_word_double_quoted_source_text(parts: String) -> String {
+  concat("\"", concat(parts, "\""))
+}
+
+fn bash_word_double_quoted_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "\"", class: ^bash_token_double_quote_open),
+    span(text: "\"", class: ^bash_token_double_quote_close)
+  ]))
+}
+
+data bash_word_double_quoted_lex_carried: LexRules = bash_word_double_quoted_lex()
+
+fn bash_word_double_quoted_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_double_quoted,
+    lhs: ^bash_production_word_double_quoted,
+    tokens: bash_word_double_quoted_tokens_carried,
+    emitted: bash_word_double_quoted_emitted
+  )
+}
+
+fn bash_word_double_quoted_binding_spellings(parts: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_double_quoted_parts, parts)
+}
+
+fn bash_word_double_quoted_target_model(parts: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_double_quoted_translation_rules_node(),
+    source_literal: ^bash_word_double_quoted_source_literal,
+    production_name: ^bash_production_word_double_quoted,
+    tokens: bash_word_double_quoted_tokens_carried,
+    source_text: bash_word_double_quoted_source_text(parts: parts),
+    lex: bash_word_double_quoted_lex_carried,
+    binding_spellings: bash_word_double_quoted_binding_spellings(parts: parts)
+  )
+}
+
+// ── inert text inside double quotes ───────────────────────────────────────
+// The part of a double-quoted word that is neither an expansion nor a quote.
+// Bash manual, node "Quotes": within double quotes only '$', backquote, '"',
+// '\' and (for history expansion) '!' retain their special meaning — so the
+// constructor refuses exactly those, and there is no quoting fallback.
+fn bash_word_quoted_text_tokens() -> List<ConcreteSyntaxToken> {
+  [BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_quoted_text_body }]
+}
+
+data bash_word_quoted_text_tokens_carried: List<ConcreteSyntaxToken> = bash_word_quoted_text_tokens()
+
+data bash_word_quoted_text_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_quoted_text_tokens_carried
+)
+
+fn bash_word_quoted_text_source_text(body: String) -> String {
+  body
+}
+
+fn bash_word_quoted_text_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([]))
+}
+
+data bash_word_quoted_text_lex_carried: LexRules = bash_word_quoted_text_lex()
+
+fn bash_word_quoted_text_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_quoted_text,
+    lhs: ^bash_production_word_quoted_text,
+    tokens: bash_word_quoted_text_tokens_carried,
+    emitted: bash_word_quoted_text_emitted
+  )
+}
+
+fn bash_word_quoted_text_binding_spellings(body: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_quoted_text_body, body)
+}
+
+fn bash_word_quoted_text_target_model(body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_quoted_text_translation_rules_node(),
+    source_literal: ^bash_word_quoted_text_source_literal,
+    production_name: ^bash_production_word_quoted_text,
+    tokens: bash_word_quoted_text_tokens_carried,
+    source_text: bash_word_quoted_text_source_text(body: body),
+    lex: bash_word_quoted_text_lex_carried,
+    binding_spellings: bash_word_quoted_text_binding_spellings(body: body)
+  )
 }
