@@ -22204,7 +22204,7 @@ fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
         RestResponseDecodeCause::UnsupportedEncoding { encoding } => format!("the contract's encoding {} is not a nullary JSON string encoding", encoding),
         RestResponseDecodeCause::UnsupportedNaming { naming } => format!("the contract's naming policy {} has no realization here", naming),
         RestResponseDecodeCause::NotAString { json_kind } => format!("the member is a {} where a string was declared", json_kind),
-        RestResponseDecodeCause::UnknownSpelling { .. } => "the string names no arm under the contract's naming policy".to_string(),
+        RestResponseDecodeCause::UnknownSpelling { .. } => "the presented string names no arm of the declared coproduct".to_string(),
         RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { .. } => "a renamed member is spelled by its authored name, which is not its declared wire key".to_string(),
         RestResponseDecodeCause::AmbiguousWireSpelling { .. } => "both the declared wire key and the authored name of one renamed member are present".to_string(),
         RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
