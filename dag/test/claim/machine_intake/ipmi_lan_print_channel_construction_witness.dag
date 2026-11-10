@@ -93,6 +93,17 @@ fn blocking_type_mismatch_count(source: String) -> Int {
   }
 }
 
+// The class the validate_cast refinement-cast arm reports under -- InternalError, read off the executed
+// census (invocation 8166330c at the heal mirror head 796f58b9), not chosen. A blocking row of this class
+// on a cast shape is what the arm contributes; the TypeMismatch rows above (the refinement wall) are a
+// different mechanism and stay additive alongside it.
+fn blocking_refinement_cast_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "InternalError"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
 test fn bare_in_range_literal_in_a_channel_field_is_admitted() -> Bool {
   blocking_type_mismatch_count(source: probe_bare_in_range_source) == 0
 }
@@ -101,16 +112,18 @@ test fn bare_out_of_range_literal_in_a_channel_field_is_refused() -> Bool {
   blocking_type_mismatch_count(source: probe_bare_out_of_range_source) >= 1
 }
 
-// DOCUMENTING THE FORK, NOT ENDORSING THE BEHAVIOUR (review 92769). What this row measures is the
-// invalid state that gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses
-// records: the checker adds no blocking row for a cast the evaluator then refuses. It is kept, under
-// gunbc.design_argument::guarantee_ladder item 4, because a control stays enrolled across the climb --
-// and it is exactly the row that is expected to go RED when that row's own trigger lands (silent-bee-845's
-// ruling: refuse `as T` for a numeric int-predicate target unless source and target are the same declared
-// type). When it does, this fixture is re-pinned as the positive control for the new refusal; the
-// dissolution condition itself lives on that row's trigger_capability, restated here and not owned here.
-test fn in_range_cast_into_a_channel_field_is_admitted_by_the_checker() -> Bool {
-  blocking_type_mismatch_count(source: probe_cast_in_range_source) == 0
+// THE POSITIVE CONTROL FOR THE LANDED REFUSAL (this row was pre-designed for exactly this re-pin). Its
+// own prior comment said it measured the fork state and "is expected to go RED when that row's own trigger
+// lands (silent-bee-845's ruling: refuse `as T` for a numeric int-predicate target unless source and
+// target are the same declared type). When it does, this fixture is re-pinned as the positive control for
+// the new refusal." That trigger landed as validate_cast's refinement-cast arm (src/v1/04_infer.dag), so
+// an in-range LITERAL cast `1 as IpmiChannelNumber` into the refined field now earns a blocking row of the
+// arm's class (InternalError): RED at base (the checker was silent, only the evaluator refused), GREEN at
+// head. The fix for the author is the same one applied to router_proxy_config: write the bare literal
+// `1`, which needs no cast and is admitted. The TypeMismatch wall rows above stay additive on their own
+// shapes; a value already on the carrier still casts by identity (the identity rows below).
+test fn in_range_cast_into_a_channel_field_is_refused_by_the_checker() -> Bool {
+  blocking_refinement_cast_count(source: probe_cast_in_range_source) >= 1
 }
 
 test fn out_of_range_cast_into_a_channel_field_is_refused() -> Bool {
