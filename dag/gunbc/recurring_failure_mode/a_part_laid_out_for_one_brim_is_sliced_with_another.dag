@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.a_part_laid_out_for_one_brim_is_sliced_with_another
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+// A BRIM THE LAYOUT DID NOT BUDGET. A part is sized so it fits on the bed together with a per-side process
+// allowance (the cassette layout budgets a 2 mm brim and 0.5 mm clearance), while the brim the slicer actually
+// lays down comes from the print recipe the request names. Nothing joined the two before slicing, so a recipe
+// with a wider brim sliced a plate whose brim ran off the bed, and only the readback of the sliced archive refused it.
+data a_part_laid_out_for_one_brim_is_sliced_with_another: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_part_laid_out_for_one_brim_is_sliced_with_another" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "The recipe is chosen by the print request at run time and the part's footprint is measured on its exported CAD solid, so the two facts first meet when a plate is packed for one request. The strongest guarantee available is a refusal at that point, on the route every print takes, before the slicer runs." as NonEmptyStr } },
+
+  receipts: [
+    "**a part laid out for one brim is sliced with another** (the bed allowance a part was sized under and the brim its recipe deposits are two unjoined declarations).",
+
+    "INVALID STATE: a packed plate whose part, grown by the staged recipe's brim, leaves less than the readback's edge allowance to the bed edge.",
+
+    "HOW IT HID: cassette_layout proposed_panel_print_policy budgets 2 mm of brim per side and sizes the tray panels under it; print_recipe a1_mini_petg_functional_v1 sets brim_width 4 mm. The packer checked only the part against the bed, so the plate sliced; Orca clipped the brim at the bed edge, which is why its bounds read 0.23..179.77 mm instead of running off the bed.",
+
+    "SPECIMEN (printer-01 request altra-r08-p3-1, run 42762907363, 2026-11-10). The r08 tray panel P3, 174.15 mm deep, placed at y 2.7 mm, was sliced with the 4 mm brim, and the readback refused it: 'Deposited toolpath exceeds envelope' against the 0.25 mm edge allowance.",
+
+    "THE REPAIR: the staged process profile's brim_type and brim_width join the readback's required keys, so the brim the packer reads is the brim the slicer was fed and the archive is checked against it. print_preparation_kernel pack_plate refuses a part closer to the bed edge than that brim plus deposited_path_edge_allowance_um, before slicing. Recipe a1-mini-petg-functional-v2 carries the 2 mm brim the panels were laid out for; v1 keeps its 4 mm under its own name.",
+
+    "THE DISCRIMINATOR: pack the r08 P3 at y 2.7 mm under brim_width 4 and under brim_width 2. The first must refuse with 'Part with its brim exceeds the bed edge allowance' and the second must pack; both were run on srv1 against the CAD of run 42762907363.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "product.printed_chassis.print_preparation_kernel", decl_name: "source"),
+    decl_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "required_process_keys"),
+    decl_ref(module_path: "product.printing.print_recipe", decl_name: "a1_mini_petg_functional_v2"),
+    decl_ref(module_path: "product.printed_chassis.cassette_layout", decl_name: "proposed_panel_print_policy"),
+  ],
+}
