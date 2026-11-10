@@ -93,6 +93,13 @@ data one_serving_context_cap: DesignRuling = DesignRuling {
   provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 (ruling D3 on gunbc#15439, then at about 20:06Z \"get these all on the same page, 229k is fine\"): the serving pool holds ONE context cap of 229,376 tokens. The Strata engines on h11 and srv3 already launch with it, the router advertises it for srv1-vllm and ctrl-vast-pool, and srv1's vLLM launch moves from lil-serve's profile default of 262,144 to it. The value is held once, at gunbc.serving.serving_context_cap serving_fleet_context_cap; srv1 is not relaunched for it before the operator's srv1 DIMM decision.",
 }
 
+data srv3_experts_mmap_under_service_cap: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_experts_mmap_under_service_cap"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.serving.serving_layout", decl_name: "srv3_routed_expert_artifact"),
+  provenance: "Operator, 2026-11-09, verbatim 'sounds good' to bold-wren-111's proposal to switch srv3 to --mmap-experts under a capped memory limit like srv4. bold-wren-111 executed it by hand on srv3 ~22:10Z: /home/ubuntu/strata-pool/cfg.json gained --mmap-experts after '--expert-cache auto' (backup cfg.json.bak-20261109-pre-mmap); new drop-in /etc/systemd/system/strata-pool.service.d/60-expert-l1-cap.conf with MemoryHigh=96G, MemoryMax=112G; strata-pool restarted once. After: the engine log reads 'experts via mmap (--mmap-experts; the GGUF shards in place, no experts.bin)'; service MemoryCurrent ~79-81 GiB (was ~116 GiB with the 46.84 GiB expert arena pinned); memory.stat anon ~8.7 GB and file ~72.5 GB; after a first cold request that read ~58 GB, warm requests read only KBs to tens of MB of OS storage. The conversation cache is unchanged at 65536 MiB in 24 slots at --batch 8. This records a hand action: the serving model now reads srv3's expert tier as srv4's evictable shape under the service cap (the cap the RAM L1 bound), not the pinned 46.84 GiB private arena under the 110 GiB slice the model held before.",
+}
+
 data installed_cards_converge_first: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "installed_cards_converge_first"),
   decided: "2026-10-30",
@@ -904,6 +911,7 @@ fn design_rulings() -> List<DesignRuling> {
     unread_catch_all_binder_refuses,
     bmc_secure_goes_live_per_controller_family,
     one_serving_context_cap,
+    srv3_experts_mmap_under_service_cap,
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
     printer_start_hold_lifted_2026_11_04,
