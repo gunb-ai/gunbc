@@ -1,6 +1,12 @@
 module gunbc.regen_affected_set
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, Map }
+import std.algebra { list_map, empty_map, map_insert, map_lookup }
+import std.optional { Present, Absent }
+import gunbc.seed_build_artifact_emit { seed_build_artifacts }
+import gunbc.generated_artifact { artifact_path }
+import gunbc.seed_build_inputs { seed_build_input_members }
+import v2.std.read_set { read_set_member_covers }
 
 // THE AFFECTED SET OF ONE EDIT: which committed mirrors can change when these .dag modules
 // change. This is the bound gunbc.regen_round_cost regen_affected_set_disposition scoped
@@ -161,23 +167,59 @@ fn regen_list_has(items: List<String>, item: String) -> Bool {
   items |> any(x => x == item)
 }
 
-// ONE STEP of the reverse walk: every module with an edge INTO the current set joins it.
-fn regen_reverse_step(reached: List<String>, edges: List<DependencyEdge>) -> List<String> {
-  fold(edges, init: reached, f: fn(acc, edge) {
-    if regen_list_has(items: acc, item: edge.to) && !regen_list_has(items: acc, item: edge.from) {
-      list_push(acc, edge.from)
-    } else {
-      acc
+// THE REVERSE WALK, LINEAR IN THE EDGES (gunbc.plans.read_set_convergence P2). The edges are indexed once
+// by target (`to` -> every `from` with an edge into it), and a breadth-first walk from the edited modules
+// absorbs each importer once, with membership in a keyed map rather than a list scan. The previous body
+// re-scanned every edge once per module with list membership -- cubic in the reached set -- and a single
+// edit to a widely imported module ran for hours (measured 2026-11-09 on srv1: extdeps.currency.currency,
+// still unfinished after 2h48m at 14 GB); a proven cost-shape defect is fixed regardless of n
+// (gunbc.design_argument::how_to_work). Execution stays bounded and forward: each step pops one queued
+// module, and no module is queued twice, so `modules` plus `edited` steps reach the fixpoint.
+type RegenReverseWalk {
+  reached: List<String>
+  seen: Map<String, Bool>
+  queue: List<String>
+}
+
+fn regen_reverse_adjacency(edges: List<DependencyEdge>) -> Map<String, List<String>> {
+  fold(edges, init: empty_map(), f: fn(acc, edge) {
+    match map_lookup(m: acc, key: edge.to) {
+      Present { value: importers } => map_insert(m: acc, key: edge.to, value: list_push(importers, edge.from))
+      Absent => map_insert(m: acc, key: edge.to, value: [edge.from])
     }
   })
 }
 
-// THE REVERSE CLOSURE, as a bounded iteration: a path in a graph of n modules has at most n
-// edges, so n steps reach the fixpoint by construction (execution is bounded and forward,
-// gunbc.design_argument::closed_grounded_substrate). The host realizes the same walk over its edge index; the lockstep test
-// holds the two to one answer on a fixture graph.
+fn regen_walk_absorb(walk: RegenReverseWalk, module: String) -> RegenReverseWalk {
+  match map_lookup(m: walk.seen, key: module) {
+    Present { value: _ } => walk
+    Absent => RegenReverseWalk {
+      reached: list_push(walk.reached, module),
+      seen: map_insert(m: walk.seen, key: module, value: true),
+      queue: list_push(walk.queue, module)
+    }
+  }
+}
+
+fn regen_walk_step(walk: RegenReverseWalk, adjacency: Map<String, List<String>>) -> RegenReverseWalk {
+  match walk.queue |> first {
+    Absent => walk
+    Present { value: module } =>
+      let popped = RegenReverseWalk { reached: walk.reached, seen: walk.seen, queue: walk.queue |> skip(1) }
+      match map_lookup(m: adjacency, key: module) {
+        Absent => popped
+        Present { value: importers } => fold(importers, init: popped, f: fn(acc, importer) { regen_walk_absorb(walk: acc, module: importer) })
+      }
+  }
+}
+
+// THE REVERSE CLOSURE: the edited modules and every module from which one of them is reachable along the
+// edges. The host realizes the same walk over its edge index; the lockstep holds the two to one answer.
 fn regen_reverse_closure(edited: List<String>, edges: List<DependencyEdge>, modules: List<String>) -> List<String> {
-  fold(modules, init: edited, f: fn(acc, m) { regen_reverse_step(reached: acc, edges: edges) })
+  let adjacency = regen_reverse_adjacency(edges: edges)
+  let start = fold(edited, init: RegenReverseWalk { reached: [], seen: empty_map(), queue: [] }, f: fn(walk, m) { regen_walk_absorb(walk: walk, module: m) })
+  let walked = fold(concat(modules, edited), init: start, f: fn(walk, step) { regen_walk_step(walk: walk, adjacency: adjacency) })
+  walked.reached
 }
 
 // A DECLARED BOOTSTRAP SOURCE IS NOT A GENERATION INPUT, and the exclusion is the declaration's
@@ -298,6 +340,49 @@ fn regen_affected_set(
         bootstrap_products: regen_bootstrap_products(reached: reached)
       }
     }
+  }
+}
+
+// THE SEED'S BUILD INPUTS ARE GENERATION INPUTS (gunbc.plans.read_set_convergence P2 and A1). Every mirror
+// is emitted by the seed, so an edit to anything that builds it -- gunbc.seed_build_inputs, declared once
+// and read with v2.std.read_set's one matcher: the seed tree, the workspace manifest and lockfile, the
+// toolchain pin, the cargo configuration -- can change any mirror, and a scope that read only `.dag` edits
+// would silently leave stale mirrors. Heal's own products are excluded because heal writes them: the
+// committed mirrors arrive here already translated to their modules (an edited mirror re-adjudicates that
+// mirror), and the seed-build artifacts are gunbc.seed_build_artifact_emit's roster (`.cargo/config.toml`
+// among them), read here so the two never drift.
+fn regen_seed_source_edits(paths: List<String>) -> List<String> {
+  let products = list_map(xs: seed_build_artifacts(), f: fn(a) { artifact_path(a: a) })
+  paths |> filter(p =>
+    (seed_build_input_members |> any(m => read_set_member_covers(member: m, path: p)))
+      && !regen_list_has(items: products, item: p))
+}
+
+// THE BOUND A CONSUMER OVER A WHOLE CHANGE ASKS FOR. Three things make the answer the whole population,
+// because a per-mirror selection cannot see them:
+// - a seed build input changed (above);
+// - the module POPULATION changed: a `.dag` file was added or deleted (`population_changes`). Whether the
+//   new module gets a mirror, or the departed one leaves an orphaned committed mirror, is decided by
+//   emission over the whole population; a scope keyed on today's module-to-mirror join would select
+//   nothing for either and let the round answer no affected mirrors over a stale population;
+// - the `.dag` bound itself answers it (an edit under the generation-input prefixes).
+// An unlocatable edit still refuses first.
+fn regen_affected_set_over_change(
+  non_module_paths: List<String>,
+  population_changes: List<String>,
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> AffectedSetBound {
+  let sources = regen_seed_source_edits(paths: non_module_paths)
+  if count(unlocatable) == 0 && count(sources) > 0 {
+    WholePopulation { edited: edited, generation_inputs: sources }
+  } else if count(unlocatable) == 0 && count(population_changes) > 0 {
+    WholePopulation { edited: edited, generation_inputs: population_changes }
+  } else {
+    regen_affected_set(edited: edited, unlocatable: unlocatable, edges: edges, compared: compared, modules: modules)
   }
 }
 

@@ -811,8 +811,16 @@ data srv3_srv4_fabric_slots_serve_ci: DesignRuling = DesignRuling {
   provenance: "Operator decision (2026-11-09, to bold-wren-111, verbatim answer \"A is fine\" to: \"hand srv3's and srv4's fabric slots to CI in runner_slot_allocation, so 18 CI runners on each\"): srv3 and srv4 no longer carry fabric execution slots; all 18 committed slots on each serve GitHub Actions. This SUPERSEDES the operator rulings of 2026-08-21 / 2026-09-18 that made srv3-06/07 and srv4-06/07 fabric execution members. The live read that made those rulings unreasonable: bold-wren-111's 2026-11-09 read -- srv3-06/07 and srv4-06/07 are masked, have NO install trees under /opt/actions-runner, and no fabric cell or slice exists on either host; fabric runs nothing on either host.",
 }
 
+data gunbc_run_checks_only_what_its_entry_reaches: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "gunbc_run_checks_only_what_its_entry_reaches"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "OPERATOR WORDS (decided 2026-11-10, relayed by cool-badger-99 in escalation msg_006569ab; an explicit answer, not a timeout default). Question as put to the operator, verbatim: \"Rule on #16069/#16156: allow gunbc run to typecheck/realize only what its entry reaches, with the demanded_scope controls run by hand until a follow-up enrolls them?\" The operator's answer, verbatim: \"Yes, both as described\". INTERPRETATION (not operator words): this authorizes the declared rung lowering gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked (previous StructurallyGuaranteed, temporary Mitigatable) and landing #16069 with the dag/test/fixture/demanded_scope discriminators run by hand; the enrollment of those controls as an executing route is owed by the follow-up node://adhoc-0eedbb6e-a35. INFERENCE (a bet, not operator words): no new CI job is added by this ruling (ruling ci_job_budgets_closed_to_growth stands), so enrollment must fit an existing route or take its own sign-off."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    gunbc_run_checks_only_what_its_entry_reaches,
     thermal_runner_cap_lifted_2026_11_08,
     dispatch_is_continue_or_start_fresh,
     printer_start_gate_is_the_approval_not_the_ref,

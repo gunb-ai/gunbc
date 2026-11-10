@@ -50,7 +50,8 @@ pub use crate::v1_compiler_emit_core_support::{escape_json_string, EmitResult};
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust_selected;
-pub use crate::v1_compiler_infer::reconcile;
+use crate::v1_compiler_infer::DeclarationScope::{EveryDeclaration, ReachableFrom};
+pub use crate::v1_compiler_infer::{reconcile_scoped, DeclarationScope};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::{normalize_graph, NormalizeResult};
@@ -326,11 +327,12 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
     pub analyze_ownership: bool,
     pub analyze_test_references: bool,
+    pub declaration_scope: Rc<DeclarationScope>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -900,20 +902,22 @@ pub fn test_reference_diagnostics(
     }
 }
 
-pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
+pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
         analyze_complexity: false,
         analyze_ownership: true,
         analyze_test_references: true,
-    }
+        declaration_scope: Rc::new(DeclarationScope::EveryDeclaration),
+    })
 }
 
-pub fn run_settle_compile_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
+pub fn run_settle_compile_options(scope: Rc<DeclarationScope>) -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
         analyze_complexity: false,
         analyze_ownership: false,
         analyze_test_references: false,
-    }
+        declaration_scope: scope.clone(),
+    })
 }
 
 pub fn run_complexity_analysis(
@@ -3405,7 +3409,7 @@ pub fn compile_sources_selected(
 pub fn compile_sources_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<PipelineResult> {
     emit_resolved_for_target(compile_to_resolved_with_options(sources, options), target)
 }
@@ -3504,7 +3508,7 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
 
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<ResolvedPipelineResult> {
     {
         let _ = v1_rt::trace_mark("compile.frontend.begin".to_string());
@@ -3534,10 +3538,11 @@ pub fn compile_to_resolved_with_options(
                 );
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let pass = crate::v1_compiler_infer::reconcile(
+                let pass = crate::v1_compiler_infer::reconcile_scoped(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
+                    options.declaration_scope.clone(),
                 );
                 let typed = pass.graph.clone();
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());

@@ -16,9 +16,9 @@ import std.process { ProcessExit }
 // so `t.v` refuses "no field 'v' on type 'FreeMonoid'" -- and it is asserted beside the advisory so
 // the red cannot green by silencing the advisory while the mistyping stays.
 
-data unannotated_accumulator_source: String = "module test.claim.unapplied_accumulator_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype UgaItem { v: Int }\nfn probe(xs: List<UgaItem>) -> Int {\n  let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+data unannotated_accumulator_source: String = "module test.claim.unapplied_accumulator_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype UgaItem { v: Int }\nfn probe(xs: List<UgaItem>) -> Int {\n  let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
 
-data annotated_accumulator_source: String = "module test.claim.annotated_accumulator_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype UgaItem { v: Int }\nfn probe(xs: List<UgaItem>) -> Int {\n  let carried: List<UgaItem> = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+data annotated_accumulator_source: String = "module test.claim.annotated_accumulator_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype UgaItem { v: Int }\nfn probe(xs: List<UgaItem>) -> Int {\n  let carried: List<UgaItem> = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
 
 // DISCRIMINATING RED, in the repaired direction: on the parent of this change the unannotated
 // fold raises the advisory once and refuses `t.v` once; with the accumulator refined from the

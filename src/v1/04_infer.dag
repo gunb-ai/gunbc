@@ -9526,6 +9526,30 @@ fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
   (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
 }
 
+// ONE AUTHORITY FOR THE FOLD-CARRIER REFINEMENT. A fold's accumulator, when under-resolved OR an
+// unapplied generic expansion, is refined from the STEP FUNCTION'S RETURN: the step's return names
+// the element type the unapplied carrier dropped, so the next fold that reads a field of the element
+// reads it on the element rather than on the container. BOTH fold forms now reach THIS definition --
+// the ExprCall arm (`refined_call_fold_acc_type`) and the ExprMethodCall arm (`refined_fold_acc_type`)
+// -- because the refinement is ONE decision with ONE authoritative definition: the method arm
+// independently decided it, and "a second place that independently decides it is a fork." The two
+// arms in fact DISAGREED -- the method arm omitted the generic test -- leaving a method-form fold over
+// a generic carrier unrefined and the next fold refusing "no field 'v' on type 'FreeMonoid'" (the harm
+// named in gunbc.recurring_failure_mode.unapplied_generic_accumulator_types_element_as_container).
+// @ref(gunbc.design_argument::single_authority)
+fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scope: InferScope) -> Node? {
+  match fold_acc_type {
+    Present { value: acc } =>
+      if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
+        match args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+          Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+          Absent => fold_acc_type
+        }
+      } else { fold_acc_type }
+    Absent => none
+  }
+}
+
 fn method_name_is(opt: String?, expected: String) -> Bool {
   if opt == none { false } else { opt.value == expected }
 }
@@ -11153,16 +11177,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: ta } => arg_value(n: ta)
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
-        let refined_call_fold_acc_type: Node? = match call_fold_acc_type {
-          Present { value: acc } =>
-            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
-              match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-                Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-                Absent => call_fold_acc_type
-              }
-            } else { call_fold_acc_type }
-          Absent => none
-        }
+        let refined_call_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: call_fold_acc_type, args: typed_args, scope: scope)
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
           KnownMethodResolution { semantics: none, result_type: none, diagnostics: [], rest_operation: false }
         } else {
@@ -11573,16 +11588,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_emissions = infer_emissions_concat_all(chunks: map(mc_arg_infer_results, air => air.emissions))
-      let refined_fold_acc_type: Node? = match fold_acc_type {
-        Present { value: acc } =>
-          if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) {
-            match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-              Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-              Absent => fold_acc_type
-            }
-          } else { fold_acc_type }
-        Absent => none
-      }
+      let refined_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: fold_acc_type, args: typed_mc_args, scope: scope)
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
@@ -16721,15 +16727,110 @@ fn infer_item(item: Node, scope: InferScope, data_values: List<Node>) -> TypedIt
   }
 }
 
+// WHICH DECLARATIONS A TYPECHECK OWES BODIES FOR. The whole-closure typecheck is the case "every
+// declaration demanded"; a run that evaluates a fraction of its closure demands only the
+// declarations reachable from its entry (`demanded_declaration_names`). An undemanded function keeps its
+// signature (importers still resolve it) and owes no body inference: no emission, no output provenance.
+type DeclarationDemand
+  = AllDeclarations
+  | OnlyDeclarations { names: Map<String, Bool> }
+
+// A function is a declaration of kind ModuleItemFunction with a body, whatever its arity: a
+// zero-parameter entry such as `main` or `heal_tail_wet` is a function, not a value.
+fn declares_function_body(item: Node) -> Bool {
+  item.body != none && match item.module_item_kind {
+    ModuleItemFunction => true
+    _ => false
+  }
+}
+
+fn declaration_demanded(demand: DeclarationDemand, item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match demand {
+    AllDeclarations => true
+    OnlyDeclarations { names: names } =>
+      if declares_function_body(item: item) {
+        map_has(m: names, key: authored_name_at(source_indices: source_indices, node: item))
+      } else { true }
+  }
+}
+
+// The names a declaration spells anywhere in its extent: every node's authored name and its
+// kernel name, through body, parameters, annotations, transport, properties and uses. A SUPERSET
+// of what the declaration references (a local that shares a declaration's spelling over-demands;
+// nothing it names is missed), so an unreached verdict is never wrong, only less narrow.
+fn spelled_names_into(n: Node, source_indices: Map<String, NewlineIndex>, acc: Map<String, Bool>) -> Map<String, Bool> {
+  let own = map_insert(map_insert(acc, authored_name_at(source_indices: source_indices, node: n), true), n.name, true)
+  let own = fold(n.children, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a))
+  let own = fold(n.params, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a))
+  let own = fold(n.properties, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a))
+  let own = fold(n.uses, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a))
+  let own = match n.body { Present { value: b } => spelled_names_into(n: b, source_indices: source_indices, acc: own)  Absent => own }
+  let own = match n.type_annotation { Present { value: b } => spelled_names_into(n: b, source_indices: source_indices, acc: own)  Absent => own }
+  match n.transport { Present { value: b } => spelled_names_into(n: b, source_indices: source_indices, acc: own)  Absent => own }
+}
+
+// The declarations a requested function transitively demands, over the whole closure: a
+// declaration is demanded when its authored name is spelled in a demanded declaration (or is a seed).
+// Computed from the parsed-and-resolved modules before any body is inferred, so it reads no types.
+// Non-function declarations are always checked (declaration_demanded), but their spelled names
+// still extend the closure, because a data row or type may name a function.
+fn demanded_declaration_names(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  let items = flat_map(modules, m => module_items(n: m.module))
+  let seeded = fold(seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  // Index the function bodies by authored name once; every non-function declaration is wanted, so its
+  // spelled names are the first wave. Each later wave scans ONLY the bodies of names newly demanded,
+  // so a declaration is scanned at most once per name (linear in the closure, not rounds x items).
+  let fn_index = fold(items, init: empty_map(), f: (idx, item) =>
+    if declares_function_body(item: item) {
+      let nm = authored_name_at(source_indices: source_indices, node: item)
+      map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item))
+    } else { idx })
+  let first = fold(items, init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, item) =>
+    if declares_function_body(item: item) { w } else { demand_wave_add(w: w, item: item, source_indices: source_indices) })
+  demand_wave_loop(w: first, fn_index: fn_index, source_indices: source_indices).demanded
+}
+
+fn demand_wave_add(w: DemandWave, item: Node, source_indices: Map<String, NewlineIndex>) -> DemandWave {
+  let spelled = spelled_names_into(n: item, source_indices: source_indices, acc: empty_map())
+  fold(map_keys(spelled), init: w, f: (acc, nm) =>
+    if map_has(m: acc.demanded, key: nm) { acc }
+    else { DemandWave { demanded: map_insert(acc.demanded, nm, true), fresh: list_push(acc.fresh, nm) } })
+}
+
+fn demand_wave_loop(w: DemandWave, fn_index: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> DemandWave {
+  if count(w.fresh) == 0 { w } else {
+    let next = fold(w.fresh, init: DemandWave { demanded: w.demanded, fresh: [] }, f: (acc, nm) =>
+      fold(match map_get(fn_index, nm) { Present { value: l } => l  Absent => [] }, init: acc, f: (a2, item) => demand_wave_add(w: a2, item: item, source_indices: source_indices)))
+    demand_wave_loop(w: next, fn_index: fn_index, source_indices: source_indices)
+  }
+}
+
+type DemandWave { demanded: Map<String, Bool>, fresh: List<String> }
+
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
+  infer_items_demanded(items: items, scope: scope, demand: AllDeclarations)
+}
+
+fn infer_items_demanded(items: List<Node>, scope: InferScope, demand: DeclarationDemand) -> List<TypedItemResult> {
   // THE SAME DATA THE EMITTER SHOWS THE AUTHORITY. One filter, from this module's own items, is
   // what `service_endpoint_supply` asks about -- the emitter hands over the very same population
   // through `service_data_values`, because two consumers filtering their item lists differently is
   // the endpoint fork again, one level down.
   let data_values = service_data_values(items: items)
   map(items, item =>
+    if !declaration_demanded(demand: demand, item: item, source_indices: scope.type_env.source_indices) {
+      TypedItemResult { item: Node {
+        ident: Absent,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, params: item.params,
+        inferred: item.inferred, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
+        connective: item.connective, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: item.match_pattern, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+      }, emissions: infer_emissions_concat_all(chunks: []) }
+    } else {
     let r = infer_item(item: item, scope: scope, data_values: data_values)
-    TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope)), right: infer_emissions_of_diagnostics(diagnostics: equality_item_body_key_rows(item: r.item, scope: scope)))) })
+    TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope)), right: infer_emissions_of_diagnostics(diagnostics: equality_item_body_key_rows(item: r.item, scope: scope)))) }
+    })
 }
 
 fn is_type_variable_name(name: String) -> Bool {
@@ -19384,13 +19485,64 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
   ResolvedFuncEnv { name: func_env.name, local: bound_local, parents: func_env.parents }
 }
 
+fn type_env_over_symbol_index(env: TypeEnv, symbol_index: SymbolIndex) -> TypeEnv {
+  TypeEnv { module_path: env.module_path,
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: env.ancestry_str_bindings,
+    parents: env.parents,
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names,
+    symbol_index: symbol_index,
+    unit_variant_index: env.unit_variant_index,
+    unit_variant_index_observed: env.unit_variant_index_observed,
+    equality_by_target: env.equality_by_target
+  }
+}
+
+// Operation entries of every service in the closure, keyed by service name. Reads only the closure
+// symbol index and source indices, so it is identical for every module of one typecheck pass:
+// typecheck_scoped computes it once and hands it to each module (it used to be rebuilt per module,
+// modules x services x operations).
+fn service_census_registry(env: TypeEnv) -> Map<String, List<OpEntry>> {
+  let scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
+    match map_get(env.symbol_index.services, sname) {
+      Present { value: sentry } =>
+        let sitem = sentry.item
+        let entries = sitem.children |> map(c =>
+          OpEntry {
+            name: authored_name_at(source_indices: env.source_indices, node: c),
+            outputs: inferred_to_outputs(
+              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
+              span: c.span,
+              source_indices: env.source_indices
+            ),
+            params: c.params,
+            rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
+          }
+        )
+        InferScopeComponents {
+          svc_registry: map_insert(acc.svc_registry, sname, entries),
+          svc_locals: acc.svc_locals
+        }
+      Absent => acc
+    }
+  )
+  scope.svc_registry
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
     module_name: String,
-    global_variant_base: Map<String, TypeBinding>) -> ModuleContext {
+    global_variant_base: Map<String, TypeBinding>,
+    service_census: Map<String, List<OpEntry>>?) -> ModuleContext {
   let local = fold_module_contributions(
     remaining: contributions,
     resolved_items: [],
@@ -19421,29 +19573,11 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
-  let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
-    match map_get(env.symbol_index.services, sname) {
-      Present { value: sentry } =>
-        let sitem = sentry.item
-        let entries = sitem.children |> map(c =>
-          OpEntry {
-            name: authored_name_at(source_indices: env.source_indices, node: c),
-            outputs: inferred_to_outputs(
-              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
-              span: c.span,
-              source_indices: env.source_indices
-            ),
-            params: c.params,
-            rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
-          }
-        )
-        InferScopeComponents {
-          svc_registry: map_insert(acc.svc_registry, sname, entries),
-          svc_locals: acc.svc_locals
-        }
-      Absent => acc
-    }
-  )
+  // The census is a fact of the closure, not of this module: one computation per typecheck pass.
+  let census_registry = match service_census {
+    Present { value: c } => c
+    Absent => service_census_registry(env: env)
+  }
   // A SERVICE ROOT IS BOUND ONLY WHERE ITS SERVICE IS DECLARED OR IMPORTED. The closure census
   // supplies operation entries for a qualified service path; it binds no bare root. It used to: every
   // service in the closure put its root into every module's locals, and the locals fold below writes
@@ -19458,7 +19592,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
+    svc_registry: map_merge(census_registry, local.svc_registry),
     svc_locals: local.svc_locals
   )
   let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
@@ -20678,6 +20812,10 @@ fn equality_synthetic_fn(module_name: String, name: String, params: List<Node>, 
 }
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>) -> TypecheckModuleResult {
+  typecheck_module_demanded(resolved: resolved, parent_index: parent_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: equality_by_target, demand: AllDeclarations, service_census: Absent)
+}
+
+fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>, demand: DeclarationDemand, service_census: Map<String, List<OpEntry>>?) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, equality_by_target: equality_by_target)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -20722,7 +20860,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     resolved_imports: resolved.resolved_imports,
     env: env,
     module_name: resolved_module_name,
-    global_variant_base: global_variant_base
+    global_variant_base: global_variant_base,
+    service_census: service_census
   )
 
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
@@ -20746,7 +20885,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     in_flight_lambda_param_names: [],
     enclosing_declared_type_param_names: []
   }
-  let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
+  let typed_item_results = infer_items_demanded(items: ctx.resolved_items, scope: infer_scope, demand: demand)
   let typed_items = map(typed_item_results, tir => tir.item)
   let infer_emissions = infer_emissions_concat_all(chunks: map(typed_item_results, tir => tir.emissions))
   let updated_func_env = populate_output_provenance(
@@ -21230,12 +21369,25 @@ type ReconciledPass {
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckPass {
+  typecheck_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: EveryDeclaration)
+}
+
+// Which declarations a typecheck owes bodies for. EveryDeclaration is the compile / emit / witness
+// obligation; ReachableFrom is a run's: the requested functions and what they transitively spell.
+type DeclarationScope = EveryDeclaration | ReachableFrom { requested: List<String> }
+
+fn typecheck_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, scope: DeclarationScope) -> TypecheckPass {
+  let demand = match scope {
+    EveryDeclaration => AllDeclarations
+    ReachableFrom { requested: requested } => OnlyDeclarations { names: demanded_declaration_names(modules: graph.modules, seeds: requested, source_indices: source_indices) }
+  }
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
   )
   let symbol_index = build_symbol_index_census(modules: graph.modules, source_indices: source_indices)
   let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
+  let service_census = service_census_registry(env: type_env_over_symbol_index(env: compiler_kernel_type_env(source_indices: source_indices, intern_table: intern_table), symbol_index: symbol_index))
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
@@ -21251,7 +21403,9 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
       source_indices: source_indices,
       intern_table: intern_table,
       symbol_index: symbol_index,
-      global_variant_base: global_variant_base
+      global_variant_base: global_variant_base,
+      demand: demand,
+      service_census: service_census
     )
   )
   let modules = graph.modules |> flat_map(rm =>
@@ -21343,7 +21497,9 @@ fn realize_module(
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   symbol_index: SymbolIndex,
-  global_variant_base: Map<String, TypeBinding>
+  global_variant_base: Map<String, TypeBinding>,
+  demand: DeclarationDemand,
+  service_census: Map<String, List<OpEntry>>
 ) -> RealizeState {
   match map_get(state.module_index, name) {
     Present { value: _ } => state
@@ -21359,11 +21515,13 @@ fn realize_module(
               source_indices: source_indices,
               intern_table: intern_table,
               symbol_index: symbol_index,
-              global_variant_base: global_variant_base
+              global_variant_base: global_variant_base,
+              demand: demand,
+              service_census: service_census
             )
           )
           let parent_diagnostics = missing_parent_env_diagnostics(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target)
+          let tc_result = typecheck_module_demanded(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target, demand: demand, service_census: Present { value: service_census })
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
@@ -21493,7 +21651,11 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, index: Map<String, T
 }
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ReconciledPass {
-  let pass = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
+  reconcile_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: EveryDeclaration)
+}
+
+fn reconcile_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, scope: DeclarationScope) -> ReconciledPass {
+  let pass = typecheck_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: scope)
   let typed = pass.graph
   let index_seed: Map<String, TypedModule> = empty_map()
   let index = fold(typed.modules, init: index_seed, f: (acc, m) =>

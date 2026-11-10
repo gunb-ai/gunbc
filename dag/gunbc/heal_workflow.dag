@@ -203,6 +203,11 @@ fn heal_checkout_step() -> Step {
 // a nested partition or a hand-maintained file left at the head beside base's definitions is a crate
 // that is neither base nor head, which is how #15175 (E0599) and #14876 (26 E0308/E0282 in
 // `v1-stage0-std-core`) refused in round 1.
+//
+// ONE COMMIT IS BOTH THE BOOTSTRAP AND, ONCE SCOPED, THE COMPARISON (gunbc.plans.read_set_convergence P2):
+// a scoped round (switched on in P2b, gunbc.ci.ci_spec gunbc_ci_stage0_round_invoke) observes the exact
+// two-dot difference between the base commit bound below and HEAD (required_regen_host
+// scoped_round_change_diff), for a pull-request run and a manual dispatch alike.
 fn heal_stage0_round_step() -> Step {
   RunStep {
     name: Present { value: "Converge the stage0 mirrors to the seed's own fixed point" },
