@@ -25,7 +25,7 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secret
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, FederationPermissionDenied,
-  heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cells, observe_and_classify,
+  heal_publisher_dedicated_federation, impersonation_cells, observe_and_classify,
   rest_refusal_text, outcome_is_not_found, outcome_is_forbidden, StandingPoolImpersonation, dedicated_federation_input_refusals }
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
@@ -224,7 +224,7 @@ fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
 // (gunbc.auth.managed_host_boot_federation provisioned_boot_federations), in managed-host order.
 data gcp_iam_converge_targets: List<DedicatedFederation> = concat(
   concat(
-    [heal_publisher_dedicated_federation(), private_heal_publisher_dedicated_federation()],
+    [heal_publisher_dedicated_federation()],
     map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f)),
   ),
   concat(
