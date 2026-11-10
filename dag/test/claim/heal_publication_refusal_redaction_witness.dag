@@ -1,10 +1,16 @@
 module test.claim.heal_publication_refusal_redaction_witness
 
-// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY AND NO CAUSE (redaction hardening, gunbc#15710).
+// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY, AND ONLY THE CAUSE THE HOST DECLARES FROM THE TYPE
+// (redaction hardening, gunbc#15710; cause restoration after the 2026-11-10 heal-publish outage).
 // gunbc.heal_publication rest_refusal_text is the one text every publish-path REST refusal reaches
 // stderr through (exit_failure, via refused_exit, the readback refusals, the PR-state read and the
 // receipt comment), including the not-fast-forward arm, which used to print the raw body directly.
-// FAKE-SECRET-MARKER is planted where a credential or echoed request could sit.
+// FAKE-SECRET-MARKER is planted where a credential or echoed request could sit. The undecodable arm is
+// the one arm that keeps a cause, and it keeps it because the host mints it from the DECLARED type
+// (src/v1/stage0/src/v1_interpreter.rs rest_response_declared_cause, whose own test plants
+// FAKE-SECRET-MARKER in every body-derived payload and asserts it does not reach this text): the
+// publisher had to read 'status 200 undecodable' with no cause for every PR it read while the
+// interpreter knew the body failed at NoWireContract on PullRequestState.
 import std.types { Bool, String }
 import std.algebra { string_contains }
 import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -13,6 +19,11 @@ import gunbc.heal_publication { rest_refusal_text }
 fn marker() -> String { "FAKE-SECRET-MARKER" }
 
 fn carries_no_marker(text: String) -> Bool { !string_contains(s: text, pattern: marker()) }
+
+// The text v1_interpreter rest_response_declared_cause mints for the cause the 2026-11-10 outage printed.
+fn no_wire_contract_cause() -> String {
+  "body did not inhabit the declared output: no CoproductWireContract row is realized for this coproduct and its module declares no wire_contract, so its wire spelling is undeclared (coproduct PullRequestState)"
+}
 
 test fn witness_a_status_refusal_keeps_only_its_status() -> Bool {
   let t = rest_refusal_text(o: RestStatusRefused { status: 422, body: "{\"message\":\"Update is not a fast forward FAKE-SECRET-MARKER\"}" })
@@ -24,7 +35,10 @@ test fn witness_a_transport_refusal_withholds_its_cause() -> Bool {
   t == "transport refused (cause withheld on a credential path)" && carries_no_marker(text: t)
 }
 
-test fn witness_an_undecodable_answer_withholds_its_cause() -> Bool {
-  let t = rest_refusal_text(o: RestBodyUndecodable { status: 201, cause: "expected sha near FAKE-SECRET-MARKER" })
-  t == "status 201 undecodable (cause withheld on a credential path)" && carries_no_marker(text: t)
+test fn witness_an_undecodable_answer_publishes_the_declared_side_cause() -> Bool {
+  let t = rest_refusal_text(o: RestBodyUndecodable { status: 200, cause: no_wire_contract_cause() })
+  t == join(["status 200 undecodable (", no_wire_contract_cause(), ")"], "")
+    && string_contains(s: t, pattern: "CoproductWireContract")
+    && string_contains(s: t, pattern: "PullRequestState")
+    && carries_no_marker(text: t)
 }

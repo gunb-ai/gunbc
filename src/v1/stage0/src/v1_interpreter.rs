@@ -21299,7 +21299,7 @@ fn decide_rest_exchange(
                 return refused(rest_body_undecodable_value(
                     ctx,
                     status,
-                    format!("body did not inhabit the declared output: {}", refusal),
+                    rest_response_declared_cause(&refusal),
                 ));
             }
         }
@@ -22143,6 +22143,35 @@ pub enum RestResponseDecodeCause {
     /// A field declared `std.decimal` `ExactDecimal` was answered by a JSON value that is not a
     /// finite decimal number whose digits fit the record's Int units.
     NotAnExactDecimal { json_text: String },
+}
+
+/// THE DECLARED-SIDE CAUSE TEXT, safe to publish on a credential path. The `Display` below can carry a
+/// value the RESPONSE put there — `spelling`, `json_text`, the wire spelling of an ambiguous arm — and this
+/// string leaves the interpreter inside refusal text that the publish path may echo, which is why
+/// `rest_refusal_text` published only 'status 200 undecodable' and the 2026-11-10 heal-publish outage
+/// (every `github.Pulls.Get` refused at `NoWireContract`) was undiagnosable from CI. This rendering keeps
+/// what is DECLARED — the cause kind, the coproduct's name, the encoding and naming policy, the row count
+/// — and drops what the body supplied. `field_path` is left out for the same reason: a record decode builds
+/// its path from the keys the object PRESENTED, not from the fields the type declared, so a path segment
+/// can be body text.
+fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
+    let declared = match &refusal.cause {
+        RestResponseDecodeCause::DeclarationUnresolved => "the coproduct's declaration identity is unresolved".to_string(),
+        RestResponseDecodeCause::NoWireContract => "no CoproductWireContract row is realized for this coproduct and its module declares no wire_contract, so its wire spelling is undeclared".to_string(),
+        RestResponseDecodeCause::ModuleWireContractUnresolved { .. } => "the declaring module's wire_contract does not resolve to an encoding".to_string(),
+        RestResponseDecodeCause::AmbiguousWireContract { count } => format!("{} CoproductWireContract rows name this coproduct", count),
+        RestResponseDecodeCause::UnsupportedEncoding { encoding } => format!("the contract's encoding {} is not a nullary JSON string encoding", encoding),
+        RestResponseDecodeCause::UnsupportedNaming { naming } => format!("the contract's naming policy {} has no realization here", naming),
+        RestResponseDecodeCause::NotAString { json_kind } => format!("the member is a {} where a string was declared", json_kind),
+        RestResponseDecodeCause::UnknownSpelling { .. } => "the string names no arm under the contract's naming policy".to_string(),
+        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { .. } => "a renamed member is spelled by its authored name, which is not its declared wire key".to_string(),
+        RestResponseDecodeCause::AmbiguousWireSpelling { .. } => "both the declared wire key and the authored name of one renamed member are present".to_string(),
+        RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
+    };
+    format!(
+        "body did not inhabit the declared output: {} (coproduct {})",
+        declared, refusal.coproduct
+    )
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -31560,5 +31589,49 @@ mod t9_host_recursion_probes {
             value = closure(&body, Env::with_binding(&Env::empty(), f, value));
         }
         drop(value);
+    }
+
+    /// THE UNDECODABLE CAUSE IS DECLARED-SIDE ONLY (heal-publish outage, 2026-11-10). The publish path
+    /// prints `rest_response_declared_cause` on a credential path (gunbc.heal_publication
+    /// rest_refusal_text), so nothing the RESPONSE presented may appear in it: the cause kind, the
+    /// coproduct, the declared encoding/naming/count are kept; the strings the body presented are dropped;
+    /// and the located `field_path` is dropped because a record decode builds it from the keys the object
+    /// presented, not from the fields the type declared.
+    #[test]
+    fn undecodable_cause_is_declared_side_only() {
+        let located = |cause: RestResponseDecodeCause| RestResponseDecodeRefusal {
+            field_path: "pulls.presented-key".to_string(),
+            coproduct: "PullRequestState".to_string(),
+            cause,
+        };
+        let no_contract =
+            rest_response_declared_cause(&located(RestResponseDecodeCause::NoWireContract));
+        assert!(
+            no_contract.contains("CoproductWireContract")
+                && no_contract.contains("PullRequestState"),
+            "the cause lost what the publisher needs to diagnose: {no_contract}"
+        );
+        for presented in ["presented-key", "pulls."] {
+            assert!(
+                !no_contract.contains(presented),
+                "declared-side cause echoed located body path: {no_contract}"
+            );
+        }
+        let spelling =
+            rest_response_declared_cause(&located(RestResponseDecodeCause::UnknownSpelling {
+                spelling: "FAKE-SECRET-MARKER".to_string(),
+            }));
+        assert!(
+            !spelling.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the presented spelling: {spelling}"
+        );
+        let decimal =
+            rest_response_declared_cause(&located(RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: "FAKE-SECRET-MARKER".to_string(),
+            }));
+        assert!(
+            !decimal.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the presented number: {decimal}"
+        );
     }
 }

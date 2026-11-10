@@ -232,14 +232,18 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
   }
 }
 
-// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY AND NO CAUSE TEXT. Every caller here runs with a
-// credential in hand (the App installation token on the writes and readbacks, the job token on the
-// PR-state read and the receipt comment), and the text reaches stderr through exit_failure. A response
-// body or a transport cause can echo request material, so only the HTTP status is kept; GitHub error
-// bodies have no closed-vocabulary code to keep (compare gunbc.github_effect_perform
-// publisher_refusal_text, which keeps Google's). A credential refused before dispatch sent no request
-// and holds no body, so it keeps its access-refusal reason (extdeps.transports.rest
-// rest_credential_refusal_cause).
+// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY, AND ONLY THE CAUSE THE HOST DECLARES SAFE. Every caller
+// here runs with a credential in hand (the App installation token on the writes and readbacks, the job token
+// on the PR-state read and the receipt comment), and the text reaches stderr through exit_failure. A
+// response body or a transport cause can echo request material, so a transport cause stays withheld and
+// only the HTTP status is kept (compare gunbc.github_effect_perform publisher_refusal_text, which keeps
+// Google's). A credential refused before dispatch sent no request and holds no body, so it keeps its
+// access-refusal reason (extdeps.transports.rest rest_credential_refusal_cause). An UNDECODABLE BODY keeps
+// its cause, because the host mints that cause from the DECLARED type only
+// (src/v1/stage0/src/v1_interpreter.rs rest_response_declared_cause: cause kind, coproduct, encoding,
+// naming, count) and never from what the body presented: the 2026-11-10 heal-publish outage printed
+// 'status 200 undecodable' for two days of runs while the interpreter knew the body had failed at
+// NoWireContract on `PullRequestState`. A withheld cause is not a safe refusal, it is an un diagnosable one.
 fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
     RestStatusRefused { status, body: _ } => concat("status ", to_string(status as Int))
@@ -248,7 +252,7 @@ fn rest_refusal_text(o: RestRefusal) -> String {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
       cause as String
     }
-    RestBodyUndecodable { status, cause: _ } => join(["status ", to_string(status as Int), " undecodable (cause withheld on a credential path)"], "")
+    RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable (", cause, ")"], "")
   }
 }
 
