@@ -49,6 +49,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
   srv1_boot_path_run_ready_duration,
   srv1_boot_path_window_router_counting_2026_11_09, srv1_router_window_count_balances, srv1_boot_path_incident_2026_11_09,
+  srv1_bash_emit_capability_gaps,
   srv1_installed_boot_path_artifacts_2026_11_09,
   srv1_serving_replica_roster,
   srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
@@ -581,6 +582,27 @@ test fn the_rendered_boot_path_pins_the_card_from_the_profile_row() -> Bool {
     && !string_contains(s: launcher, pattern: "NO_CARD_UUID_IN_PROFILE")
     && !string_contains(s: srv1_render_replica_engine_args(), pattern: "NO_CARD_UUID_IN_PROFILE")
     && !string_contains(s: srv1_render_replica_helper(), pattern: "NO_CARD_UUID_IN_PROFILE")
+}
+
+// EACH GAP ROW POINTS AT A RENDER THAT ACTUALLY CARRIES A MARKER. Declared debt rots in two ways: a marker whose
+// stated trigger names nothing real, or a gap row that no artifact depends on. So the gap rows are checked as
+// references -- four constructs, each naming a renderer in this module, each of those renderers covered by the
+// text of one of the two bash-emit markers -- and not as a paragraph about how hard the bash lane is.
+@test
+@untrusted -- the gaps themselves were established by reading the bash lane (its builders, node kinds and lexical
+  phrases) on 2026-11-10; this claim checks the ROWS against this module's artifacts, not against that lane.
+test fn each_declared_bash_emit_gap_points_at_a_marked_render() -> Bool {
+  let gaps = srv1_bash_emit_capability_gaps
+  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
+  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
+  gaps.length() == 4
+    && gaps.all(g =>
+      g.construct as String != ""
+        && g.what_would_close_it as String != ""
+        && string_contains(s: g.verified_on_utc as String, pattern: "2026-11-10T"))
+    && gaps.all(g =>
+      string_contains(s: launcher_marker, pattern: g.used_by as String)
+        || string_contains(s: command_marker, pattern: g.used_by as String))
 }
 
 test fn every_hand_composed_script_carries_its_own_marker() -> Bool {

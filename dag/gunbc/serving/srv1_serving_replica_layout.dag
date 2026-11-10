@@ -1213,7 +1213,56 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
 // taste. That is also why migrating the medium here is not free: the installed bytes ARE this render,
 // digest-matched on the host, so an emitter swap must reproduce them exactly or the receipts desync from the
 // machine. The debt is the medium, not the artifact.
-data srv1_container_command_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_container_command_lines — the container's inner command is hand-composed strings (concat over literals), admitted as a capture-and-digest-pinned receipt: the witness refuses any render whose lines differ from the command the live containers ran on 2026-11-09, and the installer parses and dry-runs it with the serving image's own bash. DISSOLVES WHEN the same command is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ContainerRunShape/Srv1LaunchConfig rows, KEEPING that byte-for-byte control against docker inspect .Config.Cmd so the migration changes the medium and not the artifact.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): v2.extdeps.languages.bash_build exposes about forty builders -- words (literal, variable, compound, concat, command substitution), commands, and/or chains, if and if-else, subshell, redirection to a file, redirection of stderr to a file, assignments, test brackets, exit -- and has NO builder for the constructs this body is made of: a shell FUNCTION definition (the event logger), and the 2>&1 descriptor duplication on its redirection. v2.extdeps.languages.bash carries no node kind for function definitions, case statements or array expansion at all, so grep for those constructs in it returns nothing. The grammar rows have to grow in that lane before this body can be written as nodes; the swap is not available from this module today. Until then this is adopted hand-shell under a marker, and it is not an authority on how shell should be written.")
+// THE GAP, AS ROWS A LANE OWNER CAN PICK UP. Both markers above (and the launcher's) point at the same missing
+// vocabulary in the modeled bash route, and the claim is not "I could not be bothered": it was checked today
+// against that lane. v2.extdeps.languages.bash_build publishes ~40 builders (words, commands, assignments,
+// and/or/pipe, subshell, if, negation, test brackets, redirections, exit) and v2.extdeps.languages.bash the node
+// kinds and lexical phrases they fold through; NONE of the four constructs below has a builder or a node kind,
+// and `case`/`esac`/`;;` exist only as INGEST lexical classes in bash_command_fold.dag -- the fold can read a
+// case statement, nothing in the lane can write one. These rows are the debt's receipt: what is missing, where it
+// would be added, when this was last verified, and what would close it. Fixing them is a language-layer change
+// with its own acceptance bar (the install gates these artifacts already use); it does not belong in this
+// deployment module, and this module does not get to mint its own bash emitter to work around it.
+type BashEmitCapabilityGap {
+  construct: NonEmptyStr,
+  missing_from: NonEmptyStr,
+  used_by: NonEmptyStr,
+  verified_on_utc: NonEmptyStr,
+  what_would_close_it: NonEmptyStr,
+}
+
+data srv1_bash_emit_capability_gaps: List<BashEmitCapabilityGap> = [
+  BashEmitCapabilityGap {
+    construct: "a shell function definition (the container command's ev() logger)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build and v2.extdeps.languages.bash: no builder, no node kind, no lexical phrase" as NonEmptyStr,
+    used_by: "srv1_replica_container_command_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "a function-definition node kind plus builder in the bash lane, then this render goes through bash_emit_stmts and the marker dissolves" as NonEmptyStr,
+  },
+  BashEmitCapabilityGap {
+    construct: "the 2>&1 descriptor duplication (appending stderr to the same event log)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build has stderr-to-file and stderr-to-null builders, but no merge-stderr-into-stdout; 2>&1 appears in the lane only inside literal strings" as NonEmptyStr,
+    used_by: "srv1_replica_container_command_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "a redirection builder for descriptor duplication" as NonEmptyStr,
+  },
+  BashEmitCapabilityGap {
+    construct: "a case statement (the launcher dispatches on the replica index)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build: no builder. bash_command_fold.dag carries bash_ingest_kw_case / _kw_esac / _case_clause_sep as INGEST lexical classes only -- no production, no serializer -- so the lane can read case but cannot write it" as NonEmptyStr,
+    used_by: "srv1_replica_launcher_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "a case node kind, production and builder in the bash lane" as NonEmptyStr,
+  },
+  BashEmitCapabilityGap {
+    construct: "array assignment and ${ARRAY[@]} expansion (the launcher builds engine args, then execs them as separate words)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build and v2.extdeps.languages.bash: neither mentions arrays at all (no array token class, no expansion builder)" as NonEmptyStr,
+    used_by: "srv1_replica_launcher_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "array assignment/expansion builders -- without them an emitted exec would re-split the args, which is the bug class the rendered args file exists to remove" as NonEmptyStr,
+  },
+]
+
+data srv1_container_command_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_container_command_lines — the container's inner command is hand-composed strings (concat over literals), admitted as a capture-and-digest-pinned receipt: the witness refuses any render whose lines differ from the command the live containers ran on 2026-11-09, and the installer parses and dry-runs it with the serving image's own bash. DISSOLVES WHEN the same command is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ContainerRunShape/Srv1LaunchConfig rows, KEEPING that byte-for-byte control against docker inspect .Config.Cmd so the migration changes the medium and not the artifact.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): v2.extdeps.languages.bash_build exposes about forty builders -- words (literal, variable, compound, concat, command substitution), commands, and/or chains, if and if-else, subshell, redirection to a file, redirection of stderr to a file, assignments, test brackets, exit -- and has NO builder for the constructs this body is made of: a shell FUNCTION definition (the event logger), and the 2>&1 descriptor duplication on its redirection. v2.extdeps.languages.bash carries no node kind for function definitions, case statements or array expansion at all, so grep for those constructs in it returns nothing. The grammar rows have to grow in that lane before this body can be written as nodes; the swap is not available from this module today. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Until then this is adopted hand-shell under a marker, and it is not an authority on how shell should be written.")
 
 // The `docker run` line for one replica, with every value rendered -- no host shell variable survives into
 // it. This is the shape change that makes the adoption claim checkable: the command the container reports is
@@ -1455,7 +1504,7 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
 // inner command equals what `docker inspect` reported before the switch. Those controls do not depend on the
 // medium, and they are what makes a live switch attributable; swapping the emitter in the same diff would move
 // the bytes while a live replica was moving, and the window's evidence would then explain neither.
-data srv1_replica_launcher_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_launcher_lines — the launcher the fleet boots as of 2026-11-09 (input guards, case arms over srv1_serving_replica_specs, docker run -d with the rendered argv, the TLS copy guards, exec of the rendered engine args file) is composed from strings. The gpu.sh marker covers only the retained restore script; this is the live render, and its debt is counted here. DISSOLVES WHEN the launcher is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig/Srv1ContainerRunShape rows, KEEPING the three install-time gates that do not depend on the medium: the serving image's own bash parses the emitted inner command, a dry-run of it yields the argv docker inspect .Config.Cmd reported before the switch, and sha256(render) equals the on-host sha256 of the installed file.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): this script is a case statement over the replica roster, BASH ARRAY expansion for the engine-args vector, and a function, and v2.extdeps.languages.bash_build has no builder for any of the three -- v2.extdeps.languages.bash has no node kind for case, arrays or function definitions, so grep for those constructs in it returns nothing. The emitter cannot express a launcher of this shape today; the grammar rows must grow in that lane, and the migration is that lane's change with these gates kept, not a call-site swap here. Until then this is adopted hand-shell under a marker, not an authority on how a launcher should be written.")
+data srv1_replica_launcher_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_launcher_lines — the launcher the fleet boots as of 2026-11-09 (input guards, case arms over srv1_serving_replica_roster, docker run -d with the rendered argv, the TLS copy guards, exec of the rendered engine args file) is composed from strings. The gpu.sh marker covers only the retained restore script; this is the live render, and its debt is counted here. DISSOLVES WHEN the launcher is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig/Srv1ContainerRunShape rows, KEEPING the three install-time gates that do not depend on the medium: the serving image's own bash parses the emitted inner command, a dry-run of it yields the argv docker inspect .Config.Cmd reported before the switch, and sha256(render) equals the on-host sha256 of the installed file.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): this script is a case statement over the replica roster, BASH ARRAY expansion for the engine-args vector, and a function, and v2.extdeps.languages.bash_build has no builder for any of the three -- v2.extdeps.languages.bash has no node kind for case, arrays or function definitions, so grep for those constructs in it returns nothing. The emitter cannot express a launcher of this shape today; the grammar rows must grow in that lane, and the migration is that lane's change with these gates kept, not a call-site swap here. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Until then this is adopted hand-shell under a marker, not an authority on how a launcher should be written.")
 
 // The launcher as installed, in one string. CLI entry:
 //   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_launcher
