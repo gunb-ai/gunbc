@@ -99,9 +99,25 @@ fn refuses_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bo
 // its owner. Removing `ambiguous_leaf_value_ref_diagnostics` flips the first conjunct red (the bare
 // reference would then compile and the emitter would print a `panic!`), which is what makes this a
 // discriminating red rather than a compiler-wide refusal detector.
-test fn the_bare_ambiguous_leaf_is_refused_at_compile_time_and_the_owner_named_form_compiles() -> Bool {
+// THE RED (first conjunct, counted on its own): the BARE reference to a leaf two modules declare is
+// refused at COMPILE time with the located `AmbiguousReference` class -- the same blocking diagnostic the
+// compiler already mints for an ambiguous on-chain reference. Removing the resolution pass flips THIS red
+// (the bare reference would then compile and the emitter would print the deleted `panic!`).
+test fn the_bare_ambiguous_leaf_is_refused_at_compile_time() -> Bool {
   refuses_with_class(compile_ambiguous_leaf_fixture(entry_bare), "AmbiguousReference")
-    && compiles_clean(compile_ambiguous_leaf_fixture(entry_owner_named))
+}
+
+// POSITIVE CONTROL (second conjunct, counted on its own): the SAME shared leaf, reference names its owner.
+// This is what stops the RED from being satisfied by a compiler that refuses every shared-leaf reference.
+test fn the_owner_named_form_of_a_shared_leaf_compiles() -> Bool {
+  compiles_clean(compile_ambiguous_leaf_fixture(entry_owner_named))
+}
+
+// DISCRIMINATOR: the bare reference must NOT be a clean compile. This pins the RED as a refusal rather than
+// a completion whose diagnostics merely happen to mention the leaf -- if the pass were ever removed and the
+// panic branch were reinstated, this would go green (it compiles) and the RED above would go red.
+test fn the_bare_ambiguous_leaf_is_not_a_clean_compile() -> Bool {
+  !compiles_clean(compile_ambiguous_leaf_fixture(entry_bare))
 }
 
 // CONTROL #2 as its own claim, so the manager sees the import case counted separately from the RED: the bare
