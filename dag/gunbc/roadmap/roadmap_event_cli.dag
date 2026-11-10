@@ -3,6 +3,10 @@ module gunbc.roadmap.roadmap_event_cli
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim, string_contains }
+// The modeled file write, as every other producer of a document on disk uses it (gunbc.auth.branch_run_grant
+// writes its grant output the same way). The read-back's whole point is that the readers' answer becomes an
+// artifact the PR can quote, so it is written, not printed: a ProcessExit has no stdout.
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import std.content_hash { serialize_content_hash, Fnv1a64, content_hash_atom }
@@ -466,6 +470,9 @@ fn roadmap_event_log_read_back_cli(
     true => ExitSuccess
     false => ExitFailure {
       code: 1,
-      reason: join(["roadmap_event_log_read_back_cli: the read-back REFUSED (", report_path, "):\n", document], "") }
+      reason: join([
+        "roadmap_event_log_read_back_cli: the read-back REFUSED at ", report_path,
+        " (write error: ", wrote.error,
+        "); the document below is what the readers answered — a partial read is never quoted as a migration that completed:\n", document], "") }
   }
 }
