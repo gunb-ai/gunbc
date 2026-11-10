@@ -16964,7 +16964,8 @@ fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: 
         }
       // THE REST CARRIER SEEDS ITS ONE DECLARATION IDENTITY: rest_operation_result_type resolves
       // the synthesized carrier by the bare node name `RestResult` (04_infer.dag
-      // rest_operation_result_type -> resolve_generic_use_decl(scope.type_env, carrier)); that is
+      // rest_operation_result_type -> resolve_generic_use_decl(env: scope.type_env, n: carrier) with the
+      // synthesized carrier Node named \"RestResult\"); that is
       // the ONE spelling the reader looks up, so it is the ONE spelling demanded. The home-module
       // AND rest-service gates keep a graph without either seeding nothing extra over main.
       RestCarrier { name: _, home_module: home_module, carrier_type: carrier_type } =>
