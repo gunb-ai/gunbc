@@ -239,13 +239,22 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
 // only the HTTP status is kept (compare gunbc.github_effect_perform publisher_refusal_text, which keeps
 // Google's). A credential refused before dispatch sent no request and holds no body, so it keeps its
 // access-refusal reason (extdeps.transports.rest rest_credential_refusal_cause). An UNDECODABLE BODY keeps
-// its cause, because EVERY place that mints that cause renders it from declared facts only:
+// its cause, because on THIS route -- the interpreted one, which is what `gunbc run` executes and what
+// .github/workflows/heal-publish.yml:112 and :126 invoke -- every place that mints that cause renders it
+// from declared facts only:
 // rest_response_declared_cause (cause kind, the located DECLARED field, coproduct, encoding, naming,
 // count),
 // rest_body_read_refused_cause and rest_body_not_json_cause (fixed text; the transport io text and the
 // serde_json message are dropped), and rest_body_null_members_cause (a count; the member names are
-// withheld) -- all in src/v1/stage0/src/v1_interpreter.rs, each with a marker planted in the exact value
-// it refuses to publish. The 2026-11-10 heal-publish outage printed 'status 200 undecodable' for two
+// withheld) -- all four in src/v1/stage0/src/v1_interpreter.rs, each with a marker planted in the exact
+// value it refuses to publish. THE ROUTE IS PART OF THE CLAIM, and the other realization of the same
+// exchange does not yet hold it: src/v1/05_emit_rust.dag:19168 emits the body-read refusal with
+// cause: error.to_string() and :19178 emits the decode failure with the error's own text, both inside
+// emit_rust_rest_result_lowering reached from :18667, and a serde message can carry a spelling the body
+// presented. Nothing is compiled through the emitter on this path today, so nothing leaks; if that
+// changes, closing those two arms is a precondition of leaving this one published, and the un-closed path
+// is recorded as a receipt in
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag. The 2026-11-10 heal-publish outage printed 'status 200 undecodable' for two
 // days of runs while the interpreter knew the body had failed at NoWireContract on PullRequestState.
 // A withheld cause is not a safe refusal, it is an undiagnosable one.
 fn rest_refusal_text(o: RestRefusal) -> String {
