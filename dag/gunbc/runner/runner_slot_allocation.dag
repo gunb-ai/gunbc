@@ -684,6 +684,20 @@ fn microvm_slot_charge_is_owed_for(slot: RunnerSlotIdentity) -> Bool {
   microvm_slot_charge_is_owed(standing: microvm_slot_realization(slot: slot))
 }
 
+// THE RELEASE IS A PRECONDITION THE INSTALL ROUTE REFUSES ON, not only a row it is expected to flip
+// (review 92701). While a slot's row releases its charge, its memory is already promised to CI width;
+// the route that would make the slot real (gunbc.live_deploy.apply microvm_controller_install_wet, each
+// row's invalidated_by) must refuse until the row stops releasing -- set to MicrovmSlotRealized, or
+// deleted so the slot is unobserved and charged -- which drops the committed width back BEFORE the slot
+// can exist. A stale release can therefore not oversubscribe the host: it blocks the install instead.
+fn microvm_slots_releasing_their_charge_over(rows: List<MicrovmSlotRealizationRow>) -> List<RunnerSlotIdentity> {
+  map(filter(rows, r => !microvm_slot_charge_is_owed(standing: r.realization)), r => r.slot)
+}
+
+fn microvm_slots_releasing_their_charge() -> List<RunnerSlotIdentity> {
+  microvm_slots_releasing_their_charge_over(rows: microvm_slot_realization_rows)
+}
+
 // THE SHAKEDOWN SLOT'S CHARGE IS THE ATTEMPT'S CEILING PLUS ITS CONTROLLER'S OWN SLICE. The
 // controller runs beside the cell, not inside it (gunbc.runner.runner_microvm_slot_unit
 // microvm_controller_slice_memory_max), and that is host memory charged PER SLOT all the same: a
