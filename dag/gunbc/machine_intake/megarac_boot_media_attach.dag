@@ -30,7 +30,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacObserve,
   MegaRacReleaseOwn,
   MegaRacOwnReleasePolicy,
-  MegaRacAttachResult, SecretFileRemoved,
+  MegaRacAttachResult, SecretFileRemoved, megarac_secret_file_left, megarac_secret_file_text,
   MegaRacSessionRefused,
   SessionReleaseNotAttempted,
   MegaRacShareBinding,
@@ -241,6 +241,10 @@ fn megarac_stale_power_off_need(look: MegaRacAttachResult, image_name: NonEmptyS
     SessionReleased => none
     other => return PowerOffNotNeeded { reason: concat("the read-only look's session was ", session_release_text(standing: other)) as NonEmptyStr }
   }
+  // A LOOK THAT LEFT ITS BEARER FILE NEVER AUTHORIZES A POWER-OFF, for the reason a held session does not.
+  if megarac_secret_file_left(result: look) {
+    return PowerOffNotNeeded { reason: concat("the read-only look's CSRF header file was ", megarac_secret_file_text(standing: look.secret_file)) as NonEmptyStr }
+  }
   return match look.outcome {
     MegaRacPresentationObserved { share: ShareBound, readiness: _, cd_error: cd, general: _, configurations: c } =>
       if c.answered == false {
@@ -400,7 +404,12 @@ fn megarac_boot_media_gate(record: MegaRacMediaAttach) -> MegaRacBootMediaGate {
       match res.outcome {
         MegaRacPresentationReady { route: _, evidence: e } =>
           match res.session_release {
-            SessionReleased => MediaGateReady { evidence: e }
+            SessionReleased =>
+              if megarac_secret_file_left(result: res) {
+                MediaGateWithheld { reason: concat("media attach: the presentation is ready and the session released, but the CSRF header file was ", megarac_secret_file_text(standing: res.secret_file)) as NonEmptyStr }
+              } else {
+                MediaGateReady { evidence: e }
+              }
             other => MediaGateWithheld { reason: concat("media attach: the presentation is ready but the session was ", session_release_text(standing: other)) as NonEmptyStr }
           }
         other =>

@@ -132,6 +132,25 @@ type SessionRelease
 // residue arm of gunbc.auth.private_secret_file's bracket sets SecretFileResidueRemains.
 type MegaRacSecretFileStanding = SecretFileRemoved | SecretFileResidueRemains
 
+// THE RESIDUE IS READ, NOT ONLY RECORDED. Every admission that reads an attach result's session release
+// reads this beside it -- the boot media gate, the pre-handoff recheck, and the stale-medium power-off --
+// because a look or an attach that left its bearer file on the runner is not a clean state to boot or
+// power off from, any more than one that left its session allocated. One predicate and one rendering,
+// so the three admissions and every diagnostic line say the same thing.
+fn megarac_secret_file_left(result: MegaRacAttachResult) -> Bool {
+  match result.secret_file {
+    SecretFileRemoved => false
+    SecretFileResidueRemains => true
+  }
+}
+
+fn megarac_secret_file_text(standing: MegaRacSecretFileStanding) -> String {
+  match standing {
+    SecretFileRemoved => "removed"
+    SecretFileResidueRemains => "LEFT ON THE RUNNER (its removal did not complete; the session token may remain on disk)"
+  }
+}
+
 type MegaRacAttachResult {
   outcome: MegaRacAttachOutcome
   session_release: SessionRelease
@@ -2441,6 +2460,9 @@ fn megarac_observe_with_token(
 type PresentationStillServed
   = PresentationStillReady
   | PresentationReadyButSessionHeld { held: SessionRelease }
+  // SERVED, SESSION RELEASED, BUT THE LOOK LEFT ITS CSRF HEADER FILE ON THE RUNNER: not admitted, for the
+  // reason a held session is not (megarac_secret_file_left).
+  | PresentationReadyButSecretFileLeft
   | PresentationNoLongerReady { reason: NonEmptyStr }
   | PresentationUnobserved { reason: NonEmptyStr }
 
@@ -2461,7 +2483,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
                 CdErrorRead { code: _ } =>
                   match result.session_release {
-                    SessionReleased => PresentationStillReady
+                    SessionReleased => if megarac_secret_file_left(result: result) { PresentationReadyButSecretFileLeft } else { PresentationStillReady }
                     other => PresentationReadyButSessionHeld { held: other }
                   }
               }

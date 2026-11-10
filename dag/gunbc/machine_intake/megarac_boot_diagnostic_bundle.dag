@@ -13,7 +13,7 @@ import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.algebra { FreeSemigroup, non_empty_to_list, trim }
+import std.algebra { FreeSemigroup, non_empty_to_list, non_empty_singleton, non_empty_append, trim }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
@@ -21,7 +21,7 @@ import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
-import std.optional { Present }
+import std.optional { Absent, Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_boot_selection {
@@ -99,6 +99,7 @@ import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_
 import gunbc.machine_intake.megarac_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake.mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake.megarac_media_attach {
+  megarac_secret_file_left, megarac_secret_file_text, SecretFileResidueRemains,
   AttachReadiness,
   MegaRacAttachOutcome,
   MegaRacAttachResult,
@@ -161,6 +162,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacMediaStateUnestablishedBeforeWrite,
   MegaRacReadinessClockIncoherent,
   PresentationReadyButSessionHeld,
+  PresentationReadyButSecretFileLeft,
   PresentationUnobserved,
   MegaRacNotEnumeratedAfterRefresh,
   MegaRacOwnSessionEnded,
@@ -539,6 +541,8 @@ fn megarac_look_presentation(r: MegaRacAttachResult) -> BootPresentation {
     PresentationStillReady => Presented
     PresentationReadyButSessionHeld { held: h } =>
       PresentationSessionHeld { detail: session_release_text(standing: h) as NonEmptyStr }
+    // The presentation was served; the residue is a separate fact, reported by csrf_header_file_harness.
+    PresentationReadyButSecretFileLeft => Presented
     PresentationNoLongerReady { reason: why } => PresentationNotServed { reason: why as NonEmptyStr }
     PresentationUnobserved { reason: why } => PresentationUnread { reason: why as NonEmptyStr }
   }
@@ -632,6 +636,7 @@ fn megarac_standing_findings(raw: List<HarnessFinding>) -> List<StandingFinding>
     MegaRacEveryReadFailed { failed: ch } => [EveryReadFailed {
       channels: non_empty_failed_names(failed: ch) }]
     MegaRacCredentialMayRemain => [CredentialMayRemain]
+    MegaRacCsrfHeaderFileLeft { sessions: _ } => [CredentialMayRemain]
     MegaRacMediaAttachNotReady { record: _ } => []
     MegaRacMediaAttachSessionHeld { record: _ } => []
     MegaRacHandoffWithheld { handoff: _ } => []
@@ -974,7 +979,8 @@ fn megarac_media_attach_text(record: MegaRacMediaAttach) -> String {
         "attempt ", a, " medium '", n as String, "' sha256 ", h as String,
         "; ", megarac_stale_power_off_text(record: off),
         "; power before the session: ", chassis_observation_text(observation: p) as String,
-        "; session ", session_release_text(standing: res.session_release), "; ",
+        "; session ", session_release_text(standing: res.session_release),
+        "; CSRF header file ", megarac_secret_file_text(standing: res.secret_file), "; ",
         match res.outcome {
           MegaRacPresentationReady { route: r, evidence: e } => concat("READY via ", concat(attach_route_text(route: r), concat(": ", presentation_evidence_text(e: e))))
           other => match media_attach_outcome_reason(outcome: other) {
@@ -1002,6 +1008,10 @@ type HarnessFinding
   | MegaRacHandoffUnconfirmed { handoff: MegaRacHandoff }
   | MegaRacPresentationAfterHandoff { look: MegaRacAttachResult }
   | MegaRacCredentialMayRemain
+  // THE CSRF HEADER FILE OF ONE OR MORE MEGARAC SESSIONS WAS LEFT ON THE RUNNER, named by the session that
+  // left it. The same standing as the netrc's (CredentialMayRemain): per-attempt bearer material that may
+  // still be on disk is a fact beside the attempt, not one its fields carry.
+  | MegaRacCsrfHeaderFileLeft { sessions: FreeSemigroup<NonEmptyStr> }
 
 fn media_attach_harness(record: MegaRacMediaAttach) -> List<HarnessFinding> {
   match record {
@@ -1046,8 +1056,10 @@ fn observation_text(r: MegaRacAttachResult) -> String {
         "; general settings ", raw_read_text(r: g),
         "; configurations ", raw_read_text(r: c),
         "; session ", session_release_text(standing: r.session_release),
+        "; CSRF header file ", megarac_secret_file_text(standing: r.secret_file),
       ], "")
-    other => match media_attach_outcome_reason(outcome: other) { Present { value: w } => concat("UNOBSERVED: ", w)  Absent => "UNOBSERVED" }
+    other => concat(match media_attach_outcome_reason(outcome: other) { Present { value: w } => concat("UNOBSERVED: ", w)  Absent => "UNOBSERVED" },
+      if megarac_secret_file_left(result: r) { concat("; CSRF header file ", megarac_secret_file_text(standing: r.secret_file)) } else { "" })
   }
 }
 
@@ -1063,6 +1075,7 @@ fn recheck_text(v: PresentationStillServed) -> String {
   match v {
     PresentationStillReady => "served"
     PresentationReadyButSessionHeld { held: r } => concat("served, but the look's own session was ", session_release_text(standing: r))
+    PresentationReadyButSecretFileLeft => concat("served, but the look's own CSRF header file was ", megarac_secret_file_text(standing: SecretFileResidueRemains))
     PresentationNoLongerReady { reason: why } => concat("AFFIRMED not served: ", why as String)
     PresentationUnobserved { reason: why } => concat("UNOBSERVED (indeterminate, not a withdrawal): ", why as String)
   }
@@ -1080,6 +1093,7 @@ fn handoff_media_harness(h: MegaRacHandoff) -> List<HarnessFinding> {
       match presentation_still_served(result: a) {
         PresentationStillReady => []
         PresentationReadyButSessionHeld { held: _ } => [MegaRacPresentationAfterHandoff { look: a }]
+        PresentationReadyButSecretFileLeft => []
         PresentationNoLongerReady { reason: _ } => [MegaRacPresentationAfterHandoff { look: a }]
         PresentationUnobserved { reason: _ } => [MegaRacPresentationAfterHandoff { look: a }]
       })
@@ -2275,7 +2289,42 @@ fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> Li
   concat(match failed { Absent => []  Present { value: xs } => [MegaRacEveryReadFailed { failed: xs }] },
     concat(media_attach_harness(record: bundle.run.media),
     concat(handoff_media_harness(h: bundle.run.handoff_media),
-      if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] })))
+    concat(csrf_header_file_harness(run: bundle.run),
+      if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] }))))
+}
+
+// EVERY MEGARAC SESSION THE RUN RECORD KEEPS THAT LEFT ITS CSRF HEADER FILE, BY NAME. One finding naming
+// every such session, built only when there is one, so its list is nonempty by construction.
+fn csrf_left_by(name: NonEmptyStr, result: MegaRacAttachResult) -> List<NonEmptyStr> {
+  if megarac_secret_file_left(result: result) { [name] } else { [] }
+}
+
+fn megarac_run_csrf_left(run: MegaRacRunRecord) -> List<NonEmptyStr> {
+  concat(match run.media {
+      MegaRacMediaAttachNotAttempted { reason: _ } => []
+      MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } => csrf_left_by(name: "the media attach", result: res)
+    },
+    concat(match run.handoff_media {
+      MegaRacHandoffNotReached { reason: _ } => []
+      MegaRacHandoffWithheldAtRecheck { before: b } => csrf_left_by(name: "the pre-handoff look", result: b)
+      MegaRacHandoffAttempted { before: b, handoff: _, after: a } => concat(csrf_left_by(name: "the pre-handoff look", result: b), csrf_left_by(name: "the post-handoff look", result: a))
+    },
+    match run.end_media {
+      MegaRacEndMediaNotTaken { reason: _ } => []
+      MegaRacEndMediaObserved { look: l, end_release: er } => concat(csrf_left_by(name: "the end-of-attempt look", result: l),
+        match er { EndReleaseRan { result: r } => csrf_left_by(name: "the end-of-attempt release", result: r)  EndReleaseKeptHostOn => []  EndReleaseWithheld { reason: _ } => [] })
+    }))
+}
+
+fn csrf_header_file_harness(run: MegaRacRunRecord) -> List<HarnessFinding> {
+  let left = fold(megarac_run_csrf_left(run: run), init: Absent, f: (acc, n) => match acc {
+    Absent => Present { value: non_empty_singleton(item: n) }
+    Present { value: s } => Present { value: non_empty_append(left: s, right: non_empty_singleton(item: n)) }
+  })
+  match left {
+    Absent => []
+    Present { value: s } => [MegaRacCsrfHeaderFileLeft { sessions: s }]
+  }
 }
 
 fn megarac_boot_findings(row: MegaRacBootRow, bundle: BootDiagnosticBundle, account: MegaRacAccountReceipt) -> MegaRacBootFindings {
@@ -2323,8 +2372,10 @@ fn harness_finding_text(f: HarnessFinding) -> String {
       PresentationNoLongerReady { reason: why } => concat("the presentation was LOST at or after the boot-device and power handoff (", why as String, "): ", observation_text(r: a))
       PresentationUnobserved { reason: why } => concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", why as String, "): ", observation_text(r: a))
       PresentationReadyButSessionHeld { held: r } => concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))
+      PresentationReadyButSecretFileLeft => "after the handoff the presentation was still served"
     }
     MegaRacCredentialMayRemain => "the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"
+    MegaRacCsrfHeaderFileLeft { sessions: s } => concat("the MegaRAC CSRF header file was left on the runner by: ", concat(join(non_empty_to_list(s), ", "), "; the session token may remain on disk"))
   }
 }
 

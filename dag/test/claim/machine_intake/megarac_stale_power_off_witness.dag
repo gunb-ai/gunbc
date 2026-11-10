@@ -2,7 +2,7 @@ module test.claim.machine_intake.megarac_stale_power_off_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
-import std.algebra { non_empty_singleton }
+import std.algebra { non_empty_singleton, string_contains }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable, ChassisStatusUndecodable, chassis_observation_is_off }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
@@ -14,7 +14,7 @@ import gunbc.machine_intake.megarac_media_attach {
   ConvergeStepDetachStale,
   ConvergeStepRefuse,
   ConvergenceStep,
-  MegaRacAttachResult, SecretFileRemoved,
+  MegaRacAttachResult, SecretFileRemoved, SecretFileResidueRemains,
   MegaRacDetachAdmission,
   MegaRacDetachNotAdmitted,
   MegaRacPresentationObserved,
@@ -188,6 +188,23 @@ test fn a_look_whose_session_leaked_is_never_powered_off_for() -> Bool {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
+}
+
+// A LOOK THAT LEFT ITS CSRF HEADER FILE NEVER AUTHORIZES A POWER-OFF. The identical look -- a stale census
+// image, share bound, session released -- differing only in whether its bearer file came off the runner:
+// removed powers off for the stale image (positive control), left does not and says why.
+test fn a_look_that_left_its_csrf_file_is_never_powered_off_for() -> Bool {
+  let l = look(configurations: presenting(name: run_stale as String))
+  let clean = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleased, baseline: none, secret_file: SecretFileRemoved }
+  let left = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleased, baseline: none, secret_file: SecretFileResidueRemains }
+  (match megarac_stale_power_off_need(look: clean, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+    PowerOffForStale { stale_image: _ } => true
+    _ => false
+  })
+    && (match megarac_stale_power_off_need(look: left, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffNotNeeded { reason: r } => string_contains(s: r as String, pattern: "CSRF header file was LEFT ON THE RUNNER")
+      _ => false
+    })
 }
 
 test fn a_refused_look_is_never_powered_off_for() -> Bool {

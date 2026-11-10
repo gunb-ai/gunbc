@@ -42,7 +42,7 @@ import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
-import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, presentation_still_served }
+import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, PresentationReadyButSecretFileLeft, presentation_still_served }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.host.managed_host { managed_host_account_driving, managed_host_binding_for }
 import gunbc.host.managed_host_boot_handoff { boot_drive_handoff, BootHandoffResult, boot_handoff_not_issued }
@@ -2556,6 +2556,8 @@ fn mtcollins1_boot_handoff_when_media_ready(
     MediaGateReady { evidence: _ } => {
       let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff")
       match presentation_still_served(result: before) {
+        // A RECHECK THAT LEFT ITS BEARER FILE DOES NOT ADMIT THE HANDOFF, served or not -- the same rule
+        // the gate applies to the attach that opened it.
         PresentationStillReady => {
           let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
             SolLostAt { outcome: o } => return MediaGatedHandoff {
@@ -2583,6 +2585,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
           }
         }
         PresentationReadyButSessionHeld { held: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
+        PresentationReadyButSecretFileLeft => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationNoLongerReady { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationUnobserved { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
       }

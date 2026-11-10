@@ -3,6 +3,7 @@ module test.claim.machine_intake.megarac_media_convergence_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.algebra { non_empty_singleton, string_contains }
+import gunbc.host.boot_attempt { CredentialMayRemain, EveryReadFailed }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
@@ -33,7 +34,7 @@ import gunbc.machine_intake.megarac_media_attach {
   EnumerationDecided,
   EnumerationLookAgain,
   ImagesListingLacks,
-  MegaRacAttachResult, SecretFileRemoved,
+  MegaRacAttachResult, MegaRacSecretFileStanding, SecretFileRemoved, SecretFileResidueRemains, PresentationReadyButSecretFileLeft,
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
   MegaRacDetachEvidence,
@@ -119,7 +120,7 @@ import gunbc.machine_intake.megarac_media_attach {
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, presentation_evidence_text, MegaRacMediaAttachNotAttempted,
+  EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, megarac_handoff_media_text, megarac_standing_findings, MegaRacCsrfHeaderFileLeft, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, presentation_evidence_text, MegaRacMediaAttachNotAttempted,
 }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
@@ -406,6 +407,44 @@ test fn a_ready_presentation_with_a_leaked_session_withholds() -> Bool {
     MediaGateWithheld { reason: _ } => true
     MediaGateReady { evidence: _ } => false
   }
+}
+
+// THE RESIDUE IS READ AT THE GATE. Ready, session released, and the CSRF header file LEFT on the runner is NOT
+// admitted, and says why; the identical record with the file removed IS (positive control). And the attach line
+// the bundle prints carries the file's standing either way, so a residue is never omitted from the receipt.
+fn ready_with(secret_file: MegaRacSecretFileStanding) -> MegaRacAttachResult {
+  MegaRacAttachResult { outcome: ready_outcome().outcome, session_release: SessionReleased, baseline: none, secret_file: secret_file }
+}
+
+test fn a_ready_released_attach_that_left_its_csrf_file_withholds_and_the_removed_one_opens() -> Bool {
+  (match megarac_boot_media_gate(record: attempted(result: ready_with(secret_file: SecretFileResidueRemains))) {
+    MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "CSRF header file was LEFT ON THE RUNNER")
+    MediaGateReady { evidence: _ } => false
+  })
+    && (match megarac_boot_media_gate(record: attempted(result: ready_with(secret_file: SecretFileRemoved))) {
+      MediaGateReady { evidence: e } => e.looks == 4
+      MediaGateWithheld { reason: _ } => false
+    })
+    && string_contains(s: megarac_media_attach_text(record: attempted(result: ready_with(secret_file: SecretFileResidueRemains))), pattern: "CSRF header file LEFT ON THE RUNNER")
+    && string_contains(s: megarac_media_attach_text(record: attempted(result: ready_with(secret_file: SecretFileRemoved))), pattern: "CSRF header file removed")
+}
+
+// AND AT THE PRE-HANDOFF RECHECK: the same served look, differing only in its bearer file, is admitted when the
+// file came off and withheld when it did not, and the withheld recheck's diagnostic line names the file.
+test fn the_recheck_withholds_when_its_own_csrf_file_was_left() -> Bool {
+  let left = MegaRacAttachResult { outcome: served_look.outcome, session_release: SessionReleased, baseline: none, secret_file: SecretFileResidueRemains }
+  (match presentation_still_served(result: left) { PresentationReadyButSecretFileLeft => true _ => false })
+    && (match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false })
+    && string_contains(s: megarac_handoff_media_text(h: MegaRacHandoffWithheldAtRecheck { before: left }), pattern: "CSRF header file LEFT ON THE RUNNER")
+}
+
+// THE RESIDUE IS A STANDING FINDING: the harness names the session that left it and maps it to the same
+// CredentialMayRemain the per-attempt netrc does.
+test fn a_left_csrf_file_is_a_credential_may_remain_finding() -> Bool {
+  let f = MegaRacCsrfHeaderFileLeft { sessions: non_empty_singleton(item: "the media attach" as NonEmptyStr) }
+  string_contains(s: harness_finding_text(f: f), pattern: "left on the runner by: the media attach")
+    && count(megarac_standing_findings(raw: [f])) == 1
+    && any(megarac_standing_findings(raw: [f]), m => match m { CredentialMayRemain => true  EveryReadFailed { channels: _ } => false })
 }
 
 // CONTROL 4: still absent after the refresh. The listing lacked the name at a look that reached
