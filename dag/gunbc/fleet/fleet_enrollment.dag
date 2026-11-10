@@ -30,6 +30,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv2,
   operator_host_srv3,
   operator_host_srv4,
+  operator_host_srv14,
   operator_host_mtcollins1,
   operator_host_183527,
   operator_host_3dde7f,
@@ -140,6 +141,16 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
   HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
   HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
+  // srv14/butch: CI-ONLY (operator 2026-11-10 -- CiRunnerParticipation, NO interactive sessions), so it
+  // carries ci_runner_enrollment_participation, NOT the session-bearing participation srv1-4 carry. Added
+  // as a CI runner it does NOT change the sessions population the host_phase_status witness pins at 4
+  // runners; it joins the CI-runner population only. Backing is OwnedProvisioning { control: Bmc, delivery:
+  // InstalledViaVirtualMedia }: installed 2026-10-30 from ubuntu-24.04.3-live-server-arm64 over the BMC's
+  // USB virtual-media gadget (installer block device "Linux File-Stor_Gadget", ds=nocloud;s=/cdrom/nocloud/)
+  // -- NOT PXE, so no new delivery variant is needed (the parent's site_pxe_edge_converge lane is unrelated
+  // to how butch was delivered). Its unit identity binds via gunbc.fleet.machine_board (srv14_baseboard ->
+  // fleet_intent_board).
+  HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
   // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Its unit
   // is bind_unit_key's standing over the FRU and SMBIOS board serials already observed.
   HostEnrollmentIntent {
