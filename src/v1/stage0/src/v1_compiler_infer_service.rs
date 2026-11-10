@@ -1169,10 +1169,11 @@ pub fn imported_data_string_literal(
 pub fn data_string_literal_text(d: Rc<Node>) -> Option<String> {
     match d.body.clone() {
         Some(v) => match (*v.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+                let LiteralValue::LitStr { value: text, .. } = __rc_value.as_ref() else {
                     unreachable!()
                 };
                 if (text.clone() == "".to_string()) {
@@ -1200,10 +1201,11 @@ pub fn service_endpoint_supply(
     match crate::v1_std_core::service_config_endpoint(service.clone(), source_indices.clone()) {
         std::option::Option::None => Rc::new(ServiceEndpointSupply::EndpointNotDeclared),
         Some(endpoint_node) => match (*endpoint_node.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitStr { value: _, .. }) => {
+                let LiteralValue::LitStr { value: text, .. } = __rc_value.as_ref() else {
                     unreachable!()
                 };
                 if (text.clone() == "".to_string()) {
