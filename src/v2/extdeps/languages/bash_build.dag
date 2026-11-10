@@ -47,9 +47,13 @@ fn bash_build_word_lit(text: String) -> Node {
 // now derived, and `bash_production_fold_double_quoted_word` is the only row that
 // can spell a quoted variable.
 fn bash_build_word_var(name: String) -> Node {
-  match bash_build_word_double_quoted(parts: [bash_build_word_var_bare(name: name)]) {
-    Present { value: n } => n
-    Absent => bash_build_word_refused()
+  match bash_build_word_var_bare(name: name) {
+    Present { value: bare } =>
+      match bash_build_word_double_quoted(parts: [bare]) {
+        Present { value: n } => n
+        Absent => bash_build_word_lit(text: "")
+      }
+    Absent => bash_build_word_lit(text: "")
   }
 }
 

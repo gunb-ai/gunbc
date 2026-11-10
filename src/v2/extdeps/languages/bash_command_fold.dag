@@ -213,6 +213,22 @@ fn bash_fold_word_compound_productions() -> List<FormalProduction> {
   ]
 }
 
+// The word kinds the grammar admits as words in their own right. A quoted
+// variable is not one of them: `"$X"` is `double_quoted_word` over one
+// `var_bare_word`, so it arrives through the double-quoted row and nothing here
+// has to know that variables exist.
+fn bash_fold_word_leaf_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^bash_production_fold_lit_word,
+      rhs: [
+        grammar_formal_terminal_bound(identity: ^bash_fold_word_kind_lit, binding: ^bash_fold_word_kind_lit),
+        grammar_formal_terminal_free(identity: ^bash_token_lit)
+      ]
+    )
+  ]
+}
+
 fn bash_fold_concat_parts_leaf_production(word_kind: Symbol) -> FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_concat_parts,
