@@ -6,9 +6,10 @@ module test.claim.machine_intake.ipmi_lan_print_channel_construction_witness
 // only places in the corpus that built an IpmiChannelNumber at all. Both wrote it as a refining cast
 // (`channel: 1 as IpmiChannelNumber`), and both modules therefore resolved and then died at
 // evaluation: the checker admits an in-range Int literal cast into a range-refined carrier with no
-// diagnostic whatsoever, while the seed interpreter's eval_cast matches the target name against
-// "Float", "Int" and "String" alone (src/v1/stage0/src/v1_interpreter.rs), so a refined alias whose
-// kernel is Int falls to its refusal arm. The sanctioned construction is the bare literal in the
+// diagnostic whatsoever, while the seed interpreter's cast step matches the target name against
+// "Float", "Int" and "String" alone, so a refined alias whose kernel is Int falls to its refusal arm.
+// That seed location, with its file and line span, is carried by the ledger row cited below rather
+// than here, where nothing re-checks it. The sanctioned construction is the bare literal in the
 // refined position -- the wall in test.claim.long.where_refinement_enforcement_witness covers record
 // fields, direct returns, data inits, call args and as-casts alike -- which is how every other
 // range-refined Int value in this corpus is built, including
