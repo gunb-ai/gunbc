@@ -8759,11 +8759,11 @@ pub fn run_regen_round_cost(
 
     // THE SCOPE IS DECIDED BEFORE THE TREE IS TOUCHED (gunbc.plans.read_set_convergence P2). It is
     // asked of a child (`emission_scope_in_child`; the index dies there), or, in the re-exec'd image of
-    // the same round, read from the receipt that child wrote. A scope that selects no committed mirror
-    // is a SUCCESSFUL ROUND THAT DOES NO WORK: it returns here, before the base-mirror bootstrap, any
-    // journal or any install, so there is nothing to restore and no candidate is fabricated. The
-    // generation's own NoAffectedMirrors receipt describes the same state; reaching it from inside
-    // the convergence loop would read as a failed first generation.
+    // the same round, read from the receipt that child wrote. Computing it writes nothing to the tree.
+    // A scope that selects no committed mirror is a successful round that does no work; it returns
+    // after the journal recovery below (see there). The generation's own NoAffectedMirrors receipt
+    // describes the same state; reaching it from inside the convergence loop would read as a failed
+    // first generation.
     let scope = if !affected_scope {
         RegenEmissionScope::WholePopulation
     } else if handoff_in.is_some() {
@@ -8771,6 +8771,41 @@ pub fn run_regen_round_cost(
     } else {
         emission_scope_in_child(&workspace, source_roots, &liveness_model)?
     };
+    let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
+        .as_ref()
+        .and_then(|carried| carried.round_subject.clone());
+
+    // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
+    // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
+    // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
+    // work (gunbc.design_argument::minimize_redundancy), and it is what made the two images' populations disagree: the child restored every
+    // journaled path to the head's bytes and then re-seeded under ITS OWN rule, so a round whose
+    // parent and child disagree about the population leaves the child compiling a tree its parent
+    // never compiled, cargo rebuilds, the relink trips `ExecutableReplacedAfterHandoff`, and the
+    // refusal is correct — the measurement would otherwise describe bytes the emitting image never
+    // built. The child trusts the carried tree instead. `SourceChangedAcrossHandoff` is the guard
+    // that makes trusting safe: it compares this image's observation against the one the parent
+    // carried, so a child that found a different tree refuses rather than reporting on it.
+    if handoff_in.is_none() || !base_mirror {
+        // Recover an interrupted transaction before attempting to build or observe a new subject.
+        // THE BASE-MIRROR CHILD SKIPS THIS DELIBERATELY (manager ruling 2026-10-29, #15339): its
+        // parent journalled the head's bytes and then built the seed from the seeded tree, so a
+        // restore here would replace the very bytes the child was exec'd to report on, and the
+        // build below would compile something its parent never compiled. Every other round keeps
+        // the behaviour main has always had, including the recovery of an interrupted round.
+        if regen_convergence_journal_exists(&workspace) {
+            let subject = establish_round_subject(&mut round_subject, None, || {
+                checkpoint_subject_child(&workspace, &liveness_model)
+            })?;
+            restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        }
+    }
+
+    // THE ZERO-WORK ROUND IS ADMITTED ONLY AFTER RECOVERY. A scope that selects no committed mirror is
+    // a successful round that does no work -- but an interrupted earlier round may have left a journal
+    // and base-mirror bytes in the tree (the scope's worktree check reads `.dag` edits only), so the
+    // journal above is restored first and the success describes a clean tree. It still returns before
+    // the base-mirror bootstrap, any new journal or install, so no candidate is fabricated.
     if let RegenEmissionScope::Affected { .. } = &scope {
         let committed = committed_generated_basenames(&stage0_src)?;
         if scope_selection(&scope, &committed)?.is_empty() {
@@ -8809,36 +8844,6 @@ pub fn run_regen_round_cost(
                 round_failures: Vec::new(),
                 base_mirror_commit,
             });
-        }
-    }
-
-    let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
-        .as_ref()
-        .and_then(|carried| carried.round_subject.clone());
-
-    // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
-    // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
-    // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
-    // work (gunbc.design_argument::minimize_redundancy), and it is what made the two images' populations disagree: the child restored every
-    // journaled path to the head's bytes and then re-seeded under ITS OWN rule, so a round whose
-    // parent and child disagree about the population leaves the child compiling a tree its parent
-    // never compiled, cargo rebuilds, the relink trips `ExecutableReplacedAfterHandoff`, and the
-    // refusal is correct — the measurement would otherwise describe bytes the emitting image never
-    // built. The child trusts the carried tree instead. `SourceChangedAcrossHandoff` is the guard
-    // that makes trusting safe: it compares this image's observation against the one the parent
-    // carried, so a child that found a different tree refuses rather than reporting on it.
-    if handoff_in.is_none() || !base_mirror {
-        // Recover an interrupted transaction before attempting to build or observe a new subject.
-        // THE BASE-MIRROR CHILD SKIPS THIS DELIBERATELY (manager ruling 2026-10-29, #15339): its
-        // parent journalled the head's bytes and then built the seed from the seeded tree, so a
-        // restore here would replace the very bytes the child was exec'd to report on, and the
-        // build below would compile something its parent never compiled. Every other round keeps
-        // the behaviour main has always had, including the recovery of an interrupted round.
-        if regen_convergence_journal_exists(&workspace) {
-            let subject = establish_round_subject(&mut round_subject, None, || {
-                checkpoint_subject_child(&workspace, &liveness_model)
-            })?;
-            restore_regen_convergence_journal_for_subject(&workspace, subject)?;
         }
     }
 
