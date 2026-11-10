@@ -159,7 +159,7 @@ fn issue_command_acceptance_wet(repo: String, git_program: String = "/usr/bin/gi
 
 // One facet of the route, named. A facet that fails on srv1 must say WHICH law broke, and a ProcessExit has
 // no stdout to say it in — so the name travels in the failure reason.
-record WetFacet {
+type WetFacet {
   name: String
   ok: Bool
 }

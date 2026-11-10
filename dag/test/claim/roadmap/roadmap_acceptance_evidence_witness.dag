@@ -192,10 +192,10 @@ test fn a_retried_acceptance_is_the_same_operation_and_the_same_command_because_
     string_contains(s: key, pattern: node) && string_contains(s: key, pattern: "-acceptance-")
       && string_contains(s: key, pattern: roadmap_acceptance_receipt_digest_text(receipt: receipt))
       && !string_contains(s: key, pattern: "op-retry-head-moved"))
-  && claim("the carrier's own command equality compares the FACT and not the caller's parent guess, which is "
-             "exactly why a retry whose head moved is answered from the operation receipt as already present "
-             "instead of refused as a conflict (the wet half, over a real append and a real intervening commit, "
-             "is test.manual.issue_command_wet.issue_command_acceptance_wet)",
+  && claim(join(["the carrier's own command equality compares the FACT and not the caller's parent guess,",
+             "which is exactly why a retry whose head moved is answered from the operation receipt as already",
+             "present instead of refused as a conflict (the wet half, over a real append and a real intervening",
+             "commit, is test.manual.issue_command_wet.issue_command_acceptance_wet)"], " "),
     roadmap_event_same_command(
       a: issue_command_event(command: first, recorded_at: "2026-11-04T08:00:00Z"),
       b: issue_command_event(command: retry, recorded_at: "2026-11-04T08:00:02Z")))
