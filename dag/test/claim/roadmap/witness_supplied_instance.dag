@@ -153,14 +153,15 @@ fn witness_scratch_template() -> String {
 }
 
 // THE HOST ROUTE, IN ONE PLACE. Three supplied-root witnesses need to run an ArgvCommand on the
-// host and read its answer, and a third local copy of these three bodies was the trigger DESIGN section 6b
-// names -- "the trigger is the second local implementation of one rule". They live here, beside the
+// host and read its answer, and a third local copy of these three bodies was the trigger that
+// gunbc.design_argument::root_generalization names -- "the trigger is the second local implementation of one rule". They live here, beside the
 // prefix and the principal commands they serve, so there is one route from a witness to `id -u`,
 // `stat -c %a` and `mktemp -d`: an ArgvCommand goes in as an ArgvCommand, which is what makes a
 // refusal here a real refusal and not a string comparison.
 //
-// STILL DUPLICATED, NAMED RATHER THAN LEFT QUIET: worker_git_subtree_apply_spawn_wet_witness.dag:106-118
-// keeps its own copies of all three and worker_git_subtree_builder_wet_witness.dag:76 its own `wet_out`
+// STILL DUPLICATED, NAMED RATHER THAN LEFT QUIET:
+// test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness keeps its own `wet`, `wet_ok` and
+// `wet_out`, and test.claim.roadmap.worker_git_subtree_builder_wet_witness::wet_out its own `wet_out`
 // (whose body inlines the capture call). They are not migrated here because the spawn witness's entry is
 // refused today by the `circular dependency detected` in the roadmap_dashboard_instance_apply closure, so
 // an edit to it could not be verified by running anything -- migrating a claim file whose claims cannot
@@ -559,18 +560,18 @@ fn witness_production_writable_roots(instance: HostDashboardInstance) -> List<Fi
 // tree, and the CLI answered `workspace_root: ... names no release locus: missing member
 // .gunbc-tree-receipt (the tree receipt the locus install writes last; a locus without one was
 // interrupted)`. The CLI is right, and it is the same rule production's own drain honours:
-// `attempt_system_unit_launch_gunbc_argv_at` (dag/gunbc/roadmap/attempt_system_unit_launch.dag:575)
+// `gunbc.roadmap.attempt_system_unit_launch::attempt_system_unit_launch_gunbc_argv_at`
 // passes `workspace_root: dir` where `dir` is `attempt_system_unit_launcher_dir(instance, revision)`
 // = `helper_locus_dir(...)`, never a source copy; and the reader
-// (src/v1/stage0/src/cli_run.rs:611) requires that directory to hold a `dag` DIRECTORY plus a regular
-// file named by `release_locus_tree_receipt_name` (dag/gunbc/cli_run_workspace_root_scaffold.dag:36).
+// (`src/v1/stage0/src/cli_run.rs`'s `spawn_workspace_root_locus`) requires that directory to hold a `dag` DIRECTORY plus a regular
+// file named by `gunbc.cli_run_workspace_root_scaffold::release_locus_tree_receipt_name`.
 // So the supplied root gets its locus the only honest way: through the fold that installs one,
-// `approval_broker_tree_install_at` (dag/gunbc/host/host_effect_realize.dag:6546). That fold installs
+// `gunbc.host.host_effect_realize::approval_broker_tree_install_at`. That fold installs
 // the spine and ancestor dirs, the tree files at 0644 and the binaries at 0755 out of
 // `cargo_default_release_dir`, then reads EVERY path back through `find | sha256sum` on both sides,
 // refuses unless the two digests agree, and writes the receipt LAST through
-// `approval_broker_tree_receipt_write` (:6729). Writing the receipt by hand is what DESIGN section 5
-// calls a fabricated default: the file the CLI trusts would be one the test authored without ever
+// `gunbc.host.host_effect_realize::approval_broker_tree_receipt_write`. Writing the receipt by hand is
+// what gunbc.design_argument::fail_closed calls a fabricated default: the file the CLI trusts would be one the test authored without ever
 // installing the tree it certifies, and the "was interrupted" half of the CLI's own error message
 // would stop meaning anything.
 //

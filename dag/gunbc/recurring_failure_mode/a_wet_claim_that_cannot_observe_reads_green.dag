@@ -18,7 +18,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 data a_wet_claim_that_cannot_observe_reads_green: RecurringFailureMode = RecurringFailureMode {
   identity: "a_wet_claim_that_cannot_observe_reads_green" as NonEmptyStr,
 
-  // OUTSIDE THE LADDER, on DESIGN section 5's rule that wrongness with no observable has no rung: no claim in the
+  // OUTSIDE THE LADDER, on gunbc.design_argument::guarantee_ladder's rule that wrongness with no observable has no rung: no claim in the
   // corpus goes red when a claim's subject never ran, because the only thing a reader could test -- "did the thing
   // I meant to measure actually happen" -- lives in the claim's own head and is reported as the same Bool as a
   // real green. The ceiling is structural, not procedural: a third verdict on the lane makes the distinction part
