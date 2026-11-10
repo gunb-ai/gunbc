@@ -7,9 +7,9 @@ module test.claim.fleet.gpu_interconnect_observation_witness
 // the table. The negatives below are the load-bearing lines: the same joins over a pair with no readings, or
 // over a relayed-only collective, must answer no.
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, Nat, NonEmptyStr, String }
 import std.algebra { string_contains }
-import std.measure { Bandwidth, Microsecond, bandwidth, bandwidth_count, microsecond, microsecond_count }
+import std.measure { Bandwidth, ByteSize, Microsecond, bandwidth, bandwidth_count, byte_size, byte_size_count, microsecond, microsecond_count }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pci.identity { PciAddress }
@@ -28,6 +28,7 @@ import gunbc.fleet.gpu_interconnect_observation {
   srv1_acs_redirects_at_both_root_ports, srv1_iommu_translates_both_gpu_groups,
   srv1_interconnect_explanations, interconnect_explanations_on,
   srv1_gpu_pair_topology_readings, srv1_gpu_peer_access_readings, srv1_collective_transport_readings, CollectiveTransportReading,
+  srv1_collective_transport_readings_unloaded_2026_11_09,
   srv1_collective_read_obligation,
 }
 
@@ -125,6 +126,34 @@ fn arm_rows(arm: NonEmptyStr) -> List<CollectiveTransportReading> {
   srv1_collective_transport_readings.filter(c => (c.env_arm as String) == (arm as String))
 }
 
+// WHEN a collective row was read, in the row's own words. The loaded sweep and the unloaded re-run are two
+// different runs of the same instrument, and the claims about them are opposite; a consumer that cannot say
+// which run a row belongs to cannot tell the two stories apart, so the run is part of what the row states.
+fn read_on_of(w: Srv1ReadingWarrant) -> String {
+  match w {
+    ReadByThisSession { read_on: r, instrument: _ } => r as String
+    Relayed { asked_of: _, answered_on: _, said: s, read_obligation: _ } => s as String
+    Unread { read_obligation: o } => o as String
+  }
+}
+
+fn arm_rows_in(list: List<CollectiveTransportReading>, arm: NonEmptyStr) -> List<CollectiveTransportReading> {
+  list.filter(c => (c.env_arm as String) == (arm as String))
+}
+
+// The two arms at ONE size, within `numerator/denominator` of each other. Pinning both rows to the same
+// message size is what makes this the pair at that size and not any two rows that happen to be close: the
+// 16 KiB pair is uninteresting and would pass any tolerance, which is exactly how a vacuous control is born.
+fn arms_within(list: List<CollectiveTransportReading>, at_bytes: ByteSize, numerator: Nat, denominator: Nat) -> Bool {
+  list.any(a => list.any(b =>
+    (a.env_arm as String) == ("default" as NonEmptyStr)
+      && (b.env_arm as String) == ("NCCL_P2P_DISABLE=1" as NonEmptyStr)
+      && byte_size_count(a.message_bytes) == byte_size_count(at_bytes)
+      && byte_size_count(b.message_bytes) == byte_size_count(at_bytes)
+      && bandwidth_count(b: bus_bw_of(c: a)) * denominator >= bandwidth_count(b: bus_bw_of(c: b)) * numerator
+      && bandwidth_count(b: bus_bw_of(c: b)) * denominator >= bandwidth_count(b: bus_bw_of(c: a)) * numerator))
+}
+
 fn elapsed_of(c: CollectiveTransportReading) -> Microsecond {
   match c.elapsed {
     Present { value: e } => e
@@ -158,6 +187,60 @@ test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
     && !disabled_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
     && string_contains(s: srv1_collective_read_obligation as String, pattern: "lil-flash-next")
     && string_contains(s: srv1_collective_read_obligation as String, pattern: "re-run")
+}
+
+// THE CONTROL THE 2026-11-08 PAIR COULD NOT RUN, RUN AT LAST. Same instrument (sha 702a2bce..), same four
+// sizes, same arm order, and NOTHING serving on the host: both lil-replica units stopped and their containers
+// removed for the interval. The test is not that the numbers are close to the loaded ones -- they are not
+// supposed to be -- it is that the SIGN OF THE DIFFERENCE IS NOT A PROPERTY OF THE FLAG: loaded, the disabled
+// arm had no row at 10 GB/s and a row over 10 ms; unloaded, the disabled arm clears 10 GB/s and no unloaded row
+// takes 10 ms, and at 4 MiB and 64 MiB the two arms sit inside 25% of each other. So the 2x cannot be cited as
+// the price of NCCL_P2P_DISABLE=1, and the explanation row keeps it a Hypothesis for that reason. The loaded
+// assertions above stay exactly as they were: they describe the loaded run, and they remain first-hand.
+test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
+  let unloaded = srv1_collective_transport_readings_unloaded_2026_11_09
+  let unloaded_default = arm_rows_in(list: unloaded, arm: "default" as NonEmptyStr)
+  let unloaded_disabled = arm_rows_in(list: unloaded, arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr)
+  unloaded.length() == 8
+    && unloaded_default.length() == 4
+    && unloaded_disabled.length() == 4
+    // run identity on every row: the window, and what had to be stopped to take the read
+    && unloaded.all(c => srv1_reading_is_read(w: c.warrant)
+      && string_contains(s: read_on_of(w: c.warrant), pattern: "2026-11-09T22:40:35Z")
+      && string_contains(s: read_on_of(w: c.warrant), pattern: "replicas stopped")
+      && string_contains(s: c.instrument_sha256 as String, pattern: "702a2bce")
+      && (c.transport as String) == "SHM/direct")
+    // the two runs of the same instrument state DIFFERENT windows; no row of one can be read as the other
+    && !unloaded.any(c => string_contains(s: read_on_of(w: c.warrant), pattern: "2026-11-08T22:22"))
+    // the loaded discriminators invert here: the disabled arm reaches the 10 GB/s class, and no row is slow
+    && unloaded_disabled.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
+    && !unloaded_disabled.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
+    && !unloaded_default.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
+    // and at the two sizes where the loaded pair was ~2x apart, unloaded they are within 25%
+    && arms_within(list: unloaded, at_bytes: byte_size(4 * 1024 * 1024), numerator: 5, denominator: 4)
+    && arms_within(list: unloaded, at_bytes: byte_size(64 * 1024 * 1024), numerator: 5, denominator: 4)
+    // the obligation now names the run it was executed in, the confounder that had to be removed, and the
+    // fact that it was the re-run the earlier pair asked for
+    && string_contains(s: srv1_collective_read_obligation as String, pattern: "lil-flash-next")
+    && string_contains(s: srv1_collective_read_obligation as String, pattern: "re-run")
+    && string_contains(s: srv1_collective_read_obligation as String, pattern: "EXECUTED")
+}
+
+// A NEGATIVE FOR THE NEGATIVE: if the unloaded rows were filled from the loaded ones, or if either arm had
+// been copied from the other, the size-pinned comparison would still pass while the arms went identical. This
+// says the unloaded arms are NOT the loaded rows under a new date, and that both arms differ from each other
+// at the small sizes, which is what a real sweep looks like at 16 KiB and 256 KiB.
+test fn the_unloaded_rows_are_not_the_loaded_rows_relabelled() -> Bool {
+  let unloaded = srv1_collective_transport_readings_unloaded_2026_11_09
+  let loaded = srv1_collective_transport_readings
+  unloaded.all(c => !loaded.any(d =>
+    (d.env_arm as String) == (c.env_arm as String)
+      && byte_size_count(d.message_bytes) == byte_size_count(c.message_bytes)
+      && microsecond_count(m: elapsed_of(c: d)) == microsecond_count(m: elapsed_of(c: c))))
+    && unloaded.any(c => unloaded.any(d =>
+      (c.env_arm as String) != (d.env_arm as String)
+      && byte_size_count(c.message_bytes) == byte_size_count(d.message_bytes)
+      && microsecond_count(m: elapsed_of(c: c)) * 4 >= microsecond_count(m: elapsed_of(c: d))))
 }
 
 // AN EXPLANATION IS NEVER A PREMISE. Both srv1 rows -- the one about what missing peer access accounts for,

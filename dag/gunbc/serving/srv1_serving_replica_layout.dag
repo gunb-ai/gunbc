@@ -1545,16 +1545,34 @@ data srv1_installed_boot_path_artifacts_2026_11_09: List<Srv1InstalledArtifact> 
 data srv1_replica_unit_unchanged_2026_11_09: NonEmptyStr =
   "/etc/systemd/system/lil-replica@.service sha256 1372a94f3ea1c2787566d5f75a7c482d50128e89f3359166f2eafc94fadb336c (recorded at backup 20261109T184850Z); ExecStart and ExecStop still run /usr/local/sbin/lil-replica start|stop %i, which is now the rendered helper" as NonEmptyStr
 
+// Which run of the boot path a receipt describes. The set is CLOSED on purpose: a cold start and a crash are
+// different claims about the boot path (one proves the start path, the other proves systemd's restart), and
+// HostReboot is the third case that NOBODY HAS RUN -- naming it in the type is what lets a witness assert that
+// no receipt claims it, which prose could not: a free-text kind can say anything, including "reboot".
+type Srv1BootPathRunKind
+  = ColdStart
+  | Crash
+  | HostReboot
+
+// The bar these runs were measured against: the engine must be serving within 10 minutes of the unit being
+// started (the operator's window brief, step 3 and step 5). Named as a value so the witness compares a
+// MEASURED duration against THIS, not against a copy of the number in the test. The crash path's floor is not
+// duplicated here: it is the unit's own restart_delay on srv1_replica_unit_contract, which the witness reads.
+data srv1_boot_path_ready_deadline: Second = second(600)
+
 // One executed run of the start path or the crash path, with the numbers the scripts measured on the host.
-// `kind` is deliberately not a bool: a cold start and a crash are different claims about the boot path and
-// a reboot would be a third that nobody has run.
+// Durations carry std.measure's time quantity, not a bare count: the measured 46 s and the contract's 30 s
+// are the same kind of thing, and a fold that compares them should not have to know which Nat is a duration.
 type Srv1BootPathRun {
   replica_index: Nat,
-  kind: NonEmptyStr,
+  kind: Srv1BootPathRunKind,
+  // How the run was driven, in prose: what was stopped, removed or killed. A note, never a verdict, and never
+  // the thing a witness branches on -- that is `kind`.
+  note: NonEmptyStr,
   window_start_utc: NonEmptyStr,
   window_end_utc: NonEmptyStr,
-  container_created_seconds: Nat,
-  engine_ready_seconds: Nat,
+  container_created: Second,
+  engine_ready: Second,
   restarts_observed: Nat,
   verdict: NonEmptyStr,
 }
@@ -1562,45 +1580,63 @@ type Srv1BootPathRun {
 data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
   Srv1BootPathRun {
     replica_index: 1,
-    kind: "cold start: systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
+    kind: ColdStart,
+    note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
     window_start_utc: "2026-11-09T21:51:38Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T21:59:21Z" as NonEmptyStr,
-    container_created_seconds: 46,
-    engine_ready_seconds: 463,
+    container_created: second(46),
+    engine_ready: second(463),
     restarts_observed: 0,
     verdict: "ready inside the 10-minute deadline; engine argv carries no --api-key (count 0) and the engine's environment carries VLLM_API_KEY (count 1); router upstream srv1-vllm-1 served six /v1/chat/completions probes at 200 with zero new 502s" as NonEmptyStr,
   },
   Srv1BootPathRun {
     replica_index: 1,
-    kind: "crash: docker kill the container while the replica is serving (systemd Restart=on-failure, RestartSec=30s)" as NonEmptyStr,
+    kind: Crash,
+    note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
     window_start_utc: "2026-11-09T22:11:08Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T22:19:33Z" as NonEmptyStr,
-    container_created_seconds: 39,
-    engine_ready_seconds: 512,
+    container_created: second(39),
+    engine_ready: second(512),
     restarts_observed: 1,
     verdict: "systemd did restart it, but NOT within the 30 s the brief set as the bar: the unit's own RestartSec=30 makes 30 s the FLOOR, and the measured replacement container appeared 39 s after the kill (22:11:39Z, written by the rendered launcher's own START event). Engine ready 512 s. Auth held: 401 without the key, 200 with it. No --api-key in .Config.Cmd; VLLM_API_KEY present in the engine environment." as NonEmptyStr,
   },
   Srv1BootPathRun {
     replica_index: 0,
-    kind: "cold start: systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
+    kind: ColdStart,
+    note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
     window_start_utc: "2026-11-09T22:24:35Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T22:31:38Z" as NonEmptyStr,
-    container_created_seconds: 46,
-    engine_ready_seconds: 423,
+    container_created: second(46),
+    engine_ready: second(423),
     restarts_observed: 0,
     verdict: "ready inside the deadline; `ps` on the host shows zero processes carrying --api-key once both replicas are on this path (previously the engine's own argv named the key)" as NonEmptyStr,
   },
   Srv1BootPathRun {
     replica_index: 0,
-    kind: "crash: docker kill the container while the replica is serving (systemd Restart=on-failure, RestartSec=30s)" as NonEmptyStr,
+    kind: Crash,
+    note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
     window_start_utc: "2026-11-09T22:32:21Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T22:39:23Z" as NonEmptyStr,
-    container_created_seconds: 38,
-    engine_ready_seconds: 422,
+    container_created: second(38),
+    engine_ready: second(422),
     restarts_observed: 1,
     verdict: "replacement container 38 s after the kill (again above the 30 s bar, which the unit's RestartSec=30 sets); engine ready 422 s; auth held (401 without key, 200 with); no --api-key in .Config.Cmd" as NonEmptyStr,
   },
 ]
+
+// What a reader may ask of a run receipt, phrased in the module that owns the closed set rather than in the
+// test that asks it: a witness in another module branches on these, and never has to name a member.
+fn srv1_boot_path_run_is_cold_start(run: Srv1BootPathRun) -> Bool { run.kind == ColdStart }
+fn srv1_boot_path_run_is_crash(run: Srv1BootPathRun) -> Bool { run.kind == Crash }
+// The case nobody has run. A witness asserts NO receipt has this kind; a free-text kind could not be checked
+// this way, which is the reason the set is closed.
+fn srv1_boot_path_run_claims_reboot(run: Srv1BootPathRun) -> Bool { run.kind == HostReboot }
+
+// The two bars these runs are judged against, read from where they are DEFINED -- the operator's readiness bar
+// above, and the unit's own restart_delay on the contract row. A test that copies 600 and 30 keeps passing
+// after either one changes.
+fn srv1_boot_path_ready_deadline_seconds() -> Nat { second_count(srv1_boot_path_ready_deadline) }
+fn srv1_boot_path_crash_restart_floor_seconds() -> Nat { second_count(srv1_replica_unit_contract.restart_delay) }
 
 // The disruption the window cost, counted from the router's own counters rather than estimated. The counters
 // are cumulative since the router started, so the cost is a difference between two snapshots taken on srv1.

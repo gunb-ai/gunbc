@@ -42,6 +42,12 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_retained_gpu_launcher_host_path, srv1_replica_helper,
   srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
   srv1_tls_identity_source_dir, srv1_tls_key_file_name, srv1_tls_cert_file_name,
+  Srv1BootPathRun, Srv1BootPathRunKind, srv1_boot_path_runs_executed_2026_11_09,
+  srv1_boot_path_ready_deadline, srv1_boot_path_ready_deadline_seconds,
+  srv1_boot_path_crash_restart_floor_seconds, srv1_boot_path_run_is_cold_start,
+  srv1_boot_path_run_is_crash, srv1_boot_path_run_claims_reboot,
+  srv1_replica_unit_contract, srv1_installed_boot_path_artifacts_2026_11_09,
+  srv1_render_replica_helper_sha256, srv1_boot_path_incident_2026_11_09,
 }
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
@@ -495,20 +501,39 @@ test fn the_helper_name_table_comes_from_the_roster() -> Bool {
 // THE RECEIPTS ABOUT THE INSTALL AND THE RUNS ARE THEMSELVES CHECKABLE. Every artifact row must claim the
 // digest the interpreter computed and the digest the host read back as the SAME value -- a row that says the
 // install succeeded while the two differ cannot be written without failing this. And the executed-runs list
-// must not be allowed to overstate: four runs (two cold starts, two crashes), every one inside the 10-minute
-// readiness deadline the brief set, and no run may describe itself as a reboot, because no reboot was run.
+// must not be allowed to overstate: four runs (two cold starts, two crashes), every one inside the readiness
+// deadline AS DEFINED on srv1_boot_path_ready_deadline, every crash's replacement container at or after the
+// unit's restart delay AS DEFINED on the contract row, and no run may claim the reboot kind, because no reboot
+// was run. The bars are read from the rows, not copied: a deadline or a RestartSec that changes moves this
+// test, which is the whole point of the closed kind and the typed durations.
 test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
   let arts = srv1_installed_boot_path_artifacts_2026_11_09
   let runs = srv1_boot_path_runs_executed_2026_11_09
+  let deadline = srv1_boot_path_ready_deadline_seconds()
+  let floor = srv1_boot_path_crash_restart_floor_seconds()
   length(arts) == 4
     && all(arts, a => lower_hex_64(value: a.render_sha256) && a.render_sha256 == a.installed_sha256_computed_on_host)
     && length(runs) == 4
-    && all(runs, r => r.engine_ready_seconds >= 1 && r.engine_ready_seconds <= 600)
-    && all(filter(runs, r => string_contains(s: r.kind, pattern: "cold start")), r => string_contains(s: r.kind, pattern: "NOT a host reboot"))
-    && all(filter(runs, r => string_contains(s: r.kind, pattern: "crash")), r => r.container_created_seconds >= 30)
-    && length(filter(runs, r => string_contains(s: r.kind, pattern: "cold start"))) == 2
-    && length(filter(runs, r => string_contains(s: r.kind, pattern: "crash:"))) == 2
+    && deadline == 600 && floor == 30
+    && all(runs, r => second_count(r.engine_ready) >= 1 && second_count(r.engine_ready) <= deadline)
+    && !any(runs, r => srv1_boot_path_run_claims_reboot(r))
+    && all(filter(runs, r => srv1_boot_path_run_is_cold_start(r)), r => string_contains(s: r.note, pattern: "NOT a host reboot"))
+    && all(filter(runs, r => srv1_boot_path_run_is_crash(r)), r => second_count(r.container_created) >= floor)
+    && length(filter(runs, r => srv1_boot_path_run_is_cold_start(r))) == 2
+    && length(filter(runs, r => srv1_boot_path_run_is_crash(r))) == 2
     && !string_contains(s: srv1_boot_path_incident_2026_11_09, pattern: "no downtime")
+}
+
+// THE BARS THEMSELVES ARE NOT FREE NUMBERS. The crash floor must be the CONTRACT's restart delay, so a unit
+// whose RestartSec changed drags this test along with it; and the readiness deadline must stay a duration, not
+// a count that can be compared against a port number or a byte size.
+test fn the_bars_come_from_the_rows_not_from_the_test() -> Bool {
+  let runs = srv1_boot_path_runs_executed_2026_11_09
+  let crashes = filter(runs, r => srv1_boot_path_run_is_crash(r))
+  srv1_boot_path_crash_restart_floor_seconds() == second_count(srv1_replica_unit_contract.restart_delay)
+    && srv1_boot_path_ready_deadline_seconds() == second_count(srv1_boot_path_ready_deadline)
+    && length(crashes) == 2
+    && all(crashes, r => second_count(r.container_created) < second_count(r.engine_ready))
 }
 
 // ONE CERTIFICATE IDENTITY FOR BOTH REPLICAS, enforced by the render rather than by the operator remembering
