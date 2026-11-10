@@ -92,3 +92,8 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - commit_writer_admission_witness 0/13, refused at LOAD: nine Product(PositiveInt) mismatches (:202 through :595). Unowned.
 - Sweep quality: the v1_src_dag_parse test does not count a `| Arm` head, an `operation` or a `service` as a declaration. About 31 of the 312 reference rows are spurious for that reason; the rest is real work. The 398-line list is attached to #16200 (comments 6756695262, 6756696281).
 - seed_builder_free_route_probe_witness is non-discriminating (2/2 at both legs).
+
+## No detectors (sunny-bat-59, #16214)
+- Lock staleness: `cargo metadata --locked` returns rc 0 even with a stale package. Only an unlocked step followed by `git diff --exit-code Cargo.lock` sees it.
+- Witness load drift: no required job loads dag/test/claim/*.dag (v1_required_lanes_withdrawn). The cheap sweep shape is claim_batch --hermetic --wet --source-root dag --source-root src/v2 --entry <file> --functions <all>, one file per invocation. A corpus pass would find the rest of the load-refused witnesses.
+- rustfmt drift on main makes the pre-commit hook refuse every commit; a lane is dispatched.
