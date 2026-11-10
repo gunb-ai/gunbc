@@ -800,11 +800,32 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
                 })
                 .cloned()
                 .collect();
+            // SIMULATED FIX MEASUREMENT: does SEEDING THE SERVICE (the reader's key) close the gap?
+            // Both key forms are tried; the one that zeroes the demanded refusals is the key form the
+            // registry's service_method_surface seed must emit. An unknown seed name is inert in the
+            // realization closure, so a wrong form costs only a pass, not a false reading.
+            let with_bare = route_messages(&graph, &intern, &si, &["decoded_pull_request", "RestReplay"]);
+            let with_dotted =
+                route_messages(&graph, &intern, &si, &["decoded_pull_request", "test.RestReplay"]);
+            let count_surface = |ms: &Vec<String>| {
+                ms.iter()
+                    .filter(|m| {
+                        m.contains("RestReplay")
+                            && (m.contains("method surface") || m.contains("no declared frontier row"))
+                    })
+                    .count()
+            };
+            let realized_bare = realization.realized.contains_key("RestReplay");
+            let realized_dotted = realization.realized.contains_key("test.RestReplay");
             eprintln!(
-                "SERVICE_OP_GRAIN_WITNESS entry=decoded_pull_request service_realized={} demanded_refusals={} closure_refusals={} surface={:?}",
+                "SERVICE_OP_GRAIN_WITNESS entry=decoded_pull_request service_realized={} realized_bare={} realized_dotted={} demanded_refusals={} closure_refusals={} seed_bare_refusals={} seed_dotted_refusals={} surface={:?}",
                 service_realized,
+                realized_bare,
+                realized_dotted,
                 surface.len(),
                 closure_surface.len(),
+                count_surface(&with_bare),
+                count_surface(&with_dotted),
                 surface
             );
             assert!(
@@ -871,9 +892,15 @@ fn serve_entry_realizes_the_host_declared_key_row() {
                 .copied()
                 .filter(|n| !realization.realized.contains_key(*n))
                 .collect();
+            let present: Vec<&str> = declared
+                .iter()
+                .copied()
+                .filter(|n| realization.realized.contains_key(*n))
+                .collect();
             eprintln!(
-                "LOADED_INDEX_KEYED_CALL entry=roadmap_ingress missing={:?} total={}",
+                "LOADED_INDEX_KEYED_CALL entry=roadmap_ingress missing={:?} present={:?} total={}",
                 missing,
+                present,
                 declared.len()
             );
             assert!(
