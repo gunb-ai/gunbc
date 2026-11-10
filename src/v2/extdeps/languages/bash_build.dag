@@ -46,14 +46,31 @@ fn bash_build_word_lit(text: String) -> Node {
 // be changed without the other. This builder is kept so callers do not churn; it is
 // now derived, and `bash_production_fold_double_quoted_word` is the only row that
 // can spell a quoted variable.
+//
+// A text that is not a Name is not a variable, and no word stands for it. Before this
+// consolidation the builder was total and UNCHECKED: `bash_build_word_var(name: "1x")`
+// spelled `"$1x"`, which bash reads as the positional parameter `$1` followed by a
+// literal `x` -- a different command from the one asked for, in a shape no witness
+// could tell apart from right. So the two Absent arms below close a silent pass that
+// predates the consolidation, not merely one it introduced. Each returns a REFUSED
+// word kind that the serializer rejects with a typed diagnostic, mirroring
+// ^bash_build_refused_empty_word_list, and carries the offending text so the refusal
+// can be traced to it. Nothing is invented to fill the gap: a lit '' would have been
+// a plausible word standing for nothing, which is the failure DESIGN names
+// (gunbc.design_argument::fail_closed, "no plausible output is fabricated").
 fn bash_build_word_var(name: String) -> Node {
   match bash_build_word_var_bare(name: name) {
     Present { value: bare } =>
       match bash_build_word_double_quoted(parts: [bare]) {
         Present { value: n } => n
-        Absent => bash_build_word_lit(text: "")
+        // The parts list has exactly one element and emptiness is the only thing
+        // `bash_build_word_double_quoted` refuses on, so this arm cannot be reached
+        // from a correct caller. Unreachable is not irrelevant: if it were ever
+        // reached, the builder would have changed what it refuses, and that is
+        // refused loudly rather than defaulted quietly.
+        Absent => bash_build_word_kinded(kind: ^bash_build_refused_double_quoted, value: name)
       }
-    Absent => bash_build_word_lit(text: "")
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: name)
   }
 }
 
@@ -439,6 +456,30 @@ fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
   }
 }
 
+// Bash manual, node "Redirections": `>>word`. The operator is spelled by the grammar
+// row for ^bash_production_fold_redir_append_to_file and its serializer arm, never by a
+// caller concatenating ">> " onto a path.
+fn bash_build_with_redir_stdout_append_file(inner: Node, path: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir),
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: inner, declaration: NotADeclaration },
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_production_fold_redir_append_to_file),
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: path, declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn bash_build_with_redir_stderr_to_file(inner: Node, path: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -791,6 +832,22 @@ fn bash_build_function_def(name: String, body: List<Node>) -> Optional<Node> {
   }
 }
 
+// A list that is not wrapped. CHECKED on emptiness: bash's list is an `and_or` and
+// then optionally `; list`, so zero statements is not a list -- an empty brace group
+// is at least a compound-command, an empty sequence is nothing at all.
+fn bash_build_seq_from_stmts(stmts: List<Node>) -> Optional<Node> {
+  match list_head(xs: stmts) {
+    Absent => Absent
+    Present { value: _ } =>
+      Present {
+        value: bash_build_stmt_with_body(
+          binding: ^bash_production_fold_seq,
+          body: [bash_build_stmt_list_from_nodes(stmts: stmts)]
+        )
+      }
+  }
+}
+
 fn bash_build_brace_group_from_stmts(stmts: List<Node>) -> Node {
   bash_build_stmt_with_body(
     binding: ^bash_production_fold_brace_group,
@@ -983,6 +1040,30 @@ fn bash_build_word_param_error(index: String, word: String) -> Optional<Node> {
 // two bytes are accepted.
 fn bash_build_is_positional_all(which: String) -> Bool {
   which == "*" || which == "@"
+}
+
+// Bash manual, node "Shell Parameters": $0 ... $9 are the positional parameters, and
+// `$0` is the script's own name. They are NOT variables -- there is no variable called
+// `0`, and `bash_build_is_name` refuses a leading digit -- so they are their own word
+// kind, whose checked builder accepts digits and refuses everything else. Until now the
+// lane had `$*` / `$@` and nothing for the numbered ones, and callers that needed `$0`
+// went through the variable builder, which used to spell `"$0"` without ever asking
+// whether `0` was a name.
+fn bash_build_is_positional(index: String) -> Bool {
+  bash_build_is_digits(text: index)
+}
+
+fn bash_build_word_positional(index: String) -> Optional<Node> {
+  if bash_build_is_positional(index: index) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_positional,
+        value: index
+      )
+    }
+  } else {
+    Absent
+  }
 }
 
 fn bash_build_word_positional_all(which: String) -> Optional<Node> {

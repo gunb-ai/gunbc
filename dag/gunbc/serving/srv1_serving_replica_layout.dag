@@ -1,4 +1,15 @@
 module gunbc.serving.srv1_serving_replica_layout
+import v2.extdeps.languages.bash_build {
+  bash_build_command_from_word_nodes, bash_build_word_lit,
+  bash_build_and_then, bash_build_or_else,
+  bash_build_seq_from_stmts, bash_build_function_def, bash_build_exit, bash_build_test_bracket,
+  bash_build_brace_group_from_stmts, bash_build_with_redir_stdout_append_file,
+  bash_build_with_redir_stdout_to_stderr, bash_build_with_redir_from_file,
+  bash_build_word_bare, bash_build_word_var_bare, bash_build_word_concat_from_nodes,
+  bash_build_word_double_quoted, bash_build_word_cmdsubst,
+  bash_build_word_positional_all, bash_build_word_array_expansion, bash_build_word_kinded
+}
+import v2.workflow.bash_emit { bash_emit_stmt }
 
 // The TWO-REPLICA SERVING LAYOUT on srv1 (operator, 2026-11-08): two TP=1 vLLM containers, one per RTX
 // PRO 6000 Blackwell card, replacing the single --device nvidia.com/gpu=all TP=1 container that ran since
@@ -1122,80 +1133,204 @@ fn srv1_d_under(name: FilePath) -> String {
 // control claim is how a real difference gets waved through. The ONLY place this render differs is the engine
 // line, and it differs in two documented ways -- the flags arrive from the mounted args file instead of
 // inline, and `--api-key "$(cat /root/.pool_key)"` is gone (see Srv1ApiKeyReference).
+// ── the render, emitted ────────────────────────────────────────────────────
+// These helpers exist so the render below is a list of STATEMENTS and not a list of
+// half-built shell strings. Each returns the node a grammar row knows how to spell;
+// the only function that turns a node into bytes is v2.workflow.bash_emit.
+//
+// A checked builder that refuses has said these bytes cannot be produced. The render
+// returns List<String> and has no error channel, so a refusal puts this text where the
+// line was: it is not shell, it cannot start a container, and it will not match the
+// digest recorded on the host -- which is the only thing that has ever been allowed to
+// say whether this render is right. (The same poison idiom as
+// ci_floor_build_verify_script, dag/gunbc/ci/ci_spec.dag.)
+data srv1_bash_emit_refused_poison: String = "GUNBC-BASH-EMIT-REFUSED"
+
+fn srv1_bash_poison_node() -> Node {
+  bash_build_command_from_word_nodes(words: [bash_build_word_lit(text: srv1_bash_emit_refused_poison)])
+}
+
+fn srv1_bash_unwrap(built: Optional<Node>) -> Node {
+  match built {
+    Present { value: n } => n
+    Absent => srv1_bash_poison_node()
+  }
+}
+
+// A word the lexer would accept unquoted. `bash_build_word_bare` is CHECKED: it refuses
+// a text carrying `;`, `|`, a quote, a `$`, a backtick or a space rather than quoting it
+// for the caller, so an unquoted word here cannot become an injection by way of a config
+// value that grew a metacharacter. Refusal is poison, not a quoting fallback.
+fn srv1_bash_bare(text: String) -> Node {
+  match bash_build_word_bare(text: text) {
+    Present { value: n } => n
+    Absent => srv1_bash_poison_node()
+  }
+}
+
+// `$D/<suffix>`, the way the installed artifact writes it: a bare expansion and the path
+// under it, joined by the word-concat production, with no quotes anywhere. Not
+// bash_build_word_var: that one is double-quoted, and `>> $D/events.log` is not.
+fn srv1_bash_d_suffix(suffix: String) -> Node {
+  match bash_build_word_var_bare(name: "D") {
+    Present { value: d } =>
+      bash_build_word_concat_from_nodes(parts: [d, bash_build_word_lit(text: concat("/", suffix))])
+    Absent => srv1_bash_poison_node()
+  }
+}
+
+fn srv1_bash_d_under(path: FilePath) -> Node {
+  srv1_bash_d_suffix(suffix: path as String)
+}
+
+fn srv1_bash_quoted(parts: List<Node>) -> Node {
+  match bash_build_word_double_quoted(parts: parts) {
+    Present { value: n } => n
+    Absent => srv1_bash_poison_node()
+  }
+}
+
+fn srv1_bash_line(stmt: Node) -> String {
+  match bash_emit_stmt(stmt: stmt) {
+    Accepted { value: line, diagnostics: None } => line
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => srv1_bash_emit_refused_poison
+    Rejected { diagnostics: _ } => srv1_bash_emit_refused_poison
+  }
+}
+
 fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> List<String> {
   let shape = srv1_replica_container_run_shape
-  let d = config.tls_material.container_dir as String
-  let key = srv1_d_under(config.tls_material.key_path)
-  let cert = srv1_d_under(config.tls_material.cert_path)
-  let args_path = shape.engine_args_container_path as String
   let l1_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))
   let l2_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))
+  let days = to_string(srv1_tls_validity_days_for_flag())
+  // The driver probe sits inside double quotes in the START line, where bash still
+  // performs command substitution -- that is the part this lane had to gain, and it is
+  // the part whose bytes are easiest to get wrong, so it is one node, not a splice.
+  let driver_probe = bash_build_word_cmdsubst(
+    body: bash_build_command_from_word_nodes(words: [
+      srv1_bash_bare(text: "nvidia-smi"),
+      srv1_bash_bare(text: "--query-gpu=driver_version"),
+      srv1_bash_bare(text: "--format=csv,noheader")
+    ])
+  )
+  let start_message = concat(
+    concat(concat(concat("START srv1 gpu", to_string(replica.index)), " "), srv1_replica_gpu_uuid_text(replica: replica)),
+    concat(concat(concat(" (driver ", ""), ""), "")
+  )
+  let logger = srv1_bash_unwrap(
+    b: bash_build_function_def(
+      name: "ev",
+      body: [
+        bash_build_with_redir_stdout_append_file(
+          inner: bash_build_command_from_word_nodes(words: [
+            srv1_bash_bare(text: "echo"),
+            srv1_bash_quoted(parts: [
+              driver_probe,
+              bash_build_word_lit(text: " "),
+              srv1_bash_unwrap(b: bash_build_word_positional_all(which: "*"))
+            ])
+          ]),
+          path: srv1_bash_d_suffix(suffix: "events.log")
+        )
+      ]
+    )
+  )
+  let setup = srv1_bash_unwrap(
+    b: bash_build_seq_from_stmts(stmts: [
+      bash_build_assign(name: "D", value: srv1_bash_bare(text: config.tls_material.container_dir as String)),
+      logger
+    ])
+  )
+  let mint_tls = bash_build_command_from_word_nodes(words: [
+    srv1_bash_bare(text: "openssl"),
+    srv1_bash_bare(text: "req"),
+    srv1_bash_bare(text: "-x509"),
+    srv1_bash_bare(text: "-newkey"),
+    srv1_bash_bare(text: "ec"),
+    srv1_bash_bare(text: "-pkeyopt"),
+    srv1_bash_bare(text: concat("ec_paramgen_curve:", shape.tls_curve as String)),
+    // The space run before `-days` is a line-continuation remnant from the operator's
+    // script and it is in the bytes the host carries. It is carried here by the one word
+    // that holds it, not by a join that would have to lie about being a single space.
+    bash_build_word_lit(text: "-nodes   -days"),
+    srv1_bash_bare(text: days),
+    srv1_bash_bare(text: "-subj"),
+    srv1_bash_bare(text: concat("/CN=", shape.tls_subject_common_name as String)),
+    srv1_bash_bare(text: "-keyout"),
+    srv1_bash_d_under(path: config.tls_material.key_path),
+    srv1_bash_bare(text: "-out"),
+    srv1_bash_d_under(path: config.tls_material.cert_path)
+  ])
+  let tls_guard = bash_build_or_else(
+    left: bash_build_and_then(
+      left: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.key_path)]),
+      right: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.cert_path)])
+    ),
+    right: bash_build_with_redir_stdout_to_stderr(
+      inner: bash_build_with_redir_stdout_append_file(
+        inner: mint_tls,
+        path: srv1_bash_d_suffix(suffix: "events.log")
+      )
+    )
+  )
+  let gpu_uuid = srv1_replica_gpu_uuid_text(replica: replica)
+  let start_event = bash_build_command_from_word_nodes(words: [
+    srv1_bash_bare(text: "ev"),
+    srv1_bash_quoted(parts: [
+      bash_build_word_lit(text: concat(
+        concat(concat(concat(concat("START srv1 gpu", to_string(replica.index)), " "), gpu_uuid), " (driver "),
+        ""
+      )),
+      driver_probe,
+      bash_build_word_lit(text: concat(
+        concat(concat(concat(concat(", TP", to_string(config.tensor_parallel_size)), ", cache ram-disk, L1 "), l1_gib), "G, L2 "),
+        concat(l2_gib, "G, disk-first, TLS)")
+      ))
+    ])
+  ])
+  let args_path = shape.engine_args_container_path as String
+  let argv_guard = bash_build_or_else(
+    left: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_bare(text: args_path)]),
+    right: bash_build_brace_group_from_stmts(stmts: [
+      bash_build_command_from_word_nodes(words: [
+        srv1_bash_bare(text: "ev"),
+        srv1_bash_quoted(parts: [bash_build_word_lit(text: concat("FATAL rendered engine argv file missing: ", args_path))])
+      ]),
+      bash_build_exit(code: "3")
+    ])
+  )
+  let load_argv = bash_build_with_redir_from_file(
+    inner: bash_build_command_from_word_nodes(words: [
+      srv1_bash_bare(text: "mapfile"),
+      srv1_bash_bare(text: "-t"),
+      srv1_bash_bare(text: "ENGINE_ARGS")
+    ]),
+    path: srv1_bash_bare(text: args_path)
+  )
+  let serve = bash_build_with_redir_stdout_to_stderr(
+    inner: bash_build_with_redir_stdout_append_file(
+      inner: bash_build_command_from_word_nodes(words: [
+        srv1_bash_bare(text: "exec"),
+        srv1_bash_unwrap(b: bash_build_word_array_expansion(name: "ENGINE_ARGS"))
+      ]),
+      path: srv1_bash_d_suffix(suffix: "serve.log")
+    )
+  )
   [
     // 1. The event logger every later line writes through, and the directory it writes in.
-    concat(concat("D=", d), "; ev(){ echo \"$(date -u +%FT%TZ) $*\" >> $D/events.log; }"),
+    srv1_bash_line(stmt: setup),
     // 2. TLS, guarded so a restart never re-mints a certificate the router's pinned CA would reject.
-    concat(
-      concat(
-        concat(
-          concat(
-            concat(concat(concat("[ -s ", key), " ] && [ -s "), cert),
-            " ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:"
-          ),
-          shape.tls_curve as String
-        ),
-        concat(concat(" -nodes   -days ", to_string(srv1_tls_validity_days_for_flag())), " -subj /CN=")
-      ),
-      concat(
-        concat(
-          concat(concat(shape.tls_subject_common_name as String, " -keyout "), key),
-          " -out "
-        ),
-        concat(concat(cert, " >> $D/events.log 2>&1"), "")
-      )
-    ),
-    // 3. The START event: which card this replica came up on, at what driver, with what cache tiers. This
-    //    line is what an operator reads in events.log after an incident, so its shape is a row, not prose.
-    concat(
-      concat(
-        concat(
-          concat(
-            concat(
-              concat(
-                concat(
-                  concat(
-                    concat(concat("ev \"START srv1 gpu", to_string(replica.index)), " "),
-                    srv1_replica_gpu_uuid_text(replica: replica)
-                  ),
-                  " (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP"
-                ),
-                to_string(config.tensor_parallel_size)
-              ),
-              ", cache ram-disk,"
-            ),
-            concat(concat(" L1 ", l1_gib), "G,")
-          ),
-          concat(concat(" L2 ", l2_gib), "G, disk-first, TLS)\"")
-        )
-      )
-    ),
-    // 3b. The args-file refusal, on its OWN line. It was glued onto the end of the START line, which is how a
-    //     stray `)` survived: the line it produced was the captured line plus a suffix, and every control on
-    //     that line asked "does the capture appear inside it?" -- which a line carrying one extra token
-    //     answers yes. A line that must equal a captured line gets its own element, so equality is the test.
-    concat(
-      concat(
-        concat("[ -s ", args_path),
-        " ] || { ev \"FATAL rendered engine argv file missing: "
-      ),
-      concat(args_path, "\"; exit 3; }")
-    ),
-    // 4. Read the RENDERED argv into the array the exec below expands. `mapfile` rather than word-splitting
-    //    a string: one token per line means no token can be re-split by a stray space, which is the failure
-    //    mode the unquoted $EXTRA in the retained launcher was one step away from.
-    concat("mapfile -t ENGINE_ARGS < ", args_path),
-    // 5. Exec it. The engine's argv is therefore byte-identical to srv1_replica_engine_argv's render, and to
-    //    nothing else.
-    concat("exec \"$\{ENGINE_ARGS[@]}\" >> $D/serve.log 2>&1", ""),
+    srv1_bash_line(stmt: tls_guard),
+    // 3. The START event: which card this replica came up on, at what driver, with what cache
+    //    tiers. An operator reads this line in events.log after an incident, so its shape is a
+    //    row, not prose.
+    srv1_bash_line(stmt: start_event),
+    // 4. The argv file the helper wrote must be there before exec reads it into the array.
+    srv1_bash_line(stmt: argv_guard),
+    // 5. Null-delimited read, so an argument that contains a space survives intact.
+    srv1_bash_line(stmt: load_argv),
+    // 6. The engine, with the argv array expanded as-is and the log appended.
+    srv1_bash_line(stmt: serve)
   ]
 }
 

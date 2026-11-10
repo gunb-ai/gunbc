@@ -14,6 +14,10 @@ import v2.extdeps.languages.bash {
 }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
+  bash_build_word_double_quoted,
+  bash_build_word_kinded,
+  bash_build_word_positional,
+
   bash_build_negation,
   bash_build_assign_lit,
   bash_build_assign_var,
@@ -73,7 +77,7 @@ import v2.workflow.bash_emit {
   bash_emit_wrong_target_oracle_holds
 }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_reason_lexemes }
 import v2.std.node { node_same_occurrence, Node }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -134,6 +138,20 @@ data bash_fold_raw_xeq_golden: String = "x=y"
 data bash_fold_redir_both_golden: String = "'true' >/dev/null 2>&1"
 data bash_fold_redir_file_golden: String = "'true' > \"$PROBE_BIN\""
 data bash_fold_redir_from_file_golden: String = "'exec' < \"$0\""
+
+// The golden above still carries `"$0"`; what changed is how it is arrived at. It used
+// to come from the VARIABLE builder with the text "0", which the builder accepted
+// without asking whether "0" is a name -- and `"$0"` is not a variable expansion at
+// all, it is the script's own positional parameter. It is now built from the row that
+// says so, and the bytes are the bytes the golden has always asserted.
+data bash_fold_positional_zero_path: Node = match bash_build_word_positional(index: "0") {
+  Present { value: p } =>
+    match bash_build_word_double_quoted(parts: [p]) {
+      Present { value: n } => n
+      Absent => bash_build_word_kinded(kind: ^bash_build_refused_double_quoted, value: "0")
+    }
+  Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: "0")
+}
 data bash_fold_redir_pipe_golden: String = "'echo' 'hi' | 'wc' '-c' 2>/dev/null"
 data bash_fold_redir_stderr_golden: String = "'true' 2>/dev/null"
 data bash_fold_redir_stdout_stderr_golden: String = "'true' >&2"
@@ -796,12 +814,41 @@ test fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
   )
 }
 
+// A name that is not a name is REFUSED, not spelled. `"$1x"` -- what the unchecked
+// builder used to hand back for `name: "1x"` -- is bash for the positional parameter
+// `$1` followed by a literal `x`: a different command, in a shape that looks like the
+// one asked for. The refusal is a typed diagnostic naming the refused word kind, and
+// the positive case right below it is what a real name still produces.
+data bash_fold_bad_var_name_cmd: Node = bash_build_command_from_word_nodes(
+  words: [bash_build_word_var(name: "1x")]
+)
+
+test fn bash_fold_bad_var_name_is_refused_holds() -> Bool {
+  match bash_fold_serialize_node(stmt: bash_fold_bad_var_name_cmd) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_reason_lexemes(diagnostics: d) == "bash_build_refused_var_name"
+  }
+}
+
+data bash_fold_quoted_home_cmd: Node = bash_build_command_from_word_nodes(
+  words: [bash_build_word_var(name: "HOME")]
+)
+
+test fn bash_fold_quoted_home_is_the_double_quoted_form_holds() -> Bool {
+  match bash_fold_serialize_node(stmt: bash_fold_quoted_home_cmd) {
+    Accepted { value: text, diagnostics: None } => text == "\"$HOME\""
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn bash_fold_with_redir_from_file_var_holds() -> Bool {
   bash_emit_matches_golden(
     stmt: bash_fold_with_redir_stmt(
       node: bash_build_with_redir_from_file(
         inner: bash_build_command_from_lits(lits: ["exec"]),
-        path: bash_build_word_var(name: "0")
+        path: bash_fold_positional_zero_path
       )
     ),
     golden: bash_fold_redir_from_file_golden
