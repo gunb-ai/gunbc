@@ -116,10 +116,10 @@ type NodeGrounding
 // where only the checker may read the index, and read where only the evaluator needs the answer.
 // THE GATE ADDS NO TEST OF ITS OWN: it reuses the one test that Widened arm uses
 // (v2.std.coercion coercion_cast_exact_witness), so a value crossing to a carrier is judged by the same
-// structural equality in both layers (DESIGN gunbc.design_argument::single_authority; DESIGN
-// gunbc.design_argument::source_annotations: "one table read by both layers"). Absent is not "no
-// carrier" — it is "the checker never read one for this node" — and the gate refuses at it rather than
-// guessing, per gunbc.design_argument::fail_closed.
+// structural equality in both layers, because DESIGN gunbc.design_argument::single_authority says "a
+// second place that independently decides it is a fork". Absent is not "no carrier" — it is "the checker
+// never read one for this node" — and the gate refuses at it rather than guessing, per
+// gunbc.design_argument::fail_closed.
 type InferredFacts {
   grounding: NodeGrounding
   descent: Witness<TerminationProof>

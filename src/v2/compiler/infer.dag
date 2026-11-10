@@ -2143,7 +2143,8 @@ fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optiona
 // interpretation stamped on the value, and a numeric refinement's values are stamped with the carrier
 // (v2.extdeps.runtimes.v2_evaluator v2_eval_int_runtime_value stamps v2.std.integer
 // integer_int_type_node) -- so the answer is written into v2.compiler.inferred_tree InferredFacts,
-// whose own header calls that type the one table read by both layers, and read back there. This is the
+// the table infer writes and v2.compiler.eval reads through its inferred_facts_* readers, and read back
+// there. This is the
 // v2 instance of gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses.
 // IT IS A FILL, NOT A RE-JUDGMENT: for every node this re-wraps the facts the gather already produced
 // (grounding, descent, denotation, type_instances are carried through untouched) and adds only the
