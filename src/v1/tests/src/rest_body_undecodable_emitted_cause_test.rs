@@ -1,94 +1,102 @@
-use crate::helpers::compile_dag;
+//! Witness: the EMITTED REST realization must publish a declared-side `RestBodyUndecodable` cause,
+//! never a body-derived one.
+//!
+//! BACKGROUND. `gunbc.heal_publication` publishes `RestBodyUndecodable.cause` verbatim into a GitHub
+//! PR comment (`rest_refusal_text`, `dag/gunbc/heal_publication.dag`), on a path taken while a
+//! credential is in hand. The interpreter route (#16241) renders that cause from declared facts; the
+//! EMITTED route used to splice the runtime io/serde error (`cause: error.to_string()` and
+//! `cause: format!("body did not inhabit the declared output: {}", error)`) directly into the published
+//! cause. That is a credential-exfiltration path (DESIGN single_authority / redaction): a serde decode
+//! message can carry a spelling the response body presented, which the publisher then prints verbatim.
+//! This witness locks the EMITTED bytes so neither arm can carry body-derived text.
+//!
+//! MECHANISM. The witness drives the EMITTER through `compile_entry_emission` over the entry fixture
+//! `fixtures/rest_emitted_leak_probe/probe.dag` (a rest operation whose lowered call makes
+//! `emit_rust_rest_result_lowering` bake the two `RestBodyUndecodable` causes), and asserts directly on
+//! the generated program text -- the same bytes heal-publish commits. This is the emitter realization,
+//! not the interpreter: it complements the `dag/test/claim/rest_exchange_replay.dag` claim (which checks
+//! the interpreter route). This crate is NOT built by CI (the witnesses/v2-bootstrap typecheck step is
+//! `cargo check --profile test -p v1-compiler --lib`, which never builds `v1-compiler-tests`), so the
+//! executed receipts are run out-of-band by the remote build owner, labelled with the pre-existing
+//! #16069 `helpers.rs` Rc-wrap this crate needs to compile.
+//!
+//! FAKE SECRET / marker. The enforcing check is the allow-list below (a cause must be one of the two
+//! declared-side constant literals; a splice of the runtime io/serde `error` fails it), so this test is
+//! RED on main and GREEN at the fix. A planted FAKE-SECRET string literal never appears in the fixed-
+//! shape emitted lines at either ref (the sentinel is a runtime binding, not a literal in the generated
+//! source), so a "does not contain FAKE_SECRET" assertion would be vacuous and is deliberately omitted;
+//! the allow-list is the real discriminator.
 
-// EMITTED-ROUTE CREDENTIAL-PATH WITNESS (the discriminator the brief names).
-//
-// A REST exchange's RestBodyUndecodable cause is a credential path: gunbc.heal_publication
-// rest_refusal_text publishes it with a credential in hand. Before the fix the EMITTED realization
-// of that refusal passed body-derived text straight through -- the body-read arm emitted
-// `cause: error.to_string()` (the reqwest io error) and the decode arm emitted
-// `format!("body did not inhabit the declared output: {}", error)` (the serde_json message, which
-// can echo a spelling the body presented). claim_batch realizes the whole closure and is green
-// either way, so it cannot tell the two states apart -- THIS test is the discriminator: it reads
-// the EMITTED BYTES for a REST exchange and refuses while either arm splices a body-derived input.
-//
-// FAKE SECRET IN EVERY BODY-DERIVED INPUT, and WHY THE ASSERTION IS THE CODE SHAPE. The two
-// body-derived inputs the arms could echo are the runtime io error (body read refused) and the
-// serde_json message (decode refused); both reach the cause through the SAME vector -- the emitted
-// code splicing the runtime `error` binding into it (`cause: error.to_string()` /
-// `format!("...", error)`). A credential carried by the body therefore reaches the published cause
-// if and only if the emitted cause splices a runtime value. So the guarantee is asserted as the
-// absence of that splice: each emitted RestBodyUndecodable arm's cause must be a CONSTANT literal
-// carrying the single declared-side authority's phrase, never a runtime expression. The probe's
-// request credential is planted with FAKE-SECRET-MARKER (mirroring the interpreter's t7 credential
-// probe) so the credential is present in every body-derived input on this exchange; it is a runtime
-// call-argument, so it is not asserted literally against the emitted source (a fixed-shape cause
-// never contains it at either ref -- asserting so would be vacuous). The splice-forbidding below is
-// the enforceable form of the same barrier, and it is exactly what fires RED at main.
-//
-// RED at main (the arms emitted the leaking expressions), GREEN at head (they route through
-// v1.compiler.rest_cause_text).
+use crate::helpers::workspace_root;
+use v1_compiler::cli_run::compile_entry_emission;
+use v1_compiler::v1_compiler_artifact::RenderTarget;
 
-// TEST RECEIPT (ctrl review policy: a new hand-written Rust test carries a receipt). This file is
-// hand-written Rust in the CONVENTIONAL hand-written test package v1-compiler-tests
-// (src/v1/tests/src/*_test.rs), NOT hand-written Rust smuggled into the generated stage0 mirror that
-// gunbc.integration_concern::grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror governs
-// -- like every other *_test.rs here it is ordinary hand-written test source, so no before/after seed
-// census applies. Deferral, naming a lane and a tracking row: the emitted-route cause text it pins is
-// owned by the single authority v1.compiler.rest_cause_text, whose interpreter-side fold-in (the fork)
-// is tracked at dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag (NEXT RUNG,
-// dispatched by silent-bee-845) as PR-2; that row is the lane that owns this witness's subject text.
+/// The entry fixture (repo-root `fixtures/` tree) whose lowered rest call reaches the REST lowering.
+const PROBE_ENTRY: &str = "fixtures/rest_emitted_leak_probe/probe.dag";
 
-fn rest_exchange_probe() -> &'static str {
-    "module fixture.rest_emitted_leak_probe\n\
-     type Secret nominal_opaque = String\n\
-     service fixture.RestEmittedLeak {\n\
-       config {\n\
-         endpoint: \"https://192.0.2.1\"\n\
-         auth: Bearer\n\
-         auth_input: access_token\n\
-       }\n\
-       operation ReadKey {\n\
-         requires Network\n\
-         input { access_token: Secret, name: String }\n\
-         output { data: String from \"data\" }\n\
-         readonly\n\
-         transport rest { method: GET, path: \"/v1/key\" }\n\
-       }\n\
-     }\n\
-     fn witness() -> Bool {\n\
-       let r = fixture.RestEmittedLeak.ReadKey(access_token: \"FAKE-SECRET-MARKER\" as Secret, name: \"plain\")\n\
-       true\n\
-     }\n"
-}
+#[test]
+fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_error() {
+    // Emission needs the workspace as cwd (set_current_dir is process-global), so this is the single
+    // test over this emission -- mirrors grounded_shared_carrier_wrap_test.
+    std::env::set_current_dir(workspace_root()).expect("cwd");
+    let roots = vec![
+        "dag".to_string(),
+        "src/v2".to_string(),
+        "fixtures/rest_emitted_leak_probe".to_string(),
+    ];
+    let run = compile_entry_emission(&roots, PROBE_ENTRY, true, RenderTarget::Rust);
 
-fn emitted_text(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> String {
-    result
+    let emission = run.emissions.first().unwrap_or_else(|| {
+        panic!(
+            "the rest probe entry must reach emission; disposition: {}",
+            run.measurement_line("rest-emitted-leak-probe")
+        )
+    });
+    let result = &emission.result;
+    let emitted: String = result
         .files
         .iter()
         .map(|f| f.content.clone())
         .collect::<Vec<_>>()
-        .join("\n")
-}
+        .join("\n");
 
-#[test]
-fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_error() {
-    let result = compile_dag(rest_exchange_probe());
-    let emitted = emitted_text(&result);
-
-    // The REST result lowering must actually have been emitted, else the assertions below would
-    // pass vacuously.
+    // The REST lowering must actually have been emitted, else the allow-list below would pass
+    // vacuously. On failure, dump compiler diagnostics + the emitted file paths + which rest-machinery
+    // substrings survived, so a single re-run distinguishes a probe MODEL error (diagnostics non-empty /
+    // files empty) from an entry that compiled but never lowered the rest call (files present, no
+    // RestBodyUndecodable), from a lowering that fired but under an unexpected spelling.
+    let file_paths: Vec<String> = result.files.iter().map(|f| f.path.clone()).collect();
+    let markers = [
+        "RestBodyUndecodable",
+        "RestRefused",
+        "RestAnswered",
+        "rust_rest_refused",
+        "RestResult",
+        "ReadKey",
+    ];
+    let present: Vec<&str> = markers
+        .iter()
+        .copied()
+        .filter(|m| emitted.contains(m))
+        .collect();
     assert!(
         emitted.contains("RestBodyUndecodable"),
         "the REST lowering did not emit a RestBodyUndecodable refusal at all; probe did not reach \
-         emit_rust_rest_result_lowering\n--- emitted ---\n{emitted}"
+         emit_rust_rest_result_lowering\n--- file count: {} ---\n--- file paths: {:?} ---\n--- \
+         diagnostics ({}) ---\n{:?}\n--- rest-machinery substrings present: {:?} ---\n--- emitted ---\n{emitted}",
+        result.files.len(),
+        file_paths,
+        result.diagnostics.len(),
+        result.diagnostics,
+        present,
     );
 
-    // ALLOW-LIST, not a deny-list. A deny-list of two spellings (error.to_string(), format!()) misses the
-    // NEXT splice form -- a different binding name, a helper that takes the error -- so instead every
-    // emitted RestBodyUndecodable CONSTRUCTION's cause must be EXACTLY one of the two declared-side forms
-    // the shared text module (v1.compiler.rest_cause_text) produces, as a single string literal. Anything
-    // else fails: a runtime splice under any binding, a helper call, a format!, concatenation, an
-    // unforeseen form, or a wording drift from the authority.
+    // ALLOW-LIST over EVERY RestBodyUndecodable CONSTRUCTION (manager-requested inversion of a
+    // deny-list: it fails unforeseen splice forms, not just the two known spellings). Each construction
+    // must set its cause to one of EXACTLY the two declared-side forms the shared text module
+    // (v1.compiler.rest_cause_text) produces -- a bare constant literal, or the pinned template filled
+    // only with declared facts (no body-derived value). Any other cause expression -- `error.to_string()`,
+    // `format!(..)`, a `+`-splice, a helper, or a different binding -- fails.
     //
     // A CONSTRUCTION is identified by the emit's construction marker `status: status as i64`; the
     // RestBodyUndecodable VARIANT DECLARATION (which carries the field TYPE `cause: NonEmptyStr`, not a
