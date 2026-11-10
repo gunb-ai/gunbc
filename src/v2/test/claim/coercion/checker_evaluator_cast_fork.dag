@@ -72,28 +72,32 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SHARED HEADER. Every probe carries it unchanged, so the only thing a probe's verdict can turn on is
 // its own declaration. `cecf_in_range` is the range predicate, constant-true for the reason the header gives:
 // the literal under test IS in range. `Port` and `Mode` are two different declarations over the same Int
-// carrier -- the pair #16224's fixture used, and the shape the fork lives on. `cecf_const` and `cecf_chan`
-// are how a CLOSED module obtains a value of a refined carrier: a data declaration whose declared type is
-// the refinement (the literal-refinement judgment, decided by the constant-true predicate) and a call that
-// hands it back. Neither carries a cast, so neither can be the probe's cast node.
-data cecf_header: String = "module cecf\nimport std.types { Bool, Int, String }\nfn cecf_in_range(x: Int) -> Bool { true }\nfn cecf_above_low(x: Int) -> Bool { true }\ntype Port = Int where cecf_in_range\ntype Mode = Int where cecf_above_low\ndata cecf_const: Port = 1\nfn cecf_chan() -> Port { cecf_const }\n"
+// carrier -- the pair #16224's fixture used (IpmiChannelNumber 0..15 and IpmiUserId 1..63) -- and the shape
+// the fork lives on. `cecf_chan` is how a CLOSED module obtains a value of a refined carrier without the
+// probe's own cast: the literal `1` sits at a CALL ARGUMENT whose formal is `Port`, which is the one
+// literal-at-a-refined-position the v2 checker admits with a holding predicate (the admittedness arm of
+// src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag: a literal at an argument whose formal
+// is `LrjNi = Int where lrj_p` with `fn lrj_p(n: Int) -> Bool { true }` is admitted, and records exactly one
+// obligation, which the refinement discharge answers with the evaluator). The header carries NO cast, so the
+// probe declaration is the only `<cast-target>` edge in the tree.
+data cecf_header: String = "module cecf\nimport std.types { Bool, Int, String }\nfn cecf_in_range(x: Int) -> Bool { true }\nfn cecf_above_low(x: Int) -> Bool { true }\ntype Port = Int where cecf_in_range\ntype Mode = Int where cecf_above_low\nfn cecf_chan(x: Port) -> Port { x }\n"
 
 // CLASS PROBE 1 -- the in-range literal cast into a range-refined Int carrier: #16224's shape, where the
 // operand's own type is the Int kernel, neither the target refinement nor the carrier of a refinement.
 data cecf_literal_source: String = concat(cecf_header, "data cecf_target: Port = 1 as Port\n")
 
-// CLASS PROBE 2 -- the cross-refinement call-source cast: the operand is a CALL whose declared type is one
-// refinement, cast into a DIFFERENT refinement over the same carrier.
-data cecf_crossref_source: String = concat(cecf_header, "data cecf_target: Mode = cecf_chan() as Mode\n")
+// CLASS PROBE 2 -- the cross-refinement call-source cast: the operand is a CALL whose type is one refinement,
+// cast into a DIFFERENT refinement over the same carrier. #16224's second arm was `pc() as IpmiUserId`.
+data cecf_crossref_source: String = concat(cecf_header, "data cecf_target: Mode = cecf_chan(1) as Mode\n")
 
 // CONTROL 1 -- the identity cast: a call source cast onto its OWN carrier. Exact structural equality, so the
 // checker's algebra admits it, and the evaluator must too. #16224's fix had to keep this admitted; a checker
 // that refused it would be the opposite failure mode, not a pass here.
-data cecf_identity_source: String = concat(cecf_header, "data cecf_target: Port = cecf_chan() as Port\n")
+data cecf_identity_source: String = concat(cecf_header, "data cecf_target: Port = cecf_chan(1) as Port\n")
 
 // CONTROL 2 -- the widening cast: a refined value back to its declared carrier. The one crossing the checker's
 // algebra calls a widening, and the one the evaluator realizes as the operand's own value.
-data cecf_widening_source: String = concat(cecf_header, "data cecf_target: Int = cecf_chan() as Int\n")
+data cecf_widening_source: String = concat(cecf_header, "data cecf_target: Int = cecf_chan(1) as Int\n")
 
 // THE INTERFACE, arm by arm. The checker's verdict is the PIPELINE's -- infer plus the refinement discharge,
 // the verdict the authoring surface reports.
