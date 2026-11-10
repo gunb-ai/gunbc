@@ -21,7 +21,7 @@ import gunbc.spool_queue {
   spool_defer_assess, spool_undefer_assess, ParkEligible, ParkNotApplicable, ParkNotDeclared, ClaimParked,
    SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
 }
-import gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }
+import gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused, spool_role_path, RoleDone }
 import std.nat { Nat, Zero, Succ }
 
 // THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
@@ -167,6 +167,28 @@ test fn a_partitioned_store_mint_refuses_the_root_uid_and_admits_a_real_uid() ->
         SpoolOpenRefused { cause: _ } => exit_failure(reason: "a real principal uid (1) was refused")
       }
     SpoolOpenReady { store: _ } => exit_failure(reason: "root (uid 0) was admitted as a seat exit partition owner")
+  }
+}
+
+// REALIZATION WITNESS (the "RED when the realization is broken" claim, durable): the sealed reader resolves the
+// compute exit spool's done directory to EXACTLY <instance_root>/attempt-exit-spool/<uid>/done. This one assertion
+// turns RED on every realization defect the brief names: drop the uid segment -> ".../attempt-exit-spool/done";
+// drop provisioning/root_name -> the segment "attempt-exit-spool" is gone; unlist the done role -> spool_role_path
+// returns Absent. It is a positive control that must stay green AND is the witness that goes RED if the sealed
+// derivation is broken -- not a one-off mutation, so it runs in CI every time.
+test fn the_partitioned_done_directory_is_derived_under_the_uid_segment() -> ProcessExit {
+  match spool_open_uid(kind: SpoolComputeExit, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+    SpoolOpenReady { store } =>
+      match spool_role_path(store: store, role: RoleDone) {
+        Present { value: p } =>
+          if p == "/tmp/compute/root/attempt-exit-spool/1/done" {
+            ExitSuccess
+          } else {
+            exit_failure(reason: p)
+          }
+        Absent => exit_failure(reason: "the compute exit spool declares no Done terminal (role dir unlisted)")
+      }
+    SpoolOpenRefused { cause: c } => exit_failure(reason: c)
   }
 }
 
