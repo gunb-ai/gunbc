@@ -5047,8 +5047,12 @@ pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
 }
 
 /// The fallible core. Every filesystem condition and every corpus-authority violation
-/// returns a located `Err` instead of unwinding.
-fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
+/// returns a located `Err` instead of unwinding. A missing root, an unreadable directory, a
+/// non-UTF-8 source or a directory named like a `.dag` is an ordinary, user-caused condition
+/// that owes a typed, located refusal (gunbc.design_argument::fail_closed). This is LIBRARY
+/// code, so it RETURNS the refusal rather than terminating the process; only the CLI boundary
+/// (`refuse_module_index_build`) turns a refusal into the located exit-1 diagnostic.
+pub(crate) fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
         let anchored_root = admit_source_root(root)?;
@@ -5086,7 +5090,11 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
     Ok(index)
 }
 
-fn try_build_module_index_primary_precedence(
+/// `primary-precedence` pool indexing: the first root is authoritative; later roots fill only
+/// modules not already present (matches `gunbc compile --dependency-pool-index
+/// primary-precedence` in `dag_compile_clean_transport`). Returns the typed refusal like
+/// `try_build_module_index`.
+pub(crate) fn try_build_module_index_primary_precedence(
     source_roots: &[String],
 ) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
@@ -5199,64 +5207,6 @@ fn try_index_source_root_into_module_index(
         }
     }
     Ok(())
-}
-
-fn load_compile_clean_entry_sources(
-    source_roots: &[String],
-    mei: &MultiEntryIndex,
-    entry_path_filter: Option<&std::collections::HashSet<String>>,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = &mei.source_files;
-    let facts = &mei.module_graph_facts;
-    let first_root = std::path::Path::new(&source_roots[0]);
-    let mut entry_files = Vec::new();
-    if first_root.is_dir() {
-        let mut dag_paths = Vec::new();
-        collect_dag_files_result(first_root, &mut dag_paths)?;
-        for source in dag_paths {
-            let path = source.path();
-            let rel = workspace_relative_repo_path(&path.to_string_lossy());
-            if let Some(filter) = entry_path_filter {
-                if !filter.contains(&rel) {
-                    continue;
-                }
-            }
-            let content = source
-                .read()
-                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-            entry_files.push((path.to_string_lossy().to_string(), content));
-        }
-    }
-
-    let skipped_moduleless = moduleless_dag_entry_paths(&entry_files);
-    report_moduleless_dag_entry_skips(&skipped_moduleless);
-
-    let mut entry_for_queue = Vec::new();
-    for (path, content) in &entry_files {
-        if extract_module_path(content).is_some() {
-            entry_for_queue.push(Rc::new(v1_compiler_compile::SourceFile {
-                path: path.clone(),
-                content: content.clone(),
-            }));
-        }
-    }
-
-    let mut sources = resolve_transitively(entry_for_queue, index, facts)?;
-    for (path, content) in entry_files {
-        if extract_module_path(&content).is_none() {
-            continue;
-        }
-        if !sources.iter().any(|s| s.path == path) {
-            sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
-        }
-    }
-    // BOTH closures to a joint fixpoint via the ONE shared authority the witness loader
-    // `load_sources_for_entry_with_pool` also calls (gunbc.design_argument::single_authority dissolution: this gate loader ran ONLY
-    // `extend_with_reference_closure`, so an entry reaching a provider purely by bare name or
-    // service call — patterns.dag → `gcp.STS.Exchange`, no import — dropped it, because the edge
-    // `gcp.STS` → dag/extdeps/cloud/gcp/sts.dag lives ONLY in the bare closure. Proven: ARM1
-    // ref-only = 3 unresolved-type diags on patterns.dag's closure; +bare = 0).
-    extend_sources_to_both_closure_fixpoint(sources, mei)
 }
 
 /// Reference-derived dependency closure (namespace Rule-1 interim). A qualified reference
@@ -5586,29 +5536,6 @@ fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
     }
 }
 
-fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
-    const SHOWN_LIMIT: usize = 20;
-    let mut shown = 0usize;
-    let mut total = 0usize;
-    // One pass, no accumulator: the total is counted, never collected (gunbc.design_argument::how_to_work).
-    for d in diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-    {
-        total += 1;
-        if shown < SHOWN_LIMIT {
-            eprintln!("{}", format_compile_clean_hard_diagnostic_line(d));
-            shown += 1;
-        }
-    }
-    if total > SHOWN_LIMIT {
-        // Count the residue rather than hiding it (gunbc.design_argument::fail_closed): a truncated burndown that
-        // never reports its size makes the deficit unprioritizable.
-        eprintln!("compile-clean: (truncated hard diagnostics at {SHOWN_LIMIT}; {total} total)");
-    }
-}
-
-const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/gunbc/instruments/dag_compile_clean_scope.dag";
 const FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY: &str =
     "src/v2/workflow/floor_compile_clean_predicates.dag";
 
@@ -5631,22 +5558,6 @@ fn call_compile_clean_bool_list_fn(
         )),
         Err(e) => Err(format!("{fn_name}: {e}")),
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CompileCleanScopePlan {
-    /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
-    WholeTree,
-    SkipNoAffected {
-        reason: String,
-    },
-    Scoped {
-        entry_paths: Vec<String>,
-    },
-    /// CI path: diff observation or scope disposition failed — job must red (no widening).
-    Refused {
-        reason: String,
-    },
 }
 
 // DELETE WHEN dissolved: `compile_clean_shard_entry_paths_from_decl_facts`,
@@ -6027,8 +5938,11 @@ pub struct ModuleGraphFactsLive {
     pub(crate) declared_paths: HashSet<String>,
     // SELECTION-ONLY tier: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
     // reference-derived edges for import-less files, and the import-less files the reference
-    // producer could not answer for (`reference_unaccounted`, the one state
-    // `entry_file_touched_via_import_closure` may refuse on).
+    // producer could not answer for (`reference_unaccounted`).
+    // The host `entry_file_touched` decider that also read this tier
+    // (`entry_file_touched_via_import_closure`) was deleted in read-set convergence P0
+    // (gunbc.plans.read_set_convergence C4/C6: zero callers); the tier's live consumer is
+    // the reference-only schedule-edge fold (`reference_only_direct_import_paths`).
     //
     // Separate from `adjacency` because the two consumers need different tiers, and mixing them
     // is a measured regression: `adjacency` also feeds LOADER closures
@@ -6270,83 +6184,6 @@ impl ModuleGraphFactsLive {
         out.dedup();
         out
     }
-}
-
-/// Mirror of `v2.lens.module_graph.path_matches_touched` (strip a leading `./`, then
-/// equality or suffix-containment either way) — the two sides must agree because the
-/// module-grain receipt harness proves the dag-vs-Rust file-grain DECISION equal on
-/// real diffs, and a matching-rule fork would surface there as a divergence.
-fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
-    let file = closure_path.strip_prefix("./").unwrap_or(closure_path);
-    let target = touched_path.strip_prefix("./").unwrap_or(touched_path);
-    file == target || file.ends_with(target) || target.ends_with(file)
-}
-
-/// Production `entry_file_touched` decision for the discovery corpus: is any touched
-/// entry file inside this entry's transitive import closure?
-///
-/// AUTHORITY: `v2.lens.module_graph.entry_affected_by_touched_paths` — the consolidated gunbc.design_argument::single_authority
-/// survivor per the 2026-09-05 replacement migration (see
-/// `v2.lens.affected_set.entry_selection`). This host rendering is certified against the
-/// `.dag` authority by execution on real merged diffs via the module-grain receipt harness
-/// (`affected_decision_module_grain` section below).
-///
-/// The fn-arrow DependencyView composition (fork (c) 2026-07-10, #6335 unwind) is DELETED
-/// — `v2.lens.affected_set.corpus_dependency_view` removed outright (the fn-arrow
-/// selection mechanism #2). The surviving authority is this host rendering of
-/// `v2.lens.module_graph.entry_affected_by_touched_paths` (import-closure, mechanism #3).
-/// The gunbc.design_argument::single_authority fork where three mechanisms answered "which tests are affected?" is resolved:
-/// two parallel mechanisms deleted or consolidated onto the survivor.
-///
-/// Dissolve-on: the namespace-only resolution terminal step replaces import edges with
-/// `container.member` reference edges — the closure query above the edge source is
-/// grain-stable and survives.
-///
-/// Refusal, never widen: an entry absent from the facts' declared-module set is a provenance
-/// gap the relation cannot answer for, and returns a typed error that fails the batch (the gunbc.design_argument::fail_closed
-/// fail-closed arm lives HERE; the old arm that called its widen "fail-closed" is deleted).
-fn entry_file_touched_via_import_closure(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    declared_paths: &HashSet<String>,
-    touched_paths: &[String],
-) -> Result<bool, String> {
-    if touched_paths.is_empty() {
-        return Ok(false);
-    }
-    let entry_rel = workspace_relative_repo_path(entry_path);
-    if !declared_paths.contains(&entry_rel) {
-        return Err(format!(
-            "AFFECTED-SET REFUSAL cause=EntryOutsideModuleGraphFacts entry={entry_rel} — \
-             the module-graph facts scan does not declare this entry, so the import-closure \
-             relation cannot answer entry_file_touched for it; refusing the batch rather \
-             than widening to run-all or narrowing to skip"
-        ));
-    }
-    // The edgeless case is NOT a special arm. With reference-derived edges for import-less files
-    // in the adjacency, "no outgoing edges" means the producer looked and found none (a
-    // builtin-only witness, say), and `import_closure_from_adjacency` answers precisely: the
-    // closure seeds with the entry itself, so it is affected iff its own file is touched.
-    //
-    // The one state that may refuse is the producer being UNABLE TO ANSWER: an import-less file
-    // it could not read or parse has an unknown dependency set, not an empty one. Answering
-    // "affected" for it (the arm deleted here) conflated ⊤-as-ignorance with ⊤-as-answer and,
-    // being silent and uncounted, zeroed the deficit's observed frequency by construction while
-    // the cost surfaced as a 95-minute CI floor rather than a diagnostic (gunbc.design_argument::fail_closed).
-    if facts.selection.reference_unaccounted().contains(&entry_rel) {
-        return Err(format!(
-            "AFFECTED-SET REFUSAL cause=ReferenceEdgesUnaccounted entry={entry_rel} — the \
-             reference-edge producer could not read or parse this import-less entry, so its \
-             dependency set is UNKNOWN, not empty; refusing the batch rather than widening to \
-             run-all or narrowing to skip"
-        ));
-    }
-    let closure = import_closure_from_adjacency(entry_path, facts.selection.selection_adjacency());
-    Ok(touched_paths.iter().any(|touched| {
-        closure
-            .iter()
-            .any(|member| repo_paths_match_touched(member, touched))
-    }))
 }
 
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and the
@@ -10943,6 +10780,11 @@ pub enum WitnessRuntimeCause {
     StringRealizationStraddle,
     VariantRealizationRefused,
     PoolRootContributesNothing,
+    /// A keyed declaration read could not look at a file the asked key derives
+    /// (`v1_interpreter::InterpError::DeclFactsKeyedReadRefused`). Its own cause, not
+    /// `Type`: which file and what the parse said are the refusal, and a witness that classifies a
+    /// red claim by cause must be able to name it.
+    DeclFactsKeyedReadRefused,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
     /// `v1_interpreter::RestResponseDecodeRefusal`).
@@ -10988,6 +10830,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
+            WitnessRuntimeCause::DeclFactsKeyedReadRefused => "decl-facts-keyed-read-refused",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
             WitnessRuntimeCause::DivisionByZero => "division-by-zero",
@@ -11028,6 +10871,7 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
+            E::DeclFactsKeyedReadRefused { .. } => WitnessRuntimeCause::DeclFactsKeyedReadRefused,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             // A non-Bool guard is a type error at a located site; the variant carries the location,
             // the cause token classifies it with its kind.
@@ -11289,40 +11133,7 @@ pub enum LiveReadSelectionRow {
     Refused { cause: String },
 }
 
-impl LiveReadSelectionRow {
-    /// Whether this declaration's live reads intersect `touched_paths`.
-    ///
-    /// One total fold over the mirrored structure, and every arm is decided rather than assumed:
-    /// a refusal forbids a skip; a local read is untouched by any diff; a literal path is compared;
-    /// and a parameter reference, an unknown path, or a structural corpus scan is touched by any
-    /// nonempty diff because its target cannot be narrowed here. That last group is a genuine
-    /// over-approximation computed AS the answer — the model's precision frontier — not a failure
-    /// arm widening, which is why it is safe where the previous blanket bool was not.
-    pub fn touched_by(&self, touched_paths: &[String]) -> bool {
-        let carriers = match self {
-            LiveReadSelectionRow::Refused { .. } => return true,
-            LiveReadSelectionRow::Classified(LiveReadClassification::LocalRead) => return false,
-            LiveReadSelectionRow::Classified(LiveReadClassification::RuntimeRead { carriers }) => {
-                carriers
-            }
-        };
-        carriers.iter().any(|carrier| match carrier {
-            LiveReadCarrier::ModuleDeclarationFactsScan
-            | LiveReadCarrier::DeclFactsReflection { .. } => !touched_paths.is_empty(),
-            LiveReadCarrier::FilesystemReadPath(pattern) => match pattern {
-                LiveReadPathPattern::ParamRef(_) | LiveReadPathPattern::UnknownPath => {
-                    !touched_paths.is_empty()
-                }
-                LiveReadPathPattern::LiteralPath(path) => {
-                    let want = workspace_relative_repo_path(path);
-                    touched_paths
-                        .iter()
-                        .any(|touched| repo_paths_match_touched(&want, touched))
-                }
-            },
-        })
-    }
-}
+impl LiveReadSelectionRow {}
 
 impl LiveReadSelectionManifest {
     /// Look up one enrolled declaration. A subject mismatch is a typed refusal, never a miss that
@@ -11648,63 +11459,6 @@ mod live_read_selection_manifest_producer_tests {
             vec![("path_pattern", pattern)],
         )
     }
-
-    // ---- the selection fold ---------------------------------------------------------------
-
-    fn touched(paths: &[&str]) -> Vec<String> {
-        paths.iter().map(|p| p.to_string()).collect()
-    }
-
-    #[test]
-    fn a_literal_path_carrier_intersects_only_its_own_path() {
-        let row = LiveReadSelectionRow::Classified(LiveReadClassification::RuntimeRead {
-            carriers: vec![LiveReadCarrier::FilesystemReadPath(
-                LiveReadPathPattern::LiteralPath("dag/gunbc/ci/ci_spec.dag".to_string()),
-            )],
-        });
-        assert!(row.touched_by(&touched(&["dag/gunbc/ci/ci_spec.dag"])));
-        // The whole point of preserving the literal: an unrelated diff does NOT select it. A
-        // `runtime_read: bool` row could not express this and had to say true here.
-        assert!(!row.touched_by(&touched(&["dag/gunbc/unrelated.dag"])));
-    }
-
-    #[test]
-    fn param_unknown_and_scan_carriers_are_touched_by_any_nonempty_diff() {
-        for carrier in [
-            LiveReadCarrier::FilesystemReadPath(LiveReadPathPattern::ParamRef("p".to_string())),
-            LiveReadCarrier::FilesystemReadPath(LiveReadPathPattern::UnknownPath),
-            LiveReadCarrier::ModuleDeclarationFactsScan,
-            LiveReadCarrier::DeclFactsReflection {
-                home: "v2.std.decl_index".to_string(),
-            },
-        ] {
-            let row = LiveReadSelectionRow::Classified(LiveReadClassification::RuntimeRead {
-                carriers: vec![carrier.clone()],
-            });
-            assert!(
-                row.touched_by(&touched(&["dag/gunbc/unrelated.dag"])),
-                "{carrier:?} must be touched by any nonempty diff — its target is not narrowable"
-            );
-            assert!(
-                !row.touched_by(&[]),
-                "{carrier:?} must not be touched by an empty diff"
-            );
-        }
-    }
-
-    #[test]
-    fn a_local_read_is_never_touched_and_a_refusal_always_is() {
-        let local = LiveReadSelectionRow::Classified(LiveReadClassification::LocalRead);
-        assert!(!local.touched_by(&touched(&["dag/gunbc/ci/ci_spec.dag"])));
-        let refused = LiveReadSelectionRow::Refused {
-            cause: "partial subject".to_string(),
-        };
-        assert!(
-            refused.touched_by(&[]),
-            "a refusal must forbid a skip even on an empty diff — it is the absence of a \
-             classification, not a classification of absence"
-        );
-    }
 }
 
 /// Per-file parse memo for `resolved_graph_from_sources_with_index`.
@@ -11851,21 +11605,30 @@ pub struct MultiEntryIndex {
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    new_multi_entry_index_shell(build_module_index_or_refuse(source_roots), source_roots)
+    // Infallible CLI-boundary consumer: `try_build_module_index` returns the located refusal,
+    // and only `refuse_module_index_build` chooses exit 1. `new_multi_entry_index_shell` is
+    // called directly from this `#[track_caller]` frame so the construction record keeps the
+    // original caller's location.
+    new_multi_entry_index_shell(
+        try_build_module_index(source_roots)
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
+        source_roots,
+    )
 }
 
-/// Primary-precedence `MultiEntryIndex` — the index shape the compile-clean gate
-/// uses (`--dependency-pool-index primary-precedence`: root[0] wins, later roots
-/// fill only absent modules). Needed so `load_compile_clean_entry_sources` can run
-/// the SAME both-closure fixpoint as the witness loader (`extend_with_bare_reference_closure`
-/// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the gunbc.design_argument::single_authority
+/// Primary-precedence `MultiEntryIndex` — the index shape behind
+/// `--dependency-pool-index primary-precedence` (root[0] wins, later roots
+/// fill only absent modules). It exists so every cold loader runs the SAME
+/// both-closure fixpoint (`extend_with_bare_reference_closure` requires the
+/// `MultiEntryIndex` for its per-tree bare census), dissolving the gunbc.design_argument::single_authority
 /// closure-authority fork the two loaders' doc-comments each falsely claimed to be single.
 #[track_caller]
 fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(source_roots),
+        try_build_module_index_primary_precedence(source_roots)
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
         source_roots,
     )
 }
@@ -12543,7 +12306,8 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v1".to_string(),
     ];
     new_multi_entry_index_shell(
-        build_module_index_primary_precedence_or_refuse(&roots),
+        try_build_module_index_primary_precedence(&roots)
+            .unwrap_or_else(|refusal| refuse_module_index_build(&refusal)),
         &roots,
     )
 }
@@ -16423,7 +16187,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let t2a = std::time::Instant::now();
-    let index = build_module_index_or_refuse(&dag_roots);
+    let index = try_build_module_index(&dag_roots)?;
     eprintln!(
         "[floor-phase] phase=module-index state=completed wall_ms={} modules={}",
         t2a.elapsed().as_millis(),
@@ -20780,19 +20544,6 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
     ))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FileLineRange {
-    /// The hunk's new-side `+start,count` as git printed it. A zero `new_count` is a PURE
-    /// DELETION that sits AFTER new-side line `new_start` (0 = before the first line).
-    new_start: i64,
-    new_count: i64,
-    /// The old-side lines the hunk removed, in order. With the new-side content they
-    /// reconstruct the file at the diff base exactly, which is what lets declaration
-    /// attribution compare each declaration's OWN text at base and head instead of asking
-    /// which lines a hunk happened to name (`a_pure_deletion_force_runs_its_unchanged_neighbour`).
-    removed: Vec<String>,
-}
-
 fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Vec<String>, String> {
     use v1_interpreter::Value;
     match val {
@@ -20809,58 +20560,6 @@ fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Ve
 
 fn normalize_repo_path(path: &str) -> String {
     path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
-}
-
-fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
-    let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
-    let mut current_file: Option<String> = None;
-    let mut in_hunk = false;
-    for line in diff_text.lines() {
-        if line.starts_with("diff --git ") {
-            // Section boundary: a file only becomes attributable after its own
-            // `+++ b/` header. A deleted file's header is `+++ /dev/null`, which
-            // never re-arms current_file — without this reset its `@@ -1,N +0,0`
-            // hunk attributed to the PRECEDING file at new-side line 1, tripping
-            // the module-line fail-closed refusal for any modified file that
-            // sorts immediately before a whole-file deletion (found live:
-            // lens_module_gate.dag + the deleted extdeps_external_authority.dag).
-            // Departed paths are carried by the name-status observation, never
-            // by hunk attribution.
-            current_file = None;
-            in_hunk = false;
-        } else if line.starts_with("@@ ") {
-            in_hunk = false;
-            let Some(file) = current_file.clone() else {
-                continue;
-            };
-            let plus = line.split_whitespace().nth(2).unwrap_or("");
-            let plus = plus.trim_start_matches('+');
-            let (new_start, new_count) = if let Some((s, c)) = plus.split_once(',') {
-                (s.parse::<i64>().unwrap_or(1), c.parse::<i64>().unwrap_or(1))
-            } else {
-                (plus.parse::<i64>().unwrap_or(1), 1)
-            };
-            out.entry(file).or_default().push(FileLineRange {
-                new_start,
-                new_count,
-                removed: Vec::new(),
-            });
-            in_hunk = true;
-        } else if in_hunk {
-            if let Some(removed) = line.strip_prefix('-') {
-                if let Some(range) = current_file
-                    .as_ref()
-                    .and_then(|f| out.get_mut(f))
-                    .and_then(|v| v.last_mut())
-                {
-                    range.removed.push(removed.to_string());
-                }
-            }
-        } else if let Some(rest) = line.strip_prefix("+++ b/") {
-            current_file = Some(normalize_repo_path(rest));
-        }
-    }
-    out
 }
 
 fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, HashSet<i64>> {
@@ -21055,108 +20754,25 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
-// SCAFFOLD (gunbc.design_argument::how_to_work, gunbc.design_argument::self_hosting): host-side diff→declaration attribution
-// (`floor_diff_edits_from_line_ranges`) and per-entry frontier materialization
-// (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
-// realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
-// via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
-// `entry_file_touched` axis is decided by `entry_file_touched_via_import_closure`
-// (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths` — the
-// consolidated gunbc.design_argument::replacement_migration survivor per the 2026-09-05 replacement migration).
-// Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
-// expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
-// `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
-// `rg 'floor_diff_edits_from_line_ranges|rerun_frontier_nodes_for_entry' src/v1/stage0/src/cli_run.rs`
-// must be empty).
-#[derive(Clone, Debug, Default)]
-pub(crate) struct FloorDiffEdits {
-    overlapping_data_items: HashSet<(String, String)>,
-    edited_test_fns: HashSet<(String, String)>,
-    /// Test fns declared now and not declared at the resolved diff base — the NEWLY ENROLLED
-    /// set the enrolment margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
-    /// Names at the base come from `v2.workflow.floor_diff_observe`
-    /// `floor_run_base_test_decl_census`, path-keyed. Enrolment subtracts names at the
-    /// `rename from` path when git detected a rename, so a move does not enrol every fn.
-    /// A wholly added file and a brand-new `test fn` in an existing file are new; a
-    /// modified sibling whose name was already at the lookup path is not.
-    enrolled_test_fns: HashSet<(String, String)>,
-    /// `.dag` files with a non-data, non-test-fn declaration touched. Required-floor Strict
-    /// preparation seeds each file's authored module (`module_seeds_from_touched_entry_files`)
-    /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
-    /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
-    touched_entry_files: HashSet<String>,
-    /// `(file, declaration)` for every non-test-fn declaration -- fn, type or data -- whose
-    /// lines the diff edited. An import-region edit seeds nothing here: which reads it rebinds
-    /// is an index question (`namespace_baseline` `import_rebound_declarations`), and seeding
-    /// every declaration of the file planned ~684 seeds for an 11-file diff (gunbc#12353).
-    /// The seeds of `namespace_baseline` `body_reach_from_changed_declarations`: the
-    /// declaration grain `touched_entry_files` collapses to a file. A test fn is not a seed,
-    /// because nothing reads one; an edited test fn is a changed witness in its own right.
-    touched_declarations: HashSet<(String, String)>,
-}
-
-const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
+// The host-side diff→declaration attribution (`floor_diff_edits_from_line_ranges` and its
+// reading/declaration-attribution helpers) and per-entry frontier materialization
+// (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`, `data_item_declared_in_file`,
+// `FloorDiffEdits`, `FileLineRange`, `parse_unified_diff_line_ranges`/`_rename_sources`) were
+// deleted 2026-11-09 in read-set convergence P0 (gunbc.plans.read_set_convergence D1): every
+// caller was cfg(test) and the read-set recorder's own grain (`entry_file_touched`) keeps its
+// live decider path elsewhere. Skip/precompute **verdicts** still read `.dag` via
+// `floor_kernel_precompute_would_skip`.
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
 // deleted here 2026-07-10 (operator fork (c)): its substrate-not-whole-tree arm returned
 // `Ok(true)` — a silent widen that marked every row entry-file-touched whenever any entry
-// file was touched, while its comment called that arm fail-closed. The channel's decision
-// now lives in `entry_file_touched_via_import_closure` (module-graph import-closure grain,
-// typed refusal on a facts gap). `call_entry_affected_by_dependency_view` was deleted
+// file was touched, while its comment called that arm fail-closed. The channel's last host
+// decider (`entry_file_touched_via_import_closure`, module-graph import-closure grain) was
+// deleted in read-set convergence P0 (gunbc.plans.read_set_convergence C4/C6: zero callers).
+// `call_entry_affected_by_dependency_view` was deleted
 // 2026-07-16 when its last consumer (compile-clean scoping) regrounded onto the same
-// import-closure realization; the fn-arrow chain stays in `.dag`
-// (`v2.lens.affected_set.entry_selection`) as the decl-level candidate for when the
-// namespace-only terminal step re-decides the grain.
-
-fn call_floor_kernel_would_skip(
-    ctx: &v1_interpreter::InterpContext,
-    changed_paths: &[String],
-    frontier_nodes: &[v1_interpreter::Value],
-    touches_frontier: bool,
-    function_edited: bool,
-    entry_file_touched: bool,
-    runtime_data_dependency_touched: bool,
-) -> Result<bool, String> {
-    if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
-        return Err("floor_kernel_would_skip missing from floor runner context".to_string());
-    }
-    let paths: Vec<v1_interpreter::Value> =
-        changed_paths.iter().map(|s| str_value(s.clone())).collect();
-    let args = [
-        (
-            Some("changed_paths".to_string()),
-            list_value_from_vec(paths),
-        ),
-        (
-            Some("frontier_nodes".to_string()),
-            list_value_from_vec(frontier_nodes.to_vec()),
-        ),
-        (
-            Some("touches_frontier".to_string()),
-            v1_interpreter::Value::Bool(touches_frontier),
-        ),
-        (
-            Some("function_edited".to_string()),
-            v1_interpreter::Value::Bool(function_edited),
-        ),
-        (
-            Some("entry_file_touched".to_string()),
-            v1_interpreter::Value::Bool(entry_file_touched),
-        ),
-        (
-            Some("runtime_data_dependency_touched".to_string()),
-            v1_interpreter::Value::Bool(runtime_data_dependency_touched),
-        ),
-    ];
-    match v1_interpreter::run_in_context_with_args(ctx, "floor_kernel_would_skip", &args, false) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "floor_kernel_would_skip returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("floor_kernel_would_skip: {e}")),
-    }
-}
+// import-closure realization; the fn-arrow chain was deleted with the C2 entry_selection
+// module in read-set convergence P0 (gunbc.plans.read_set_convergence).
 
 fn live_tree_disposition_value(
     ctx: &v1_interpreter::InterpContext,
@@ -21307,10 +20923,11 @@ fn call_floor_row_precompute_would_skip(
 // the authority module `std.live_tree` now carries it once as an annotation on
 // `LiveTreeDisposition` (gunbc.design_argument::single_authority, gunbc.design_argument::source_annotations).
 //
-// WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
-// this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
-// only for a row already claiming SubstrateInputsOnly, so that derivation is the sole thing
-// standing behind a false claim — and it is a partial classifier, not an enforcement:
+// WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. The declaration-first consultation
+// (`reads_live_tree_effective`) was deleted in read-set convergence P0
+// (gunbc.plans.read_set_convergence C5: zero callers), so
+// `effect_reach_derived_reads_live_tree_for_entry` is the sole thing standing behind a false
+// claim — and it is a partial classifier, not an enforcement:
 // `v2.std.effect_reach` `effect_reach_detection_ceiling` files its three bounds and its
 // evidence. A lying declaration therefore buys a predict-skip that nothing observes.
 // Call-reachability-grade classification (fn-arrow DependencyView over lowered bodies) is
@@ -21382,8 +20999,8 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
 // at host boundaries makes bare-string file dependencies unwritable.
 // Unblock: discovery admission consumes `v2.lens.effect_reach` classification directly
 // (same dissolution as the `.dag` lens `WallAfterGrounding{ dissolves_to: SingleAuthority }`).
-// DELETE WHEN dissolved: `reads_live_tree_effective`, `apply_effect_reach_derived_reads_live_tree`,
-// `effect_reach_touched_via_path_literals`, `effect_reach_derived_reads_live_tree_for_entry`,
+// DELETE WHEN dissolved: `apply_effect_reach_derived_reads_live_tree`,
+// `effect_reach_derived_reads_live_tree_for_entry`,
 // and `EFFECT_REACH_HOST_SINK_MARKERS` (~150 LOC).
 // Receipt: `rg cli_run_effect_reach_inference_bridge src/v1/stage0/src/cli_run.rs` == 1 until
 // deletion; drift gate `effect_reach_host_sink_markers_v0_is_synced_with_dag_authority`.
@@ -21428,15 +21045,6 @@ fn source_line_has_path_like_string_data(line: &str) -> bool {
     !value.contains(' ')
         && (value.starts_with("src/") || value.starts_with("dag/"))
         && value.contains(".dag")
-}
-
-fn source_data_path_literal_touches(content: &str, touched: &str) -> bool {
-    if touched.is_empty() {
-        return false;
-    }
-    content
-        .lines()
-        .any(|line| source_line_has_path_like_string_data(line) && line.contains(touched))
 }
 
 fn source_has_host_effect_sink(content: &str) -> bool {
@@ -21492,48 +21100,6 @@ pub(crate) fn effect_reach_derived_reads_live_tree_for_entry(
     effect_reach_derived_reads_live_tree_for_closure_paths(&closure_paths)
 }
 
-fn reads_live_tree_effective(
-    entry_path: &str,
-    content: &str,
-    facts: &ModuleGraphFactsLive,
-) -> Result<bool, String> {
-    let declared = parse_entry_live_tree_disposition(entry_path, content)?;
-    if declared {
-        return Ok(true);
-    }
-    Ok(effect_reach_derived_reads_live_tree_for_entry(
-        entry_path, facts,
-    ))
-}
-
-fn effect_reach_touched_via_path_literals(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    touched_paths: &[String],
-) -> bool {
-    if touched_paths.is_empty() {
-        return false;
-    }
-    let closure_paths = import_closure_repo_paths_for_entry(entry_path, facts);
-    for rel in closure_paths {
-        let path = if std::path::Path::new(&rel).is_absolute() {
-            rel.clone()
-        } else {
-            workspace_root().join(&rel).to_string_lossy().into_owned()
-        };
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        if touched_paths
-            .iter()
-            .any(|touched| source_data_path_literal_touches(&content, touched.as_str()))
-        {
-            return true;
-        }
-    }
-    false
-}
-
 // SCAFFOLD (gunbc.design_argument::self_hosting HAND-RUST — `cli_run_declared_source_ref_selection_bridge`):
 // Lane: declared-source-ref selection (declared-source-ref-selection-design (plan doc deleted 2026-08-28)
 // task 5) — host-fed declared-ref touch axis for floor discovery admission until discovery
@@ -21542,12 +21108,12 @@ fn effect_reach_touched_via_path_literals(
 // dispatch once witness-realization host-effect emission lands).
 // Unblock: skip-before-resolve and resolve paths evaluate the modeled selection axis instead
 // of re-parsing `data declared_source_refs` rows from import-closure text.
-// DELETE WHEN dissolved: `declared_source_refs_axis_for_entry`, `declared_source_refs_axis_for_paths`,
-// `declared_source_ref_paths_for_entry`, `collect_declared_source_ref_paths_for_closure`,
+// DELETE WHEN dissolved: `declared_source_ref_paths_for_entry`, `collect_declared_source_ref_paths_for_closure`,
 // `parse_declared_source_ref_paths_from_content`, `parse_named_source_ref_paths`,
 // `parse_source_ref_storage_path_from_rhs`, `declared_source_ref_storage_resolves`,
 // `storage_path_to_module_index`, `declared_source_refs_blocks_skip`,
-// `entry_has_declared_source_refs`, `DeclaredSourceRefAxis`, and
+// `DeclaredSourceRefAxis`, and (`entry_has_declared_source_refs` stays: live caller
+// `apply_effect_reach_derived_reads_live_tree`)
 // `CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER` (~240 LOC).
 // Receipt: `rg cli_run_declared_source_ref_selection_bridge src/v1/stage0/src/cli_run.rs` == 1 until
 // deletion; drift gate `declared_source_ref_selection_bridge_scaffold_marker_is_declared`.
@@ -21702,7 +21268,7 @@ fn collect_declared_source_ref_paths_for_closure(closure_paths: &HashSet<String>
 // `gunbc.affected_set_stop_line`.
 // Sole executable authority for 7933A: the consts and helpers below (no .dag path twin).
 // Scaffold members: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
-// `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `compile_clean_touched_path_norm`,
+// `compile_clean_touched_path_norm`,
 // `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
 // `compile_clean_verdict_affecting_touch`, `compile_clean_broad_stop_line_blocks_skip`,
 // and `CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER`.
@@ -21714,9 +21280,6 @@ pub(crate) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER: &str =
 
 const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
     "dag/test/claim/dag_compile_clean_shard_a_witness.dag";
-const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
-    "dag/test/claim/dag_compile_clean_scope_witness.dag";
-
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
 }
@@ -21800,6 +21363,26 @@ fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
     departed
 }
 
+/// True when `name` is declared as a `data` item at `file_norm`, verified against the entry's
+/// own resolved import closure (`ctx.modules`) rather than by bare name — `item_registry` is
+/// flat-namespace-keyed (name only, no origin file), so a homonym declared in some unrelated
+/// file must not be mistaken for the diff-changed declaration. Because `ctx.modules` already
+/// contains only this entry's resolved import closure, a `file_norm` the entry does not import
+/// yields no match here regardless of name collisions elsewhere in the corpus.
+fn data_item_declared_in_file(
+    ctx: &v1_interpreter::InterpContext,
+    name: &str,
+    file_norm: &str,
+) -> bool {
+    ctx.modules.iter().any(|module| {
+        module.items.iter().any(|item| {
+            item_kind(item.clone()) == ItemKind::DataItem
+                && span_file_matches(&item.span.file, file_norm)
+                && authored_name_at(ctx.source_indices.clone(), item.clone()) == name
+        })
+    })
+}
+
 fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // Wholly-added files (`--- /dev/null` → `+++ b/path`) necessarily touch line 1
     // (the module header). Attribute at declaration grain; do not conflate with
@@ -21852,1501 +21435,12 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
 /// Dest → source for git-detected renames (`rename from` / `rename to`). The base-declaration
 /// census is path-keyed and rename-blind: names at the NEW path are absent at the base by
 /// construction. Enrolment looks up the SOURCE path so a move does not enrol every fn as new.
-fn parse_unified_diff_rename_sources(diff_text: &str) -> std::collections::HashMap<String, String> {
-    let mut out = std::collections::HashMap::new();
-    let mut from: Option<String> = None;
-    for line in diff_text.lines() {
-        if line.starts_with("diff --git ") {
-            from = None;
-        } else if let Some(rest) = line.strip_prefix("rename from ") {
-            from = Some(normalize_repo_path(rest.trim()));
-        } else if let Some(rest) = line.strip_prefix("rename to ") {
-            if let Some(src) = from.take() {
-                out.insert(normalize_repo_path(rest.trim()), src);
-            }
-        }
-    }
-    out
-}
-
-/// True when `name` is declared as a `data` item at `file_norm`, verified against the entry's
-/// own resolved import closure (`ctx.modules`) rather than by bare name — `item_registry` is
-/// flat-namespace-keyed (name only, no origin file), so a homonym declared in some unrelated
-/// file must not be mistaken for the diff-changed declaration. Because `ctx.modules` already
-/// contains only this entry's resolved import closure, a `file_norm` the entry does not import
-/// yields no match here regardless of name collisions elsewhere in the corpus.
-fn data_item_declared_in_file(
-    ctx: &v1_interpreter::InterpContext,
-    name: &str,
-    file_norm: &str,
-) -> bool {
-    ctx.modules.iter().any(|module| {
-        module.items.iter().any(|item| {
-            item_kind(item.clone()) == ItemKind::DataItem
-                && span_file_matches(&item.span.file, file_norm)
-                && authored_name_at(ctx.source_indices.clone(), item.clone()) == name
-        })
-    })
-}
-
-fn rerun_frontier_nodes_for_entry(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    edits: &FloorDiffEdits,
-) -> Result<Vec<v1_interpreter::Value>, String> {
-    let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    let entry_norm = repo_relative_dag_path(entry_path);
-    for (file, name) in &edits.overlapping_data_items {
-        let file_norm = repo_relative_dag_path(file);
-        // Same-entry-file overlapping data always seeds the frontier. A cross-file data item
-        // seeds it too, once verified against the entry's own resolved import closure
-        // (`data_item_declared_in_file`) — matching on bare name alone would silently widen
-        // SelectionApplied to any entry that happens to import a same-named data item declared
-        // elsewhere (e.g. `construction_justification` on every top-level lens). Before this
-        // check existed, an entry that genuinely imports the changed data decl (e.g. a witness
-        // importing `generated_stage0_files` from a different file) fell through the `continue`
-        // below and predict-skipped (#6543 falsifier divergence, run 29293446579).
-        if file_norm != entry_norm && !data_item_declared_in_file(ctx, name, &file_norm) {
-            continue;
-        }
-        if !ctx.item_registry.contains_key(name) {
-            continue;
-        }
-        let Some(val) = v1_interpreter::with_active_context(ctx, || {
-            v1_interpreter::eval_data_item_value(ctx, name)
-        })
-        .map_err(|e| format!("re-eval `{name}` in {entry_path}: {e}"))?
-        else {
-            continue;
-        };
-        let mut item_nodes = Vec::new();
-        collect_node_values(&val, ctx, &mut item_nodes);
-        for node in item_nodes {
-            let key = ctx.format_value(&node);
-            if seen.insert(key) {
-                out.push(node);
-            }
-        }
-    }
-    Ok(out)
-}
-
-fn entry_touches_rerun_frontier(
-    ctx: &v1_interpreter::InterpContext,
-    frontier: &v1_interpreter::Value,
-) -> Result<bool, String> {
-    let mut saw_claim = false;
-    let initializer_values = v1_interpreter::with_active_context(ctx, || {
-        v1_interpreter::eval_data_initializer_values(ctx)
-    })
-    .map_err(|e| format!("{e}"))?;
-    for val in initializer_values {
-        if !value_is_test_claim(&val, ctx) {
-            continue;
-        }
-        if !test_claim_selection_has_node_corpus(&val, ctx) {
-            continue;
-        }
-        saw_claim = true;
-        match call_test_claim_fn_bool(
-            ctx,
-            "test_claim_evaluation_touches_rerun_frontier",
-            &val,
-            frontier,
-            "c",
-        ) {
-            Ok(Some(true)) => return Ok(true),
-            Ok(Some(false)) | Ok(None) => {}
-            Err(msg) => {
-                return Err(format!(
-                    "test_claim_evaluation_touches_rerun_frontier failed ({msg}) — declared \
-                     selection machinery must evaluate; no silent run-everything fallback"
-                ));
-            }
-        }
-        match call_test_claim_fn_bool(
-            ctx,
-            "floor_claim_touches_rerun_frontier",
-            &val,
-            frontier,
-            "claim",
-        ) {
-            Ok(Some(true)) => return Ok(true),
-            Ok(Some(false)) | Ok(None) => {}
-            Err(msg) => {
-                return Err(format!(
-                    "floor_claim_touches_rerun_frontier failed ({msg}) — declared selection \
-                     machinery must evaluate; no silent run-everything fallback"
-                ));
-            }
-        }
-    }
-    Ok(!saw_claim)
-}
-
-#[cfg(test)]
-mod floor_skip_frontier_tests {
-    use super::{
-        build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        floor_diff_edits_from_diff_text_with_base_names,
-        floor_diff_edits_from_diff_text_with_base_names_and_sources, list_value_from_vec,
-        parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
-        parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
-        rerun_frontier_nodes_for_entry, FileLineRange, FloorDiffEdits,
-    };
-    use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
-    use crate::v1_interpreter::ExecutionMode;
-    use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use im::HashMap;
-    use std::collections::HashSet;
-    use std::path::PathBuf;
-
-    fn workspace_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("workspace root")
-            .to_path_buf()
-    }
-
-    // TEST DETECTOR ONLY. Roster derived here; production skip does not consult it.
-    // Matching is substring on comment-stripped lines because the census must
-    // read entries that may not resolve — the same textual model as
-    // `parse_entry_live_tree_disposition`. `v2.std.fn_index` `callees_from_node`
-    // needs a Node. v1 PURPOSE: evidence for the failure-mode row
-    // (`gunbc.v1.v1_maintenance_standing` `v1_seed_standing`).
-
-    fn builtin_name_spells_a_live_checkout_sink(name: &str) -> bool {
-        name.starts_with("compile_dag_")
-            || name.ends_with("_facts_live")
-            || name == "filesystem_read"
-            || name == "filesystem_list"
-            || name == "decl_facts"
-            || name == "module_declaration_facts"
-            || name == "layer_import_facts"
-    }
-
-    fn direct_live_tree_sink_callees() -> Vec<String> {
-        let mut names: Vec<String> = crate::v1_compiler_infer_method::builtin_function_registry()
-            .iter()
-            .filter(|(k, _)| builtin_name_spells_a_live_checkout_sink(k))
-            .map(|(k, _)| k.clone())
-            .collect();
-        for extra in ["Filesystem.Read", "Filesystem.List"] {
-            if !names.iter().any(|n| n == extra) {
-                names.push(extra.to_string());
-            }
-        }
-        names.sort();
-        names.dedup();
-        names
-    }
-
-    fn detector_line_has_unquoted_callee(line: &str, callee: &str) -> bool {
-        let stripped = super::strip_line_comment(line);
-        let paren = format!("{callee}(");
-        let spaced = format!("{callee} (");
-        stripped.contains(&paren) || stripped.contains(&spaced)
-    }
-
-    fn detector_unquoted_live_callees(content: &str) -> Vec<String> {
-        direct_live_tree_sink_callees()
-            .into_iter()
-            .filter(|callee| {
-                content
-                    .lines()
-                    .any(|line| detector_line_has_unquoted_callee(line, callee))
-            })
-            .collect()
-    }
-
-    fn detector_sio_unquoted_live_hits(
-        files: &[(String, String)],
-    ) -> Result<Vec<(String, Vec<String>)>, String> {
-        let mut out = Vec::new();
-        for (rel, content) in files {
-            let reads_live = super::parse_entry_live_tree_disposition(rel, content)?;
-            if reads_live {
-                continue;
-            }
-            let sinks = detector_unquoted_live_callees(content);
-            if !sinks.is_empty() {
-                out.push((rel.clone(), sinks));
-            }
-        }
-        out.sort_by(|a, b| a.0.cmp(&b.0));
-        Ok(out)
-    }
-
-    fn fixture_path() -> String {
-        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag".to_string()
-    }
-
-    fn data_item_line(
-        fixture: &str,
-        source_indices: &std::rc::Rc<
-            HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
-        >,
-        graph: &std::rc::Rc<ResolvedGraph>,
-        name: &str,
-    ) -> i64 {
-        for module in graph.modules.iter() {
-            for item in module.items.iter() {
-                if item_kind(item.clone()) != ItemKind::DataItem {
-                    continue;
-                }
-                if authored_name_at(source_indices.clone(), item.clone()) != name {
-                    continue;
-                }
-                let span = &item.span;
-                let index = source_indices.get(&span.file).expect("newline index");
-                return byte_to_line_col(index.clone(), span.start).line;
-            }
-        }
-        panic!("data item `{name}` not found in {fixture}");
-    }
-
-    fn unified_diff_for_line(file: &str, line: i64) -> String {
-        format!(
-            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n@@ -{line},0 +{line},1 @@\n+// node-precise touch\n"
-        )
-    }
-
-    #[test]
-    fn parse_unified_diff_extracts_new_side_line_ranges() {
-        let diff = "\
-diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
---- a/src/v2/lens/affected_set.dag
-+++ b/src/v2/lens/affected_set.dag
-@@ -100,0 +101,3 @@
-+line1
-+line2
-+line3
-";
-        let ranges = parse_unified_diff_line_ranges(diff);
-        let file = "src/v2/lens/affected_set.dag";
-        assert_eq!(
-            ranges.get(file),
-            Some(&vec![FileLineRange {
-                new_start: 101,
-                new_count: 3,
-                removed: Vec::new(),
-            }])
-        );
-    }
-
-    #[test]
-    fn non_dag_only_diff_is_structural_empty_frontier_not_refusal() {
-        // A present diff whose changed paths are all non-.dag (a Rust/TOML/doc edit) is a
-        // structural-∅ for the .dag frontier -- no .dag nodes are declared, so nothing is
-        // attributable and every .dag row takes the not-affected skip, exactly as an empty diff
-        // does. It is NOT an ignorance state (the only ignorance state is a failed git-diff
-        // observation, refused upstream). RED CONTROL: before the arity fix this returned
-        // Err("non-.dag file changed with no .dag paths in diff") and reddened the
-        // discovery-corpus batch for every pure-.rs PR.
-        // NB: use a non-src/v1 path -- #6269 eagerly builds the v1-attribution index for any
-        // src/v1/ path, which reads the real workspace tree and cannot run from the unit-test
-        // cwd. The structural-∅ arm is path-agnostic, so this isolates exactly that behavior.
-        let index = build_multi_entry_index(&[]);
-        let rs_only_diff = unified_diff_for_line("crates/widget/src/lib.rs", 42);
-        let edits = floor_diff_edits_from_diff_text(&index, &rs_only_diff)
-            .expect("non-.dag-only diff must be a nominal empty frontier, not a refusal");
-        assert!(
-            edits.overlapping_data_items.is_empty()
-                && edits.edited_test_fns.is_empty()
-                && edits.touched_entry_files.is_empty(),
-            "non-.dag-only diff must produce an empty .dag frontier, got {edits:?}"
-        );
-    }
-
-    // THE RENAME DESTINATION'S DECLARATION SET, ENROLLED WHOLE.
-    //
-    // DISCRIMINATING RED, and it is a real receipt rather than a constructed one: this is
-    // gunbc#9823 verbatim. It renamed the MachineShape construction wall into `v2.test.` to
-    // enroll it in the required floor. Git detected the rename and printed two hunks — the
-    // module line, and the removed trailing blank line at EOF — so line attribution reached
-    // only the LAST declaration in the file. Exactly one of the two sibling `test fn`s was
-    // selected as a changed witness, and the one missed was the wall's DISCRIMINATING RED.
-    // Confirmed against that run's own disposition receipt (run 33413900349, artifact
-    // `required_floor_disposition.tsv`): `gate_red_synthetic_machine_shape_call` carried the
-    // ordinary `planned` disposition, not `planned_as_changed_witness`.
-    //
-    // Before the added-path declaration-set rule in `floor_diff_edits_from_line_ranges` this
-    // asserted 1 of 2 and failed here.
-    #[test]
-    fn rename_destination_enrolls_every_test_decl_not_only_the_diff_touched_one() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
-        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
-            .expect("the renamed wall entry is in the tree");
-        let declared: HashSet<String> = std::thread::Builder::new()
-            .stack_size(8 * 1024 * 1024)
-            .spawn({
-                let content = content.clone();
-                move || super::test_marker::test_marked_decl_names(&content, dest)
-            })
-            .expect("spawn the marker reader thread")
-            .join()
-            .expect("marker reader thread must not panic")
-            .expect("the renamed wall entry parses")
-            .into_iter()
-            .collect();
-        assert!(
-            declared.len() >= 2
-                && declared.contains("gate_red_synthetic_machine_shape_call")
-                && declared.contains("gate_green_synthetic_shape_from_catalog_call"),
-            "fixture drift: this control is about a file with TWO sibling test fns, got {declared:?}"
-        );
-
-        // gunbc#9823's own `git diff -U0` output for the renamed entry, verbatim.
-        let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
-similarity index 97%
-rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall.dag
---- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall.dag
-@@ -1 +1 @@
--module test.claim.machine_shape_construction_wall
-+module v2.test.claim.machine_shape_construction_wall
-@@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
--
-";
-        let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text(&index, diff)
-            .expect("a rename-destination diff must attribute, not refuse");
-        let enrolled: HashSet<String> = edits
-            .edited_test_fns
-            .iter()
-            .filter(|(file, _)| file == dest)
-            .map(|(_, function)| function.clone())
-            .collect();
-        assert_eq!(
-            enrolled, declared,
-            "every test decl at a rename destination is a NEW qualified identity and must be a \
-             changed witness; the diff only printed the hunks that differ"
-        );
-    }
-
-    // THE OTHER DIRECTION OF THE SAME RULE, so the fix above cannot be satisfied by widening.
-    // An IN-PLACE modify (no `rename to`, no `/dev/null` old side) establishes no fresh
-    // declaration set: its identities already existed under these exact spellings, so only the
-    // declarations the diff actually reached are changed witnesses. This reds if the added-path
-    // rule is ever applied unconditionally.
-    #[test]
-    fn in_place_modify_enrolls_only_the_touched_test_decl() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
-        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
-            .expect("the renamed wall entry is in the tree");
-        let green_line = content
-            .lines()
-            .position(|l| l.starts_with("test fn gate_green_synthetic_shape_from_catalog_call"))
-            .expect("green sibling declared")
-            + 1;
-        let diff = unified_diff_for_line(dest, green_line as i64 + 1);
-        let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect("an in-place modify must attribute, not refuse");
-        let enrolled: HashSet<String> = edits
-            .edited_test_fns
-            .iter()
-            .filter(|(file, _)| file == dest)
-            .map(|(_, function)| function.clone())
-            .collect();
-        assert_eq!(
-            enrolled,
-            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
-            "an in-place edit inside one declaration enrolls that declaration and no sibling"
-        );
-    }
-
-    fn machine_shape_in_place_green_diff() -> (String, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
-        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
-            .expect("the renamed wall entry is in the tree");
-        let green_line = content
-            .lines()
-            .position(|l| l.starts_with("test fn gate_green_synthetic_shape_from_catalog_call"))
-            .expect("green sibling declared")
-            + 1;
-        (
-            dest.to_string(),
-            unified_diff_for_line(dest, green_line as i64 + 1),
-        )
-    }
-
-    // THE WIDENING: a test fn whose name is absent from the base census is newly enrolled
-    // even in a modified file. Without the census this was indistinguishable from a
-    // touched sibling and was not gated.
-    #[test]
-    fn new_test_fn_in_existing_file_is_enrolled_when_absent_from_base() {
-        let (dest, diff) = machine_shape_in_place_green_diff();
-        let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            dest.clone(),
-            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
-        );
-        let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("in-place modify with a base census must attribute, not refuse");
-        let enrolled: HashSet<String> = edits
-            .enrolled_test_fns
-            .iter()
-            .filter(|(file, _)| file == &dest)
-            .map(|(_, function)| function.clone())
-            .collect();
-        assert_eq!(
-            enrolled,
-            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
-            "a name the base census does not carry is newly enrolled"
-        );
-    }
-
-    // THE OTHER DIRECTION, so the widening cannot be satisfied by enrolling every edited
-    // test fn. The touched name WAS at the base, so it is a modified sibling and must
-    // not enter the margin gate's population.
-    #[test]
-    fn modified_test_fn_in_existing_file_is_not_enrolled_when_present_at_base() {
-        let (dest, diff) = machine_shape_in_place_green_diff();
-        let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            dest.clone(),
-            HashSet::from([
-                "gate_green_synthetic_shape_from_catalog_call".to_string(),
-                "gate_red_synthetic_machine_shape_call".to_string(),
-            ]),
-        );
-        let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("in-place modify with a base census must attribute, not refuse");
-        let enrolled: HashSet<String> = edits
-            .enrolled_test_fns
-            .iter()
-            .filter(|(file, _)| file == &dest)
-            .map(|(_, function)| function.clone())
-            .collect();
-        assert!(
-            enrolled.is_empty(),
-            "a name the base census already carries is a modified sibling, not a new enrolment; got {enrolled:?}"
-        );
-    }
-
-    fn machine_shape_rename_diff() -> (&'static str, &'static str, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
-        let src = "dag/test/claim/machine_shape_construction_wall_test.dag";
-        let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
-similarity index 97%
-rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall.dag
---- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall.dag
-@@ -1 +1 @@
--module test.claim.machine_shape_construction_wall
-+module v2.test.claim.machine_shape_construction_wall
-@@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
--
-";
-        (src, dest, diff.to_string())
-    }
-
-    // The rename destination's new-side content, SUPPLIED rather than read from the live
-    // tree (gunbc.design_argument::single_authority witness rule): the live file has since gained further test fns, which
-    // the fixed base census does not name, so reading it enrolled them and the fixture no
-    // longer isolated the rename. The two test fns sit at the lines the diff's hunks name.
-    fn machine_shape_rename_dest_sources(dest: &str) -> std::collections::HashMap<String, String> {
-        let mut content = String::from("module v2.test.claim.machine_shape_construction_wall\n");
-        while content.lines().count() < 80 {
-            content.push('\n');
-        }
-        content.push_str(
-            "test fn gate_red_synthetic_machine_shape_call() -> Bool {\n  true\n}\n\n\n\n\n\n\
-             test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {\n  true\n}\n",
-        );
-        std::collections::HashMap::from([(dest.to_string(), content)])
-    }
-
-    // A DECLARATION IS CHARGED BY ITS OWN TEXT AT BASE AND HEAD, NOT BY WHICH LINES A HUNK NAMES
-    // (`gunbc.recurring_failure_mode` `a_pure_deletion_force_runs_its_unchanged_neighbour`). The
-    // head file is supplied; each `-U0` diff below is reverse-applied to it to recover the base.
-    fn text_attribution_sources(
-        path: &str,
-        head: &str,
-    ) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::from([(path.to_string(), head.to_string())])
-    }
-
-    fn text_attribution_edits(
-        diff: &str,
-        path: &str,
-        head: &str,
-        at_base: &[&str],
-    ) -> FloorDiffEdits {
-        let index = build_multi_entry_index(&[]);
-        let census = std::collections::HashMap::from([(
-            path.to_string(),
-            at_base
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<HashSet<String>>(),
-        )]);
-        floor_diff_edits_from_diff_text_with_base_names_and_sources(
-            &index,
-            diff,
-            &census,
-            &text_attribution_sources(path, head),
-        )
-        .expect("a modify diff must attribute, not refuse")
-    }
-
-    fn edited_in(edits: &FloorDiffEdits, path: &str) -> HashSet<String> {
-        edits
-            .edited_test_fns
-            .iter()
-            .filter(|(file, _)| file == path)
-            .map(|(_, f)| f.clone())
-            .collect()
-    }
-
-    const GAP_HEAD: &str =
-        "module m.gap\n\ntest fn a() -> Bool {\n  true\n}\n\ntest fn c() -> Bool {\n  true\n}\n";
-    const GAP_PATH: &str = "src/v2/test/claim/gap_fixture_test.dag";
-
-    #[test]
-    fn a_deletion_between_declarations_charges_neither_neighbour() {
-        let path = GAP_PATH;
-        let diff = format!(
-            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -7,4 +6,0 @@\n-test fn b() -> Bool {{\n-  true\n-}}\n-\n"
-        );
-        assert_eq!(
-            edited_in(
-                &text_attribution_edits(&diff, path, GAP_HEAD, &["a", "b", "c"]),
-                path
-            ),
-            HashSet::new(),
-            "a whole declaration deleted between `a` and `c` must not select either"
-        );
-    }
-
-    #[test]
-    fn a_deletion_inside_a_declaration_still_charges_it() {
-        let path = GAP_PATH;
-        let diff = format!(
-            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +4,0 @@\n-  && false\n"
-        );
-        assert_eq!(
-            edited_in(
-                &text_attribution_edits(&diff, path, GAP_HEAD, &["a", "c"]),
-                path
-            ),
-            HashSet::from(["a".to_string()]),
-            "a line removed inside `a` edits `a`"
-        );
-    }
-
-    // gunbc.design_argument::source_annotations: an annotation is not program data, so a `//` edit charges no witness. Lines:
-    // 3 `// note a`, 4-7 `a`, 9 `// note c`, 10-13 `c` (whose body carries a `//` line).
-    const NOTE_HEAD: &str = "module m.note\n\n// note a\ntest fn a() -> Bool {\n  true\n}\n\n// note c new\ntest fn c() -> Bool {\n  // body note new\n  true\n}\n";
-    const NOTE_PATH: &str = "src/v2/test/claim/note_fixture_test.dag";
-
-    fn note_diff(hunks: &str) -> String {
-        let path = NOTE_PATH;
-        format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{hunks}")
-    }
-
-    #[test]
-    fn a_leading_annotation_edit_charges_no_witness() {
-        let diff = note_diff("@@ -8 +8 @@\n-// note c old\n+// note c new\n@@ -10 +10 @@\n-  // body note old\n+  // body note new\n");
-        assert_eq!(
-            edited_in(
-                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
-                NOTE_PATH
-            ),
-            HashSet::new(),
-            "editing only `//` lines changes no declaration's annotation-erased text"
-        );
-    }
-
-    #[test]
-    fn a_body_edit_beside_an_annotation_still_charges_it() {
-        let diff = note_diff("@@ -11 +11 @@\n-  false\n+  true\n");
-        assert_eq!(
-            edited_in(
-                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
-                NOTE_PATH
-            ),
-            HashSet::from(["c".to_string()]),
-            "a non-annotation line edited inside `c` edits `c`"
-        );
-    }
-
-    #[test]
-    fn a_slash_slash_line_inside_a_multi_line_string_still_charges_it() {
-        // Lines: 3-6 `d`, whose string literal spans lines 4-5; line 4 opens with `//`.
-        let path = "src/v2/test/claim/note_string_fixture_test.dag";
-        let head = "module m.note_string\n\ntest fn d() -> Bool {\n  \"a\n// in a string, new\n  b\" == \"\"\n}\n";
-        let diff = format!(
-            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +5 @@\n-// in a string, old\n+// in a string, new\n"
-        );
-        assert_eq!(
-            edited_in(&text_attribution_edits(&diff, path, head, &["d"]), path),
-            HashSet::from(["d".to_string()]),
-            "a `//` line inside a string literal is program data, not an annotation"
-        );
-    }
-
-    #[test]
-    fn a_moved_annotation_block_charges_neither_declaration() {
-        // Base: `// note c new` sat inside `a`'s body; the head moved it above `c`.
-        let diff = note_diff("@@ -5 +4,0 @@\n-// note c new\n@@ -8,0 +8 @@\n+// note c new\n");
-        assert_eq!(
-            edited_in(
-                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
-                NOTE_PATH
-            ),
-            HashSet::new(),
-            "moving a `//` block between two declarations charges neither"
-        );
-    }
-
-    #[test]
-    fn a_genuinely_edited_claim_is_still_charged() {
-        let path = GAP_PATH;
-        let diff = format!(
-            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -8 +8 @@\n-  false\n+  true\n"
-        );
-        assert_eq!(
-            edited_in(
-                &text_attribution_edits(&diff, path, GAP_HEAD, &["a", "c"]),
-                path
-            ),
-            HashSet::from(["c".to_string()]),
-            "a changed body line edits exactly its own declaration"
-        );
-    }
-
-    #[test]
-    fn a_renamed_claim_counts_as_new() {
-        let path = GAP_PATH;
-        let head =
-            "module m.gap\n\ntest fn a() -> Bool {\n  true\n}\n\ntest fn c2() -> Bool {\n  true\n}\n";
-        let diff = format!(
-            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -7 +7 @@\n-test fn c() -> Bool {{\n+test fn c2() -> Bool {{\n"
-        );
-        let edits = text_attribution_edits(&diff, path, head, &["a", "c"]);
-        assert_eq!(edited_in(&edits, path), HashSet::from(["c2".to_string()]));
-        assert!(
-            edits
-                .enrolled_test_fns
-                .contains(&(path.to_string(), "c2".to_string())),
-            "a name absent at base is a new enrolment"
-        );
-    }
-
-    // THE EXPECTING-RED FIXTURE, pinned from gunbc#13126 (head 587c8338b9, base f680b955a1, floor
-    // run 37192630595): trimming five claims out of `test_marker_channel` left a deletion gap at
-    // new-side line 197, inside the line span `only_the_marked_declaration_is_captured_holds`
-    // owned because that span ran on through the NEXT claim's leading comment. The floor billed
-    // it as a changed new witness (90388 eval steps against 72300) though its text never moved.
-    // No surviving declaration's own text changed, so nothing is charged.
-    #[test]
-    fn the_13126_claim_trim_charges_no_surviving_claim() {
-        let path = "src/v2/test/claim/parse/test_marker_channel.dag";
-        let head = include_str!("../testdata/test_marker_channel_head_587c833.dag.txt");
-        let diff = include_str!("../testdata/test_marker_channel_trim_587c833.diff");
-        let edits = text_attribution_edits(
-            diff,
-            path,
-            head,
-            &[
-                "only_the_marked_declaration_is_captured_holds",
-                "a_different_declaration_moves_the_semantic_projection_holds",
-            ],
-        );
-        assert_eq!(edited_in(&edits, path), HashSet::new());
-        assert!(
-            edits.overlapping_data_items.is_empty() && edits.touched_entry_files.is_empty(),
-            "no surviving declaration changed: data {:?}, entries {:?}",
-            edits.overlapping_data_items,
-            edits.touched_entry_files
-        );
-    }
-
-    // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
-    // SOURCE path or every moved fn is gated as new.
-    #[test]
-    fn rename_does_not_enrol_names_already_declared_at_source() {
-        let (src, dest, diff) = machine_shape_rename_diff();
-        assert_eq!(
-            parse_unified_diff_rename_sources(&diff).get(dest),
-            Some(&src.to_string()),
-            "fixture must carry git's rename-from so this control can fail the dest-only lookup"
-        );
-        let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            src.to_string(),
-            HashSet::from([
-                "gate_green_synthetic_shape_from_catalog_call".to_string(),
-                "gate_red_synthetic_machine_shape_call".to_string(),
-            ]),
-        );
-        let index = build_multi_entry_index(&[]);
-        let sources = machine_shape_rename_dest_sources(dest);
-        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
-            &index, &diff, &at_base, &sources,
-        )
-        .expect("a rename-destination diff must attribute, not refuse");
-        let enrolled: HashSet<String> = edits
-            .enrolled_test_fns
-            .iter()
-            .filter(|(file, _)| file == dest)
-            .map(|(_, function)| function.clone())
-            .collect();
-        assert!(
-            enrolled.is_empty(),
-            "names declared at the rename source are a move, not a new enrolment; got {enrolled:?}"
-        );
-    }
-
-    // THE OTHER DIRECTION: following rename-from must not swallow a name the source
-    // never declared.
-    #[test]
-    fn rename_still_enrols_a_name_absent_from_the_source() {
-        let (src, dest, diff) = machine_shape_rename_diff();
-        let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            src.to_string(),
-            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
-        );
-        let index = build_multi_entry_index(&[]);
-        let sources = machine_shape_rename_dest_sources(dest);
-        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
-            &index, &diff, &at_base, &sources,
-        )
-        .expect("a rename-destination diff must attribute, not refuse");
-        let enrolled: HashSet<String> = edits
-            .enrolled_test_fns
-            .iter()
-            .filter(|(file, _)| file == dest)
-            .map(|(_, function)| function.clone())
-            .collect();
-        assert_eq!(
-            enrolled,
-            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
-            "a name the source census does not carry is newly enrolled even across a rename"
-        );
-    }
-
-    // THE SUPERSEDED RUNG MUST NOT ANSWER ENROLMENT. A rename destination is an added path;
-    // the old production rule would enrol every test fn from that fact alone. Without a
-    // census, `enrolled_test_fns` is empty — attribution still sees them as edited.
-    #[test]
-    fn floor_diff_edits_from_diff_text_does_not_enrol_without_a_census() {
-        let (_src, dest, diff) = machine_shape_rename_diff();
-        let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect("a rename-destination diff must attribute, not refuse");
-        assert!(
-            edits.enrolled_test_fns.is_empty(),
-            "no census means no enrolment answer, including for added/rename paths; got {:?}",
-            edits.enrolled_test_fns
-        );
-        assert!(
-            edits.edited_test_fns.iter().any(|(file, _)| file == dest),
-            "attribution of edited test fns must still run without a census"
-        );
-    }
-
-    #[test]
-    fn parse_unified_diff_changed_new_lines_includes_deletions() {
-        let diff = "\
-diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
---- a/src/v2/lens/affected_set.dag
-+++ b/src/v2/lens/affected_set.dag
-@@ -42,2 +42,0 @@
--removed_a
--removed_b
-";
-        let changed = parse_unified_diff_changed_new_lines(diff);
-        let file = "src/v2/lens/affected_set.dag";
-        // Deletion-only hunk `+42,0`: the gap sits between new lines 42 and 43;
-        // following-line semantics attribute 43 (see the parser's `+L,0` note).
-        assert_eq!(changed.get(file), Some(&HashSet::from([43])));
-    }
-
-    #[test]
-    fn parse_unified_diff_deleted_file_hunk_never_attributes_to_preceding_file() {
-        // RED CONTROL for the deleted-file leak: a whole-file deletion's header is
-        // `+++ /dev/null`, which never re-arms current_file. Before the `diff --git `
-        // section reset, its `@@ -1,N +0,0 @@` hunk attributed to the PRECEDING
-        // modified file at new-side line 1 (zero-width anchor 0 → 0+1 = 1), tripping
-        // the module-line fail-closed refusal ("diff before first declaration") for
-        // any modified file that sorts immediately before a whole-file deletion.
-        let diff = "\
-diff --git a/src/v2/lens/enforcement/lens_module_gate.dag b/src/v2/lens/enforcement/lens_module_gate.dag
---- a/src/v2/lens/enforcement/lens_module_gate.dag
-+++ b/src/v2/lens/enforcement/lens_module_gate.dag
-@@ -9 +9 @@
--old_import_row
-+new_import_row
-diff --git a/src/v2/lens/extdeps_external_authority.dag b/src/v2/lens/extdeps_external_authority.dag
-deleted file mode 100644
---- a/src/v2/lens/extdeps_external_authority.dag
-+++ /dev/null
-@@ -1,3 +0,0 @@
--module v2.lens.extdeps_external_authority
--
--data deleted_row: Int = 1
-";
-        let kept = "src/v2/lens/enforcement/lens_module_gate.dag";
-
-        let changed = parse_unified_diff_changed_new_lines(diff);
-        assert_eq!(
-            changed.get(kept),
-            Some(&HashSet::from([9])),
-            "deleted-file hunk must not leak into the preceding file's changed set"
-        );
-        assert_eq!(
-            changed.len(),
-            1,
-            "the deleted file attributes nowhere: {changed:?}"
-        );
-
-        let ranges = parse_unified_diff_line_ranges(diff);
-        assert_eq!(
-            ranges.get(kept),
-            Some(&vec![FileLineRange {
-                new_start: 9,
-                new_count: 1,
-                removed: vec!["old_import_row".to_string()],
-            }]),
-            "deleted-file hunk must not extend the preceding file's ranges"
-        );
-        assert_eq!(
-            ranges.len(),
-            1,
-            "the deleted file attributes nowhere: {ranges:?}"
-        );
-    }
-
-    #[test]
-    fn parse_unified_diff_added_paths_detects_new_files() {
-        let diff = "\
-diff --git a/dag/gunbc/instruments/new_transport.dag b/dag/gunbc/instruments/new_transport.dag
-new file mode 100644
---- /dev/null
-+++ b/dag/gunbc/instruments/new_transport.dag
-@@ -0,0 +1,3 @@
-+module tools.new_transport
-+
-+fn run() -> Bool { true }
-";
-        let added = parse_unified_diff_added_paths(diff);
-        assert!(added.contains("dag/gunbc/instruments/new_transport.dag"));
-    }
-
-    #[test]
-    fn live_tree_disposition_declared_substrate_only_is_selection_eligible() {
-        let source = "module m\n\nimport std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
-        assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
-    }
-
-    #[test]
-    fn live_tree_disposition_declared_reads_live_tree_is_live() {
-        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\n\ntest fn live_holds() -> Bool { true }\n";
-        assert!(super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
-    }
-
-    #[test]
-    fn live_tree_disposition_undeclared_defaults_live_fail_closed() {
-        // Undeclared = ReadsLiveTree even when the entry text LOOKS pure — a row
-        // must declare SubstrateInputsOnly to become selection-eligible.
-        let source = "module m\n\ntest fn pure_holds() -> Bool { true }\n";
-        assert!(super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
-    }
-
-    #[test]
-    fn live_tree_disposition_sibling_named_row_is_not_the_declaration() {
-        // `live_tree_disposition_note` shares the prefix but is a different decl —
-        // it must neither classify the entry nor trip the malformed-row refusal.
-        let source = "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n";
-        assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
-        let note_only = "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n";
-        assert!(
-            super::parse_entry_live_tree_disposition("m_test.dag", note_only).unwrap(),
-            "a note-only entry stays undeclared = ReadsLiveTree"
-        );
-    }
-
-    #[test]
-    fn live_tree_disposition_malformed_variant_refuses() {
-        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = MaybeLive\n";
-        let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
-        assert!(err.contains("unknown variant"), "got: {err}");
-    }
-
-    #[test]
-    fn live_tree_disposition_wrong_type_annotation_refuses() {
-        let source = "module m\n\ndata live_tree_disposition: Bool = true\n";
-        let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
-        assert!(err.contains("type annotation"), "got: {err}");
-    }
-
-    #[test]
-    fn live_tree_disposition_duplicate_declaration_refuses() {
-        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n";
-        let err = super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap_err();
-        assert!(err.contains("more than once"), "got: {err}");
-    }
-
-    #[test]
-    fn quoted_census_callee_is_not_a_direct_live_sink() {
-        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\ndata note: String = \"compile_dag_diagnostic_census(source)\"\n";
-        assert!(detector_unquoted_live_callees(source).is_empty());
-    }
-
-    #[test]
-    fn unquoted_census_callee_is_a_direct_live_sink() {
-        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
-        assert_eq!(
-            detector_unquoted_live_callees(source),
-            vec!["compile_dag_diagnostic_census".to_string()]
-        );
-    }
-
-    #[test]
-    fn direct_live_tree_sink_callees_is_derived_from_the_registry() {
-        let names = direct_live_tree_sink_callees();
-        assert!(
-            names.iter().any(|n| n == "compile_dag_diagnostic_census"),
-            "census builtin missing from derived roster: {names:?}"
-        );
-        assert!(builtin_name_spells_a_live_checkout_sink(
-            "compile_dag_diagnostic_census"
-        ));
-        assert!(
-            crate::v1_compiler_infer_method::builtin_function_registry()
-                .contains_key("compile_dag_diagnostic_census"),
-            "oracle is the registry, not a pasted list"
-        );
-    }
-
-    #[test]
-    fn detector_hits_planted_triple_is_an_identity_join() {
-        let files = vec![
-            (
-                "lying.dag".to_string(),
-                "module lying\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
-                    .to_string(),
-            ),
-            (
-                "honest_sio.dag".to_string(),
-                "module honest_sio\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f() -> Bool { true }\n"
-                    .to_string(),
-            ),
-            (
-                "honest_live.dag".to_string(),
-                "module honest_live\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
-                    .to_string(),
-            ),
-        ];
-        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, "lying.dag");
-        assert_eq!(rows[0].1, vec!["compile_dag_diagnostic_census"]);
-        assert!(
-            !rows
-                .iter()
-                .any(|(p, _)| p == "honest_sio.dag" || p == "honest_live.dag"),
-            "honest stamps must not be detector hits: {rows:?}"
-        );
-    }
-
-    #[test]
-    fn named_census_specimens_declare_reads_live_tree_and_call_a_sink() {
-        let ws = workspace_root();
-        let specimens = [
-            "dag/test/claim/fabric/fabric_output_contract_resolution_witness.dag",
-            "dag/test/claim/match_exhaustiveness_coproduct_witness.dag",
-            "dag/test/claim/direct_call_argument_type_witness.dag",
-            "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag",
-            "dag/test/claim/declared_type_inhabitance_list_element_witness.dag",
-            "dag/test/claim/declared_type_expected_type_path_witness.dag",
-            "dag/test/claim/infer_record_lit_variant_field_witness.dag",
-        ];
-        let mut files = Vec::new();
-        for rel in specimens {
-            let content =
-                std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-            files.push((rel.to_string(), content));
-        }
-        let hits = detector_sio_unquoted_live_hits(&files).unwrap();
-        assert!(
-            hits.is_empty(),
-            "corrected specimens must leave the detector-hit set: {hits:?}"
-        );
-        for (rel, content) in &files {
-            assert!(
-                super::parse_entry_live_tree_disposition(rel, content).unwrap(),
-                "{rel} stamp was not corrected to ReadsLiveTree"
-            );
-            assert!(
-                !detector_unquoted_live_callees(content).is_empty(),
-                "{rel} lost its live sink"
-            );
-        }
-    }
-
-    #[test]
-    fn named_remaining_sio_direct_live_specimen_is_joined() {
-        let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
-        let content =
-            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-        let files = vec![(rel.to_string(), content)];
-        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, rel);
-        assert!(
-            rows[0]
-                .1
-                .iter()
-                .any(|n| n == "compile_dag_diagnostic_census"),
-            "reaching call missing: {:?}",
-            rows[0].1
-        );
-    }
-
-    #[test]
-    fn compile_dag_diagnostic_census_is_invisible_to_effect_reach_host_sinks() {
-        let source = "fn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
-        assert!(
-            !super::source_has_host_effect_sink(source),
-            "a census call must not be reclassified by effect_reach; otherwise a lying SIO stamp would not buy a predict-skip"
-        );
-    }
-
-    #[test]
-    fn adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen() {
-        let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
-        let content =
-            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-        assert!(
-            !super::parse_entry_live_tree_disposition(rel, &content).unwrap(),
-            "{rel} must still be SubstrateInputsOnly for this check"
-        );
-        assert!(
-            detector_unquoted_live_callees(&content)
-                .iter()
-                .any(|n| n == "compile_dag_diagnostic_census"),
-            "specimen lost its census call"
-        );
-        assert!(
-            !super::source_has_host_effect_sink(&content),
-            "the mechanism: census is absent from EFFECT_REACH_HOST_SINK_MARKERS"
-        );
-        assert!(
-            !super::source_has_path_like_string_data(&content),
-            "even a roster patch would still lose ConjunctionOfIndependentExistentials: this entry compiles in-memory source strings, not a dag/ or src/ path literal"
-        );
-    }
-
-    #[test]
-    fn import_closure_carrier_home_matches_submodules() {
-        use std::collections::HashSet;
-
-        let carrier = "v2.compiler.self_host";
-        let mut exact = HashSet::from([carrier.to_string()]);
-        assert!(super::import_closure_module_reaches_carrier_home(
-            &exact, carrier
-        ));
-        let mut submodule = HashSet::from(["v2.compiler.self_host.frontier".to_string()]);
-        assert!(super::import_closure_module_reaches_carrier_home(
-            &submodule, carrier
-        ));
-        let mut homonym = HashSet::from(["v2.compiler.self_hostile".to_string()]);
-        assert!(!super::import_closure_module_reaches_carrier_home(
-            &homonym, carrier
-        ));
-    }
-}
-
-// Step 3 module-grain PROVE receipt (affected-set-precompute-pruning (plan doc deleted 2026-08-28),
-// ROADMAP 1-affected-set-defork). Node-grain (whole-tree `InferredTree`) equivalence stays
-// BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
-// `import_closure_live` authority (#6210/#6231).
-//
-// RE-PROMOTED TO PRODUCTION CERTIFICATION (2026-07-10, operator fork (c) — the #6335
-// partial unwind): live floor discovery's `entry_file_touched` is decided by
-// `entry_file_touched_via_import_closure` (module-graph import-closure grain over
-// `facts.adjacency`), so the pair this harness proves — the `.dag` authority
-// `entry_affected_by_touched_paths` (MODULE_GRAPH_ENTRY) vs the independent Rust oracle
-// (`touched_file_in_import_closure` over `import_closure_files_from_graph`) — is the
-// LIVE decision pair again. Between #6274 and the unwind this block was honestly labeled
-// an orphan scaffold ("does NOT certify production selection after slice 2"); that
-// framing dissolved with the unwind receipt (the `entry_file_touched_grain_interim_note` annotation,
-// v2.lens.affected_set.entry_selection). A divergence here is a production selection bug.
-//
-// SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
-// migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,
-// gunbc.design_argument::how_to_work dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
-// hand-Rust harness is no longer needed to exercise it.
-//
-// It proves the module-grain "affected" decision computed by the `.dag` authority
-// (`v2.lens.module_graph.entry_affected_by_touched_paths`, a thin projection over
-// `import_closure_live`) agrees with an independent Rust oracle (`touched_file_in_import_closure`
-// over `import_closure_files_from_graph`) on real merged-commit diffs. Deliberately separate
-// implementations so agreement is proved by execution, not tautology.
-// Both sides are fed by the same host-realized `import_resolution_facts`/
-// `module_declaration_facts`, so this is a decision-level proof (gunbc.design_argument::fail_closed: execution, not a
-// grep/typecheck spec), not a re-proof of closure membership (already covered by
-// `import_closure_equivalence_tests` above).
-//
-// Touched-paths derivation (fixed post-#6274 review): the input fed to BOTH sides is NOT the raw
-// `git show --name-only` file list. Live production `entry_file_touched` is decided over
-// `diff_edits.touched_entry_files` — the FILTERED set `floor_diff_edits_from_line_ranges`
-// produces after excluding pure data-item edits (→ `overlapping_data_items`) and test-fn edits
-// (→ `edited_test_fns`); only non-data, non-test-fn declaration edits land in
-// `touched_entry_files`. A raw touched-path superset can diverge from this filtered set, so
-// proving equivalence against raw paths only proves a stronger/looser predicate, not the live
-// decision. This receipt runs `floor_diff_edits_from_diff_text(&index, &pinned_diff_text)`
-// on each commit's full unified diff (pinned in `testdata/`, not `--name-only`) and feeds
-// `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`.
-//
-// `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
-// includes changed line 1 (the module declaration line) — see cli_run.rs:4831-4832 — so a commit
-// that wholly ADDS new files (every new file's diff touches line 1) cannot be exercised via this
-// real path (`entry_file_touched` is unreachable for that commit shape upstream of this receipt).
-// Both SHAs below were chosen to be all-status-`M` (modify-only) commits for this reason.
-#[cfg(test)]
-mod module_grain_affected_equivalence_tests {
-    use super::{
-        build_module_graph_facts_live, build_multi_entry_index,
-        entry_file_touched_via_import_closure, floor_diff_edits_from_diff_text,
-        import_resolution_facts_call_count_for_test, make_eval_context,
-        module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
-        peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index, workspace_root,
-        ModuleGraphFactsLive, MultiEntryIndex,
-    };
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    use std::collections::HashSet;
-    use std::path::PathBuf;
-    use std::time::Instant;
-
-    const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
-
-    fn setup_roots(ws: &PathBuf) -> Vec<String> {
-        vec![
-            ws.join("dag").to_string_lossy().into_owned(),
-            ws.join("src/v2").to_string_lossy().into_owned(),
-        ]
-    }
-
-    // Mirrors `gunbc.ci.ci_layer_roots.witness_layer_roots` (`data witness_layer_roots: List<String>
-    // = ["dag", "src/v2"]`) — the single authority for pool roots this receipt exercises against.
-    fn pool_roots_rel() -> Vec<String> {
-        vec!["dag".to_string(), "src/v2".to_string()]
-    }
-
-    // `entry_source_from_index_or_disk` stats `entry_path` directly against the process cwd (it
-    // does not consult `workspace_root()`), so a bare repo-relative constant only resolves when
-    // cwd happens to already be the workspace root. Rather than mutate the global process cwd
-    // (the project's known `set_current_dir` parallel-test race — see the sibling
-    // `node_frontier_plumbing_controls` module's `abs` helper for the same fix), build an absolute
-    // path up front. `pool_roots`/`import_module` facts stay repo-relative (`rel_path_for_layer_import`),
-    // so only the disk-touching entry lookups need this.
-    fn abs(ws: &PathBuf, rel: &str) -> String {
-        ws.join(rel).to_string_lossy().into_owned()
-    }
-
-    // Pinned unified diff fixtures for the two all-`M` commits below (NOT `--name-only`) — the
-    // same shape the live floor parses via `parse_unified_diff_line_ranges`/
-    // `parse_unified_diff_changed_new_lines`. Checked into `testdata/` so shallow clones and
-    // remote test runners (BuildBuddy depth-1 fetch) do not need the historical git objects —
-    // `git show <sha>` was the latent red on origin/main outside full-history worktrees.
-    fn diff_text_for_commit(sha: &str) -> String {
-        let text = match sha {
-            "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d" => {
-                include_str!("../testdata/module_grain_affected_dag_only_6edafbb.diff")
-            }
-            "bb6e65649c9625d021467b0d7fe33ca7dd086e4f" => {
-                include_str!("../testdata/module_grain_affected_v2_only_bb6e656.diff")
-            }
-            other => panic!(
-                "module_grain_affected_equivalence: no pinned diff fixture for commit {other} — \
-                 add testdata/module_grain_affected_<label>_<shortsha>.diff and extend \
-                 diff_text_for_commit"
-            ),
-        };
-        assert!(
-            !text.trim().is_empty(),
-            "pinned diff fixture for commit {sha} is empty"
-        );
-        text.to_string()
-    }
-
-    fn str_list_value(items: &[String]) -> Value {
-        v1_interpreter::list_value(
-            items
-                .iter()
-                .map(|s| str_value(s.clone()))
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    /// #6274 orphan scaffold only — superseded import-closure query (`module_graph.dag`).
-    /// The `.dag` authority side of the live decision pair (production floor realizes it
-    /// via `entry_file_touched_via_import_closure`; this harness certifies the pair).
-    fn dag_entry_affected(
-        ctx: &v1_interpreter::InterpContext,
-        entry_rel: &str,
-        roots: &[String],
-        touched: &[String],
-    ) -> bool {
-        let args = [
-            (
-                Some("entry_path".to_string()),
-                str_value(entry_rel.to_string()),
-            ),
-            (Some("pool_roots".to_string()), str_list_value(roots)),
-            (Some("touched_paths".to_string()), str_list_value(touched)),
-        ];
-        match v1_interpreter::run_in_context_with_args(
-            ctx,
-            "entry_affected_by_touched_paths",
-            &args,
-            true,
-        ) {
-            Ok(Value::Bool(b)) => b,
-            Ok(other) => panic!(
-                "entry_affected_by_touched_paths returned `{}`",
-                ctx.format_value(&other)
-            ),
-            Err(e) => panic!("entry_affected_by_touched_paths: {e}"),
-        }
-    }
-
-    /// The Rust side of the equivalence is **production itself**, not a twin of it.
-    ///
-    /// This used to be a hand-written reimplementation, and it had drifted into asserting a
-    /// rule both authorities deleted: `if the file declares no imports { return true }`,
-    /// citing `entry_without_declared_edges_never_skips_note` — a note that no longer exists,
-    /// because it was replaced by the one repudiating it. `src/v2/lens/module_graph.dag`
-    /// the `edgeless_entry_has_no_special_arm_note` annotation names that arm as the absorbing fallback
-    /// gunbc.design_argument::fail_closed describes verbatim: it answered affected=true for every edgeless entry
-    /// (~530 claim modules after the import strip), silently and uncounted, and the cost
-    /// surfaced as a 95-minute CI floor instead of as a diagnostic. Production
-    /// (`entry_file_touched_via_import_closure`) now carries reference-derived edges so an
-    /// edgeless entry gets a precise closure seeded with itself, and REFUSES — typed — only
-    /// when the producer could not read or parse the file (⊤-as-ignorance is not ⊤-as-answer).
-    ///
-    /// So the twin was the stale party while production and `.dag` agreed, and the test
-    /// reported a divergence about code that was fine. A third representation of one
-    /// selection rule is guaranteed to drift (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority); calling production makes the property
-    /// under test the one anyone actually cares about — production ⇄ `.dag` — and deletes the
-    /// copy. It is also what makes this test runnable: the twin resolved (typechecked) every
-    /// entry's closure at 5-10s per module, while the facts scan is cached and does not
-    /// typecheck at all.
-    ///
-    /// A refusal is propagated, never coerced to a bool: silently reading it as `false` would
-    /// re-introduce a skip on an unknown dependency set, and as `true` the absorbing widen.
-    fn rust_entry_affected(
-        facts: &ModuleGraphFactsLive,
-        declared: &HashSet<String>,
-        entry_rel: &str,
-        touched: &[String],
-    ) -> bool {
-        entry_file_touched_via_import_closure(entry_rel, facts, declared, touched)
-            .unwrap_or_else(|refusal| panic!("selection refused for {entry_rel}: {refusal}"))
-    }
-
-    struct EquivalenceReceipt {
-        sha: String,
-        touched: Vec<String>,
-        rows: Vec<(String, bool, bool)>, // (entry, rust_decision, dag_decision)
-    }
-
-    fn run_equivalence_for_commit(sha: &str, entries: &[&str]) -> EquivalenceReceipt {
-        let ws = workspace_root();
-        // `entry_source_from_index_or_disk` and `floor_diff_edits_from_line_ranges` both read
-        // paths off disk relative to cwd, matching the live floor's process cwd == workspace
-        // root. Use the SAME relative roots/paths the live floor uses throughout (`dag`,
-        // `src/v2`, `src/v2/workflow/affected_set_floor_runner.dag`-style constants) rather than
-        // absolute paths — mixing the two conventions for the same physical file inside one
-        // `MultiEntryIndex` re-resolves it under a second identity and trips the interpreter's
-        // "duplicate module declaration" / circular-dependency guard.
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let rel_roots = pool_roots_rel();
-
-        // Setup is instrumented because it, not the per-entry work, was the whole runtime:
-        // before the twin was replaced by production this harness never reached entry 1 in a
-        // 50-minute standalone run, and printed nothing while doing so.
-        let t_setup = Instant::now();
-        let index = build_multi_entry_index(&rel_roots);
-        eprintln!("[module-grain] index built in {:?}", t_setup.elapsed());
-        let diff_text = diff_text_for_commit(sha);
-        let edits = floor_diff_edits_from_diff_text(&index, &diff_text).unwrap_or_else(|e| {
-            panic!(
-                "floor_diff_edits_from_diff_text failed for commit {sha}: {e} — pick a \
-                 different all-`M`-status dag/ or src/v2/ commit whose diffs never touch line 1"
-            )
-        });
-        let mut touched: Vec<String> = edits.touched_entry_files.into_iter().collect();
-        touched.sort();
-        assert!(
-            !touched.is_empty(),
-            "commit {sha} produced an empty touched_entry_files set — pick a commit whose diff \
-             touches at least one non-data, non-test-fn declaration"
-        );
-        let t_facts = Instant::now();
-        let facts = build_module_graph_facts_live(&rel_roots);
-        let declared: HashSet<String> = facts.declared_paths.clone();
-        eprintln!(
-            "[module-grain] selection facts built in {:?} ({} declared paths)",
-            t_facts.elapsed(),
-            declared.len()
-        );
-        let t_mg = Instant::now();
-        let (mg_graph, mg_indices) = resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY)
-            .expect("module_graph.dag resolves as an interpreter entry");
-        let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
-        eprintln!(
-            "[module-grain] module_graph.dag resolved in {:?}",
-            t_mg.elapsed()
-        );
-
-        // Stream each row as it is decided. This harness resolves every entry's closure
-        // twice (once per side) and takes tens of minutes on a cold process, and it used
-        // to print nothing until the end — so a timeout was indistinguishable from a
-        // hang, and neither told you which entry was slow or which way it decided.
-        eprintln!(
-            "[module-grain] commit {sha}: {} touched, {} entries",
-            touched.len(),
-            entries.len()
-        );
-        let mut rows = Vec::new();
-        for (i, entry) in entries.iter().enumerate() {
-            let t0 = Instant::now();
-            let rust_decision = rust_entry_affected(&facts, &declared, entry, &touched);
-            let t_rust = t0.elapsed();
-            let t1 = Instant::now();
-            let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
-            eprintln!(
-                "[module-grain] {}/{} {entry}: rust={rust_decision} ({:?}) dag={dag_decision} ({:?}){}",
-                i + 1,
-                entries.len(),
-                t_rust,
-                t1.elapsed(),
-                if rust_decision == dag_decision {
-                    ""
-                } else {
-                    "  <<< DIVERGED"
-                }
-            );
-            rows.push((entry.to_string(), rust_decision, dag_decision));
-        }
-        EquivalenceReceipt {
-            sha: sha.to_string(),
-            touched,
-            rows,
-        }
-    }
-
-    fn assert_receipt_matches(receipt: &EquivalenceReceipt) {
-        let mut divergences = Vec::new();
-        for (entry, rust, dag) in &receipt.rows {
-            if rust != dag {
-                divergences.push(format!("{entry}: rust={rust} dag={dag}"));
-            }
-        }
-        assert!(
-            divergences.is_empty(),
-            "module-grain decision diverged for commit {}: {}",
-            receipt.sha,
-            divergences.join(", ")
-        );
-    }
-
-    fn write_receipt_log(name: &str, receipt: &EquivalenceReceipt) {
-        let mut out = String::new();
-        out.push_str(&format!("commit: {}\n", receipt.sha));
-        out.push_str("touched paths:\n");
-        for t in &receipt.touched {
-            out.push_str(&format!("  {t}\n"));
-        }
-        out.push_str("entry decisions (rust_decision, dag_decision):\n");
-        for (entry, rust, dag) in &receipt.rows {
-            out.push_str(&format!("  {entry}: rust={rust} dag={dag}\n"));
-        }
-        let dir = workspace_root().join("target/module_grain_affected_receipts");
-        std::fs::create_dir_all(&dir).expect("create receipt dir");
-        let path = dir.join(format!("{name}.txt"));
-        std::fs::write(&path, &out).unwrap_or_else(|e| panic!("write receipt {path:?}: {e}"));
-        eprintln!("--- module-grain affected-set receipt: {name} ---\n{out}");
-    }
-
-    // Real diff 1: dag/-only merged commit, all-status-`M` (4 modified files: healthz grammar
-    // JSON + structured shell in v1_dag_parse transport, #6166) — chosen over the original
-    // all-new-file commit because `floor_diff_edits_from_line_ranges` fail-closes on any diff
-    // that touches a file's line 1 (every wholly-new file does), which the real production path
-    // can never reach for an all-added-files commit; a modify-only commit exercises it for real.
-    const DAG_ONLY_SHA: &str = "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d";
-    // Real diff 2: src/v2/-only merged commit (6 modified files, bash orchestration-emit dissolve).
-    const V2_ONLY_SHA: &str = "bb6e65649c9625d021467b0d7fe33ca7dd086e4f";
-
-    // Representative sample for the dag/-only diff: the two witness files that directly declare
-    // `import`s of the new ebay/tcgplayer/card_intake modules (expected affected=true on both
-    // sides), plus a spread of unrelated floor witnesses drawn from both pool roots and both
-    // near (same-directory) and far (cross-tree) module-graph distance from the touched files
-    // (expected affected=false) — enough to show the equivalence holds both when it fires and
-    // when it doesn't, without requiring the full ~514-entry roster.
-    fn dag_only_entry_sample() -> Vec<&'static str> {
-        vec![
-            "dag/test/claim/card_intake_risk_witness.dag",
-            "dag/test/claim/ebay_listing_witness.dag",
-            "src/v2/test/claim/bash_program_fold.dag",
-            "dag/test/claim/v1_dag_parse_witness.dag",
-            "dag/gunbc/instruments/host_prelude.dag",
-            "dag/gunbc/instruments/build_step.dag",
-            "dag/gunbc/ci/ci_layer_roots.dag",
-            "src/v2/test/claim/bash_command_fold.dag",
-            "src/v2/workflow/orchestration_emit.dag",
-            "dag/test/claim/long/import_closure_live_test.dag",
-            "src/v2/test/claim/affected_set_universe.dag",
-            "src/v2/lens/module_graph.dag",
-        ]
-    }
-
-    // Representative sample for the src/v2/-only diff: the two directly touched test files
-    // (affected=true), a set of witnesses that import `bash.dag`/`bash_orchestration_emit.dag`
-    // transitively (via the same import chain the discriminating control below exercises;
-    // affected=true), and unrelated witnesses from both trees (affected=false).
-    fn v2_only_entry_sample() -> Vec<&'static str> {
-        vec![
-            "src/v2/workflow/orchestration_bash.dag",
-            "src/v2/workflow/orchestration_emit.dag",
-            "src/v2/test/claim/bash_command_fold.dag",
-            "src/v2/test/claim/bash_program_fold.dag",
-            "src/v2/test/claim/manual/bash_emit_command.dag",
-            "src/v2/test/claim/manual/emit_directive_bash.dag",
-            "src/v2/test/claim/manual/emit_directive_gha.dag",
-            "src/v2/workflow/orchestration_retry_emit.dag",
-            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators.dag",
-            "dag/test/claim/card_intake_risk_witness.dag",
-            "dag/gunbc/instruments/host_prelude.dag",
-            "src/v2/test/claim/affected_set_universe.dag",
-            "dag/test/claim/long/import_closure_live_test.dag",
-        ]
-    }
-}
 
 #[cfg(test)]
 mod underlay_identity_proof_tests {
     use super::{
-        build_module_index_or_refuse, default_source_roots, new_multi_entry_index_scratch_over,
-        new_multi_entry_index_shell, scratch_underlay_if_proven,
+        default_source_roots, new_multi_entry_index_scratch_over, new_multi_entry_index_shell,
+        scratch_underlay_if_proven, try_build_module_index,
     };
     use std::rc::Rc;
 
@@ -23374,7 +21468,8 @@ mod underlay_identity_proof_tests {
     #[test]
     fn underlay_identity_proof_refuses_drift_and_permits_the_proven_scratch() {
         let roots = default_source_roots();
-        let map = build_module_index_or_refuse(&roots);
+        let map = try_build_module_index(&roots)
+            .expect("test fixture: default_source_roots must build a module index");
         let base = Rc::new(new_multi_entry_index_shell(map.clone(), &roots));
 
         let scratch = new_multi_entry_index_scratch_over(base.source_files.clone(), &roots);
@@ -23445,11 +21540,6 @@ mod underlay_identity_proof_tests {
 // migrates off the v1 host layer (gunbc.design_argument::how_to_work dissolution trigger)
 #[cfg(test)]
 mod node_frontier_plumbing_controls {
-    use super::{
-        build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
-        floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry,
-    };
     use crate::v1_interpreter::ExecutionMode;
     use std::path::PathBuf;
 
@@ -23472,21 +21562,6 @@ mod node_frontier_plumbing_controls {
 
     fn abs(ws: &PathBuf, rel: &str) -> String {
         ws.join(rel).to_string_lossy().into_owned()
-    }
-
-    // parse_unified_diff_line_ranges strips "+++ b/" prefix; "b//abs/path" yields "/abs/path".
-    fn diff_at(file: &str, line: i64) -> String {
-        format!(
-            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n\
-             @@ -{line},0 +{line},1 @@\n+// synthetic touch\n"
-        )
-    }
-
-    fn deletion_diff_at(file: &str, line: i64) -> String {
-        format!(
-            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n\
-             @@ -{line},1 +{line},0 @@\n-// synthetic deletion\n"
-        )
     }
 
     fn setup_roots(ws: &PathBuf) -> Vec<String> {
@@ -23927,33 +22002,6 @@ mod node_frontier_plumbing_controls {
         ) -> Result<Vec<String>, String> {
             super::collect_frozen_path_deferral_additions_for(&self.dir, comparison)
         }
-    }
-
-    // CONTROL 1 — ordinary push whose `before` IS an ancestor. Two-dot reads the exact base, so a
-    // row this push adds is caught and an unchanged roster passes. This is the common case and it
-    // must not depend on the base being anywhere in particular relative to head.
-    #[test]
-    fn frozen_roster_direct_push_uses_the_exact_base() {
-        let repo = FreezeRepo::new("direct-ancestor");
-        repo.write_roster(&["inherited"]);
-        let before = repo.commit("push before");
-        repo.write_roster(&["inherited"]);
-        repo.commit("pushed head: roster untouched");
-        assert!(
-            repo.collect(&repo.direct(&before, "HEAD"))
-                .expect("readable")
-                .is_empty(),
-            "an unchanged roster must not read as growth"
-        );
-
-        repo.write_roster(&["inherited", "added_by_this_push"]);
-        repo.commit("pushed head: adds a row");
-        assert_eq!(
-            repo.collect(&repo.direct(&before, "HEAD"))
-                .expect("readable"),
-            vec!["added_by_this_push_test.dag::added_by_this_push_holds".to_string()],
-            "a row this push adds must be caught against the exact before SHA"
-        );
     }
 
     // CONTROL 2 — THE BLOCKING FALSE NEGATIVE the first cut of this repair shipped. A rewritten
@@ -28164,124 +26212,6 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    /// Lever-a receipt: docs-only compile-clean scope skips at path grain.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn floor_fast_scoped_plan_skips_docs_only_touch() {
-        with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
-                &["docs/plans/example.md".to_string()],
-                &HashSet::new(),
-            );
-            assert_eq!(
-                plan,
-                CompileCleanScopePlan::SkipNoAffected {
-                    reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)".to_string(),
-                }
-            );
-        });
-    }
-
-    /// Selectable-universe guard: a mixed diff carrying a non-.dag non-docs path (compiler
-    /// seed `.rs`) keeps the whole-tree baseline even though a `.dag` path also intersects.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch() {
-        with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
-                &[
-                    "dag/gunbc/instruments/dag_compile_clean_transport.dag".to_string(),
-                    "src/v1/stage0/src/cli_run.rs".to_string(),
-                ],
-                &HashSet::new(),
-            );
-            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
-        });
-    }
-
-    /// Departed-path guard: a deleted/renamed-from non-docs path forces the whole-tree
-    /// baseline (current-tree adjacency cannot see the broken importers of a deleted module).
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn floor_fast_plan_whole_tree_on_departed_dag_path() {
-        with_workspace_cwd(|| {
-            let departed: HashSet<String> = ["dag/std/logic.dag".to_string()].into_iter().collect();
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
-                &["dag/std/logic.dag".to_string()],
-                &departed,
-            );
-            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
-        });
-    }
-
-    /// Roster covers the whole compiled tree (lever 8): a diff touching only
-    /// `src/v2/**.dag` scopes to its own entry closure instead of falling to the
-    /// "no shard intersection" whole-tree baseline (pre-fix the roster enumerated
-    /// `dag/`-declared entries only, so this exact shape widened — baseline run
-    /// 29976989996), and a `dag/std` touch selects its affected `src/v2` importers
-    /// (pre-fix they were never in the roster, so scoped runs under-covered them).
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn floor_fast_plan_scopes_src_v2_entries_both_directions() {
-        with_workspace_cwd(|| {
-            let v2_leaf = "src/v2/std/witness_execution_routing.dag".to_string();
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
-                &[v2_leaf.clone(), "dag/std/logic.dag".to_string()],
-                &HashSet::new(),
-            );
-            let CompileCleanScopePlan::Scoped { entry_paths } = plan else {
-                panic!("expected Scoped for a selectable .dag-only diff, got {plan:?}");
-            };
-            assert!(
-                entry_paths.contains(&v2_leaf),
-                "touched src/v2 module must select its own entry"
-            );
-            assert!(
-                entry_paths
-                    .iter()
-                    .any(|p| p.starts_with("src/v2/") && *p != v2_leaf),
-                "a dag/std touch must select affected src/v2 importers"
-            );
-        });
-    }
-
-    /// An empty touched-path set widens to the whole tree rather than skipping. This is
-    /// the arm a main-push squash merge lands on, so a skip here makes main-push report
-    /// green without compiling anything. #7412 fixed the `.dag` model
-    /// (`witness_empty_touched_requires_whole_tree`) but this hot-path mirror kept
-    /// skipping and had NO test, so the model went green while the realization still
-    /// fell open — the fork stayed invisible for exactly that reason.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn floor_fast_plan_empty_touched_requires_whole_tree() {
-        with_workspace_cwd(|| {
-            let departed: HashSet<String> = HashSet::new();
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[], &departed);
-            assert!(
-                matches!(plan, CompileCleanScopePlan::WholeTree),
-                "an unobservable diff must widen, not skip; got {plan:?}"
-            );
-        });
-    }
-
-    /// Docs-only departure stays a skip — the departed guard fires only outside docs/**.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn floor_fast_plan_docs_only_departure_still_skips() {
-        with_workspace_cwd(|| {
-            let departed: HashSet<String> =
-                ["docs/plans/example.md".to_string()].into_iter().collect();
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
-                &["docs/plans/example.md".to_string()],
-                &departed,
-            );
-            assert!(
-                matches!(plan, CompileCleanScopePlan::SkipNoAffected { .. }),
-                "expected SkipNoAffected, got {plan:?}"
-            );
-        });
-    }
-
     /// P1(b) discriminating control: `graph: None` must NOT read as
     /// `symbol_resolves: false` with zero blocking diagnostics — that vacuously passes row 3.
     #[test]
@@ -28495,26 +26425,6 @@ mod witness_layer_roots_compile_clean_tests {
         ));
     }
 
-    /// #7915 receipt: scope witness must also remain eligible on the same touch set.
-    #[test]
-    fn stop_line_repair_receipt_blocks_scope_skip() {
-        let touched = repair_receipt_touched_paths();
-        assert!(compile_clean_broad_stop_line_blocks_skip(
-            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-            &touched
-        ));
-    }
-
-    /// Mechanism-touch pair (7933A): any non-docs .dag change blocks scope witness skip.
-    #[test]
-    fn stop_line_mechanism_touch_dag_blocks_scope_skip() {
-        let touched = vec!["src/v2/lens/module_graph.dag".to_string()];
-        assert!(compile_clean_broad_stop_line_blocks_skip(
-            COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-            &touched
-        ));
-    }
-
     /// Mechanism-touch pair (7933A): same .dag touch blocks shard_a skip under the broad rule.
     #[test]
     fn stop_line_mechanism_touch_dag_blocks_shard_a_skip() {
@@ -28533,60 +26443,6 @@ mod witness_layer_roots_compile_clean_tests {
             COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
             &touched
         ));
-    }
-
-    /// RED control: a scope-only rule would not block shard_a; broad stop-line does on #7915 receipt.
-    #[test]
-    fn stop_line_repair_receipt_red_control_scope_only_omits_shard_a() {
-        let touched = repair_receipt_touched_paths();
-        let scope_only_blocks_shard_a = |entry: &str| {
-            compile_clean_verdict_affecting_touch(&touched)
-                && workspace_relative_repo_path(entry)
-                    == workspace_relative_repo_path(COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY)
-        };
-        assert!(
-            !scope_only_blocks_shard_a(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
-            "scope-only subject must omit shard-a"
-        );
-        assert!(
-            compile_clean_broad_stop_line_blocks_skip(
-                COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
-                &touched
-            ),
-            "broad stop-line must block shard-a on repair receipt"
-        );
-    }
-
-    /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
-    /// itself through the import-closure grain (the discriminating RED for this arm is
-    /// `floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch` — same touch set plus an `.rs`
-    /// path flips the disposition to whole-tree).
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn floor_fast_plan_scopes_touched_dag_entry_via_import_closure() {
-        with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
-                &["dag/std/logic.dag".to_string()],
-                &HashSet::new(),
-            );
-            match plan {
-                CompileCleanScopePlan::Scoped { entry_paths } => {
-                    assert!(
-                        entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
-                        "expected dag/std/logic.dag in {entry_paths:?}"
-                    );
-                    let roster_len = compile_clean_shard_entry_paths_fast()
-                        .expect("live shard roster must be duplicate-free")
-                        .len();
-                    assert!(
-                        entry_paths.len() < roster_len,
-                        "scoped selection must be a strict subset of the roster ({} vs {roster_len})",
-                        entry_paths.len()
-                    );
-                }
-                other => panic!("expected ScopedRun, got {other:?}"),
-            }
-        });
     }
 
     #[test]
@@ -28609,299 +26465,6 @@ mod witness_layer_roots_compile_clean_tests {
             ),
             "unexpected refusal: {err}"
         );
-    }
-
-    /// Regression for review 47302: modeled `compile_clean_scope_disposition_from_diff`
-    /// builds the roster before any disposition arm; compiler/infra touches must not
-    /// bypass duplicate-key refusal by returning WholeTree early.
-    #[test]
-    fn floor_fast_refuses_duplicate_roster_before_whole_tree_arm() {
-        let plan = compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
-            &["src/v1/stage0/src/cli_run.rs".to_string()],
-            &HashSet::new(),
-            Err(
-                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
-                    .to_string(),
-            ),
-        );
-        assert_eq!(
-            plan,
-            CompileCleanScopePlan::Refused {
-                reason: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
-                    .to_string(),
-            }
-        );
-    }
-
-    /// Regression for review 47305: empty touched paths must not bypass roster refusal.
-    #[test]
-    fn floor_fast_refuses_duplicate_roster_before_empty_touched_whole_tree_arm() {
-        let plan = compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
-            &[],
-            &HashSet::new(),
-            Err(
-                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
-                    .to_string(),
-            ),
-        );
-        assert_eq!(
-            plan,
-            CompileCleanScopePlan::Refused {
-                reason: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
-                    .to_string(),
-            }
-        );
-    }
-
-    /// Discriminating receipt for the strict-tier reference-edge wiring
-    /// (`build_module_graph_facts_live_uncached`), and the RED control for the deleted widen arm.
-    ///
-    /// `base64_rfc4648_witness_test.dag` is import-LESS: before the wiring its adjacency was empty,
-    /// so the old arm answered "affected" for every touch in the repo and BOTH arms below were
-    /// `true` — the assertion that matters is the second one, which can only pass once the entry
-    /// has real derived edges AND the widen is gone. It fails in three distinguishable ways: no
-    /// edges (wiring absent), always-true (widen still present), always-false (edges wrong).
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn edgeless_entry_selects_on_its_dependency_and_skips_unrelated_touch() {
-        with_workspace_cwd(|| {
-            let entry = "dag/test/claim/base64_rfc4648_witness.dag";
-            let roots = default_source_roots();
-            let facts = build_module_graph_facts_live(&roots);
-            let declared: HashSet<String> = facts.declared_paths.clone();
-
-            // Wiring receipt: the entry declares no imports, so a non-empty adjacency here is
-            // reference-derived by construction.
-            let targets = facts
-                .selection
-                .selection_adjacency()
-                .get(entry)
-                .cloned()
-                .unwrap_or_default();
-            assert!(
-                !targets.is_empty(),
-                "expected reference-derived edges for import-less {entry}; empty adjacency means \
-                 the strict-tier union did not land"
-            );
-
-            // MUST SELECT: `std.encoding` is a real dependency (the witness calls base64_encode).
-            let on_dep = entry_file_touched_via_import_closure(
-                entry,
-                &facts,
-                &declared,
-                &["dag/std/encoding.dag".to_string()],
-            )
-            .expect("selection must not refuse for a parseable entry");
-            assert!(
-                on_dep,
-                "{entry} must be selected when dag/std/encoding.dag is touched"
-            );
-
-            // MUST SKIP: a tool module that is not in this witness's closure. Under the deleted
-            // widen arm this returned true, which is exactly the imprecision that made every PR
-            // run the whole corpus.
-            let on_unrelated = entry_file_touched_via_import_closure(
-                entry,
-                &facts,
-                &declared,
-                &["dag/gunbc/tools/review_codex.dag".to_string()],
-            )
-            .expect("selection must not refuse for a parseable entry");
-            assert!(
-                !on_unrelated,
-                "{entry} must NOT be selected by an unrelated touch — this is the widen arm's RED"
-            );
-        });
-    }
-
-    /// Population receipt for the same wiring, and the control that IS discriminating for the
-    /// deleted widen arm.
-    ///
-    /// The single-entry test above is NOT: once the union lands, an entry that gained edges never
-    /// reaches the edgeless arm, so restoring the widen leaves it green (verified — it passed with
-    /// the arm restored). The arm only ever fired for entries that stay edgeless, so the RED has to
-    /// be taken there. This asserts on that residual directly, and asserts the residual is small,
-    /// which is the receipt that the union actually covered the corpus rather than a lucky entry.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn edgeless_residual_is_small_and_selects_precisely() {
-        with_workspace_cwd(|| {
-            let roots = default_source_roots();
-            let facts = build_module_graph_facts_live(&roots);
-            let declared: HashSet<String> = facts.declared_paths.clone();
-
-            let claim_entries: Vec<String> = facts
-                .nodes
-                .iter()
-                .map(|n| workspace_relative_repo_path(&n.path))
-                .filter(|p| p.contains("/test/claim/"))
-                .collect();
-            let edgeless: Vec<String> = claim_entries
-                .iter()
-                .filter(|p| {
-                    facts
-                        .selection
-                        .selection_adjacency()
-                        .get(*p)
-                        .is_none_or(|targets| targets.is_empty())
-                })
-                .cloned()
-                .collect();
-
-            eprintln!(
-                "[edge-wiring receipt] claim entries={} edgeless-after-union={}",
-                claim_entries.len(),
-                edgeless.len()
-            );
-            assert!(
-                edgeless.len() * 4 < claim_entries.len(),
-                "edgeless residual {} of {} claim entries is too large — before the strict-tier \
-                 union this was the majority, and a regression here silently restores whole-corpus \
-                 selection: {:?}",
-                edgeless.len(),
-                claim_entries.len(),
-                edgeless.iter().take(10).collect::<Vec<_>>()
-            );
-
-            // THE discriminating arm. An edgeless entry has closure {self}, so an unrelated touch
-            // must not select it. The deleted widen returned `true` here unconditionally.
-            if let Some(entry) = edgeless.first() {
-                let on_unrelated = entry_file_touched_via_import_closure(
-                    entry,
-                    &facts,
-                    &declared,
-                    &["dag/gunbc/tools/review_codex.dag".to_string()],
-                )
-                .expect("an accounted edgeless entry must not refuse");
-                assert!(
-                    !on_unrelated,
-                    "edgeless entry {entry} must NOT be selected by an unrelated touch — this \
-                     assertion is what the widen arm made unconditionally true"
-                );
-                let on_self = entry_file_touched_via_import_closure(
-                    entry,
-                    &facts,
-                    &declared,
-                    &[entry.clone()],
-                )
-                .expect("an accounted edgeless entry must not refuse");
-                assert!(
-                    on_self,
-                    "edgeless entry {entry} must still be selected when its OWN file is touched — \
-                     the closure seeds with the entry, so this is the precise answer the widen \
-                     was standing in for"
-                );
-            }
-        });
-    }
-
-    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
-    #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
-    fn scoped_plan_skips_docs_only_touch() {
-        with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths(
-                &["docs/plans/example.md".to_string()],
-                &HashSet::new(),
-            )
-            .expect("scope disposition");
-            assert_eq!(
-                plan,
-                CompileCleanScopePlan::SkipNoAffected {
-                    reason: "no compile-clean entry import-closure intersects touched paths"
-                        .to_string()
-                }
-            );
-        });
-    }
-
-    /// Lever-a PR touch receipt: dag transport edits scope (not silent whole-tree).
-    #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold"]
-    fn scoped_plan_includes_lever_a_dag_transport_touch() {
-        with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths(
-                &[
-                    "dag/gunbc/instruments/dag_compile_clean_transport.dag".to_string(),
-                    "src/v1/stage0/src/cli_run.rs".to_string(),
-                ],
-                &HashSet::new(),
-            )
-            .expect("scope disposition");
-            match plan {
-                CompileCleanScopePlan::Scoped { entry_paths } => {
-                    assert!(
-                        entry_paths
-                            .iter()
-                            .any(|p| p.contains("dag_compile_clean_transport")),
-                        "expected transport entry in {entry_paths:?}"
-                    );
-                }
-                other => panic!("expected ScopedRun for lever-A PR touch, got {other:?}"),
-            }
-        });
-    }
-
-    /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
-    #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
-    fn scoped_plan_includes_touched_dag_entry() {
-        with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths(
-                &["dag/std/logic.dag".to_string()],
-                &HashSet::new(),
-            )
-            .expect("scope disposition");
-            match plan {
-                CompileCleanScopePlan::Scoped { entry_paths } => {
-                    assert!(
-                        entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
-                        "expected dag/std/logic.dag in {entry_paths:?}"
-                    );
-                }
-                other => panic!("expected ScopedRun, got {other:?}"),
-            }
-        });
-    }
-
-    /// Lever-a receipt: diff observation failure refuses — never widens to whole-tree.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn scoped_plan_refuses_on_invalid_diff_base() {
-        with_env_test_lock(|| {
-            let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
-            let _head = EnvGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
-            let plan = compile_clean_scope_plan_for_ci();
-            assert!(
-                matches!(plan, CompileCleanScopePlan::Refused { .. }),
-                "expected Refused on diff failure, got {plan:?}"
-            );
-        });
-    }
-
-    /// Lever-a receipt: `GITHUB_ACTIONS=true` activates scoping (same signal as
-    /// `floor_diff_observe` / `install_group_syntax`) without requiring `GUNBC_CI_DIFF_BASE`.
-    /// Disposition soundness (not `WholeTree`) is covered by `.dag` witnesses — calling
-    /// `compile_clean_scope_plan_for_ci` here would run the live shard-roster scan.
-    #[test]
-    fn github_actions_activates_compile_clean_scoping() {
-        with_env_test_lock(|| {
-            let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
-            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
-            assert!(compile_clean_scoping_active());
-        });
-    }
-
-    /// Falsifier cold-control arm: the env forces WholeTree before any diff observation
-    /// (widen-to-more-checking only — it can never skip or narrow the gate).
-    #[test]
-    fn cold_control_env_forces_whole_tree_scope_plan() {
-        with_env_test_lock(|| {
-            let _cc = EnvGuard::set("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", "1");
-            let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
-            let plan = compile_clean_scope_plan_for_ci();
-            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
-        });
     }
 }
 
@@ -31011,12 +28574,11 @@ fn serialize_untagged_variant(
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{
-        build_module_graph_facts_live, build_module_index_or_refuse, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
-        load_sources_for_entry_with_index, module_graph_facts_build_count_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_transitively, resolve_transitively_bfs_legacy, witness_layer_roots,
-        workspace_relative_repo_path,
+        build_module_graph_facts_live, build_multi_entry_index, closure_subject_for_entry,
+        default_source_roots, import_closure_live_paths, load_sources_for_entry_with_index,
+        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
+        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
+        try_build_module_index, witness_layer_roots, workspace_relative_repo_path,
     };
     use im::HashMap;
     use std::collections::BTreeSet;
@@ -31078,7 +28640,8 @@ mod import_closure_equivalence_tests {
     }
 
     fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
-        let index = build_module_index_or_refuse(pool_roots);
+        let index = try_build_module_index(pool_roots)
+            .expect("test fixture: pool_roots must build a module index");
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
     }
@@ -31150,6 +28713,13 @@ mod peel_alias_fixpoint_termination {
     // shape (e.g. `List`) from the strip-tree measurement. Rc types are !Send,
     // so the worker thread builds everything itself and reports a projection;
     // the timeout converts a regression from a suite hang into a located red.
+    //
+    // COVERAGE GAP, INHERITED (side-chat review of #16084): since #13939 stamps the one-child
+    // resolver result's `inferred` field, this fixture leaves the peel after ONE resolver call
+    // and never reaches the `once == n` guard, so deleting that guard would leave this test
+    // green. What it still discriminates is the child-refusal conservation asserted below. The
+    // guard's discriminating RED needs a fixture whose resolve is a true fixed point with an
+    // unstamped result; until one exists, this test is not evidence for the guard.
     #[test]
     fn peel_terminates_at_resolve_fixpoint() {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -31293,12 +28863,27 @@ mod peel_alias_fixpoint_termination {
             );
             let quiet_diagnostic_count = quiet.diagnostics.len();
 
+            // The refusal count alone is only a change-detector; pin WHICH typed
+            // refusal the peel must keep so a regression that drops the genuine
+            // child refusal cannot pass on a coincidental count. The fixture's one
+            // genuinely unresolvable name is the child `PeelFixpointElem` (it is not
+            // a global bare name), so it must surface as the unobserved-marker-census
+            // refusal. The head `PeelFixpointProbe` resolves via `global_bare` to
+            // itself (the fixpoint) and must not fire a refusal at all.
+            let keeps_child_phantom = out.diagnostics.iter().any(|d| {
+                matches!(
+                    &*d.diagnostic,
+                    crate::v1_std_core::CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. }
+                        if name == "PeelFixpointElem"
+                )
+            });
             let _ = tx.send((
                 termination_probe,
                 quiet_diagnostic_count,
                 refusal_count,
                 unavailable_evidence_count,
                 retired_count,
+                keeps_child_phantom,
             ));
         });
         let (
@@ -31307,9 +28892,10 @@ mod peel_alias_fixpoint_termination {
             refusal_count,
             unavailable_evidence_count,
             retired_count,
+            keeps_child_phantom,
         ) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
             "peel_alias_once_for_field_access did not terminate within 30s — the \
-                 fixpoint guard regressed (pre-guard this fixture spins forever)",
+                 peel stopped terminating (see the coverage-gap note: this fixture no longer reaches the once == n guard)",
         );
         assert_eq!(name, "PeelFixpointProbe");
         assert_eq!(
@@ -31317,12 +28903,28 @@ mod peel_alias_fixpoint_termination {
             "a legitimate non-alias probe miss must stay quiet"
         );
         assert_eq!(
-            refusal_count, 2,
-            "a resolver refusal during speculative peel must remain typed and countable"
+            refusal_count, 1,
+            "the fixture has exactly one genuinely unresolvable name — the child \
+             PeelFixpointElem (not a global bare name) — so exactly one typed resolver \
+             refusal must survive the speculative peel and remain countable. The head \
+             PeelFixpointProbe resolves via global_bare to itself (the fixpoint) and must \
+             NOT fire a refusal. (Before #13939 the one-child resolver arm returned the \
+             child's diagnostics on an UNSTAMPED result, so the peel iterated again, resolved \
+             the child a second time and concatenated a DUPLICATE child refusal; the former \
+             literal 2 pinned that double resolution. #13939 stamps the result's inferred \
+             field, so the peel finishes after one resolver call and the child refusal is \
+             counted once.)"
         );
         assert_eq!(
-            unavailable_evidence_count, 2,
-            "an unobserved marker census must remain a distinct typed refusal"
+            unavailable_evidence_count, 1,
+            "the single surviving resolver refusal is the unobserved marker census \
+             (UnitVariantPhantomIdentityEvidenceUnavailable) for PeelFixpointElem and must \
+             remain a distinct typed refusal"
+        );
+        assert!(
+            keeps_child_phantom,
+            "the refusal the peel must keep is the UnitVariantPhantomIdentityEvidenceUnavailable \
+             for the unresolvable child PeelFixpointElem"
         );
         assert_eq!(
             retired_count, 0,
@@ -32601,7 +30203,13 @@ pub struct SourceCorpusRead {
 }
 
 pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
-    let index = build_module_index_or_refuse(source_roots);
+    // Infallible corpus consumer (floor runner / target-invocation host / repository fold):
+    // a scan refusal is fatal here and the consumer boundary chooses exit 1. The library
+    // build (`try_build_module_index`) only returns the refusal; this is where a
+    // consumer decides to stop. It is not on the unit-test path — unit tests use
+    // `try_build_module_index`, which returns the refusal instead of exiting.
+    let index = try_build_module_index(source_roots)
+        .unwrap_or_else(|refusal| refuse_module_index_build(&refusal));
     let inventory = floor_source_inventory(&index);
     SourceCorpusRead { index, inventory }
 }

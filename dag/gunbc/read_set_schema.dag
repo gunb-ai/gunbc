@@ -19,17 +19,9 @@ data read_set_env_name: String = "GUNBC_READ_SET_OUT"
 data fast_lane_native_cli_basename: String = "gunbc-fast-lane-native-cli"
 data fast_lane_compiler_identity_basename: String = "gunbc-fast-lane-compiler-identity"
 
-// THE RECEIPT'S LINE KINDS, as the seed writes them: `<kind> <workspace-relative path>`
-// (v1_compiler.cli_run.demand_acquire read_set_record). A `file` was read, a `probe` was checked and found
-// absent or unadmitted, a `dir` was enumerated, recursively for a custom root. A change to a `file` or
-// `probe` path, or to any path under a `dir`, can change what acquisition reads.
-data read_set_kind_file: String = "file"
-data read_set_kind_probe: String = "probe"
-data read_set_kind_dir: String = "dir"
-
-// The kinds whose path is one exact path, and the separator between kind and path.
-data read_set_exact_kinds: List<String> = [read_set_kind_file, read_set_kind_probe]
-data read_set_kind_separator: String = " "
+// THE RECEIPT'S LINE FORMAT (kinds and separator) is v2.std.read_set's: the recording format of the file-grain
+// read set (gunbc.plans.read_set_convergence section 2.1), written by v1_compiler.cli_run.demand_acquire
+// read_set_record.
 
 // THE DECISION STEP AND ITS OUTPUTS. `skip` is written `true` only as the step's last act, after every
 // check held; `compiler_identity` is the restored unit's identity, written before it. Every consumer reads

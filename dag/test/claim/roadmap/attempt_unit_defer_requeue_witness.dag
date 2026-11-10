@@ -5,23 +5,37 @@ import std.algebra { string_contains }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.emit { live_deploy_attempt_unit_drain_path_unit_file }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.host.host_layout { attempt_unit_spool_request_dir, attempt_unit_spool_deferred_dir }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_deferred_path, attempt_system_unit_request_path }
+import gunbc.spool_queue {
+  SpoolAttemptUnit, RolePending, RoleDeferred, spool_role_dirs, SpoolRole, spool_open, spool_entry_key_of_name,
+  SpoolKeyMinted, SpoolKeyRefused, spool_entry_path, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused,
+}
 
 // A WAITING REQUEST COSTS NOTHING: the deferred directory is not the watched requests/ directory, nor inside it,
 // so deferring an entry leaves requests/ empty and the level-triggered path unit does not re-fire.
 test fn the_deferred_dir_is_outside_the_watched_requests_dir() -> Bool {
   let root = "/srv/i"
-  let req = attempt_unit_spool_request_dir(instance_root: root)
-  let def = attempt_unit_spool_deferred_dir(instance_root: root)
+  let req = join(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: root, roles: [RolePending]), "")
+  let def = join(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: root, roles: [RoleDeferred]), "")
   req != def && !string_contains(s: def, pattern: join([req, "/"], "")) && !string_contains(s: req, pattern: join([def, "/"], ""))
 }
 
 // defer and requeue keep the entry name, so the sorted-listing (FIFO) order the drain processes in is the order
 // entries are moved back in
+fn unit_entry_path_of(role: SpoolRole, entry: String) -> String {
+  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: entry) {
+    SpoolKeyRefused { detail: _ } => ""
+    SpoolKeyMinted { key } =>
+      match spool_entry_path(store: spool_open(kind: SpoolAttemptUnit, instance_root: "/srv/i"), role: role, key: key) {
+        SpoolEntryPathReady { path } => path
+        SpoolEntryRoleUndeclared { role: _ } => ""
+        SpoolEntryKindRefused { detail: _ } => ""
+      }
+  }
+}
+
 test fn defer_and_requeue_keep_the_entry_name() -> Bool {
-  attempt_system_unit_deferred_path(instance_root: "/srv/i", entry: "n:k") == "/srv/i/attempt-unit-spool/deferred/n:k"
-    && attempt_system_unit_request_path(instance_root: "/srv/i", entry: "n:k") == "/srv/i/attempt-unit-spool/requests/n:k"
+  unit_entry_path_of(role: RoleDeferred, entry: "n+k") == "/srv/i/attempt-unit-spool/deferred/n+k"
+    && unit_entry_path_of(role: RolePending, entry: "n+k") == "/srv/i/attempt-unit-spool/requests/n+k"
 }
 
 // COMPLETION RE-ARMS THE DRAIN: the drain's path unit watches the exit done/ directory edge-triggered

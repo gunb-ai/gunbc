@@ -62,6 +62,9 @@ import gunbc.runner.runner_qualification_floor_job {
 }
 import gunbc.runner.runner_qualification_ref_pin { QualificationRefPin, QualificationBranchName }
 import gunbc.runner.runner_qualification_group { qualification_workflow_path, qualification_selected_workflow }
+import gunbc.runner.runner_retirement_causes {
+  ReplacementJobEvidence, FloorJobCollected, FloorJobRefused, collected_floor_job_reading,
+}
 
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
 //
@@ -721,6 +724,84 @@ fn decide_qualification_run(
   }
 }
 
+// THE PROJECTION THE RETIREMENT GATE READS, AND ITS ONLY PRODUCER. The gate
+// (gunbc.runner.runner_replacement_readback) must judge the collected floor-job verdict, but it may not
+// import this module: this module reaches gunbc.fleet.fleet_converge_workflow ->
+// gunbc.host.host_primary_network_apply -> gunbc.runner.runner_host_file_converge, which is the route that
+// ASKS the gate whether a drain is authorized, so the import would close a cycle over its own consumer
+// ("circular dependency detected"). The owner of a fact translating it into the shape a downstream judge can
+// read is the direction that keeps the graph one-way: nothing outside this module can mint a
+// `CollectedFloorJobReading`, so the gate cannot be handed a job nobody collected. It is a projection of
+// `QualificationRunVerdict`, not a second model of the qualification readback -- the verdict stays the
+// authority, and gunbc.design_argument::minimize_redundancy is honoured by deriving the view rather than
+// copying the record.
+//
+// `slot` is the label the CALLER asked about, and it is carried by the refused arm only: a readback that was
+// refused names no runner, so the label is its only identity. A collected reading carries no label at all --
+// which slot it belongs to is `WorkflowJobRun.runner_name`, the field decide_floor_job checked the
+// registration against, and gunbc.runner.runner_retirement_causes::floor_job_ran_on is the one matcher. A
+// label stored beside it would be a second identity for one fact that nothing reads.
+fn replacement_job_evidence_of(slot: NonEmptyStr, verdict: QualificationRunVerdict) -> ReplacementJobEvidence {
+  match verdict {
+    RunVerdictCollected { run: run, floor_job: job, conclusion: conclusion } =>
+      FloorJobCollected { collected: collected_floor_job_reading(run: run, floor_job: job, conclusion: conclusion) }
+    RunVerdictRefused { refusal: refusal } =>
+      FloorJobRefused { slot: slot, reason: qualification_run_refusal_cause(refusal: refusal) }
+  }
+}
+
+// WHY THE PROJECTION CARRIES A CAUSE STRING AND NOT THE REFUSAL ITSELF -- and why this renderer lives with
+// the refusal it explains. The refusal carries the pinned revision and the observed one, the token's app and
+// installation -- material that belongs in a refusal report, not in a plan line a host converges against. The
+// arms are named so the operator can act on the cause alone, and the full refusal stays one `match` away,
+// here, in the module that owns it.
+// THE SAME PROJECTION FOR A COLLECTION THE CALLER ALREADY HOLDS, so the qualification attempt route can
+// attest the fact it already decided -- "the registered runner took this attempt's floor job and it concluded"
+// -- through the ONE carrier the retirement gate reads, instead of re-deriving the conclusion from the record
+// beside it. The slot is taken from the floor job's own `runner_name`, the same join `decide_floor_job` made
+// against the registration: the evidence says who it is about. A collected job that names no runner yields no
+// evidence at all, because a job that does not say who ran it attests nothing about who ran it.
+fn replacement_job_evidence_of_collected(collected: CollectedQualificationRun) -> ReplacementJobEvidence? {
+  match collected.floor_job.runner_name {
+    Absent => Absent
+    Present { value: name } =>
+      Present {
+        value: replacement_job_evidence_of(
+          slot: name as NonEmptyStr,
+          verdict: RunVerdictCollected {
+            run: collected.run,
+            floor_job: collected.floor_job,
+            conclusion: collected.conclusion,
+          },
+        )
+      }
+  }
+}
+
+fn qualification_run_refusal_cause(refusal: QualificationRunRefusal) -> String {
+  match refusal {
+    RunReadUnreadable { refusal: _ } => "the qualification run could not be read"
+    RunCollectedUnderAnotherInstallation { token_app: _, token_installation: _ } =>
+      "the qualification run belongs to another GitHub App installation"
+    RunSubjectMismatch { observed_run_id: _, observed_event: _, observed_path: _, foreign_jobs: _ } =>
+      "the qualification run is not the dispatched one"
+    RunAdvancedPastDispatchedAttempt { observed_attempt: _ } => "the workflow run advanced past the dispatched attempt"
+    RunRevisionNotPinned { pinned: _, observed: _ } => "the qualification run is not on the pinned revision"
+    RunOnAnotherBranch { pinned: _, observed: _ } => "the qualification run is on another branch"
+    RunNotCompleted { status: _ } => "the qualification run has not completed"
+    RunCompletedWithoutConclusion => "the qualification run completed without a conclusion"
+    RunJobsUnreadable { refusal: _ } => "the qualification run's jobs could not be read"
+    RunJobsTruncated { returned: _, total: _ } => "the qualification run's job list is truncated"
+    RunFloorJobNotUnique { floor_job_name: _, matching: _ } => "the floor job is not unique in the run"
+    RunNeverReachedAttemptRunner { registered_runner_id: _, runner_ids_seen: _ } =>
+      "no job of the qualification run ran on the registered runner"
+    RunRunnerNameDisagrees { registered_runner_id: _, registered_runner: _, observed_runner_name: _ } =>
+      "the job's runner name disagrees with the registration"
+    RunRegisteredRunnerRanAnotherJob { registered_runner: _, job_name: _ } =>
+      "the registered runner ran a job other than the floor job"
+    RunFloorJobNotStarted { job_id: _ } => "the floor job never started"
+  }
+}
 // THE READBACK IS PERFORMED UNDER THE INSTALLATION THAT DISPATCHED. A sealed controller token for some
 // other App or installation could read a run and report it as installation A's; the token is joined
 // to the registration before either read, exactly as at dispatch.

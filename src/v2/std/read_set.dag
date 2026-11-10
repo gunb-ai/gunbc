@@ -1,0 +1,321 @@
+module v2.std.read_set
+
+import std.types { Bool, List, Map, String }
+import std.algebra { fold_list, list_find_first, map_lookup }
+import std.optional { Optional, Present, Absent }
+
+// THE FILE-GRAIN DEPENDENCY READ SET AND ITS VALIDATION (gunbc.plans.read_set_convergence section 2.1-2.2).
+//
+// A read set is what one production consumed, as paths. It is the file-grain projection of the dependency
+// read set gunbc.plans.demand_engine_program section 2.3 names; the engine's demand, evaluation and result
+// identities stay the engine's. This module answers exactly one question -- are a product's sealed input
+// observations still valid given what changed since they were sealed -- and holds no opinion about what an
+// answer costs: each consumer maps the three outcomes itself (a required job runs in full on anything but
+// valid; a convergence consumer regenerates or refuses).
+//
+// ONE MATCHING RULE. A `File` or `Probe` member is one exact path; a `Dir` member is every path under it, on a
+// path-segment boundary (`dag/a` covers `dag/a/b.dag`, never `dag/ab.dag`). No suffix or bare-prefix match
+// exists here.
+
+// ═══ MEMBERS ═══
+
+// What a production consumed: a file it read, a path it looked for and found absent or unadmitted, or a
+// directory it enumerated (recursively). A change to a File or Probe path, or to any path under a Dir, can
+// change what the production reads.
+type ReadSetMember
+  = ReadSetFile { path: String }
+  | ReadSetProbe { path: String }
+  | ReadSetDir { path: String }
+
+// Where a member came from. Observed members were recorded by watching the real production run. Declared
+// members are inputs the recorder does not instrument (a toolchain pin, a workflow, a fixture root); the
+// consumer names why each is declared with its own type, so a declared input never silently disappears
+// because nothing recorded it.
+type ReadSetOrigin<Declared>
+  = ReadSetObserved
+  | ReadSetDeclared { reason: Declared }
+
+type ReadSetEntry<Declared> {
+  member: ReadSetMember
+  origin: ReadSetOrigin<Declared>
+}
+
+fn read_set_member_path(member: ReadSetMember) -> String {
+  match member {
+    ReadSetFile { path: p } => p
+    ReadSetProbe { path: p } => p
+    ReadSetDir { path: p } => p
+  }
+}
+
+// A member path is NORMAL when it is relative and every segment is a name: no empty segment (which also
+// excludes a leading, trailing or doubled slash) and no `.` or `..`. A path that is not normal could name a
+// file a change observation spells differently, so it is never trusted.
+fn read_set_path_is_normal(path: String) -> Bool {
+  all(split(s: path, delimiter: "/"), seg => seg != "" && seg != "." && seg != "..")
+}
+
+// The one matcher. A Dir member covers paths that start with its path followed by `/`.
+fn read_set_member_covers(member: ReadSetMember, path: String) -> Bool {
+  match member {
+    ReadSetFile { path: p } => path == p
+    ReadSetProbe { path: p } => path == p
+    ReadSetDir { path: d } => starts_with(s: path, prefix: concat(d, "/"))
+  }
+}
+
+// The two shapes a line-wise realization (a grep over changed paths) needs: the exact paths, and the
+// directory prefixes with their trailing `/`.
+fn read_set_exact_paths<Declared>(entries: List<ReadSetEntry<Declared>>) -> List<String> {
+  fold_list(xs: entries, empty: [], cons: fn(acc, e) {
+    match e.member {
+      ReadSetFile { path: p } => concat(acc, [p])
+      ReadSetProbe { path: p } => concat(acc, [p])
+      ReadSetDir { path: _ } => acc
+    }
+  })
+}
+
+fn read_set_dir_prefixes<Declared>(entries: List<ReadSetEntry<Declared>>) -> List<String> {
+  fold_list(xs: entries, empty: [], cons: fn(acc, e) {
+    match e.member {
+      ReadSetFile { path: _ } => acc
+      ReadSetProbe { path: _ } => acc
+      ReadSetDir { path: d } => concat(acc, [concat(d, "/")])
+    }
+  })
+}
+
+// ═══ THE RECORDING FORMAT ═══
+//
+// One line per observed member, `<kind> <workspace-relative path>`, as the seed's recorder writes it
+// (v1_compiler.cli_run.demand_acquire read_set_record, under the environment variable gunbc.read_set_schema
+// read_set_env_name names). These spellings are the format's single authority; the line-wise realization
+// renders its patterns from them.
+
+data read_set_kind_file: String = "file"
+data read_set_kind_probe: String = "probe"
+data read_set_kind_dir: String = "dir"
+data read_set_exact_kinds: List<String> = [read_set_kind_file, read_set_kind_probe]
+data read_set_kind_separator: String = " "
+
+fn read_set_kind_head(kind: String) -> String { concat(kind, read_set_kind_separator) }
+
+fn read_set_line_rest(line: String, kind: String) -> String {
+  substring(s: line, start: string_length(s: read_set_kind_head(kind: kind)), end: string_length(s: line))
+}
+
+fn read_set_normal_member(path: String, member: ReadSetMember) -> Optional<ReadSetMember> {
+  if read_set_path_is_normal(path: path) { Present { value: member } } else { Absent }
+}
+
+// One recorded line as a member; Absent when the line has no recorded kind or its path is not normal.
+fn read_set_member_of_line(line: String) -> Optional<ReadSetMember> {
+  if starts_with(s: line, prefix: read_set_kind_head(kind: read_set_kind_file)) {
+    read_set_normal_member(path: read_set_line_rest(line: line, kind: read_set_kind_file), member: ReadSetFile { path: read_set_line_rest(line: line, kind: read_set_kind_file) })
+  } else if starts_with(s: line, prefix: read_set_kind_head(kind: read_set_kind_probe)) {
+    read_set_normal_member(path: read_set_line_rest(line: line, kind: read_set_kind_probe), member: ReadSetProbe { path: read_set_line_rest(line: line, kind: read_set_kind_probe) })
+  } else if starts_with(s: line, prefix: read_set_kind_head(kind: read_set_kind_dir)) {
+    read_set_normal_member(path: read_set_line_rest(line: line, kind: read_set_kind_dir), member: ReadSetDir { path: read_set_line_rest(line: line, kind: read_set_kind_dir) })
+  } else {
+    Absent
+  }
+}
+
+// ═══ VALIDATION ═══
+
+// What is known about the change since the read set was sealed. A consumer that cannot say which paths
+// changed reports that, rather than an empty list.
+type ReadSetChangeObservation
+  = ReadSetChangedPaths { paths: List<String> }
+  | ReadSetChangesUnobserved
+
+type ReadSetUnestablishedCause
+  = ReadSetRecordingLineUnreadable { line: String }
+  | ReadSetMemberMalformed { path: String }
+  | ReadSetChangeObservationUnavailable
+  | ReadSetChangedPathUndecidable { path: String }
+
+type ReadSetValidity<Declared>
+  = ReadSetValid
+  | ReadSetInvalidated { path: String, entry: ReadSetEntry<Declared> }
+  | ReadSetUnestablished { cause: ReadSetUnestablishedCause }
+
+// The recorded lines as observed entries, or the first line that cannot be read. An unreadable line makes
+// the whole recording untrustworthy: dropping it would silently narrow the read set.
+type ReadSetRecording<Declared>
+  = ReadSetRecordingRead { entries: List<ReadSetEntry<Declared>> }
+  | ReadSetRecordingUnreadable { line: String }
+
+fn read_set_recording_of_lines<Declared>(lines: List<String>) -> ReadSetRecording<Declared> {
+  fold_list(xs: lines, empty: ReadSetRecordingRead { entries: [] }, cons: fn(acc, line) {
+    match acc {
+      ReadSetRecordingUnreadable { line: _ } => acc
+      ReadSetRecordingRead { entries: es } =>
+        match read_set_member_of_line(line: line) {
+          Present { value: m } => ReadSetRecordingRead { entries: concat(es, [ReadSetEntry { member: m, origin: ReadSetObserved }]) }
+          Absent => ReadSetRecordingUnreadable { line: line }
+        }
+    }
+  })
+}
+
+// The first changed path some entry covers, with that entry; Absent when no entry covers any changed path.
+fn read_set_first_covered<Declared>(entries: List<ReadSetEntry<Declared>>, paths: List<String>) -> Optional<ReadSetValidity<Declared>> {
+  fold_list(xs: paths, empty: Absent, cons: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match list_find_first(xs: entries, predicate: fn(e) { read_set_member_covers(member: e.member, path: p) }) {
+          Present { value: e } => Present { value: ReadSetInvalidated { path: p, entry: e } }
+          Absent => Absent
+        }
+    }
+  })
+}
+
+// THE RULE, IN ITS PATH-DIFF MODE: the change is given as the paths changed since the read set was sealed.
+// (The digest mode and generator-identity comparison land with their first consumer;
+// gunbc.plans.read_set_convergence section 4 P1.) Valid when every entry's path is normal, the change is
+// observed, and no changed path is covered by any entry, declared or observed. A malformed entry -- declared
+// ones included -- is unestablished, never skipped: a member that cannot match what it names would silently
+// narrow the set. A path containing a newline is undecidable line-wise and is reported. Entries are checked
+// in the order given, so the reported entry is deterministic.
+fn validate_read_set<Declared>(entries: List<ReadSetEntry<Declared>>, changes: ReadSetChangeObservation) -> ReadSetValidity<Declared> {
+  match list_find_first(xs: entries, predicate: fn(e) { !read_set_path_is_normal(path: read_set_member_path(member: e.member)) }) {
+    Present { value: bad } => ReadSetUnestablished { cause: ReadSetMemberMalformed { path: read_set_member_path(member: bad.member) } }
+    Absent => validate_read_set_changes(entries: entries, changes: changes)
+  }
+}
+
+fn validate_read_set_changes<Declared>(entries: List<ReadSetEntry<Declared>>, changes: ReadSetChangeObservation) -> ReadSetValidity<Declared> {
+  match changes {
+    ReadSetChangesUnobserved => ReadSetUnestablished { cause: ReadSetChangeObservationUnavailable }
+    ReadSetChangedPaths { paths: paths } =>
+      match list_find_first(xs: paths, predicate: fn(p) { string_contains(s: p, pattern: "\n") }) {
+        Present { value: p } => ReadSetUnestablished { cause: ReadSetChangedPathUndecidable { path: p } }
+        Absent =>
+          match read_set_first_covered(entries: entries, paths: paths) {
+            Present { value: v } => v
+            Absent => ReadSetValid
+          }
+      }
+  }
+}
+
+// ═══ DIGEST VALIDATION MODE (gunbc.plans.read_set_convergence section 2.1 last bullet, 2.3, section 4 P3) ═══
+//
+// The SECOND validation mode of the ONE member identity above. Section 2.1's last bullet is explicit:
+// validation mode is NOT member identity -- a member's identity is its path and kind (a ReadSetMember), and it
+// is checked EITHER by path-diff since the recording revision (the mode above) OR by content digest. This mode
+// is the content-digest one. It is self-contained: no recording revision is needed, because a member is
+// observed with the DIGEST of the content it was sealed with -- the very `content_hash_atom` digest its
+// consumer already computes, never a second store or hash family -- and validation compares the recorded digest
+// against the member's CURRENT digest, with the generator semantics identity compared recorded-to-current.
+//
+// The states are exactly the four section 2.3 gives the digest mode (section 4 D2): a recording never published
+// is COLD, a recording whose accepted payload was never published or restored is MISSING (distinct from corrupt
+// -- see ReadSetDigestAccepts), a present-but-unreadable payload is CORRUPT, and the two invalidations -- a
+// different generator semantics identity, or a member's observed content digest no longer matching what the
+// recording sealed -- are both STALE (the generator invalidating its own recording, section 2.1), distinguished by
+// reason so a consumer can tell an identity miss from a changed input. A member the recording never sealed is a
+// MISSING RESULT. There is no RESULT DIVERGED here: that is the consumer's separate product-binding check
+// (section 2.3.3), exactly as the path-diff mode's ReadSetValidity has none. A member whose path a change
+// observation would spell differently is never trusted, exactly as validate_read_set rejects a malformed entry --
+// the two modes admit the SAME normalised member identity (section 2.1's last bullet). The consumer decides what
+// each costs; the required-job mapping is unchanged -- anything but valid re-runs.
+
+// The accepted payload of a digest recording, carrying its OWN read state exactly as the path-diff mode's
+// ReadSetRecording splits read from unreadable -- so a name never carries two meanings (gunbc.design_argument::
+// single_authority). A payload that was never published or restored (DigestAcceptsAbsent: the cache entry was
+// simply not there) is a MISSING recording; a payload that is present but could not be read
+// (DigestAcceptsUnreadable, naming the offending line) is CORRUPT -- the section 2.2/2.4 typed-refusal state,
+// never silently cold. Conflating the two would let a plain cache miss be reported as a corrupt manifest.
+type ReadSetDigestAccepts
+  = DigestAcceptsRecorded { accepts: Map<String, String> }
+  | DigestAcceptsAbsent
+  | DigestAcceptsUnreadable { line: String }
+
+// A self-contained digest recording: the generator's semantics identity as it was recorded, and the members the
+// recording accepted, each addressed by its NORMALISED path and paired with the CONTENT DIGEST it was observed
+// with. The digest is a validation observation independent of the member's address -- the member is still addressed
+// by its path, exactly as in the path-diff mode, so the recording keyed by (path -> digest) is one store, not two,
+// and a member whose input content changed yields a recorded digest that no longer matches the current digest (the
+// STALE case), not a silently narrowed set. `generator` names which generator wrote it and is opaque here: the
+// authority never enumerates kinds, exactly as it treats `recording_revision` opaque in the path-diff mode. An
+// absent generator identity means none was ever published or restored (cold).
+type ReadSetDigestRecording
+  = ReadSetDigestRecording {
+      generator: String,
+      recorded_generator_identity: Optional<String>,
+      recorded_accepts: ReadSetDigestAccepts
+    }
+
+// Why the digest check could not be RUN at all: the recording is cold (no generator identity ever published), its
+// accepted payload is missing (the entry was never published or restored), its accepted payload is present but
+// unreadable (corrupt, naming the line), the validated member's path is not normal (never trusted, as in the
+// path-diff mode), or the member was simply never recorded (a missing result). Staleness is NOT here: it is the
+// Invalidated branch, the generator invalidating its own recording.
+type ReadSetDigestUnestablishedCause
+  = DigestRecordingCold
+  | DigestRecordingMissing
+  | DigestRecordingCorrupt { line: String }
+  | DigestMemberMalformed { path: String }
+  | DigestResultAbsent
+
+// Why a present, readable recording is NOT trusted -- both are STALE (section 2.3), distinguished by cause: the
+// generator's semantics identity differs, or a member's observed content digest differs from what the recording
+// sealed. Neither is RESULT DIVERGED: that is the product-binding check the consumer performs itself (section
+// 2.3.3), not a read-set observation, so it is not modelled here -- exactly as the path-diff mode has none.
+type ReadSetDigestInvalidatedReason
+  = DigestGeneratorChanged
+  | DigestChanged
+
+// The digest-mode validity. Its three outcomes mirror the path-diff mode's ReadSetValidity exactly (valid,
+// invalidated, unestablished); the invalidation carries the admitted ReadSetMember and why the generator
+// invalidated, in place of the path-diff mode's changed path.
+type ReadSetDigestValidity
+  = ReadSetDigestValid
+  | ReadSetDigestInvalidated { member: ReadSetMember, generator: String, reason: ReadSetDigestInvalidatedReason }
+  | ReadSetDigestUnestablished { cause: ReadSetDigestUnestablishedCause }
+
+// Validate one ADMITTED member of a digest recording against its current content digest and the current generator
+// identity -- the whole comparison a digest-mode consumer used to hand-roll (section 4 P3). The member is a
+// ReadSetMember (the SAME admitted identity the path-diff mode validates, section 2.1's last bullet), normalised
+// the same way: a member whose path a change observation would spell differently is unestablished, never trusted.
+// In the order section 2.3 prescribes: recording, then generator identity, then the member's recorded digest. The
+// recorded digest is read by a single lookup on the member's path; nothing here enumerates the recording.
+fn validate_read_set_digest(
+  recording: ReadSetDigestRecording,
+  member: ReadSetMember,
+  current_generator_identity: String,
+  current_digest: String
+) -> ReadSetDigestValidity {
+  let member_path = read_set_member_path(member: member)
+  if read_set_path_is_normal(path: member_path) == false {
+    ReadSetDigestUnestablished { cause: DigestMemberMalformed { path: member_path } }
+  } else {
+    match recording.recorded_generator_identity {
+      Absent => ReadSetDigestUnestablished { cause: DigestRecordingCold }
+      Present { value: recorded } =>
+        if recorded != current_generator_identity {
+          ReadSetDigestInvalidated { member: member, generator: recording.generator, reason: DigestGeneratorChanged }
+        } else {
+          match recording.recorded_accepts {
+            DigestAcceptsAbsent => ReadSetDigestUnestablished { cause: DigestRecordingMissing }
+            DigestAcceptsUnreadable { line: unreadable_line } => ReadSetDigestUnestablished { cause: DigestRecordingCorrupt { line: unreadable_line } }
+            DigestAcceptsRecorded { accepts: accepts } =>
+              match map_lookup(m: accepts, key: member_path) {
+                Absent => ReadSetDigestUnestablished { cause: DigestResultAbsent }
+                Present { value: sealed } =>
+                  if sealed != current_digest {
+                    ReadSetDigestInvalidated { member: member, generator: recording.generator, reason: DigestChanged }
+                  } else {
+                    ReadSetDigestValid
+                  }
+              }
+          }
+        }
+    }
+  }
+}

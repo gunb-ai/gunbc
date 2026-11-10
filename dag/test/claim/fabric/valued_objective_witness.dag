@@ -2,8 +2,7 @@ module test.claim.fabric.valued_objective_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.interval { degenerate_interval }
-import std.pareto {
+import std.pareto { axis_point_reading,
   AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis,
 }
 import std.decision {
@@ -148,19 +147,16 @@ fn axes() -> List<SelectionAxis> {
   ]
 }
 
-fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
-  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
-}
 
 fn replica(id: DeclarationRef, label: NonEmptyStr, money: Int, delay: Int, interruption: Int, work: Int) -> ParetoEntry {
   ParetoEntry {
     identity: id,
     display_label: label,
     readings: [
-      reading(axis: term_money.identity, v: money),
-      reading(axis: term_delay.identity, v: delay),
-      reading(axis: term_interruption.identity, v: interruption),
-      reading(axis: term_accepted_work.identity, v: work),
+      axis_point_reading(axis: term_money.identity, point_micro: money),
+      axis_point_reading(axis: term_delay.identity, point_micro: delay),
+      axis_point_reading(axis: term_interruption.identity, point_micro: interruption),
+      axis_point_reading(axis: term_accepted_work.identity, point_micro: work),
     ],
     missing_inputs: [],
   }
@@ -326,9 +322,9 @@ test fn unread_valued_delay_needs_evidence_never_zero() -> Bool {
     identity: id_wait,
     display_label: "wait unread delay" as NonEmptyStr,
     readings: [
-      reading(axis: term_money.identity, v: 10),
-      reading(axis: term_interruption.identity, v: 0),
-      reading(axis: term_accepted_work.identity, v: 10),
+      axis_point_reading(axis: term_money.identity, point_micro: 10),
+      axis_point_reading(axis: term_interruption.identity, point_micro: 0),
+      axis_point_reading(axis: term_accepted_work.identity, point_micro: 10),
     ],
     missing_inputs: [],
   }
