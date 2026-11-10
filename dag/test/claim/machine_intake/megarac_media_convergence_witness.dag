@@ -33,7 +33,7 @@ import gunbc.machine_intake.megarac_media_attach {
   EnumerationDecided,
   EnumerationLookAgain,
   ImagesListingLacks,
-  MegaRacAttachResult,
+  MegaRacAttachResult, SecretFileRemoved,
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
   MegaRacDetachEvidence,
@@ -369,7 +369,7 @@ test fn a_timed_out_presentation_withholds_the_handoff_with_its_last_look() -> B
     outcome: MegaRacReadinessTimedOut { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, last: look(at: 31000, status: "100", session: "0"), deadline: 31000, looks: 15, cd_before_any_write: cd_clean, cd_at_refusal: cd_clean },
     session_release: SessionReleased,
     baseline: none,
-  })) {
+   secret_file: SecretFileRemoved })) {
     MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "No boot-device or power handoff") && string_contains(s: r as String, pattern: "connecting (status 100)")
     MediaGateReady { evidence: _ } => false
   }
@@ -380,7 +380,7 @@ test fn a_refused_presentation_withholds_the_handoff_with_the_wire() -> Bool {
     outcome: MegaRacReadinessRefused { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 2000, status: "16", session: "255"), looks: 1, cd_before_any_write: cd_clean, cd_at_refusal: cd_16 },
     session_release: SessionReleased,
     baseline: none,
-  })) {
+   secret_file: SecretFileRemoved })) {
     MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "redirection_status 16")
     MediaGateReady { evidence: _ } => false
   }
@@ -391,7 +391,7 @@ fn ready_outcome() -> MegaRacAttachResult {
     outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: look(at: 1100, status: "0", session: "255") }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_clean, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)),
     session_release: SessionReleased,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 test fn a_ready_presentation_opens_the_gate_with_its_evidence() -> Bool {
@@ -402,7 +402,7 @@ test fn a_ready_presentation_opens_the_gate_with_its_evidence() -> Bool {
 }
 
 test fn a_ready_presentation_with_a_leaked_session_withholds() -> Bool {
-  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult { outcome: ready_outcome().outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" }, baseline: none })) {
+  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult { outcome: ready_outcome().outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" }, baseline: none , secret_file: SecretFileRemoved })) {
     MediaGateWithheld { reason: _ } => true
     MediaGateReady { evidence: _ } => false
   }
@@ -534,7 +534,7 @@ fn ready_after(cd_before: CdErrorReading, general: String) -> MegaRacAttachOutco
 }
 
 fn gate_of(outcome: MegaRacAttachOutcome) -> String {
-  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none })) {
+  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none , secret_file: SecretFileRemoved })) {
     MediaGateWithheld { reason: r } => concat("WITHHELD: ", r as String)
     MediaGateReady { evidence: _ } => "READY"
   }
@@ -616,7 +616,7 @@ test fn boot_run_36721915217_readings_now_admit() -> Bool {
         && nonzero_is(r: e.cd_at_ready, expected: 16)
     _ => false
   })
-    && (match megarac_boot_media_gate(record: MegaRacMediaAttachAttempted { attempt: "36721915217", medium_image_name: run_36721915217_image, medium_image_sha256: "161b98b9bb389a80", power: ChassisPowerRead { power_on: false }, stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "the host was read off" }, result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none } }) {
+    && (match megarac_boot_media_gate(record: MegaRacMediaAttachAttempted { attempt: "36721915217", medium_image_name: run_36721915217_image, medium_image_sha256: "161b98b9bb389a80", power: ChassisPowerRead { power_on: false }, stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "the host was read off" }, result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none , secret_file: SecretFileRemoved } }) {
       MediaGateReady { evidence: _ } => true
       MediaGateWithheld { reason: _ } => false
     })
@@ -679,7 +679,7 @@ fn observed(general: String, configurations: String) -> MegaRacAttachResult {
     },
     session_release: SessionReleased,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // The handoff's typed harness findings, rendered once each by the bundle's own renderer.
@@ -735,7 +735,7 @@ test fn a_presentation_lost_after_a_confirmed_handoff_is_the_named_cause() -> Bo
 }
 
 test fn an_unaffirmed_look_or_an_unconfirmed_handoff_leaves_the_cause_alone() -> Bool {
-  let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none }
+  let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
   let unchanged = "mtcollins1 boot: deadline reached without a host-capture terminal"
   attributed_reason(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: served_look }, end: MegaRacEndMediaObserved { look: served_look, end_release: EndReleaseKeptHostOn }) == unchanged
     && attributed_reason(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: failed }, end: MegaRacEndMediaObserved { look: failed, end_release: EndReleaseKeptHostOn }) == unchanged
@@ -746,14 +746,14 @@ test fn an_unaffirmed_look_or_an_unconfirmed_handoff_leaves_the_cause_alone() ->
 // THE DISCRIMINATING CONTROL: a failed session with the prior good presentation unchanged is
 // UNOBSERVED, never LOST.
 test fn a_failed_look_is_indeterminate_not_lost() -> Bool {
-  let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none }
+  let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
   (match presentation_still_served(result: failed) { PresentationUnobserved { reason: _ } => true _ => false })
     && only_finding_contains(findings: handoff_media_findings(h: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: failed }), pattern: "INDETERMINATE")
 }
 
 // THE RECHECK OWES ITS OWN CLEANUP: identical bodies, differing release -> only the released one admits.
 test fn the_recheck_withholds_when_its_own_session_was_not_released() -> Bool {
-  let held = MegaRacAttachResult { outcome: served_look.outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" }, baseline: none }
+  let held = MegaRacAttachResult { outcome: served_look.outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" }, baseline: none , secret_file: SecretFileRemoved }
   (match presentation_still_served(result: held) { PresentationReadyButSessionHeld { held: _ } => true _ => false })
     && (match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false })
 }
@@ -946,7 +946,7 @@ test fn the_rendered_artifact_keeps_the_detach_and_start_answers_on_a_clock_refu
     outcome: MegaRacReadinessClockIncoherent { image_name: desired_census, route: route, opened_at: 1000, previous: none, look: look(at: 500, status: "1", session: "0"), looks: 1 },
     session_release: SessionReleased,
     baseline: none,
-  }))
+   secret_file: SecretFileRemoved }))
   string_contains(s: rendered, pattern: "1411") && string_contains(s: rendered, pattern: "EFFECT UNCERTAIN") && string_contains(s: rendered, pattern: "(28)")
 }
 
@@ -996,7 +996,7 @@ test fn a_stop_never_sent_is_not_issued() -> Bool {
 // The end look is owed by an attempted media attach, handed off or not; an unconfirmed handoff is
 // reported as attempted, not as a handoff that happened.
 test fn the_end_look_is_owed_by_any_attempted_attach() -> Bool {
-  end_media_is_owed(media: attempted(result: MegaRacAttachResult { outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_16, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) }, session_release: SessionReleased, baseline: none }))
+  end_media_is_owed(media: attempted(result: MegaRacAttachResult { outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_16, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) }, session_release: SessionReleased, baseline: none , secret_file: SecretFileRemoved }))
     && !end_media_is_owed(media: MegaRacMediaAttachNotAttempted { reason: "BMC is not BmcSecured" })
 }
 
@@ -1013,7 +1013,7 @@ test fn the_rendered_artifact_keeps_the_raw_timed_settings_at_readiness() -> Boo
     outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_42, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
     session_release: SessionReleased,
     baseline: none,
-  }))
+   secret_file: SecretFileRemoved }))
   string_contains(s: rendered, pattern: "and at readiness 42 (observed; no meaning established) (general settings answered at 13100: ")
 }
 

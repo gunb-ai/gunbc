@@ -1,7 +1,7 @@
 module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Bool, Int, NonEmptyStr, List, Unit }
+import std.types { Bool, Int, NonEmptyStr, List, Unit, Secret, String, PathSegment }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
 import extdeps.bmc.capability {
@@ -461,6 +461,35 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 // is a caller parameter rather than a baked literal because image_index is resolved by READING the
 // images listing, never assumed, and megarac_image_redirection_wire is the authority for the field
 // itself.
+//
+// THE CSRF TOKEN IS A SECOND BEARER SECRET AND IT IS DELIVERED BY FILE, NOT ARGV. Every request
+// after OpenSession presents X-CSRFTOKEN, and it used to ride argv as "-H" "X-CSRFTOKEN: {token}".
+// Any argv word is readable by every job sharing the runner slot's pid namespace (/proc is not
+// mounted hidepid and /proc/<pid>/cmdline is world-readable), and boot 10 (run 42756688400) printed
+// three such tokens into its job log through the v1 failed-operation printer. The repair is the same
+// one already applied twice in this module for the login password and the Redfish netrc: the secret
+// goes in a 0600 file the caller owns and curl reads it back -- here with `-H @FILE`. curl(1) reads
+// each LINE of an @-file as one header (curl >= 7.55), so the file the caller stages holds exactly
+// the one header line; megarac_csrf_header_content is the single authority for that line. The token
+// value never reaches argv on any operation.
+//
+// CENSUS: nothing else in this service puts a Cookie or an Authorization header on argv. The session
+// cookie travels in a jar via `-c {cookie_jar}` on OpenSession and `-b {cookie_jar}` on every later
+// call -- a file path parameter, not the secret bytes -- and the only other credential-bearing word
+// is `password@{password_file}` on OpenSession, already file-delivered. There is no netrc/Authorization
+// Basic on these web operations (that shape belongs to redfish.Http, beside which these cannot reuse
+// it, as the note above records). So after this change the ONLY argv-bearing secret in megarac.Media
+// is gone: the CSRF header is `@{csrf_header_file}`.
+data megarac_csrf_header_file_name: PathSegment = "megarac-csrf" as PathSegment
+
+// The single authority for the CSRF header file's content: one header line `X-CSRFTOKEN: <token>`
+// and its terminating newline, which is the line curl(1) reads back from an @-file and sends as the
+// request header. Callers pass this as the Secret to gunbc.auth.private_secret_file's
+// with_private_secret_file; the dry realization's session-validity check parses the token back out
+// of the modeled file so a wrong token, an absent file, or a closed session all answer 401.
+fn megarac_csrf_header_content(token: String) -> String {
+  concat("X-CSRFTOKEN: ", concat(token, "\n"))
+}
 service megarac.Media {
 
   operation OpenSession {
@@ -478,11 +507,11 @@ service megarac.Media {
 
   operation ProbeSessionOnMediaRoute {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/settings/media/remote/configurations"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/settings/media/remote/configurations"]
     }
     exit {
       0 => Unit
@@ -492,11 +521,11 @@ service megarac.Media {
 
   operation GetMediaGeneral {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/general"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/general"]
     }
     exit {
       0 => Unit
@@ -506,11 +535,11 @@ service megarac.Media {
 
   operation GetRemoteImages {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/images"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/images"]
     }
     exit {
       0 => Unit
@@ -520,11 +549,11 @@ service megarac.Media {
 
   operation GetRemoteConfigurations {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/configurations"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/configurations"]
     }
     exit {
       0 => Unit
@@ -534,10 +563,10 @@ service megarac.Media {
 
   operation StartMedia {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/start-media"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/start-media"]
     }
     exit {
       0 => Unit
@@ -547,10 +576,10 @@ service megarac.Media {
 
   operation StopMedia {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/stop-media"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/stop-media"]
     }
     exit {
       0 => Unit
@@ -560,10 +589,10 @@ service megarac.Media {
 
   operation CloseSession {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-X", "DELETE", "https://{bmc_host}/api/session"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "-X", "DELETE", "https://{bmc_host}/api/session"]
     }
     exit {
       0 => Unit
@@ -605,11 +634,11 @@ service megarac.Media {
   // server could answer differently on another request.
   operation GetUiResource {
     requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, path: NonEmptyStr, max_time: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr, path: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--compressed", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}{path}"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--compressed", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "@{csrf_header_file}", "-w", "\\n%\{http_code}", "https://{bmc_host}{path}"]
     }
     exit {
       0 => Unit

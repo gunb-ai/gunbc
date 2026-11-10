@@ -442,3 +442,134 @@ fn filesystem_ownership_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, 
     OperationBinding { at: shell_stat_owner_of_operation, handler: owner_of },
   ]
 }
+
+// THE SHELL EFFECTS OF gunbc.auth.private_secret_file's 0600 SECRET BRACKET, REALIZED OVER THE MODELED
+// FILESYSTEM. The bracket dispatches `mktemp -d` (plain or templated) to make its fresh 0700 directory,
+// Filesystem.WriteOwnerOnly (already bound by filesystem_bindings) to create the 0600 file, then `rm -f`
+// and `rmdir` to take them back. Before this, NONE of these four were bound in any dry world -- the
+// netrc bracket that uses the same effects ran only in WET witnesses -- so a modeled run of the bracket
+// faulted the instant it entered. They are bound THROUGH this model, over the one ModeledFilesystem the
+// file transport already uses, not stubbed:
+//   * mktemp records a fresh directory so the owner-only write that follows has a parent to target;
+//   * rm -f deletes the file (and answers success whether or not it was there, as `rm -f` does);
+//   * rmdir is the REAL check, not a stub -- it answers success only when the directory holds nothing,
+//     which is precisely the fact that separates the bracket's Completed from its CompletedResidueRemains
+//     arm. A modeled run that leaves the header file behind therefore lands in the residue arm, exactly
+//     as a real one would.
+data shell_mktemp_dir_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mktemp", operation: "Dir" }
+data shell_mktemp_dir_with_template_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mktemp", operation: "DirWithTemplate" }
+data shell_remove_file_force_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Remove", operation: "FileForce" }
+data shell_remove_empty_directory_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Remove", operation: "EmptyDirectory" }
+
+// mktemp -d names a directory that did not exist a moment ago. The model has no randomness, so it takes
+// the SMALLEST suffix that is not already a directory: deterministic, and distinct across the several
+// brackets one modeled run opens (the attach's header file, the netrc, a diagnostic bundle). mktemp's
+// template contributes the parent; the leaf is model-chosen, as mktemp's own six random chars are.
+fn fs_fresh_private_dir_name(fs: ModeledFilesystem, parent: String, at: Int) -> String {
+  let candidate = concat(parent, concat("/gunbc-private-", to_string(value: at)))
+  if any_string(xs: fs.directories, x: candidate) {
+    fs_fresh_private_dir_name(fs: fs, parent: parent, at: at + 1)
+  } else {
+    candidate
+  }
+}
+
+fn fs_add_directory(fs: ModeledFilesystem, dir: String) -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: list_snoc_item(xs: fs.directories, item: dir),
+    files: fs.files,
+    refused_reads: fs.refused_reads,
+    stats: fs.stats,
+  }
+}
+
+// rmdir's precondition, spelled out: a directory is empty when no modeled file and no modeled directory
+// names it as parent. This is what makes the removal a CHECK and not a formality -- see the bracket's
+// own note that `rm -f` alone could not say the directory was emptied.
+fn fs_directory_is_empty(fs: ModeledFilesystem, dir: String) -> Bool {
+  count(filter(fs.files, f => fs_parent(path: f.path) == dir)) == 0
+    && count(filter(fs.directories, d => d != dir && fs_parent(path: d) == dir)) == 0
+}
+
+fn fs_remove_directory(fs: ModeledFilesystem, dir: String) -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: filter(fs.directories, d => d != dir),
+    files: fs.files,
+    refused_reads: fs.refused_reads,
+    stats: fs.stats,
+  }
+}
+
+fn private_secret_file_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S, cwd: fn(S) -> String) -> List<OperationBinding<S>> {
+  // mktemp -d, plain: the model puts the fresh directory under /tmp, the same default the real
+  // mktemp uses when RUNNER_TEMP is unset. mktemp prints the new directory on stdout with a trailing
+  // newline; the bracket trims it and joins the secret's file name onto it.
+  let made_step = fn(state, dir) {
+    OperationObserved {
+      observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(dir, "\n"), stderr: "" } },
+      state: state,
+      elapsed: second(count: 0),
+    }
+  }
+  let making_dir = fn(state, call) {
+    let fs = get(state)
+    let dir = fs_fresh_private_dir_name(fs: fs, parent: "/tmp", at: 0)
+    made_step(put(state, fs_add_directory(fs: fs, dir: dir)), dir)
+  }
+  // mktemp -d TEMPLATE: the template's directory becomes the parent, so a set RUNNER_TEMP puts the
+  // private directory inside the space the caller named, exactly as the bracket intends.
+  let making_templated = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "template") {
+      Absent => OperationHarnessFault { reason: "mktemp -d was dispatched with a template operand missing" as NonEmptyStr }
+      Present { value: template } => {
+        let fs = get(state)
+        let dir = fs_fresh_private_dir_name(fs: fs, parent: fs_parent(path: template), at: 0)
+        made_step(put(state, fs_add_directory(fs: fs, dir: dir)), dir)
+      }
+    }
+  }
+  // rm -f PATH: deletes the file; `rm -f` reports success whether or not the file was there.
+  let removing_file = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "rm -f was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => {
+        let w = fs_delete(fs: get(state), path: fs_resolved(cwd: cwd(state), path: path))
+        OperationObserved {
+          observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
+          state: put(state, w.fs),
+          elapsed: second(count: 0),
+        }
+      }
+    }
+  }
+  // rmdir PATH: succeeds only on an empty directory; a directory that still holds the header file
+  // answers non-zero, and the bracket reads that as residue remaining.
+  let removing_dir = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "rmdir was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => {
+        let resolved = fs_resolved(cwd: cwd(state), path: path)
+        let fs = get(state)
+        if fs_is_directory(fs: fs, path: resolved) && fs_directory_is_empty(fs: fs, dir: resolved) {
+          OperationObserved {
+            observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
+            state: put(state, fs_remove_directory(fs: fs, dir: resolved)),
+            elapsed: second(count: 0),
+          }
+        } else {
+          OperationObserved {
+            observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "rmdir: failed to remove directory: Directory not empty\n" } },
+            state: state,
+            elapsed: second(count: 0),
+          }
+        }
+      }
+    }
+  }
+  [
+    OperationBinding { at: shell_mktemp_dir_operation, handler: making_dir },
+    OperationBinding { at: shell_mktemp_dir_with_template_operation, handler: making_templated },
+    OperationBinding { at: shell_remove_file_force_operation, handler: removing_file },
+    OperationBinding { at: shell_remove_empty_directory_operation, handler: removing_dir },
+  ]
+}

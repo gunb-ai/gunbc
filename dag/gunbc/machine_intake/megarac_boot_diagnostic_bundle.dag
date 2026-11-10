@@ -142,6 +142,7 @@ import gunbc.machine_intake.megarac_media_attach {
   megarac_share_type_wire,
   MegaRacSessionRefused,
   MegaRacSessionTokenUnreadable,
+  MegaRacSecretFileNotEntered,
   MegaRacImagesUnreadable,
   MegaRacImageListingEmpty,
   MegaRacImageListingUnparseable,
@@ -912,6 +913,7 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: concat("the controller's remote-media share settings could not be read, so which share image names resolve in is UNKNOWN; nothing was written: ", d) }
     MegaRacSessionRefused { detail: d } => Present { value: concat("session refused: ", d) }
     MegaRacSessionTokenUnreadable { detail: d } => Present { value: concat("session succeeded but no CSRFToken could be read from its document: ", d) }
+    MegaRacSecretFileNotEntered { detail: d } => Present { value: concat("the CSRF header file could not be staged, so the session was refused rather than opened with the token on argv: ", d as String) }
     MegaRacImagesUnreadable { detail: d } => Present { value: concat("images listing unreadable: ", d) }
     MegaRacImageListingEmpty =>
       Present { value: "the image is not presented AND the controller offers no image available to attach, and nothing is presented to stop (stopping is what re-enumerates the share); check that the export is reachable from the controller and holds the file" }

@@ -49,7 +49,7 @@ import gunbc.host.boot_attempt {
 }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateNotReached }
 import gunbc.machine_intake.megarac_media_attach {
-  MegaRacAttachResult, MegaRacPresentationReady, ReadinessLook, MegaRacPresentationEvidence,
+  MegaRacAttachResult, SecretFileRemoved, MegaRacPresentationReady, ReadinessLook, MegaRacPresentationEvidence,
   MegaRacPresentationObserved, MegaRacSessionRefused, MegaRacRawRead, SessionRelease,
   SessionReleased, SessionReleaseRefused, SessionReleaseNotAttempted, RouteAlreadyPresented,
   // THE READ-ONLY LOOK, as the observe task actually returns it: a share standing, an attach readiness
@@ -155,7 +155,7 @@ fn presented_result() -> MegaRacAttachResult {
     outcome: MegaRacPresentationReady { route: RouteAlreadyPresented, evidence: an_evidence() },
     session_release: SessionReleased,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // The same result with the session held: what the BMC served only while our session lived.
@@ -164,7 +164,7 @@ fn held_result() -> MegaRacAttachResult {
     outcome: MegaRacPresentationReady { route: RouteAlreadyPresented, evidence: an_evidence() },
     session_release: SessionReleaseRefused { detail: "the BMC kept the session" },
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // An attach result the transport could not complete.
@@ -173,7 +173,7 @@ fn refused_result() -> MegaRacAttachResult {
     outcome: MegaRacSessionRefused { detail: "no response" },
     session_release: SessionReleaseNotAttempted,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // ── READ-ONLY LOOKS, BUILT THE WAY THE OBSERVE TASK BUILDS THEM ──────────────────────────────────
@@ -199,7 +199,7 @@ fn a_look(readiness: AttachReadiness, cd: CdErrorReading, held: SessionRelease) 
     },
     session_release: held,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // The medium is being served: a Started row, a cd_error that answered, and OUR look's session released.
@@ -230,7 +230,7 @@ fn a_not_served_look() -> MegaRacAttachResult {
     },
     session_release: SessionReleased,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // The look itself did not answer: an unread cd_error code beside a Started row is "the read told us

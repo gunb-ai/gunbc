@@ -30,7 +30,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacObserve,
   MegaRacReleaseOwn,
   MegaRacOwnReleasePolicy,
-  MegaRacAttachResult,
+  MegaRacAttachResult, SecretFileRemoved,
   MegaRacSessionRefused,
   SessionReleaseNotAttempted,
   MegaRacShareBinding,
@@ -429,13 +429,13 @@ fn megarac_observe_boot_presentation(
   ]
 {
   match megarac_boot_media_host(proof: proof) {
-    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media observe: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none }
+    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media observe: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
     MegaRacHostAdmitted { host: host } =>
       match bmc_control_route_account(route: host.route) {
-        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
         Present { value: account } =>
       if password_file == "" || attempt == "" {
-        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
       } else {
         megarac_attach_remote_image(
           bmc_host: bmc_control_route_endpoint(route: host.route).host,
@@ -470,13 +470,13 @@ fn megarac_release_boot_session(
   ]
 {
   match megarac_boot_media_host(proof: proof) {
-    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media release: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none }
+    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media release: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
     MegaRacHostAdmitted { host: host } =>
       match bmc_control_route_account(route: host.route) {
-        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "the bound route names no managed account; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
         Present { value: account } =>
       if password_file == "" || attempt == "" {
-        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
       } else {
         megarac_attach_remote_image(
           bmc_host: bmc_control_route_endpoint(route: host.route).host,

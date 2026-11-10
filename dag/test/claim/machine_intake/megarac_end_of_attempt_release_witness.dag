@@ -17,7 +17,7 @@ import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
 import gunbc.machine_intake.megarac_media_attach {
   CdErrorRead,
   CdErrorNone,
-  MegaRacAttachResult,
+  MegaRacAttachResult, SecretFileRemoved,
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
   MegaRacDetachNotAdmitted,
@@ -222,7 +222,7 @@ fn ran(end: OwnSessionEnd, session: String) -> EndMediaRelease {
     outcome: MegaRacOwnSessionEnded { end: end },
     session_release: if session == "released" { SessionReleased } else { SessionReleaseRefused { detail: session } },
     baseline: none,
-  } }
+   secret_file: SecretFileRemoved } }
 }
 
 fn residue_present(r: EndMediaRelease, pattern: String) -> Bool {
@@ -250,11 +250,11 @@ test fn every_other_release_is_residue_naming_its_cause() -> Bool {
     && residue_present(r: ran(end: OwnSessionNotStopped { reason: "an unread status", configurations: "[]" }, session: "released"), pattern: "NOT stopped: an unread status")
     && residue_present(r: ran(end: OwnSessionStopped { detach: evidence(readback_read: true, readback: "[]") }, session: "probe still succeeded"), pattern: "login session was NOT released")
     && residue_present(r: EndReleaseWithheld { reason: "power unread" }, pattern: "may remain on the controller: power unread")
-    && residue_present(r: EndReleaseRan { result: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "401" }, session_release: SessionReleaseNotAttempted, baseline: none } }, pattern: "did not run: session refused: 401")
+    && residue_present(r: EndReleaseRan { result: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "401" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved } }, pattern: "did not run: session refused: 401")
 }
 
 fn observed(end_release: EndMediaRelease) -> MegaRacEndMedia {
-  MegaRacEndMediaObserved { look: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "look fixture" }, session_release: SessionReleaseNotAttempted, baseline: none }, end_release: end_release }
+  MegaRacEndMediaObserved { look: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "look fixture" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }, end_release: end_release }
 }
 
 // A success that left its session behind is a failure naming it; a failure keeps its own cause first.

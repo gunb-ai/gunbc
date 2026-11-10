@@ -34,7 +34,7 @@ module gunbc.machine_intake.mtcollins1_ui_status_asset_observation
 // operation's only caller (an operation with no caller is the dangling pub this repository refuses
 // to merge -- see the gunbc.design_argument::consumption frontier note beside the fan operations in extdeps.bmc.megarac).
 
-import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String, string_non_empty }
 import std.algebra { collection_count_shape, collection_join_shape, list_push }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import std.encoding { utf8_decode_bytes }
@@ -58,6 +58,14 @@ import gunbc.machine_intake.fan_observe { FanObserveAdmitted, FanObserveRefused,
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_current_build_firmware, mtcollins1_endpoint }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env, FanCredentialPathEmpty, FanCredentialPathReady, FanCredentialPathUnset }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time, megarac_media_read_max_time_operand, megarac_session_csrf }
+import extdeps.bmc.megarac { megarac_csrf_header_content, megarac_csrf_header_file_name }
+import gunbc.auth.private_secret_file {
+  with_private_secret_file,
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
+}
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 // ---------------------------------------------------------------------------------------------
@@ -1701,7 +1709,7 @@ type MegaRacUiAssetTry {
 fn ui_try_one_asset(
   host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   derived: List<NonEmptyStr>,
   base_path: String,
   path: NonEmptyStr,
@@ -1726,7 +1734,7 @@ fn ui_try_one_asset(
       let response = megarac.Media.GetUiResource(
         bmc_host: host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         path: admitted_path,
         max_time: megarac_media_read_max_time_operand(),
       )
@@ -1764,7 +1772,7 @@ fn ui_try_one_asset(
 fn ui_page_ladder(
   host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   session_values: List<List<Int>>,
   candidates: List<MegaRacUiPageCandidate>,
   at: Int,
@@ -1779,7 +1787,7 @@ fn ui_page_ladder(
         let response = megarac.Media.GetUiResource(
           bmc_host: host,
           cookie_jar: cookie_jar,
-          csrf_token: csrf_token,
+          csrf_header_file: csrf_header_file,
           path: candidate.path,
           max_time: megarac_media_read_max_time_operand(),
         )
@@ -1787,7 +1795,7 @@ fn ui_page_ladder(
         ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
-          csrf_token: csrf_token,
+          csrf_header_file: csrf_header_file,
           session_values: session_values,
           candidates: candidates,
           at: at + 1,
@@ -1829,7 +1837,7 @@ fn ui_take_refs(refs: List<NonEmptyStr>, at: Int, limit: Int, acc: List<NonEmpty
 fn ui_attempt_assets(
   host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   derived: List<NonEmptyStr>,
   base_path: String,
   session_values: List<List<Int>>,
@@ -1847,7 +1855,7 @@ fn ui_attempt_assets(
       reference => ui_attempt_assets(
         host: host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         derived: derived,
         base_path: base_path,
         session_values: session_values,
@@ -1858,7 +1866,7 @@ fn ui_attempt_assets(
         acc: list_push(acc, ui_try_one_asset(
           host: host,
           cookie_jar: cookie_jar,
-          csrf_token: csrf_token,
+          csrf_header_file: csrf_header_file,
           derived: derived,
           base_path: base_path,
           path: reference,
@@ -1943,19 +1951,58 @@ fn megarac_ui_asset_observation_run(
   } else {
     match megarac_session_csrf(session_body: opened.body) {
       Absent => {
-        let sentinel_close = megarac.Media.CloseSession(
-          bmc_host: host,
-          cookie_jar: cookie_jar,
-          csrf_token: "unreadable" as NonEmptyStr,
-          max_time: megarac_media_read_max_time_operand(),
-        )
-        MegaRacUiRunOutcome {
-          lines: [
-            "the session opened but its CSRF token was unreadable; closed with a sentinel token" as NonEmptyStr,
-            join(["sentinel close transport success=", to_string(value: if sentinel_close.success { 1 } else { 0 })], "") as NonEmptyStr,
-          ],
-          attempts: [],
-          session_closed: sentinel_close.success,
+        // THE SENTINEL CLOSE IS ALSO FILE-DELIVERED. The deliberately-unknowable X-CSRFTOKEN rides a 0600
+        // file staged by the same bracket and read by curl with `-H @FILE`; it never becomes an argv word.
+        // The close is still owed and still reported -- only its DELIVERY moved. A bracket that cannot be
+        // entered never attempted the close (and never fell back to argv), which the receipt says plainly.
+        match with_private_secret_file(
+          file_name: megarac_csrf_header_file_name,
+          content: megarac_csrf_header_content(token: "unreadable") as Secret,
+          use: fn(csrf_header_file) {
+            megarac.Media.CloseSession(
+              bmc_host: host,
+              cookie_jar: cookie_jar,
+              csrf_header_file: csrf_header_file,
+              max_time: megarac_media_read_max_time_operand(),
+            ).success
+          },
+        ) {
+          PrivateSecretFileCompleted { value: closed_ok } =>
+            MegaRacUiRunOutcome {
+              lines: [
+                "the session opened but its CSRF token was unreadable; closed with a sentinel token" as NonEmptyStr,
+                join(["sentinel close transport success=", to_string(value: if closed_ok { 1 } else { 0 })], "") as NonEmptyStr,
+              ],
+              attempts: [],
+              session_closed: closed_ok,
+            }
+          PrivateSecretFileCompletedResidueRemains { value: closed_ok } =>
+            MegaRacUiRunOutcome {
+              lines: [
+                "the session opened but its CSRF token was unreadable; closed with a sentinel token" as NonEmptyStr,
+                join(["sentinel close transport success=", to_string(value: if closed_ok { 1 } else { 0 })], "") as NonEmptyStr,
+                "RECEIPT: the CSRF header file could not be removed after the sentinel close; residue remains on disk" as NonEmptyStr,
+              ],
+              attempts: [],
+              session_closed: closed_ok,
+            }
+          PrivateSecretFileNotEntered { cause: c } =>
+            MegaRacUiRunOutcome {
+              lines: [
+                concat("the CSRF header file could not be staged; the sentinel close was never attempted rather than sent with the token on argv: ", c as String) as NonEmptyStr,
+              ],
+              attempts: [],
+              session_closed: false,
+            }
+          PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
+            MegaRacUiRunOutcome {
+              lines: [
+                concat("the CSRF header file could not be staged; the sentinel close was never attempted rather than sent with the token on argv: ", c as String) as NonEmptyStr,
+                "RECEIPT: a partial CSRF header file could not be removed; residue remains on disk" as NonEmptyStr,
+              ],
+              attempts: [],
+              session_closed: false,
+            }
         }
       }
       Present { value: csrf_token } => {
@@ -1975,10 +2022,21 @@ fn megarac_ui_asset_observation_run(
           FilesystemReadRefused { error: _ } => []
         }
         let session_values = if count(jar_values) == 0 { [] } else { concat([ui_octets_of(csrf_token as String)], jar_values) }
+        // THE TOKEN LEAVES SCOPE HERE, INTO A 0600 FILE. csrf_token is consumed twice and no further: by
+        // ui_octets_of just above, so its octets are scrubbed out of any captured page body (session_values),
+        // and by megarac_csrf_header_content here, to author the one header line the bracket stages. What the
+        // session then USES -- the page ladder, every asset attempt, and CloseSession -- runs inside `use` and
+        // receives only the file path, so no CSRF token is an argv word on any of them. The bracket's arms make
+        // a residue visible on the receipt and turn a bracket that cannot be entered into a refusal; neither
+        // ever puts the token back on argv.
+        match with_private_secret_file(
+          file_name: megarac_csrf_header_file_name,
+          content: megarac_csrf_header_content(token: csrf_token) as Secret,
+          use: fn(csrf_header_file) {
         let pages = ui_page_ladder(
           host: host,
           cookie_jar: cookie_jar,
-          csrf_token: csrf_token,
+          csrf_header_file: csrf_header_file,
           session_values: session_values,
           candidates: mtcollins1_ui_page_candidates,
           at: 0,
@@ -1989,7 +2047,7 @@ fn megarac_ui_asset_observation_run(
             let closed = megarac.Media.CloseSession(
               bmc_host: host,
               cookie_jar: cookie_jar,
-              csrf_token: csrf_token,
+              csrf_header_file: csrf_header_file,
               max_time: megarac_media_read_max_time_operand(),
             )
             MegaRacUiRunOutcome {
@@ -2009,7 +2067,7 @@ fn megarac_ui_asset_observation_run(
             let tries = ui_attempt_assets(
               host: host,
               cookie_jar: cookie_jar,
-              csrf_token: csrf_token,
+              csrf_header_file: csrf_header_file,
               derived: ui_resolved_refs(base_path: page.path as String, refs: page.asset_refs),
               base_path: page.path as String,
               session_values: session_values,
@@ -2022,7 +2080,7 @@ fn megarac_ui_asset_observation_run(
             let closed = megarac.Media.CloseSession(
               bmc_host: host,
               cookie_jar: cookie_jar,
-              csrf_token: csrf_token,
+              csrf_header_file: csrf_header_file,
               max_time: megarac_media_read_max_time_operand(),
             )
             let head = ui_pages_lines(pages: pages, at: 0, acc: []) |> list_push(
@@ -2041,6 +2099,33 @@ fn megarac_ui_asset_observation_run(
               session_closed: closed.success,
             }
           }
+        }
+          },
+        ) {
+          PrivateSecretFileCompleted { value: o } => o
+          PrivateSecretFileCompletedResidueRemains { value: o } =>
+            MegaRacUiRunOutcome {
+              lines: list_push(o.lines, "RECEIPT: the CSRF header file could not be removed after the run; residue remains on disk" as NonEmptyStr),
+              attempts: o.attempts,
+              session_closed: o.session_closed,
+            }
+          PrivateSecretFileNotEntered { cause: c } =>
+            MegaRacUiRunOutcome {
+              lines: [
+                concat("the CSRF header file could not be staged; no page was read and the session was not closed rather than the token going on argv: ", c as String) as NonEmptyStr,
+              ],
+              attempts: [],
+              session_closed: false,
+            }
+          PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
+            MegaRacUiRunOutcome {
+              lines: [
+                concat("the CSRF header file could not be staged; no page was read and the session was not closed rather than the token going on argv: ", c as String) as NonEmptyStr,
+                "RECEIPT: a partial CSRF header file could not be removed; residue remains on disk" as NonEmptyStr,
+              ],
+              attempts: [],
+              session_closed: false,
+            }
         }
       }
     }

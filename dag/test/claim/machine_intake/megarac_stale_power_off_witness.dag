@@ -14,7 +14,7 @@ import gunbc.machine_intake.megarac_media_attach {
   ConvergeStepDetachStale,
   ConvergeStepRefuse,
   ConvergenceStep,
-  MegaRacAttachResult,
+  MegaRacAttachResult, SecretFileRemoved,
   MegaRacDetachAdmission,
   MegaRacDetachNotAdmitted,
   MegaRacPresentationObserved,
@@ -75,7 +75,7 @@ fn look(configurations: String) -> MegaRacAttachResult {
     },
     session_release: SessionReleased,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // THE CONVERGE'S OWN DECISION over a presentation and an admission, as the attach will take it.
@@ -174,7 +174,7 @@ test fn an_unbound_share_is_never_powered_off_for() -> Bool {
     },
     session_release: l.session_release,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: unbound, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
@@ -183,7 +183,7 @@ test fn an_unbound_share_is_never_powered_off_for() -> Bool {
 
 test fn a_look_whose_session_leaked_is_never_powered_off_for() -> Bool {
   let l = look(configurations: presenting(name: run_stale as String))
-  let leaked = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseRefused { detail: "probe 000" }, baseline: none }
+  let leaked = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseRefused { detail: "probe 000" }, baseline: none , secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: leaked, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
@@ -191,7 +191,7 @@ test fn a_look_whose_session_leaked_is_never_powered_off_for() -> Bool {
 }
 
 test fn a_refused_look_is_never_powered_off_for() -> Bool {
-  let refused = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "HTTP 401" }, session_release: SessionReleaseNotAttempted, baseline: none }
+  let refused = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "HTTP 401" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: refused, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false

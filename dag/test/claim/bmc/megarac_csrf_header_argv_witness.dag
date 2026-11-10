@@ -1,0 +1,163 @@
+module test.claim.bmc.megarac_csrf_header_argv_witness
+
+// THE MEGARAC WEB-SESSION CSRF TOKEN NEVER REACHES curl's argv.
+//
+// gunbc.credential_argv_exposure (megarac_csrf_header_instance) records, measured on srv1, that every argv word
+// of a curl is readable by every job on a runner slot (/proc has no hidepid, /proc/<pid>/cmdline is 0444, runner
+// slots share the host pid namespace), and that boot 10 (run 42756688400) carried three dead such tokens in its
+// job log. extdeps.bmc.megarac used to interpolate the token into argv as the pair `"-H", "X-CSRFTOKEN: {csrf_token}"`
+// on its eight authenticated operations. The repair, applied twice already in that module, takes the token OFF
+// argv: it lives in a 0600 file the bracket hands back, and curl reads the whole header with `-H @FILE` (curl(1)
+// -H @file, since curl 7.55). These claims hold the REAL declarations to that:
+//   - a planted token is ABSENT from every authenticated operation's materialized argv, materialized over the real
+//     declarations through std.operation_argv shell_materialize_operation_argv exactly as gunbc.bmc_dry_realization
+//     does -- and the `-H` value is the `@<file>` word, not the token;
+//   - the content the bracket writes into the file is EXACTLY "X-CSRFTOKEN: <token>\n" (one builder, beside the
+//     session contract);
+//   - the RED: a fixture service kept below with the OLD argv (`"-H", "X-CSRFTOKEN: {csrf_token}"`), materialized
+//     over the SAME planted token, has that token present as its own argv word -- so the absence above is a real
+//     guarantee, not a materializer that simply never prints header words;
+//   - dry: the modeled session refuses a wrong header (and an absent one, and a closed session) -- the 401 arm the
+//     bindings answer with when the file does not hold the session's token.
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
+import std.optional { Absent, Present }
+import std.algebra { string_contains, list_snoc_item }
+import std.list { first_where }
+import std.resources { Network }
+import std.measure { Second, second }
+import std.operation_argv { OperationInputBinding, OperationRef, ArgvMaterialized, ArgvMaterializationRefused, shell_materialize_operation_argv, operation_argv_bind_text }
+import extdeps.bmc.megarac { megarac_csrf_header_content, megarac_csrf_header_file_name }
+import gunbc.bmc_dry_realization { megarac_operation }
+import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacOpened, megarac_cleared_cd_at_the_current_build, megarac_open_session, megarac_close_session_by_header, megarac_session_valid_by_header }
+
+// THE TOKEN THIS WITNESS PLANTS. Not a credential: a marker whose ABSENCE is the claim.
+data planted_csrf_token: String = "PLANTED-CSRF-8f3a21d0"
+
+// The joined path the with_private_secret_file bracket hands to `use` (dir/megarac-csrf); it is what is bound to
+// csrf_header_file and what the -H value must read as, `@<this path>`.
+data planted_header_file_path: String = "/tmp/gunbc-private-7/megarac-csrf"
+
+// THE OLD OPERATION, KEPT FOR THE RED: the eight-operation argv as it stood before this change, the CSRF token
+// interpolated as its own argv word. Only the service name is the fixture's; the argv is verbatim the regression.
+service fixture.megarac.LegacyCsrfArgv {
+  operation CloseSession {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-X", "DELETE", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac session close failed"
+    }
+  }
+}
+
+data legacy_close_session_operation: OperationRef = OperationRef {
+  path: "dag/test/claim/bmc/megarac_csrf_header_argv_witness.dag",
+  service: "fixture.megarac.LegacyCsrfArgv",
+  operation: "CloseSession",
+}
+
+fn bind(name: String, text: String) -> OperationInputBinding {
+  operation_argv_bind_text(name: name, text: text)
+}
+
+// The four inputs every authenticated operation shares. The token is never one of them; the header FILE is.
+fn common_binds() -> List<OperationInputBinding> {
+  [bind(name: "bmc_host", text: "bmc.test.invalid"), bind(name: "cookie_jar", text: "/tmp/megarac-cookies"), bind(name: "csrf_header_file", text: planted_header_file_path), bind(name: "max_time", text: "30")]
+}
+
+fn json_binds() -> List<OperationInputBinding> {
+  list_snoc_item(xs: common_binds(), item: bind(name: "json_body", text: "{}"))
+}
+
+fn path_binds() -> List<OperationInputBinding> {
+  list_snoc_item(xs: common_binds(), item: bind(name: "path", text: "/ui/index.html"))
+}
+
+fn argv_word_absent(argv: List<String>, needle: String) -> Bool {
+  match first_where(xs: argv, keep: fn(w) { string_contains(s: w, pattern: needle) }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn argv_has_word(argv: List<String>, expected: String) -> Bool {
+  match first_where(xs: argv, keep: fn(w) { w == expected }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// One real operation, materialized over the REAL declaration, must carry no planted token and must carry the -H
+// value as the `@<file>` word -- the header curl reads from the bracket's 0600 file.
+fn real_op_carries_the_file_not_the_token(op: String, binds: List<OperationInputBinding>) -> Bool {
+  let reference = megarac_operation(operation: op)
+  match shell_materialize_operation_argv(reference.path, reference.service, reference.operation, binds) {
+    ArgvMaterialized { argv: argv } => argv_word_absent(argv: argv, needle: planted_csrf_token) && argv_has_word(argv: argv, expected: concat("@", planted_header_file_path))
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}
+
+// EVERY AUTHENTICATED OPERATION: the eight that once put the token on argv. The password operations (OpenSession
+// reads --password@FILE, GetVersion) carry no CSRF header at all and the census comment covers the whole module.
+test fn the_planted_token_is_absent_from_every_authenticated_megarac_operation_argv() -> Bool {
+  real_op_carries_the_file_not_the_token(op: "ProbeSessionOnMediaRoute", binds: common_binds())
+    && real_op_carries_the_file_not_the_token(op: "GetMediaGeneral", binds: common_binds())
+    && real_op_carries_the_file_not_the_token(op: "GetRemoteImages", binds: common_binds())
+    && real_op_carries_the_file_not_the_token(op: "GetRemoteConfigurations", binds: common_binds())
+    && real_op_carries_the_file_not_the_token(op: "StartMedia", binds: json_binds())
+    && real_op_carries_the_file_not_the_token(op: "StopMedia", binds: json_binds())
+    && real_op_carries_the_file_not_the_token(op: "CloseSession", binds: common_binds())
+    && real_op_carries_the_file_not_the_token(op: "GetUiResource", binds: path_binds())
+}
+
+// THE ONE BUILDER WRITES THE ONE LINE. The bracket writes exactly what with_private_secret_file is handed, and
+// every caller is handed this; so the file curl reads holds exactly the header line, and nothing else.
+test fn the_header_file_holds_exactly_the_token_line() -> Bool {
+  megarac_csrf_header_content(token: planted_csrf_token) == concat("X-CSRFTOKEN: ", concat(planted_csrf_token, "\n"))
+    && (megarac_csrf_header_file_name as String) == "megarac-csrf"
+}
+
+// RED: the old argv, materialized over the SAME planted token, prints it as its own word. If the materializer
+// were silently dropping header words, the absence claim above would be vacuously green; this is what makes it
+// mean something.
+test fn the_legacy_argv_form_put_the_planted_token_on_argv_as_its_own_word() -> Bool {
+  let binds = [bind(name: "bmc_host", text: "bmc.test.invalid"), bind(name: "cookie_jar", text: "/tmp/megarac-cookies"), bind(name: "csrf_token", text: planted_csrf_token), bind(name: "max_time", text: "30")]
+  match shell_materialize_operation_argv(legacy_close_session_operation.path, legacy_close_session_operation.service, legacy_close_session_operation.operation, binds) {
+    ArgvMaterialized { argv: argv } => argv_has_word(argv: argv, expected: concat("X-CSRFTOKEN: ", planted_csrf_token))
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}
+
+fn empty_media() -> MegaRacMediaWorld {
+  MegaRacMediaWorld {
+    sessions: [], next_session: 1,
+    share: MegaRacShare { server: "192.168.1.201", source_path: "/srv/bmc", share_type: "nfs" },
+    mount_cd: 0, cd_error_code: 0,
+    images: [],
+    cd: megarac_cleared_cd_at_the_current_build(),
+    ready_after: second(count: 12),
+    withdraw_at: none,
+    withdraw_after_ready: none,
+    error_after_ready: none,
+    error_clears_on_stop: false, stop_at_ready: none,
+  }
+}
+
+// DRY 401: the bindings answer 401 whenever the header the file carries is not the session's token -- a wrong
+// token, an absent file, or a session already closed. The only content that answers 2xx is the one this build's
+// session opened with.
+test fn the_modeled_session_refuses_a_wrong_header_an_absent_header_and_a_closed_session() -> Bool {
+  let opened = megarac_open_session(world: empty_media(), cookie_jar: "jar-1")
+  let good = megarac_csrf_header_content(token: opened.csrf_token)
+  let open = opened.world
+  let closed = megarac_close_session_by_header(world: open, cookie_jar: "jar-1", header_content: good)
+  megarac_session_valid_by_header(world: open, cookie_jar: "jar-1", header_content: good)
+    && !megarac_session_valid_by_header(world: open, cookie_jar: "jar-1", header_content: concat("X-CSRFTOKEN: ", "not-the-token\n"))
+    && !megarac_session_valid_by_header(world: open, cookie_jar: "jar-1", header_content: "")
+    && !megarac_session_valid_by_header(world: closed, cookie_jar: "jar-1", header_content: good)
+}

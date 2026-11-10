@@ -1,13 +1,21 @@
 module gunbc.machine_intake.megarac_media_attach
 
 import std.decl_ref { decl_ref }
-import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, Secret, String }
 import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
 import extdeps.bmc.megarac {
   megarac_firmware_0_32, megarac_firmware_0_45_reported, megarac_no_redirection_session_index,
+  megarac_csrf_header_content, megarac_csrf_header_file_name,
+}
+import gunbc.auth.private_secret_file {
+  with_private_secret_file,
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
@@ -116,10 +124,19 @@ type SessionRelease
   | SessionReleaseRefused { detail: String }
   | SessionReleaseNotAttempted
 
+// WHETHER THE BRACKET THAT STAGED THE CSRF HEADER FILE GOT IT BACK OFF DISK. This is orthogonal to
+// the attach verdict: a session can attach, present, close cleanly, AND still leave its 0600 header
+// file behind (the removal reported non-zero). The receipt keeps the fact separate so a residue is
+// visible rather than folded into success or into the session release -- the same reason the netrc
+// binding's receipt carries its own credential_removed. SecretFileRemoved is the ordinary arm; any
+// residue arm of gunbc.auth.private_secret_file's bracket sets SecretFileResidueRemains.
+type MegaRacSecretFileStanding = SecretFileRemoved | SecretFileResidueRemains
+
 type MegaRacAttachResult {
   outcome: MegaRacAttachOutcome
   session_release: SessionRelease
   baseline: MegaRacMediaBaseline?
+  secret_file: MegaRacSecretFileStanding
 }
 
 // THE ONE SUCCESS IS A READY PRESENTATION, AND IT CARRIES HOW IT WAS REACHED AND WHAT WAS SEEN.
@@ -141,6 +158,12 @@ type MegaRacAttachOutcome
   | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness, cd_error: CdErrorReading, general: MegaRacRawRead, configurations: MegaRacRawRead }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
+  // THE BRACKET THAT WOULD STAGE THE CSRF HEADER FILE NEVER ENTERED -- the fresh 0700 dir or the O_EXCL
+  // 0600 file could not be created, so the session was never opened with a file-backed header and NOTHING
+  // that used the session ran (CloseSession included, hence SessionReleaseNotAttempted upstream). A typed,
+  // located refusal of the whole attach: we never fall back to putting the token on argv. Residue from the
+  // half-made directory is reported separately on the receipt's `secret_file`, not folded into this verdict.
+  | MegaRacSecretFileNotEntered { detail: NonEmptyStr }
   | MegaRacImagesUnreadable { detail: String }
   | MegaRacImageListingEmpty
   | MegaRacImageListingUnparseable { detail: String }
@@ -606,27 +629,27 @@ fn megarac_session_release_by_reobservation(
 fn megarac_close_and_reobserve(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   csrf: SessionCsrfStanding,
 ) -> SessionRelease
 {
   let before_get = megarac.Media.ProbeSessionOnMediaRoute(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   let before = megarac_session_presence(get_succeeded: before_get.success, get_body: before_get.body)
   let _closed = megarac.Media.CloseSession(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   let after_get = megarac.Media.ProbeSessionOnMediaRoute(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   let after = megarac_session_presence(get_succeeded: after_get.success, get_body: after_get.body)
@@ -675,6 +698,7 @@ fn megarac_attach_remote_image(
       outcome: MegaRacSessionRefused { detail: session.body },
       session_release: SessionReleaseNotAttempted,
       baseline: none,
+      secret_file: SecretFileRemoved,
     }
   }
 
@@ -686,14 +710,49 @@ fn megarac_attach_remote_image(
         session_body: session.body,
       )
     Present { value: token } =>
-      megarac_attach_then_release(
-        bmc_host: bmc_host,
-        cookie_jar: cookie_jar,
-        csrf_token: token as NonEmptyStr,
-        image_name: image_name,
-        firmware: firmware,
-        task: task,
-      )
+      // THE TOKEN LEAVES SCOPE HERE, INTO A 0600 FILE. The value parsed off the session document is
+      // consumed once, by megarac_csrf_header_content, to author the header line the bracket stages;
+      // everything that then USES the session -- the whole attach AND the CloseSession plus its
+      // post-close probe inside megarac_attach_then_release -- runs inside `use`, and receives only the
+      // file path. The token is never an argv word on any of them. A bracket that cannot be entered is a
+      // typed, located refusal of the attach; a residue that outlives it is visible on the receipt.
+      match with_private_secret_file(
+        file_name: megarac_csrf_header_file_name,
+        content: megarac_csrf_header_content(token: token) as Secret,
+        use: fn(csrf_header_file) {
+          megarac_attach_then_release(
+            bmc_host: bmc_host,
+            cookie_jar: cookie_jar,
+            csrf_header_file: csrf_header_file,
+            image_name: image_name,
+            firmware: firmware,
+            task: task,
+          )
+        },
+      ) {
+        PrivateSecretFileCompleted { value: r } => r
+        PrivateSecretFileCompletedResidueRemains { value: r } =>
+          MegaRacAttachResult {
+            outcome: r.outcome,
+            session_release: r.session_release,
+            baseline: r.baseline,
+            secret_file: SecretFileResidueRemains,
+          }
+        PrivateSecretFileNotEntered { cause: c } =>
+          MegaRacAttachResult {
+            outcome: MegaRacSecretFileNotEntered { detail: c },
+            session_release: SessionReleaseNotAttempted,
+            baseline: none,
+            secret_file: SecretFileRemoved,
+          }
+        PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
+          MegaRacAttachResult {
+            outcome: MegaRacSecretFileNotEntered { detail: c },
+            session_release: SessionReleaseNotAttempted,
+            baseline: none,
+            secret_file: SecretFileResidueRemains,
+          }
+      }
   }
 }
 
@@ -707,16 +766,52 @@ fn megarac_release_unreadable_session(
   session_body: String,
 ) -> MegaRacAttachResult
 {
-  let _closed = megarac.Media.CloseSession(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: "unreadable" as NonEmptyStr,
-    max_time: megarac_media_read_max_time_operand(),
-  )
-  return MegaRacAttachResult {
-    outcome: MegaRacSessionTokenUnreadable { detail: session_body },
-    session_release: megarac_sentinel_csrf_release_refusal,
-    baseline: none,
+  // THE SENTINEL HEADER IS ALSO DELIVERED BY FILE. The deliberately-unknowable X-CSRFTOKEN still never
+  // sits on argv: the same 0600 bracket stages the single line "X-CSRFTOKEN: unreadable" and curl reads
+  // it with `-H @FILE`. The close is still owed and megarac_session_release_by_reobservation still
+  // refuses on the unreadable standing -- only the DELIVERY of the sentinel moved off the command line,
+  // never its behaviour. If the bracket itself cannot be entered the close never ran, which is reported
+  // as the located refusal MegaRacSecretFileNotEntered rather than an argv fallback.
+  return match with_private_secret_file(
+    file_name: megarac_csrf_header_file_name,
+    content: megarac_csrf_header_content(token: "unreadable") as Secret,
+    use: fn(csrf_header_file) {
+      megarac.Media.CloseSession(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_header_file: csrf_header_file,
+        max_time: megarac_media_read_max_time_operand(),
+      ).success
+    },
+  ) {
+    PrivateSecretFileCompleted { value: _ } =>
+      MegaRacAttachResult {
+        outcome: MegaRacSessionTokenUnreadable { detail: session_body },
+        session_release: megarac_sentinel_csrf_release_refusal,
+        baseline: none,
+        secret_file: SecretFileRemoved,
+      }
+    PrivateSecretFileCompletedResidueRemains { value: _ } =>
+      MegaRacAttachResult {
+        outcome: MegaRacSessionTokenUnreadable { detail: session_body },
+        session_release: megarac_sentinel_csrf_release_refusal,
+        baseline: none,
+        secret_file: SecretFileResidueRemains,
+      }
+    PrivateSecretFileNotEntered { cause: c } =>
+      MegaRacAttachResult {
+        outcome: MegaRacSecretFileNotEntered { detail: c },
+        session_release: SessionReleaseNotAttempted,
+        baseline: none,
+        secret_file: SecretFileRemoved,
+      }
+    PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
+      MegaRacAttachResult {
+        outcome: MegaRacSecretFileNotEntered { detail: c },
+        session_release: SessionReleaseNotAttempted,
+        baseline: none,
+        secret_file: SecretFileResidueRemains,
+      }
   }
 }
 
@@ -726,7 +821,7 @@ fn megarac_release_unreadable_session(
 fn megarac_attach_then_release(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   task: MegaRacSessionTask,
@@ -737,7 +832,7 @@ fn megarac_attach_then_release(
       let c = megarac_attach_with_token(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         policy: policy,
@@ -748,7 +843,7 @@ fn megarac_attach_then_release(
       MegaRacConvergence { baseline: MegaRacMediaBaseline { general_read: false, general: "", configurations_read: false, configurations: "" }, outcome: megarac_observe_with_token(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         share: share,
@@ -757,7 +852,7 @@ fn megarac_attach_then_release(
       MegaRacConvergence { baseline: MegaRacMediaBaseline { general_read: false, general: "", configurations_read: false, configurations: "" }, outcome: megarac_release_own_with_token(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         policy: policy,
@@ -772,10 +867,11 @@ fn megarac_attach_then_release(
   return MegaRacAttachResult {
     outcome: converged.outcome,
     baseline: baseline,
+    secret_file: SecretFileRemoved,
     session_release: megarac_close_and_reobserve(
       bmc_host: bmc_host,
       cookie_jar: cookie_jar,
-      csrf_token: csrf_token,
+      csrf_header_file: csrf_header_file,
       csrf: SessionCsrfParsed,
     ),
   }
@@ -805,7 +901,7 @@ fn megarac_attach_then_release(
 fn megarac_attach_with_token(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   policy: MegaRacReplacementPolicy,
@@ -814,13 +910,13 @@ fn megarac_attach_with_token(
   let general = megarac.Media.GetMediaGeneral(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   let presented = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   return MegaRacConvergence {
@@ -833,7 +929,7 @@ fn megarac_attach_with_token(
     outcome: megarac_converge_from_baseline(
       bmc_host: bmc_host,
       cookie_jar: cookie_jar,
-      csrf_token: csrf_token,
+      csrf_header_file: csrf_header_file,
       image_name: image_name,
       firmware: firmware,
       policy: policy,
@@ -865,11 +961,11 @@ fn megarac_clock_at() -> EpochMs? {
   }
 }
 
-fn megarac_raw_general(bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr) -> MegaRacRawRead {
+fn megarac_raw_general(bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_header_file: NonEmptyStr) -> MegaRacRawRead {
   let g = megarac.Media.GetMediaGeneral(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   MegaRacRawRead { answered: g.success, body: g.body, observed_at: megarac_clock_at() }
@@ -894,7 +990,7 @@ type MegaRacConvergence {
 fn megarac_converge_from_baseline(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   policy: MegaRacReplacementPolicy,
@@ -927,7 +1023,7 @@ fn megarac_converge_from_baseline(
       megarac_readiness_outcome(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         route: RouteAlreadyPresented,
@@ -938,7 +1034,7 @@ fn megarac_converge_from_baseline(
       megarac_detach_then_attach(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         policy: policy,
@@ -949,7 +1045,7 @@ fn megarac_converge_from_baseline(
       megarac_attach_from_listing(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         cd_before: cd_before,
@@ -972,7 +1068,7 @@ fn megarac_media_read_max_time_operand() -> NonEmptyStr {
 fn megarac_attach_from_listing(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   cd_before: CdErrorReading,
@@ -981,7 +1077,7 @@ fn megarac_attach_from_listing(
   images = megarac.Media.GetRemoteImages(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   if images.success == false {
@@ -996,7 +1092,7 @@ fn megarac_attach_from_listing(
       megarac_start_then_readiness(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         image_list_index: idx,
         firmware: firmware,
@@ -1012,7 +1108,7 @@ fn megarac_attach_from_listing(
 fn megarac_detach_then_attach(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   policy: MegaRacReplacementPolicy,
@@ -1038,14 +1134,14 @@ fn megarac_detach_then_attach(
       reason: "the presenting row carries no media_index, so no stop-media body can name its device; nothing was written",
     }
   }
-  let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token, firmware: firmware, image_name: stale.image_name, media_index: media_index)
+  let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file, firmware: firmware, image_name: stale.image_name, media_index: media_index)
   return match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stems: policy.replaceable_seeded_stems) {
     DetachNotEstablished { reason: why } => MegaRacStaleDetachUnconfirmed { detach: evidence, reason: why }
     DetachEstablished =>
       megarac_enumerate_then_attach(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         detach: evidence,
@@ -1061,7 +1157,7 @@ fn megarac_detach_then_attach(
 fn megarac_stop_row_and_read_back(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   image_name: String,
   media_index: String,
@@ -1070,17 +1166,17 @@ fn megarac_stop_row_and_read_back(
   let stopped = megarac.Media.StopMedia(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     json_body: stop_media_body(image_name: image_name, media_index: media_index),
     max_time: megarac_media_read_max_time_operand(),
   )
   let after = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
-  let general_after = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
+  let general_after = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file)
   return MegaRacDetachEvidence {
     stale_image: image_name,
     media_index: media_index,
@@ -1138,7 +1234,7 @@ fn own_session_release_step(
 fn megarac_release_own_with_token(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   policy: MegaRacOwnReleasePolicy,
@@ -1147,7 +1243,7 @@ fn megarac_release_own_with_token(
   let presented = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   if presented.success == false {
@@ -1168,7 +1264,7 @@ fn megarac_release_own_with_token(
       match r.media_index {
         Absent => MegaRacOwnSessionEnded { end: OwnSessionNotStopped { reason: "this attempt's own row carries no media_index, so no stop-media body can name its device; nothing was written", configurations: presented.body } }
         Present { value: idx } => {
-          let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token, firmware: firmware, image_name: r.image_name, media_index: idx)
+          let evidence = megarac_stop_row_and_read_back(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file, firmware: firmware, image_name: r.image_name, media_index: idx)
           MegaRacOwnSessionEnded { end: own_session_end_of_detach(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stems: policy.replaceable_seeded_stems) }
         }
       }
@@ -1237,7 +1333,7 @@ fn detach_verdict(
 fn megarac_enumerate_then_attach(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   detach: MegaRacDetachEvidence,
@@ -1250,7 +1346,7 @@ fn megarac_enumerate_then_attach(
       match megarac_await_enumeration(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         window: RemoteMediaMountWindow { requested_at: requested_at, budget: megarac_refresh_enumeration_budget_ms() },
         observations: [],
@@ -1264,7 +1360,7 @@ fn megarac_enumerate_then_attach(
           megarac_start_then_readiness(
             bmc_host: bmc_host,
             cookie_jar: cookie_jar,
-            csrf_token: csrf_token,
+            csrf_header_file: csrf_header_file,
             image_name: image_name,
             image_list_index: idx,
             firmware: firmware,
@@ -1345,7 +1441,7 @@ type EnumerationAfterRefresh
 fn megarac_await_enumeration(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   window: RemoteMediaMountWindow,
   observations: List<RemoteMediaListingObservation>,
@@ -1355,7 +1451,7 @@ fn megarac_await_enumeration(
   let images = megarac.Media.GetRemoteImages(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   let reading = if images.success { images_listing_reading(body: images.body, image_name: image_name) } else { ImagesListingLacks }
@@ -1376,7 +1472,7 @@ fn megarac_await_enumeration(
           megarac_await_enumeration(
             bmc_host: bmc_host,
             cookie_jar: cookie_jar,
-            csrf_token: csrf_token,
+            csrf_header_file: csrf_header_file,
             image_name: image_name,
             window: window,
             observations: seen,
@@ -1919,7 +2015,7 @@ fn unestablished_before_write(cd_before: CdErrorReading, reason: String) -> Mega
 fn megarac_start_then_readiness(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   image_list_index: String,
   firmware: BmcFirmwareReleaseIdentity,
@@ -1930,7 +2026,7 @@ fn megarac_start_then_readiness(
   let started = megarac.Media.StartMedia(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     json_body: start_media_body(image_name: image_name, image_index: image_list_index),
     max_time: megarac_media_read_max_time_operand(),
   )
@@ -1938,7 +2034,7 @@ fn megarac_start_then_readiness(
   return megarac_readiness_outcome(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     image_name: image_name,
     firmware: firmware,
     route: match detach {
@@ -2153,7 +2249,7 @@ type ReadinessWait
 fn megarac_await_readiness(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   phase: ReadinessPhase,
@@ -2166,7 +2262,7 @@ fn megarac_await_readiness(
   let got = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   match clock_unix_millis_read() {
@@ -2189,7 +2285,7 @@ fn megarac_await_readiness(
           megarac_await_readiness(
             bmc_host: bmc_host,
             cookie_jar: cookie_jar,
-            csrf_token: csrf_token,
+            csrf_header_file: csrf_header_file,
             image_name: image_name,
             firmware: firmware,
             phase: phase,
@@ -2207,7 +2303,7 @@ fn megarac_await_readiness(
 fn megarac_readiness_outcome(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   route: MegaRacAttachRoute,
@@ -2221,7 +2317,7 @@ fn megarac_readiness_outcome(
       let wait = megarac_await_readiness(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
+        csrf_header_file: csrf_header_file,
         image_name: image_name,
         firmware: firmware,
         phase: phase,
@@ -2230,7 +2326,7 @@ fn megarac_readiness_outcome(
         looks: 0,
         in_interval: none,
       )
-      let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
+      let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file)
       readiness_wait_outcome(
         wait: wait,
         image_name: image_name,
@@ -2311,17 +2407,17 @@ fn readiness_wait_outcome(
 fn megarac_observe_with_token(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
-  csrf_token: NonEmptyStr,
+  csrf_header_file: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   share: MegaRacShareBinding,
 ) -> MegaRacAttachOutcome
 {
-  let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
+  let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file)
   let c = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
+    csrf_header_file: csrf_header_file,
     max_time: megarac_media_read_max_time_operand(),
   )
   let configurations = MegaRacRawRead { answered: c.success, body: c.body, observed_at: megarac_clock_at() }
@@ -2390,6 +2486,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacShareUnreadable { detail: _ } => presentation_unobserved_before_presentation()
     MegaRacSessionRefused { detail: _ } => presentation_unobserved_before_presentation()
     MegaRacSessionTokenUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacSecretFileNotEntered { detail: _ } => presentation_unobserved_before_presentation()
     MegaRacImagesUnreadable { detail: _ } => presentation_unobserved_before_presentation()
     MegaRacImageListingEmpty => presentation_unobserved_before_presentation()
     MegaRacImageListingUnparseable { detail: _ } => presentation_unobserved_before_presentation()
