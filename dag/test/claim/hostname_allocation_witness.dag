@@ -38,7 +38,6 @@ import gunbc.hostname_allocation {
   fleet_machine_registry,
   next_name_for_fleet_slot,
   allocation_reserved_forms,
-  pending_name_collisions,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -68,7 +67,7 @@ fn pending_fixture(slot: String, hostname: String, next: String) -> HostnameAllo
 }
 
 // A PENDING DRAW REPRODUCES against every other registry row, pending names included. Re-drawing against
-// that superset is exact because pending_name_collisions forbids any other row from holding the form the
+// that superset is exact because hostname_allocation_admission refuses any other row claiming the name the
 // draw chose; so a recorded next_name the allocator would not yield reds here rather than standing.
 fn pending_draw_reproduces(row: HostnameAllocation, rows: List<HostnameAllocation>) -> Bool {
   match row.next_name {
@@ -363,18 +362,47 @@ test fn witness_pending_name_is_reserved_but_does_not_resolve() -> Bool {
   unresolved && reserved
 }
 
-test fn witness_production_registry_has_no_pending_collision() -> Bool {
-  pending_name_collisions(allocations: fleet_machine_registry).length() == 0
+// THE PENDING AXIS IS ADMITTED AT THE ONE PRODUCTION INGRESS (witness_production_fleet_roster_is_injective
+// covers the production registry). Its reds: a next_name another machine already answers to, one next_name
+// awaited by two machines, and a next_name equal to its own current name -- each refused naming the spelling,
+// and the colliding registry then serves no hostname even for a machine not in the collision.
+fn refuses_naming(roster: List<HostnameAllocation>, spelling: String) -> Bool {
+  match hostname_allocation_admission(allocations: roster) {
+    AllocationSecondaryKeyRepeated { key: k } => k == spelling
+    AllocationPrimaryKeyRepeated { key: _ } => false
+    AllocationAdmitted { roster: _ } => false
+  }
 }
 
-// THE TWO REDS OF THE PENDING AXIS: a next_name another machine already answers to, and one next_name
-// awaited by two machines.
 test fn witness_pending_name_colliding_with_a_current_name_refuses() -> Bool {
-  let roster = [allocation_fixture(slot: "a", hostname: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox")]
-  any(pending_name_collisions(allocations: roster), c => c == "fox")
+  let roster = [allocation_fixture(slot: "a", hostname: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox"), allocation_fixture(slot: "c", hostname: "c1")]
+  refuses_naming(roster: roster, spelling: "fox")
+    && (match canonical_hostname_in_roster(allocations: roster, fleet_slot: "c" as HostIdentity) {
+      Absent => true
+      Present { value: _ } => false
+    })
 }
 
 test fn witness_one_pending_name_for_two_machines_refuses() -> Bool {
-  let roster = [pending_fixture(slot: "a", hostname: "a1", next: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox")]
-  pending_name_collisions(allocations: roster).length() == 2
+  refuses_naming(roster: [pending_fixture(slot: "a", hostname: "a1", next: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox")], spelling: "fox")
+}
+
+test fn witness_a_pending_name_equal_to_the_current_one_refuses() -> Bool {
+  refuses_naming(roster: [pending_fixture(slot: "a", hostname: "a1", next: "a1")], spelling: "a1")
+}
+
+// POSITIVE CONTROL: distinct pending names beside distinct current names admit, and the pending name is
+// readable while the current one still serves.
+test fn witness_distinct_pending_names_admit() -> Bool {
+  let roster = [pending_fixture(slot: "a", hostname: "a1", next: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "owl")]
+  let admitted = match hostname_allocation_admission(allocations: roster) {
+    AllocationAdmitted { roster: _ } => true
+    AllocationPrimaryKeyRepeated { key: _ } => false
+    AllocationSecondaryKeyRepeated { key: _ } => false
+  }
+  let serves = match canonical_hostname_in_roster(allocations: roster, fleet_slot: "a" as HostIdentity) {
+    Present { value: h } => (h as String) == "a1"
+    Absent => false
+  }
+  admitted && serves
 }

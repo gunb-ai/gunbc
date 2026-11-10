@@ -13,6 +13,7 @@ import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject {
   BmcFru,
   BoardSerialContradictory,
+  BoardSerialDuplicatedAcrossUnits,
   BoardSerialObservation,
   HostSmbios,
   UnitIdentityInputs,
@@ -39,7 +40,7 @@ import gunbc.fleet.fleet_machine_unit_binding {
   MachineUnitSerialHeldByAnother,
   MachineEvidenceRepeated,
   admit_machine_units,
-  fleet_machine_unit_standings,
+  fleet_machine_unit_admission,
   machine_unit_admission_refusals,
   machine_unit_standing,
   machine_unit_standing_in,
@@ -64,11 +65,11 @@ fn evidence(m: String, fru: String, smbios: String) -> MachineUnitEvidence {
 
 // RED: two machines observed on one board serial. The second is refused and the refusal names both.
 test fn two_machines_on_one_observed_serial_refuse_naming_both() -> Bool {
-  let standings = admit_machine_units(evidence: [
+  let admission = admit_machine_units(evidence: [
     evidence(m: "fixture-a", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
     evidence(m: "fixture-b", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
   ])
-  match standings.get(index: 1) {
+  match admission.standings.get(index: 1) {
     Present { value: s } => match s {
       MachineUnitSerialHeldByAnother { machine: m, holder: h, serial: d } =>
         (m as String) == "fixture-b" && (h as String) == "fixture-a" && (d as String) == "BR80S6102300049"
@@ -80,9 +81,37 @@ test fn two_machines_on_one_observed_serial_refuse_naming_both() -> Bool {
   }
 }
 
+// THE INJECTIVE MAP: after a duplicate, the serial is bound once, to its first holder, and the second machine's
+// standing is bind_unit_key's duplicate refusal.
+test fn a_duplicate_serial_is_bound_once_and_the_second_machine_refuses() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    evidence(m: "fixture-a", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
+    evidence(m: "fixture-c", fru: "SERIAL-THREE", smbios: "SERIAL-THREE"),
+    evidence(m: "fixture-b", fru: "BR80S6102300049", smbios: "BR80S6102300049"),
+  ])
+  let once = map(admission.bound_keys, k => k as String) == ["BR80S6102300049", "SERIAL-THREE"]
+  let second = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-b")) {
+    Present { value: u } => match u {
+      UnitKeyRefused { cause: c } => match c {
+        BoardSerialDuplicatedAcrossUnits { serial: d } => (d as String) == "BR80S6102300049"
+        _ => false
+      }
+      UnitKeyBound { key: _ } => false
+    }
+    Absent => false
+  }
+  let order = map(admission.standings, s => match s {
+    MachineUnitBound { machine: m, unit: _ } => m as String
+    MachineUnitRefused { machine: m, cause: _ } => m as String
+    MachineUnitSerialHeldByAnother { machine: m, holder: _, serial: _ } => m as String
+    MachineEvidenceRepeated { machine: m } => m as String
+  }) == ["fixture-a", "fixture-c", "fixture-b"]
+  once && second && order
+}
+
 // RED: the BMC's FRU and the host's SMBIOS disagree, so the machine binds no unit.
 test fn contradictory_serial_readings_refuse() -> Bool {
-  match admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-TWO")]).first() {
+  match admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-TWO")]).standings.first() {
     Present { value: s } => match s {
       MachineUnitRefused { machine: _, cause: c } => match c {
         BoardSerialContradictory { observations: o } => o.length() == 2
@@ -98,17 +127,17 @@ test fn contradictory_serial_readings_refuse() -> Bool {
 
 // RED: a machine's evidence given twice is reported, and its first binding stands.
 test fn repeated_evidence_for_one_machine_is_reported() -> Bool {
-  let standings = admit_machine_units(evidence: [
+  let admission = admit_machine_units(evidence: [
     evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
     evidence(m: "fixture-a", fru: "SERIAL-TWO", smbios: "SERIAL-TWO"),
   ])
-  let reported = any(machine_unit_admission_refusals(standings: standings), s => match s {
+  let reported = any(machine_unit_admission_refusals(standings: admission.standings), s => match s {
     MachineEvidenceRepeated { machine: m } => (m as String) == "fixture-a"
     MachineUnitBound { machine: _, unit: _ } => false
     MachineUnitRefused { machine: _, cause: _ } => false
     MachineUnitSerialHeldByAnother { machine: _, holder: _, serial: _ } => false
   })
-  let first_stands = match machine_unit_standing_in(standings: standings, machine: machine(label: "fixture-a")) {
+  let first_stands = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
     Present { value: u } => match u {
       UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
       UnitKeyRefused { cause: _ } => false
@@ -121,8 +150,8 @@ test fn repeated_evidence_for_one_machine_is_reported() -> Bool {
 // A REGISTERED MACHINE WITH NO READING is absent from A2, and its backing row stays unobserved with its read
 // obligation rather than claiming a key.
 test fn unread_machine_is_absent_and_its_backing_unobserved() -> Bool {
-  let standings = admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE")])
-  let unread = machine_unit_standing_in(standings: standings, machine: machine(label: "fixture-unread"))
+  let admission = admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE")])
+  let unread = machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-unread"))
   let absent = match unread {
     Absent => true
     Present { value: _ } => false
@@ -148,7 +177,7 @@ fn subject_for(unit: UnitKey) -> MachineIntakeSubject {
 
 test fn board_swap_rebinds_the_handle_and_old_subject_refuses() -> Bool {
   let after = admit_machine_units(evidence: [evidence(m: "fixture-a", fru: "SERIAL-NEW", smbios: "SERIAL-NEW")])
-  match machine_unit_standing_in(standings: after, machine: machine(label: "fixture-a")) {
+  match machine_unit_standing_in(admission: after, machine: machine(label: "fixture-a")) {
     Present { value: u } => match u {
       UnitKeyBound { key: k } =>
         (k as String) == "SERIAL-NEW"
@@ -172,7 +201,7 @@ test fn board_swap_rebinds_the_handle_and_old_subject_refuses() -> Bool {
 // POSITIVE CONTROL ON THE REAL PRODUCER: the production evidence admits with no refusal, and mtcollins1 is bound
 // to exactly the unit its own intake observation binds (gunbc.machine_intake.mtcollins1_bmc_secure_observation).
 test fn production_evidence_admits_and_mtcollins1_binds_its_observed_unit() -> Bool {
-  let clean = machine_unit_admission_refusals(standings: fleet_machine_unit_standings).length() == 0
+  let clean = machine_unit_admission_refusals(standings: fleet_machine_unit_admission.standings).length() == 0
   let same = match machine_unit_standing(machine: operator_host_mtcollins1) {
     Present { value: u } => match u {
       UnitKeyBound { key: k } => match mtcollins1_unit_key_standing {
