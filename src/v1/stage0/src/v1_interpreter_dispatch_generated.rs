@@ -6,6 +6,7 @@
 pub enum EvalBuiltinArm {
     FreeCallParseStage0CargoManifestBins,
     FreeCallParseRoadmapAcceptanceEventHistoryJsonl,
+    FreeCallProjectRoadmapAcceptanceEventHistoryFromAuthorityTextHost,
     FreeCallToString,
     FreeCallUtf8DecodeBytes,
     FreeCallBytesOctets,
@@ -116,7 +117,6 @@ pub enum EvalBuiltinArm {
     FreeCallCompileDagCallsiteResolvedCallEdges,
     FreeCallCompileDagOperationRequires,
     FreeCallCompileDagCallFormLeafGuard,
-    FreeCallWitnessLayerRootsCompileCleanCheck,
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
     FreeCallRecordGeneratedArtifactDriftGateClean,
     FreeCallConsumeGeneratedArtifactDriftGateReceipt,
@@ -144,6 +144,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
     match spelling {
         "parse_stage0_cargo_manifest_bins" => Some(EvalBuiltinArm::FreeCallParseStage0CargoManifestBins),
         "parse_roadmap_acceptance_event_history_jsonl" => Some(EvalBuiltinArm::FreeCallParseRoadmapAcceptanceEventHistoryJsonl),
+        "project_roadmap_acceptance_event_history_from_authority_text_host" => Some(EvalBuiltinArm::FreeCallProjectRoadmapAcceptanceEventHistoryFromAuthorityTextHost),
         "to_string" => Some(EvalBuiltinArm::FreeCallToString),
         "utf8_decode_bytes" => Some(EvalBuiltinArm::FreeCallUtf8DecodeBytes),
         "bytes_octets" => Some(EvalBuiltinArm::FreeCallBytesOctets),
@@ -257,7 +258,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "compile_dag_callsite_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges),
         "compile_dag_operation_requires" => Some(EvalBuiltinArm::FreeCallCompileDagOperationRequires),
         "compile_dag_call_form_leaf_guard" => Some(EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard),
-        "witness_layer_roots_compile_clean_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck),
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
         "record_generated_artifact_drift_gate_clean" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean),
         "consume_generated_artifact_drift_gate_receipt" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt),
@@ -286,6 +286,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
 macro_rules! eval_builtin_inner_arm {
     ("free_call.parse_stage0_cargo_manifest_bins") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParseStage0CargoManifestBins };
     ("free_call.parse_roadmap_acceptance_event_history_jsonl") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParseRoadmapAcceptanceEventHistoryJsonl };
+    ("free_call.project_roadmap_acceptance_event_history_from_authority_text_host") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallProjectRoadmapAcceptanceEventHistoryFromAuthorityTextHost };
     ("free_call.to_string") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToString };
     ("free_call.utf8_decode_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallUtf8DecodeBytes };
     ("free_call.bytes_octets") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBytesOctets };
@@ -396,7 +397,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.compile_dag_callsite_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges };
     ("free_call.compile_dag_operation_requires") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagOperationRequires };
     ("free_call.compile_dag_call_form_leaf_guard") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard };
-    ("free_call.witness_layer_roots_compile_clean_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck };
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
     ("free_call.record_generated_artifact_drift_gate_clean") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean };
     ("free_call.consume_generated_artifact_drift_gate_receipt") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt };

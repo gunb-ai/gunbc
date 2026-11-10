@@ -14,7 +14,7 @@ import product.printed_chassis.blower_outlet_mount {
 import product.printed_chassis.printable_assembly { CardFaceSide, BackFaceSide, FrontFaceSide, card_face_side_wire }
 import product.printed_chassis.gpu_duct {
   EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, CardEnvelope, PlugAndFlange,
-  um, card_interface, card_reference_parts, card_screw_holes, card_joints, connector_keepout_length,
+  um, card_interface, card_reference_parts, card_screw_holes, card_joints, card_screw_label, a16_end_face, connector_keepout_length,
   insert_xs, insert_y, blower_cavity_edge, blower_reach_behind, plane_on_end_slab, face_json,
 }
 import extdeps.languages.json.emit { JsonKeyValue, json_kv, json_string, json_int }
@@ -186,7 +186,7 @@ fn side_mount_parts(f: EndFaceMeasurement, card: CardEnvelope, d: GpuDuctDesign,
       plane_on_end_slab(x_lo: opening_edge_lo(m: mount), x_hi: opening_edge_hi(m: mount), y_lo: fan_y - passage_half, y_hi: fan_y + passage_half, z_lo: chamber_top - 1000, z_hi: face_z + 1000),
     ]), outlet_socket_cuts(m: mount, half: half, clearance: b.socket_clearance, depth: side_mount_socket_depth)), interface.cuts), concat(card_screw_holes(f: f, d: d, face_z: face_z), lug_arm_cuts(m: mount, half: half, clearance: b.socket_clearance))),
     x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -60000, plane: side_mount_duct_print_plane,
-    notes: join(["One piece. Prints ", print_plane_pose(plane: side_mount_duct_print_plane), ", as exported: nothing inside the closed chamber needs support, and bed-only supports carry the plug lip and flange overhangs outside. Screw the blower in BEFORE the duct goes on the card: ", outlet_mount_note(), " Then drive both M3 x 4 card screws with the duct seated (front side: from behind the flange; back side: through the two access holes in the back wall). PLA for an unpowered fit prototype only; PETG or ASA for service."], ""))
+    notes: join(["One piece. Prints ", print_plane_pose(plane: side_mount_duct_print_plane), ", as exported: nothing inside the closed chamber needs support, and bed-only supports carry the plug lip and flange overhangs outside. Screw the blower in BEFORE the duct goes on the card: ", outlet_mount_note(), " Then drive both ", card_screw_label(f: f), " card screws with the duct seated (front side: from behind the flange; back side: through the two access holes in the back wall). PLA for an unpowered fit prototype only; PETG or ASA for service."], ""))
   let blower = part(id: "FAN", name: join(["Delta BFB1012M radial blower envelope, broad face against the card's ", card_face_side_wire(side: side), " face"], ""), kind: Purchased, scope: FixedFrame,
     adds: housing_boxes(m: mount, half: th / 2, edge_length: micrometer(count: hl), rise: micrometer(count: reach)),
     cuts: [],
@@ -227,8 +227,8 @@ fn x_prism(outline: List<ProfileVertex>, x_lo: Int, x_hi: Int) -> Primitive {
   prism(outline: outline, axis: Axis3X, length: x_hi - x_lo, x: (x_lo + x_hi) / 2, y: 0, z: 0)
 }
 
-fn side_mount_joints() -> List<MechanicalInterface> {
-  concat(card_joints(mount: PlugAndFlange, printed_id: "DUCT"), [
+fn side_mount_joints(f: EndFaceMeasurement) -> List<MechanicalInterface> {
+  concat(card_joints(f: f, mount: PlugAndFlange, printed_id: "DUCT"), [
     tapping_into(i: mechanical_interface(id: "blower-to-socket", members: ["FAN", "DUCT", "SCREW"], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
       requirement: "The blower's outlet frame is pushed into the socket beside the card and rests on the ledges around the opening, label face toward the card and intake facing away from it. One M5 x 10 fan screw through the arm on the label face into the lug of the hole nearer the outlet retains it."), members: ["SCREW"]),
   ])
@@ -258,7 +258,7 @@ fn side_mount_readme(d: GpuDuctDesign, b: BlowerDuctDesign, side: CardFaceSide) 
       FrontFaceSide => "the back-face duct crosses the 8-pin cable region, so its crossing is lowered over a cable channel, the card screws are driven through two access holes in its back wall, its chamber stops short of the keep-out, and its turn is square-cornered. This one has none of those: its turn is curved and its chamber runs the socket's full length.\n"
       BackFaceSide => "the front-face duct has a curved turn and a chamber running the socket's full length, and its card screws sit beside the chamber. This one crosses the 8-pin cable region, so its crossing is lowered over a cable channel, the screws are driven through two access holes in the back wall, its chamber stops short of the keep-out, and its turn is square-cornered.\n"
     },
-    "Assembly, power OFF: plug the 8-pin in; seat the DUCT's plug lip in the fin window; drive both M3 x 4 screws into the end cap's inserts", match side { BackFaceSide => " (through the two access holes in the back wall and the crossing)" FrontFaceSide => " (they sit beside the chamber, reached from behind the flange)" }, ". Before that, with the duct off the card: ", outlet_mount_note(), "\n",
+    "Assembly, power OFF: plug the 8-pin in; seat the DUCT's plug lip in the fin window; drive both ", card_screw_label(f: a16_end_face), " screws into the end cap's inserts", match side { BackFaceSide => " (through the two access holes in the back wall and the crossing)" FrontFaceSide => " (they sit beside the chamber, reached from behind the flange)" }, ". Before that, with the duct off the card: ", outlet_mount_note(), "\n",
     "The socket takes only the blower's outlet frame; the rest of the housing stands free above it, and the screw arm lies on the label face between the blower and the card.\n",
     "Spends ", mm_one_decimal(m: side_mount_side_spend(d: d, b: b)), " beside the card (product.printed_chassis.chassis_clearances single_card_side_allowance_2026_11_02 is the allowance) and ", mm_one_decimal(m: side_mount_rear_spend(d: d)), " behind the end. Check at the fit: the blower's intake has free air beyond the part; the 8-pin cable has room where it turns; the plug lip seats; the blower sits in the socket without rocking.\n",
     "PLA for an unpowered fit prototype only; PETG or ASA for service.\n",

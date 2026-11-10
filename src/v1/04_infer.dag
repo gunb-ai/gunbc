@@ -3,7 +3,7 @@ module v1.compiler.infer
 import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
 import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
 import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope }
-import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments }
+import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments, field_access_spine }
 import v1.compiler.ownership { fold_terminal_expr }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_spelling_is_algebra, container_template_alias_algebra, is_container_type, is_container_algebra_carrier, kernel_type_set, is_kernel_type }
@@ -43,7 +43,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, NotAModuleItem, ParsedModuleItemKind, declaration_provenance_of,
+import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, NotAModuleItem, ParsedModuleItemKind, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -70,7 +70,7 @@ import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, 
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
+  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch, RefinementCastRefused,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOnInadmissibleType, EqualityOptionalityMismatch, EqualityInstantiationBlindGenericSite, CollectionKeyReachesEqualityRoute,
   TypeArgumentArityMismatch,
@@ -142,7 +142,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { type_env_with_equality_by_target, generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, settled_head_of_declaration, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
+import v1.compiler.infer_env { type_env_with_equality_by_target, generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, settled_head_of_declaration, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name, parameterized_alias_rhs, is_where_refinement_node,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -379,6 +379,59 @@ type BlockInferState {
   typed_stmts: List<Node>
 }
 
+// WHY THE BLOCK FOLD REFUSES A NON-FINAL BARE VALUE, AND THE GRAMMAR DOES NOT.
+// Two value expressions written one under the other inside a block are TWO STATEMENTS, and the
+// grammar is right to say so: `v1.compiler.parse::parse_stmts` separates statements by lines, and
+// `v1.extdeps.languages.dag::dag_grammar_index_lbracket_head_expr` refuses to read a next-line `[`
+// as an index suffix. The unjustified step is THIS fold: it threads `last_type` through every
+// statement, so a bare value that merely PRECEDES another statement has its value silently
+// overwritten and dropped -- the block evaluates to the last literal and the earlier one vanishes
+// with no diagnostic. That is the class recorded at
+// gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering; the harm
+// instance was the harness tool enumeration that shipped five of eight tools, repaired at the data
+// level by PR #16148. The earliest unjustified boundary is therefore the FOLD and not the grammar
+// (gunbc.design_argument::earliest_unjustified_boundary, ruled by gunbc.design_ruling::chain_re_derivation),
+// so the refusal lives HERE and the grammar stays untouched. The v2 fold refuses the same shape at
+// `v2.compiler.body_lowering_fold::body_lower_stmt_spine` with the cause
+// `body_lowering_reason_statement_precedes_without_binding`; the seed refuses it with the same cause
+// lexeme carried in the message, reusing the seed's own refusal carriers `semantic_expr_error_node`
+// and `inference_error` instead of minting a third one (gunbc.design_argument::minimize_redundancy).
+// A fold that went back to keeping the last value would compile the fixture, leave the located
+// diagnostic unsaid, and turn the standing control
+// `test.claim.juxtaposed_bare_value_seed_refusal_witness` red.
+//
+// WHICH STATEMENTS REFUSE: a statement that evaluates and binds nothing.
+// THE ARM DIRECTION IS FAIL-CLOSED (gunbc.design_argument::fail_closed: "a failure arm refuses,
+// never widens"). This match NAMES THE ADMITTED SET -- the statements that bind, control, effect, or
+// carry their own value reading -- and REFUSES BY DEFAULT, so any future ExprData variant
+// (src/v1/00_core.dag::ExprData) is refused as a bare value until someone rules it admitted, instead
+// of being silently accepted the way a `_ => false` whitelist would have accepted `ExprBinOp`,
+// `ExprUnaryOp`, `ExprStringInterp`, `ExprCast`, `ExprIndex`, `ExprSlice` and `ExprLambda` the day
+// they were juxtaposed. The admitted forms: `ExprLet` binds (`let x = [1, 2, 3]` followed by `x` is
+// the admitted binding form); `ExprReturn` returns; `ExprCall` and `ExprMethodCall` are
+// effect-position readings (the v2 spine narrows further with its guard forms; the seed's corpus
+// admits call statements mid-body and the CLASS this row closes is the dropped VALUE, not the call);
+// `ExprIf`/`ExprMatch`/`ExprForEach` are control readings whose value is consumed by their own arms;
+// `ExprBlock` recurses, so a nested bare value refuses inside it; `ExprError` is already a refusal;
+// `NoExprData` is the empty marker.
+data block_bare_value_refusal_message: String = "a bare value statement precedes another statement in the same block, so its value would be silently dropped; bind it with `let` or delete it: statement_precedes_without_binding"
+
+fn stmt_is_bare_value(stmt: Node) -> Bool {
+  match stmt.expr_data {
+    NoExprData => false
+    ExprLet => false
+    ExprReturn => false
+    ExprCall { call_semantics: _, descent_evidence: _ } => false
+    ExprMethodCall { method_semantics: _ } => false
+    ExprIf => false
+    ExprMatch => false
+    ExprForEach => false
+    ExprBlock => false
+    ExprError { kind: _, message: _ } => false
+    _ => true
+  }
+}
+
 fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferScope,
     typed_stmts: List<Node>, emission_chunks: List<InferEmissions>,
     last_type: Node, expected: Node?) -> BlockInferState {
@@ -388,7 +441,12 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
     Present { value: stmt } =>
       let is_last = remaining_count == 1
       let stmt_expected = if is_last { expected } else { none }
-      let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
+      let stmt_result = if !is_last && stmt_is_bare_value(stmt: stmt) {
+        InferResult {
+          typed: semantic_expr_error_node(message: block_bare_value_refusal_message, span: stmt.span),
+          emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: block_bare_value_refusal_message, span: stmt.span, module_name: scope.module_name)])
+        }
+      } else { infer_expr(texpr: stmt, scope: scope, expected: stmt_expected) }
       let stmt_typed = stmt_result.typed
       let stmt_emissions = stmt_result.emissions
       let stmt_rt = resolved_type(n: stmt_typed)
@@ -8940,7 +8998,7 @@ fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclaratio
   }
 }
 
-fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading) -> ErrorNode? {
+fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading, int_refinement_cast_domain: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
@@ -8948,7 +9006,28 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         Present { value: d } => grounded_cast_verdict(source: d, target: target_reading)
         Absent => GroundedCastNotDecided
       }
-      if source_name == target_name { none }
+      // IDENTITY IS THE SAME DECLARATION, NEVER THE SAME LEAF NAME (gunbc.design_argument::closed_grounded_substrate:
+      // "Type compatibility keys on the exact declaration a position resolves to, never its leaf name"). A value
+      // already on the target's carrier is admitted by the evaluator's cast_identity_result; the checker must agree
+      // on exactly that population. Keying on authored names (the pre-fix `source_name == target_name`) admitted
+      // `x_a as b.Port` when a.Port and b.Port share a leaf name but are DIFFERENT declarations -- the checker then
+      // stayed silent while the evaluator's non-name identity admit refused it, the fork this claim closes. So: when
+      // BOTH sides resolve to a named declaration, identity is declaration_ref_eq; when a side is a kernel target or
+      // an unresolvable source (a literal, a bare Int) there is no declaration to compare and the authored name is
+      // the only key, which is what the kernel/table domains already judge on.
+      let target_declaration = match target_reading {
+        TypeReferenceNamesDeclaration { declaration: t } => Present { value: t }
+        _ => none
+      }
+      let is_identity_cast = match source_declaration {
+        Present { value: sd } =>
+          match target_declaration {
+            Present { value: td } => declaration_ref_eq(a: sd, b: td)
+            Absent => source_name == target_name
+          }
+        Absent => source_name == target_name
+      }
+      if is_identity_cast { none }
       else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
       else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
         let cause = match grounded {
@@ -8961,6 +9040,29 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
+        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+      }
+      else if int_refinement_cast_domain {
+        // The checker must not admit a cast the v1 evaluator's eval_cast refuses -- that gap is exactly class
+        // gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses. This arm fires only in the
+        // domain where the two provably disagree. The domain (`int_refinement_cast_domain`, computed at the call
+        // site where type_env is in scope) is two kernel facts:
+        //   * target_is_int_refined -- the target is a numeric int-predicate refinement (Int/Nat where range|gt_zero);
+        //   * source_int_kernel -- the source's base kernel is Int/Nat, i.e. it arrives on the runtime Int carrier
+        //     that makes eval_cast take its `Value::Int => refused` arm (a String/Float source is OUT of the domain:
+        //     eval_cast walks the target kernel for those and may ADMIT them, so refusing them here would open the
+        //     OPPOSITE fork -- they stay on the eval-decided path).
+        // IDENTITY (a value already on the target's carrier, e.g. `f() as T` whose return is T) is NOT excluded here
+        // by a leaf-name string: it was admitted above by `is_identity_cast`, which keys on the resolved DeclarationRef
+        // the evaluator's cast_identity_result keys on -- so an identity cast never reaches this arm, and a same-leaf-
+        // name different-declaration source (a.Port as b.Port) DOES reach it and is refused, closing the fork on both
+        // directions rather than only the leaf-name-equal one.
+        // Everything left in the domain is a non-literal or cross-refinement `as T` into a refined Int carrier that
+        // eval_cast refuses with "cannot cast Int to <Name>" while the checker was silent; refusing it at check time
+        // (no implicit route that needs a proof, DESIGN 4) turns the run-time latent outage into a located refusal.
+        // A bare literal written directly in the refined position needs no cast and is judged by the refinement wall;
+        // a value already on another carrier crosses only through a checked constructor.
+        let diag = RefinementCastRefused { source: source_name, target: target_name, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
       else {
@@ -9380,6 +9482,30 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
 // gunbc.recurring_failure_mode generic_identity_decided_by_spelling rosters.
 fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
   (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
+}
+
+// ONE AUTHORITY FOR THE FOLD-CARRIER REFINEMENT. A fold's accumulator, when under-resolved OR an
+// unapplied generic expansion, is refined from the STEP FUNCTION'S RETURN: the step's return names
+// the element type the unapplied carrier dropped, so the next fold that reads a field of the element
+// reads it on the element rather than on the container. BOTH fold forms now reach THIS definition --
+// the ExprCall arm (`refined_call_fold_acc_type`) and the ExprMethodCall arm (`refined_fold_acc_type`)
+// -- because the refinement is ONE decision with ONE authoritative definition: the method arm
+// independently decided it, and "a second place that independently decides it is a fork." The two
+// arms in fact DISAGREED -- the method arm omitted the generic test -- leaving a method-form fold over
+// a generic carrier unrefined and the next fold refusing "no field 'v' on type 'FreeMonoid'" (the harm
+// named in gunbc.recurring_failure_mode.unapplied_generic_accumulator_types_element_as_container).
+// @ref(gunbc.design_argument::single_authority)
+fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scope: InferScope) -> Node? {
+  match fold_acc_type {
+    Present { value: acc } =>
+      if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
+        match args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+          Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+          Absent => fold_acc_type
+        }
+      } else { fold_acc_type }
+    Absent => none
+  }
 }
 
 fn method_name_is(opt: String?, expected: String) -> Bool {
@@ -11009,16 +11135,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: ta } => arg_value(n: ta)
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
-        let refined_call_fold_acc_type: Node? = match call_fold_acc_type {
-          Present { value: acc } =>
-            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
-              match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-                Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-                Absent => call_fold_acc_type
-              }
-            } else { call_fold_acc_type }
-          Absent => none
-        }
+        let refined_call_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: call_fold_acc_type, args: typed_args, scope: scope)
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
           KnownMethodResolution { semantics: none, result_type: none, diagnostics: [], rest_operation: false }
         } else {
@@ -11429,16 +11546,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_emissions = infer_emissions_concat_all(chunks: map(mc_arg_infer_results, air => air.emissions))
-      let refined_fold_acc_type: Node? = match fold_acc_type {
-        Present { value: acc } =>
-          if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) {
-            match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-              Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-              Absent => fold_acc_type
-            }
-          } else { fold_acc_type }
-        Absent => none
-      }
+      let refined_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: fold_acc_type, args: typed_mc_args, scope: scope)
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
@@ -12102,7 +12210,29 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let source_reading = cast_source_host_text_reading(source_inferred: inner_typed.inferred, scope: scope)
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading)
+      let target_resolved = match lookup_type_for(env: scope.type_env, node: target_type) {
+        Present { value: r } => r
+        Absent => target_type
+      }
+      let target_is_int_refined = (type_where_refinement_predicates_transitive(ty: target_resolved, type_env: scope.type_env)
+        |> filter(pred => where_refinement_is_int_literal_predicate(pred_name: field_init_node_name_at(n: pred, source_indices: si)))
+        |> count) > 0
+      let source_int_kernel = match inner_typed.inferred {
+        Present { value: Resolved { node: snode } } =>
+          let sresolved = match lookup_type_for(env: scope.type_env, node: snode) {
+            Present { value: r } => r
+            Absent => snode
+          }
+          let sbase_name = authored_name_at(source_indices: si, node: peel_where_refinement_base(ty: sresolved, type_env: scope.type_env))
+          sbase_name == "Int" || sbase_name == "Nat"
+        _ => false
+      }
+      // The domain is only the two kernel facts the checker cannot judge inside validate_cast (they need type_env).
+      // IDENTITY IS NOT TESTED HERE: it is decided once, declaration-keyed, inside validate_cast (see the
+      // is_identity_cast computation), so a source already on the target carrier is admitted and a same-leaf-name
+      // different-declaration source is refused -- both by the SAME key the evaluator uses, not a leaf-name string.
+      let int_refinement_cast_domain = target_is_int_refined && source_int_kernel
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading, int_refinement_cast_domain: int_refinement_cast_domain)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
@@ -16577,15 +16707,543 @@ fn infer_item(item: Node, scope: InferScope, data_values: List<Node>) -> TypedIt
   }
 }
 
+// WHICH DECLARATIONS A TYPECHECK OWES BODIES FOR. The whole-closure typecheck is the case "every
+// declaration demanded"; a run that evaluates a fraction of its closure demands only the
+// declarations reachable from its entry (`demanded_declaration_names`). An undemanded function keeps its
+// signature (importers still resolve it) and owes no body inference: no emission, no output provenance.
+type DeclarationDemand
+  = AllDeclarations
+  | OnlyDeclarations { names: Map<String, Bool>, realization: Realization }
+
+// Which realization a demand carries: inactive for the whole-closure typecheck, and the declaration-
+// grain closure for a run. Read it here rather than threading a second parameter through every
+// realization fold -- the demand is already the authority for what a run owes, and a second one
+// drifting from it is the fork this avoids.
+fn declaration_demand_realization(demand: DeclarationDemand) -> Realization {
+  match demand {
+    AllDeclarations => inactive_realization()
+    OnlyDeclarations { names: _, realization: realization } => realization
+  }
+}
+
+// A function is a declaration of kind ModuleItemFunction with a body, whatever its arity: a
+// zero-parameter entry such as `main` or `heal_tail_wet` is a function, not a value.
+fn declares_function_body(item: Node) -> Bool {
+  item.body != none && match item.module_item_kind {
+    ModuleItemFunction => true
+    _ => false
+  }
+}
+
+// DECLARATION-GRAIN REALIZATION ------------------------------------------------------------
+// WHAT A RUN MUST REALIZE, AND WHY LEAVING THE REST OUT IS EVER SAFE.
+//
+// #16069 stopped inferring the BODIES a requested entry cannot reach; the signatures, type rows and
+// module context of every declaration in the import closure were still realized, because
+// `declaration_demanded` answered 'always wanted' for anything that is not a function. Measured on
+// `fleet_converge_plan_wet`: 3318 modules realized, 796 of them holding a demanded function body,
+// and the import closure of those 796 being all 3318 -- so no module-granular cut can help, and
+// build_module_context (325 s), build_type_env (157 s) and infer_items (112 s) are paid for a corpus
+// the entry never consults.
+//
+// THE RULE. A declaration is realized when a realized declaration NAMES it, transitively from the
+// requested entry. What "names" means is declared once, in `realization_edges`: the names spelled in
+// a declaration's extent, plus one edge per reading check the checker performs on that declaration
+// with a key it does not spell. There is no exempt list -- an inhabitance or algebra row, a dispatch
+// selection, a provider demand, an effect-analysis row and a global bare-name winner are each a
+// DECLARED EDGE from the reading check to the row's declaration, so a dispatch-selected declaration
+// in an otherwise unreached module is as reachable as one spelled in a body.
+//
+// WHY IT CANNOT GO QUIETLY WRONG. `realization_audit` re-derives the same edges from the declarations
+// it did realize and refuses at the declaration's own span when one names a declaration the closure
+// contains but did not realize. Absence and unreality are different facts: reporting the first for
+// the second would be a silent miss, so it is a typed refusal naming the reading check that asked
+// (gunbc.design_argument::fail_closed: a refusal names its own reason).
+type RealizationEdge { reader: String, name: String, span: SourceSpan }
+
+type Realization {
+  active: Bool,
+  realized: Map<String, Bool>,
+  declared: Map<String, Bool>
+}
+
+// The whole-closure typecheck: every declaration is realized, nothing is filtered, nothing refuses.
+fn inactive_realization() -> Realization {
+  Realization { active: false, realized: empty_map(), declared: empty_map() }
+}
+
+// A realization is either none at all (the whole-closure typecheck) or the enforcing one; there is no
+// measuring mode, because a switch that turns the boundary check off is a way to make a missing
+// declared edge invisible.
+fn realization_enforcing(realization: Realization) -> Bool { realization.active }
+
+// THE ONE HOME FOR THE READS A DECLARATION OWEs THE CHECKER. Every arm here is a reading check that
+// consults a declaration row by a key taken from this declaration; the edge it owes is named by that
+// key. Adding a read to the checker without adding its edge here is caught by `realization_audit`,
+// not by a reviewer noticing: the audit re-derives these edges and refuses when one names a
+// declaration the run never realized.
+
+
+fn realization_edges(n: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  concat(
+    fold([ "spelled", "inhabitance_row", "algebra_row", "dispatch", "provider_demand", "effect_analysis", "global_bare_lookup" ], init: [], f: (acc, reader) =>
+      fold(realization_read_names(n: n, source_indices: source_indices), init: acc, f: (a2, nm) =>
+        list_push(a2, RealizationEdge { reader: reader, name: nm, span: n.span }))),
+    concat(realization_row_edges(item: n, source_indices: source_indices),
+      realization_provider_row_edges(item: n, source_indices: source_indices)))
+}
+
+// THE ROWS A DECLARATION'S OWN DEFINITION MAKES THE CHECKER READ. `spelled_names_into` walks the extent an
+// author wrote -- children, params, properties, uses, body, annotations, transport -- and stops at
+// `inferred`, correctly: what a TYPE IS DECLARED TO BE is not extent. `type MoneyAmountMicro =
+// MoneyAmount<Micro>` is read by the type reader through its right-hand side (resolve's
+// expand_nominal_alias_rhs, the env's alias_rhs binding), and `type EpochMs = Int where range(min: 0)`
+// through its base and its predicates -- rows no demanded declaration spells. Those reads are real, so
+// the edges are declared here, keyed by the SAME authorities the checker reads through
+// (v1.compiler.env transparent_alias_rhs, parameterized_alias_rhs, is_where_refinement_node over the
+// item's resolved node): the edge list is the checker's read, not a list of names this file wants. Growth
+// (`demand_wave_add`) and the boundary audit both come through this one function, so a row reached only
+// this way is REALIZED -- an alias body or a refinement predicate in an otherwise-unreached module counts
+// reachable -- and a row reached by no edge at all refuses.
+fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  let reader = match transparent_alias_rhs(pre: item) {
+    Present { value: _ } => "alias_rhs_expansion"
+    Absent => match parameterized_alias_rhs(pre: item, source_indices: source_indices) {
+      Present { value: _ } => "alias_rhs_expansion"
+      Absent => match item.inferred {
+        Present { value: Resolved { node: rhs } } => if is_where_refinement_node(n: rhs) { "where_refinement_chain" } else { "" }
+        _ => ""
+      }
+    }
+  }
+  let rhs = match transparent_alias_rhs(pre: item) {
+    Present { value: r } => Present { value: r }
+    Absent => match parameterized_alias_rhs(pre: item, source_indices: source_indices) {
+      Present { value: pa } => Present { value: pa.rhs }
+      Absent => match item.inferred {
+        Present { value: Resolved { node: r } } => if is_where_refinement_node(n: r) { Present { value: r } } else { none }
+        _ => none
+      }
+    }
+  }
+  concat(realization_wire_contract_row_edges(item: item, source_indices: source_indices),
+    if reader == "" { [] } else {
+      match rhs {
+        Absent => []
+        Present { value: r } => fold(realization_read_names(n: r, source_indices: source_indices), init: [], f: (acc, nm) =>
+          list_push(acc: acc, item: RealizationEdge { reader: reader, name: nm, span: item.span }))
+      }
+    })
+}
+
+// THE ROWS THE RESPONSE DECODE READS BY KEY, AND THE KEY IT READS. A JSON body decodes into a declared
+// type only through rows the declaring type does NOT spell: the interpreter's
+// build_coproduct_wire_contract_index (src/v1/stage0/src/v1_interpreter.rs) selects a coproduct's wire
+// spelling by matching EACH `CoproductWireContract` row's own `coproduct` DeclarationRef against the
+// coproduct's (module path, authored name), and resolve_module_encoding finds a module's default by the
+// data item named `wire_contract`, following an alias chain. Nothing in the declaring type's row names
+// either row: the contract lives in a sibling `_contracts` module that the type's module merely IMPORTS,
+// and an import is not a use. So the key is in no inventory -- neither spelled, nor a reader family's
+// declared edge, nor re-derivable from the typed form -- which is exactly the case
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag recorded as "no such read is
+// known". It is known now: with these rows excluded the index comes up empty, decode_nullary_coproduct
+// answers NoWireContract (v1_interpreter.rs), and the heal publisher's github.Pulls.Get printed
+// 'status 200 undecodable' for every PR it read. The class enters the way every other reading check
+// does: the CATEGORY the reader keys over is seeded, because no declaration can name it, and the key read
+// each row performs -- its own `coproduct` DeclarationRef -- is a declared edge, so growth follows it and
+// the boundary audit polices it. The category is the reader's own key set, not a list of names this file
+// wants: every data row whose declared type is `CoproductWireContract`, and every data row the reader can
+// find under the name `wire_contract`.
+fn realization_wire_contract_read_row(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if item.module_item_kind != ModuleItemDataValue {
+    false
+  } else if item.name == "wire_contract" {
+    true
+  } else {
+    match item.type_annotation {
+      Present { value: ta } =>
+        realization_last_segment(
+          name: authored_name_at(source_indices: source_indices, node: ta),
+          pos: 0,
+          length: string_length(s: authored_name_at(source_indices: source_indices, node: ta)))
+          == "CoproductWireContract"
+        && match item.body {
+             Present { value: body } =>
+               realization_record_field_value(record: body, field_name: "coproduct", source_indices: source_indices) != none
+               && realization_record_field_value(record: body, field_name: "encoding", source_indices: source_indices) != none
+             Absent => false
+           }
+      Absent => false
+    }
+  }
+}
+
+// The rows of that category, by the closure's own authored names: seeds of the demanded set, because the
+// only thing that could name them is a reader that holds its key in another module's row.
+fn realization_wire_contract_read_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  fold(modules, init: [], f: (acc, m) =>
+    fold(module_items(n: m.module), init: acc, f: (a, item) =>
+      if !realization_wire_contract_read_row(item: item, source_indices: source_indices) { a }
+      else { list_push(acc: a, item: authored_name_at(source_indices: source_indices, node: item)) }))
+}
+
+// THE KEY READ THE ROW PERFORMS. A contract row IS a lookup key the interpreter holds: its `coproduct`
+// DeclarationRef designates the coproduct whose wire spelling it declares. The row names that
+// declaration by no lexeme of its own that the type reader walks, so the edge is declared here, named the
+// way the reader matches it (the DeclarationRef's `decl_name`, the segment it compares): a row whose key
+// designates a declaration this run did not realize then refuses at check time under reader
+// `wire_contract_index`, instead of leaving the run to answer 'no such coproduct' at the first body that
+// reaches it. A module's `wire_contract` default row carries no `coproduct` field and owes nothing: what
+// it decodes is decided by which module asks.
+fn realization_wire_contract_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  if !realization_wire_contract_read_row(item: item, source_indices: source_indices) { [] }
+  else {
+    match realization_wire_contract_row_target(item: item, source_indices: source_indices) {
+      Absent => []
+      Present { value: target } => list_push([], RealizationEdge { reader: "wire_contract_index", name: target, span: item.span })
+    }
+  }
+}
+
+// The coproduct a contract row designates: the `decl_name` of its body's `coproduct` DeclarationRef, read
+// the way the emitter reads the same field (v1.compiler.emit_rust coproduct_decl_ref_decl_name, whose
+// field_value_by_name / record_string_field idiom is reproduced here because 05_emit_rust sits downstream
+// of this file and its helpers cannot be imported upstream).
+fn realization_wire_contract_row_target(item: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match item.body {
+    Present { value: body } => match realization_record_field_value(record: body, field_name: "coproduct", source_indices: source_indices) {
+      Present { value: decl_ref_node } => realization_record_string_field(record: decl_ref_node, field_name: "decl_name", source_indices: source_indices)
+      Absent => none
+    }
+    Absent => none
+  }
+}
+
+// One field-init of a record body, by the name the parser recorded for it (the emitter's field_value_by_name).
+fn realization_record_field_value(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field_name) |> first {
+    Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+    Absent => none
+  }
+}
+
+// A record field that must be a string literal, read as the emitter reads it (record_string_field).
+fn realization_record_string_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match realization_record_field_value(record: record, field_name: field_name, source_indices: source_indices) {
+    Present { value: n } => expr_literal_string_optional(expr: n)
+    Absent => none
+  }
+}
+
+// THE DOTTED ROWS A DECLARATION READS WITHOUT SPELLING. A provider call `shell.GCloud.AuthPrintAccessToken()`
+// spells ONE dotted lexeme; the rows the checker reads are keyed by its prefixes -- `shell.GCloud` is the
+// service row the call resolves through (v1.compiler.infer service_census_registry and the symbol index's
+// `services` census key services that way, and `service shell.GCloud { ... }` authors its name that way). The
+// lexeme no declaration authors, so the prefix rows are declared as edges here: growth realizes them (a
+// provider row in an otherwise-unreached module counts reachable) and the audit refuses on any prefix the
+// read asked for that this run did not realize.
+// EVERY NAME A DOTTED LEXEME CARRIES. `HttpMethod.PUT` is ONE token in the source, but the checker
+// reads it as two declarations: the row `HttpMethod` and the arm `PUT` it selects; a qualified
+// `std.nat.Nat` resolves through its LAST segment, and `Map<String, X>` through its head. Harvesting
+// only the whole lexeme would leave the row unrealized and make the audit refuse a read the author
+// plainly spelled, so every prefix, every segment and the generic head are grown through.
+fn realization_spine_names_into(own: Map<String, Bool>, name: String) -> Map<String, Bool> {
+  let length = string_length(s: name)
+  let with_self = map_insert(own, name, true)
+  let with_head = map_insert(with_self, realization_generic_head(name: name, pos: 0, length: length), true)
+  fold(concat(realization_dotted_prefix_walk(name: name, pos: 0, length: length, acc: []),
+              realization_dotted_segment_walk(name: name, pos: 0, length: length, acc: [])),
+    init: with_head, f: (a, part) => map_insert(a, part, true))
+}
+
+fn realization_generic_head(name: String, pos: Int, length: Int) -> String {
+  if pos >= length { name }
+  else if char_at(s: name, pos: pos) == "<" { substring(s: name, start: 0, end: pos) }
+  else { realization_generic_head(name: name, pos: pos + 1, length: length) }
+}
+
+// The tail after each dot: "a.b.c" yields "b.c" and "c", so the declaration a qualified name
+// designates is grown through even when its module path is spelled in front of it.
+fn realization_dotted_segment_walk(name: String, pos: Int, length: Int, acc: List<String>) -> List<String> {
+  if pos >= length { acc }
+  else if char_at(s: name, pos: pos) == "." {
+    realization_dotted_segment_walk(name: name, pos: pos + 1, length: length, acc: list_push(acc, substring(s: name, start: pos + 1, end: length)))
+  } else { realization_dotted_segment_walk(name: name, pos: pos + 1, length: length, acc: acc) }
+}
+
+fn realization_dotted_prefix_walk(name: String, pos: Int, length: Int, acc: List<String>) -> List<String> {
+  if pos >= length { acc }
+  else if char_at(s: name, pos: pos) == "." {
+    realization_dotted_prefix_walk(name: name, pos: pos + 1, length: length, acc: list_push(acc, substring(s: name, start: 0, end: pos)))
+  } else { realization_dotted_prefix_walk(name: name, pos: pos + 1, length: length, acc: acc) }
+}
+
+fn realization_provider_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  fold(realization_read_names(n: item, source_indices: source_indices), init: [], f: (acc, name) =>
+    if !contains(name, ".") { acc }
+    else {
+      fold(realization_dotted_prefix_walk(name: name, pos: 0, length: string_length(s: name), acc: []), init: acc, f: (a2, prefix) =>
+        list_push(a2, RealizationEdge { reader: "provider_demand", name: prefix, span: item.span }))
+    })
+}
+
+// The name set one declaration's row makes the checker read: its spelled extent, its alias or refinement
+// right-hand side, and the provider rows its dotted calls resolve through. THE ONE INVENTORY -- closure
+// growth and the audit's edges both derive from it, so growth cannot drift behind the edges it refuses on.
+fn realization_row_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  concat(realization_read_names(n: item, source_indices: source_indices),
+    concat(
+      realization_row_edges(item: item, source_indices: source_indices) |> map(e => e.name),
+      realization_provider_row_edges(item: item, source_indices: source_indices) |> map(e => e.name)))
+}
+
+// THE READS THAT ONLY EXIST AFTER THE CHECKER HAS DONE ITS WORK: desugaring a pipe into a `filter`
+// call, synthesizing an equality member for a type, grounding an operator into an algebra row -- each
+// introduces a name the SOURCE never spelled, and the row it selects must be realized too. These are
+// edges off the typed item, and they are deliberately NOT part of the closure's growth: the closure
+// grows from what the source spells, so a name that appears only in a typed item is a gap unless a
+// reading check declares the edge. That asymmetry is what makes the audit able to fail.
+fn realization_typed_edges(n: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  fold(realization_read_names(n: n, source_indices: source_indices), init: [], f: (acc, nm) =>
+    list_push(acc: acc, item: RealizationEdge { reader: "desugar_or_synth", name: nm, span: n.span }))
+}
+
+fn realization_read_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  map_keys(spelled_names_into(n: n, source_indices: source_indices, acc: empty_map(), deep: true))
+}
+
+// The transitive naming closure, from the requested entry outward, over EVERY declaration kind. The
+// blanket rule it replaces added every non-function declaration's name as a first wave; here the
+// first wave is only the seeds, and each wave adds the edges of the declarations of the names newly
+// realized. Reuses the wave machinery of demanded_declaration_names, whose index is keyed by authored
+// name -- so a row reached only by an implicit-read edge is realized in whatever module declares it.
+fn realization_names(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  let items = fold(modules, init: [], f: (acc, m) => concat(acc, module_items(n: m.module)))
+  let declaration_index = fold(items, init: empty_map(), f: (idx, item) =>
+    let nm = authored_name_at(source_indices: source_indices, node: item)
+    map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item)))
+  let demand_seeds = concat(seeds, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+  let seeded = fold(demand_seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let first = fold(map_keys(seeded), init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, nm) =>
+    fold(match map_get(declaration_index, nm) { Present { value: l } => l  Absent => [] }, init: w, f: (a, item) =>
+      demand_wave_add(w: a, item: item, source_indices: source_indices)))
+  demand_wave_loop(w: first, fn_index: declaration_index, source_indices: source_indices).demanded
+}
+
+// The census the refusal is distinguished against: a name nothing in the graph can resolve is the reader's
+// own business ('no such declaration'), and a name the graph CAN resolve but this run did not realize is
+// THIS refusal. The census is not a list this file maintains: it is the checker's own resolve tables --
+// every item's authored name, the symbol index's entries, and the global bare-name winners the env falls
+// back to -- so a read the checker could have answered can never go missing quietly.
+fn realization_declared_names(
+  modules: List<ResolvedModule>,
+  symbol_index: SymbolIndex,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Bool> {
+  let by_item = fold(fold(modules, init: [], f: (acc, m) => concat(acc, module_items(n: m.module))), init: empty_map(), f: (acc, item) =>
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: item), true))
+  fold(concat(map_keys(symbol_index.entries), map_keys(symbol_index.global_bare)), init: by_item, f: (acc, name) =>
+    map_insert(acc, name, true))
+}
+
+fn realization_of(
+  modules: List<ResolvedModule>,
+  seeds: List<String>,
+  symbol_index: SymbolIndex,
+  source_indices: Map<String, NewlineIndex>
+) -> Realization {
+  Realization {
+    active: true,
+    realized: realization_names(modules: modules, seeds: seeds, source_indices: source_indices),
+    declared: realization_declared_names(modules: modules, symbol_index: symbol_index, source_indices: source_indices)
+  }
+}
+
+// A declaration the run may realize: everything, when nothing is being filtered; otherwise only a
+// name the closure realized.
+fn realization_includes(realization: Realization, name: String) -> Bool {
+  // A qualified or parameterized name DESIGNATES a declaration rather than naming one: the checker
+  // resolves `std.nat.Nat` to the item authored `Nat` and `Map<K, V>` to the item authored `Map`.
+  // Membership asks about the declaration, so it accepts the whole spelling, its generic head, or
+  // its last segment -- the same resolution the checker performs, not a list of pardons.
+  if !realization.active { true }
+  else {
+    fold(realization_name_variants(name: name), init: false, f: (hit, v) => hit || map_has(m: realization.realized, key: v))
+  }
+}
+
+// The declaration name a possibly-qualified name ends with: "a.b.C" -> "C", "C" -> "C".
+fn realization_last_segment(name: String, pos: Int, length: Int) -> String {
+  if pos >= length { name }
+  else if char_at(s: name, pos: pos) == "." {
+    realization_last_segment(name: substring(s: name, start: pos + 1, end: length), pos: 0, length: length - pos - 1)
+  } else { realization_last_segment(name: name, pos: pos + 1, length: length) }
+}
+
+// The names a possibly-qualified spelling resolves to: the whole spelling, its generic head, and
+// the last segment of that head -- the resolution the checker performs when it maps a designation
+// onto the item authored with a shorter name. Growth and audit ask about declarations, so both use
+// every form a read can arrive under; a gap named `std.nat.Nat` seeds the wave as `Nat` too, or the
+// index (keyed by authored names) finds nothing and the round repeats the same refusal.
+fn realization_name_variants(name: String) -> List<String> {
+  let head = realization_generic_head(name: name, pos: 0, length: string_length(s: name))
+  let segment = realization_last_segment(name: head, pos: 0, length: string_length(s: head))
+  list_push(
+    acc: list_push(acc: [name, head], item: segment),
+    item: realization_last_segment(name: name, pos: 0, length: string_length(s: name)))
+}
+
+// THE BOUNDARY AUDIT. The declarations this module realized each owe the checker the edges of
+// `realization_edges`; every one of them must be realized, or the run read a row it never built.
+// Refusal at the OWING declaration's span, naming the reading check that asked and the module the row
+// would have come from -- a located refusal, never an absent answer.
+fn realization_audit(realization: Realization, edges: List<RealizationEdge>, module_name: String) -> List<ErrorNode> {
+  if !realization_enforcing(realization: realization) { [] } else {
+    // One refusal per (module, name), carrying the first reading check that asked for the row. Every
+    // family reads the same name set, so a hundred copies of one refusal -- one per spelling, one per
+    // family -- say nothing an engineer would act on differently; the refusal, its location and its
+    // reader are what a fix needs.
+    let asked = fold(edges, init: empty_map(), f: (acc, edge) =>
+      if fold(realization_name_variants(name: edge.name), init: false, f: (hit, v) => hit || map_has(m: realization.realized, key: v)) { acc }
+      else if !fold(realization_name_variants(name: edge.name), init: false, f: (hit, v) => hit || map_has(m: realization.declared, key: v)) { acc }
+      else if map_has(m: acc, key: edge.name) { acc }
+      else { map_insert(acc, edge.name, edge) })
+    fold(map_keys(m: asked), init: [], f: (acc, name) =>
+      match map_get(asked, name) {
+        Present { value: edge } => list_push(acc, make_error_node(diagnostic: DeclarationRealizationGap { reader: edge.reader, target_module: module_name, name: name, span: edge.span }, module_name: module_name))
+        Absent => acc
+      })
+  }
+}
+
+
+fn declaration_demanded(demand: DeclarationDemand, item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match demand {
+    AllDeclarations => true
+    OnlyDeclarations { names: names, realization: realization } =>
+      if declares_function_body(item: item) {
+        map_has(m: names, key: authored_name_at(source_indices: source_indices, node: item))
+      } else if realization.active {
+        map_has(m: realization.realized, key: authored_name_at(source_indices: source_indices, node: item))
+      } else { true }
+  }
+}
+
+// The names a declaration makes the checker READ: every node's authored name and its kernel name,
+// through body, parameters, annotations, transport, properties and uses -- plus, one level down,
+// what a field or parameter is TYPED BY, which resolve keeps inside `inferred` rather than in the
+// extent (see the `deep` block below). A SUPERSET of what the declaration references (a local that
+// shares a declaration's spelling over-demands; nothing it names is missed), so an unreached verdict
+// is never wrong, only less narrow. `deep` bounds the `inferred` descent to one level per node: a
+// row reached by NAME is walked again as its own declaration, so no chain of type nodes is followed
+// here and the walk cannot cycle through a self-referential type.
+fn spelled_names_into(n: Node, source_indices: Map<String, NewlineIndex>, acc: Map<String, Bool>, deep: Bool) -> Map<String, Bool> {
+  let own = map_insert(map_insert(acc, authored_name_at(source_indices: source_indices, node: n), true), n.name, true)
+  // The DOTTED lexeme an author wrote is part of what the declaration spells: a provider call
+  // `shell.GCloud.AuthPrintAccessToken()` is ONE token in the source, and its segments alone name
+  // nothing. The spine is the checker's own authority for that chain (v1.std.core
+  // field_access_spine), so the lexeme is harvested the way the checker reads it -- and
+  // realization_provider_row_edges then declares the service row its prefix resolves through.
+  let own = match field_access_spine(texpr: n, source_indices: source_indices) {
+    Present { value: spine } => if spine.dotted == "" { own } else { realization_spine_names_into(own: own, name: spine.dotted) }
+    Absent => own
+  }
+  // Resolve records WHICH DECLARATION a reference names on Node.declaration, and the type
+  // environment reads that declaration -- not the spelled name -- when it builds a row:
+  // v1.compiler.infer_env `alias_rhs_of_declaration` takes the DeclarationRef straight out of the
+  // node (`TypeReferenceNamesDeclaration { declaration }`) and looks its item up in the type
+  // environment. So a field typed by a declaration this module never imported is still a read of
+  // that declaration, and it is declared here rather than discovered as a missing type later.
+  let own = match n.declaration {
+    Present { value: d } => map_insert(own, d.decl_name, true)
+    Absent => own
+  }
+  // WHAT A FIELD OR PARAMETER IS TYPED BY IS READ OUT OF `inferred`, NOT OUT OF THE EXTENT. Resolve
+  // records a field's type as a resolved node inside Node.inferred -- a parsed arm field carries its
+  // type ONLY there (no child, no type_annotation, no declaration ref) -- and the row builder reads
+  // that node to type the field. An arm typed by a declaration this module never spelled is therefore
+  // read through `inferred` alone: declared as an edge here, or the cut would answer "unresolved type"
+  // for a type the checker is about to read -- the silent miss this design forbids.
+  let own = if !deep { own } else {
+    match n.inferred {
+      Present { value: Resolved { node: rn } } => spelled_names_into(n: rn, source_indices: source_indices, acc: own, deep: false)
+      _ => own
+    }
+  }
+  let own = fold(n.children, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a, deep: true))
+  let own = fold(n.params, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a, deep: true))
+  let own = fold(n.properties, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a, deep: true))
+  let own = fold(n.uses, init: own, f: (a, c) => spelled_names_into(n: c, source_indices: source_indices, acc: a, deep: true))
+  let own = match n.body { Present { value: b } => spelled_names_into(n: b, source_indices: source_indices, acc: own, deep: true)  Absent => own }
+  let own = match n.type_annotation { Present { value: b } => spelled_names_into(n: b, source_indices: source_indices, acc: own, deep: true)  Absent => own }
+  match n.transport { Present { value: b } => spelled_names_into(n: b, source_indices: source_indices, acc: own, deep: true)  Absent => own }
+}
+
+// The declarations a requested function transitively demands, over the whole closure: a
+// declaration is demanded when its authored name is spelled in a demanded declaration (or is a seed).
+// Computed from the parsed-and-resolved modules before any body is inferred, so it reads no types.
+// Non-function declarations are realized only when this wave reaches their names -- spelled in a
+// demanded declaration, or named by a declared read such as an alias right-hand side
+// (realization_row_edges) -- so a data row or type this closure cannot reach is not realized.
+fn demanded_declaration_names(modules: List<ResolvedModule>, seeds: List<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  let items = flat_map(modules, m => module_items(n: m.module))
+  let seeded = fold(seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  // Index the function bodies by authored name once; every non-function declaration is wanted, so its
+  // spelled names are the first wave. Each later wave scans ONLY the bodies of names newly demanded,
+  // so a declaration is scanned at most once per name (linear in the closure, not rounds x items).
+  let fn_index = fold(items, init: empty_map(), f: (idx, item) =>
+    if declares_function_body(item: item) {
+      let nm = authored_name_at(source_indices: source_indices, node: item)
+      map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item))
+    } else { idx })
+  let first = fold(items, init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, item) =>
+    if declares_function_body(item: item) { w } else { demand_wave_add(w: w, item: item, source_indices: source_indices) })
+  demand_wave_loop(w: first, fn_index: fn_index, source_indices: source_indices).demanded
+}
+
+fn demand_wave_add(w: DemandWave, item: Node, source_indices: Map<String, NewlineIndex>) -> DemandWave {
+  // The names one declaration's row makes the checker read: its spelled extent plus, for a type, the
+  // alias or refinement right-hand side it is declared to be. THE SAME INVENTORY the boundary audit
+  // holds a module to (realization_row_names), so growth cannot drift behind the edges it refuses on.
+  fold(realization_row_names(item: item, source_indices: source_indices), init: w, f: (acc, nm) =>
+    if map_has(m: acc.demanded, key: nm) { acc }
+    else { DemandWave { demanded: map_insert(acc.demanded, nm, true), fresh: list_push(acc.fresh, nm) } })
+}
+
+fn demand_wave_loop(w: DemandWave, fn_index: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> DemandWave {
+  if count(w.fresh) == 0 { w } else {
+    let next = fold(w.fresh, init: DemandWave { demanded: w.demanded, fresh: [] }, f: (acc, nm) =>
+      fold(match map_get(fn_index, nm) { Present { value: l } => l  Absent => [] }, init: acc, f: (a2, item) => demand_wave_add(w: a2, item: item, source_indices: source_indices)))
+    demand_wave_loop(w: next, fn_index: fn_index, source_indices: source_indices)
+  }
+}
+
+type DemandWave { demanded: Map<String, Bool>, fresh: List<String> }
+
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
+  infer_items_demanded(items: items, scope: scope, demand: AllDeclarations)
+}
+
+fn infer_items_demanded(items: List<Node>, scope: InferScope, demand: DeclarationDemand) -> List<TypedItemResult> {
   // THE SAME DATA THE EMITTER SHOWS THE AUTHORITY. One filter, from this module's own items, is
   // what `service_endpoint_supply` asks about -- the emitter hands over the very same population
   // through `service_data_values`, because two consumers filtering their item lists differently is
   // the endpoint fork again, one level down.
   let data_values = service_data_values(items: items)
   map(items, item =>
+    if !declaration_demanded(demand: demand, item: item, source_indices: scope.type_env.source_indices) {
+      TypedItemResult { item: Node {
+        ident: Absent,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, params: item.params,
+        inferred: item.inferred, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
+        connective: item.connective, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: item.match_pattern, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+      }, emissions: infer_emissions_concat_all(chunks: []) }
+    } else {
     let r = infer_item(item: item, scope: scope, data_values: data_values)
-    TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope)), right: infer_emissions_of_diagnostics(diagnostics: equality_item_body_key_rows(item: r.item, scope: scope)))) })
+    TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope)), right: infer_emissions_of_diagnostics(diagnostics: equality_item_body_key_rows(item: r.item, scope: scope)))) }
+    })
 }
 
 fn is_type_variable_name(name: String) -> Bool {
@@ -18407,7 +19065,7 @@ fn kernel_optional_type_node() -> Node {
 // fires; witness test.claim.undeclared_bare_type_reference_class_witness
 // qualified_use_of_a_listed_import_charges_no_unlisted_import_use (RED pre-fix) beside
 // qualified_use_without_any_import_still_charges_unlisted_import_use (the gate still gates).
-fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, equality_by_target: Map<String, Bool>) -> BuildTypeEnvResult {
+fn build_type_env(module: ResolvedModule, items: List<Node>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, equality_by_target: Map<String, Bool>) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
@@ -18449,7 +19107,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
   let scope_parents = concat(import_parents, [kernel])
   let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Present { value: _ } => [] Absent => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module_name_str, "'"), span: imp.target_module.value.span }, module_name: module_name_str)] })
-  let namespace_alias_diags = flat_map(module_items(n: module.module), item =>
+  let namespace_alias_diags = flat_map(items, item =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
       match namespace_alias_target_path(item: item, source_indices: source_indices) {
         Absent => []
@@ -18463,7 +19121,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
 
   let local_bindings_seed: Map<Int, TypeBinding> = empty_map()
-  let local_bindings = fold(module_items(n: module.module), init: local_bindings_seed, f: (acc, item) =>
+  let local_bindings = fold(items, init: local_bindings_seed, f: (acc, item) =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
       match namespace_alias_target_path(item: item, source_indices: source_indices) {
         Absent => acc
@@ -18488,7 +19146,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
 
   let param_bindings_seed: Map<Int, TypeBinding> = empty_map()
-  let param_bindings = fold(module_items(n: module.module), init: param_bindings_seed, f: (acc, item) =>
+  let param_bindings = fold(items, init: param_bindings_seed, f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Present { value: _ } => true  Absent => false }
     if item.params |> count > 0 && is_type_decl && item.body == none {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
@@ -18527,7 +19185,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let cycle_set = map(sorted_map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
   let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let cycle_set_for_inductive = fold(sorted_map_keys(cycle_set_str), init: empty_set(), f: (acc, name) => set_insert(acc, name))
-  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cycle_set_for_inductive, source_indices: source_indices)
+  let local_inductive_fields = build_item_inductive_fields(items: items, recursive_type_set: cycle_set_for_inductive, source_indices: source_indices)
   let parent_inductive_fields = match scope_parents |> first {
     Present { value: head_parent } =>
       fold(scope_parents |> skip(1), init: head_parent.inductive_fields, f: (acc, parent) =>
@@ -18582,7 +19240,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     unit_variant_index_observed: resolved_env_out.unit_variant_index_observed,
     equality_by_target: equality_by_target,
   }
-  let summarized_env = type_env_with_equality_by_target(env: final_env, by_target: build_equality_by_target(items: module_items(n: module.module), env: final_env, module_name: module_name_str))
+  let summarized_env = type_env_with_equality_by_target(env: final_env, by_target: build_equality_by_target(items: items, env: final_env, module_name: module_name_str))
   let cache_str_bindings = map_merge(final_env.ancestry_str_bindings, final_env.str_bindings)
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
@@ -19240,13 +19898,64 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
   ResolvedFuncEnv { name: func_env.name, local: bound_local, parents: func_env.parents }
 }
 
+fn type_env_over_symbol_index(env: TypeEnv, symbol_index: SymbolIndex) -> TypeEnv {
+  TypeEnv { module_path: env.module_path,
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: env.ancestry_str_bindings,
+    parents: env.parents,
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names,
+    symbol_index: symbol_index,
+    unit_variant_index: env.unit_variant_index,
+    unit_variant_index_observed: env.unit_variant_index_observed,
+    equality_by_target: env.equality_by_target
+  }
+}
+
+// Operation entries of every service in the closure, keyed by service name. Reads only the closure
+// symbol index and source indices, so it is identical for every module of one typecheck pass:
+// typecheck_scoped computes it once and hands it to each module (it used to be rebuilt per module,
+// modules x services x operations).
+fn service_census_registry(env: TypeEnv) -> Map<String, List<OpEntry>> {
+  let scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
+    match map_get(env.symbol_index.services, sname) {
+      Present { value: sentry } =>
+        let sitem = sentry.item
+        let entries = sitem.children |> map(c =>
+          OpEntry {
+            name: authored_name_at(source_indices: env.source_indices, node: c),
+            outputs: inferred_to_outputs(
+              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
+              span: c.span,
+              source_indices: env.source_indices
+            ),
+            params: c.params,
+            rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
+          }
+        )
+        InferScopeComponents {
+          svc_registry: map_insert(acc.svc_registry, sname, entries),
+          svc_locals: acc.svc_locals
+        }
+      Absent => acc
+    }
+  )
+  scope.svc_registry
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
     module_name: String,
-    global_variant_base: Map<String, TypeBinding>) -> ModuleContext {
+    global_variant_base: Map<String, TypeBinding>,
+    service_census: Map<String, List<OpEntry>>?) -> ModuleContext {
   let local = fold_module_contributions(
     remaining: contributions,
     resolved_items: [],
@@ -19277,29 +19986,11 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
-  let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
-    match map_get(env.symbol_index.services, sname) {
-      Present { value: sentry } =>
-        let sitem = sentry.item
-        let entries = sitem.children |> map(c =>
-          OpEntry {
-            name: authored_name_at(source_indices: env.source_indices, node: c),
-            outputs: inferred_to_outputs(
-              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
-              span: c.span,
-              source_indices: env.source_indices
-            ),
-            params: c.params,
-            rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
-          }
-        )
-        InferScopeComponents {
-          svc_registry: map_insert(acc.svc_registry, sname, entries),
-          svc_locals: acc.svc_locals
-        }
-      Absent => acc
-    }
-  )
+  // The census is a fact of the closure, not of this module: one computation per typecheck pass.
+  let census_registry = match service_census {
+    Present { value: c } => c
+    Absent => service_census_registry(env: env)
+  }
   // A SERVICE ROOT IS BOUND ONLY WHERE ITS SERVICE IS DECLARED OR IMPORTED. The closure census
   // supplies operation entries for a qualified service path; it binds no bare root. It used to: every
   // service in the closure put its root into every module's locals, and the locals fold below writes
@@ -19314,7 +20005,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
+    svc_registry: map_merge(census_registry, local.svc_registry),
     svc_locals: local.svc_locals
   )
   let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
@@ -20533,8 +21224,37 @@ fn equality_synthetic_fn(module_name: String, name: String, params: List<Node>, 
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemFunction, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
+// The declarations of one module that this run realizes. Under the whole-closure typecheck and under
+// the observing grain that is every declaration -- the filter is the enforcing grain alone.
+fn realized_declaration_items(items: List<Node>, demand: DeclarationDemand, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  // THE FILTER, AND ITS LIMIT. With an ACTIVE realization a module's context is built from the
+  // declarations this run realized -- that is where the measured 325 s of build_module_context and
+  // 157 s of build_type_env go. With an INACTIVE realization nothing is filtered: that is
+  // #16069's whole-declaration grain, where every declaration gets a context and demand only skips
+  // un-reached function BODIES -- the equivalence test pins that shape, so the cut may not reach it.
+  if !declaration_demand_realization(demand: demand).active {
+    items
+  } else {
+    fold(items, init: [], f: (acc, item) =>
+      if declaration_demanded(demand: demand, item: item, source_indices: source_indices) { list_push(acc: acc, item: item) } else { acc })
+  }
+}
+
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>) -> TypecheckModuleResult {
-  let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, equality_by_target: equality_by_target)
+  typecheck_module_demanded(resolved: resolved, parent_index: parent_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: equality_by_target, demand: AllDeclarations, service_census: Absent)
+}
+
+fn typecheck_module_demanded(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>, demand: DeclarationDemand, service_census: Map<String, List<OpEntry>>?) -> TypecheckModuleResult {
+  // DECLARATION-GRAIN REALIZATION, THE FILTER ITSELF. Everything a module's context is built FROM --
+  // its type env, its analyzed contributions, the equality members synthesized into it -- comes from
+  // the declarations this run realizes, so an unreached declaration costs no type env, no algebra row
+  // and no signature. What it does NOT do is drop the declaration from the module: `resolved.module`
+  // and the items a later stage reads keep every declaration, because a run that realized less is not
+  // a run that compiled a smaller program. Reads of what was left out are refused by
+  // `realization_audit` below, never answered as absent.
+  let realization = declaration_demand_realization(demand: demand)
+  let realized_items = realized_declaration_items(items: module_items(n: resolved.module), demand: demand, source_indices: source_indices)
+  let env_result = build_type_env(module: resolved, items: realized_items, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, equality_by_target: equality_by_target)
   let env = env_result.env
   let env_cache = env_result.cache
   let env_diags = env_result.diagnostics
@@ -20566,9 +21286,44 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     }
   }
 
+  // THE EMPTY-REALIZATION FAST PATH. A module this run realizes NOTHING of has no spelled edge, no
+  // typed edge and no contribution: its context, its analyzed contributions, its synthesized equality
+  // members and its boundary audit all take the realized items as their only input, so all of them
+  // would build an empty result at the full per-module price. The stub returned here is the same
+  // shape the abandonment-before-items path returns -- with the type env still BUILT above, so this
+  // module's own import and type-environment diagnostics keep firing exactly as they did; what is
+  // skipped is only work over declarations none of them can see. A reader in another module that
+  // names something this stub does not carry asks a declaration the run did not realize: the reading
+  // module's boundary audit refuses it as a located realization gap, or its own environment build
+  // refuses it -- a refusal either way, never an answer of 'absent'.
+  if count(realized_items) == 0 {
+    return TypecheckModuleResult {
+      typed: TypedModule {
+        progress: AbandonedBeforeItems,
+        module: resolved.module,
+        items: [],
+        type_env: env,
+        type_env_cache: env_cache,
+        interface: build_module_interface(
+          module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
+          module: resolved.module,
+          env: env,
+          cache: env_cache,
+          source_indices: source_indices
+        ),
+        func_env: ResolvedFuncEnv { name: authored_name_at(source_indices: source_indices, node: resolved.module), local: empty_map(), parents: [] },
+        item_registry: empty_map(),
+        occurrence_transport: Present { value: resolved.occurrence_transport },
+      },
+      diagnostics: concat(env_diags, seed_diags),
+      provider_demands: [],
+      binding_forks: env_result.binding_forks
+    }
+  }
+
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
-  let synthesized_items = equality_synthesized_items(items: module_items(n: resolved.module), module_name: resolved_module_name, env: env)
-  let contributions = map(concat(module_items(n: resolved.module), synthesized_items), item =>
+  let synthesized_items = equality_synthesized_items(items: realized_items, module_name: resolved_module_name, env: env)
+  let contributions = map(concat(realized_items, synthesized_items), item =>
     analyze_item(item: item, env: env, module_name: resolved_module_name)
   )
   let ctx = build_module_context(
@@ -20578,9 +21333,14 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     resolved_imports: resolved.resolved_imports,
     env: env,
     module_name: resolved_module_name,
-    global_variant_base: global_variant_base
+    global_variant_base: global_variant_base,
+    service_census: service_census
   )
 
+  // THE BOUNDARY AUDIT, run over the declarations this module DID realize: each owes the checker the
+  // edges of `realization_edges`, and an edge naming a declaration the closure contains but this run
+  // left unrealized is a read that would have been answered as 'no such declaration'. It refuses here,
+  // at the owing declaration's own span, before anything downstream can consume the missing row.
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
       map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown, alias_rhs: none })
@@ -20602,8 +21362,19 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     in_flight_lambda_param_names: [],
     enclosing_declared_type_param_names: []
   }
-  let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
+  let typed_item_results = infer_items_demanded(items: ctx.resolved_items, scope: infer_scope, demand: demand)
+  // THE BOUNDARY AUDIT over BOTH sources of reads: the names the source spelled, and the names that
+  // only the typed items carry. An edge naming a declaration the closure contains but this run left
+  // unrealized is a read that would have been answered 'no such declaration'; it refuses here, at the
+  // owing declaration's own span, before anything downstream can consume the missing row.
   let typed_items = map(typed_item_results, tir => tir.item)
+  // THE BOUNDARY AUDIT over BOTH sources of reads: the names the source spelled, and the names that
+  // only the typed items carry. An edge naming a declaration the closure contains but this run left
+  // unrealized is a read that would have been answered 'no such declaration'; it refuses here, at the
+  // owing declaration's own span, before anything downstream can consume the missing row.
+  let source_edges = fold(realized_items, init: [], f: (acc, item) => concat(acc, realization_edges(n: item, source_indices: source_indices)))
+  let typed_edges = fold(typed_items, init: [], f: (acc, item) => concat(acc, realization_typed_edges(n: item, source_indices: source_indices)))
+  let audit_diags = realization_audit(realization: realization, edges: concat(source_edges, typed_edges), module_name: resolved_module_name)
   let infer_emissions = infer_emissions_concat_all(chunks: map(typed_item_results, tir => tir.emissions))
   let updated_func_env = populate_output_provenance(
     typed_items: typed_items, func_env: ctx.func_env,
@@ -20661,7 +21432,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     diagnostics: frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
       module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_emissions.diagnostics, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_emissions.diagnostics, grounded.diagnostics, audit_diags, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
     provider_demands: infer_emissions.provider_demands,
     binding_forks: env_result.binding_forks
   }
@@ -21086,13 +21857,46 @@ type ReconciledPass {
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckPass {
+  typecheck_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: EveryDeclaration)
+}
+
+// Which declarations a typecheck owes, and how far their REALIZATION reaches. EveryDeclaration is the
+// compile / emit / witness obligation: every declaration is realized. ReachableFrom is a run's: the
+// requested functions and what they transitively spell, and the realization of every other
+// declaration follows that same naming closure -- a declaration no demanded declaration names gets no
+// type env, no signature and no module context, and any read that crosses the boundary refuses
+// (`realization_audit`). There is no switch to turn that check off: a run that asks for a reachable
+// set is a run that realizes exactly that set.
+type DeclarationScope = EveryDeclaration | ReachableFrom { requested: List<String> }
+
+fn typecheck_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, scope: DeclarationScope) -> TypecheckPass {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
   )
   let symbol_index = build_symbol_index_census(modules: graph.modules, source_indices: source_indices)
+  // The realization is computed against the checker's OWN resolve tables, so the census has to exist
+  // before it: the audit distinguishes 'no such declaration' from 'declared and not realized' by asking
+  // the same index the read would have asked.
+  let realization = match scope {
+    EveryDeclaration => inactive_realization()
+    ReachableFrom { requested: requested } => realization_of(
+      modules: graph.modules,
+      seeds: requested,
+      symbol_index: symbol_index,
+      source_indices: source_indices
+    )
+  }
+  let demand = match scope {
+    EveryDeclaration => AllDeclarations
+    // The demand set and the realization set are the SAME closure: a function whose body is inferred
+    // must have its signature realized too, or the two authorities disagree about what exists and the
+    // body infers against a signature nobody built.
+    ReachableFrom { requested: requested } => OnlyDeclarations { names: realization.realized, realization: realization }
+  }
   let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
-  let state = graph.modules |> fold(init: RealizeState {
+  let service_census = service_census_registry(env: type_env_over_symbol_index(env: compiler_kernel_type_env(source_indices: source_indices, intern_table: intern_table), symbol_index: symbol_index))
+  let state0 = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
     item_registry: empty_map(),
@@ -21107,8 +21911,31 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
       source_indices: source_indices,
       intern_table: intern_table,
       symbol_index: symbol_index,
-      global_variant_base: global_variant_base
+      global_variant_base: global_variant_base,
+      demand: demand,
+      service_census: service_census
     )
+  )
+  // THE FIXPOINT FOR READS ONLY THE TYPED AST MAKES. Desugaring and synthesis read declarations the
+  // SOURCE never spells: a rest transport's Header/AuthScheme rows, the HTTP-semantics rows the effect
+  // analysis dispatches over, the kernel row a numeric literal inhabits. Those reads exist only AFTER a
+  // module is typed, so no source-side family can grow through them in advance. The audit hands them
+  // back as declared edges (reader + name); here the realization absorbs them and re-runs exactly the
+  // modules that reported them. Growth is monotone -- a module that reported nothing had every read it
+  // makes satisfied by the smaller set, so it is not re-run and the price is the modules with implicit
+  // reads, not the closure. Convergence is assumed nowhere: after the rounds, whatever still falls
+  // outside is refused, typed, by the audit.
+  let state = realization_fixpoint(
+    round: 0,
+    state: state0,
+    realization: realization,
+    modules: graph.modules,
+    resolved_by_name: resolved_by_name,
+    source_indices: source_indices,
+    intern_table: intern_table,
+    symbol_index: symbol_index,
+    global_variant_base: global_variant_base,
+    service_census: service_census
   )
   let modules = graph.modules |> flat_map(rm =>
     match map_get(state.module_index, authored_name_at(source_indices: source_indices, node: rm.module)) {
@@ -21142,9 +21969,63 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     graph: TypedGraph {
       modules: modules,
       item_registry: analysed_registry,
-      diagnostics: concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics)
+      diagnostics: concat(concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics), realization_profile_diagnostic(realization: realization, modules: graph.modules, diagnostics: flat_map(diag_chunks, c => c), source_indices: source_indices))
     },
     provider_demands: group_provider_demands(demands: flat_map(demand_chunks, c => c))
+  }
+}
+
+// THE MEASUREMENT ROW. One line that tells 'the entry does not need it' from 'the checker was never
+// told to look': the modules and declarations the closure holds, how many of each the run realized,
+// and how many declared edges fell outside. Both counts at zero (nothing realized at all) and a
+// non-zero gap count together are the signature of a demand set built without its edges.
+// Count to text, for the profile row's rendering. The emit layer has `to_string`, but it sits
+// DOWNSTREAM of inference and cannot be reached upward, and the core layer that owns the diagnostic
+// cannot render an Int at all -- so the rendering lives here, next to the counts it renders.
+fn realization_count_text(value: Int) -> String {
+  fold(realization_count_digits(value: value, acc: []), init: "", f: (acc, ch) => concat(acc, ch))
+}
+
+fn realization_count_digits(value: Int, acc: List<String>) -> List<String> {
+  if value <= 0 { acc } else {
+    let rest = value / 10
+    realization_count_digits(value: rest, acc: concat([realization_digit_char(value - (rest * 10))], acc))
+  }
+}
+
+fn realization_digit_char(digit: Int) -> String {
+  if digit == 0 { "0" } else if digit == 1 { "1" } else if digit == 2 { "2" } else if digit == 3 { "3" }
+  else if digit == 4 { "4" } else if digit == 5 { "5" } else if digit == 6 { "6" } else if digit == 7 { "7" }
+  else if digit == 8 { "8" } else { "9" }
+}
+
+fn realization_profile_diagnostic(realization: Realization, modules: List<ResolvedModule>, diagnostics: List<ErrorNode>, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  if !realization.active { [] } else {
+    let declarations = fold(modules, init: 0, f: (n, rm) => n + count(module_items(n: rm.module)))
+    let declarations_realized = fold(modules, init: 0, f: (n, rm) =>
+      fold(module_items(n: rm.module), init: n, f: (a, item) =>
+        if realization_includes(realization: realization, name: authored_name_at(source_indices: source_indices, node: item)) { a + 1 } else { a }))
+    let modules_realized = count(fold(modules, init: [], f: (acc, rm) =>
+      if fold(module_items(n: rm.module), init: false, f: (seen, item) =>
+        seen || realization_includes(realization: realization, name: authored_name_at(source_indices: source_indices, node: item)))
+      { list_push(acc: acc, item: rm) } else { acc }))
+    let gaps = count(fold(diagnostics, init: [], f: (acc, d) =>
+      match d.diagnostic { DeclarationRealizationGap { reader: _, target_module: _, name: _, span: _ } => list_push(acc: acc, item: d)  _ => acc }))
+    match first(modules) {
+      Absent => []
+      Present { value: head } => [ make_error_node(diagnostic: DeclarationRealizationProfile {
+        grain: "reachable",
+        modules: count(modules),
+        modules_realized: modules_realized,
+        declarations: declarations,
+        declarations_realized: declarations_realized,
+        gaps: gaps,
+        // The counts are the data; this is their rendering, made where Int can become text at all
+        // (v1.std.parse.int_to_string -- the core layer that owns the diagnostic cannot see it).
+        summary: concat(realization_count_text(modules_realized), "/", realization_count_text(count(modules)), " modules realized, ", realization_count_text(declarations_realized), "/", realization_count_text(declarations), " declarations realized, ", realization_count_text(gaps), " reads outside the realized set"),
+        span: head.module.span
+      }, module_name: authored_name_at(source_indices: source_indices, node: head.module)) ]
+    }
   }
 }
 
@@ -21199,7 +22080,9 @@ fn realize_module(
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   symbol_index: SymbolIndex,
-  global_variant_base: Map<String, TypeBinding>
+  global_variant_base: Map<String, TypeBinding>,
+  demand: DeclarationDemand,
+  service_census: Map<String, List<OpEntry>>
 ) -> RealizeState {
   match map_get(state.module_index, name) {
     Present { value: _ } => state
@@ -21215,11 +22098,13 @@ fn realize_module(
               source_indices: source_indices,
               intern_table: intern_table,
               symbol_index: symbol_index,
-              global_variant_base: global_variant_base
+              global_variant_base: global_variant_base,
+              demand: demand,
+              service_census: service_census
             )
           )
           let parent_diagnostics = missing_parent_env_diagnostics(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target)
+          let tc_result = typecheck_module_demanded(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target, demand: demand, service_census: Present { value: service_census })
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
@@ -21235,6 +22120,123 @@ fn realize_module(
             equality_by_target: equality_table_with_module(table: dep_state.equality_by_target, typed: typed, source_indices: source_indices)
           }
       }
+  }
+}
+
+// The names the boundary audit reported as read-but-unrealized, deduplicated: these are the edges
+// the reading checks declared, and the only thing a later round is allowed to grow by.
+fn realization_gap_names(state: RealizeState) -> List<String> {
+  let set = fold(map_keys(state.diags_by_name), init: empty_map(), f: (acc, key) =>
+    match map_get(state.diags_by_name, key) {
+      Present { value: ds } => fold(ds, init: acc, f: (b, d) =>
+        match d.diagnostic {
+          DeclarationRealizationGap { reader: _, target_module: _, name: gname, span: _ } =>
+            fold(realization_name_variants(name: gname), init: b, f: (b2, v) => map_insert(b2, v, true))
+          _ => b })
+      Absent => acc })
+  map_keys(set)
+}
+
+// The modules whose own diagnostics contain at least one realization gap -- the modules a round re-runs.
+fn realization_gap_modules(state: RealizeState) -> List<String> {
+  fold(map_keys(state.diags_by_name), init: [], f: (acc, key) =>
+    match map_get(state.diags_by_name, key) {
+      Present { value: ds } =>
+        if fold(ds, init: false, f: (seen, d) => seen || match d.diagnostic {
+          DeclarationRealizationGap { reader: _, target_module: _, name: _, span: _ } => true
+          _ => false })
+        { list_push(acc: acc, item: key) } else { acc }
+      Absent => acc })
+}
+
+// Re-type the reported modules against the grown realization. Imports are NOT re-run: they are
+// already in the module index, monotone growth cannot invalidate them, and a module that reported
+// nothing keeps its result. This is the whole cost of an implicit read -- one module's context,
+// type environment and inference, not the closure's.
+fn realization_retype(
+  state: RealizeState,
+  names: List<String>,
+  resolved_by_name: Map<String, ResolvedModule>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable,
+  symbol_index: SymbolIndex,
+  global_variant_base: Map<String, TypeBinding>,
+  demand: DeclarationDemand,
+  service_census: Map<String, List<OpEntry>>
+) -> RealizeState {
+  fold(names, init: state, f: (st, key) =>
+    match map_get(resolved_by_name, key) {
+      Absent => st
+      Present { value: resolved } =>
+        let tc_result = typecheck_module_demanded(resolved: resolved, parent_index: st.module_index, variant_surfaces: st.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: st.equality_by_target, demand: demand, service_census: Present { value: service_census })
+        let typed = tc_result.typed
+        let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
+        RealizeState {
+          module_index: map_insert(st.module_index, typed_path, typed),
+          variant_surfaces: map_insert(
+            st.variant_surfaces,
+            typed_path,
+            build_variant_export_surface(tm: typed, surfaces: st.variant_surfaces, source_indices: source_indices)
+          ),
+          item_registry: map_merge(st.item_registry, typed.item_registry),
+          diags_by_name: map_insert(st.diags_by_name, typed_path, concat(missing_parent_env_diagnostics(resolved: resolved, module_index: st.module_index, source_indices: source_indices), tc_result.diagnostics)),
+          demands_by_name: map_insert(st.demands_by_name, typed_path, tc_result.provider_demands),
+          equality_by_target: equality_table_with_module(table: st.equality_by_target, typed: typed, source_indices: source_indices)
+        }
+    })
+}
+
+// The bounded loop: grow by what was read, re-run who read it, until nothing falls outside.
+fn realization_fixpoint(
+  round: Int,
+  state: RealizeState,
+  realization: Realization,
+  modules: List<ResolvedModule>,
+  resolved_by_name: Map<String, ResolvedModule>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable,
+  symbol_index: SymbolIndex,
+  global_variant_base: Map<String, TypeBinding>,
+  service_census: Map<String, List<OpEntry>>
+) -> RealizeState {
+  if !realization.active { state }
+  else if round >= 3 { state }
+  else {
+    let gaps = realization_gap_names(state: state)
+    if count(gaps) == 0 { state }
+    else {
+      let grown = realization_of(
+        modules: modules,
+        seeds: concat(map_keys(realization.realized), gaps),
+        symbol_index: symbol_index,
+        source_indices: source_indices
+      )
+      let demand = OnlyDeclarations { names: grown.realized, realization: grown }
+      let gapped = realization_gap_modules(state: state)
+      let retyped = realization_retype(
+        state: state,
+        names: gapped,
+        resolved_by_name: resolved_by_name,
+        source_indices: source_indices,
+        intern_table: intern_table,
+        symbol_index: symbol_index,
+        global_variant_base: global_variant_base,
+        demand: demand,
+        service_census: service_census
+      )
+      realization_fixpoint(
+        round: round + 1,
+        state: retyped,
+        realization: grown,
+        modules: modules,
+        resolved_by_name: resolved_by_name,
+        source_indices: source_indices,
+        intern_table: intern_table,
+        symbol_index: symbol_index,
+        global_variant_base: global_variant_base,
+        service_census: service_census
+      )
+    }
   }
 }
 
@@ -21349,7 +22351,11 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, index: Map<String, T
 }
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ReconciledPass {
-  let pass = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
+  reconcile_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: EveryDeclaration)
+}
+
+fn reconcile_scoped(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, scope: DeclarationScope) -> ReconciledPass {
+  let pass = typecheck_scoped(graph: graph, source_indices: source_indices, intern_table: intern_table, scope: scope)
   let typed = pass.graph
   let index_seed: Map<String, TypedModule> = empty_map()
   let index = fold(typed.modules, init: index_seed, f: (acc, m) =>

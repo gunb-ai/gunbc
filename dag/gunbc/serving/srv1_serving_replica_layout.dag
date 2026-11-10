@@ -24,13 +24,18 @@ module gunbc.serving.srv1_serving_replica_layout
 // which directories) is a DEPLOYMENT decision that changes when the operator decides; keeping it here
 // makes the two concerns separable (gunbc.design_argument::single_authority).
 
-import std.types { String, NonEmptyStr, Port, List }
-import std.nat { Nat }
+import std.types { String, NonEmptyStr, Port, List, FilePath, Int }
+import std.algebra { string_concat_join }
+import std.content_hash { sha256_hex_of_text }
+import std.nat { Nat, NatDivisionByZero, NatQuotientRemainder, nat_div_rem }
 import std.optional { Absent, Optional, Present }
-import std.measure { ByteSize, Second, byte_size, byte_size_count, second, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
+import std.measure { ByteSize, Second, BasisPoint, byte_size, byte_size_count, second, second_count, basis_point, basis_point_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling, seconds_per_day }
+import std.decimal { fixed_point_trimmed_wire }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_2026_11_09, srv1_collective_read_measurement_duration, srv1_collective_read_window_duration }
+import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, iso8601_utc_instant_seconds_between }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
@@ -38,6 +43,9 @@ import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import gunbc.serving.lil_serving_defects { LilServingDefect, srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
+import gunbc.serving.serving_replica_profile {
+  ServingReplicaProfile, replica_gpu_uuid, srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile,
+}
 
 // ── the per-replica identity ─────────────────────────────────────────────────────────────────────────
 //
@@ -54,9 +62,12 @@ type Srv1ServingReplicaSpec {
   index: Nat
   // The container name on the host. The systemd helper adopts a running container by this name.
   container_name: NonEmptyStr
-  // The GPU's NVIDIA UUID (from nvidia-smi --query-gpu=uuid). This is what gets passed to Docker as
-  // --device nvidia.com/gpu=<UUID>.
-  gpu_uuid: NonEmptyStr
+  // THE PROFILE THIS UNIT IS. The hardware facts -- NVIDIA UUID, PCI bus, board edition, power cap -- are
+  // the profile's card rows (gunbc.serving.serving_replica_profile, the one roster); this unit keeps only
+  // the deployment wiring the card rows do not carry (container name, host port, serve/kv dirs). The UUID
+  // this unit pins Docker's --device to is read from the row via srv1_replica_gpu_uuid -- no second copy of
+  // the hardware pin stands here (which edition is which card was spelled in comments until the row owned it).
+  profile: ServingReplicaProfile
   // The host port the engine is published on. Inside the container the engine always binds 18000
   // (-e PORT=18000, --port 18000); Docker's -p maps the host port to the container port.
   host_port: Port
@@ -75,11 +86,13 @@ type Srv1ServingReplicaSpec {
 data srv1_replica_0: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
   index: 0,
   container_name: "lil-flash-next" as NonEmptyStr,
-  gpu_uuid: "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr,
+  profile: srv1_vllm_replica_0_profile,
   host_port: 18000,
   host_serve_dir: "/home/briansrls/lil/serve" as NonEmptyStr,
   host_kv_dir: "/home/briansrls/lil/kv" as NonEmptyStr,
-  label: "srv1-vllm" as NonEmptyStr,
+  // The router's upstream name for this replica IS the profile's deployment name -- one owner, so the
+  // router, the anchor and the roster cannot spell the replica differently.
+  label: srv1_vllm_replica_0_profile.id,
 }
 
 // GPU1: NVIDIA RTX PRO 6000 Blackwell Workstation (300 W cap, 0004:01:00.0), UUID from nvidia-smi (srv1,
@@ -87,11 +100,11 @@ data srv1_replica_0: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
 data srv1_replica_1: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
   index: 1,
   container_name: "lil-flash-next-1" as NonEmptyStr,
-  gpu_uuid: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" as NonEmptyStr,
+  profile: srv1_vllm_replica_1_profile,
   host_port: 18001,
   host_serve_dir: "/home/briansrls/lil/serve-gpu1" as NonEmptyStr,
   host_kv_dir: "/home/briansrls/lil/kv-gpu1" as NonEmptyStr,
-  label: "srv1-vllm-1" as NonEmptyStr,
+  label: srv1_vllm_replica_1_profile.id,
 }
 
 // The authoritative roster. The router and systemd iterate over this list.
@@ -140,7 +153,7 @@ data srv1_serving_shared_pool_key: NonEmptyStr = "/home/briansrls/lil/pool_key"
 
 data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# srv1: one TP=1 Qwen3.8-Flash-Next replica per GPU (2026-11-08: two RTX PRO 6000s; 2xTP1 measured 679 vs TP2 298 tok/s\n# aggregate at 8 warm 150k sessions on srv1 -- no GPU P2P across Altra root complexes, so TP2 runs on NCCL via host memory).\n# Same container recipe as srv1_lil_serve.sh (lil-serve qwen38-flash-next / rtx-pro-6000-pcie, LMCache ram-disk, TLS, API key),\n# one instance per GPU, each with its own port, LMCache disk tier and serve/state dir; the TLS cert and pool key are shared so\n# the router verifies both the same way. Disk-first KV (2026-11-08, operator): small 12 GiB RAM tier L1, 125 GB NVMe tier L2 each;\n# RAM per replica ~ L1 12 + PLE table 26.8 (pinned host, outside the cgroup) + ~6 process. No automatic restart.\n# usage: srv1_lil_serve_gpu.sh 0|1     (EXTRA=\"...\" passes extra lil/vLLM options after \"--\")\nset -eu\nIDX=$\{1:?usage: $0 0|1}\ncase $IDX in\n  0) GPU=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3; NAME=lil-flash-next;   PORT=18000; KV=kv;      SERVE=serve ;;        # Max-Q, 0001:01:00.0\n  1) GPU=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750; NAME=lil-flash-next-1; PORT=18001; KV=kv-gpu1; SERVE=serve-gpu1 ;;   # Workstation (300 W cap), 0004:01:00.0\n  *) echo \"GPU index must be 0 or 1\" >&2; exit 2 ;;\nesac\nEXTRA=$\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9\nB=$HOME/lil; mkdir -p $B/hf $B/$KV $B/$SERVE $B/jit; umask 077\n[ -s $B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d \"/+=\" > $B/pool_key\n# one TLS identity for both replicas (the router pins it via upstream_ca.pem)\nfor f in tls.key tls.crt; do [ -s $B/$SERVE/$f ] || { sudo -n cp -p $B/serve/$f $B/$SERVE/$f; }; done\numask 022\ndocker rm -f $NAME >/dev/null 2>&1 || true\nfor i in $(seq 1 150); do docker container inspect $NAME >/dev/null 2>&1 || break; docker rm -f $NAME >/dev/null 2>&1 || true; sleep 2; done\ndocker run -d --name $NAME --restart no --device nvidia.com/gpu=$GPU --cgroup-parent=srv1-inference.slice --memory=32g --memory-swap=32g \\\n  --shm-size 16g -p $PORT:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v $B/hf:/root/.cache/huggingface -v $B/$KV:/cache/kv -v $B/jit:/cache/jit -v $B/$SERVE:/root/serve -v $B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash $IMG -lc \"\nD=/root/serve; ev(){ echo \\\"\\$(date -u +%FT%TZ) \\$*\\\" >> \\$D/events.log; }\n[ -s \\$D/tls.key ] && [ -s \\$D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj /CN=pool-card -keyout \\$D/tls.key -out \\$D/tls.crt >> \\$D/events.log 2>&1\nev \\\"START srv1 gpu$IDX $GPU (driver \\$(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\\\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=12 --env LMCACHE_L2_GB=125 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 $EXTRA --ssl-keyfile \\$D/tls.key --ssl-certfile \\$D/tls.crt --api-key \\\"\\$(cat /root/.pool_key)\\\" --max-model-len 229376 >> \\$D/serve.log 2>&1\"\necho \"started $NAME on GPU $IDX ($GPU) port $PORT\"; docker ps --filter name=^/$NAME\\$ --format \"{.Status}\"\n",
-  reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route." as NonEmptyStr,
+  reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route STATUS ON THIS ROW: RESTORE PATH ONLY since 2026-11-09T21:44:07Z: no systemd path reaches this file any more -- the installed helper now points LAUNCH= at /usr/local/sbin/lil-replica-launch, which renders docker from these rows. The sha above was computed with sha256sum ON srv1 (not relayed). This script still puts the pool bearer key in the engine argv and accepts an unbound EXTRA, which is precisely what the switch removed; it is kept so the window has a rollback target." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
@@ -166,7 +179,7 @@ data srv1_serving_gpu_launcher_bash_emit_dissolution: DissolutionCondition = unb
 // ties that to Srv1AdoptionMismatchAction's refusal of DestroyAndRelaunch.
 data srv1_replica_helper: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# lil-replica start|stop <gpu-index> -- systemd helper for lil-replica@.service (srv1, 2026-11-08).\n# start: adopt the replica container if it is already running (no relaunch), else launch it with\n#        srv1_lil_serve_gpu.sh; then block on the container and exit with ITS status\n#        (143 = stopped by SIGTERM = success; anything else -> systemd Restart=on-failure).\n# stop:  docker stop with a long grace period so LMCache can flush its disk tier.\nset -u\nACTION=${1:?start|stop}; IDX=${2:?gpu index}\ncase $IDX in 0) NAME=lil-flash-next ;; 1) NAME=lil-flash-next-1 ;; *) echo \"unknown GPU index $IDX\" >&2; exit 2 ;; esac\nLAUNCH=/home/briansrls/strata-test/srv1_lil_serve_gpu.sh\ncase $ACTION in\n  start)\n    if [ \"$(docker container inspect -f '{{.State.Running}}' \"$NAME\" 2>/dev/null)\" = true ]; then\n      echo \"adopting running container $NAME\"\n    else\n      \"$LAUNCH\" \"$IDX\" || exit 1\n    fi\n    rc=$(docker wait \"$NAME\") || exit 1\n    echo \"$NAME exited with status $rc\"; exit \"$rc\" ;;\n  stop)\n    exec docker stop -t 240 \"$NAME\" ;;\n  *) echo \"usage: $0 start|stop <idx>\" >&2; exit 2 ;;\nesac\n",
-  reason: "the systemd helper /usr/local/sbin/lil-replica on srv1 (sha256 e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d, read from the host 2026-11-09): the unit's ExecStart/ExecStop verb handler — adopt-or-launch by roster name, docker-wait to propagate the container exit status to systemd, docker stop -t 240 for the LMCache disk flush. Adoption today checks only the running flag by name; the contract's verification set is the requirement, tracked as srv1_helper_adoption_verification_gap." as NonEmptyStr,
+  reason: "the systemd helper /usr/local/sbin/lil-replica on srv1 (sha256 e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d, recomputed on the host 2026-11-09 from the backup copy, which retires this row's earlier relayed-digest caveat): the unit's ExecStart/ExecStop verb handler — adopt-or-launch by roster name, docker-wait to propagate the container exit status to systemd, docker stop -t 240 for the LMCache disk flush. Adoption today checks only the running flag by name; the contract's verification set is the requirement, tracked as srv1_helper_adoption_verification_gap. AS OF 2026-11-09T21:44:07Z THIS BODY IS THE RESTORE PATH, NOT THE LIVE FILE: /usr/local/sbin/lil-replica now holds srv1_render_replica_helper (sha256 8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e, computed on the host and equal to the digest the interpreter printed), which is this body with the LAUNCH= line repointed at the rendered launcher and the three comment lines that named gpu.sh rewritten -- 3 lines out, 4 in, and the installer refuses any other diff." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "v2.workflow.bash_emit", decl_name: "bash_emit_stmts"),
 }
 
@@ -185,7 +198,7 @@ data srv1_replica_helper_bash_emit_dissolution: DissolutionCondition = unbound_d
 data srv1_helper_adoption_verification_gap: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_helper"),
   reason: "srv1_replica_unit_contract.adoption_verifies names eight aspects (container name, GPU UUID, image digest, port binding, mounts, memory limit, shm size, cgroup parent); the retained helper (srv1_replica_helper, sha256 e2822634...6a6d) inspects only '{{.State.Running}}' by container name. A container that carries the roster name but drifts on any other aspect is adopted silently today. Declared, not hidden: the helper has no destroy path (so a healthy container is never destroyed), but also no drift report.",
-  dissolution: unbound_dissolution(description: "the helper's start verb checks every srv1_replica_unit_contract.adoption_verifies field on the running container (docker inspect of Config.Image, HostConfig.Memory / MemorySwap / ShmSize / CgroupParent, HostConfig.PortBindings, Mounts, and the nvidia device env for the GPU UUID) and prints a typed drift report, exiting non-zero without destroying or restarting the container; witnessed on srv1 against the roster rows."),
+  dissolution: unbound_dissolution(description: "EXECUTED SO FAR 2026-11-09: the crash tests (docker kill on each replica) and both cold starts exercised the helper's LAUNCH branch and its `docker wait` exit-status contract -- systemd restarted the unit and the rendered launcher produced a ready engine -- but the ADOPT branch (a container already running when the unit starts) has still never been executed, because every start in this window began from a removed container. The remaining condition is unchanged: the helper's start verb checks every srv1_replica_unit_contract.adoption_verifies field on the running container (docker inspect of Config.Image, HostConfig.Memory / MemorySwap / ShmSize / CgroupParent, HostConfig.PortBindings, Mounts, and the nvidia device env for the GPU UUID) and prints a typed drift report, exiting non-zero without destroying or restarting the container; witnessed on srv1 against the roster rows."),
 )
 
 // ── the systemd management (lil-replica@.service) ───────────────────────────────────────────────────
@@ -199,7 +212,9 @@ data srv1_helper_adoption_verification_gap: FrontierRow = frontier_row_decl(
 //     then execs `docker wait` (blocking until the container exits), so systemd sees a running unit for
 //     the container's lifetime and exits with the container's exit code.
 //   Restart: on-failure (systemd restarts the unit when docker wait returns non-zero, which means the
-//     container crashed). RestartSec=5.
+//     container crashed). RestartSec: the file says 30 (`systemctl show -p RestartUSec` = 30s measured
+//     2026-11-09; an earlier read of this module said 5, which was wrong and is what made a crash-restart
+//     latency of 38-39 s look like a failure -- 30 s is the unit's own floor, not the observed time).
 //   SuccessExitStatus: 143 (SIGTERM = 128+15: docker stop sends SIGTERM; exit 143 is the expected
 //     "clean stop by signal" — systemd treats it as success, preventing spurious restarts on stop).
 //   StartLimitBurst: 3, StartLimitIntervalSec: 3600 (3 restarts per hour before systemd gives up — a
@@ -567,8 +582,8 @@ data srv1_legacy_launcher_guard_frontier: FrontierRow = frontier_row_decl(
 // operator's; per the parent it must not be edited here without asking).
 data srv1_boot_path_executes_rendered_argv: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_engine_argv"),
-  reason: "the boot realization is constructed from typed rows by srv1_replica_engine_argv and the modeled unit execs it (no EXTRA); the live srv1 unit still execs gpu.sh with an optional runtime EXTRA, so live != modeled. fail_closed: the guard must not gain a safe-by-absence scrape over the operator script, so live-execution fidelity is tracked here, not asserted.",
-  dissolution: unbound_dissolution(description: "reconcile the live srv1 lil-replica@ unit (and its helper) to exec the rendered argv (or a rendered args file), OR model the helper's adopt-or-launch command -- the latter is the parent's follow-up generic-profile PR, deliberately NOT in this one. Re-scan the gpu.sh sha receipt on any live-file edit. Neither is done from this PR (the live unit is the operator's; ask the parent before editing)."),
+  reason: "RECONCILED AND EXECUTED 2026-11-09 (operator window): both lil-replica@ instances now run the rendered launcher, the rendered args file and the rendered helper (digests in srv1_installed_boot_path_artifacts_2026_11_09, verified by sha256sum on the host against the digests the interpreter computed). The engine command no longer carries the pool bearer key: `docker inspect .Config.Cmd` shows no --api-key and the engine's environment carries VLLM_API_KEY from a 0600 env file, with authentication still enforced (401 without the key, 200 with it). The start path was then EXECUTED on both replicas -- cold start (stop, container removed, start) and a crash (docker kill) -- with the timings in srv1_boot_path_runs_executed_2026_11_09. What remains unexecuted is a host boot: nothing here shows the path survives a reboot. fail_closed unchanged: the guard still refuses to scrape the engine's argv off a live container, so the two sides are reconciled by rendering forward and re-reading digests, never by reading the live host back into the model.",
+  dissolution: unbound_dissolution(description: "the remaining half is boot: reboot srv1 (or bring the units up from a cold boot by any other means) and show each replica becomes ready with the rendered path, with the boot-time container creation attributable to the unit rather than to a relaunch. The unit is enabled (systemctl is-enabled = enabled, read 2026-11-09) and the start path is executed; enablement is not durability. Re-scan the artifact digests on any live-file edit, and re-run the pre-install gates (parse the emitted container command with the serving image's bash, dry-run the engine argv against the capture) before any further switch."),
 )
 
 // ── launch admission: refusing configurations the image cannot deliver (Addendum 2, consumes #16110) ─
@@ -601,6 +616,57 @@ type Srv1KvCacheDtype
   | Auto
   | NvFp4
 
+// TLS material the engine serves with, as the ENGINE addresses it: the directory the pair lives in
+// plus the key and certificate paths under it. A directory/path pair, not one string, because the
+// two paths are separate arguments (--ssl-keyfile, --ssl-certfile) and a single field cannot tell a
+// swapped pair from a correct one. The live command carries these; until 2026-11-09 the typed launch
+// config had no field for them, which is why the render could not be the live command.
+type Srv1TlsMaterial {
+  container_dir: FilePath
+  key_path: FilePath
+  cert_path: FilePath
+}
+
+// How the engine's bearer key REACHES the engine — a reference, never the value. The value lives in
+// a 0600 host file that `docker run --env-file` reads; vLLM reads its own native VLLM_API_KEY
+// environment variable (vllm/envs.py in the pinned image), so no --api-key flag is needed and the key
+// stops appearing in `ps` and in `docker inspect .Config.Cmd`. This record holds the file path and
+// the variable name ONLY: putting the key in a .dag row would publish a live credential (the operator
+// forbids printing it), and putting it in argv would put it back where the switch removes it.
+type Srv1ApiKeyReference {
+  host_env_file: FilePath
+  env_name: NonEmptyStr
+}
+
+// The LMCache L2 (disk) tier as the engine addresses it, typed. These three knobs plus the retention
+// policy below reached the engine ONLY through the operator's hand-written launcher until 2026-11-09:
+// the typed launch config had no field for them, so the .dag render could never equal what was
+// serving (the step-1 diff of the 2026-11-09 maintenance window). Typed here so the render can emit
+// them and a witness can pin each one.
+type Srv1LmCacheL2Placement {
+  // The container-side root of the disk tier. "/cache/kv" on srv1, the host dir the replica's KV
+  // volume is mounted at -- O_DIRECT needs a real block-backed path, so this is a placement fact,
+  // not a cosmetic directory.
+  root: FilePath
+  // Writer threads for the disk tier (LMCACHE_L2_WORKERS).
+  workers: Nat
+  // O_DIRECT for the tier's reads and writes (LMCACHE_L2_ODIRECT). Carried as a Bool, not an "1",
+  // because the policy is a yes/no and the "1"/"0" is the engine's encoding of it.
+  uses_direct_io: Bool
+}
+
+// Checkpoint RETENTION POLICY for the L2 tier -- named as retention policy, not as a cache knob,
+// because it decides WHAT SURVIVES and for how long rather than how much cache exists.
+type Srv1CheckpointRetentionPolicy {
+  // The share of a checkpoint that stays protected from eviction once written
+  // (LMCACHE_CHECKPOINT_PROTECTED_SHARE). A BasisPoint, the std measure for a declared share: 5000
+  // basis points is 0.5, the live value.
+  protected_share: BasisPoint
+  // How long that protection holds before the share may be evicted
+  // (LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS). 1800 s = 30 min on srv1.
+  protection_window: Second
+}
+
 type Srv1LaunchConfig {
   // The tensor-parallel size (the number of GPUs one engine spans).
   tensor_parallel_size: Nat
@@ -625,6 +691,23 @@ type Srv1LaunchConfig {
   lil_replicas: Nat
   // Whether the host has GPU peer-to-peer between its GPUs. On srv1: false (NCCL returns 0 GB/s).
   host_gpu_p2p: Bool
+  // The engine executable, as the container's shell resolves it. Absolute ("/usr/local/bin/lil-serve")
+  // because that is what the live .Config.Cmd carries; a bare "lil-serve" would make the render depend
+  // on the container's PATH, i.e. on a fact this row does not state.
+  engine_executable: FilePath
+  // The L2 disk tier's placement and writer shape (typed; see Srv1LmCacheL2Placement).
+  lmcache_l2_placement: Srv1LmCacheL2Placement
+  // The L2 tier's checkpoint retention policy (typed; see Srv1CheckpointRetentionPolicy).
+  checkpoint_retention: Srv1CheckpointRetentionPolicy
+  // The engine's listen port INSIDE the container. Both replicas bind the same container port and are
+  // distinguished by the published host port (Srv1ServingReplicaSpec.host_port), so this is a config fact,
+  // not a per-replica one. It renders BOTH the engine's --port and docker's -p right-hand side, so the two
+  // cannot disagree -- a bare "18000" in each would let them.
+  container_port: Port
+  // The TLS material the engine serves with (typed; see Srv1TlsMaterial).
+  tls_material: Srv1TlsMaterial
+  // How the engine's bearer key reaches it (a REFERENCE to a 0600 env file; see Srv1ApiKeyReference).
+  api_key_reference: Srv1ApiKeyReference
 }
 
 // The result of admitting a launch configuration.
@@ -632,9 +715,17 @@ type Srv1LaunchAdmission
   = Srv1LaunchAdmitted { layout: NonEmptyStr }
   | Srv1LaunchRefused { cause: NonEmptyStr, defect_identity: NonEmptyStr }
 
-// The admitted srv1 launch configuration (what the gpu.sh launcher runs on each replica): one TP=1 engine
-// per container, FP8 KV cache, profile qwen38-flash-next, REPLICAS=1 (single engine per container), and
-// the host has no P2P (which is WHY this configuration is the one that works).
+// The admitted srv1 launch configuration (what the boot path runs on each replica): one TP=1 engine per
+// container, KV cache left at the engine default (Fp8E4m3 renders no --kv-cache-dtype), profile
+// qwen38-flash-next, REPLICAS=1 (single engine per container), and the host has no P2P (which is WHY this
+// configuration is the one that works). The L1 tier is the field below; the L2 tier's SIZE comes from its
+// single authority srv1_lmcache_l2_configured, while its PLACEMENT and writer shape are
+// lmcache_l2_placement -- those were the knobs only the operator's launcher knew.
+//
+// The rows added 2026-11-09 (engine_executable, lmcache_l2_placement, checkpoint_retention, tls_material,
+// api_key_reference) carry exactly what `docker inspect` on the live replica showed the .dag render was
+// missing; the positive-control witness ties them to that capture, so a typo here goes red rather than
+// booting a replica that drops TLS, drops its key, or loses O_DIRECT.
 data srv1_admitted_launch_config: Srv1LaunchConfig = Srv1LaunchConfig {
   tensor_parallel_size: 1,
   kv_cache_dtype: Fp8E4m3,
@@ -645,6 +736,29 @@ data srv1_admitted_launch_config: Srv1LaunchConfig = Srv1LaunchConfig {
   image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
   lil_replicas: 1,
   host_gpu_p2p: false,
+  engine_executable: "/usr/local/bin/lil-serve" as FilePath,
+  lmcache_l2_placement: Srv1LmCacheL2Placement {
+    root: "/cache/kv" as FilePath,
+    workers: 16,
+    uses_direct_io: true,
+  },
+  checkpoint_retention: Srv1CheckpointRetentionPolicy {
+    protected_share: basis_point(count: 5000),
+    protection_window: second(count: 1800),
+  },
+  tls_material: Srv1TlsMaterial {
+    container_dir: "/root/serve" as FilePath,
+    key_path: "tls.key" as FilePath,
+    cert_path: "tls.crt" as FilePath,
+  },
+  api_key_reference: Srv1ApiKeyReference {
+    host_env_file: "/home/briansrls/lil/replica.env" as FilePath,
+    env_name: "VLLM_API_KEY" as NonEmptyStr,
+  },
+  // The port the ENGINE listens on inside the container. Both replicas use 18000 and are told apart by the
+  // published host port (Srv1ServingReplicaSpec.host_port, 18000 and 18001), which is why `docker inspect`
+  // shows the same container-side port on both and why the `-p` mapping is host_port:container_port.
+  container_port: 18000,
 }
 
 // Refuse with the defect's identity and a cause naming the refusal.
@@ -713,16 +827,113 @@ fn srv1_launch_check_f26(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
 // extdeps.container.nvidia_container_toolkit.nvidia_cdi_device_selector_of (the same home #16048's TP-group
 // path uses), so the per-replica launcher and the group launcher cannot spell the selector differently.
 fn srv1_replica_device_words(replica: Srv1ServingReplicaSpec) -> List<NonEmptyStr> {
-  ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: replica.gpu_uuid)]
+  match srv1_replica_gpu_uuid(replica: replica) {
+    // A unit whose profile carries no card UUID cannot pin a container to a card: no --device word, which
+    // leaves the boot guard to refuse the unit rather than let it float across both cards.
+    Absent => []
+    Present { value: u } => ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
+  }
 }
 
-// The engine command the boot path runs, CONSTRUCTED from the typed launch configuration (construction, not
-// validation): the same typed rows the admission guard reads are what render the realization, so there is no
-// scraped script the guard ignores. The modeled boot unit execs THIS render (or an args file rendered from it),
-// NEVER the operator's gpu.sh plus its runtime EXTRA -- so EXTRA is an operator-manual path OUTSIDE convergence,
-// not a hole in the boot path (see the srv1_boot_path_executes_rendered_argv frontier row). FP8 E4M3 is the engine
-// default, so the admitted layout emits no --kv-cache-dtype flag; a non-default dtype emits it explicitly, and a
-// refused dtype is caught by srv1_launch_admission before this is used to arm boot.
+// The same pin AS TEXT, for the two renders that print it (the container's START event and the launcher's
+// started line). The profile row remains the only owner -- #16167 removed the UUID field from the unit, so a
+// render that spelled `spec.gpu_uuid` would be a second copy even if it compiled. A unit whose profile carries
+// no card UUID renders the fail-closed token below, which docker rejects at boot rather than letting the
+// container float across both cards; the witness asserts that token appears in NO rendered artifact.
+fn srv1_replica_gpu_uuid_text(replica: Srv1ServingReplicaSpec) -> String {
+  match srv1_replica_gpu_uuid(replica: replica) {
+    Present { value: u } => u as String
+    Absent => "NO_CARD_UUID_IN_PROFILE"
+  }
+}
+
+// The hardware pin, read from the profile's card row -- the ONLY place a unit's UUID is obtained.
+fn srv1_replica_gpu_uuid(replica: Srv1ServingReplicaSpec) -> Optional<NonEmptyStr> {
+  replica_gpu_uuid(p: replica.profile)
+}
+
+// The engine's LMCache environment, rendered from the typed tiers, the L2 placement and the checkpoint
+// retention policy. `--env` and the `NAME=` spelling are the engine's argv surface, so they are written
+// ONCE here; every value to the right of the `=` comes from a typed field, which is what makes the render
+// checkable against `docker inspect` instead of against a remembered script.
+//
+// GiB is rendered ONLY here, at the LMCACHE_L*_GB= env boundary (interface boundary), from the ByteSize
+// tiers: L1 is this module's typed field, L2 comes from its single authority srv1_lmcache_l2_configured,
+// and the rounding is gibibyte_ceiling (the one home for ByteSize -> GiB).
+fn srv1_lmcache_engine_env(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
+  let l1 = concat("LMCACHE_L1_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))) as NonEmptyStr
+  let l2 = concat("LMCACHE_L2_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))) as NonEmptyStr
+  let l2_root = concat("LMCACHE_L2_ROOT=", config.lmcache_l2_placement.root) as NonEmptyStr
+  let l2_workers = concat("LMCACHE_L2_WORKERS=", to_string(config.lmcache_l2_placement.workers)) as NonEmptyStr
+  // The engine takes the flag as 1/0; the Bool is the policy, this is its encoding at the boundary.
+  let l2_direct = if config.lmcache_l2_placement.uses_direct_io {
+    "LMCACHE_L2_ODIRECT=1" as NonEmptyStr
+  } else {
+    "LMCACHE_L2_ODIRECT=0" as NonEmptyStr
+  }
+  // The retention policy's two fields reach the engine as a decimal share and a whole-second count; both
+  // renderings are boundary encodings of typed measures, not hand-written strings: 5000 basis points
+  // renders as the shortest decimal that names it ("0.5"), 1800 seconds as "1800".
+  let share = concat(
+    "LMCACHE_CHECKPOINT_PROTECTED_SHARE=",
+    fixed_point_trimmed_wire(value: basis_point_count(bp: config.checkpoint_retention.protected_share) as Int, decimals: 4)
+  ) as NonEmptyStr
+  let window = concat(
+    "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=",
+    to_string(second_count(s: config.checkpoint_retention.protection_window))
+  ) as NonEmptyStr
+  [
+    "--env" as NonEmptyStr, "LMCACHE_MODE=ram-disk" as NonEmptyStr,
+    "--env" as NonEmptyStr, l1,
+    "--env" as NonEmptyStr, l2,
+    "--env" as NonEmptyStr, l2_root,
+    "--env" as NonEmptyStr, l2_workers,
+    "--env" as NonEmptyStr, l2_direct,
+    "--env" as NonEmptyStr, share,
+    "--env" as NonEmptyStr, window,
+  ]
+}
+
+// Join a material name under its directory. std.filesystem carries no POSIX join (it owns the host-side
+// path authority), and these are CONTAINER-side POSIX paths, so the join lives here where the caller can
+// say so: the separator is a single "/", and neither argument may carry one of its own.
+fn srv1_container_path_under(dir: FilePath, name: FilePath) -> FilePath {
+  if string_contains(s: name, pattern: "/") {
+    name
+  } else {
+    concat(concat(dir, "/"), name) as FilePath
+  }
+}
+
+// The TLS pair as the engine's two flags. Rendered from Srv1TlsMaterial so a swap or a missing file is a
+// type error at the row, not a replica that boots on plain HTTP: the router verifies the upstream
+// certificate, so dropping these does not degrade traffic, it 502s the upstream.
+fn srv1_engine_tls_args(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
+  [
+    "--ssl-keyfile" as NonEmptyStr,
+    srv1_container_path_under(dir: config.tls_material.container_dir, name: config.tls_material.key_path) as NonEmptyStr,
+    "--ssl-certfile" as NonEmptyStr,
+    srv1_container_path_under(dir: config.tls_material.container_dir, name: config.tls_material.cert_path) as NonEmptyStr,
+  ]
+}
+
+// The engine command the boot path runs, CONSTRUCTED from the typed launch configuration (construction,
+// not validation): the same typed rows the admission guard reads are what render the realization, so
+// there is no scraped script the guard ignores. The boot unit execs THIS render, NEVER the operator's
+// gpu.sh plus its runtime EXTRA -- so EXTRA is an operator-manual path OUTSIDE convergence, not a hole
+// in the boot path (see the srv1_boot_path_executes_rendered_argv frontier row).
+//
+// Two things the live command carried are deliberately ABSENT:
+//   - `$EXTRA`, the operator's free-form suffix. A boot path that appends an unset shell variable can
+//     boot something other than this render, which is the adoption gap this window closes.
+//   - `--api-key <value>`. The key reaches the engine as its native VLLM_API_KEY through docker
+//     --env-file on a 0600 host file (Srv1ApiKeyReference), so it no longer appears in `ps`, in
+//     `docker inspect .Config.Cmd`, or in any .dag row. Same effective policy -- the engine builds its
+//     bearer list from the flag OR from that environment variable.
+//
+// FP8 E4M3 is the engine default, so the admitted layout emits no --kv-cache-dtype flag; a non-default
+// dtype emits it explicitly, and a refused dtype is caught by srv1_launch_admission before this is used
+// to arm boot.
 fn srv1_replica_engine_argv(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
   let kv = match config.kv_cache_dtype {
     NvFp4 => ["--kv-cache-dtype" as NonEmptyStr, "nvfp4" as NonEmptyStr]
@@ -732,24 +943,990 @@ fn srv1_replica_engine_argv(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
     Fp8E4m3 => []
   }
   let tp = if config.tensor_parallel_size > 1 { ["--tensor-parallel-size" as NonEmptyStr, to_string(config.tensor_parallel_size) as NonEmptyStr] } else { [] }
-  // GiB is rendered ONLY here, at the LMCACHE_L*_GB= env boundary (interface boundary), from the ByteSize tiers.
-  // L1 is this module's typed field; L2 comes from its single authority, srv1_lmcache_l2_configured. The rounding
-  // is gibibyte_ceiling (the one home for ByteSize -> GiB).
-  let l1 = concat("LMCACHE_L1_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))) as NonEmptyStr
-  let l2 = concat("LMCACHE_L2_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))) as NonEmptyStr
-  let head = [
-    "lil-serve" as NonEmptyStr,
-    "--profile" as NonEmptyStr, config.profile,
-    "--hardware" as NonEmptyStr, config.hardware,
-    "--env" as NonEmptyStr, "LMCACHE_MODE=ram-disk" as NonEmptyStr,
-    "--env" as NonEmptyStr, l1,
-    "--env" as NonEmptyStr, l2,
-    "--" as NonEmptyStr,
-    "--port" as NonEmptyStr, "18000" as NonEmptyStr,
-  ]
-  let tail = concat(tp, ["--max-model-len" as NonEmptyStr, to_string(config.max_model_len) as NonEmptyStr])
-  concat(concat(head, kv), tail)
+  let head = concat(
+    [config.engine_executable as NonEmptyStr, "--profile" as NonEmptyStr, config.profile, "--hardware" as NonEmptyStr, config.hardware],
+    srv1_lmcache_engine_env(config: config)
+  )
+  let engine_args = concat(
+    ["--" as NonEmptyStr, "--port" as NonEmptyStr, to_string(config.container_port) as NonEmptyStr],
+    concat(srv1_engine_tls_args(config: config), ["--max-model-len" as NonEmptyStr, to_string(config.max_model_len) as NonEmptyStr])
+  )
+  concat(concat(concat(head, kv), tp), engine_args)
 }
+
+// ── the container the boot path creates ────────────────────────────────────────────────────────
+//
+// THE RENDERED LAUNCHER below is what the boot helper execs. Before the 2026-11-09 maintenance window the
+// helper execed the operator's hand-written ~/strata-test/srv1_lil_serve_gpu.sh, whose engine line carried
+// the pool key inside argv and an unbound `$EXTRA` suffix. gpu.sh stays on the host UNCHANGED as the
+// restore path (srv1_serving_gpu_launcher keeps its sha256 so the restore path remains identifiable), but
+// it is no longer what systemd execs.
+//
+// WHAT IS CONSTRUCTED: the engine argv is srv1_replica_engine_argv over the typed launch config, and it
+// reaches the engine as a FILE (srv1_replica_engine_args_body) mounted read-only into the container -- so
+// "the boot path executes srv1_replica_engine_argv" is a fact about the running container rather than about
+// two scripts that happen to agree. Per-replica identity (card, name, published port, host directories)
+// comes from Srv1ServingReplicaSpec rows; the shared host directories from srv1_serving_shared_*; the device
+// word from srv1_replica_device_words, whose single authority is
+// extdeps.container.nvidia_container_toolkit nvidia_cdi_device_name_prefix -- the authority for the CDI
+// spelling and for why it is a bare selector rather than a host:container:perms triple.
+//
+// WHAT IS RECORDED INSTEAD, AND WHY THAT IS NOT THE SAME WORD: the container SHAPE rows below (cgroup
+// parent, shm size, restart policy, entrypoint, the container-side paths, the TLS self-sign parameters)
+// were read from `docker inspect` on the two RUNNING replicas on 2026-11-09 and typed here verbatim. The
+// witness pins each rendered line against the captured command byte for byte, so a wrong row goes red
+// before the file is installed. Dissolving them into a typed extdeps.docker.create_spec DockerCreateSpec --
+// which would also make the mount TYPE and the IPC namespace explicit instead of implied by the flag
+// spelling -- is the remaining step, and it is left open as srv1_replica_launcher_shape_dissolution rather
+// than attempted mid-window: switching --volume to --mount while switching a live replica would confound
+// the adoption diff with a rendering change, and the window's evidence would then isolate neither.
+
+// The container shape the launcher asks docker for. Each value is what `docker inspect` reported for the
+// container that was serving on 2026-11-09; each comment says what its ABSENCE would cost, because two of
+// these fail quietly rather than at launch.
+type Srv1ContainerRunShape {
+  // HostConfig.CgroupParent. Names the slice only; its MemoryMax and its terms belong to
+  // gunbc.fleet.fleet_host_budget. Omit the flag and the container is created outside the slice the memory
+  // budget is enforced in -- nothing errors, and the next OOM lands on whichever tenant got there first.
+  cgroup_parent: NonEmptyStr
+  // HostConfig.ShmSize: the /dev/shm the engine sees. 16 GiB, deliberately ABOVE the 12 GiB LMCache L1 tier
+  // it carries, because the engine's own shared-memory allocations live in the same tmpfs. Omit the flag and
+  // docker gives 64 MiB, which fails INSIDE LMCache under load rather than at launch.
+  shm_size: ByteSize
+  // HostConfig.RestartPolicy.Name: "no", on purpose. The systemd unit owns the lifecycle (the helper blocks
+  // in `docker wait`, so the unit is active exactly while the container is), and a docker-side restart
+  // policy would give the container a second owner.
+  restart_policy: NonEmptyStr
+  // The image's entrypoint, overridden to bash so the container can mint its TLS pair and append to the
+  // serve log before exec'ing the engine.
+  entrypoint: NonEmptyStr
+  // Where the rendered engine argv is mounted read-only INSIDE the container.
+  engine_args_container_path: NonEmptyStr
+  // Where the host pool key is mounted read-only INSIDE the container. The engine no longer reads it -- it
+  // takes its bearer key from VLLM_API_KEY now -- and the mount is kept because the unit contract verifies
+  // the mount set and because in-container debugging (curl from inside the container with the pool key) is
+  // how an operator tells an engine failure from a router failure. Its dissolution is open, not hidden.
+  pool_key_container_path: NonEmptyStr
+  // The self-signed pair the container mints when the serve directory has none: curve, validity and subject
+  // as the live launcher used them and as the router's pinned upstream_ca.pem verifies them. Typed so a
+  // re-render cannot silently mint a certificate the router will reject and produce an outage that looks
+  // like an engine failure.
+  tls_curve: NonEmptyStr
+  // Validity as a duration, with std.measure owning the unit. The `openssl req -days` argument is DERIVED from
+  // this at the flag boundary (srv1_tls_validity_days_for_flag), so the render stays byte-identical to what the
+  // live containers mint while a validity change is edited once, with its unit attached, instead of as a bare
+  // count that could mean days, hours, or a typo.
+  tls_validity: Second
+  tls_subject_common_name: NonEmptyStr
+}
+
+// The container shape as observed on the two live replicas on 2026-11-09 (`docker inspect`: HostConfig and
+// Config). Memory and swap are NOT repeated here -- their single authority is
+// srv1_replica_host_budget.cgroup_memory_limit, whose 34359738368 equals the observed value, and repeating
+// a bound would let the two drift apart while both looked green.
+data srv1_replica_container_run_shape: Srv1ContainerRunShape = Srv1ContainerRunShape {
+  cgroup_parent: "srv1-inference.slice" as NonEmptyStr,
+  shm_size: byte_size(count: 17179869184),
+  restart_policy: "no" as NonEmptyStr,
+  entrypoint: "bash" as NonEmptyStr,
+  engine_args_container_path: "/root/engine.args" as NonEmptyStr,
+  pool_key_container_path: "/root/.pool_key" as NonEmptyStr,
+  tls_curve: "prime256v1" as NonEmptyStr,
+  tls_validity: second(3650 * seconds_per_day()),
+  tls_subject_common_name: "pool-card" as NonEmptyStr,
+}
+
+// THE MARKER THE COMMENT ABOVE PROMISES. That comment leaves the docker-shape step "open as
+// srv1_replica_launcher_shape_dissolution"; a named dissolution that is never declared is the same defect as an
+// empty marker file -- a reader follows the name and finds nothing (review 92788). Declared here, on the rows it
+// covers.
+data srv1_replica_launcher_shape_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_docker_argv and Srv1ContainerRunShape — the container the launcher asks docker for is emitted as flag STRINGS from typed shape rows, which pins the SPELLINGS docker reported (--volume host:container, --memory=32g, --shm-size=16g) rather than the input the flag names. DISSOLVES WHEN the same container is described through extdeps.docker.create_spec DockerCreateSpec, where the mount TYPE and the IPC namespace are explicit fields instead of implied by a spelling, KEEPING the byte-for-byte control against docker inspect so an adoption diff stays attributable. Left open deliberately mid-window: switching --volume to --mount while switching a live replica puts two changes in one diff and leaves neither isolated.")
+
+
+// The directory the TLS identity is copied FROM when a replica's own serve directory has none. Both replicas
+// present ONE certificate identity and the router pins it (upstream_ca.pem), so a replica that minted its own
+// pair would come up healthy on every local check and be rejected by the router -- an outage that reads like an
+// engine failure. The retained gpu.sh handled this on the host, before `docker run`, by copying the pair out
+// of the primary replica's serve directory; this row is that behaviour, and the launcher renders it from here.
+// It is a host-side step because the container sees only its OWN serve directory: it cannot copy an identity it
+// cannot mount.
+data srv1_tls_identity_source_dir: NonEmptyStr = "/home/briansrls/lil/serve" as NonEmptyStr
+
+// The TLS identity's two file names, as they appear inside the serve directory. The container mounts the serve
+// directory at Srv1TlsMaterial.container_dir and addresses the pair there, so the host file names and the
+// container-side names are the same two strings; the copy and the engine's flags agree by sharing this row.
+data srv1_tls_key_file_name: NonEmptyStr = "tls.key" as NonEmptyStr
+data srv1_tls_cert_file_name: NonEmptyStr = "tls.crt" as NonEmptyStr
+
+// Where the per-replica rendered engine argv files live on the host. Root-owned under /usr/local/etc so the
+// bytes the container execs are not writable by the unit's User=briansrls: the boot path may READ the argv,
+// it may not edit it. That distinction is the difference between a rendered boot path and a rendered boot
+// path with a hole in it.
+data srv1_replica_rendered_args_dir: NonEmptyStr = "/usr/local/etc/lil-replica" as NonEmptyStr
+
+// The rendered argv file for one replica, named by replica index rather than by container name: renaming a
+// container must not be able to orphan an args file behind it.
+fn srv1_replica_engine_args_host_path(replica: Srv1ServingReplicaSpec) -> NonEmptyStr {
+  concat(concat(concat(srv1_replica_rendered_args_dir, "/replica-"), to_string(replica.index)), ".args") as NonEmptyStr
+}
+
+// The engine argv, one token per line: the body of the rendered args file. One token per line rather than a
+// shell line, because then the file carries no quoting layer of its own -- and a format that cannot express
+// a quote cannot smuggle one. Every token is the render; nothing here is re-spelled.
+fn srv1_replica_engine_args_body(config: Srv1LaunchConfig) -> String {
+  string_concat_join(srv1_replica_engine_argv(config: config) as List<String>, "\n")
+}
+
+// The `openssl req -days` argument, DERIVED from the Second carrier on the shape row. Whole days are the unit
+// the flag takes, so the flag boundary is exactly where the measure is read out; the zero-divisor arm is the
+// carrier's arithmetic, not a policy (seconds_per_day is 24*60*60 through extdeps.units.iso8601, never zero).
+fn srv1_tls_validity_days_for_flag() -> Nat {
+  match nat_div_rem(a: second_count(srv1_replica_container_run_shape.tls_validity), b: seconds_per_day()) {
+    NatQuotientRemainder { quotient: q, remainder: _ } => q
+    NatDivisionByZero => 0
+  }
+}
+
+// The container-side command, as the single argument after `-lc` (which is how `docker inspect` reports it,
+// in Config.Cmd[1]): mint the TLS pair if the serve directory has none, log the launch, then exec the
+// RENDERED argv file.
+//
+// The engine is exec'd from the file, never from a string assembled here -- that is the whole point of the
+// args file. The TLS branch is a guard, not a setup step: both serve directories already hold the pair, so a
+// cold start does not re-mint, and re-minting would produce a certificate the router's pinned
+// upstream_ca.pem rejects.
+//
+// Byte-for-byte fidelity to the captured command is deliberate, including two whitespace artifacts the
+// operator's script carried (the space run before `-days` and inside the `exec` line, both line-continuation
+// remnants). They are kept so the witness comparison is equality rather than "equal after normalization":
+// normalizing whitespace in a control claim is how a real difference gets waved through. The engine line is
+// the ONLY place this render differs, and it differs in two documented ways: the flags come from the args
+// file, and `--api-key "$(cat /root/.pool_key)"` is gone (see Srv1ApiKeyReference).
+// One path under the container-side serve directory, in the `$D/<name>` spelling the captured command uses.
+fn srv1_d_under(name: FilePath) -> String {
+  concat("$D/", name as String)
+}
+
+// The container-side command, as the single argument after `-lc` (which is how `docker inspect` reports it,
+// in Config.Cmd[1]): mint the TLS pair if the serve directory has none, log the launch, then exec the
+// RENDERED argv file.
+//
+// The engine is exec'd from the file, never from a string assembled here -- that is the whole point of the
+// args file. The TLS branch is a guard, not a setup step: both serve directories already hold the pair, so a
+// cold start does not re-mint, and re-minting would produce a certificate the router's pinned
+// upstream_ca.pem rejects.
+//
+// BYTE FOR BYTE, THE FIRST THREE LINES ARE THE CAPTURED COMMAND. That includes the space run before `-days`,
+// a line-continuation remnant from the operator's script: reproducing it is what lets the witness compare
+// strings instead of comparing "equal after whitespace normalization", and normalizing whitespace in a
+// control claim is how a real difference gets waved through. The ONLY place this render differs is the engine
+// line, and it differs in two documented ways -- the flags arrive from the mounted args file instead of
+// inline, and `--api-key "$(cat /root/.pool_key)"` is gone (see Srv1ApiKeyReference).
+fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> List<String> {
+  let shape = srv1_replica_container_run_shape
+  let d = config.tls_material.container_dir as String
+  let key = srv1_d_under(config.tls_material.key_path)
+  let cert = srv1_d_under(config.tls_material.cert_path)
+  let args_path = shape.engine_args_container_path as String
+  let l1_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))
+  let l2_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))
+  [
+    // 1. The event logger every later line writes through, and the directory it writes in.
+    concat(concat("D=", d), "; ev(){ echo \"$(date -u +%FT%TZ) $*\" >> $D/events.log; }"),
+    // 2. TLS, guarded so a restart never re-mints a certificate the router's pinned CA would reject.
+    concat(
+      concat(
+        concat(
+          concat(
+            concat(concat(concat("[ -s ", key), " ] && [ -s "), cert),
+            " ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:"
+          ),
+          shape.tls_curve as String
+        ),
+        concat(concat(" -nodes   -days ", to_string(srv1_tls_validity_days_for_flag())), " -subj /CN=")
+      ),
+      concat(
+        concat(
+          concat(concat(shape.tls_subject_common_name as String, " -keyout "), key),
+          " -out "
+        ),
+        concat(concat(cert, " >> $D/events.log 2>&1"), "")
+      )
+    ),
+    // 3. The START event: which card this replica came up on, at what driver, with what cache tiers. This
+    //    line is what an operator reads in events.log after an incident, so its shape is a row, not prose.
+    concat(
+      concat(
+        concat(
+          concat(
+            concat(
+              concat(
+                concat(
+                  concat(
+                    concat(concat("ev \"START srv1 gpu", to_string(replica.index)), " "),
+                    srv1_replica_gpu_uuid_text(replica: replica)
+                  ),
+                  " (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP"
+                ),
+                to_string(config.tensor_parallel_size)
+              ),
+              ", cache ram-disk,"
+            ),
+            concat(concat(" L1 ", l1_gib), "G,")
+          ),
+          concat(concat(" L2 ", l2_gib), "G, disk-first, TLS)\"")
+        )
+      )
+    ),
+    // 3b. The args-file refusal, on its OWN line. It was glued onto the end of the START line, which is how a
+    //     stray `)` survived: the line it produced was the captured line plus a suffix, and every control on
+    //     that line asked "does the capture appear inside it?" -- which a line carrying one extra token
+    //     answers yes. A line that must equal a captured line gets its own element, so equality is the test.
+    concat(
+      concat(
+        concat("[ -s ", args_path),
+        " ] || { ev \"FATAL rendered engine argv file missing: "
+      ),
+      concat(args_path, "\"; exit 3; }")
+    ),
+    // 4. Read the RENDERED argv into the array the exec below expands. `mapfile` rather than word-splitting
+    //    a string: one token per line means no token can be re-split by a stray space, which is the failure
+    //    mode the unquoted $EXTRA in the retained launcher was one step away from.
+    concat("mapfile -t ENGINE_ARGS < ", args_path),
+    // 5. Exec it. The engine's argv is therefore byte-identical to srv1_replica_engine_argv's render, and to
+    //    nothing else.
+    concat("exec \"$\{ENGINE_ARGS[@]}\" >> $D/serve.log 2>&1", ""),
+  ]
+}
+
+// THE SCAFFOLD MARKER FOR THE CONTAINER-COMMAND RENDER ABOVE, sitting on the carrier it covers. Every hand-
+// composed script this module carries now has one of its own: the retained gpu.sh (srv1_serving_gpu_launcher_
+// bash_emit_dissolution), the helper (srv1_replica_helper_bash_emit_dissolution), the launcher render
+// (srv1_replica_launcher_render_bash_emit_dissolution), the docker argv shape (srv1_replica_launcher_shape_
+// dissolution), and -- added because review 92777 found this body unmarked -- this one. Hand-shell with no
+// marker is debt nobody counts.
+//
+// WHAT IS ADMITTED: the container's inner command -- event logger, TLS guard, START event, args-file refusal,
+// engine exec -- is composed from strings rather than emitted as nodes. It is admitted because the composition
+// is pinned OUTSIDE this module's own representation: the witness refuses any render whose lines differ from
+// the command the live containers reported through `docker inspect .Config.Cmd`, and the installer parsed and
+// dry-ran that command with the serving image's own bash. The strings answer to host evidence, not to a model's
+// taste. That is also why migrating the medium here is not free: the installed bytes ARE this render,
+// digest-matched on the host, so an emitter swap must reproduce them exactly or the receipts desync from the
+// machine. The debt is the medium, not the artifact.
+// THE GAP, AS ROWS A LANE OWNER CAN PICK UP. Both markers above (and the launcher's) point at the same missing
+// vocabulary in the modeled bash route, and the claim is not "I could not be bothered": it was checked today
+// against that lane. v2.extdeps.languages.bash_build publishes ~40 builders (words, commands, assignments,
+// and/or/pipe, subshell, if, negation, test brackets, redirections, exit) and v2.extdeps.languages.bash the node
+// kinds and lexical phrases they fold through; NONE of the four constructs below has a builder or a node kind,
+// and `case`/`esac`/`;;` exist only as INGEST lexical classes in bash_command_fold.dag -- the fold can read a
+// case statement, nothing in the lane can write one. These rows are the debt's receipt: what is missing, where it
+// would be added, when this was last verified, and what would close it. Fixing them is a language-layer change
+// with its own acceptance bar (the install gates these artifacts already use); it does not belong in this
+// deployment module, and this module does not get to mint its own bash emitter to work around it.
+type BashEmitCapabilityGap {
+  construct: NonEmptyStr,
+  missing_from: NonEmptyStr,
+  used_by: NonEmptyStr,
+  verified_on_utc: NonEmptyStr,
+  what_would_close_it: NonEmptyStr,
+}
+
+data srv1_bash_emit_capability_gaps: List<BashEmitCapabilityGap> = [
+  BashEmitCapabilityGap {
+    construct: "a shell function definition (the container command's ev() logger)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build and v2.extdeps.languages.bash: no builder, no node kind, no lexical phrase" as NonEmptyStr,
+    used_by: "srv1_replica_container_command_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "a function-definition node kind plus builder in the bash lane, then this render goes through bash_emit_stmts and the marker dissolves" as NonEmptyStr,
+  },
+  BashEmitCapabilityGap {
+    construct: "the 2>&1 descriptor duplication (appending stderr to the same event log)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build has stderr-to-file and stderr-to-null builders, but no merge-stderr-into-stdout; 2>&1 appears in the lane only inside literal strings" as NonEmptyStr,
+    used_by: "srv1_replica_container_command_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "a redirection builder for descriptor duplication" as NonEmptyStr,
+  },
+  BashEmitCapabilityGap {
+    construct: "a case statement (the launcher dispatches on the replica index)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build: no builder. bash_command_fold.dag carries bash_ingest_kw_case / _kw_esac / _case_clause_sep as INGEST lexical classes only -- no production, no serializer -- so the lane can read case but cannot write it" as NonEmptyStr,
+    used_by: "srv1_replica_launcher_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "a case node kind, production and builder in the bash lane" as NonEmptyStr,
+  },
+  BashEmitCapabilityGap {
+    construct: "array assignment and $\{ARRAY[@]} expansion (the launcher builds engine args, then execs them as separate words)" as NonEmptyStr,
+    missing_from: "v2.extdeps.languages.bash_build and v2.extdeps.languages.bash: neither mentions arrays at all (no array token class, no expansion builder)" as NonEmptyStr,
+    used_by: "srv1_replica_launcher_lines" as NonEmptyStr,
+    verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
+    what_would_close_it: "array assignment/expansion builders -- without them an emitted exec would re-split the args, which is the bug class the rendered args file exists to remove" as NonEmptyStr,
+  },
+]
+
+// THE OUT-OF-DIFF APPROVAL FOR SHIPPING THESE RENDERS AS MARKED HAND-SHELL. fail_closed asks for the operator's
+// approval OUTSIDE the diff when a scaffold is admitted while a modeled path exists, so the decision lives here
+// rather than being paraphrased out of a review thread: who was asked, what the options were, which was chosen,
+// and where it stops. A row rather than a sentence inside the markers, so the markers can cite it and a witness
+// can check the citation is there.
+type ScaffoldApproval {
+  approved_by: NonEmptyStr,
+  asked_via: NonEmptyStr,
+  decided_on_utc: NonEmptyStr,
+  what_it_covers: NonEmptyStr,
+  what_it_does_not_cover: NonEmptyStr,
+}
+
+data srv1_bash_emit_scaffold_approval: ScaffoldApproval = ScaffoldApproval {
+  approved_by: "the operator, on gentle-swift-129's recommendation, approved by default when the escalation went unanswered past its window" as NonEmptyStr,
+  asked_via: "escalation msg_856d8172 (2026-11-10): A = ship the marked hand-built renders with the capability gaps recorded, the bash_emit extension as its own PR; B = extend bash_emit first and re-install on srv1 from the new render" as NonEmptyStr,
+  decided_on_utc: "2026-11-10" as NonEmptyStr,
+  what_it_covers: "option A: the launcher, the engine-args file and the container command stay hand-composed under their markers, byte-identical to the bytes srv1 runs (srv1_installed_boot_path_artifacts_2026_11_09), with the four missing builders of that lane recorded in srv1_bash_emit_capability_gaps as why the modeled route is not open yet" as NonEmptyStr,
+  what_it_does_not_cover: "no new hand-authored shell anywhere in this module; no change to the bytes installed on srv1 without a fresh window; and nothing in v2.extdeps.languages.bash_build -- the four builders are their own change, with their own witnesses",
+}
+
+data srv1_container_command_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_container_command_lines — the container's inner command is hand-composed strings (concat over literals), admitted as a capture-and-digest-pinned receipt: the witness refuses any render whose lines differ from the command the live containers ran on 2026-11-09, and the installer parses and dry-runs it with the serving image's own bash. DISSOLVES WHEN the same command is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ContainerRunShape/Srv1LaunchConfig rows, KEEPING that byte-for-byte control against docker inspect .Config.Cmd so the migration changes the medium and not the artifact.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): v2.extdeps.languages.bash_build exposes about forty builders -- words (literal, variable, compound, concat, command substitution), commands, and/or chains, if and if-else, subshell, redirection to a file, redirection of stderr to a file, assignments, test brackets, exit -- and has NO builder for the constructs this body is made of: a shell FUNCTION definition (the event logger), and the 2>&1 descriptor duplication on its redirection. v2.extdeps.languages.bash carries no node kind for function definitions, case statements or array expansion at all, so grep for those constructs in it returns nothing. The grammar rows have to grow in that lane before this body can be written as nodes; the swap is not available from this module today. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Shipping them hand-built under this marker rather than extending that lane is the operator's decision taken OUTSIDE this diff, recorded in srv1_bash_emit_scaffold_approval (escalation msg_856d8172, option A; option B -- extend the lane, then re-install from the new render -- was declined). Until then this is adopted hand-shell under a marker, and it is not an authority on how shell should be written.")
+
+// The `docker run` line for one replica, with every value rendered -- no host shell variable survives into
+// it. This is the shape change that makes the adoption claim checkable: the command the container reports is
+// a pure function of rows, so "the boot path runs the render" is settled by `docker inspect`, not by
+// comparing two scripts by eye.
+//
+// The args file is mounted read-only from the path srv1_replica_engine_args_host_path names for THIS replica,
+// and the launcher refuses to run without it. The pool key mount is retained read-only even though the engine
+// stopped reading it: the unit contract verifies the mount set, and dropping a mount mid-window would put a
+// second change in flight under a switch whose entire value is that the diff is attributable.
+fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> List<String> {
+  let shape = srv1_replica_container_run_shape
+  let memory_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_replica_host_budget.cgroup_memory_limit)))
+  let shm_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: shape.shm_size)))
+  let port = to_string(replica.host_port)
+  let container_port = to_string(config.container_port)
+  let args_mount = concat(concat(srv1_replica_engine_args_host_path(replica: replica) as String, ":"), shape.engine_args_container_path as String)
+  // Four groups, in the order the retained launcher used them: identity (name, restart policy, CDI device),
+  // the host's budget for this container, how it is published, and what is mounted. Flag SPELLINGS are the
+  // retained launcher's spellings -- `--cgroup-parent=X` and `--memory=32g`, not paraphrases of them -- so
+  // the adoption comparison is a comparison of like with like. `--env-file` is the only new element, placed
+  // with the other host-side inputs.
+  let identity = concat(
+    concat(
+      [
+        "docker run -d" as String,
+        "--name" as String, replica.container_name as String,
+        "--restart" as String, shape.restart_policy as String,
+      ],
+      srv1_replica_device_words(replica: replica) as List<String>
+    ),
+    [
+      concat("--cgroup-parent=", shape.cgroup_parent as String) as String,
+      concat(concat("--memory=", memory_gib), "g") as String,
+      concat(concat("--memory-swap=", memory_gib), "g") as String,
+      "--shm-size" as String, concat(shm_gib, "g") as String,
+      "--env-file" as String, config.api_key_reference.host_env_file as String,
+    ]
+  )
+  let published = [
+    "-p" as String, concat(concat(port, ":"), container_port) as String,
+    "-e" as String, concat("PORT=", container_port) as String,
+    "-e" as String, concat("HF_HOME=", "/root/.cache/huggingface") as String,
+  ]
+  // Six mounts, five of them the contract's set: the shared weight cache, this replica's KV tier, the shared
+  // JIT cache, this replica's serve directory (TLS plus its logs), the pool key read-only, and the sixth,
+  // new, this replica's RENDERED engine argv read-only. A mount is the only way the render reaches the
+  // container -- the argv is never typed into the command.
+  let mounted = [
+    "-v" as String, concat(concat(srv1_serving_shared_hf_dir as String, ":"), "/root/.cache/huggingface") as String,
+    "-v" as String, concat(concat(replica.host_kv_dir as String, ":"), config.lmcache_l2_placement.root as String) as String,
+    "-v" as String, concat(concat(srv1_serving_shared_jit_dir as String, ":"), "/cache/jit") as String,
+    "-v" as String, concat(concat(replica.host_serve_dir as String, ":"), config.tls_material.container_dir as String) as String,
+    "-v" as String, concat(concat(concat(srv1_serving_shared_pool_key as String, ":"), shape.pool_key_container_path as String), ":ro") as String,
+    "-v" as String, concat(args_mount, ":ro") as String,
+  ]
+  let entered = [
+    "--entrypoint" as String, shape.entrypoint as String,
+    config.image_digest as String,
+    "-lc" as String,
+    // One shell word, single-quoted. The inner script holds double quotes, `$(...)`, `${...}` and newlines, and
+    // it is the argument the container's bash receives: unquoted, the first newline would end the `docker run`
+    // on the host and the rest of the script would run THERE. Single quotes suffice because no line of the
+    // rendered script contains one -- which the witness asserts, because a future row that introduced one would
+    // otherwise silently truncate the container command instead of failing.
+    srv1_single_quoted(string_concat_join(srv1_replica_container_command_lines(replica: replica, config: config), "\n")),
+  ]
+  concat(concat(concat(identity, published), mounted), entered)
+}
+
+// THE INSTALLED LAUNCHER, rendered. These are the bytes of /usr/local/sbin/lil-replica-launch; their sha256
+// on-host is what srv1_replica_launcher_sha256 records, and
+//   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_launcher
+// prints them and nothing else, which is how the host file is produced -- no editor touches them.
+//
+// WHY A CASE ARM HOLDS A WHOLE `docker run` INSTEAD OF SETTING SHELL VARIABLES. The retained gpu.sh set
+// $NAME/$GPU/$KV from a case arm and then interpolated them into an unquoted command line, which is exactly
+// how `$EXTRA` came to be part of the boot path: once identity is a variable, an unset one expands to
+// nothing and nobody notices. Here each arm is the complete rendered command for that replica, so there is no
+// variable left for a typo or an empty environment to redefine, and the command a replica runs is readable
+// off the arm that ran it. The only shell substitution left is `$1`, the index systemd passes as %i.
+//
+// WHAT THE SCRIPT REFUSES, AND WHY THE REFUSAL IS IN THE FILE AND NOT IN A CHECKLIST: it exits non-zero when
+// the index is not in the roster, when that replica's rendered args file is missing or empty, when the key
+// env file is missing, or when the key env file is not mode 0600. A boot path that started a container from
+// a stale or absent args file would serve a configuration this module does not describe -- reproducing, by
+// the fix, the very gap srv1_helper_adoption_verification_gap exists to close. The 0600 refusal is here for
+// the same reason: the env file holds the pool's bearer key, and a boot path that read it after someone
+// relaxed its mode would be reading a file any local user could have written.
+// One shell word in single quotes: nothing expands inside it on the host, which is exactly what the
+// container-side script needs -- its own `$D`, `$(...)` and `${...}` must survive to the container untouched.
+fn srv1_single_quoted(body: String) -> String {
+  concat(concat("'", body), "'")
+}
+
+// A path in double quotes, the way the launcher's own lines quote the paths it copies.
+fn srv1_quoted(path: String) -> String {
+  concat(concat("\"", path), "\"")
+}
+
+// One half of the TLS identity: if the replica's own copy is missing, take it from the identity source. The
+// `[ a != b ]` test makes the arm that OWNS the source directory a genuine no-op -- copying a file onto itself
+// is an error, not a no-op, and an arm that died there would take a healthy replica down at boot.
+fn srv1_tls_copy_guard(serve_dir: String, source_dir: String, file_name: String) -> String {
+  let own = concat(concat(serve_dir, "/"), file_name)
+  let from = concat(concat(source_dir, "/"), file_name)
+  concat(
+    concat(
+      concat(
+        concat(concat(concat("[ ", srv1_quoted(own)), " != "), srv1_quoted(from)),
+        " ] && { [ -s "
+      ),
+      srv1_quoted(own)
+    ),
+    concat(
+      concat(" ] || sudo -n cp -p ", srv1_quoted(from)),
+      concat(concat(" ", srv1_quoted(own)), "; }")
+    )
+  )
+}
+
+// One arm's TLS identity guard, both halves. They are checked and copied separately because a half-written key
+// beside an intact certificate is exactly the state in which an "is either file missing" shortcut would decide
+// nothing is missing -- and the pair is what the router verifies. The trailing `|| true` keeps the guard from
+// deciding the launch's exit status: a replica that already has its identity must not be held hostage by a
+// test that evaluated false.
+fn srv1_replica_tls_identity_guard_line(replica: Srv1ServingReplicaSpec) -> String {
+  let serve = replica.host_serve_dir as String
+  let src = srv1_tls_identity_source_dir as String
+  concat(
+    concat(
+      concat(
+        concat("    { ", srv1_tls_copy_guard(serve_dir: serve, source_dir: src, file_name: srv1_tls_key_file_name as String)),
+        "; "
+      ),
+      srv1_tls_copy_guard(serve_dir: serve, source_dir: src, file_name: srv1_tls_cert_file_name as String)
+    ),
+    "; } || true"
+  )
+}
+
+fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: Srv1LaunchConfig) -> List<String> {
+  // One arm per roster row, and each arm carries its replica's removal race ahead of its `docker run`. The
+  // loop is not decoration: `docker run --name X` fails while a container named X still exists, so the
+  // restart path (systemd restarting the unit after a killed container has EXITED but not been removed) dies
+  // on a name conflict unless the old one is removed first -- and on 2026-11-08 removal itself stalled, which
+  // is why the retained gpu.sh polls for up to 300 s. Rendering that here, from the row's container name,
+  // keeps a lesson the operator learned at 3am inside the artifact instead of inside their memory of it.
+  let known = string_concat_join(map(replicas, r => to_string(r.index)) as List<String>, " ")
+  let arms = flat_map(replicas, r =>
+    concat(
+      concat(
+        [
+          concat(concat("  ", to_string(r.index)), ")") as String,
+          srv1_replica_tls_identity_guard_line(replica: r),
+          concat(concat("    docker rm -f ", r.container_name as String), " >/dev/null 2>&1 || true") as String,
+          concat(
+            concat(
+              concat(
+                concat("    for i in $(seq 1 150); do docker container inspect ", r.container_name as String),
+                " >/dev/null 2>&1 || break; docker rm -f "
+              ),
+              r.container_name as String
+            ),
+            " >/dev/null 2>&1 || true; sleep 2; done"
+          ) as String,
+          concat("    ", string_concat_join(srv1_replica_docker_argv(replica: r, config: config), " ")) as String,
+          concat(
+            concat(
+              concat(
+                concat(
+                  concat(
+                    concat(
+                      concat(
+                        concat(concat("    echo \"lil-replica: started ", r.container_name as String), " on GPU "),
+                        to_string(r.index)
+                      ),
+                      " ("
+                    ),
+                    srv1_replica_gpu_uuid_text(replica: r)
+                  ),
+                  concat(concat(") publishing host port ", to_string(r.host_port)), " to container port ")
+                ),
+                to_string(config.container_port)
+              ),
+              " from the rendered argv "
+            ),
+            concat(srv1_replica_engine_args_host_path(replica: r) as String, "\"")
+          ) as String,
+        ],
+        ["    ;;" as String]
+      )
+    )
+  ) as List<String>
+  concat(
+    concat(
+      [
+        "#!/bin/bash" as String,
+        "# GENERATED by gunbc.serving.srv1_serving_replica_layout (srv1_replica_launcher_lines)." as String,
+        "# DO NOT EDIT ON THE HOST. Edit the .dag rows and re-render: the installed file's sha256 is recorded" as String,
+        "# as srv1_replica_launcher_sha256, so a hand edit here is a disagreement with a row, on purpose." as String,
+        "#" as String,
+        "# This is what lil-replica@.service execs. The operator's ~/strata-test/srv1_lil_serve_gpu.sh stays on" as String,
+        "# the host, unchanged, as the restore path -- but it is no longer the boot path, because its engine" as String,
+        "# line carried the pool key in argv and an unbound EXTRA-arguments suffix, and this renders neither." as String,
+        "set -u" as String,
+        "IDX=$\{1:?usage: lil-replica-launch <replica-index>}" as String,
+        concat("ARGS_DIR=", srv1_replica_rendered_args_dir as String) as String,
+        concat("ENV_FILE=", config.api_key_reference.host_env_file as String) as String,
+        // The refusals come BEFORE any arm, and therefore before any `docker run`. Rendered after the case
+        // they would still exit non-zero -- on a host where the container had already been started, which is
+        // the opposite of a refusal: an unserved replica plus a stale container, and a unit that looks like it
+        // started something. A launcher that is going to refuse must refuse before it touches docker.
+        concat("ARGS=$ARGS_DIR/replica-$IDX.args" as String),
+        "[ -s \"$ARGS\" ] || { echo \"lil-replica: rendered engine argv $ARGS is missing or empty\" >&2; exit 3; }" as String,
+        "[ -s \"$ENV_FILE\" ] || { echo \"lil-replica: engine key env file $ENV_FILE is missing or empty\" >&2; exit 4; }" as String,
+        "[ \"$(stat -c %a \"$ENV_FILE\")\" = \"600\" ] || { echo \"lil-replica: $ENV_FILE must be mode 0600\" >&2; exit 5; }" as String,
+        concat(concat("KNOWN_INDEXES=\"", known), "\"") as String,
+        "case $IDX in" as String,
+      ],
+      arms
+    ),
+    [
+      concat("  *) echo \"lil-replica: unknown replica index '$IDX' (known: $KNOWN_INDEXES)\" >&2; exit 2 ;;" as String),
+      "esac" as String,
+    ]
+  )
+}
+
+// THE SCAFFOLD MARKER FOR THE NEW LAUNCHER RENDER, on its own carrier. review 92788 is right that the gpu.sh
+// marker does not cover this: srv1_serving_gpu_launcher_bash_emit_dissolution is about the RETAINED operator
+// script, which after 2026-11-09 is only the restore path. The function above is the script the fleet now
+// boots, and it is composed from strings -- input guards, `case` arms over the roster, `docker run -d`, the
+// TLS copy guards, the exec of the rendered args file -- so its debt gets its own row instead of borrowing a
+// neighbour's.
+//
+// WHY IT IS ADMITTED AS SCAFFOLD RATHER THAN MIGRATED IN THIS CHANGE: the value of the switch is that the bytes
+// installed on the host are the bytes the interpreter rendered (digest-matched on-host) and that the container's
+// inner command equals what `docker inspect` reported before the switch. Those controls do not depend on the
+// medium, and they are what makes a live switch attributable; swapping the emitter in the same diff would move
+// the bytes while a live replica was moving, and the window's evidence would then explain neither.
+data srv1_replica_launcher_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_launcher_lines — the launcher the fleet boots as of 2026-11-09 (input guards, case arms over srv1_serving_replica_roster, docker run -d with the rendered argv, the TLS copy guards, exec of the rendered engine args file) is composed from strings. The gpu.sh marker covers only the retained restore script; this is the live render, and its debt is counted here. DISSOLVES WHEN the launcher is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig/Srv1ContainerRunShape rows, KEEPING the three install-time gates that do not depend on the medium: the serving image's own bash parses the emitted inner command, a dry-run of it yields the argv docker inspect .Config.Cmd reported before the switch, and sha256(render) equals the on-host sha256 of the installed file.. THE TRIGGER IS A GAP IN THE MODELED PATH, NOT A CALL-SITE SWAP (read 2026-11-10): this script is a case statement over the replica roster, BASH ARRAY expansion for the engine-args vector, and a function, and v2.extdeps.languages.bash_build has no builder for any of the three -- v2.extdeps.languages.bash has no node kind for case, arrays or function definitions, so grep for those constructs in it returns nothing. The emitter cannot express a launcher of this shape today; the grammar rows must grow in that lane, and the migration is that lane's change with these gates kept, not a call-site swap here. The constructs missing from that lane are itemized, with what would close each one, as rows in srv1_bash_emit_capability_gaps. Shipping it hand-built under this marker rather than extending that lane is the operator's decision taken OUTSIDE this diff, recorded in srv1_bash_emit_scaffold_approval (escalation msg_856d8172, option A; option B -- extend the lane, then re-install from the new render -- was declined). Until then this is adopted hand-shell under a marker, not an authority on how a launcher should be written.")
+
+// The launcher as installed, in one string. CLI entry:
+//   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_launcher
+// prints these bytes and nothing else.
+fn srv1_render_replica_launcher() -> String {
+  concat(string_concat_join(srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: srv1_admitted_launch_config), "\n"), "\n")
+}
+
+// The rendered engine argv for the admitted config, one token per line -- the body of
+// /usr/local/etc/lil-replica/replica-<index>.args. CLI entry:
+//   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_engine_args
+// Both replicas take these same bytes today, because the engine argv is configuration and not identity; it is
+// still a per-replica FILE so that a future per-replica engine difference is a row change rather than a
+// renderer change.
+fn srv1_render_replica_engine_args() -> String {
+  concat(srv1_replica_engine_args_body(config: srv1_admitted_launch_config), "\n")
+}
+
+// The digest of exactly the bytes the two CLI entries above print. The install step on srv1 recomputes
+// sha256sum on the installed files and the two must agree: the printed channel that carries the render is a
+// human/agent-readable channel, not a byte channel, so the transport is only trusted once the digest matches.
+// A render whose digest cannot be reproduced on the host has not been installed, whatever the log says.
+fn srv1_render_replica_launcher_sha256() -> String {
+  sha256_hex_of_text(text: srv1_render_replica_launcher())
+}
+
+fn srv1_render_replica_engine_args_sha256() -> String {
+  sha256_hex_of_text(text: srv1_render_replica_engine_args())
+}
+
+// ── the systemd helper, rendered ───────────────────────────────────────────────────────────────────────
+//
+// WHAT THIS ONE IS FOR. The unit is Type=simple and ExecStart is `lil-replica start %i`; the restart
+// semantics the operator depends on (Restart=on-failure, SuccessExitStatus=143) work only because the helper
+// BLOCKS on `docker wait` and exits with the container's status. A launcher that rendered `docker run -d` and
+// returned 0 would make every crash look like a clean success and no replica would ever be restarted. So the
+// helper is rendered here too, from the bytes of the helper that is actually installed: the render is that
+// body with exactly three lines changed -- the `LAUNCH=` line, which stops pointing at
+// ~/strata-test/srv1_lil_serve_gpu.sh and points at the rendered launcher, and the two comment lines that
+// named the old script. The `case $IDX` line is rebuilt from the roster rows so the helper's name table
+// cannot drift from the layout's. Nothing else moves, including `docker stop -t 240`, which is the LMCache
+// disk-tier flush window.
+data srv1_replica_launcher_host_path: NonEmptyStr = "/usr/local/sbin/lil-replica-launch" as NonEmptyStr
+
+// The restore path's path. Named as a row so the helper render can say which line it replaced, and so the
+// witness can prove the replacement is the ONLY change to the retained body.
+data srv1_retained_gpu_launcher_host_path: NonEmptyStr = "/home/briansrls/strata-test/srv1_lil_serve_gpu.sh" as NonEmptyStr
+
+// The three lines of the retained helper that the render refuses to carry forward: the LAUNCH= line (a boot
+// path that can be handed arbitrary extra engine arguments by an $EXTRA in the environment of whoever ran
+// systemctl) and the two comment lines that describe that line.
+data srv1_replica_helper_retired_lines: List<String> = [
+  "# start: adopt the replica container if it is already running (no relaunch), else launch it with" as String,
+  "#        srv1_lil_serve_gpu.sh; then block on the container and exit with ITS status" as String,
+  "#        (143 = stopped by SIGTERM = success; anything else -> systemd Restart=on-failure)." as String,
+  concat("LAUNCH=", srv1_retained_gpu_launcher_host_path as String) as String,
+]
+
+data srv1_replica_helper_replacement_lines: List<String> = [
+  "# start: adopt the replica container if it is already running (no relaunch), else launch it with" as String,
+  "#        the rendered launcher /usr/local/sbin/lil-replica-launch, whose docker run this module" as String,
+  "#        renders from gunbc.serving.srv1_serving_replica_layout; then block on the container and exit" as String,
+  "#        with ITS status (143 = stopped by SIGTERM = success; anything else -> Restart=on-failure)." as String,
+  concat("LAUNCH=", srv1_replica_launcher_host_path as String) as String,
+]
+
+
+fn srv1_replica_helper_name_table_line(replicas: List<Srv1ServingReplicaSpec>) -> String {
+  let arms = map(replicas, r => concat(concat(to_string(r.index), ") NAME="), r.container_name))
+  let joined = string_concat_join(arms, " ;; ")
+  let head = concat("case $IDX in ", joined)
+  concat(head, " ;; *) echo \"unknown GPU index $IDX\" >&2; exit 2 ;; esac")
+}
+
+// The helper as installed: the retained body, line for line, with the LAUNCH= line repointed at the
+// rendered launcher, the two comment lines that described that line rewritten, and the name table
+// rebuilt from the roster. Everything else is carried through byte for byte -- including the adopt probe,
+// the docker wait and docker stop -t 240, which are the half of the boot path a detached launcher cannot
+// do. The witness pins this to the retained body: drop any one of these lines and the comparison fails.
+fn srv1_replica_helper_lines(replicas: List<Srv1ServingReplicaSpec>) -> List<String> {
+  [
+    "#!/bin/bash" as String,
+    "# lil-replica start|stop <gpu-index> -- systemd helper for lil-replica@.service (srv1, 2026-11-08)." as String,
+    "# start: adopt the replica container if it is already running (no relaunch), else launch it with" as String,
+    "#        the rendered launcher /usr/local/sbin/lil-replica-launch, whose docker run this module" as String,
+    "#        renders from gunbc.serving.srv1_serving_replica_layout; then block on the container and exit" as String,
+    "#        with ITS status (143 = stopped by SIGTERM = success; anything else -> Restart=on-failure)." as String,
+    "# stop:  docker stop with a long grace period so LMCache can flush its disk tier." as String,
+    "set -u" as String,
+    "ACTION=$\{1:?start|stop}; IDX=$\{2:?gpu index}" as String,
+    srv1_replica_helper_name_table_line(replicas: replicas) as String,
+    concat("LAUNCH=", srv1_replica_launcher_host_path as String) as String,
+    "case $ACTION in" as String,
+    "  start)" as String,
+    "    if [ \"$(docker container inspect -f '{{.State.Running}}' \"$NAME\" 2>/dev/null)\" = true ]; then" as String,
+    "      echo \"adopting running container $NAME\"" as String,
+    "    else" as String,
+    "      \"$LAUNCH\" \"$IDX\" || exit 1" as String,
+    "    fi" as String,
+    "    rc=$(docker wait \"$NAME\") || exit 1" as String,
+    "    echo \"$NAME exited with status $rc\"; exit \"$rc\" ;;" as String,
+    "  stop)" as String,
+    "    exec docker stop -t 240 \"$NAME\" ;;" as String,
+    "  *) echo \"usage: $0 start|stop <idx>\" >&2; exit 2 ;;" as String,
+    "esac" as String,
+  ]
+}
+
+fn srv1_render_replica_helper() -> String {
+  concat(string_concat_join(srv1_replica_helper_lines(replicas: srv1_serving_replica_roster), "\n"), "\n")
+}
+
+fn srv1_render_replica_helper_sha256() -> String {
+  sha256_hex_of_text(text: srv1_render_replica_helper())
+}
+
+// ── the boot path as INSTALLED and as EXECUTED (srv1, 2026-11-09) ──────────────────────────────────
+//
+// The rows below are the receipts for the maintenance window that replaced the systemd boot path from the
+// operator's ~/strata-test/srv1_lil_serve_gpu.sh with the bytes these renderers emit. Three separate things
+// are recorded and must not be collapsed into one "verified" verdict: what is INSTALLED (bytes and digests
+// read back on the host), what was EXECUTED (the runs below, with timings), and what remains UNEXECUTED
+// (a host reboot -- nothing here shows that boot works).
+
+// One install: the bytes a renderer emitted, what the host now holds, and how the two were compared. The
+// printed channel that carries a render out of the interpreter is a human-readable channel, so the digest
+// computed inside the interpreter (render_sha256) is what the host's sha256sum is checked against; the
+// install is only true when they are equal.
+type Srv1InstalledArtifact {
+  host_path: NonEmptyStr,
+  rendered_by: NonEmptyStr,
+  bytes: ByteSize,
+  render_sha256: NonEmptyStr,
+  installed_sha256_computed_on_host: NonEmptyStr,
+}
+
+data srv1_installed_boot_path_artifacts_2026_11_09: List<Srv1InstalledArtifact> = [
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/sbin/lil-replica-launch" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_launcher" as NonEmptyStr,
+    bytes: byte_size(5771),
+    render_sha256: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
+    installed_sha256_computed_on_host: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/etc/lil-replica/replica-0.args" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
+    bytes: byte_size(453),
+    render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+    installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/etc/lil-replica/replica-1.args" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
+    bytes: byte_size(453),
+    render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+    installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/sbin/lil-replica" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_helper" as NonEmptyStr,
+    bytes: byte_size(1222),
+    render_sha256: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
+    installed_sha256_computed_on_host: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
+  },
+]
+
+// The unit file itself was NOT changed by this window, so its digest is recorded to say the change is in
+// the helper and the launcher and nowhere else. The unit is unchanged from the read of 2026-11-09.
+type Srv1UnitFileState {
+  path: NonEmptyStr,
+  // the digest `sha256sum` printed ON srv1, not the one this repo believes the file has
+  sha256_computed_on_host: NonEmptyStr,
+  read_on_utc: NonEmptyStr,
+  backup_dir: NonEmptyStr,
+  // what the verbs still hand off to; the change lives in what THAT path holds, not in the unit
+  exec_verbs_run: NonEmptyStr,
+  changed_by_this_window: Bool,
+}
+
+data srv1_replica_unit_unchanged_2026_11_09: Srv1UnitFileState = Srv1UnitFileState {
+  path: "/etc/systemd/system/lil-replica@.service" as NonEmptyStr,
+  sha256_computed_on_host: "1372a94f3ea1c2787566d5f75a7c482d50128e89f3359166f2eafc94fadb336c" as NonEmptyStr,
+  read_on_utc: "2026-11-09T18:48:50Z" as NonEmptyStr,
+  backup_dir: "/home/briansrls/jh_backups/20261109T184850Z" as NonEmptyStr,
+  exec_verbs_run: "/usr/local/sbin/lil-replica start|stop %i" as NonEmptyStr,
+  changed_by_this_window: false,
+}
+
+// Which run of the boot path a receipt describes. The set is CLOSED on purpose: a cold start and a crash are
+// different claims about the boot path (one proves the start path, the other proves systemd's restart), and
+// HostReboot is the third case that NOBODY HAS RUN -- naming it in the type is what lets a witness assert that
+// no receipt claims it, which prose could not: a free-text kind can say anything, including "reboot".
+type Srv1BootPathRunKind
+  = ColdStart
+  | Crash
+  | HostReboot
+
+// The bar these runs were measured against: the engine must be serving within 10 minutes of the unit being
+// started (the operator's window brief, step 3 and step 5). Named as a value so the witness compares a
+// MEASURED duration against THIS, not against a copy of the number in the test. The crash path's floor is not
+// duplicated here: it is the unit's own restart_delay on srv1_replica_unit_contract, which the witness reads.
+data srv1_boot_path_ready_deadline: Second = second(600)
+
+// One executed run of the start path or the crash path, with the numbers the scripts measured on the host.
+// Durations carry std.measure's time quantity, not a bare count: the measured 46 s and the contract's 30 s
+// are the same kind of thing, and a fold that compares them should not have to know which Nat is a duration.
+type Srv1BootPathRun {
+  replica_index: Nat,
+  kind: Srv1BootPathRunKind,
+  // How the run was driven, in prose: what was stopped, removed or killed. A note, never a verdict, and never
+  // the thing a witness branches on -- that is `kind`.
+  note: NonEmptyStr,
+  // THE INSTANTS ARE BUILT BY THE CALENDAR'S CHECKED CONSTRUCTOR, and the receipt holds its Optional. A
+  // `NonEmptyStr` instant accepted `2026-11-9T22:1:8Z` and only complained -- by answering nothing -- when a
+  // consumer asked for a span; typed parts alone would let `hour: 99` sit in a row and come back as a plausible
+  // duration. So the range is decided at construction and each consumer cases on Absent.
+  trigger_at: Iso8601UtcInstant?,
+  ready_at: Iso8601UtcInstant?,
+  container_created: Second,
+  // Time from the stop/kill to the first 200 from /health is NOT a field: it is the difference of this
+  // row's own two instants (srv1_boot_path_run_ready_duration below). A row that types it beside the
+  // instants can disagree with them, and one of the four runs in this window did -- by 7 s.
+  // container_created stays a field: it is an independent stopwatch phase (start -> container created),
+  // not a difference of the window's ends, so there is no pair of instants to derive it from.
+  restarts_observed: Nat,
+  verdict: NonEmptyStr,
+}
+
+data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
+  Srv1BootPathRun {
+    replica_index: 1,
+    kind: ColdStart,
+    note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 51, second: 38),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 59, second: 21),
+    container_created: second(46),
+    restarts_observed: 0,
+    verdict: "ready inside the 10-minute deadline; engine argv carries no --api-key (count 0) and the engine's environment carries VLLM_API_KEY (count 1); router upstream srv1-vllm-1 served six /v1/chat/completions probes at 200 with zero new 502s" as NonEmptyStr,
+  },
+  Srv1BootPathRun {
+    replica_index: 1,
+    kind: Crash,
+    note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 1),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 19, second: 33),
+    container_created: second(39),
+    restarts_observed: 1,
+    verdict: "systemd did restart it, but NOT within the 30 s the brief set as the bar: the unit's own RestartSec=30 makes 30 s the FLOOR, and the measured replacement container appeared 39 s after the kill (22:11:39Z, written by the rendered launcher's own START event). Engine ready 512 s. Auth held: 401 without the key, 200 with it. No --api-key in .Config.Cmd; VLLM_API_KEY present in the engine environment." as NonEmptyStr,
+  },
+  Srv1BootPathRun {
+    replica_index: 0,
+    kind: ColdStart,
+    note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 24, second: 35),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 31, second: 38),
+    container_created: second(46),
+    restarts_observed: 0,
+    verdict: "ready inside the deadline; `ps` on the host shows zero processes carrying --api-key once both replicas are on this path (previously the engine's own argv named the key)" as NonEmptyStr,
+  },
+  Srv1BootPathRun {
+    replica_index: 0,
+    kind: Crash,
+    note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 32, second: 21),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 39, second: 23),
+    container_created: second(38),
+    restarts_observed: 1,
+    verdict: "replacement container 38 s after the kill (again above the 30 s bar, which the unit's RestartSec=30 sets); engine ready 422 s; auth held (401 without key, 200 with); no --api-key in .Config.Cmd" as NonEmptyStr,
+  },
+]
+
+// Readiness is computed from the row's own instants, not transcribed beside them: the same ISO 8601 calendar
+// the fleet module reads its NCCL spans through, so one pair of instants cannot mean two different durations
+// in two rows. It answers Absent when a row names instants that do not parse or come out reversed, which is
+// how a mistyped instant surfaces -- as a claim that refuses to resolve, not as a plausible number.
+// The r1 crash row is the proof this was worth having: its kill instant had been transcribed 7 s late
+// (22:11:08Z where the host recorded 22:11:01Z, epoch 1794262261), and the hand-typed ready duration agreed
+// with the WRONG instant. Deriving it from the pair exposes the disagreement instead of hiding it.
+fn srv1_boot_path_run_ready_duration(run: Srv1BootPathRun) -> Second? {
+  iso8601_utc_instant_seconds_between(earlier: run.trigger_at, later: run.ready_at)
+}
+
+
+// What a reader may ask of a run receipt, phrased in the module that owns the closed set rather than in the
+// test that asks it: a witness in another module branches on these, and never has to name a member.
+fn srv1_boot_path_run_is_cold_start(run: Srv1BootPathRun) -> Bool { run.kind == ColdStart }
+fn srv1_boot_path_run_is_crash(run: Srv1BootPathRun) -> Bool { run.kind == Crash }
+// The case nobody has run. A witness asserts NO receipt has this kind; a free-text kind could not be checked
+// this way, which is the reason the set is closed.
+fn srv1_boot_path_run_claims_reboot(run: Srv1BootPathRun) -> Bool { run.kind == HostReboot }
+
+// The two bars these runs are judged against, read from where they are DEFINED -- the operator's readiness bar
+// above, and the unit's own restart_delay on the contract row. A test that copies 600 and 30 keeps passing
+// after either one changes.
+fn srv1_boot_path_ready_deadline_seconds() -> Nat { second_count(srv1_boot_path_ready_deadline) }
+fn srv1_boot_path_crash_restart_floor_seconds() -> Nat { second_count(srv1_replica_unit_contract.restart_delay) }
+
+// The disruption the window cost, counted from the router's own counters rather than estimated. The counters
+// are cumulative since the router started, so the cost is a difference between two snapshots taken on srv1.
+// The window is every action taken against the serving replicas on 2026-11-09: the first (failed) switch
+// attempt, the two cold-start switches, the two crash tests and the NCCL re-run with both replicas stopped.
+// The disruption the window cost, with the counters as FIELDS: the router's counters are cumulative, so the
+// cost is a difference, and the phase and upstream breakdowns must ADD UP to that difference. In prose those
+// numbers could drift apart silently; here a witness can check the arithmetic.
+type Srv1RouterWindowCount {
+  snapshot_from: Iso8601UtcInstant?,
+  status_502_before: Nat,
+  status_502_after: Nat,
+  status_200_before: Nat,
+  status_200_after: Nat,
+  // the closed set of actions this window took against the serving path; their sum is the difference above
+  failed_first_attempt_502: Nat,
+  replica1_switch_502: Nat,
+  replica1_crash_502: Nat,
+  replica0_switch_502: Nat,
+  replica0_crash_502: Nat,
+  nccl_window_502: Nat,
+  // the two upstreams this window touched, and what everything ELSE on the router contributed
+  upstream_srv1_vllm_502_added: Nat,
+  upstream_srv1_vllm_1_502_added: Nat,
+  other_upstreams_502_added: Nat,
+  nccl_window: Second?,
+  nccl_measurement: Second?,
+  note: NonEmptyStr,
+}
+
+data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = Srv1RouterWindowCount {
+  snapshot_from: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 20, minute: 38, second: 24),
+  status_502_before: 13,
+  status_502_after: 64,
+  status_200_before: 27150,
+  status_200_after: 29727,
+  failed_first_attempt_502: 7,
+  replica1_switch_502: 4,
+  replica1_crash_502: 2,
+  replica0_switch_502: 4,
+  replica0_crash_502: 6,
+  nccl_window_502: 28,
+  upstream_srv1_vllm_502_added: 24,
+  upstream_srv1_vllm_1_502_added: 24,
+  other_upstreams_502_added: 3,
+  nccl_window: srv1_collective_read_window_duration(run: srv1_collective_read_executed_2026_11_09),
+  nccl_measurement: srv1_collective_read_measurement_duration(run: srv1_collective_read_executed_2026_11_09),
+  note: "status:200 over the same span went 27150 -> 29727, so every 502 is a slice of real traffic, not a dry run. The NCCL window is the honest bulk of it: stopping both replicas is what the unloaded re-run required, and no rollback protects against that." as NonEmptyStr,
+}
+
+// The outage this window cost, as fields rather than a paragraph: which unit, how long, what it exited with,
+// what the unit decided, and what was changed so the same recovery is not manual next time. A `no downtime`
+// claim cannot be made about this row by accident, and the downtime is a duration, not a number in prose.
+type Srv1BootPathIncident {
+  replica_index: Nat,
+  down_from: Iso8601UtcInstant?,
+  down_to: Iso8601UtcInstant?,
+  failed_starts: Nat,
+  container_exit_status: Nat,
+  unit_outcome: NonEmptyStr,
+  cause: NonEmptyStr,
+  recovery: NonEmptyStr,
+  repair: NonEmptyStr,
+}
+
+data srv1_boot_path_incident_2026_11_09: Srv1BootPathIncident = Srv1BootPathIncident {
+  replica_index: 1,
+  down_from: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 4, second: 54),
+  down_to: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 17, second: 30),
+  failed_starts: 4,
+  container_exit_status: 2,
+  unit_outcome: "lil-replica@1 exhausted its restart burst (Start request repeated too quickly after 5 attempts; StartLimitBurst=3 inside StartLimitIntervalSec=3600) and the unit entered failed" as NonEmptyStr,
+  cause: "the rendered container command carried one unmatched ) : the args-file refusal had been CONCATENATED onto the end of the captured START line, so the container's bash -lc exited 2 within a second of starting, four times. The witness that was supposed to catch it asked only whether each captured line appeared INSIDE the rendered line, which an appended token cannot be caught by -- see a_control_that_shares_its_derivation_with_its_subject, SPECIMEN THREE." as NonEmptyStr,
+  recovery: "manual: restore the backed-up helper, systemctl daemon-reload, systemctl reset-failed, start the old path" as NonEmptyStr,
+  repair: "the switch script now rolls itself back on any failure inside the deadline (reinstall the backup, reset the counter, start the old path, report the total outage), and the containment control was replaced with whole-LINE equality plus two gates that do not travel through this module's own representation: the serving image's bash parses the emitted command, and a dry run of it must yield the argv docker inspect reported before the switch." as NonEmptyStr,
+}
+
+// How long the replica was down, computed from the row's own instants by the shared calendar -- the same rule as
+// the run receipts. A downtime typed beside the pair it measures agrees with whichever instant someone
+// transcribed; the pair is the fact.
+fn srv1_boot_path_incident_downtime(incident: Srv1BootPathIncident) -> Second? {
+  iso8601_utc_instant_seconds_between(earlier: incident.down_from, later: incident.down_to)
+}
+
+// The window's counter row has to ADD UP. The phase fields are the closed set of actions this window took
+// against the serving path, and the two upstreams it touched plus everything else on the router must account
+// for the same difference between the two snapshots. Written without subtraction on Nats: a partial sum plus
+// the before-count must equal the after-count, so a row whose parts drift from its totals goes red instead of
+// reading as a plausible paragraph.
+fn srv1_router_window_count_balances(record: Srv1RouterWindowCount) -> Bool {
+  record.status_502_before
+      + record.failed_first_attempt_502 + record.replica1_switch_502 + record.replica1_crash_502
+      + record.replica0_switch_502 + record.replica0_crash_502 + record.nccl_window_502
+    == record.status_502_after
+    && record.status_502_before
+      + record.upstream_srv1_vllm_502_added + record.upstream_srv1_vllm_1_502_added + record.other_upstreams_502_added
+    == record.status_502_after
+    && record.status_200_after > record.status_200_before
+}
+
+// What a witness cannot see, said plainly: no host reboot has been run, so the boot path is executed but
+// not shown to survive a boot. The unit's enablement (systemctl is-enabled = enabled, read 2026-11-09) is
+// the only evidence about boot, and enablement is not durability.
 
 // ── what this module does NOT model, keyed ─────────────────────────────────────────────────────────
 
@@ -784,9 +1961,17 @@ data srv1_serving_replica_layout_frontier: List<FrontierRow> = [
 // the lane's brief. The verdict vocabulary keeps UNKNOWN honest: an unreadable host is Unreadable,
 // never a fabricated EnabledAtBoot.
 
+// The boot verdict vocabulary. `UserScopeUnit` and `UserScopeUnitWithLinger` are SEPARATE verdicts
+// because they answer different questions, and collapsing them is what mislabelled srv2's vast pool:
+// a user-scope unit starts when the user's manager (user@<uid>.service) starts, and linger is what
+// makes that manager start at boot with nobody logged in. So "user-scope" alone does not entail
+// "down until someone logs in" -- it is only true where linger is off. Naming the two scales keeps
+// the honest verdict readable without renaming a genuine boot failure as a success (the same
+// two-scale discipline std.measure applies to Percent vs BasisPoint).
 type Srv1BootSurvival
   = EnabledAtBoot
   | UserScopeUnit
+  | UserScopeUnitWithLinger
   | RestartUnlessStopped
   | NotInstalled
   | Unreadable
@@ -802,6 +1987,7 @@ fn srv1_boot_survival_eq(a: Srv1BootSurvival, b: Srv1BootSurvival) -> Bool {
   match a {
     EnabledAtBoot => match b { EnabledAtBoot => true, _ => false }
     UserScopeUnit => match b { UserScopeUnit => true, _ => false }
+    UserScopeUnitWithLinger => match b { UserScopeUnitWithLinger => true, _ => false }
     RestartUnlessStopped => match b { RestartUnlessStopped => true, _ => false }
     NotInstalled => match b { NotInstalled => true, _ => false }
     Unreadable => match b { Unreadable => true, _ => false }
@@ -816,19 +2002,37 @@ fn srv1_boot_survival_verdict_is(o: BootSurvivalObservation, v: Srv1BootSurvival
 fn srv1_audit_entry_is_unreadable(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: Unreadable) }
 fn srv1_audit_entry_is_enabled_at_boot(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: EnabledAtBoot) }
 fn srv1_audit_entry_is_user_scope(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: UserScopeUnit) }
+fn srv1_audit_entry_is_user_scope_with_linger(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: UserScopeUnitWithLinger) }
 fn srv1_audit_entry_is_restart_unless_stopped(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: RestartUnlessStopped) }
 
 data srv1_fleet_boot_survival_audit: List<BootSurvivalObservation> = [
+  BootSurvivalObservation { host: "srv1" as NonEmptyStr, unit: "lil-replica@0.service" as NonEmptyStr, verdict: EnabledAtBoot, evidence: "systemctl is-enabled = enabled, read on srv1 2026-11-09. SEPARATELY, and NOT the same claim: the START path on this instance was EXECUTED the same day -- cold start 2026-11-09T22:24:35Z..22:31:38Z (container created 46 s, engine ready 423 s) and a crash 22:32:21Z (replacement container 38 s, ready 422 s). A host reboot has NOT been executed, so boot-time creation of the container by the unit remains unobserved." as NonEmptyStr, },
+  BootSurvivalObservation { host: "srv1" as NonEmptyStr, unit: "lil-replica@1.service" as NonEmptyStr, verdict: EnabledAtBoot, evidence: "systemctl is-enabled = enabled, read on srv1 2026-11-09; start path EXECUTED 2026-11-09 (cold start 21:51:38Z..21:59:21Z, container 46 s, ready 463 s; crash 22:11:08Z, replacement 39 s, ready 512 s); host reboot NOT executed. The failed first attempt here (21:04:54Z..21:17:30Z, four exit-2 starts, then 'Start request repeated too quickly') is the unit's StartLimitBurst=3 per 3600 s actually biting -- a property the model carried only as a number." as NonEmptyStr, },
   BootSurvivalObservation { host: "srv3", unit: "strata-pool.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
   BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-daily-engine.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
   BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-tls.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
-  BootSurvivalObservation { host: "srv2", unit: "ctrl-vast-pool (tcp :3737)", verdict: UserScopeUnit, evidence: "it is the dashboard's user-scope unit, not a system unit: a reboot with no logged-in user leaves the vast pool down until the user session starts" },
+  // CORRECTED 2026-11-09. The row previously read UserScopeUnit with the evidence "a reboot with no
+  // logged-in user leaves the vast pool down until the user session starts". That evidence was wrong:
+  // it asserted the consequence of a user-scope unit WITHOUT considering linger, and srv1's briansrls
+  // has linger enabled. Read on srv1 as briansrls 2026-11-09: `systemctl --user is-enabled
+  // session-dashboard.service` = enabled; the :3737 listener's cgroup (pid of `node server.mjs`) is
+  // /user.slice/user-1000.slice/user@1000.service/app.slice/session-dashboard.service — a USER unit of
+  // briansrls, not a system unit; and `loginctl show-user briansrls --property=Linger` = Linger=yes
+  // (/var/lib/systemd/linger/briansrls exists). Linger starts user@1000 at boot with no login, and the
+  // unit is enabled in the user scope with WantedBy=default.target, so it starts then. The pool is NOT
+  // down until a login; the old evidence said it was.
+  BootSurvivalObservation { host: "srv2", unit: "ctrl-vast-pool (tcp :3737)", verdict: UserScopeUnitWithLinger, evidence: "served by session-dashboard.service, a USER unit of briansrls (FragmentPath ~/.config/systemd/user/session-dashboard.service, WantedBy=default.target, systemctl --user is-enabled = enabled); briansrls has Linger=yes on srv2 (loginctl show-user, /var/lib/systemd/linger/briansrls, read 2026-11-09), so user@1000 starts at boot and the unit starts WITHOUT a login. Not a system unit, but it does survive a reboot." },
   BootSurvivalObservation { host: "h11-05", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
   BootSurvivalObservation { host: "h11-07", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
   BootSurvivalObservation { host: "h11-08", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
   BootSurvivalObservation { host: "h11-88", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
   BootSurvivalObservation { host: "srv1", unit: "gunbc-router", verdict: RestartUnlessStopped, evidence: "docker restart policy unless-stopped: survives dockerd restart and boot; the brief records this as fine" },
-  BootSurvivalObservation { host: "srv1", unit: "session-dashboard", verdict: UserScopeUnit, evidence: "user-scope unit by design (the brief records this as fine)" },
+  // CORRECTED 2026-11-09 for the same reason as srv2's row: srv1's briansrls has Linger=yes (read on
+  // srv1 with `loginctl show-user briansrls --property=Linger`; /var/lib/systemd/linger/briansrls
+  // exists alongside ghrunner's), so this user unit also starts at boot without a login. It was filed
+  // under UserScopeUnit only because the brief called user scope "fine"; the verdict now says what is
+  // actually observed, so a reader cannot infer "down until login" from it.
+  BootSurvivalObservation { host: "srv1", unit: "session-dashboard", verdict: UserScopeUnitWithLinger, evidence: "user-scope unit by design, and briansrls has Linger=yes on srv1 (loginctl show-user, read 2026-11-09), so it starts at boot without a login" },
 ]
 
 // ── srv1 test-only artifacts (F27) ─────────────────────────────────────────────────────────

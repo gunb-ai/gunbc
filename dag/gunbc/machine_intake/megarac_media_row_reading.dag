@@ -10,16 +10,21 @@ module gunbc.machine_intake.megarac_media_row_reading
 // WHY THESE RECEIPTS AND NOT MORE. Code 16 is the state the mtcollins1 controller reports for the CD/DVD row
 // between attempts, and it is the reason boot run 40264233543 stopped at attach. It was read as a ROW -- this
 // status beside the no-session marker -- and never as a bare code, so the row is what is retained, and the
-// meaning follows only as far as the row was read. The fourth receipt, boot_run_41573858366_end_media_row,
-// is a DIFFERENT code (0) on the same row position, read by the attempt after that one, and it is retained
-// for the same reason: it is the only reading of wire 0 this release holds. The code is NOT admitted anywhere
-// -- extdeps.bmc.megarac answers it as the uncatalogued wire the vendor leaves it, and
-// gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference carries what this repository
-// makes of that one reading as a bet no lane acts on, its guard written no wider than the row that was read.
-// Retaining the reading is what lets a refusal name its evidence; it is not a step toward admitting the code.
+// meaning follows only as far as the row was read. The fourth and fifth receipts,
+// boot_run_41573858366_end_media_row and boot_run_42663208460_end_media_row, are a DIFFERENT code (0) on the
+// same row position, beside the same no-session marker, naming no medium, read by the seventh and ninth
+// attempts. What 0 beside that marker means on this release is the vendor's, read two ways and kept here as
+// the two observations they are: the vendor's served UI renderer (mtcollins1_ui_media_row_rendering), and an
+// operator's dated reading of the page that renderer draws (mtcollins1_cd_row_status_zero_ui_attestation).
+// Together they ground extdeps.bmc.megarac megarac_redirection_status_of_row's RedirectionNotActive -- no
+// session is live on the row -- and nothing stronger: the vendor's word for stopped is a different label.
+// One thing the two readings do NOT agree on is kept, not explained: the page showed an image name in the
+// row the machine read as naming none (ui_attestation_and_read_join).
 
 import std.algebra { string_contains }
 import std.types { Bool, Int, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 type MegaRacMediaRowReceipt {
   run_id: NonEmptyStr
@@ -60,20 +65,13 @@ data boot_run_40258937016_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRo
 
 // THE ROW BOOT RUN 41573858366 (the seventh boot attempt) MET AT THE END OF ITS ATTEMPT, read back at
 // 1793678673678 and quoted verbatim on the line named below: media_type 1, media_index 0, session_index 255,
-// NO medium named, redirection_status 0. This is the FIRST reading of wire 0 on the release the controller
-// reports that this repository holds, and it is the whole of what this repository's own inference rests on.
-// The upstream's fold answers 0 as an uncatalogued wire and goes no further -- the vendor's catalogue does not
-// name it (extdeps.bmc.megarac megarac_redirection_status_of_row). What this repository makes of the reading
-// lives with the reading, at gunbc.machine_intake.megarac_media_attach
-// megarac_status_zero_row_inference, and it is an INFERENCE rather than a state, because what was read is that
-// the row PRESENTS 0 while naming nothing, not that the controller calls 0 stopped on the release it runs. No
-// lane acts on the inference; an operator read of the vendor's own UI for this row is what would settle it. THE ATTEMPT WAS HALTED AT MEDIA ATTACH
-// BY THIS ROW: the lane would not stop it (it names no image, so nothing identifies it as this lane's) and 0
-// was not a code this release's catalogue named, so nothing was written, no session was started and the host
-// was never powered on. Committing this reading does not lift that refusal: the row is still unread to the
-// lane, now with a cause that names the inference and the one reading that would settle it. The refusal that
-// says so is the `harness=` line of
-// artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-receipt.txt, which quotes this same row.
+// NO medium named, redirection_status 0. It was the first reading of wire 0 on this release this repository
+// held. At the time no vendor reading covered 0 on this release, so the lane refused the row (what this
+// repository then made of it was carried as a typed bet no lane acted on), nothing was written, no session
+// was started and the host was never powered on; the `harness=` line of
+// artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-receipt.txt quotes this same row. The vendor
+// reading that settled it is mtcollins1_ui_media_row_rendering with mtcollins1_cd_row_status_zero_ui_attestation
+// (below), and it settled it as NOT ACTIVE, not as the stopped the bet resembled.
 data boot_run_41573858366_end_media_row: MegaRacMediaRowReceipt = {
   run_id: "41573858366" as NonEmptyStr,
   observed_at: 1793678673678,
@@ -103,6 +101,25 @@ data boot_run_40264233543_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRo
   session_index: 255,
   image_name: Present { value: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr },
   redirection_status: 16,
+}
+
+// THE ROW BOOT RUN 42663208460 (the ninth boot attempt) MET AT MEDIA ATTACH, before any write or power
+// action, and again at the end of its attempt (configurations answered at 1794246503832), quoted verbatim on
+// the lines named below: media_type 1, media_index 0, session_index 255, NO medium named, redirection_status
+// 0 -- the same triple boot run 41573858366 read. The attempt refused on it, as the code then stood; it is
+// the reading the operator's 2026-11-09 page reading (mtcollins1_cd_row_status_zero_ui_attestation) was taken
+// against.
+data boot_run_42663208460_end_media_row: MegaRacMediaRowReceipt = {
+  run_id: "42663208460" as NonEmptyStr,
+  observed_at: 1794246503832,
+  artifact_path: "artifacts/bmc/mtcollins1-boot-run-42663208460/mtcollins1-boot-diagnostics.txt" as NonEmptyStr,
+  artifact_sha256: "87c611fe398680552d367e06bbb37bba9ca635e1a8b0e469ee86407a97210546" as NonEmptyStr,
+  artifact_lines: "3, 117, 2066" as NonEmptyStr,
+  media_type: 1,
+  media_index: 0,
+  session_index: 255,
+  image_name: Absent,
+  redirection_status: 0,
 }
 
 // THE SESSION MARKER OF A SESSION THAT WAS LIVE, from boot run 40258937016's handoff read at 1792983328762:
@@ -141,6 +158,9 @@ data boot_run_40258937016_started_session_marker: MegaRacSessionMarkerReceipt = 
 // above.
 type BmcMediaRowUiAttestation {
   row_label: NonEmptyStr
+  // THE ROW'S POSITION AS THE PAGE NUMBERS IT ("Media Instance"), the coordinate a machine read is joined on.
+  // The page renders it from the row's media_index member verbatim (mtcollins1_ui_media_row_rendering).
+  media_instance: Int
   image_name: NonEmptyStr
   state_label: NonEmptyStr
   detail_label: NonEmptyStr
@@ -150,6 +170,7 @@ type BmcMediaRowUiAttestation {
 
 data mtcollins1_cd_row_ui_attestation: BmcMediaRowUiAttestation = BmcMediaRowUiAttestation {
   row_label: "CD/DVD 0" as NonEmptyStr,
+  media_instance: 0,
   image_name: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr,
   state_label: "Stopped - Device Ejected" as NonEmptyStr,
   detail_label: "N/A" as NonEmptyStr,
@@ -213,3 +234,190 @@ test fn w_the_build_reports_a_different_wire_for_a_non_presenting_cd_than_the_pr
     && boot_run_40258937016_end_media_row.observed_at != boot_run_40264233543_end_media_row.observed_at
 }
 
+// HOW THE VENDOR'S OWN PAGE DRAWS A MEDIA ROW, READ FROM THE BYTES IT SERVES. SP-X renders the Image
+// Redirection table client-side, so what a person sees in a row is whatever the served renderer writes for
+// the row's members. fleet-converge run 42592868662 (srv1) fetched the page, the asset the page names
+// (/source.min.js, 6609861 octets) and recorded hex windows of it by octet offset
+// (gunbc.machine_intake.mtcollins1_ui_status_asset_observation); the committed artifact named below is that
+// run's output, and each rule here is the decoded text of a window at the offset given. These are rules of
+// the RENDERER, the same for every row: they say how a member is drawn, not what any one row held.
+// THE CATALOGUE STRINGS ARE OCCURRENCES, NOT A BINDING. The asset carries three member-shaped lmedia blocks;
+// the observation reads the first (English) one's members -- status_0 is the single octet 0x7e, "~", halted is
+// "Stopped", status_16 is " - Device Ejected" -- and marks them raw occurrences, not the binding the page
+// used. What binds them to the page is the operator's reading of it (mtcollins1_cd_row_status_zero_ui_attestation,
+// "~"; mtcollins1_cd_row_ui_attestation, "Stopped - Device Ejected"), each of which matches the renderer's rule
+// for its code drawn through these strings.
+type MegaRacUiMediaRowRendering {
+  run_id: NonEmptyStr
+  artifact_path: NonEmptyStr
+  artifact_sha256: NonEmptyStr
+  asset_path: NonEmptyStr
+  asset_octets: ByteSize
+  // `255==s?"N/A":s` -- the session cell. "N/A" on the page IS the no-session marker on the wire.
+  session_rule: NonEmptyStr
+  session_rule_octet: Int
+  session_rendered_absent: NonEmptyStr
+  session_wire_rendered_absent: Int
+  // The status-0 branch: drawn with the catalogue string keyed lmedia:status_0, and NOT with lmedia:halted.
+  status_zero_rule: NonEmptyStr
+  status_zero_rule_octet: Int
+  status_zero_label: NonEmptyStr
+  status_zero_label_octet: Int
+  // The branch every code other than 0, 1 and 100 takes: lmedia:halted ("Stopped") first, then the code's own
+  // string for codes up to 17 -- which is how 16 reads "Stopped - Device Ejected".
+  halted_rule: NonEmptyStr
+  halted_rule_octet: Int
+  halted_label: NonEmptyStr
+  // The image-name cell is written ONLY when the row's image_name is non-empty; for an empty one the renderer
+  // leaves the cell to whatever else writes it, which the captured windows do not show.
+  image_name_rule: NonEmptyStr
+  image_name_rule_octet: Int
+  artifact_lines: NonEmptyStr
+}
+
+data mtcollins1_ui_media_row_rendering: MegaRacUiMediaRowRendering = MegaRacUiMediaRowRendering {
+  run_id: "42592868662" as NonEmptyStr,
+  artifact_path: "artifacts/bmc/mtcollins1-ui-status-asset-observation-run-42592868662/mtcollins1-ui-status-asset-observation.txt" as NonEmptyStr,
+  artifact_sha256: "b4b2aa31cc3b06277eafd68a5249e95c0814077e48b70f5e56437c20f867393c" as NonEmptyStr,
+  asset_path: "/source.min.js" as NonEmptyStr,
+  asset_octets: byte_size(count: 6609861),
+  session_rule: "255==s?\"N/A\":s" as NonEmptyStr,
+  session_rule_octet: 3180840,
+  session_rendered_absent: "N/A" as NonEmptyStr,
+  session_wire_rendered_absent: 255,
+  status_zero_rule: "\"0\"==r&&(l=!0,this.$(\".redirection_status\").html(a.t(\"lmedia:status_\"+r)))" as NonEmptyStr,
+  status_zero_rule_octet: 3180560,
+  status_zero_label: "~" as NonEmptyStr,
+  status_zero_label_octet: 5487910,
+  halted_rule: "a.t(\"lmedia:halted\")" as NonEmptyStr,
+  halted_rule_octet: 3180393,
+  halted_label: "Stopped" as NonEmptyStr,
+  image_name_rule: "\"\"!=i&&this.$(\".image_name\").html(i)" as NonEmptyStr,
+  image_name_rule_octet: 3180247,
+  artifact_lines: "25-34 (renderer windows), 176-179 (lmedia block 0)" as NonEmptyStr,
+}
+
+// HOW THE SAME RENDERER DRAWS 100, AND THE CATALOGUE STRING IT DRAWS IT WITH. fleet-converge run 42783677276
+// (srv1) re-read the same asset -- same path, same 6609861 octets, the renderer windows identical to run
+// 42592868662's -- with the reader extended to every member of the lmedia blocks (#16231). Two facts, both
+// octet-addressed in the committed artifact named below:
+//   - the 100 branch: `"100"==r&&(l=!0,...html(a.t("lmedia:status_"+r)))` -- the code's own catalogue
+//     string, and NOT lmedia:halted, which the renderer prefixes to every code other than 0, 1 and 100
+//     (`1!=r&&0!=r&&100!=r&&`). The rule keys on the wire alone; the session cell plays no part in it.
+//   - lmedia:status_100 in the English block (block 0) is " Starting..".
+// STANDING IS A FIELD, NOT THIS COMMENT: `standing` is extdeps.external_authority's CitedFigureStanding, and
+// for this reading it is TranscribedUncited -- the strings are raw occurrences in the asset's first lmedia
+// block, the reader's own Candidate grade (gunbc.machine_intake.mtcollins1_ui_status_asset_observation), and
+// the read obligation names what would bind the label to a row: an operator reading of a live row at 100.
+// Not ObservedByReceipt: that arm's sealed mint is for folds whose reading binds, and a raw occurrence does
+// not. The one consumer, extdeps.bmc.megarac's 0.45 arm for 100 (its ground row
+// megarac_0_45_redirection_100_ground points here), is admissible on that standing only because Connecting
+// can only wait and never admits Started; promoting the standing is an edit to this field, visible as one.
+type MegaRacUiStatusBranchReading {
+  run_id: NonEmptyStr
+  artifact_path: NonEmptyStr
+  artifact_sha256: NonEmptyStr
+  asset_path: NonEmptyStr
+  asset_octets: ByteSize
+  wire: Int
+  branch_rule: NonEmptyStr
+  branch_rule_octet: Int
+  halted_exemption_rule: NonEmptyStr
+  halted_exemption_rule_octet: Int
+  label_key: NonEmptyStr
+  label: NonEmptyStr
+  label_octet: Int
+  label_block: Int
+  artifact_lines: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data mtcollins1_ui_status_100_rendering: MegaRacUiStatusBranchReading = MegaRacUiStatusBranchReading {
+  run_id: "42783677276" as NonEmptyStr,
+  artifact_path: "artifacts/bmc/mtcollins1-ui-status-asset-observation-run-42783677276/mtcollins1-ui-status-asset-observation.txt" as NonEmptyStr,
+  artifact_sha256: "bf6b28acc09ca4015669c43f674b9ab62ccd42cf11f35c3912fd80fef66e54e7" as NonEmptyStr,
+  asset_path: "/source.min.js" as NonEmptyStr,
+  asset_octets: byte_size(count: 6609861),
+  wire: 100,
+  branch_rule: "\"100\"==r&&(l=!0,this.$(\".redirection_status\").html(a.t(\"lmedia:status_\"+r)))" as NonEmptyStr,
+  branch_rule_octet: 3180635,
+  halted_exemption_rule: "1!=r&&0!=r&&100!=r&&" as NonEmptyStr,
+  halted_exemption_rule_octet: 3180332,
+  label_key: "status_100" as NonEmptyStr,
+  label: " Starting.." as NonEmptyStr,
+  label_octet: 5488482,
+  label_block: 0,
+  artifact_lines: "29-36 (renderer windows), 195 (lmedia block 0, status_100)" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "an operator reading of a live redirection_status 100 row on 0.45, binding lmedia:status_100 to what the page drew for that row (the catalogue member is a raw occurrence, claim=raw_member_shaped_occurrence_not_binding)" as NonEmptyStr,
+  },
+}
+
+// THE OPERATOR'S READING OF THE STATUS-0 ROW. On 2026-11-09 the operator opened mtcollins1's Image
+// Redirection page and recorded, verbatim: "Media Type: CD/DVD | Media Instance: 0 | Image Name:
+// gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso | Redirection Status: ~ | Session Index:
+// N/A" (relayed by merry-fox-82, dashboard msg_d80de354). It is the same kind of record as the 2026-10-26
+// reading above and is kept for the same reason: a person reading a vendor page is an observation this
+// repository makes. What it establishes, joined to the renderer: the row machine-read as status 0 is drawn
+// "~" with no session -- not "Stopped", the word the same page uses for 16.
+data mtcollins1_cd_row_status_zero_ui_attestation: BmcMediaRowUiAttestation = BmcMediaRowUiAttestation {
+  row_label: "CD/DVD" as NonEmptyStr,
+  media_instance: 0,
+  image_name: "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso" as NonEmptyStr,
+  state_label: "~" as NonEmptyStr,
+  detail_label: "N/A" as NonEmptyStr,
+  read_on_day: "2026-11-09" as NonEmptyStr,
+  read_by: "operator" as NonEmptyStr,
+}
+
+// DOES THE PAGE DRAW THIS ATTESTED ROW AS THE RENDERER DRAWS STATUS 0 WITH NO SESSION? Both cells must be the
+// renderer's own strings for that pair: the status cell the status-0 label, the session cell the no-session
+// rendering. A row the page calls "Stopped..." fails here, so the 16 reading cannot pass as a 0 reading, and
+// an attestation of a live session (any other session cell) cannot either.
+fn attestation_draws_status_zero_without_a_session(attestation: BmcMediaRowUiAttestation, rendering: MegaRacUiMediaRowRendering) -> Bool {
+  (attestation.state_label as String) == (rendering.status_zero_label as String)
+    && (attestation.detail_label as String) == (rendering.session_rendered_absent as String)
+    && !string_contains(s: attestation.state_label as String, pattern: rendering.halted_label as String)
+}
+
+// WHERE THE PAGE AND THE WIRE DISAGREE ON THE IMAGE NAME, KEPT. The operator's page shows an image name in
+// the row boot run 42663208460 machine-read as naming none. One reading of why is that the renderer writes
+// the name cell only for a non-empty image_name (mtcollins1_ui_media_row_rendering image_name_rule) and the
+// page fills an empty one from somewhere else, such as the configured image list -- but what fills it was
+// not in the captured windows, so that is a BET, and it is typed as one here (gunbc.design_argument::epistemic_humility).
+// Nothing reads this to decide anything: whether a session is live does not depend on the name.
+type MediaRowUiImageNameSourceBet
+  = UiNameMayComeFromOutsideTheRow { renderer_fragment: NonEmptyStr, fragment_octet: Int, unread: NonEmptyStr }
+
+type MediaRowImageNameJoin
+  = ImageNamesAgree
+  | ImageNamesDisagreeUnexplained { ui_name: NonEmptyStr, read_name: NonEmptyStr?, bet: MediaRowUiImageNameSourceBet }
+
+type MediaRowUiReadJoin
+  = UiAndReadSameRowByPosition { image_names: MediaRowImageNameJoin }
+  | UiAndReadNotTheSameRow
+
+// JOIN A PAGE READING TO A MACHINE READ BY POSITION, NEVER BY NAME: the CD/DVD row type (the renderer draws
+// media_type 1 as its CD/DVD string) and the instance the page numbers it with, which it renders from the
+// row's media_index. The image name is then compared and its answer carried, agreeing or not, because a
+// disagreement dropped here would be the one observation nobody can explain disappearing.
+fn ui_attestation_and_read_join(attestation: BmcMediaRowUiAttestation, read: MegaRacMediaRowReceipt, rendering: MegaRacUiMediaRowRendering) -> MediaRowUiReadJoin {
+  if string_contains(s: attestation.row_label as String, pattern: "CD/DVD") && read.media_type == 1 && attestation.media_instance == read.media_index {
+    let bet = UiNameMayComeFromOutsideTheRow {
+      renderer_fragment: rendering.image_name_rule,
+      fragment_octet: rendering.image_name_rule_octet,
+      unread: "what writes the image-name cell when the row's image_name is empty was not in the captured windows" as NonEmptyStr,
+    }
+    match read.image_name {
+      Present { value: named } =>
+        if (named as String) == (attestation.image_name as String) {
+          UiAndReadSameRowByPosition { image_names: ImageNamesAgree }
+        } else {
+          UiAndReadSameRowByPosition { image_names: ImageNamesDisagreeUnexplained { ui_name: attestation.image_name, read_name: read.image_name, bet: bet } }
+        }
+      Absent => UiAndReadSameRowByPosition { image_names: ImageNamesDisagreeUnexplained { ui_name: attestation.image_name, read_name: read.image_name, bet: bet } }
+    }
+  } else {
+    UiAndReadNotTheSameRow
+  }
+}

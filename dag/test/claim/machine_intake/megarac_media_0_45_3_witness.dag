@@ -20,7 +20,11 @@ import extdeps.bmc.megarac {
   RedirectionStopped,
   RedirectionConnecting,
   RedirectionWireUncatalogued,
+  RedirectionNotActive,
   RedirectionPresenting,
+  RedirectionKnownStopped,
+  RedirectionKnownNotActive,
+  megarac_0_45_redirection_100_ground,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq }
 import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruNotRead }
@@ -39,13 +43,19 @@ import gunbc.megarac_media_model {
   megarac_start_media_interval,
   MegaRacMediaWorld, MegaRacImage, MegaRacShare,
 }
-import extdeps.external_authority { TranscribedUncited }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import std.decl_ref { NamedField }
+import std.measure { byte_size_count }
 import gunbc.machine_intake.megarac_media_row_reading {
   boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
-  boot_run_41573858366_end_media_row,
+  boot_run_41573858366_end_media_row, boot_run_42663208460_end_media_row,
   boot_run_40258937016_started_session_marker, mtcollins1_cd_row_ui_attestation,
   attestation_labels_a_stopped_and_ejected_row, attestation_and_read_name_the_same_row,
   reads_agree_on_the_ejected_row,
+  mtcollins1_cd_row_status_zero_ui_attestation, mtcollins1_ui_media_row_rendering, mtcollins1_ui_status_100_rendering,
+  attestation_draws_status_zero_without_a_session, ui_attestation_and_read_join,
+  UiAndReadSameRowByPosition, UiAndReadNotTheSameRow, ImageNamesAgree, ImageNamesDisagreeUnexplained,
+  UiNameMayComeFromOutsideTheRow, MegaRacMediaRowReceipt,
 }
 import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
@@ -67,18 +77,7 @@ import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_st
 import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
 import gunbc.machine_intake.megarac_media_attach {
   ConvergeStepDetachStale,
-  MegaRacStatusZeroRowGuessedNotPresenting,
-  MegaRacStatusZeroRowNotGuessed,
-  ZeroRowWireIsNotZero,
-  ZeroRowSessionIsActive,
-  ZeroRowSessionWasNotRead,
-  ZeroRowNamesAMedium,
-  ZeroRowReleaseWasNeverReadThatWay,
-  ZeroRowIsNotTheCdDvdRow,
-  ZeroRowIndexWasNotRead,
-  ZeroRowIsNotTheReadIndex,
   megarac_media_row_named_medium,
-  megarac_status_zero_row_inference,
   ConvergeStepRefuse,
   ConvergenceStep,
   CdErrorRead,
@@ -95,7 +94,6 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacRedirectionUnread,
   RedirectionUnreadCode,
   RedirectionUnreadFirmware,
-  RedirectionUnreadInferred,
   ConfigurationRowUncatalogued,
   ConfigurationRowUnreadable,
   ConfigurationRowIdle,
@@ -117,6 +115,7 @@ import gunbc.machine_intake.megarac_media_attach {
   ReadinessNotPresented,
   ReadinessUncatalogued,
   ReadinessStarted, ReadinessStartedUnbound, ReadinessConnecting,
+  ReadinessLook, ReadinessLookAgain, ReadinessWindowClosed, ReadinessAfterStart, readiness_verdict,
 }
 
 // THE 0.45.3 MEDIA CONVERGE, as boot run 40038339650 met it: firmware 0.45.3 (the current build since the
@@ -219,10 +218,11 @@ test fn at_the_read_build_wire_1_is_started_and_presenting() -> Bool {
     && megarac_redirection_presentation_standing(lookup: l) == RedirectionPresenting
 }
 
-// 0.32's other codes are NOT inherited: no 0.45 reading grounds 0 or 100, and 19 stays unread there.
+// 0.32's other codes are NOT inherited: no 0.45 wire reading grounds a bare 0, and 19 stays unread there.
+// (100 is catalogued at this build, but on this build's own vendor rendering, not by inheritance:
+// w_100_at_the_read_build_is_connecting_on_the_vendors_rendering.)
 test fn at_the_read_build_the_0_32_codes_are_not_carried_over() -> Bool {
   megarac_redirection_status_of_wire(firmware: the_build_the_read_names, wire: 0) == RedirectionStatusKnown { firmware: the_build_the_read_names, status: RedirectionWireUncatalogued { wire: 0 } }
-    && megarac_redirection_status_of_wire(firmware: the_build_the_read_names, wire: 100) == RedirectionStatusKnown { firmware: the_build_the_read_names, status: RedirectionWireUncatalogued { wire: 100 } }
     && megarac_redirection_status_of_wire(firmware: the_build_the_read_names, wire: 19) == RedirectionStatusKnown { firmware: the_build_the_read_names, status: RedirectionWireUncatalogued { wire: 19 } }
 }
 
@@ -321,7 +321,8 @@ test fn w_the_leftover_ejected_row_is_not_presenting_at_the_build_this_repositor
 // own build as 0.45 therefore cannot tell a started session from a stopped one at all: attach refuses on
 // EVERY row, not only on the leftover. This claim FAILS until the table's 0.45 arm is keyed on the
 // identity the committed read derives, and it is why the table move and the caller switch are one
-// transition, not two. Codes 0 and 100 stay uncatalogued at that release -- no 0.45 reading grounds them.
+// transition, not two. A bare 0 stays uncatalogued at that release; 100 is Connecting there on that release's
+// own vendor rendering (w_100_at_the_read_build_is_connecting_on_the_vendors_rendering).
 test fn the_redirection_table_reaches_the_build_the_machine_read_names() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
@@ -331,7 +332,7 @@ test fn the_redirection_table_reaches_the_build_the_machine_read_names() -> Bool
           bmc_firmware_release_identity_eq(a: f, b: read)
             && megarac_redirection_status_of_wire(firmware: read, wire: 16) == RedirectionStatusKnown { firmware: read, status: RedirectionWireUncatalogued { wire: 16 } }
             && megarac_redirection_status_of_wire(firmware: read, wire: 0) == RedirectionStatusKnown { firmware: read, status: RedirectionWireUncatalogued { wire: 0 } }
-            && megarac_redirection_status_of_wire(firmware: read, wire: 100) == RedirectionStatusKnown { firmware: read, status: RedirectionWireUncatalogued { wire: 100 } }
+            && megarac_redirection_status_of_wire(firmware: read, wire: 100) == RedirectionStatusKnown { firmware: read, status: RedirectionConnecting }
         _ => false
       }
   }
@@ -831,11 +832,9 @@ test fn w_code_16_is_not_catalogued_on_the_releases_that_never_reported_it() -> 
 // THE TWO RELEASES REPORT DIFFERENT WIRES FOR A ROW THAT IS NOT PRESENTING, AND NEITHER MEANING TRAVELS.
 // The reads are the source, not a typed status: at the release the committed hpm check names, 16 beside the
 // marker is Stopped; the same row shape at 0.32 -- which never reported 16 -- is an unread code; the wire the
-// 2026-09-05 probe saw for a non-presenting drive (0) is Stopped at 0.32 and -- for a row that NAMES a
-// medium, which is what the probe read -- an unread code at this build. The row that names NO medium at 0 is a
-// separate claim, and it is NOT called Stopped there either: it is carried as a bet this repository drew from
-// one reading, which no lane acts on -- see
-// w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on. So
+// 2026-09-05 probe saw for a non-presenting drive (0) is Stopped at 0.32 and, beside the marker at this build,
+// NOT ACTIVE -- the vendor's own rendering of that pair (w_the_status_zero_no_session_row_is_not_active_and_not_stopped),
+// which is a different state from the Stopped 0.32 names, not the same meaning carried across. So
 // no status here is a default, and a world that pairs one release's wire with a route asking at the other
 // gets a refusal rather than a silent substitution -- which is exactly how a fixture error shows up. The last
 // group ties the two row receipts to the same machine's boot lane as the committed hpm read that names the
@@ -865,7 +864,7 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
         _ => false
       }
       && match megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }) {
-        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+        RedirectionStatusKnown { firmware: f, status: RedirectionNotActive } => bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
       && boot_run_40258937016_end_media_row.redirection_status == boot_run_40264233543_end_media_row.redirection_status
@@ -875,76 +874,99 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
   }
 }
 
-// THE ROW THAT STOPPED THE SEVENTH BOOT ATTEMPT IS A BET, AND NO LANE ACTS ON IT. Boot run 41573858366
-// ended with a CD row that was PRESENT: media_type 1, media_index 0, the no-session marker, NO medium named,
-// and redirection_status 0 -- a code this release's catalogue does not name, which is what refused the attach.
-// What this repository infers from that reading (0.32 reads 0 as stopped, 255 is where no session is live, the
-// row names nothing) is OURS, not the vendor's, and it is carried as what it is: the upstream fold answers the
-// row as an uncatalogued wire, exactly as far as the vendor's catalogue goes, and
-// gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference -- the observing layer, where
-// observations this repository makes live -- carries the resemblance as a bet (gunbc.design_argument::epistemic_humility). The claim below
-// is that nothing which could boot a host over it consumes the bet as a state: the bet is not a status, the
-// presentation standing whose RedirectionKnownStopped is what licenses StartMedia answers Unknown for that
-// wire, and the exception that lets a stop through on an unread code is closed to the refusal it produces. The
-// fields pinned after that are the guard's own shape, so the bet cannot be drawn by a row nobody read. And the
-// corroboration code 16 has is stated as MISSING here rather than glossed: the operator's page reading names a
-// medium, so attestation_and_read_name_the_same_row refuses this row by construction, and until an operator
-// reads THIS row the bet stays a bet.
-test fn w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on() -> Bool {
+// THE ROW THAT STOPPED THE SEVENTH AND NINTH BOOT ATTEMPTS IS NOT ACTIVE -- AND NOT STOPPED. Boot runs
+// 41573858366 and 42663208460 each read the CD row at status 0 beside the no-session marker, naming no medium.
+// The vendor's own words for that pair are two readings: the served renderer draws status 0 with its
+// status-0 string ("~") and never with its "Stopped" string, and draws session 255 as "N/A" by
+// `255==s?"N/A":s`; and the operator's 2026-11-09 reading of the page shows the CD/DVD instance 0 row as
+// "~" / "N/A". The claim: both machine reads are the triple the fold's arm is keyed on, both readings of the
+// vendor's words describe that pair (and the 16 attestation does not), and the fold answers
+// RedirectionNotActive -- with a presentation standing distinct from KnownStopped, so no consumer can read
+// "no session" as "stopped".
+test fn w_the_status_zero_no_session_row_is_not_active_and_not_stopped() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
       match megarac_redirection_status_of_row(
         firmware: read,
-        wire: boot_run_41573858366_end_media_row.redirection_status,
-        session_index: Present { value: boot_run_41573858366_end_media_row.session_index },
+        wire: boot_run_42663208460_end_media_row.redirection_status,
+        session_index: Present { value: boot_run_42663208460_end_media_row.session_index },
       ) {
-        // AS FAR AS THE VENDOR GOES, THIS CODE IS SIMPLY NOT CATALOGUED.
-        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } =>
-          w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
-            && megarac_redirection_presentation_standing(lookup: megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: boot_run_41573858366_end_media_row.session_index })) == RedirectionPresentationUnknown
+        RedirectionStatusKnown { firmware: f, status: RedirectionNotActive } => bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
-      // AND THE RESEMBLANCE WE DREW FROM IT IS TYPED AS THE BET IT IS, keyed to the row that was read.
-      && match megarac_status_zero_row_inference(
-        firmware: read,
-        wire: boot_run_41573858366_end_media_row.redirection_status,
-        media_type: boot_run_41573858366_end_media_row.media_type,
-        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
-        session_index: Present { value: boot_run_41573858366_end_media_row.session_index },
-        image_name: boot_run_41573858366_end_media_row.image_name,
-      ) {
-        MegaRacStatusZeroRowGuessedNotPresenting { firmware: f, wire: w, session_index: s } =>
-          w == 0 && s == megarac_no_redirection_session_index && bmc_firmware_release_identity_eq(a: f, b: read)
-        _ => false
-      }
-      && !unread_code_on_the_evidenced_release(unread: RedirectionUnreadInferred { firmware: read, wire: 0 })
-      // THE READ ITSELF.
-      && boot_run_41573858366_end_media_row.redirection_status == 0
-      && boot_run_41573858366_end_media_row.session_index == megarac_no_redirection_session_index
-      && boot_run_41573858366_end_media_row.media_type == 1
-      && boot_run_41573858366_end_media_row.media_index == 0
-      && match boot_run_41573858366_end_media_row.image_name {
-        Absent => true
-        Present { value: _ } => false
-      }
-      && string_contains(s: boot_run_41573858366_end_media_row.artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-41573858366/")
-      && boot_run_41573858366_end_media_row.run_id != boot_run_40264233543_end_media_row.run_id
-      && !attestation_and_read_name_the_same_row(attestation: mtcollins1_cd_row_ui_attestation, read: boot_run_41573858366_end_media_row)
+      && megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }) != RedirectionStatusKnown { firmware: read, status: RedirectionStopped }
+      && megarac_redirection_presentation_standing(lookup: megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index })) == RedirectionKnownNotActive
+      && megarac_redirection_presentation_standing(lookup: megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index })) != RedirectionKnownStopped
+      // THE TWO MACHINE READS ARE THE SAME TRIPLE, ON TWO ATTEMPTS.
+      && boot_run_42663208460_end_media_row.redirection_status == 0
+      && boot_run_42663208460_end_media_row.session_index == megarac_no_redirection_session_index
+      && boot_run_42663208460_end_media_row.media_type == 1
+      && boot_run_42663208460_end_media_row.media_index == 0
+      && reads_agree_on_the_ejected_row(a: boot_run_41573858366_end_media_row, b: boot_run_42663208460_end_media_row)
+      && string_contains(s: boot_run_42663208460_end_media_row.artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-42663208460/")
+      // THE RENDERER'S RULES: N/A is the marker, the status-0 string is not the stopped string.
+      && mtcollins1_ui_media_row_rendering.session_wire_rendered_absent == megarac_no_redirection_session_index
+      && string_contains(s: mtcollins1_ui_media_row_rendering.session_rule as String, pattern: "255==s?\"N/A\":s")
+      && string_contains(s: mtcollins1_ui_media_row_rendering.status_zero_rule as String, pattern: "lmedia:status_")
+      && !string_contains(s: mtcollins1_ui_media_row_rendering.status_zero_rule as String, pattern: "lmedia:halted")
+      && (mtcollins1_ui_media_row_rendering.status_zero_label as String) != (mtcollins1_ui_media_row_rendering.halted_label as String)
+      // THE OPERATOR'S PAGE READING DRAWS THAT PAIR; THE 16 READING DOES NOT.
+      && attestation_draws_status_zero_without_a_session(attestation: mtcollins1_cd_row_status_zero_ui_attestation, rendering: mtcollins1_ui_media_row_rendering)
+      && !attestation_draws_status_zero_without_a_session(attestation: mtcollins1_cd_row_ui_attestation, rendering: mtcollins1_ui_media_row_rendering)
+      && !attestation_labels_a_stopped_and_ejected_row(attestation: mtcollins1_cd_row_status_zero_ui_attestation)
   }
 }
 
-// THE ATTACH LANE RUNS ON THE ROW AS THE CONTROLLER ANSWERED IT, AND REFUSES WITH A CAUSE OF ITS OWN. The
-// document below is boot run 41573858366's row member for member, transcribed from the same committed bytes
-// the receipt gunbc.machine_intake.megarac_media_row_reading boot_run_41573858366_end_media_row records (it
-// carries the file, its sha256 and the lines the row was read on) -- image_name the controller's empty answer,
-// session_index 255, redirection_status 0 -- and it is run through the production gate, not a paraphrase of
-// it. The gate must NOT answer ConfigurationRowIdle: idle is the answer that lets
-// the lane attach and, downstream, call StartMedia. It must answer the unread row carrying
-// RedirectionUnreadInferred, and the operator line must name the inference and the reading that would settle
-// it, rather than claiming this release's codes are all uncatalogued (which would be false, and is what the
-// negative check below holds).
-test fn w_the_attach_lane_refuses_the_inferred_row_with_a_cause_of_its_own() -> Bool {
+// THE PAGE AND THE WIRE DISAGREE ON THE IMAGE NAME, AND THE DISAGREEMENT IS CARRIED, NOT EXPLAINED. Joined by
+// position (CD/DVD, instance 0), the operator's page reading and boot run 42663208460's machine read are the
+// same row; the page shows the census image name where the machine read none. The join must answer the
+// disagreement arm with both names as read and the typed bet beside it -- never Agree, never "not the same
+// row" (which would drop the observation by declaring it about something else). RED controls: the 16 reading
+// names the runner medium and the boot 6/7-era receipt naming that medium agrees with it, so the join CAN
+// answer Agree; and a read at another instance is not the same row.
+test fn w_the_page_and_the_wire_disagree_on_the_name_and_it_is_kept() -> Bool {
+  match ui_attestation_and_read_join(attestation: mtcollins1_cd_row_status_zero_ui_attestation, read: boot_run_42663208460_end_media_row, rendering: mtcollins1_ui_media_row_rendering) {
+    UiAndReadSameRowByPosition { image_names: ImageNamesDisagreeUnexplained { ui_name: ui, read_name: rn, bet: UiNameMayComeFromOutsideTheRow { renderer_fragment: frag, fragment_octet: at, unread: _ } } } =>
+      (ui as String) == (mtcollins1_cd_row_status_zero_ui_attestation.image_name as String)
+        && match rn { Absent => true  Present { value: _ } => false }
+        && string_contains(s: frag as String, pattern: ".image_name")
+        && at == mtcollins1_ui_media_row_rendering.image_name_rule_octet
+    _ => false
+  }
+  && match ui_attestation_and_read_join(attestation: mtcollins1_cd_row_ui_attestation, read: boot_run_40264233543_end_media_row, rendering: mtcollins1_ui_media_row_rendering) {
+    UiAndReadSameRowByPosition { image_names: ImageNamesAgree } => true
+    _ => false
+  }
+  && match ui_attestation_and_read_join(
+    attestation: mtcollins1_cd_row_status_zero_ui_attestation,
+    read: MegaRacMediaRowReceipt {
+      run_id: boot_run_42663208460_end_media_row.run_id,
+      observed_at: boot_run_42663208460_end_media_row.observed_at,
+      artifact_path: boot_run_42663208460_end_media_row.artifact_path,
+      artifact_sha256: boot_run_42663208460_end_media_row.artifact_sha256,
+      artifact_lines: boot_run_42663208460_end_media_row.artifact_lines,
+      media_type: 1,
+      media_index: 1,
+      session_index: 255,
+      image_name: Absent,
+      redirection_status: 0,
+    },
+    rendering: mtcollins1_ui_media_row_rendering,
+  ) {
+    UiAndReadNotTheSameRow => true
+    _ => false
+  }
+}
+
+// THE ATTACH LANE RUNS ON THE ROW AS THE CONTROLLER ANSWERED IT. The document below is boot run 42663208460's
+// row member for member, as its diagnostics quote it at media attach (the receipt
+// gunbc.machine_intake.megarac_media_row_reading boot_run_42663208460_end_media_row records the file, its
+// sha256 and the lines) -- image_name the controller's empty answer, session_index 255, redirection_status 0
+// -- run through the production gate. It must answer ConfigurationRowIdle: no session is live on it, so the
+// lane may attach over it. And the same row with a LIVE session index (the only one ever read live at this
+// build) must not: without the marker, 0 is an unread code and the lane refuses it.
+test fn w_the_attach_lane_reads_the_not_active_row_as_idle_and_a_live_zero_as_unread() -> Bool {
   let row = json_object(members: [
     json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
     json_kv(key: "media_type", value: JsonNumber { lexeme: "1" }),
@@ -953,29 +975,32 @@ test fn w_the_attach_lane_refuses_the_inferred_row_with_a_cause_of_its_own() -> 
     json_kv(key: "image_name", value: JsonString { value: "" }),
     json_kv(key: "redirection_status", value: JsonNumber { lexeme: "0" }),
   ])
+  let live = json_object(members: [
+    json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "media_type", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "media_index", value: JsonNumber { lexeme: "0" }),
+    json_kv(key: "session_index", value: JsonNumber { lexeme: "0" }),
+    json_kv(key: "image_name", value: JsonString { value: "" }),
+    json_kv(key: "redirection_status", value: JsonNumber { lexeme: "0" }),
+  ])
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
-      match configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) {
-        ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadInferred { firmware: f, wire: w } } =>
+      configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) == ConfigurationRowIdle
+      && match configuration_row_reading(row: live, image_name: boot6_leftover_iso, firmware: read) {
+        ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } } =>
           name == "" && w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
-      && configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) != ConfigurationRowIdle
-      && string_contains(s: redirection_unread_text(unread: RedirectionUnreadInferred { firmware: read, wire: 0 }), pattern: "INFERRED")
-      && string_contains(s: redirection_unread_text(unread: RedirectionUnreadInferred { firmware: read, wire: 0 }), pattern: "no-session marker")
-      && !string_contains(s: redirection_unread_text(unread: RedirectionUnreadInferred { firmware: read, wire: 0 }), pattern: "status codes are not catalogued at all")
+      && configuration_row_reading(row: live, image_name: boot6_leftover_iso, firmware: read) != ConfigurationRowIdle
   }
 }
 
-// RED: THE BET IS DRAWN ONLY FOR THE ROW SHAPE THAT WAS READ. The three cases below are each one step
-// outside the single reading, and each must stay an unread code: 0 beside the ONLY session index this
-// repository has ever read as live at this build; 0 beside the marker on a row that NAMES a medium (what the
-// 2026-09-05 probe read was a named drive, and a row presenting an image is not the leftover row that was
-// read); and 0 on a row whose reading carried no session index at all, which is not the marker. Were the arm
-// written as "0 means stopped", all three would draw the bet for a row nobody read, and the lane would be
-// told a meaning for a row the controller never described that way.
-test fn w_code_0_is_refused_and_the_bet_is_drawn_only_for_the_row_that_was_read() -> Bool {
+// RED: NOT ACTIVE IS DRAWN ONLY BESIDE THE MARKER. 0 beside the ONLY session index this repository has ever
+// read as live at this build, and 0 on a row whose reading carried no session index at all, each stay an
+// uncatalogued wire: the session rule is what makes "no session" a reading, so without the marker there is
+// none. Were the arm written as "0 means not active", both would be told a meaning the vendor never gave.
+test fn w_code_0_is_not_active_only_beside_the_no_session_marker() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
@@ -991,41 +1016,16 @@ test fn w_code_0_is_refused_and_the_bet_is_drawn_only_for_the_row_that_was_read(
       && match megarac_redirection_status_of_row(
         firmware: read,
         wire: 0,
-        session_index: Present { value: megarac_no_redirection_session_index },
-      ) {
-        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } =>
-          w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
-        _ => false
-      }
-      && match megarac_redirection_status_of_row(
-        firmware: read,
-        wire: 0,
         session_index: none,
       ) {
         RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } =>
           w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
-      // AND THE GUARD IS OURS, ONE TYPED CAUSE PER SEPARATION -- the same fold the production gate calls, so
-      // the gate and this claim cannot drift on the case that decides a boot.
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }, image_name: Absent) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionIsActive { session_index: live } } => live == boot_run_40258937016_started_session_marker.session_index
-        _ => false
-      }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } } => (named as String) == (boot6_leftover_iso as String)
-        _ => false
-      }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: none, image_name: Absent) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionWasNotRead } => true
-        _ => false
-      }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 16, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowWireIsNotZero { wire: other } } => other == 16
-        _ => false
-      }
-      && match megarac_status_zero_row_inference(firmware: mtcollins1_identity.firmware, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowReleaseWasNeverReadThatWay { firmware: other } } => bmc_firmware_release_identity_eq(a: other, b: mtcollins1_identity.firmware)
+      // AND THE BARE WIRE STAYS UNCATALOGUED ON THIS RELEASE: the meaning is a row's, not a code's.
+      && match megarac_redirection_status_of_wire(firmware: read, wire: 0) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } =>
+          w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
       // AND THE MEDIUM SPELLING IS THE CONTROLLER'S EMPTY ANSWER, read the one way this repository reads it:
@@ -1044,9 +1044,9 @@ test fn w_code_0_is_refused_and_the_bet_is_drawn_only_for_the_row_that_was_read(
 // CODE 0 IS NOT CARRIED TO A RELEASE THAT NEVER READ IT, AND 0.32 KEEPS ITS OWN REASON. The page label
 // "0.45.3" is not a key of the table at all and a release the corpus does not know answers by release, so
 // both fall through to the wire table and answer UNCATALOGUED for this row shape. 0.32 answers Stopped at 0
-// THROUGH ITS OWN TABLE -- which is the ground the inference leans on, and it does so with no session index
-// and no medium at all, so the arm here is not what makes 0.32 stopped. Three releases, three different
-// reasons, and none of them a default.
+// THROUGH ITS OWN TABLE, with no session index and no medium at all, so the not-active arm is not what
+// answers 0.32 -- and 0.32's Stopped is not carried to 0.45 either. Three releases, three different reasons,
+// and none of them a default.
 test fn w_code_0_is_not_carried_to_the_releases_that_never_read_it() -> Bool {
   match megarac_redirection_status_of_row(
     firmware: megarac_firmware_0_45_3,
@@ -1192,136 +1192,90 @@ test fn w_the_hypothesized_interval_waits_and_never_satisfies_readiness_by_itsel
   }
 }
 
-// AND THE 0.32 INTERVAL CODE WOULD REFUSE HERE -- the discriminating arm of the two claims above. Had the
-// model kept 0.32's 100, the first look after the start would come back UNCATALOGUED on the wanted image,
-// which is a refusal, not a wait: that is the exact stop the boot witness hit. If anyone grounds 100 at this
-// release with a reading, this claim goes red and names the arm it came back on.
-test fn w_the_0_32_interlude_code_would_refuse_at_this_build() -> Bool {
+// 100 AT THE READ BUILD IS CONNECTING, ON THIS BUILD'S OWN VENDOR RENDERING. This replaces the claim that
+// the 0.32 interlude code would refuse here, which said it would go red the day 100 was grounded at this
+// release; boot 10 (run 42756688400) read 100 on the wanted image beside the no-session marker and refused
+// on it as uncatalogued, and run 42783677276 read how the vendor draws it. The grounding is the renderer's
+// 100 branch (the code's own catalogue string, NOT the lmedia:halted prefix every code but 0, 1 and 100 takes)
+// and the English catalogue's lmedia:status_100, " Starting.." -- a Candidate-grade raw occurrence, with no
+// operator reading of a row at 100 committed. The reading is the same asset the status-0 rendering came from
+// (same path, same octet count), and its label is not the vendor's word for stopped.
+test fn w_100_at_the_read_build_is_connecting_on_the_vendors_rendering() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
-      match attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "100", session: "255")), image_name: boot6_leftover_iso, firmware: read) {
-        ReadinessUncatalogued { image_name: n, unread: u, configurations: _ } =>
-          n == (boot6_leftover_iso as String) && u == RedirectionUnreadCode { firmware: read, wire: 100 }
-        _ => false
-      }
+      megarac_redirection_status_of_wire(firmware: read, wire: mtcollins1_ui_status_100_rendering.wire) == RedirectionStatusKnown { firmware: read, status: RedirectionConnecting }
+        && megarac_redirection_status_of_row(firmware: read, wire: 100, session_index: Present { value: megarac_no_redirection_session_index }) == RedirectionStatusKnown { firmware: read, status: RedirectionConnecting }
+        && mtcollins1_ui_status_100_rendering.wire == 100
+        && (mtcollins1_ui_status_100_rendering.label as String) == " Starting.."
+        && (mtcollins1_ui_status_100_rendering.label_key as String) == "status_100"
+        && string_contains(s: mtcollins1_ui_status_100_rendering.branch_rule as String, pattern: "\"100\"==r")
+        && string_contains(s: mtcollins1_ui_status_100_rendering.branch_rule as String, pattern: "lmedia:status_")
+        && !string_contains(s: mtcollins1_ui_status_100_rendering.branch_rule as String, pattern: "lmedia:halted")
+        && string_contains(s: mtcollins1_ui_status_100_rendering.halted_exemption_rule as String, pattern: "100!=r")
+        && (mtcollins1_ui_status_100_rendering.asset_path as String) == (mtcollins1_ui_media_row_rendering.asset_path as String)
+        && byte_size_count(b: mtcollins1_ui_status_100_rendering.asset_octets) == byte_size_count(b: mtcollins1_ui_media_row_rendering.asset_octets)
+        && !string_contains(s: mtcollins1_ui_status_100_rendering.label as String, pattern: mtcollins1_ui_media_row_rendering.halted_label as String)
   }
 }
 
-// RED (P1): THE GUARD IS NOT WRITTEN WIDER THAN THE ROW THAT WAS READ. media_type and media_index come from
-// the parse, and the guess requires the values boot run 41573858366's row actually carried (1 and 0, taken
-// from the committed receipt rather than restated as literals here). Each claim below changes ONE dimension of
-// the read row and must answer with its own typed cause; were the guard written from the code alone -- status 0,
-// marker, no name -- a hard-disk row or a second image-list entry would be given an interpretation this
-// repository never observed, which is the gunbc.design_argument::epistemic_humility defect this closes.
-test fn w_the_guard_refuses_a_row_of_another_media_type() -> Bool {
+// THE ARM'S GROUND IS A TYPED BET, AND THE ARM POINTS AT IT. extdeps.bmc.megarac's ground row for the 0.45 arm
+// names the `standing` field of this reading, and that standing is TranscribedUncited with a nonempty read
+// obligation -- the Candidate grade carried in the type, not in a comment. RED if the standing is promoted
+// (CitedToAuthority or ObservedByReceipt) without an operator reading, or if the ground row stops naming it.
+test fn w_the_0_45_connecting_arm_rests_on_a_typed_uncited_standing() -> Bool {
+  (megarac_0_45_redirection_100_ground.module_path as String) == "gunbc.machine_intake.megarac_media_row_reading"
+    && (megarac_0_45_redirection_100_ground.decl_name as String) == "mtcollins1_ui_status_100_rendering"
+    && match megarac_0_45_redirection_100_ground.field {
+      NamedField { field_name: f } => (f as String) == "standing"
+      _ => false
+    }
+    && match mtcollins1_ui_status_100_rendering.standing {
+      TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: "operator reading of a live redirection_status 100 row")
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
+}
+
+// AND IT ONLY WAITS: THE ARM CAN NEVER ADMIT STARTED. Boot 10's exact row -- the wanted image at 100 beside the
+// no-session marker -- is Connecting, which the readiness policy holds pending; and so is 100 beside a BOUND
+// session index, the discriminating input: were 100 ever read as Started, that row (session 0) would come
+// back ReadinessStarted and satisfy readiness. The only Started this build establishes is 1 beside a bound
+// session (positive control). Through the window: a connecting look inside it looks again, and one at the
+// deadline closes the window -- the typed "did not reach Started with a bound session"
+// (MegaRacReadinessTimedOut), never ready.
+test fn w_100_at_the_read_build_waits_and_never_establishes_readiness() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
-      match megarac_status_zero_row_inference(
-        firmware: read,
-        wire: 0,
-        media_type: 2,
-        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
-        session_index: Present { value: megarac_no_redirection_session_index },
-        image_name: Absent,
-      ) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheCdDvdRow { media_type: other } } => other == 2
+      (match attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "100", session: "255")), image_name: boot6_leftover_iso, firmware: read) {
+        ReadinessConnecting { row: _, configurations: _ } => true
         _ => false
-      }
-      && boot_run_41573858366_end_media_row.media_type != 2
+      })
+      && (match attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "100", session: "0")), image_name: boot6_leftover_iso, firmware: read) {
+        ReadinessConnecting { row: _, configurations: _ } => true
+        _ => false
+      })
+      && (match attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "1", session: "0")), image_name: boot6_leftover_iso, firmware: read) {
+        ReadinessStarted { row: _, configurations: _ } => true
+        _ => false
+      })
+      && (match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: ReadinessLook { observed_at: 5000, reading: attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "100", session: "255")), image_name: boot6_leftover_iso, firmware: read) }, phase: ReadinessAfterStart, looks: 3) {
+        ReadinessLookAgain => true
+        _ => false
+      })
+      && (match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: ReadinessLook { observed_at: 31000, reading: attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "100", session: "255")), image_name: boot6_leftover_iso, firmware: read) }, phase: ReadinessAfterStart, looks: 16) {
+        ReadinessWindowClosed { last: _, deadline: d, looks: _ } => d == 31000
+        _ => false
+      })
   }
 }
 
-test fn w_the_guard_refuses_a_row_at_another_image_list_index() -> Bool {
-  match mtcollins1_current_build_firmware {
-    Absent => false
-    Present { value: read } =>
-      match megarac_status_zero_row_inference(
-        firmware: read,
-        wire: 0,
-        media_type: boot_run_41573858366_end_media_row.media_type,
-        media_index: Present { value: 1 },
-        session_index: Present { value: megarac_no_redirection_session_index },
-        image_name: Absent,
-      ) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheReadIndex { media_index: other } } => other == 1
-        _ => false
-      }
-      && boot_run_41573858366_end_media_row.media_index != 1
-  }
-}
-
-// AN INDEX THE ROW NEVER CARRIED IS NOT INDEX 0. A row whose media_index member is absent or unparsable stays
-// unread -- 0 is the value the read row happened to carry, and promoting an absent member to it would be
-// inventing the position the guard is supposed to check.
-test fn w_the_guard_refuses_a_row_whose_index_was_never_read() -> Bool {
-  match mtcollins1_current_build_firmware {
-    Absent => false
-    Present { value: read } =>
-      match megarac_status_zero_row_inference(
-        firmware: read,
-        wire: 0,
-        media_type: boot_run_41573858366_end_media_row.media_type,
-        media_index: none,
-        session_index: Present { value: megarac_no_redirection_session_index },
-        image_name: Absent,
-      ) {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIndexWasNotRead } => true
-        _ => false
-      }
-  }
-}
-
-// THE SAME THREE NEGATIVES THROUGH THE PRODUCTION GATE, so no caller can reach the inferred cause with a row
-// the controller never described that way. A CD row at another image-list index, and a row whose index member
-// is missing, both answer the plain unread code -- never the inferred cause, never idle.
-test fn w_a_row_at_another_image_list_index_is_a_plain_unread_code_at_the_lane() -> Bool {
-  let row = json_object(members: [
-    json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
-    json_kv(key: "media_type", value: JsonNumber { lexeme: "1" }),
-    json_kv(key: "media_index", value: JsonNumber { lexeme: "1" }),
-    json_kv(key: "session_index", value: JsonNumber { lexeme: "255" }),
-    json_kv(key: "image_name", value: JsonString { value: "" }),
-    json_kv(key: "redirection_status", value: JsonNumber { lexeme: "0" }),
-  ])
-  match mtcollins1_current_build_firmware {
-    Absent => false
-    Present { value: read } =>
-      match configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) {
-        ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } } =>
-          name == "" && w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
-        _ => false
-      }
-      && configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) != ConfigurationRowIdle
-  }
-}
-
-test fn w_a_row_with_no_image_list_index_is_a_plain_unread_code_at_the_lane() -> Bool {
-  let row = json_object(members: [
-    json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
-    json_kv(key: "media_type", value: JsonNumber { lexeme: "1" }),
-    json_kv(key: "session_index", value: JsonNumber { lexeme: "255" }),
-    json_kv(key: "image_name", value: JsonString { value: "" }),
-    json_kv(key: "redirection_status", value: JsonNumber { lexeme: "0" }),
-  ])
-  match mtcollins1_current_build_firmware {
-    Absent => false
-    Present { value: read } =>
-      match configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) {
-        ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } } =>
-          name == "" && w == 0
-        _ => false
-      }
-      && configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) != ConfigurationRowIdle
-  }
-}
-
-// AND THE MEDIA TYPE ITSELF NEVER REACHES THE INFERRED CAUSE. A hard-disk row that names the wanted image is
-// refused by the lane's own CD gate -- ConfigurationRowUnreadable, not the unread arm -- because this lane
-// publishes a CD image and a row of another media type is not the row the inference was drawn from. It is
-// never idle either, so it cannot be attached.
-test fn w_a_row_of_another_media_type_never_carries_the_inferred_reading_through_the_lane() -> Bool {
+// THE MEDIA TYPE IS THE LANE'S OWN GATE, BEFORE ANY STATUS IS READ. A row of another media type that names the
+// wanted image, at status 0 beside the marker, is refused by the lane's CD gate -- ConfigurationRowUnreadable --
+// because this lane publishes a CD image; the not-active reading of a CD row is never consulted for it, and it
+// is never idle, so it cannot be attached.
+test fn w_a_row_of_another_media_type_is_refused_by_the_cd_gate_not_read_as_not_active() -> Bool {
   let row = json_object(members: [
     json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
     json_kv(key: "media_type", value: JsonNumber { lexeme: "2" }),

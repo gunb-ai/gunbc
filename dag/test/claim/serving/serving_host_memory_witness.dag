@@ -154,10 +154,15 @@ test fn witness_snapshot_cost_covers_observed_parks() -> Bool {
     && byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: token_count(count: 176183))) >= 2420042020
 }
 
-// THE SHARED-HOST ROWS NAME WHAT IS UNREAD, AND AN UNREAD CACHE KEEPS NOTHING WARM; srv4's row is now read in full.
+// THE SHARED-HOST ROWS NAME WHAT IS UNREAD, AND AN UNREAD CACHE KEEPS NOTHING WARM; srv4's row is read in
+// full, and srv3 now reads three of its six figures after the 2026-11-09 mmap+cap hand change (the service MemoryHigh
+// cap, the conversation cache, the slots) and states the remaining two -- the base (derived from the live batch-8
+// anon total, the loaded-and-idle anon being the read obligation) and the swap limit (the no-swap convention taken
+// from srv4/h11) -- as bets with read obligations, not gaps, so nothing in srv3's row is left unread. srv1 still
+// names one unread figure.
 test fn witness_shared_host_rows_name_their_unread_figures() -> Bool {
   serving_engine_missing(e: srv1_vllm_engine_memory).length() == 1
-    && serving_engine_missing(e: srv3_strata_engine_memory).length() == 3
+    && serving_engine_missing(e: srv3_strata_engine_memory).length() == 0
     && serving_engine_missing(e: srv4_serving_engine_memory).length() == 0
     && !is_absent_count(x: engine_warm_sessions(e: srv4_serving_engine_memory, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)))
 }

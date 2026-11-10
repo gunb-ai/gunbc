@@ -1,6 +1,6 @@
 module extdeps.bmc.megarac
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
@@ -253,19 +253,29 @@ data megarac_firmware_0_45_reported: BmcFirmwareReleaseIdentity = bmc_firmware_r
 // ON 0.45.3 ONLY 1 IS CATALOGUED, because only 1 has been read there: boot run 38789347052
 // (gunbc.host.bmc_release_capability_catalog megarac_run_38789347052_evidence, executed after the
 // 2026-10-02 reflash; artifacts/bmc/mtcollins1-boot-run-38789347052/mtcollins1-boot-diagnostics.txt)
-// read redirection_status 1 on the started census session, three times. No committed 0.45.3 reading
-// shows 0 or 100, so they are NOT carried over from 0.32: a stopped or connecting session on 0.45.3
-// reads as an uncatalogued wire until a reading grounds it. Boot run 40038339650 read 19 on a
+// read redirection_status 1 on the started census session, three times. 0 is NOT carried over from 0.32
+// (its 0.45 meaning is a row reading, below). 100 IS NOW CATALOGUED ON 0.45, BUT NOT BY INHERITANCE FROM 0.32:
+// it rests on this release's own vendor rendering (megarac_redirection_status_of_wire, the 0.45 arm). Boot run
+// 40038339650 read 19 on a
 // session left over from an earlier attempt; what 19 means is unread, and it stays uncatalogued.
 // CODE 16 IS NOT IN THIS WIRE TABLE, and must not be added to it: 16 was never read as a bare code, it was
 // read as a ROW -- that status beside the no-session marker -- so its meaning lives in
 // megarac_redirection_status_of_row below, keyed to that triple and to this release only. A caller holding
 // the row reads through that fold; a caller holding only a wire gets the uncatalogued answer, which is
-// exactly what the evidence supports.
+// exactly what the evidence supports. CODE 0 ON THIS RELEASE IS THE SAME CASE: its meaning (not active, NOT
+// stopped) was read only as a row beside the no-session marker, so it too lives in that fold and the
+// wire table keeps answering a bare 0 on this release as uncatalogued.
+// NOT ACTIVE IS NOT STOPPED. RedirectionNotActive is the vendor's own rendering of a row whose status the
+// controller's UI labels with its status-0 string and whose session cell it renders "N/A": a row carrying no
+// live redirection session, and NOTHING more. It does not say the medium was stopped by anyone, that a
+// device was ejected, or that no image is configured -- the vendor's page renders stopped as its own label
+// ("Stopped"), and the status-0 string is a different one. Only megarac_redirection_status_of_row returns
+// it, and only on the triple it is grounded for (below).
 type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
   | RedirectionConnecting
+  | RedirectionNotActive
   | RedirectionWireUncatalogued { wire: Int }
 
 type MegaRacRedirectionStatusLookup
@@ -295,10 +305,28 @@ fn megarac_redirection_status_of_wire(
     // Grounded by boot run 40258937016, which read redirection_status 1 on the session it then
     // established (session_index 0, cd_error_code 0 before any write and at ready) in the same run that
     // machine-read this build, and by run 38789347052, whose session read 1 on the build the capability
-    // row's machine read establishes. 0 and 100 are NOT carried over from 0.32: no 0.45 reading returned
-    // them, and 16/19 stay codes this release's catalogue does not name.
+    // row's machine read establishes. 0 is NOT carried over from 0.32, and 16/19 stay codes this
+    // release's catalogue does not name.
+    // 100 IS CONNECTING ON THIS RELEASE, ON THE VENDOR'S OWN RENDERING AND NOT ON 0.32'S NUMBERS. The
+    // controller's served UI asset (/source.min.js, 6609861 octets, read by fleet-converge run 42783677276,
+    // artifacts/bmc/mtcollins1-ui-status-asset-observation-run-42783677276) draws a row's status with
+    // `"100"==r&&(l=!0,...html(a.t("lmedia:status_"+r)))` at octet 3180635 -- the 100 branch, keyed on the wire
+    // alone and exempt from the lmedia:halted ("Stopped") prefix every other code but 0 and 1 takes
+    // (`1!=r&&0!=r&&100!=r&&` at octet 3180332) -- and the English catalogue block of the same asset spells
+    // lmedia:status_100 " Starting.." (octet 5488482). Boot 10 (run 42756688400) read it on the wanted image
+    // beside the no-session marker, right after an accepted StartMedia. THE STANDING IS TYPED, NOT STATED
+    // HERE: megarac_0_45_redirection_100_ground names the reading's `standing` field, which is
+    // TranscribedUncited with its read obligation (a Candidate-grade catalogue label, no operator reading of a
+    // 100 row). That is enough for THIS arm because of what Connecting can do downstream: it only WAITS.
+    // Readiness is established by a Started row with a bound session and by nothing else
+    // (gunbc.machine_intake.megarac_media_attach readiness_standing), so a row at 100 is pending inside the
+    // bounded window and, if it never moves, the attempt refuses as MegaRacReadinessTimedOut ("did not reach
+    // Started with a bound session"). It cannot admit Started. What it DOES change: an attempt's end stops a
+    // connecting row of its own image, where an uncatalogued one was left attached.
     let status = if wire == 1 {
       RedirectionStartedConnectionAccepted
+    } else if wire == 100 {
+      RedirectionConnecting
     } else {
       RedirectionWireUncatalogued { wire: wire }
     }
@@ -307,6 +335,16 @@ fn megarac_redirection_status_of_wire(
     RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
   }
 }
+
+// THE GROUND OF THE 0.45 ARM FOR 100, AS A REFERENCE. The reading lives downstream, in the observing layer, and
+// this module points at it and never imports it (extdeps.external_authority, the ObservedReceipt law); the
+// reference is to the reading's typed standing, so the arm's evidence grade is one resolvable symbol, and
+// test.claim.machine_intake.megarac_media_0_45_3_witness joins this row to that standing.
+data megarac_0_45_redirection_100_ground: DeclarationRef = decl_field_ref(
+  module_path: "gunbc.machine_intake.megarac_media_row_reading",
+  decl_name: "mtcollins1_ui_status_100_rendering",
+  field_name: "standing",
+)
 
 // THE NO-SESSION MARKER, AS THIS CONTROLLER REPORTS IT. A media row carries the redirection SESSION index
 // beside its status, and this controller answers 255 there when NO redirection session is active: boot run
@@ -327,12 +365,24 @@ data megarac_no_redirection_session_index: Int = 255
 // on any other release stays uncatalogued (0.32 never returned 16); and a row whose reading did not carry a
 // session index is not promoted either. test.claim.machine_intake.megarac_media_0_45_3_witness pins each of
 // those separations.
-// CODE 0 ON THIS RELEASE IS NOT HERE, AND THAT IS THE VENDOR'S SILENCE RATHER THAN OURS: no 0.45 reading of a
-// media row returned 0 to the vendor's own catalogue, and no operator reading of the controller's UI covers
-// it. What this repository made of the one row it DID read at 0 -- a leftover CD row, no session, no name --
-// is an observation of ours and lives with the observations, at
-// gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference; it is not a fact of this
-// upstream (gunbc.design_argument::single_authority, gunbc.design_argument::conformance) and the attach lane treats it as the bet it is.
+// CODE 0 BESIDE THE NO-SESSION MARKER ON THIS RELEASE IS NOT ACTIVE -- AND IS NOT STOPPED. The vendor's own
+// served UI renders the media table client-side, and its row renderer (the asset read by fleet-converge run
+// 42592868662, gunbc.machine_intake.megarac_media_row_reading mtcollins1_ui_media_row_rendering) does three
+// things this arm rests on: a status of 0 is rendered with the catalogue string lmedia:status_0, which the
+// English catalogue block of that same asset spells "~"; a status of 16 is rendered with the separate
+// lmedia:halted string ("Stopped") followed by lmedia:status_16 (" - Device Ejected"); and the session cell is
+// rendered by `255==s?"N/A":s`, so the UI's "N/A" IS the wire's 255. On 2026-11-09 the operator read
+// mtcollins1's Image Redirection page and recorded the CD/DVD instance 0 row as Redirection Status "~",
+// Session Index "N/A" (gunbc.machine_intake.megarac_media_row_reading
+// mtcollins1_cd_row_status_zero_ui_attestation), the row boot runs 41573858366 and 42663208460 machine-read
+// as status 0 beside session_index 255. So the vendor's own words for that pair are "~" with no session,
+// which is RedirectionNotActive: no redirection session is live on the row. "~" is not the vendor's word for
+// stopped and is not read as one (gunbc.design_argument::epistemic_humility): the vendor has a word for
+// stopped and did not use it here.
+// WHAT IS NOT CLAIMED: 0 beside a live session index, or beside a session index the reading did not carry,
+// is not this state -- the session rule is what makes "no session" a reading, so without the marker the
+// code stays an uncatalogued wire; and 0 on any other release answers whatever that release's wire table
+// says (0.32: Stopped, from its own committed reads), never this arm.
 fn megarac_redirection_status_of_row(
   firmware: BmcFirmwareReleaseIdentity,
   wire: Int,
@@ -347,6 +397,8 @@ fn megarac_redirection_status_of_row(
   let by_wire_table = megarac_redirection_status_of_wire(firmware: firmware, wire: wire)
   if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) && wire == 16 && no_session {
     RedirectionStatusKnown { firmware: firmware, status: RedirectionStopped }
+  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) && wire == 0 && no_session {
+    RedirectionStatusKnown { firmware: firmware, status: RedirectionNotActive }
   } else {
     by_wire_table
   }
@@ -354,11 +406,14 @@ fn megarac_redirection_status_of_row(
 
 
 // A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped is known not
-// presenting. Uncatalogued firmware and uncatalogued wire are not "not presenting": they are
-// unread, and a Bool false here would license StartMedia.
+// presenting; so is not-active, as its own arm, because "no session is live" is a weaker reading than
+// "stopped" and a consumer that needs the stronger one must be able to tell them apart. Uncatalogued
+// firmware and uncatalogued wire are not "not presenting": they are unread, and a Bool false here would
+// license StartMedia.
 type MegaRacRedirectionPresentationStanding
   = RedirectionPresenting
   | RedirectionKnownStopped
+  | RedirectionKnownNotActive
   | RedirectionPresentationUnknown
 
 fn megarac_redirection_presentation_standing(
@@ -371,6 +426,7 @@ fn megarac_redirection_presentation_standing(
         RedirectionStartedConnectionAccepted => RedirectionPresenting
         RedirectionConnecting => RedirectionPresenting
         RedirectionStopped => RedirectionKnownStopped
+        RedirectionNotActive => RedirectionKnownNotActive
         RedirectionWireUncatalogued { wire: _ } => RedirectionPresentationUnknown
       }
   }

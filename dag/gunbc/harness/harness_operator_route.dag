@@ -165,6 +165,16 @@ data strata_srv4_https_port: Port = 18443
 // lease moved. It remains the LAN address rather than the tailnet name because the self-signed cert's SAN
 // lists the LAN address; the tailnet name is the host's IDENTITY (gunbc.fleet.fleet_host_identity
 // operator_host_srv4), carried in the host-authority module, not a second spelling of this origin.
+// WHICH ENGINE THIS ROUTE ADDRESSES, stated because the layout now answers it (2026-11-09). srv4's layout
+// (gunbc.serving.serving_layout srv4_layout) grants ONE replica that splits its layers across BOTH RTX 2000 Ada
+// cards: one process, one listener, one endpoint. So the operator route fronts one engine and needs no second
+// address, no per-replica port and no fallback — "no fallback" is not a policy chosen here, it is what a fleet of
+// one replica means. The same claim is made on the router side by srv4's single naming row
+// (gunbc.serving.router_dev_policy router_dev_srv4_namings), and gunbc.instruments.router_proxy_falsifier case
+// "srv4_projects_one_tls_endpoint_because_its_layout_grants_one_replica" holds it: the row set is one because the
+// LAYOUT grants one replica, so if srv4 is ever laid out per card the projection emits a row per replica and this
+// route must then say WHICH replica it fronts — a change this comment will have become false for, which is the
+// point of writing it down.
 data operator_srv4_strata_origin: NonEmptyStr = join(
   ["https://" as String, srv4_host_lan_endpoint.address as String, ":" as String, to_string(strata_srv4_https_port) as String],
   "",

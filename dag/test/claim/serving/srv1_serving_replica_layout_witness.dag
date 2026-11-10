@@ -1,6 +1,6 @@
 module test.claim.serving.srv1_serving_replica_layout_witness
 
-import std.types { Bool, NonEmptyStr, List }
+import std.types { Bool, NonEmptyStr, List, Port }
 import std.nat { Nat }
 import std.algebra { length, string_contains }
 import std.optional { Absent, Present }
@@ -12,7 +12,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   Srv1KvCacheDtype,
   srv1_launch_admission,
   srv1_replica_unit_contract, srv1_disk_guard_contract,
-  srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words,
+  srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words, srv1_replica_gpu_uuid,
   srv1_replica_helper,
   srv1_contract_verifies_container_name, srv1_contract_verifies_gpu_uuid, srv1_contract_verifies_image_digest,
   srv1_contract_verifies_port_binding, srv1_contract_verifies_mounts, srv1_contract_verifies_memory_limit,
@@ -20,7 +20,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_contract_reports_drift, srv1_contract_exits_nonzero, srv1_contract_may_destroy, srv1_contract_restarts_on_failure,
   Srv1ServingReplicaSpec,
   srv1_fleet_boot_survival_audit, srv1_audit_entry_is_unreadable, srv1_audit_entry_is_enabled_at_boot,
-  srv1_audit_entry_is_user_scope, srv1_audit_entry_is_restart_unless_stopped,
+  srv1_audit_entry_is_user_scope, srv1_audit_entry_is_user_scope_with_linger, srv1_audit_entry_is_restart_unless_stopped,
   srv1_test_only_artifacts,
   BootSurvivalObservation,
 }
@@ -41,7 +41,12 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // Builds a srv1 launch config for the admission/render tests, varying only the shape under test; the engine
 // rows (profile, hardware, LMCache tiers, max-model-len, image) are the srv1 constants so a test discriminates
 // on exactly one field (tensor_parallel_size / kv_cache_dtype / lil_replicas / host_gpu_p2p).
-fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1LaunchConfig {
+//
+// The five extra parameters carry the KNOB GROUPS (L2 placement, checkpoint retention, TLS material, the
+// api-key reference, the engine executable) as whole records rather than as eleven loose arguments: a render
+// red control then mutates ONE record and the others stay the admitted rows, so a failure names the group it
+// came from instead of pointing at a positional argument.
+fn witness_cfg_full(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool, l2: Srv1LmCacheL2Placement, retention: Srv1CheckpointRetentionPolicy, tls: Srv1TlsMaterial, key: Srv1ApiKeyReference, exe: FilePath, port: Port) -> Srv1LaunchConfig {
   Srv1LaunchConfig {
     tensor_parallel_size: tp,
     kv_cache_dtype: kv,
@@ -52,7 +57,28 @@ fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1Launc
     image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
     lil_replicas: reps,
     host_gpu_p2p: p2p,
+    engine_executable: exe,
+    lmcache_l2_placement: l2,
+    checkpoint_retention: retention,
+    tls_material: tls,
+    api_key_reference: key,
+    container_port: port,
   }
+}
+
+// The four-variable form every admission test uses: the knob groups are the ADMITTED rows, so the only thing
+// a test varies is the variable named in its signature.
+fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1LaunchConfig {
+  let admitted = srv1_admitted_launch_config
+  witness_cfg_full(
+    tp: tp, kv: kv, reps: reps, p2p: p2p,
+    l2: admitted.lmcache_l2_placement,
+    retention: admitted.checkpoint_retention,
+    tls: admitted.tls_material,
+    key: admitted.api_key_reference,
+    exe: admitted.engine_executable,
+    port: admitted.container_port
+  )
 }
 
 test fn the_admitted_config_is_admitted() -> Bool {
@@ -109,9 +135,18 @@ test fn the_roster_has_two_replicas() -> Bool {
   length(xs: srv1_serving_replica_roster) == 2
 }
 
-// The two replicas have distinct GPU UUIDs (they are on different cards).
+// The two replicas have distinct GPU UUIDs (they are on different cards). The UUIDs are read from each
+// unit's PROFILE card row -- gunbc.serving.serving_replica_profile is their owner; the unit asks for them.
 test fn the_replica_gpu_uuids_are_distinct() -> Bool {
-  srv1_replica_0.gpu_uuid != srv1_replica_1.gpu_uuid
+  let u0 = srv1_replica_gpu_uuid(replica: srv1_replica_0)
+  let u1 = srv1_replica_gpu_uuid(replica: srv1_replica_1)
+  match u0 {
+    Absent => false
+    Present { value: a } => match u1 {
+      Absent => false
+      Present { value: b } => a != b
+    }
+  }
 }
 
 // The two replicas have distinct host ports (they publish on different ports).
@@ -233,7 +268,10 @@ test fn the_engine_argv_is_constructed_from_typed_rows() -> Bool {
 // either copy independently breaks here, so the two cannot silently diverge.
 test fn the_launcher_case_statement_matches_the_roster() -> Bool {
   let body = srv1_serving_gpu_launcher.body as String
-  let uuids_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: r.gpu_uuid as String))
+  let uuids_ok = all(srv1_serving_replica_roster, r => match srv1_replica_gpu_uuid(replica: r) {
+    Absent => false
+    Present { value: u } => string_contains(s: body, pattern: u as String)
+  })
   let names_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: r.container_name as String))
   let ports_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: to_string(r.host_port as Int)))
   let dirs_ok = string_contains(s: body, pattern: "lil-flash-next-1")
@@ -248,7 +286,10 @@ test fn the_replica_device_word_uses_the_shared_selector() -> Bool {
   let r = srv1_replica_0
   let words = srv1_replica_device_words(replica: r)
   // The model's device word is the shared selector's output tagged --device (one home for nvidia.com/gpu=<UUID>).
-  let model_ok = words == ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: r.gpu_uuid)]
+  let model_ok = match srv1_replica_gpu_uuid(replica: r) {
+    Absent => false
+    Present { value: u } => words == ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
+  }
   // gpu.sh pins the device with the SAME CDI prefix the shared selector emits; it binds the UUID itself from
   // the case statement into `--device nvidia.com/gpu=$GPU`, so the launcher carries the prefix, not the literal
   // UUID, on the docker line. The UUID↔index binding to the roster is asserted by
@@ -309,7 +350,12 @@ test fn the_boot_survival_audit_keeps_unknown_unreadable() -> Bool {
       && any(a, o => o.host == "h11-88" && srv1_audit_entry_is_unreadable(o))
       && !any(a, o => string_contains(s: o.host, pattern: "h11") && srv1_audit_entry_is_enabled_at_boot(o))
       && any(a, o => o.host == "srv3" && o.unit == "strata-pool.service" && srv1_audit_entry_is_enabled_at_boot(o))
-      && any(a, o => o.host == "srv2" && string_contains(s: o.unit, pattern: "ctrl-vast-pool") && srv1_audit_entry_is_user_scope(o))
+      // srv2's pool and srv1's dashboard are user units whose OWNER LINGERS, so they start at boot
+      // without a login. The stricter verdict is asserted (not the bare UserScopeUnit) because that is
+      // what was read on-host 2026-11-09; a row regressed to UserScopeUnit — the "down until login"
+      // claim that was wrong — goes red here.
+      && any(a, o => o.host == "srv2" && string_contains(s: o.unit, pattern: "ctrl-vast-pool") && srv1_audit_entry_is_user_scope_with_linger(o))
+      && any(a, o => o.host == "srv1" && o.unit == "session-dashboard" && srv1_audit_entry_is_user_scope_with_linger(o))
       && any(a, o => o.host == "srv1" && o.unit == "gunbc-router" && srv1_audit_entry_is_restart_unless_stopped(o))
 }
 

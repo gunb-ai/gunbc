@@ -7,10 +7,10 @@ module gunbc.machine_intake.mtcollins1_ui_status_asset_observation
 // a HUMAN sees for that row is not the integer: SP-X renders the virtual-media table client-side,
 // so the words in the status cell come from a code-to-label lookup inside a JavaScript asset the
 // BMC itself serves. Until those bytes are in this repository, any claim about what the controller
-// displays for status 0 is a bet -- and gunbc.machine_intake.megarac_media_attach keeps it typed as
-// one (MegaRacStatusZeroRowGuessedNotPresenting, gunbc.design_argument::epistemic_humility: "An inference is a bet: typed as a
-// bet, neither deleted nor promoted"). This module is the read that lets that bet be settled by
-// evidence instead of by an operator's memory of a page: it fetches the page, derives the asset
+// displays for status 0 is a bet (gunbc.design_argument::epistemic_humility). This module is the read
+// that let that bet be settled by evidence instead of by an operator's memory of a page -- fleet-converge
+// run 42592868662's output is committed and read at gunbc.machine_intake.megarac_media_row_reading
+// mtcollins1_ui_media_row_rendering: it fetches the page, derives the asset
 // paths the page itself names, fetches the asset, and extracts the smallest span of AMI code that
 // shows BOTH the site where a media row's redirection status is read AND the mapping entry for 0.
 //
@@ -439,6 +439,8 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "lmedia_object" as NonEmptyStr, octets: ui_octets_of("lmedia:{") },
   MegaRacUiProbe { name: "lmedia_object_quoted" as NonEmptyStr, octets: ui_octets_of("\"lmedia\":{") },
   MegaRacUiProbe { name: "local_storage_res" as NonEmptyStr, octets: ui_octets_of("\"res_\"") },
+  MegaRacUiProbe { name: "cd_error" as NonEmptyStr, octets: ui_octets_of("cd_error") },
+  MegaRacUiProbe { name: "error_code" as NonEmptyStr, octets: ui_octets_of("error_code") },
 ]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
@@ -563,7 +565,7 @@ type MegaRacUiCatalogMember
 
 data megarac_ui_catalog_open_text: String = "lmedia:\{"
 
-data megarac_ui_catalog_member_keys: List<String> = ["halted", "status_0", "status_1", "status_16"]
+data megarac_ui_catalog_member_keys: List<String> = ["halted", "status_0", "status_1", "status_2", "status_3", "status_4", "status_5", "status_6", "status_7", "status_8", "status_9", "status_10", "status_11", "status_12", "status_13", "status_14", "status_15", "status_16", "status_17", "status_100"]
 
 fn ui_first_piece(text: String, delimiter: String) -> String {
   match split(s: text, delimiter: delimiter) |> get(0) {

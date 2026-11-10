@@ -108,7 +108,7 @@ fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
     endpoint: mtcollins1_endpoint,
     firmware: mtcollins1_current_bmc_firmware(),
     request: IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator) },
-    evidence: PublicStandardOperation { authority: extdeps_external_authority_anchor },
+    evidence: PublicStandardOperation { authority: extdeps.bmc.ipmi_channel.extdeps_external_authority_anchor },
   )
 }
 

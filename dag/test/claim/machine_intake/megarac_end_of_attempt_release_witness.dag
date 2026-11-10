@@ -145,6 +145,21 @@ test fn our_own_session_at_an_uncatalogued_code_is_not_stopped() -> Bool {
     && left_because(s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "19")), firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted), pattern: "redirection_status 19 on firmware 0.32")
 }
 
+// BOOT 10'S OWN ROW IS NOW STOPPED AT THE END. Run 42756688400 left the runner image on the CD row at
+// redirection_status 100 beside the no-session marker, and its end of attempt left it ("NOT stopped: ...
+// a code that release's catalogue does not name"). With 100 catalogued as Connecting on the release the
+// controller reports (extdeps.bmc.megarac megarac_redirection_status_of_wire), that exact row -- the
+// attempt's own image, presenting on a catalogued status -- is the one row stopped when the stop is
+// admitted, and still left when it is not. RED if 100 at this build fell back to an uncatalogued wire.
+fn boot10_row() -> String {
+  concat("{\"id\":1,\"media_type\":1,\"media_index\":0,\"session_index\":255,\"image_name\":\"", concat(runner_desired as String, "\",\"redirection_status\":100}"))
+}
+
+test fn w_our_own_row_at_100_beside_the_no_session_marker_is_stopped_at_the_read_build() -> Bool {
+  stops(s: step_on(configurations: rows1(a: boot10_row()), firmware: the_build_the_read_names, detach: MegaRacDetachAdmitted))
+    && left_because(s: step_on(configurations: rows1(a: boot10_row()), firmware: the_build_the_read_names, detach: MegaRacDetachNotAdmitted { reason: "the host is powered on" }), pattern: "the stop was not admitted")
+}
+
 // FOREIGN IMAGE NEVER STOPPED, catalogued status and admission notwithstanding.
 test fn a_foreign_image_is_never_stopped_at_the_end() -> Bool {
   left_because(s: step_on(configurations: rows1(a: row(name: "someone-elses-installer.iso", status: "1")), firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted), pattern: "not an image this lane publishes")

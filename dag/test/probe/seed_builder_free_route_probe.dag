@@ -7,7 +7,8 @@ module test.probe.seed_builder_free_route_probe
 // and requires the refusal at build_seed_for_control by name. dag/test/probe/ sits under the whole-tree
 // strict-resolve exclusion, so this source reaches the compiler only through that witness.
 
-import std.types { List, Optional }
+import std.types { List }
+import std.optional { Optional }
 import gunbc.boot_artifact_delivery { BootControlTarget }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
 import gunbc.provisioning.ubuntu_autoinstall_seed {

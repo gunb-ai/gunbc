@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rows() -> List<NginxDirective> {
   match router_proxy_vocabulary() {
-    Present { value: v } => router_proxy_directives(v: v, listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)
+    Present { value: v } => router_proxy_directives(v: v, listen_port: 8443, authz_port: 9001, stream_end_port: 9002)
     Absent => [] as List<NginxDirective>
   }
 }
@@ -63,15 +63,15 @@ test fn the_vocabulary_is_accepted_and_rows_are_nonempty() -> Bool {
 
 test fn rendering_follows_the_rows() -> Bool {
   render_nginx_directives(rows: [ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff }]) == "proxy_next_upstream off;\n"
-    && text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) == render_nginx_directives(rows: rows())
-    && text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) != ""
-    && text_of(r: router_proxy_config(listen_port: 8444 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) != text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port))
+    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) == render_nginx_directives(rows: rows())
+    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) != ""
+    && text_of(r: router_proxy_config(listen_port: 8444, authz_port: 9001, stream_end_port: 9002)) != text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002))
 }
 
 // Expected text from the concrete ports: the internal exact-match location, its proxy_pass, the listen line
 // and the two Lua hooks. A fixed literal per fragment, so a mis-rendered arm goes red.
 test fn the_rendered_text_holds_the_expected_fragments() -> Bool {
-  let t = text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port))
+  let t = text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002))
   string_contains(t, "location = /_authz")
     && string_contains(t, "listen 127.0.0.1:8443;")
     && string_contains(t, "proxy_pass http://127.0.0.1:9001")
@@ -120,7 +120,7 @@ test fn the_permit_shape_refuses_a_framing_break() -> Bool {
 test fn a_forced_cast_bypasses_the_constructor_and_renders_unescaped() -> Bool {
   let injected = render_nginx_directives(rows: [ProxyPassToHost {
     host: "127.0.0.1'; os.exit(1)" as NginxToken,
-    port: 9001 as Port,
+    port: 9001,
     path: "/" as NginxToken,
   }])
   string_contains(injected, "'; os.exit(1)")

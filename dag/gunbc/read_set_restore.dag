@@ -51,6 +51,7 @@ import v2.std.read_set {
   read_set_recording_of_lines, validate_read_set, read_set_exact_paths, read_set_dir_prefixes,
   read_set_kind_dir, read_set_exact_kinds, read_set_kind_separator,
 }
+import gunbc.seed_build_inputs { seed_build_input_members }
 import gunbc.read_set_publish { fast_lane_unit_path, fast_lane_unit_cache_key }
 import gunbc.parse_verdict_publish {
   native_cli_bin,
@@ -118,16 +119,12 @@ type FastLaneDeclaredInput
 // the workspace manifests, lockfile, toolchain pin and cargo configuration decide how both the seed and the
 // emitted crates are built; the native CLI's control walks read fixture roots; and .github holds the workflow
 // that is executing, including this decision's own emitted script.
-data fast_lane_fixed_input_members: List<ReadSetMember> = [
-  ReadSetDir { path: "src/v1" },
+// The seed's build inputs are declared once in gunbc.seed_build_inputs (heal's scoped round reads the same
+// list); this lane adds what is its own: the fixture roots and the executing workflow tree.
+data fast_lane_fixed_input_members: List<ReadSetMember> = concat(seed_build_input_members, [
   ReadSetDir { path: "fixtures" },
-  ReadSetFile { path: "Cargo.toml" },
-  ReadSetFile { path: "Cargo.lock" },
-  ReadSetFile { path: "rust-toolchain" },
-  ReadSetFile { path: "rust-toolchain.toml" },
-  ReadSetDir { path: ".cargo" },
   ReadSetDir { path: ".github" },
-]
+])
 
 // THE DECISION'S OWN IMPLEMENTATION, AND THE LAYOUT POLICY THE CHECKS READ. Running a changed decision to
 // judge whether its own change may skip is circular, so a change to any of these modules is a full run. The
@@ -137,6 +134,7 @@ data fast_lane_fixed_input_members: List<ReadSetMember> = [
 // so the lane switches itself off rather than miss its own implementation.
 data fast_lane_decision_implementation_modules: List<String> = [
   "v2.std.read_set",
+  "gunbc.seed_build_inputs",
   "gunbc.read_set_schema",
   "gunbc.read_set_publish",
   "gunbc.read_set_restore",
@@ -146,6 +144,8 @@ data fast_lane_decision_implementation_modules: List<String> = [
   "gunbc.witness.compiler_gate_workflow",
   "gunbc.source_layout",
   "gunbc.source_layout_namespaces",
+  "gunbc.layout_namespace_row",
+  "gunbc.layout_namespace_row.gunbc_tree",
 ]
 
 fn fast_lane_unplaceable_modules() -> List<String> {
