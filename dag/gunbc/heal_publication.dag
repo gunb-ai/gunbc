@@ -9,7 +9,6 @@ import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.cloud.gcp.sts
-import extdeps.cloud.gcp.sts { Jwt, RequestAccessToken }
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
@@ -721,11 +720,14 @@ fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses n
             RestRefused { refusal } =>
               PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAssertionRefused: the runner sidecar refused the assertion: ", rest_refusal_text(o: refusal)) }
             RestAnswered { answer } =>
+              // #16185 named `subject_token_type`/`requested_token_type` explicitly because field
+              // defaults used to resolve in the CALLER's scope; #16196 moved them to the declaring
+              // module, so the `= Jwt`/`= RequestAccessToken` defaults in extdeps.cloud.gcp.sts now
+              // bind here. Verified by execution: the omitted-fields and explicit-fields Exchange legs
+              // are byte-identical, same bound target and host input_digest (path 2).
               match gcp.STS.Exchange(
                 subject_token: answer.subject_token,
                 audience: heal_publisher_exchange_audience(),
-                subject_token_type: Jwt,
-                requested_token_type: RequestAccessToken,
               ) {
                 RestRefused { refusal } =>
                   PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }
