@@ -1,0 +1,77 @@
+module test.claim.fold_carrier_copies_disagree_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { any_class_census, census_verdict, census_verdict_all }
+import std.process { ProcessExit }
+
+// THE EXECUTING EVIDENCE that v1 infer carries TWO DISAGREEING COPIES of the fold-carrier rule and
+// that the disagreement is a real, reproducible false refusal, not a hypothetical. The fold-carrier
+// rule refines a fold's accumulator from its STEP FUNCTION'S RETURN when the accumulator is an
+// unapplied generic expansion (`init: Empty` over a coproduct carrier): the element type is named
+// only by the step's return, so without the refinement the second fold reads the ELEMENT as the
+// CONTAINER and refuses a field read on it.
+//
+// The rule exists twice in `v1.compiler.infer` `infer_expr_body`:
+//   - the ExprCall arm (`refined_call_fold_acc_type`) carries the generic test
+//     (`... || fold_accumulator_is_unapplied_generic(n: acc)`), so a call-form fold refines;
+//   - the ExprMethodCall arm (`refined_fold_acc_type`) omits it, so the identical fold written in
+//     method form does NOT refine.
+// The two arms independently decide one refinement, which is a fork -- "a second place that
+// independently decides it is a fork" -- so the rule belongs to one authoritative definition.
+// @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed)
+//
+// THE SOURCE IS HELD IDENTICAL EXCEPT THE FOLD'S FORM. `call_form` writes the carrier fold as
+// `fold(xs, init: Empty, f: ...)`; `method_form` writes the SAME fold as `xs.fold(init: Empty, f:
+// ...)`. Only the accumulator-refinement arm differs between them, so the ONLY thing that can differ
+// in the diagnostic census is whether the carrier fold's copy of the rule carried the generic test.
+// At main this is the disagreement's footprint: `call_form` is clean (its copy refines) while
+// `method_form` is refused (its copy does not). If both were clean -- as every fixture in the
+// archived attempt #15993 was -- there would be NO disagreement to unify and this witness could not
+// have been made red; that outcome would have ended the change as un-claimable rather than a fix.
+//
+// The oracle is `any_class_census`, not a blocking projection: AlgebraApplicationEvidenceUnavailable
+// is non-blocking, so a blocking read would answer 0 by vacancy whatever the compiler did. The
+// InternalError count is the consequence the row names -- the element read back as the container, so
+// `t.v` refuses "no field 'v' on type 'FreeMonoid'" -- and it is asserted beside the advisory so the
+// red cannot green by silencing the advisory while the mistyping stays.
+
+data call_form_source: String = "module test.claim.fold_copies_call_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+
+data method_form_source: String = "module test.claim.fold_copies_method_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried = xs.fold(init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+
+// ACCEPTED POSITIVE CONTROL (typability): the method-form carrier with its accumulator annotated was
+// clean before any change and must stay clean, which is what makes the red cell mean "the argument
+// was present and dropped by the copy without the generic test" rather than "this fold cannot be
+// typed at all."
+data method_form_annotated_source: String = "module test.claim.fold_copies_method_annotated_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried: List<FcciItem> = xs.fold(init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+
+// DISCRIMINATING RED, in the repaired direction. At main the method-form fold raises the advisory
+// once and refuses `t.v` once (its copy of the rule omits the generic test, so `carried` is left an
+// unapplied generic and the second fold reads the element as the container). With the rule unified
+// into one authority that carries the generic test, both counts are 0. It goes red if the shared
+// authority stops refining.
+test fn method_form_generic_carrier_is_refined_from_the_step_return() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: any_class_census(source: method_form_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n == 0 }),
+    census_verdict(census: any_class_census(source: method_form_source, wanted_class: "InternalError"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// DISCRIMINATING CONTROL, the same source in call form. It was clean at main (its copy carries the
+// generic test) and must stay clean. Read beside the red cell it IS the disagreement: identical
+// source, only the fold's form differs, and at main only the method form is refused.
+test fn call_form_twin_stays_clean() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: any_class_census(source: call_form_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n == 0 }),
+    census_verdict(census: any_class_census(source: call_form_source, wanted_class: "InternalError"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// ACCEPTED POSITIVE CONTROL, the method-form carrier annotated: clean at main and at the fix head,
+// pinning that the method fold can be typed and the red is a dropped carried argument.
+test fn annotated_method_form_twin_stays_clean() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: any_class_census(source: method_form_annotated_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n == 0 }),
+    census_verdict(census: any_class_census(source: method_form_annotated_source, wanted_class: "InternalError"), holds: fn(n) { n == 0 }),
+  ])
+}

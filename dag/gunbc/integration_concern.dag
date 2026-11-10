@@ -262,6 +262,14 @@ data duct_print_plate: SightingEvidence = CitesArtifact {
   sha256: Sha256Digest { hex: "7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb" as Sha256DigestHex },
 }
 
+// The main revision the r07 tray panel P3 was sliced against on the corrected print-pose route (#16213).
+data tray_panel_p3_source_revision: CommitSha = "9d2484ae1cea7a10b750d8d97ff5d78a3e964cf5"
+
+data tray_panel_p3_r07_plate: SightingEvidence = CitesArtifact {
+  label: "r07 tray panel P3 laid flat in its declared print pose and sliced on srv1 by the pinned OrcaSlicer under the a1-mini-petg-functional-v1 process, 2026-11-10 (probe plate, not retained)",
+  sha256: Sha256Digest { hex: "b87659e31f4cd57922eae6729eaae6a11068d9e70f599219f1df1fce060cf4f2" as Sha256DigestHex },
+}
+
 data support_restriction_scope: IntegrationConcern = IntegrationConcern {
   identity: "support_restriction_scope",
   kind: SuspectedCapabilityGap {
@@ -290,7 +298,20 @@ data support_restriction_scope: IntegrationConcern = IntegrationConcern {
       },
       account: "Printed shoulder-down under the bed-only automatic support policy, the duct's generated support reached the seat face the blower rests on, which sets the model-derived head clearance. The readback's support record is motion centerlines, not a contact surface, so it shows where support was laid, not what it left on the face. The earlier failure-mode row cited is a related lesson about support meeting functional geometry, not the same concern.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: tray_panel_p3_source_revision,
+        evidence: FreeSemigroup {
+          head: tray_panel_p3_r07_plate,
+          tail: [
+            CitesDeclaration { declaration: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "plate_bottom_y") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "lap_ridge_profiles") },
+          ],
+        },
+        account: "Laid flat as declared, the r07 panel needed support under its whole plate, because the rail foot projected below the plate's underside, and under its two receiver-lap pockets, whose flat ceilings overhang the bed whichever half of a flat half-lap carries the tongue. Whole-part support_free refused it correctly. The repair was geometry, not a finer restriction: the plate now lies in the foot's bearing plane, and the laps are 45-degree ridges in grooves with a land on the bed between grooves; the same probe then sliced with no support. This sighting therefore needed no region-scoped restriction; it does not decide the duct's seat-face question above.",
+      },
+    ],
   },
   disposition: Open,
 }
@@ -775,7 +796,7 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
     requirement: "a gunbc run pays memory and wall time for the part of its entry's closure that evaluation reaches, not for every module the import closure names, while every refusal that typechecking the closure raises today still fires where it fires today",
-    standing: RequirementUnestablished { decided_by: "a design that names which typecheck obligations an unreached module still owes (its own refusals, its importers' bindings) and shows they can be discharged without typechecking its bodies; until then the requirement is a memory and wall-time observation, not an established obligation" },
+    standing: RequirementUnestablished { decided_by: "a design that shows how the signature and type-environment work every acquired closure module still pays (reconcile over all of them) can be discharged for modules no requested function reaches, without changing what a demanded declaration observes; function-body typechecking of unreached declarations is settled by run_unreached_function_bodies_typechecked and is not the open part" },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
@@ -794,6 +815,37 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
     tail: [],
   },
   disposition: Open,
+}
+
+data run_unreached_function_bodies_typechecked: IntegrationConcern = IntegrationConcern {
+  identity: "run_unreached_function_bodies_typechecked",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped"),
+    requirement: "a gunbc run typechecks the function bodies its requested functions can reach, not every body of every module the import closure names, while every refusal for reachable code and every non-function declaration check still fires",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired_scoped"),
+    tail: [decl_ref(module_path: "v1.compiler.compile", decl_name: "run_settle_compile_options")],
+  },
+  question: "Is the typecheck of function bodies no requested function reaches owed by a gunbc run? Split from run_closure_typecheck_exceeds_eval_demand, which keeps the signature and type-environment cost.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired") },
+        tail: [],
+      },
+      account: "The body-typecheck half of the pre-entry cost recorded under run_closure_typecheck_exceeds_eval_demand.",
+    },
+    tail: [],
+  },
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "6819101c8d88928d6eb4f2f7ceda6e8b6ccfb0b8" as CommitSha,
+    superseded: [],
+    replacement: FreeSemigroup { head: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped"), tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "reconcile_scoped")] },
+    executions: FreeSemigroup { head: RetainedExecutionResult { control: decl_ref(module_path: "test.fixture.demanded_scope.scoped_pair", decl_name: "broken_entry"), run: "gunbc run --entry dag/test/fixture/demanded_scope/scoped_pair.dag --function broken_entry vs clean_entry", conclusion: "a reachable type error refuses; an unreached one (unreached_broken) runs; declared as gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked" }, tail: [RetainedExecutionResult { control: decl_ref(module_path: "gunbc.fleet.fleet_converge_plan_cli", decl_name: "fleet_converge_plan_wet"), run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_operator_cli_entry, pre-change binary vs scoped", conclusion: "resolve_entry_graph_inclusive 1,528,505 -> 780,254 ms; reconcile 21 min -> 9 min; max_rss 16.9 -> 15.8 GiB; still not inside the 15-minute plan budget (signature/type-env cost remains in run_closure_typecheck_exceeds_eval_demand)" }] },
+  } },
 }
 
 data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationConcern {
@@ -1923,12 +1975,23 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
         },
         account: "BLOCKER (iii) inference: an unannotated arm closure never receives the enclosing function's declared return as an expected type, so it settles open and refuses at inference. The same refusal was first observed at 4bfa629e7ff (off main's lineage); this sighting reconfirms it on real main at b882c902. Lineage: after appending the branch specimen, function_value_body_route.dag's blob at b882c902 is 61ef52ba, byte-identical to the 4bfa629e run's post-append blob — the claim file is the same at both commits, so the two sightings differ only in the compiler beneath them, and both give the same reason.",
       },
+      ConcernSighting {
+        revision: "c316604f06104fcdd9c61884f09a002b07930e66",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_branch_arm_callback_frame") },
+          tail: [
+            CitesArtifact { label: "pair run of v2.test.claim.compiler.branch_arm_closure_inhabits (claim file blob fd78e33255171bcffd7139820f67401fbc27b33b, held constant across legs): 4/4 green at c316604f0610 (https://app.buildbuddy.io/invocation/c26c0e93-4aa3-482d-bb46-de3772394c7d) against 0/4 at 8732750e2d69 with only that claim file overlaid (https://app.buildbuddy.io/invocation/fdf76b2b-25f1-44fe-93c4-c1a939836516) — the two return-annotated specimens (if-arms, match-arms) move refused -> admitted by the infer change alone; the two negative controls (an arm closure returning Bool where Int is required; a closure in one arm and an Int literal in the other) stay refused", sha256: Sha256Digest { hex: "ea18d82f17117bbd530c08099725f4afb009b097426c98bf88501203c10efa1b" as Sha256DigestHex } },
+            CitesArtifact { label: "fatal-reason probe on both negative-control specimens (probe fns appended in the run tree, blob 8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8, identical on both legs): at 8732750e2d69 infer rejects them with arrow_body_does_not_inhabit_declared_return — the boundary this sighting cited (https://app.buildbuddy.io/invocation/f56a789e-fa04-4c81-8cc4-f4d3b6a8e885); at c316604f0610 with infer_arms_declare_conflicting_types (https://app.buildbuddy.io/invocation/ff0f73a1-c61e-4a8e-80ce-4d491bbc1d8f). The refusal moved from this boundary to the arm-vs-arm join; it did not disappear", sha256: Sha256Digest { hex: "8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8" as Sha256DigestHex } },
+          ],
+        },
+        account: "BLOCKER (ii) typing — RULED A DEFECT AND FIXED at c316604f0610 (PR #16212). Chain re-derivation put the earliest unjustified boundary in inference, not in inhabitance: the Branch arm child frame and the Match arm body-edge frame never supplied callback-frame instances from the frame's declared_position_expected arrow, so the arm closure's unannotated parameter binder stayed uninstantiated, the arm's own type was never held, and the refusal surfaced one stage later as inhabitance_no_candidate_return_reason / arrow_body_does_not_inhabit_declared_return. The fix (infer_branch_arm_callback_frame) supplies the SAME instances an application argument already gets from infer_callback_formal_frame, at both arm positions — no second mechanism. The other two blockers stand: blocker (i) (typed arm parameters do not parse) is a grammar gap, and blocker (iii) (a wholly unannotated arm closure settles open) is untouched by this change, which is why the requirement as stated is not yet met and this row stays Open. TRIGGER SATISFIED for the emitter: with a return-annotated arm closure the shape now reaches the emitter, so the branch/match tail-closure move/Box::new fixture becomes writable — that fixture is not part of this lane.",
+      },
     ],
   },
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

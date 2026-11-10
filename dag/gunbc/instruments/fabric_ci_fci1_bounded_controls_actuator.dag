@@ -575,7 +575,7 @@ fn fci1_bounded_controls_legs(gunbc_bin: String, checkout_root: String, verdict_
     fci1_refused(reason: "ControlRefused: must run as root")
   } else {
     let host = fci1_run_command(command: hostname_short_read_command())
-    if host.exit_code != 0 || trim(s: host.stdout) != slot_host as String {
+    if host.exit_code != 0 || trim(s: host.stdout) != (slot_host as String) {
       fci1_refused(reason: join([
         "ControlRefused: the fabric execution member is committed on ", slot_host as String,
         " and this host is ", trim(s: host.stdout),
