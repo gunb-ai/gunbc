@@ -19,7 +19,12 @@ import gunbc.fleet.fleet_host_key_enrollment {
   fleet_host_key_enrollments,
   enrolled_fingerprint_for,
   known_hosts_line,
+  LanEndpointHostKey,
+  lan_endpoint_host_keys,
+  lan_endpoint_host_key_row,
+  known_host_row_field,
 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import gunbc.host.host_reach_identity_probe {
   classify_reach_probe_wire_with_expectation,
   ProbeHostKeyUnenrolled,
@@ -170,4 +175,28 @@ test fn witness_the_same_public_half_enrolled_twice_refuses_the_catalog() -> Boo
 test fn witness_the_provisioned_arm_renders_its_label() -> Bool {
   host_key_provenance_label(p: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-x-1", authority: "fixture: record" }) == "provisioned-install"
     && host_key_provenance_label(p: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-x-1", authority: "fixture: record" }) != "scanned-first-contact"
+}
+
+// A KEY ENROLLED AT A LAN ENDPOINT DERIVES ITS ROW FROM THE TOPOLOGY. Every observation in
+// lan_endpoint_host_keys yields a row, so a topology edit that strands a key is red here rather than a
+// silently shorter roster; srv14's row is pinned under the address measured on butch on 2026-11-10
+// (`ip -o addr show enP2p4s0`), read through gunbc.fleet.fleet_intent_network srv14_host_lan_endpoint
+// rather than restated; and a host with no LAN endpoint derives no row instead of a fabricated address.
+test fn every_lan_endpoint_key_derives_its_row() -> Bool {
+  let unaddressed = LanEndpointHostKey {
+    host: "lan-endpoint-fixture-without-topology" as HostIdentity,
+    key_type: "ssh-ed25519",
+    public_key_base64: "fixture",
+    sha256_fingerprint: "SHA256:fixture",
+    provenance: ScannedFirstContact { scanned_from: "fixture" as NonEmptyStr },
+  }
+  all(lan_endpoint_host_keys, o => match lan_endpoint_host_key_row(observation: o) {
+    Present { value: _ } => true
+    Absent => false
+  })
+    && any(fleet_host_key_enrollments, k => (k.host as String) == (operator_host_srv14 as String) && known_host_row_field(k: k) == "192.168.1.205")
+    && match lan_endpoint_host_key_row(observation: unaddressed) {
+      Present { value: _ } => false
+      Absent => true
+    }
 }
