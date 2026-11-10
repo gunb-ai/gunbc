@@ -8758,6 +8758,21 @@ pub fn run_regen_round_cost(
     // loaded first.
     let liveness_model = SupervisedSubjectModel::load(source_roots)?;
 
+    // A SCOPED ROUND BOOTSTRAPS ONLY FROM A BASE THAT SPEAKS ITS PROTOCOL (side-chat review of #16236 at
+    // e9a1516). Round 1 builds the seed from the base commit's crate and re-execs into it; that image
+    // reads the scope this image decided (`carried_emission_scope`), which a base older than P2a cannot
+    // do. A pull-request run's base is main and carries it, but a manual dispatch names any base, so
+    // the owning image refuses here, before recovery, bootstrap or re-exec.
+    if affected_scope && base_mirror && handoff_in.is_none() {
+        if let Some(base) = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
+            .ok()
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty())
+        {
+            scoped_round_base_carries_protocol(&workspace, &base, SCOPED_ROUND_PROTOCOL_FLOOR)?;
+        }
+    }
+
     let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
         .as_ref()
         .and_then(|carried| carried.round_subject.clone());
@@ -12378,6 +12393,38 @@ fn scoped_round_git(workspace: &Path, args: &[&str]) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|e| format!("refusal: git {shown} is not UTF-8: {e}"))
 }
 
+/// THE OLDEST COMMIT WHOSE SEED SPEAKS THE SCOPED-ROUND PROTOCOL: the P2a landing (#16198), which added
+/// the carried scope a re-exec'd base image reads. A later change to that protocol moves this floor in
+/// the same change.
+const SCOPED_ROUND_PROTOCOL_FLOOR: &str = "b5a924921eaa8b564a7d3e511b3514c09c9b83c9";
+
+/// Refuses unless `floor` is an ancestor of (or equal to) `base`. A base that cannot be resolved, or an
+/// ancestry git cannot decide, refuses too: the protocol is not established, and the round does not
+/// guess.
+fn scoped_round_base_carries_protocol(
+    workspace: &Path,
+    base: &str,
+    floor: &str,
+) -> Result<(), String> {
+    let status = Command::new("git")
+        .args(["merge-base", "--is-ancestor", floor, base])
+        .current_dir(workspace)
+        .status()
+        .map_err(|e| format!("refusal: git merge-base --is-ancestor could not run: {e}"))?;
+    match status.code() {
+        Some(0) => Ok(()),
+        Some(1) => Err(format!(
+            "refusal: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base} predates the scoped-round protocol \
+             (it does not contain {floor}), so the seed it bootstraps could not read the carried scope; \
+             dispatch with a newer base or without --regen-affected-scope"
+        )),
+        _ => Err(format!(
+            "refusal: whether {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base} contains the scoped-round \
+             protocol ({floor}) could not be established ({status})"
+        )),
+    }
+}
+
 /// The two observations for one well-formed 40-hex base commit. A merge-base that cannot be named
 /// (unrelated or truncated history) refuses: neither observation can be stated without it, and the
 /// round does not widen in its place.
@@ -12794,6 +12841,13 @@ mod regen_affected_set_tests {
             edited_population_from_diff(&dir, &merged.diff_text).edited_modules,
             vec!["std.a".to_string()]
         );
+
+        // THE PROTOCOL FLOOR: a base that contains the floor commit is admitted, a base that predates
+        // it refuses, and an unresolvable floor refuses rather than admitting.
+        let root = git(&["rev-list", "--max-parents=0", "HEAD"]);
+        assert!(scoped_round_base_carries_protocol(&dir, &base, &root).is_ok());
+        assert!(scoped_round_base_carries_protocol(&dir, &root, &base).is_err());
+        assert!(scoped_round_base_carries_protocol(&dir, &base, &"0".repeat(40)).is_err());
 
         // A base with no common history refuses rather than widening.
         git(&["checkout", "-q", "--orphan", "stranger"]);
