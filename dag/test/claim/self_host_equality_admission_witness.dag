@@ -1054,3 +1054,38 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
 // test fn cross_module_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
 //   eq_admitted(source: identity_cross_module_container_eq_design_source)
 // }
+
+// ===== gunbc#16143 (re-land #15992) equality admission for GENERIC APPLICATIONS =====
+// These rows pin the #16143 behaviour: a generic applied to a plain/kernel argument and a nested
+// generic application whose argument is a declared type ADMIT through the declaring-identity route;
+// a generic applied to a fn-bearing (Clone-only) argument still REFUSES. The first two shapes are the
+// folded-in body of the former standalone module test.claim.nested_generic_equality_repro (review 92857:
+// it was dangling -- two non-test `fn ..._admits` with no census), now executed as census witnesses.
+data nested_generic_holder_application_green_source: String = "module eq_probe_nested_generic_holder\nimport std.types { String }\ntype Inner<K>\n  = Boxed { key: K }\n  | Nothing\ntype Outer<K>\n  = Has { inner: Inner<K> }\n  | Bare\ntype Carrier\n  = Wrap { outer: Outer<String>, tag: String }\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+data nested_generic_sibling_by_target_green_source: String = "module eq_probe_nested_generic_sibling\nimport std.types { String }\ntype Inner<K>\n  = Boxed { key: K }\n  | Nothing\ntype PlainKey\n  = KeyA { name: String }\n  | KeyB\ntype Outer2<K>\n  = Has2 { inner: Inner<K>, k2: K }\n  | Bare2\ntype Carrier2\n  = Wrap2 { outer2: Outer2<PlainKey> }\nfn same(a: Carrier2, b: Carrier2) -> Bool { a == b }\n"
+
+// Medium<R> mirrors dag/extdeps/communication/medium.dag applied to the String kernel scalar (the
+// resolved-kernel-scalar-before-realizes-natively reorder is what keeps this admitted).
+data medium_string_kernel_scalar_green_source: String = "module eq_probe_medium_string\nimport std.types { String }\ntype Medium<R> {\n  carried: R\n  fidelity: Int\n}\ntype MediumHolder {\n  m: Medium<String>\n}\nfn same(a: MediumHolder, b: MediumHolder) -> Bool { a == b }\n"
+
+// THE refusal control (brief): a generic record instantiated at a Clone-only (function-bearing) type
+// must NOT earn a raw '==': Ops carries fn(Int)->Int, so the walk descends Engine<Ops> -> Ops -> fn
+// member and the equality is refused rather than emitted as a Rust structural '=='.
+data generic_clone_only_argument_red_source: String = "module eq_probe_generic_clone_only\nimport std.types { Int, List }\ntype Engine<Ops> {\n  engine: Ops\n  rows: List<Int>\n}\ntype Ops {\n  f: fn(Int) -> Int\n}\ntype EngineHolder {\n  e: Engine<Ops>\n}\nfn same(a: EngineHolder, b: EngineHolder) -> Bool { a == b }\n"
+
+test fn nested_generic_holder_application_stays_admitted() -> Bool {
+  eq_admitted(source: nested_generic_holder_application_green_source)
+}
+
+test fn nested_generic_sibling_by_target_argument_stays_admitted() -> Bool {
+  eq_admitted(source: nested_generic_sibling_by_target_green_source)
+}
+
+test fn generic_applied_to_string_kernel_scalar_stays_admitted() -> Bool {
+  eq_admitted(source: medium_string_kernel_scalar_green_source)
+}
+
+test fn generic_applied_to_clone_only_argument_refuses() -> Bool {
+  eq_wall_refusal_count(source: generic_clone_only_argument_red_source) >= 1
+}
