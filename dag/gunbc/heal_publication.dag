@@ -9,7 +9,6 @@ import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.cloud.gcp.sts
-import extdeps.cloud.gcp.sts { Jwt, RequestAccessToken }
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
@@ -233,14 +232,31 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
   }
 }
 
-// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY AND NO CAUSE TEXT. Every caller here runs with a
-// credential in hand (the App installation token on the writes and readbacks, the job token on the
-// PR-state read and the receipt comment), and the text reaches stderr through exit_failure. A response
-// body or a transport cause can echo request material, so only the HTTP status is kept; GitHub error
-// bodies have no closed-vocabulary code to keep (compare gunbc.github_effect_perform
-// publisher_refusal_text, which keeps Google's). A credential refused before dispatch sent no request
-// and holds no body, so it keeps its access-refusal reason (extdeps.transports.rest
-// rest_credential_refusal_cause).
+// THE PUBLISH PATH'S REFUSAL TEXT CARRIES NO BODY, AND ONLY THE CAUSE THE HOST DECLARES SAFE. Every caller
+// here runs with a credential in hand (the App installation token on the writes and readbacks, the job token
+// on the PR-state read and the receipt comment), and the text reaches stderr through exit_failure. A
+// response body or a transport cause can echo request material, so a transport cause stays withheld and
+// only the HTTP status is kept (compare gunbc.github_effect_perform publisher_refusal_text, which keeps
+// Google's). A credential refused before dispatch sent no request and holds no body, so it keeps its
+// access-refusal reason (extdeps.transports.rest rest_credential_refusal_cause). An UNDECODABLE BODY keeps
+// its cause, because on THIS route -- the interpreted one, which is what `gunbc run` executes and what
+// .github/workflows/heal-publish.yml:112 and :126 invoke -- every place that mints that cause renders it
+// from declared facts only:
+// rest_response_declared_cause (cause kind, the located DECLARED field, coproduct, encoding, naming,
+// count),
+// rest_body_read_refused_cause and rest_body_not_json_cause (fixed text; the transport io text and the
+// serde_json message are dropped), and rest_body_null_members_cause (a count; the member names are
+// withheld) -- all four in src/v1/stage0/src/v1_interpreter.rs, each with a marker planted in the exact
+// value it refuses to publish. THE ROUTE IS PART OF THE CLAIM, and the other realization of the same
+// exchange does not yet hold it: src/v1/05_emit_rust.dag:19168 emits the body-read refusal with
+// cause: error.to_string() and :19178 emits the decode failure with the error's own text, both inside
+// emit_rust_rest_result_lowering reached from :18667, and a serde message can carry a spelling the body
+// presented. Nothing is compiled through the emitter on this path today, so nothing leaks; if that
+// changes, closing those two arms is a precondition of leaving this one published, and the un-closed path
+// is recorded as a receipt in
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag. The 2026-11-10 heal-publish outage printed 'status 200 undecodable' for two
+// days of runs while the interpreter knew the body had failed at NoWireContract on PullRequestState.
+// A withheld cause is not a safe refusal, it is an undiagnosable one.
 fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
     RestStatusRefused { status, body: _ } => concat("status ", to_string(status as Int))
@@ -249,7 +265,7 @@ fn rest_refusal_text(o: RestRefusal) -> String {
       let cause = rest_credential_refusal_cause(refusal: credential_refusal)
       cause as String
     }
-    RestBodyUndecodable { status, cause: _ } => join(["status ", to_string(status as Int), " undecodable (cause withheld on a credential path)"], "")
+    RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable (", cause, ")"], "")
   }
 }
 
@@ -721,11 +737,14 @@ fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses n
             RestRefused { refusal } =>
               PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAssertionRefused: the runner sidecar refused the assertion: ", rest_refusal_text(o: refusal)) }
             RestAnswered { answer } =>
+              // #16185 named `subject_token_type`/`requested_token_type` explicitly because field
+              // defaults used to resolve in the CALLER's scope; #16196 moved them to the declaring
+              // module, so the `= Jwt`/`= RequestAccessToken` defaults in extdeps.cloud.gcp.sts now
+              // bind here. Verified by execution: the omitted-fields and explicit-fields Exchange legs
+              // are byte-identical, same bound target and host input_digest (path 2).
               match gcp.STS.Exchange(
                 subject_token: answer.subject_token,
                 audience: heal_publisher_exchange_audience(),
-                subject_token_type: Jwt,
-                requested_token_type: RequestAccessToken,
               ) {
                 RestRefused { refusal } =>
                   PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }

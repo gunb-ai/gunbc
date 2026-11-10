@@ -243,6 +243,7 @@ fn analyze_complexity_options() -> CompilePipelineOptions {
         analyze_complexity: true,
         analyze_ownership: true,
         analyze_test_references: true,
+        declaration_scope: v1_compiler::v1_compiler_infer::DeclarationScope::EveryDeclaration,
     }
 }
 

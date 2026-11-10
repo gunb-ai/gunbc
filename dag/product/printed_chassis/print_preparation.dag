@@ -60,7 +60,7 @@ type RecipeStaging = RecipeStaged {profiles:StagedProfiles} | RecipeStagingRefus
 
 data required_machine_keys: List<String> = ["printer_model","nozzle_diameter"]
 data required_filament_keys: List<String> = ["filament_type","nozzle_temperature","textured_plate_temp"]
-data required_process_keys: List<String> = ["print_sequence","wall_loops","sparse_infill_density","enable_support","support_type","support_threshold_angle","support_on_build_plate_only","support_top_z_distance","support_bottom_z_distance","support_object_xy_distance"]
+data required_process_keys: List<String> = ["print_sequence","wall_loops","sparse_infill_density","enable_support","support_type","support_threshold_angle","support_on_build_plate_only","support_top_z_distance","support_bottom_z_distance","support_object_xy_distance","brim_type","brim_width"]
 
 fn selected(members:List<JsonKeyValue>,keys:List<String>) -> List<JsonKeyValue>? {
  if all(keys,k=>count(filter(members,m=>m.key==k))==1) {Present {value:filter(members,m=>any(keys,k=>k==m.key))}} else {none}
@@ -104,7 +104,7 @@ fn prepare(runtime:PrintRuntimeReady,cad:String,plan:PlatePreparation,output:Str
  let scratch=concat(output,".orca")
  if !shell.Mkdir.Parents(path:scratch as FilePath).success {return exit_failure(reason:"Cannot isolate slicer scratch output")}
  let model=concat(output,".source.3mf")
- let pack=join(["\npack_plate(",literal(s:cad),",",serialize_json(v:json_array(elements:map(plan.placements,p=>placement_json(p:p)))),",",literal(s:model),",",serialize_json(v:envelope_json()),")\n"],"")
+ let pack=join(["\npack_plate(",literal(s:cad),",",serialize_json(v:json_array(elements:map(plan.placements,p=>placement_json(p:p)))),",",literal(s:model),",",serialize_json(v:envelope_json()),",",serialize_json(v:profiles.required),",",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),")\n"],"")
  match run_kernel(cad_runtime:print_runtime_cad(r:runtime),script:concat(output,".pack.py"),call:pack) {
   ExitSuccess=>match slice_profile_in(directory:scratch,appimage:appimage,model:model,output:output,machine:profiles.machine,filament:profiles.filament,process:profiles.process) {
    ExitSuccess=>run_kernel(cad_runtime:print_runtime_cad(r:runtime),script:concat(output,".readback.py"),call:readback_call(project:output,cad:cad,plan:plan,receipt:concat(output,".readback.json"),profiles:profiles,runtime_receipt_sha256:print_runtime_receipt_sha256(r:runtime)))

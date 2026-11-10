@@ -333,7 +333,7 @@ import gunbc.roadmap.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.compute.work_request { TargetIsExecutingHost, WorkOperation, WorkRefusedByInfrastructure, HostComputeCapacityFull, RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
-import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, attempt_record_json, AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused }
+import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, attempt_record_json, AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused, unit_lifecycle_ended }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, SeatDischargeRan, SeatEnsureReleased, compute_seat_discharge_all,
@@ -645,7 +645,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, session_worker_start_standing, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
@@ -2894,7 +2894,11 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
     obs: Present { value: PriorExecutionObservation {
       attempt_key: progress.attempt_key,
       branch: progress.branch,
-      worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
+      // The pure provider/evidence reading PLUS the seat-ledger reboot reconciliation. The second term
+      // is true only for a unit-backed attempt whose unit the seat ledger can positively place as ended
+      // (manager reports no such unit + boot began after the hold was acquired); a vendor pane attempt
+      // and any indeterminate reading keep it false, so a worker that might be live is always joined.
+      worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) || belt_prior_worker_unit_ended_by_seat_ledger(instance: instance, node_id: node_id as String, attempt_key: progress.attempt_key),
       standing: standing,
       // THE LEDGER SEGMENTS survive a reap (they live in the ledger, not the tree), so they are read on every path
       // -- genuinely independent of the standing, which is why they stay flat.
@@ -5666,6 +5670,14 @@ fn attempt_process_for_node(
 ) -> WorkerProcessEvidence {
   match panes {
     BeltAttemptPanesRefused { reason } =>
+      // A REFUSED LISTING SAYS NOTHING ABOUT THE PANE POPULATION, so it cannot be widened into the
+      // unit population. Panes and units cover DISJOINT attempts (vendor CLIs run in tmux panes and
+      // never have a unit; the harness runs in a transient unit and never has a pane): concluding
+      // WorkerProcessAbsent from a refused listing plus an absent unit would read a live vendor
+      // worker -- whose pane the failed check simply could not see -- as absent, and the continuation
+      // would launch a duplicate beside it. The tmux refusal is often transient (socket busy,
+      // permissions), not only a reboot. The reboot case is settled at the continuation against the
+      // seat ledger's typed absence, not here; an unread pane population stays WorkerProcessUnobserved.
       WorkerProcessUnobserved { reason: reason as NonEmptyStr }
     BeltAttemptPanesObserved { panes: observed } => {
       let session_name = dispatch_tmux_session_name(
@@ -10063,6 +10075,46 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
     // attempt from the branch head. A worker merely not-yet-observed (WorkerProcessUnobserved) is NOT
     // this case -- unknown is not never-ran -- and stays non-terminal so a starting worker is joined.
     || belt_attempt_never_ran(provider: provider, evidence: evidence)
+}
+
+// THE REBOOT RECONCILIATION, READ THE WAY THE SEAT LEDGER READS IT. A unit-backed attempt whose
+// worker was lost across a reboot reads its process as WorkerProcessUnobserved: the pane check cannot
+// see it (it never had a pane) and the unit is no longer loaded but left no exit record, so the pure
+// provider/evidence reading in belt_attempt_worker_terminal calls it non-terminal and the continuation
+// refuses it with AlreadyRunning beside a worker that no longer exists. The pane channel cannot settle
+// this -- panes and units are DISJOINT populations -- so the only honest settlement is the seat ledger's
+// own boot-time reconciliation: session_worker_unit_lifecycle_for_instance declares the unit ended ONLY
+// when the named manager reports "no such unit" AND the current boot began strictly after the ledger
+// acquired the worker's hold (session_absent_unit_lifecycle); it refuses as UnitLifecycleUnknown -- which
+// unit_lifecycle_ended reads as NOT ended -- on any single half, so a live worker, a busy manager, or a
+// non-reboot absence stays non-terminal.
+//
+// THIS GATE IS NOT AN OPTIONAL NICE-TO-HAVE. The lifecycle is asked ONLY for an attempt whose placement
+// record shows dispatch COMMITTED to a transient unit (session_worker_start_standing ==
+// AttemptUnitStartRecorded). A vendor CLI runs in a tmux pane and has no such record, so it is never
+// judged here and a pane that merely could not be read is never concluded ended -- exactly the disjoint-
+// population rule the pane observer enforces on the other side. Without this gate, a transient pane
+// refusal over a still-live vendor worker could be read as ended and a duplicate launched beside it.
+fn belt_prior_worker_unit_ended_by_seat_ledger(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> Bool {
+  match session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+    AttemptUnitStartRecorded =>
+      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+        SystemdUnitNameAdmitted { name } =>
+          unit_lifecycle_ended(u: session_worker_unit_lifecycle_for_instance(instance: instance, unit: systemd_unit_name_wire(name: name) as NonEmptyStr))
+        SystemdUnitNameStemEmpty => false
+        SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+        SystemdUnitNameOverlong { length: _ } => false
+      }
+    // A never-started or unreadable start is not a committed unit-backed attempt: never ask the unit
+    // channel about it, so a vendor pane (or an attempt whose start cannot be confirmed) stays on the
+    // pure provider/evidence reading and is joined rather than double-dispatched.
+    AttemptUnitNeverStarted => false
+    AttemptUnitStartUnread { reason: _ } => false
+  }
 }
 
 fn belt_attempt_never_ran(provider: ProviderExecutionState, evidence: WorkerProcessEvidence) -> Bool {

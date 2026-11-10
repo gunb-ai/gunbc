@@ -378,6 +378,7 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "test.fixture.defork_type_name_census.v2_side",
     "test.fixture.demand_closure",
     "test.fixture.demand_closure.excluded",
+    "test.fixture.demanded_scope",
     "test.fixture.dissolution_live_discriminator",
     "test.fixture.effect_reach_conjunction",
     "test.fixture.emitted_closure_partition.base",
