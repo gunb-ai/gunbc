@@ -52,8 +52,8 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 // the pull request body.
 //   lit, xref   pre=n, chk=n, cr=find_witness_reason_no_candidate -- v2's CHECKER closes #16224's population:
 //                 the crossing refuses a kernel value entering a foreign refinement before any value is
-//                 realized (the reason is emitted by v2.std.find_witness at src/v2/std/find_witness.dag:73,
-//                 reached from v2.std.coercion's evidence search at src/v2/std/coercion.dag:182), so the exact
+//                 realized (the reason is emitted by v2.std.find_witness at src/v2/std/find_witness.dag `find_witness`,
+//                 reached from v2.std.coercion's evidence search at src/v2/std/coercion.dag `coercion_cast_exact_witness`), so the exact
 //                 v1 fork -- check admits, eval_cast refuses -- cannot arise in v2 at that population.
 //   ident       pre=y, chk=y, cast=y, opd=y, eop=n, eca=n, er=eval_rejected_grounding_not_derived
 //   widen       pre=y, chk=y, cast=y, opd=y, eop=n, eca=n, er=eval_rejected_resolved_type_mismatch
@@ -67,22 +67,30 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //                 literal and over a data reference alike. What the evaluator will not realize is specifically
 //                 a value whose node type is a refinement over a numeric Int carrier. v2 stamps Int primitives
 //                 with `integer_int_type_node()` (v2_eval_int_runtime_value at src/v2/extdeps/runtimes/
-//                 v2_evaluator.dag:205), while the acceptance gate `eval_runtime_value_acceptance_witness`
-//                 (src/v2/compiler/eval.dag:922) requires `node_equal_ignoring_provenance` between the node's
+//                 v2_evaluator.dag `v2_eval_int_runtime_value`), while the acceptance gate `eval_runtime_value_acceptance_witness`
+//                 (src/v2/compiler/eval.dag `eval_runtime_value_acceptance_witness`) requires `node_equal_ignoring_provenance` between the node's
 //                 inferred resolved type and the value's resolved type -- a node typed as a refinement can
 //                 therefore never accept the value its own operand realizes. The two refusals carry DIFFERENT
 //                 reason names and each needs its own diagnosis; neither is assumed to be the other.
 
 import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.infer { infer }
+import v2.std.integer { integer_int_type_node }
 import v2.compiler.inferred_tree { InferredTree }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
-import v2.std.node { Node, Symbol, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
-import v2.std.runtime { RuntimeValue }
+import v2.std.node {
+  Node,
+  Symbol,
+  node_equal_ignoring_provenance,
+  node_subtree_nodes,
+  positional_child_target_nodes,
+  symbol_lexeme
+}
+import v2.std.runtime { RuntimeValue, runtime_value_resolved_type }
 import v2.std.text { String }
-import v2.std.type_binder { cast_target_optional }
+import v2.std.type_binder { cast_target_optional, refinement_declaration_of_node }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import std.algebra { list_at_optional, list_find_first }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -369,6 +377,62 @@ test fn cecf_class_probes_refuse_at_the_checker_for_one_named_reason() -> Bool {
 // `refinement_obligation_undischargeable` where the refinement discharge refuses, and
 // `eval_rejected_resolved_type_mismatch` on the evaluator side -- the reason the class's fork would carry.
 
+// WHERE THE CARRIER LIVES decides the shape of the fix, so it is measured, not assumed. The
+// acceptance gate compares the node's inferred type with the value's stamped type by NODE EQUALITY
+// (src/v2/compiler/eval.dag eval_runtime_value_acceptance_witness); relaxing it along the carrier
+// needs the declared carrier of that type, and v2.compiler.infer reads it two ways:
+// `refinement_declaration_of_node` (an INLINE `Refinement { declaration }` node -- readable from the
+// node the evaluator is already given, no index) and, failing that, a declaration-index lookup
+// (checker-only authority). ref=y means the inline arm answered; ref=n means the carrier is only
+// reachable through the index. carrier_int=y means that carrier IS the kernel Int node the Int
+// primitives are stamped with (v2.std.integer `integer_int_type_node`, src/v2/std/integer.dag -- the
+// same node v2.extdeps.runtimes.v2_evaluator stamps into every Int primitive, and the node that
+// module's own numeric arm already tests with `node_equal_ignoring_provenance`).
+fn cecf_refinement_shape(n: Node) -> String {
+  match refinement_declaration_of_node(decl: n) {
+    Absent => "ref=n"
+    Present { value: d } =>
+      if node_equal_ignoring_provenance(a: d.carrier, b: integer_int_type_node()) {
+        "ref=y,carrier_int=y"
+      } else {
+        "ref=y,carrier_int=n"
+      }
+  }
+}
+
+// THE TWO NODES WHOSE EQUALITY IS FAILING, read separately: the cast's target (the node's declared
+// type) and the type the operand's REALIZED value is stamped with -- the actual right-hand side of the
+// acceptance equality, read off the value the evaluator returned rather than off a second inference.
+fn cecf_declared_shape(src: String) -> String {
+  match cecf_check(src: src) {
+    Accepted { value: t, diagnostics: _ } =>
+      match cecf_cast_node(t: t) {
+        Absent => "no_cast"
+        Present { value: c } => cecf_refinement_shape(n: c)
+      }
+    Rejected { diagnostics: _ } => "check_rejected"
+  }
+}
+
+fn cecf_realized_value_shape(src: String) -> String {
+  match cecf_check(src: src) {
+    Accepted { value: t, diagnostics: _ } =>
+      match cecf_cast_node(t: t) {
+        Absent => "no_cast"
+        Present { value: c } =>
+          match cecf_cast_operand(n: c) {
+            Absent => "no_operand"
+            Present { value: o } =>
+              match cecf_eval_node(t: t, n: o) {
+                Accepted { value: v, diagnostics: _ } => cecf_refinement_shape(n: runtime_value_resolved_type(value: v))
+                Rejected { diagnostics: _ } => "operand_not_evaluated"
+              }
+          }
+      }
+    Rejected { diagnostics: _ } => "check_rejected"
+  }
+}
+
 fn cecf_tag_yes_no(admitted: Bool) -> String {
   if admitted { "y" } else { "n" }
 }
@@ -425,7 +489,11 @@ test fn cecf_verdict_census() -> ProcessExit {
     " | " + cecf_census_row(tag: "ident", src: cecf_identity_source) +
     " | " + cecf_census_row(tag: "widen", src: cecf_widening_source) +
     " | " + cecf_census_row(tag: "kern_lit", src: cecf_kernel_literal_source) +
-    " | " + cecf_census_row(tag: "kern_ref", src: cecf_kernel_dataref_source)
+    " | " + cecf_census_row(tag: "kern_ref", src: cecf_kernel_dataref_source) +
+    " | ident_decl:" + cecf_declared_shape(src: cecf_identity_source) +
+    " | ident_value:" + cecf_realized_value_shape(src: cecf_identity_source) +
+    " | widen_decl:" + cecf_declared_shape(src: cecf_widening_source) +
+    " | widen_value:" + cecf_realized_value_shape(src: cecf_widening_source)
   let ident = cecf_read_probe(src: cecf_identity_source)
   let widen = cecf_read_probe(src: cecf_widening_source)
   let lit = cecf_read_probe(src: cecf_literal_source)
