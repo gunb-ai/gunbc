@@ -29,10 +29,7 @@ import product.budget_tree { BudgetChild, BudgetNode, budget_child_named }
 // WHAT WOULD TURN IT RED. Any change to how a match arm head is resolved -- the arm head is
 // carried as a bare name string (v1 MatchPattern::VariantPattern) whose parent carrier is filled
 // later by inference rather than by the parser -- such that a constructor named only in a pattern,
-// never imported, stops binding. Measured green as a pair at main
-// 8732750e2d69792228fc02ab91d64cb4e5480541: this file 4/4 and its imported sibling 4/4, in
-// claim_batch --hermetic over dag + src/v2, invocation
-// 7282392b-e47e-427a-a995-1ff1d84abb47 (claim_batch 3433d286…, rc=0, 127 s, 5.9 GiB).
+// never imported, stops binding.
 //
 // SCOPE OF THE CLAIM, stated narrowly so it is not over-read: this route (claim_batch --hermetic,
 // the v1 seed interpreter), this one coproduct (product.budget_tree BudgetChild), one nullary arm
