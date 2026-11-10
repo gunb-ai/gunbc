@@ -10,7 +10,7 @@ import std.process { ExitSuccess }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.diagnostic { diagnostics_reason_lexemes, Outcome }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
-import gunbc.extdeps.languages.bash_build {
+import v2.extdeps.languages.bash_build {
   bash_build_command_from_word_nodes, bash_build_word_var, bash_build_command_from_lits,
   bash_build_with_redir_from_file, bash_build_word_positional, bash_build_word_double_quoted,
   bash_build_word_kinded,
