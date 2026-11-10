@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import gunbc.regen_affected_set {
   DependencyEdge, MirrorRow, BootstrapEdge, AffectedSetBound, AffectedMirrors, WholePopulation, EditedSetUnlocatable,
   regen_affected_set, regen_reverse_closure, regen_affected_set_members, regen_affected_set_bound_line,
-  regen_affected_set_over_change
+  regen_affected_set_over_change, regen_affected_set_over_diverged_change
 }
 
 // WHAT THIS WITNESS COVERS: the bound's three arms and the reverse walk, on a fixture graph
@@ -156,5 +156,32 @@ test fn w_RED_an_added_or_deleted_module_answers_whole_population() -> Bool {
   is_whole_with(
     bound: regen_affected_set_over_change(non_module_paths: [], population_changes: ["dag/std/orphan.dag"], edited: ["std.orphan"], unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules),
     inputs: ["dag/std/orphan.dag"]
+  )
+}
+
+// ═══ A BASE THAT HAS MOVED ON (gunbc.plans.read_set_convergence P2, operator decision 2026-11-10) ═══
+
+fn diverged_bound(base_delta_paths: List<String>, base_delta_modules: List<String>, edited: List<String>) -> AffectedSetBound {
+  regen_affected_set_over_diverged_change(base_delta_paths: base_delta_paths, base_delta_modules: base_delta_modules, non_module_paths: [], population_changes: [], edited: edited, unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules)
+}
+
+// THE DISCRIMINATING RED for the generator delta: the base changed the emitter's mirror since the merge-base,
+// so the seed the round builds emits differently from the one that emitted HEAD's mirrors -- the whole
+// population, even though HEAD's own edit selects one mirror.
+test fn w_RED_a_base_generator_mirror_change_answers_whole_population() -> Bool {
+  is_whole_with(bound: diverged_bound(base_delta_paths: [], base_delta_modules: ["v1.compiler.emit_rust"], edited: ["gunbc.d"]), inputs: ["v1.compiler.emit_rust"])
+}
+
+// The same for a hand-maintained seed source the base changed.
+test fn w_RED_a_base_seed_source_change_answers_whole_population() -> Bool {
+  is_whole_with(bound: diverged_bound(base_delta_paths: ["src/v1/stage0/src/cli_run.rs", "docs/notes.md"], base_delta_modules: [], edited: ["gunbc.d"]), inputs: ["src/v1/stage0/src/cli_run.rs"])
+}
+
+// POSITIVE CONTROL: the base's other commits -- another module's mirror, a `.dag` HEAD does not carry, a
+// seed-build artifact heal wrote -- are not this change, and HEAD's own bound is unchanged.
+test fn a_base_change_outside_the_generator_keeps_the_change_bound() -> Bool {
+  same_members(
+    a: mirrors_of(bound: diverged_bound(base_delta_paths: ["dag/std/x.dag", "src/v1/stage0/src/instrument_registry_generated.rs"], base_delta_modules: ["gunbc.c", "std.a"], edited: ["gunbc.d"])),
+    b: ["gunbc_d.rs"]
   )
 }
