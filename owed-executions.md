@@ -108,3 +108,8 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 ## tidy-otter-373 handoff (2026-11-10, #16212 merged as 06959167)
 - Concern row branch_match_arm_closure_declared_return_not_admitted stays OPEN. Blocker (i): typed arm parameters do not parse (grammar). Blocker (iii): a wholly unannotated arm closure `fn(q) { p }` still settles open. Both UNOWNED.
 - TRIGGER SATISFIED, UNOWNED: a return-annotated arm closure now reaches the emitter, so the fixture for the emitter's branch/match tail-closure position (move / Box::new) is writable. This may be the emitter third boundary already on this ledger; check before dispatching.
+
+## Closed without a PR (2026-11-10)
+- disposition_redundancy: already 22/22 at main 00cacc14 (BuildBuddy 18cd136c). #16205 and #16200 fixed it after the sweep's reading. The lens is live: registry, contract, and cli_run_floor_lens_oracle_witness. Closed by deep-swift-104.
+- LOW, UNOWNED: v2.workflow.floor_grandfathered_roster still lists 6 deleted rows (redundancy_region_bmc_* and redundancy_region_rust_gates_*). The roadmap's removal protocol is a WitnessDeleted row in floor_grandfathered_removals. The roster's consumer is required_floor, which is v1-floor machinery that no required job runs, so this is low value.
+- WATCH: where_refinement_enforcement_witness fails 41/48 at both main and #16224's head (7 rows return false with no diagnostic). Where-refinements are retired by ruling; the witness may be obsolete. Unowned.
