@@ -822,6 +822,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness", function: "a_readable_nonnegative_stage_mtime_is_read_as_an_epoch_secs" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_exit_spool_times_wet_witness.dag",
+      function: "a_readable_nonnegative_stage_mtime_is_read_as_an_epoch_secs",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness", function: "a_negative_stage_mtime_is_a_typed_unreadable" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_exit_spool_times_wet_witness.dag",
+      function: "a_negative_stage_mtime_is_a_typed_unreadable",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_shared_repository_posture_writers_reach_the_repository_when_run" },
       entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
       function: "the_shared_repository_posture_writers_reach_the_repository_when_run",

@@ -2477,8 +2477,12 @@ fn floor_route_gap_expectation_chunk_43() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_exit_drain_wet_witness.a_reviewer_exit_queues_no_launch_and_a_malformed_entry_is_refused", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_exit_drain_wet_witness.a_collected_workers_exit_is_read_from_the_spool_alone", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness.a_readable_nonnegative_stage_mtime_is_read_as_an_epoch_secs", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness.a_negative_stage_mtime_is_a_typed_unreadable", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }
+  }  }  }  }  }
 }
 
 // THE ADMISSION PARTITION, MODELED ON THE AUTHORITY THAT OWNS THE REGISTER. This is the single

@@ -18,7 +18,7 @@ import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptur
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 
 import gunbc.output_policy { OutcomeIsData }
-import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
+import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs, checked_int_to_epoch_secs }
 import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
@@ -16413,6 +16413,27 @@ type BeltExitSpoolTimes
   = BeltExitSpoolTimesRead { entries: List<BeltExitSpoolEntryTime> }
   | BeltExitSpoolTimesUnreadable { reason: String }
 
+// THE PER-ENTRY MODIFICATION-TIME CROSSING, split from the fold so the Int -> EpochSecs conversion has a
+// single interface a witness can drive with a SUPPLIED stat text and no filesystem. The fold's ExecOk arm
+// below is the only production caller; it feeds the real `stat -c %Y` output, the witness feeds a chosen one.
+// The crossing is a CHECKED route (checked_int_to_epoch_secs), not `t as EpochSecs` -- a non-literal into a
+// range-refined carrier that eval_cast (Float/Int/String arms only) refuses outright
+// (gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses). The Absent arm is the old
+// `if t >= 0` else arm's typed Unreadable, and the did-not-parse arm is unchanged: both refusals are
+// byte-for-byte what the fold emitted before, and nothing out of range is admitted.
+fn belt_exit_spool_entry_time(entries: List<BeltExitSpoolEntryTime>, stage: SpoolRole, entry: String, label: String, stat_text: String) -> BeltExitSpoolTimes {
+  match parse_int(text: trim(stat_text)) {
+    Present { value: t } =>
+      match checked_int_to_epoch_secs(n: t) {
+        Present { value: mtime } =>
+          BeltExitSpoolTimesRead { entries: concat(entries, [BeltExitSpoolEntryTime { stage: stage, entry: entry, mtime_epoch: mtime }]) }
+        Absent =>
+          BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", entry, " is negative: ", stat_text], "") }
+      }
+    Absent => BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", entry, " did not parse: ", stat_text], "") }
+  }
+}
+
 fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: SpoolRole, label: String) -> BeltExitSpoolTimes {
   let root = instance.instance_root as String
   match belt_exit_role_list(root: root, role: stage) {
@@ -16423,16 +16444,7 @@ fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: SpoolRole
         BeltExitSpoolTimesRead { entries } => {
           let cmd = stat_mtime_epoch_command(path: belt_exit_role_entry_path(root: root, role: stage, entry: n))
           match belt_exec(cmd: host_exec_argv(program: cmd.program.invocation as String, args: cmd.arguments), workdir: belt_observe_workdir as String) {
-            ExecOk { stdout } =>
-              match parse_int(text: trim(stdout)) {
-                Present { value: t } =>
-                  if t >= 0 {
-                    BeltExitSpoolTimesRead { entries: concat(entries, [BeltExitSpoolEntryTime { stage: stage, entry: n, mtime_epoch: t as EpochSecs }]) }
-                  } else {
-                    BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " is negative: ", stdout], "") }
-                  }
-                Absent => BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " did not parse: ", stdout], "") }
-              }
+            ExecOk { stdout } => belt_exit_spool_entry_time(entries: entries, stage: stage, entry: n, label: label, stat_text: stdout)
             ExecFailed { program: _, exit_code: _, stderr } => BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " could not be read: ", stderr], "") }
             ExecRefused { program: _, reason } => BeltExitSpoolTimesUnreadable { reason: reason }
           }
