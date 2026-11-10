@@ -1,0 +1,78 @@
+module test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness
+
+// PR A (PXE 1c, sharp-crane-14): witnesses for the PURE parse-carriers of the live BMC account-state read.
+// Each parser is held to three things: it decodes a REAL committed capture (the bytes below are copied from
+// the artifacts/bmc tree) into the served carrier; it returns the carrier's Not-Available shape when the
+// parameter simply is not printed; and it returns the carrier's Read/Malformed failure shape -- never a
+// silently-defaulted value -- when a field is present but cannot be held. One malformed red per parser.
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import gunbc.machine_intake.bmc_account_state_parsers { ipmi_lan_threshold_from_print }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelNumber,
+  IpmiLanBadPasswordThresholdNotAvailable,
+  IpmiLanBadPasswordThresholdRead,
+  IpmiLanBadPasswordThresholdReadFailed,
+  IpmiLanBadPasswordThresholdVerdict,
+}
+
+// THE COMMITTED H11SSL (ALTRAD8UD-class Supermicro) `ipmitool lan print 1` CAPTURE, its lockout lines copied
+// verbatim from artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/lan-print-1.txt (the file is on host 192.168.1.252,
+// MAC ac:1f:6b:e3:f5:7b, DHCP; the four lockout parameters read 3 / yes / 300 / 300).
+fn h11ssl_lan_print_capture() -> String {
+  join(
+    [
+      "Set in Progress         : Set Complete",
+      "Auth Type Support       : NONE MD2 MD5 PASSWORD ",
+      "IP Address Source       : DHCP Address",
+      "IP Address              : 192.168.1.252",
+      "MAC Address             : ac:1f:6b:e3:f5:7b",
+      "802.1q VLAN ID          : Disabled",
+      "Bad Password Threshold  : 3",
+      "Invalid password disable: yes",
+      "Attempt Count Reset Int.: 300",
+      "User Lockout Interval   : 300",
+    ],
+    "\n",
+  )
+}
+
+// HAPPY: the real capture decodes to the served threshold with the four parameters the budget gate reads.
+test fn the_h11ssl_lan_print_capture_decodes_the_served_threshold() -> Bool {
+  let verdict = ipmi_lan_threshold_from_print(text: h11ssl_lan_print_capture(), channel: 1)
+  match verdict {
+    IpmiLanBadPasswordThresholdRead { channel: _, served: s } =>
+      s.invalid_password_disable &&
+        s.bad_password_threshold == 3 &&
+        s.attempt_count_reset_secs == 300 &&
+        s.user_lockout_interval_secs == 300
+    _ => false
+  }
+}
+
+// NOT-AVAILABLE: a capture that never prints the parameter is Not-Available, never a threshold of zero.
+test fn a_capture_without_the_threshold_is_not_available() -> Bool {
+  let verdict =
+    ipmi_lan_threshold_from_print(
+      text: "IP Address Source       : DHCP Address\nIP Address              : 192.168.1.9",
+      channel: 1,
+    )
+  match verdict {
+    IpmiLanBadPasswordThresholdNotAvailable { channel: _ } => true
+    _ => false
+  }
+}
+
+// MALFORMED RED: a threshold that is present but not a byte-sized count is ReadFailed, never a default.
+test fn a_malformed_threshold_is_read_failed_never_a_default() -> Bool {
+  let verdict =
+    ipmi_lan_threshold_from_print(
+      text: "Bad Password Threshold  : oops\nInvalid password disable: yes\nAttempt Count Reset Int.: 300\nUser Lockout Interval   : 300",
+      channel: 1,
+    )
+  match verdict {
+    IpmiLanBadPasswordThresholdReadFailed { channel: _, detail: _ } => true
+    _ => false
+  }
+}

@@ -1,0 +1,136 @@
+module gunbc.machine_intake.bmc_account_state_parsers
+
+// PURE PARSE-CARRIERS FOR THE LIVE BMC ACCOUNT-STATE READ (PXE 1c, sharp-crane-14).
+//
+// WHAT THIS MODULE IS. The wet account-state read (its driver is a sibling PR) runs a handful of
+// controller probes and hands their raw responses to gunbc.machine_intake.bmc_secure
+// supplied_transport_read_bmc_account_state. Between the raw bytes and that assembler sit these parsers: pure, effect-free
+// functions that turn ONE captured response -- the text an `ipmitool` command printed, or the JSON body a
+// Redfish GET returned -- into the typed carrier the assembler's BmcSuppliedAccountStateTransport holds. They
+// have NO effects: they do not run a command, open a socket, read a secret, or commit evidence; the wet
+// driver owns every one of those. Keeping them pure is what lets the witnesses over committed captures (the
+// artifacts/bmc tree) prove the read decodes a REAL controller's bytes, not a transcription the test wrote.
+//
+// THE PARSE CONTRACT: a well-formed capture decodes to the served carrier; a capture that does not carry
+// the parameter at all decodes to the carrier's Not-Available shape (never to a zero, never to a forged
+// reading -- the same rule every extdeps reader holds to); a capture that is malformed -- a field present but
+// not what its type can hold -- decodes to the carrier's Read/Malformed failure shape carrying the detail,
+// and NEVER to a silently-defaulted value. A parser here can only ever mint what the vendor module's
+// published sole-constructor lets it mint.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Optional, Present }
+import std.algebra { trim }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelNumber,
+  IpmiLanBadPasswordThresholdNotAvailable,
+  IpmiLanBadPasswordThresholdRead,
+  IpmiLanBadPasswordThresholdReadFailed,
+  IpmiLanBadPasswordThresholdVerdict,
+  ipmi_lan_bad_password_threshold_served,
+}
+
+// =============================== SHARED LINE/VALUE HELPERS (pure) ===============================
+
+// THE TEXT AFTER THE FIRST COLON OF A LINE, trimmed. ipmitool's human readers print `Key   : value`; the key
+// never contains a colon, so the value is everything after the first one. Built only from the confirmed
+// prelude helpers so it cannot drift into a hand-rolled char walker.
+fn after_first_colon(line: String) -> String? {
+  let t = trim(s: line)
+  match first(split(s: t, delimiter: ":")) {
+    Absent => none
+    Present { value: head } =>
+      let before_colon = string_length(s: head)
+      if before_colon >= string_length(s: t) {
+        none
+      } else {
+        Present { value: trim(s: substring(s: t, start: before_colon + 1, end: string_length(s: t))) }
+      }
+  }
+}
+
+// THE VALUE ON THE LINE THE KEY STARTS, if such a line exists. The ipmitool human readers print one
+// `Key : value` per line and the caller passes the exact key prefix (no trailing spaces).
+fn ipmi_field(text: String, key: String) -> String? {
+  match first(filter(split(s: text, delimiter: "\n"), l => starts_with(s: trim(s: l), prefix: key))) {
+    Absent => none
+    Present { value: line } => after_first_colon(line: line)
+  }
+}
+
+// A DECIMAL FIELD THAT MUST PARSE AND SIT IN RANGE, or nothing. A field that is present but not a number, or
+// a number outside [low, high], is a malformed capture -- the caller maps none to its ReadFailed shape.
+fn ipmi_field_int_in_range(text: String, key: String, low: Int, high: Int) -> Int? {
+  match ipmi_field(text: text, key: key) {
+    Absent => none
+    Present { value: raw } =>
+      match parse_int(s: raw) {
+        Absent => none
+        Present { value: n } => if n < low || n > high { none } else { Present { value: n } }
+      }
+  }
+}
+
+fn ipmi_field_yes_no(text: String, key: String) -> Bool? {
+  match ipmi_field(text: text, key: key) {
+    Absent => none
+    Present { value: "yes" } => Present { value: true }
+    Present { value: "no" } => Present { value: false }
+    Present { value: _ } => none
+  }
+}
+
+// =============================== Get LAN Configuration Parameters (lan print) ===============================
+
+// PARSE `ipmitool lan print <channel>` stdout INTO THE BAD-PASSWORD-THRESHOLD VERDICT. The four lockout
+// parameters the budget gate reads are printed one per line (ipmitool's LAN Print Section): Bad Password
+// Threshold, Invalid password disable, Attempt Count Reset Int., User Lockout Interval. Absent Bad Password
+// Threshold is Not-Available (the parameter is not served -- never a threshold of zero); any field the type
+// cannot hold is ReadFailed carrying which field was unreadable, so a malformed capture is never defaulted.
+fn ipmi_lan_threshold_from_print(text: String, channel: IpmiChannelNumber) -> IpmiLanBadPasswordThresholdVerdict {
+  match ipmi_field(text: text, key: "Bad Password Threshold") {
+    Absent => IpmiLanBadPasswordThresholdNotAvailable { channel: channel }
+    Present { value: threshold_raw } =>
+      match ipmi_field_int_in_range(text: text, key: "Bad Password Threshold", low: 0, high: 255) {
+        Absent =>
+          IpmiLanBadPasswordThresholdReadFailed {
+            channel: channel,
+            detail: "Bad Password Threshold is present but not a byte-sized count" as NonEmptyStr,
+          }
+        Present { value: threshold } =>
+          match ipmi_field_yes_no(text: text, key: "Invalid password disable") {
+            Absent =>
+              IpmiLanBadPasswordThresholdReadFailed {
+                channel: channel,
+                detail: "Invalid password disable is missing or not yes/no" as NonEmptyStr,
+              }
+            Present { value: disable } =>
+              match ipmi_field_int_in_range(text: text, key: "Attempt Count Reset Int.", low: 0, high: 655350) {
+                Absent =>
+                  IpmiLanBadPasswordThresholdReadFailed {
+                    channel: channel,
+                    detail: "Attempt Count Reset Int. is missing or not a 16-bit 10-second count" as NonEmptyStr,
+                  }
+                Present { value: reset_secs } =>
+                  match ipmi_field_int_in_range(text: text, key: "User Lockout Interval", low: 0, high: 655350) {
+                    Absent =>
+                      IpmiLanBadPasswordThresholdReadFailed {
+                        channel: channel,
+                        detail: "User Lockout Interval is missing or not a 16-bit 10-second count" as NonEmptyStr,
+                      }
+                    Present { value: lockout_secs } =>
+                      IpmiLanBadPasswordThresholdRead {
+                        channel: channel,
+                        served: ipmi_lan_bad_password_threshold_served(
+                          invalid_password_disable: disable,
+                          bad_password_threshold: threshold,
+                          attempt_count_reset_secs: reset_secs,
+                          user_lockout_interval_secs: lockout_secs,
+                        ),
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
