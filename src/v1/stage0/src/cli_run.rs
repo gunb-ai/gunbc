@@ -201,7 +201,9 @@ mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
 pub(crate) mod source_layout_lookup;
-pub use demand_acquire::resolve_entry_graph_demand_acquired;
+pub use demand_acquire::{
+    resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_scoped,
+};
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -854,6 +856,9 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 }
 
 pub mod roadmap_acceptance_history_carrier;
+
+#[cfg(test)]
+mod demanded_typecheck_equivalence;
 
 #[cfg(test)]
 /// The erasing projection `func_sig_if_resolved` was deleted from production in the
@@ -7328,7 +7333,7 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
             source_roots,
             path,
             duplicates,
-            options,
+            options.clone(),
         ) {
             Ok(settled) => entry_resolved = Some(settled),
             Err(cause) => {

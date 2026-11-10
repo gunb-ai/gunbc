@@ -71,9 +71,9 @@ fn printed_assembly_root_from_wire(s: String) -> PrintedAssemblyRoot? {
 // cassette keeps the rear-socket hardware envelopes it has always required; the A16 duct requires
 // its 8-pin power keep-out, so the CAD kernel checks that clearance on solids as well as the
 // source-model construction in gpu_duct.
-// BOTH CASSETTE ROOTS ARE BUILT FROM THE r07 PANELS, so both pass the one board-seat gate before either
+// BOTH CASSETTE ROOTS ARE BUILT FROM THE SAME PANELS, so both pass the one board-seat gate before either
 // assembly is constructed. A refused seat would otherwise emit panels with no posts and no socket window
-// under a package that says r07 carries both (reviews 91282, 5789766315); it refuses here with the seat's
+// under a package whose revision says it carries both (reviews 91282, 5789766315); it refuses here with the seat's
 // cause, which is what the print route's preparation reads (check_printable_cad -> this selector).
 fn cassette_root_selection(root: PrintedAssemblyRoot, seat: BoardSeat) -> PrintableAssemblySelection {
   match seat {

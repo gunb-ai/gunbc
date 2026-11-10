@@ -1,4 +1,5 @@
 module product.printed_chassis.tray_panel_features
+import std.types {Int, List}
 import std.measure {Micrometer, micrometer, micrometer_count}
 
 // Shared feature dimensions for the retained Altra solids and the planning
@@ -6,8 +7,24 @@ import std.measure {Micrometer, micrometer, micrometer_count}
 data panel_seam_um: Micrometer = micrometer(count: 400)
 data lap_center_offset_um: Micrometer = micrometer(count: 9500)
 data lap_along_joint_um: Micrometer = micrometer(count: 21000)
+// A LAP IS A ROW OF 45-DEGREE RIDGES, not a flat half-lap (r08). A flat tongue printed on the bed leaves its
+// receiver a pocket whose flat ceiling overhangs the bed, so one side of every flat half-lap needs support
+// whichever half carries the tongue. Each ridge is a triangle standing on the bed, lap_ridge_height tall, seated
+// in a groove of the same angle in the receiver, so neither side has a face flatter than the recipe's support
+// threshold; the sloped faces still register the seam's level and carry shear across it, and the seam's M3
+// clamp holds them engaged. Between two grooves the receiver keeps a land lap_ridge_land wide on the bed: a
+// receiver tooth that came to a point above the bed would start its first layer in the air, and the slicer
+// supports it (probe on srv1, 2026-11-10: a 0.75 mm tooth gap drew support interface).
+data lap_ridge_height_um: Micrometer = micrometer(count: 4000)
+data lap_ridge_land_um: Micrometer = micrometer(count: 2000)
+// The ridges' places across the lap, in half ridge pitches from its centre: two, either side of it.
+data lap_ridge_offsets: List<Int> = [0-1, 1]
 data rail_foot_width_um: Micrometer = micrometer(count: 14000)
 data rail_foot_inset_um: Micrometer = micrometer(count: 1000)
+// The foot's underside is the bearing plane the frame runners, the shoe front pads and the rear sockets meet,
+// this far below the tray's datum (y = 0). The panel plate's underside lies in the same plane, so a panel
+// printed flat rests on the bed over its whole footprint instead of on two foot strips.
+data rail_foot_height_um: Micrometer = micrometer(count: 4000)
 data rail_wall_width_um: Micrometer = micrometer(count: 6000)
 data rail_wall_offset_um: Micrometer = micrometer(count: 2000)
 data rear_socket_width_um: Micrometer = micrometer(count: 27000)

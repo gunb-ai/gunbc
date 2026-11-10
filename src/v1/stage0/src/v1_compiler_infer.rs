@@ -7,10 +7,11 @@ use self::BuiltinResultArguments::*;
 use self::BuiltinResultAtCall::*;
 use self::CallArgumentFormalSelection::*;
 use self::CarrierMatch::*;
+use self::DeclarationDemand::*;
+use self::DeclarationScope::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
 use self::EqualityDerivedTarget::*;
-use self::EqualityLiftStep::*;
 use self::GroundedArmReading::*;
 use self::GroundedBinding::*;
 use self::GroundedBound::*;
@@ -6242,41 +6243,21 @@ pub fn equality_resolved_declaration_structure(
     at_root: bool,
 ) -> Rc<EqualityWalk> {
     {
-        let si = scope.type_env.source_indices.clone();
-        let applied = equality_reference_applies_arguments(peeled.clone());
-        let parameter_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in rt.params.clone().iter().cloned() {
-                __result.push(crate::v1_std_core::authored_name_at(si.clone(), p.clone()));
-            }
-            __result
-        });
-        let basis = if (applied.clone() && ((parameter_names.clone().len() as i64) > 0)) {
-            crate::v1_compiler_infer_env::declaration_substitution_basis(
-                rt.clone(),
-                scope.type_env.clone(),
-                parameter_names.clone(),
-            )
-        } else {
-            rt.clone()
-        };
         let w = equality_resolved_declaration_structure_core(
-            basis.clone(),
+            rt,
             peeled.clone(),
             name.clone(),
             identity,
             scope.clone(),
-            visited.clone(),
+            visited,
             depth.clone(),
             at_root,
         );
-        if (((w.refusal.clone() != std::option::Option::None) || !applied.clone())
-            || equality_applied_arguments_by_target(
-                basis.clone(),
-                parameter_names.clone(),
+        if (((w.refusal.clone() != std::option::Option::None)
+            || !equality_reference_applies_arguments(peeled.clone()))
+            || equality_arguments_by_target(
                 peeled.children.clone(),
                 scope.clone(),
-                visited.clone(),
                 v1_rt::int_add(depth.clone(), 1),
             ))
         {
@@ -6284,184 +6265,6 @@ pub fn equality_resolved_declaration_structure(
         } else {
             equality_walk_refused(equality_refused(name.clone(), "a routed member inside a generic application whose shape the equality plan does not model".to_string(), false))
         }
-    }
-}
-
-pub fn equality_applied_arguments_by_target(
-    basis: Rc<Node>,
-    parameter_names: Rc<Vec<String>>,
-    arguments: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    visited: Rc<HashMap<String, bool>>,
-    depth: i64,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match parameter_names.clone().first().cloned() {
-            std::option::Option::None => ((arguments.clone().len() as i64) == 0),
-            Some(pn) => match arguments.clone().first().cloned() {
-                std::option::Option::None => false,
-                Some(a) => {
-                    ((!equality_type_variable_occurs(basis.clone(), pn.clone())
-                        || (equality_applied_argument_is_structural(
-                            a.clone(),
-                            scope.clone(),
-                            visited.clone(),
-                            depth.clone(),
-                        ) && equality_argument_by_target(
-                            a.clone(),
-                            scope.clone(),
-                            v1_rt::int_add(depth.clone(), 1),
-                        )))
-                        && equality_applied_arguments_by_target(
-                            basis.clone(),
-                            Rc::new(v1_rt::list_skip(&parameter_names.clone(), 1)),
-                            Rc::new(v1_rt::list_skip(&arguments.clone(), 1)),
-                            scope.clone(),
-                            visited.clone(),
-                            depth.clone(),
-                        ))
-                }
-            },
-        }
-    })
-}
-
-pub fn equality_type_variable_occurs(n: Rc<Node>, id: String) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        ((match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: v, .. }) => (v.clone() == id.clone()),
-            _ => false,
-        } || (n.name.clone() == id.clone()))
-            || {
-                let mut __found = false;
-                for ch in n.children.clone().iter().cloned() {
-                    if equality_type_variable_occurs(ch.clone(), id.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            })
-    })
-}
-
-pub fn equality_applied_argument_is_structural(
-    n: Rc<Node>,
-    scope: Rc<InferScope>,
-    visited: Rc<HashMap<String, bool>>,
-    depth: i64,
-) -> bool {
-    if (depth.clone() > 64) {
-        false
-    } else {
-        if (equality_operand_is_type_variable(n.clone(), scope.clone())
-            || equality_operand_is_type_variable(
-                crate::v1_compiler_infer_types::child_type_node(n.clone()),
-                scope.clone(),
-            ))
-        {
-            true
-        } else {
-            {
-                let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
-                let si = scope.type_env.source_indices.clone();
-                let identity = type_reference_identity(peeled.clone(), si.clone());
-                match equality_route_for(identity) {
-                    Some(_) => false,
-                    std::option::Option::None => {
-                        if (peeled.connective.clone() == Connective::Arrow) {
-                            false
-                        } else {
-                            if crate::v1_compiler_coercion::provenance_realizes_natively(
-                                crate::v1_std_core::type_reference_provenance(peeled.clone()),
-                            ) {
-                                false
-                            } else {
-                                if (crate::std_types::is_kernel_type(
-                                    crate::v1_std_core::qualified_last_segment(
-                                        crate::v1_std_core::authored_name_at(
-                                            si.clone(),
-                                            peeled.clone(),
-                                        ),
-                                    ),
-                                ) && ((peeled.children.clone().len() as i64) == 0))
-                                {
-                                    true
-                                } else {
-                                    {
-                                        let w = equality_operand_walk(
-                                            n.clone(),
-                                            scope.clone(),
-                                            visited,
-                                            v1_rt::int_add(depth.clone(), 1),
-                                            false,
-                                        );
-                                        (w.refusal.clone() == std::option::Option::None)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn equality_table_arguments_by_target(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    arguments: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    depth: i64,
-) -> bool {
-    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-        n,
-        source_indices.clone(),
-        scope.type_env.clone(),
-    ))
-    .clone()
-    {
-        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-            declaration: d, ..
-        } => match crate::v1_compiler_infer_env::declaration_node_of_ref(
-            d.clone(),
-            scope.type_env.clone(),
-        ) {
-            Some(decl) => {
-                let parameter_names = Rc::new({
-                    let mut __result = Vec::new();
-                    for pp in decl.params.clone().iter().cloned() {
-                        __result.push(crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            pp.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let basis = if ((parameter_names.clone().len() as i64) > 0) {
-                    crate::v1_compiler_infer_env::declaration_substitution_basis(
-                        decl.clone(),
-                        scope.type_env.clone(),
-                        parameter_names.clone(),
-                    )
-                } else {
-                    decl.clone()
-                };
-                equality_applied_arguments_by_target(
-                    basis,
-                    parameter_names.clone(),
-                    arguments.clone(),
-                    scope.clone(),
-                    v1_rt::rc_empty_map::<String, bool>(),
-                    depth.clone(),
-                )
-            }
-            std::option::Option::None => {
-                equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone())
-            }
-        },
-        _ => equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone()),
     }
 }
 
@@ -6533,9 +6336,7 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
                                             (declaration_by_target.clone()
                                                 && (!equality_reference_applies_arguments(
                                                     peeled.clone(),
-                                                ) || equality_table_arguments_by_target(
-                                                    peeled.clone(),
-                                                    source_indices.clone(),
+                                                ) || equality_arguments_by_target(
                                                     peeled.children.clone(),
                                                     scope.clone(),
                                                     v1_rt::int_add(depth.clone(), 1),
@@ -7389,184 +7190,7 @@ pub fn equality_plan_synthesizable(plan: Rc<EqualityPlan>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EqualitySynthHelper {
-    pub module_path: String,
-    pub fn_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum EqualityLiftStep {
-    LiftPresence { inner: Rc<EqualityStep> },
-    LiftElements { element: Rc<EqualityStep> },
-    LiftMapValues { value: Rc<EqualityStep> },
-}
-
-pub fn equality_lift_step_helper(l: Rc<EqualityLiftStep>) -> Rc<EqualitySynthHelper> {
-    match (*l.clone()).clone() {
-        EqualityLiftStep::LiftPresence { inner: _, .. } => Rc::new(EqualitySynthHelper {
-            module_path: "std.optional".to_string(),
-            fn_name: "optional_eq".to_string(),
-        }),
-        EqualityLiftStep::LiftElements { element: _, .. } => Rc::new(EqualitySynthHelper {
-            module_path: "std.algebra".to_string(),
-            fn_name: "zip_eq".to_string(),
-        }),
-        EqualityLiftStep::LiftMapValues { value: _, .. } => Rc::new(EqualitySynthHelper {
-            module_path: "std.algebra".to_string(),
-            fn_name: "map_values_eq".to_string(),
-        }),
-    }
-}
-
-pub fn equality_step_helpers(s: Rc<EqualityStep>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
-        EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(
-            Rc::new(vec![equality_lift_step_helper(Rc::new(
-                EqualityLiftStep::LiftPresence { inner: i.clone() },
-            ))]),
-            equality_step_helpers(i.clone()),
-        ),
-        EqualityStep::EqualityElements { element: e, .. } => v1_rt::concat(
-            Rc::new(vec![equality_lift_step_helper(Rc::new(
-                EqualityLiftStep::LiftElements { element: e.clone() },
-            ))]),
-            equality_step_helpers(e.clone()),
-        ),
-        EqualityStep::EqualityMapValues { value: v, .. } => v1_rt::concat(
-            Rc::new(vec![equality_lift_step_helper(Rc::new(
-                EqualityLiftStep::LiftMapValues { value: v.clone() },
-            ))]),
-            equality_step_helpers(v.clone()),
-        ),
-        EqualityStep::EqualityRouted { function: _, .. } => Rc::new(vec![]),
-        EqualityStep::EqualityThroughPlan { declaration: _, .. } => Rc::new(vec![]),
-        EqualityStep::EqualityByTarget => Rc::new(vec![]),
-    })
-}
-
-pub fn equality_structure_helpers(
-    structure: Rc<EqualityStructure>,
-) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
-    match (*structure.clone()).clone() {
-        EqualityStructure::ProductPlan { fields: fs, .. } => Rc::new({
-            let mut __result = Vec::new();
-            for f in fs.iter().cloned() {
-                __result.extend((*equality_step_helpers(f.step.clone())).iter().cloned());
-            }
-            __result
-        }),
-        EqualityStructure::CoproductPlan {
-            first: f, rest: r, ..
-        } => v1_rt::concat(
-            Rc::new({
-                let mut __result = Vec::new();
-                for fd in f.fields.clone().iter().cloned() {
-                    __result.extend((*equality_step_helpers(fd.step.clone())).iter().cloned());
-                }
-                __result
-            }),
-            Rc::new({
-                let mut __result = Vec::new();
-                for arm in r.iter().cloned() {
-                    __result.extend(
-                        (*Rc::new({
-                            let mut __result = Vec::new();
-                            for fd in arm.fields.clone().iter().cloned() {
-                                __result.extend(
-                                    (*equality_step_helpers(fd.step.clone())).iter().cloned(),
-                                );
-                            }
-                            __result
-                        }))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }),
-        ),
-    }
-}
-
-pub fn equality_plan_helpers(plan: Rc<EqualityPlan>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for d in plan.declarations.clone().iter().cloned() {
-            __result.extend(
-                (*equality_structure_helpers(d.structure.clone()))
-                    .iter()
-                    .cloned(),
-            );
-        }
-        __result
-    })
-}
-
-pub fn equality_helper_declared(helper: Rc<EqualitySynthHelper>, index: Rc<SymbolIndex>) -> bool {
-    match crate::v1_compiler_infer_env::symbol_index_lookup(
-        index,
-        v1_rt::concat(
-            v1_rt::concat(helper.module_path.clone(), ".".to_string()),
-            helper.fn_name.clone(),
-        ),
-    ) {
-        Some(n) => ((n.params.clone().len() as i64) > 0),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn equality_body_block_reason(
-    row: Rc<DeclarationEqualityPlan>,
-    index: Rc<SymbolIndex>,
-) -> Option<String> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for h in equality_structure_helpers(row.structure.clone())
-            .iter()
-            .cloned()
-        {
-            if !equality_helper_declared(h.clone(), index.clone()) {
-                __result.push(h);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(h) => Some(v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "no module declares the helper ".to_string(),
-                        h.module_path.clone(),
-                    ),
-                    ".".to_string(),
-                ),
-                h.fn_name.clone(),
-            ),
-            " that the synthesized body binds it to".to_string(),
-        )),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn equality_derived_body_emitted(
-    row: Rc<DeclarationEqualityPlan>,
-    index: Rc<SymbolIndex>,
-) -> bool {
-    match equality_body_block_reason(row, index) {
-        std::option::Option::None => true,
-        Some(_) => false,
-    }
-}
-
-pub fn equality_derived_target(
-    plan: Rc<EqualityPlan>,
-    index: Rc<SymbolIndex>,
-) -> Rc<EqualityDerivedTarget> {
+pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarget> {
     match (*plan.root.clone()).clone() {
     EqualityStep::EqualityRouted { function: f, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: f.clone(),
@@ -7582,14 +7206,9 @@ pub fn equality_derived_target(
 })
     } else {
         match (*d.reading.clone()).clone() {
-    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => match equality_body_block_reason(d.clone(), index) {
-    std::option::Option::None => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
+    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: crate::std_decl_ref::decl_ref(r.module_path.clone(), equality_derived_name(r.decl_name.clone())),
 }),
-    Some(why) => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
-    member: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the derived equality body for ".to_string(), r.decl_name.clone()), " in ".to_string()), r.module_path.clone()), " is not emitted: ".to_string()), why.clone()),
-}),
-},
     EqualityDeclarationReading::DeclarationUnreadable { declaration_name: unread, .. } => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
     member: v1_rt::concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ".to_string(), unread.clone()),
 }),
@@ -8022,7 +7641,7 @@ equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::
     diags: Rc::new(vec![]),
     derived: std::option::Option::None,
 }),
-    Some(p) => match (*equality_derived_target(p.clone(), scope.type_env.symbol_index.clone())).clone() {
+    Some(p) => match (*equality_derived_target(p.clone())).clone() {
     EqualityDerivedTarget::EqualityCallsDeclared { function: f, .. } => Rc::new(EqualityAdmission {
     diags: Rc::new(vec![]),
     derived: Some(f.clone()),
@@ -29455,34 +29074,324 @@ pub fn infer_item(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DeclarationDemand {
+    AllDeclarations,
+    OnlyDeclarations { names: Rc<HashMap<String, bool>> },
+}
+impl DeclarationDemand {
+    pub fn names(&self) -> Rc<HashMap<String, bool>> {
+        match self {
+            DeclarationDemand::AllDeclarations => panic!("no names on unit variant"),
+            DeclarationDemand::OnlyDeclarations { names: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn declares_function_body(item: Rc<Node>) -> bool {
+    ((item.body.clone() != std::option::Option::None)
+        && match item.module_item_kind.clone() {
+            ParsedModuleItemKind::ModuleItemFunction => true,
+            _ => false,
+        })
+}
+
+pub fn declaration_demanded(
+    demand: Rc<DeclarationDemand>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*demand.clone()).clone() {
+        DeclarationDemand::AllDeclarations => true,
+        DeclarationDemand::OnlyDeclarations { names: names, .. } => {
+            if declares_function_body(item.clone()) {
+                v1_rt::map_has(
+                    &names,
+                    crate::v1_std_core::authored_name_at(source_indices, item.clone()),
+                )
+            } else {
+                true
+            }
+        }
+    }
+}
+
+pub fn spelled_names_into(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = v1_rt::rc_map_insert(
+            v1_rt::rc_map_insert(
+                acc.clone(),
+                crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                true,
+            ),
+            n.name.clone(),
+            true,
+        );
+        let own = n.children.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.params.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.properties.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.uses.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = match n.body.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        };
+        let own = match n.type_annotation.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        };
+        match n.transport.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        }
+    })
+}
+
+pub fn demanded_declaration_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    seeds: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        let items = Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.extend(
+                    (*crate::v1_std_core::module_items(m.module.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let seeded = seeds.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        let fn_index = items.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<_>>>(),
+            |idx: _, item: Rc<Node>| {
+                if declares_function_body(item.clone()) {
+                    {
+                        let nm = crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            item.clone(),
+                        );
+                        v1_rt::rc_map_insert(
+                            idx.clone(),
+                            nm.clone(),
+                            v1_rt::rc_list_push(
+                                match v1_rt::map_get(&idx, nm.clone()) {
+                                    Some(l) => l.clone(),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                },
+                                item.clone(),
+                            ),
+                        )
+                    }
+                } else {
+                    idx.clone()
+                }
+            },
+        );
+        let first = items.iter().cloned().fold(
+            Rc::new(DemandWave {
+                demanded: seeded.clone(),
+                fresh: Rc::new(v1_rt::map_keys(&seeded)),
+            }),
+            |w: Rc<DemandWave>, item: Rc<Node>| {
+                if declares_function_body(item.clone()) {
+                    w
+                } else {
+                    demand_wave_add(w, item.clone(), source_indices.clone())
+                }
+            },
+        );
+        demand_wave_loop(first, fn_index, source_indices.clone())
+            .demanded
+            .clone()
+    }
+}
+
+pub fn demand_wave_add(
+    w: Rc<DemandWave>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<DemandWave> {
+    {
+        let spelled =
+            spelled_names_into(item, source_indices, v1_rt::rc_empty_map::<String, bool>());
+        Rc::new(v1_rt::map_keys(&spelled)).iter().cloned().fold(
+            w.clone(),
+            |acc: Rc<DemandWave>, nm: String| {
+                if v1_rt::map_has(&acc.demanded.clone(), nm.clone()) {
+                    acc.clone()
+                } else {
+                    Rc::new(DemandWave {
+                        demanded: v1_rt::rc_map_insert(acc.demanded.clone(), nm.clone(), true),
+                        fresh: v1_rt::rc_list_push(acc.fresh.clone(), nm.clone()),
+                    })
+                }
+            },
+        )
+    }
+}
+
+pub fn demand_wave_loop(
+    mut __tco_loop_w: Rc<DemandWave>,
+    mut __tco_loop_fn_index: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<DemandWave> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut w = __tco_loop_w;
+            #[allow(unused_mut)]
+            let mut fn_index = __tco_loop_fn_index;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            if ((w.fresh.clone().len() as i64) == 0) {
+                break w.clone();
+            } else {
+                let next = w.fresh.clone().iter().cloned().fold(
+                    Rc::new(DemandWave {
+                        demanded: w.demanded.clone(),
+                        fresh: Rc::new(vec![]),
+                    }),
+                    |acc: Rc<DemandWave>, nm: String| {
+                        match v1_rt::map_get(&fn_index, nm.clone()) {
+                            Some(l) => l.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        }
+                        .iter()
+                        .cloned()
+                        .fold(acc, |a2: Rc<DemandWave>, item: Rc<Node>| {
+                            demand_wave_add(a2, item.clone(), source_indices.clone())
+                        })
+                    },
+                );
+                {
+                    let __tco_0 = next;
+                    let __tco_1 = fn_index;
+                    let __tco_2 = source_indices;
+                    __tco_loop_w = __tco_0;
+                    __tco_loop_fn_index = __tco_1;
+                    __tco_loop_source_indices = __tco_2;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DemandWave {
+    pub demanded: Rc<HashMap<String, bool>>,
+    pub fresh: Rc<Vec<String>>,
+}
+
 pub fn infer_items(
     items: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<TypedItemResult>>> {
+    infer_items_demanded(items, scope, Rc::new(DeclarationDemand::AllDeclarations))
+}
+
+pub fn infer_items_demanded(
+    items: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    demand: Rc<DeclarationDemand>,
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
     {
         let data_values = crate::v1_compiler_infer_service::service_data_values(items.clone());
         Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
-                __result.push({
-                    let r = infer_item(item.clone(), scope.clone(), data_values.clone());
-                    Rc::new(TypedItemResult {
-                        item: r.item.clone(),
-                        emissions: infer_emissions_concat(
-                            r.emissions.clone(),
-                            infer_emissions_concat(
-                                infer_emissions_of_diagnostics(equality_item_collection_key_rows(
-                                    item.clone(),
-                                    scope.clone(),
-                                )),
-                                infer_emissions_of_diagnostics(equality_item_body_key_rows(
-                                    r.item.clone(),
-                                    scope.clone(),
-                                )),
-                            ),
-                        ),
-                    })
-                });
+                __result.push(
+                    if !declaration_demanded(
+                        demand.clone(),
+                        item.clone(),
+                        scope.type_env.source_indices.clone(),
+                    ) {
+                        Rc::new(TypedItemResult {
+                            item: Rc::new(Node {
+                                ident: std::option::Option::None,
+                                occurrence_identity: item.occurrence_identity.clone(),
+                                name: item.name.clone(),
+                                span: item.span.clone(),
+                                ident_span: item.ident_span.clone(),
+                                children: item.children.clone(),
+                                params: item.params.clone(),
+                                inferred: item.inferred.clone(),
+                                return_cardinality: item.return_cardinality.clone(),
+                                uses: item.uses.clone(),
+                                body: std::option::Option::None,
+                                connective: item.connective.clone(),
+                                transport: item.transport.clone(),
+                                properties: item.properties.clone(),
+                                type_annotation: item.type_annotation.clone(),
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: item.match_pattern.clone(),
+                                module_item_kind: item.module_item_kind.clone(),
+                                declaration_marker: item.declaration_marker.clone(),
+                                declaration: item.declaration.clone(),
+                                expr_data: Rc::new(ExprData::NoExprData),
+                            }),
+                            emissions: infer_emissions_concat_all(Rc::new(vec![])),
+                        })
+                    } else {
+                        {
+                            let r = infer_item(item.clone(), scope.clone(), data_values.clone());
+                            Rc::new(TypedItemResult {
+                                item: r.item.clone(),
+                                emissions: infer_emissions_concat(
+                                    r.emissions.clone(),
+                                    infer_emissions_concat(
+                                        infer_emissions_of_diagnostics(
+                                            equality_item_collection_key_rows(
+                                                item.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ),
+                                        infer_emissions_of_diagnostics(
+                                            equality_item_body_key_rows(
+                                                r.item.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            })
+                        }
+                    },
+                );
             }
             __result
         })
@@ -35455,51 +35364,30 @@ Rc::new(ResolvedFormal {
     }
 }
 
-pub fn build_module_context(
-    contributions: Rc<Vec<Rc<ItemContribution>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
-    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<ModuleContext> {
+pub fn type_env_over_symbol_index(env: Rc<TypeEnv>, symbol_index: Rc<SymbolIndex>) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        module_path: env.module_path.clone(),
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+        parents: env.parents.clone(),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
+        symbol_index: symbol_index.clone(),
+        unit_variant_index: env.unit_variant_index.clone(),
+        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
+        equality_by_target: env.equality_by_target.clone(),
+    })
+}
+
+pub fn service_census_registry(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>> {
     {
-        let local = fold_module_contributions(
-            contributions,
-            Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
-            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            Rc::new(vec![]),
-            env.source_indices.clone(),
-        );
-        let local_variant_fold = build_local_variants(
-            local.resolved_items.clone(),
-            env.source_indices.clone(),
-            module_name.clone(),
-            Rc::new(VariantFoldState {
-                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                collision_errors: Rc::new(vec![]),
-            }),
-        );
-        let variant_fold = merge_global_bare_variant_locals(
-            build_imported_variants(
-                resolved_imports.clone(),
-                parent_index.clone(),
-                variant_surfaces,
-                env.source_indices.clone(),
-                module_name.clone(),
-                local_variant_fold,
-            ),
-            global_variant_base,
-            env.clone(),
-        );
-        let variant_collision_errors = variant_fold.collision_errors.clone();
-        let env_variant_locals =
-            merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
-        let census_scope = Rc::new(v1_rt::map_keys(&env.symbol_index.services.clone()))
+        let scope = Rc::new(v1_rt::map_keys(&env.symbol_index.services.clone()))
             .iter()
             .cloned()
             .fold(
@@ -35554,14 +35442,64 @@ pub fn build_module_context(
                     std::option::Option::None => acc.clone(),
                 },
             );
+        scope.svc_registry.clone()
+    }
+}
+
+pub fn build_module_context(
+    contributions: Rc<Vec<Rc<ItemContribution>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    service_census: Option<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+) -> Rc<ModuleContext> {
+    {
+        let local = fold_module_contributions(
+            contributions,
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
+            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+            Rc::new(vec![]),
+            env.source_indices.clone(),
+        );
+        let local_variant_fold = build_local_variants(
+            local.resolved_items.clone(),
+            env.source_indices.clone(),
+            module_name.clone(),
+            Rc::new(VariantFoldState {
+                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                collision_errors: Rc::new(vec![]),
+            }),
+        );
+        let variant_fold = merge_global_bare_variant_locals(
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces,
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold,
+            ),
+            global_variant_base,
+            env.clone(),
+        );
+        let variant_collision_errors = variant_fold.collision_errors.clone();
+        let env_variant_locals =
+            merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
+        let census_registry = match service_census.clone() {
+            Some(c) => c.clone(),
+            std::option::Option::None => service_census_registry(env.clone()),
+        };
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
             parent_index.clone(),
             env.clone(),
-            v1_rt::rc_map_merge(
-                census_scope.svc_registry.clone(),
-                local.svc_registry.clone(),
-            ),
+            v1_rt::rc_map_merge(census_registry.clone(), local.svc_registry.clone()),
             local.svc_locals.clone(),
         );
         let parent_envs = merge_func_env_views_by_owner(Rc::new({
@@ -38250,20 +38188,11 @@ pub fn equality_synthesized_for(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec
                                 .cloned()
                                 {
                                     std::option::Option::None => Rc::new(vec![]),
-                                    Some(dp) => {
-                                        if !equality_derived_body_emitted(
-                                            dp.clone(),
-                                            scope.type_env.symbol_index.clone(),
-                                        ) {
-                                            Rc::new(vec![])
-                                        } else {
-                                            Rc::new(vec![equality_derived_declaration(
-                                                scope.module_name.clone(),
-                                                name.clone(),
-                                                dp.clone(),
-                                            )])
-                                        }
-                                    }
+                                    Some(dp) => Rc::new(vec![equality_derived_declaration(
+                                        scope.module_name.clone(),
+                                        name.clone(),
+                                        dp.clone(),
+                                    )]),
                                 }
                             }
                         }
@@ -38435,27 +38364,30 @@ pub fn equality_synth_compare(
             f.decl_name.clone(),
             Rc::new(vec![x.clone(), y.clone()]),
         ),
-        EqualityStep::EqualityPresence { inner: i, .. } => equality_synth_step_qcall(
+        EqualityStep::EqualityPresence { inner: i, .. } => equality_synth_qcall(
             m.clone(),
-            Rc::new(EqualityLiftStep::LiftPresence { inner: i.clone() }),
+            "std.optional".to_string(),
+            "optional_eq".to_string(),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
                 equality_synth_inner(m.clone(), i.clone(), depth.clone()),
             ]),
         ),
-        EqualityStep::EqualityElements { element: e, .. } => equality_synth_step_qcall(
+        EqualityStep::EqualityElements { element: e, .. } => equality_synth_qcall(
             m.clone(),
-            Rc::new(EqualityLiftStep::LiftElements { element: e.clone() }),
+            "std.algebra".to_string(),
+            "zip_eq".to_string(),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
                 equality_synth_inner(m.clone(), e.clone(), depth.clone()),
             ]),
         ),
-        EqualityStep::EqualityMapValues { value: v, .. } => equality_synth_step_qcall(
+        EqualityStep::EqualityMapValues { value: v, .. } => equality_synth_qcall(
             m.clone(),
-            Rc::new(EqualityLiftStep::LiftMapValues { value: v.clone() }),
+            "std.algebra".to_string(),
+            "map_values_eq".to_string(),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
@@ -38555,46 +38487,50 @@ pub fn equality_synth_qcall(
     args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
     {
-        let qualified = v1_rt::concat(
-            v1_rt::concat(module_path.clone(), ".".to_string()),
-            fn_name.clone(),
+        let segments = Rc::new(
+            module_path
+                .clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
         );
-        let sp = equality_synthetic_span(m, qualified.clone());
+        let receiver = Rc::new(v1_rt::list_skip(&segments.clone(), 1))
+            .iter()
+            .cloned()
+            .fold(
+                equality_synth_var(
+                    m.clone(),
+                    segments.clone().first().cloned().clone().unwrap(),
+                ),
+                |acc: Rc<Node>, seg: String| equality_synth_field(m.clone(), acc, seg.clone()),
+            );
+        let sp = equality_synthetic_span(m.clone(), fn_name.clone());
         crate::v1_std_core::make_named_expr_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            qualified.clone(),
-            Rc::new(ExprData::ExprCall {
-                call_semantics: std::option::Option::None,
-                descent_evidence: std::option::Option::None,
+            fn_name.clone(),
+            Rc::new(ExprData::ExprMethodCall {
+                method_semantics: std::option::Option::None,
             }),
-            Rc::new({
-                let mut __result = Vec::new();
-                for a in args.iter().cloned() {
-                    __result.push(crate::v1_std_core::make_arg_node(
-                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                        std::option::Option::None,
-                        a.clone(),
-                        sp.clone(),
-                        sp.clone(),
-                    ));
-                }
-                __result
-            }),
+            v1_rt::concat(
+                Rc::new(vec![receiver.clone()]),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for a in args.iter().cloned() {
+                        __result.push(crate::v1_std_core::make_arg_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                            std::option::Option::None,
+                            a.clone(),
+                            sp.clone(),
+                            sp.clone(),
+                        ));
+                    }
+                    __result
+                }),
+            ),
             std::option::Option::None,
             sp.clone(),
             sp.clone(),
         )
-    }
-}
-
-pub fn equality_synth_step_qcall(
-    m: String,
-    lift: Rc<EqualityLiftStep>,
-    args: Rc<Vec<Rc<Node>>>,
-) -> Rc<Node> {
-    {
-        let h = equality_lift_step_helper(lift);
-        equality_synth_qcall(m, h.module_path.clone(), h.fn_name.clone(), args)
     }
 }
 
@@ -38774,6 +38710,32 @@ pub fn typecheck_module(
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
     equality_by_target: Rc<HashMap<String, bool>>,
 ) -> Rc<TypecheckModuleResult> {
+    typecheck_module_demanded(
+        resolved,
+        parent_index,
+        variant_surfaces,
+        source_indices,
+        intern_table,
+        symbol_index,
+        global_variant_base,
+        equality_by_target,
+        Rc::new(DeclarationDemand::AllDeclarations),
+        std::option::Option::None,
+    )
+}
+
+pub fn typecheck_module_demanded(
+    resolved: Rc<ResolvedModule>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    equality_by_target: Rc<HashMap<String, bool>>,
+    demand: Rc<DeclarationDemand>,
+    service_census: Option<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
             resolved.clone(),
@@ -38862,6 +38824,7 @@ pub fn typecheck_module(
             env.clone(),
             resolved_module_name.clone(),
             global_variant_base,
+            service_census,
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -38903,7 +38866,8 @@ pub fn typecheck_module(
             in_flight_lambda_param_names: Rc::new(vec![]),
             enclosing_declared_type_param_names: Rc::new(vec![]),
         });
-        let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope);
+        let typed_item_results =
+            infer_items_demanded(ctx.resolved_items.clone(), infer_scope, demand);
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.iter().cloned() {
@@ -40025,7 +39989,51 @@ pub fn typecheck(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypecheckPass> {
+    typecheck_scoped(
+        graph,
+        source_indices,
+        intern_table,
+        Rc::new(DeclarationScope::EveryDeclaration),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DeclarationScope {
+    EveryDeclaration,
+    ReachableFrom { requested: Rc<Vec<String>> },
+}
+impl DeclarationScope {
+    pub fn requested(&self) -> Rc<Vec<String>> {
+        match self {
+            DeclarationScope::EveryDeclaration => panic!("no requested on unit variant"),
+            DeclarationScope::ReachableFrom {
+                requested: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn typecheck_scoped(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    scope: Rc<DeclarationScope>,
+) -> Rc<TypecheckPass> {
     {
+        let demand = match (*scope.clone()).clone() {
+            DeclarationScope::EveryDeclaration => Rc::new(DeclarationDemand::AllDeclarations),
+            DeclarationScope::ReachableFrom {
+                requested: requested,
+                ..
+            } => Rc::new(DeclarationDemand::OnlyDeclarations {
+                names: demanded_declaration_names(
+                    graph.modules.clone(),
+                    requested.clone(),
+                    source_indices.clone(),
+                ),
+            }),
+        };
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<ResolvedModule>>(),
@@ -40042,6 +40050,10 @@ pub fn typecheck(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
         );
+        let service_census = service_census_registry(type_env_over_symbol_index(
+            compiler_kernel_type_env(source_indices.clone(), intern_table.clone()),
+            symbol_index.clone(),
+        ));
         let state =
             graph.modules.clone().iter().cloned().fold(
                 Rc::new(RealizeState {
@@ -40067,6 +40079,8 @@ pub fn typecheck(
                         intern_table.clone(),
                         symbol_index.clone(),
                         global_variant_base.clone(),
+                        demand.clone(),
+                        service_census.clone(),
                     )
                 },
             );
@@ -40200,6 +40214,8 @@ pub fn realize_module(
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    demand: Rc<DeclarationDemand>,
+    service_census: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -40218,6 +40234,8 @@ pub fn realize_module(
                                 intern_table.clone(),
                                 symbol_index.clone(),
                                 global_variant_base.clone(),
+                                demand.clone(),
+                                service_census.clone(),
                             )
                         },
                     );
@@ -40226,7 +40244,7 @@ pub fn realize_module(
                         dep_state.module_index.clone(),
                         source_indices.clone(),
                     );
-                    let tc_result = typecheck_module(
+                    let tc_result = typecheck_module_demanded(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         dep_state.variant_surfaces.clone(),
@@ -40235,6 +40253,8 @@ pub fn realize_module(
                         symbol_index.clone(),
                         global_variant_base.clone(),
                         dep_state.equality_by_target.clone(),
+                        demand.clone(),
+                        Some(service_census.clone()),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = crate::v1_std_core::authored_name_at(
@@ -40637,8 +40657,22 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ReconciledPass> {
+    reconcile_scoped(
+        graph,
+        source_indices,
+        intern_table,
+        Rc::new(DeclarationScope::EveryDeclaration),
+    )
+}
+
+pub fn reconcile_scoped(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    scope: Rc<DeclarationScope>,
+) -> Rc<ReconciledPass> {
     {
-        let pass = typecheck(graph, source_indices.clone(), intern_table);
+        let pass = typecheck_scoped(graph, source_indices.clone(), intern_table, scope);
         let typed = pass.graph.clone();
         let index_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
         let index = typed.modules.clone().iter().cloned().fold(
