@@ -17,7 +17,7 @@ import gunbc.fleet.printer_workflow_artifact { printer_starts_member_path, print
 //
 // The claim store (gunbc.fleet.printer_actuation) and its before-start / receipt writers are not this
 // store's. The layout changed, so the mint refuses permanently while the parent holds a legacy
-// after-start entry, and gunbc.fleet.printer_state_layout printer_state_move carries those entries here.
+// after-start entry; the flat layout was retired on 2026-11-09 and such entries are removed by hand.
 type StartEvidenceDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
 
 data start_evidence_slots: StartEvidenceDeclaration = StartEvidenceDeclaration {
@@ -56,7 +56,7 @@ type StartEvidenceStoreReading = StartEvidenceStoreReady { store: StartEvidenceS
 fn start_evidence_store(tree: HostStateTree) -> StartEvidenceStoreReading {
   match printer_starts_legacy_scan(tree: tree, owns: n => start_evidence_legacy_entry(name: n)) {
     PrinterStartsUnreadable { detail: d } => StartEvidenceStoreUnready { detail: d }
-    PrinterStartsLegacyEntries { names: n } => StartEvidenceStoreUnready { detail: join(["printer-starts still holds legacy after-start evidence (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
+    PrinterStartsLegacyEntries { names: n } => StartEvidenceStoreUnready { detail: join(["printer-starts still holds legacy after-start evidence (", join(n, ", "), "); the flat layout is retired, so these entries must be removed by hand"], "") }
     PrinterStartsClean => {
       let root = start_evidence_path(tree: tree)
       match directory_admission(directory: root as String, label: "start-evidence directory") {

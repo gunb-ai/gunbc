@@ -1,6 +1,11 @@
 module extdeps.uri_validation
 
 import extdeps.external_authority { ExternalAuthority }
+// Present and Absent are not builtins: every other module that constructs them imports
+// `std.optional` — for example extdeps.filesystem.linux. The lane that builds the emitted CLI
+// closure was the first consumer to compile this file, and it failed with
+// `cannot find type Present in this scope`.
+import std.optional { Present, Absent }
 import extdeps.uri {
   Uri, Https,
   UriScheme, Http, File, Ftp, Tftp, Javascript, Data, Vbscript, Mailto,

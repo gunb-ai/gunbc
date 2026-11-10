@@ -57,7 +57,7 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcSessionUnestablished, BootParam5Read, MegaRacEndMediaNotTaken, MegaRacHandoffNotReached, MegaRacMediaAttachNotAttempted, megarac_diagnostics_allowance,
+  BmcAuthRefused, BmcSessionUnestablished, BootParamRead, MegaRacEndMediaNotTaken, MegaRacHandoffNotReached, MegaRacMediaAttachNotAttempted, megarac_diagnostics_allowance,
   boot_override_clears_not_required, boot_override_clears_none_found,
 }
 import gunbc.host.smpro_platform_capability {
@@ -776,7 +776,7 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // off nothing, so no consumption is minted and no in-run SMpro pass exists; one whose census ended
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
-  let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
+  let consumed = BootParamRead { readback: "Boot Flag Invalid", at: "t" }
   let never = mtcollins1_boot_run_record(media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, clears: boot_override_clears_not_required(reason: "fixture"), power_after: HostPowerRead { state: PowerOff }, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
   let ended = mtcollins1_boot_run_record(
     media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },

@@ -1,0 +1,19 @@
+module gunbc.layout_namespace_row
+
+import std.types { List, String }
+
+// ONE TREE'S NAMESPACE ROWS. The storage policy's namespace rows (gunbc.source_layout_namespaces
+// layout_namespaces) are the union of one row per source tree, each in its own file directly under
+// this namespace and rostered by gunbc.layout_namespace_row.roster (gunbc.source_layout
+// layout_derived_rosters). gunbc's tree contributes gunbc_tree. A repository that carries .dag
+// modules and no compiler is judged by gunbc's gate with its dag/ composed into gunbc's
+// (gunbc.witness.compiler_gate_workflow, the called form) and contributes its own row file beside
+// gunbc's, so its namespaces are declared without gunbc naming them, and a namespace either tree
+// stops occupying is still refused as a row without modules.
+//
+// `repository` names the repository whose tree the row describes; it is the row's identity, and it is
+// what a reader of a refusal needs to know which tree declared a stale row.
+type LayoutNamespaceRow {
+  repository: String
+  namespaces: List<String>
+}

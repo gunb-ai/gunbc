@@ -1,0 +1,13 @@
+module test.fixture.spool_queue_seal.unsealed
+
+import std.types { NonEmptyStr }
+import gunbc.spool_queue { SpoolKind }
+
+// THE STRIPPED TWIN for test.claim.spool_queue_seal_witness: the SAME record as gunbc.spool_queue SpoolEntryKey with the
+// SAME field names and types, WITHOUT the sole_constructor keyword, so the same forged text can be run against the twin
+// and show the refusal is the keyword and not the shape, name or field types.
+
+type SpoolEntryKey {
+  kind: SpoolKind
+  name: NonEmptyStr
+}

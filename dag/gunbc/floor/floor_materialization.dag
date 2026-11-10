@@ -72,7 +72,8 @@ fn gate_consumer_site(g: Gate) -> String {
 // all and reader_count over this list is zero by construction rather than by omission.
 //
 // The drift this row was written to record still stands as history: entry #2 was once
-// v2.workflow.affected_set_selection rather than the host's v2.lens.affected_set.entry_selection,
+// v2.workflow.affected_set_selection rather than the host's v2.lens.affected_set.entry_selection (that module was
+// deleted by gunbc.plans.read_set_convergence P0, gunb-ai/gunbc#16173),
 // corrected in #6432 review — a hand-copy of a host constant disagreeing with the constant. 🟡
 // dissolve-on: the list stays empty through the floor rebuild, at which point this carrier and its
 // witness delete together rather than being repopulated; if a prelude entry is ever needed again it

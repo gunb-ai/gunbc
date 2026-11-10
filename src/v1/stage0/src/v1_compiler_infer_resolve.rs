@@ -372,10 +372,11 @@ pub fn applied_arg_is_width_resolution_position(
 
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-        {
-            let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => {
+            let LiteralValue::LitInt { value: _, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             true

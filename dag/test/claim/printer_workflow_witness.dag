@@ -5,7 +5,6 @@ import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_star
 import gunbc.fleet.printer_state_layout { printer_state_directories }
 import gunbc.fleet.print_record_stores { print_request_path, print_completion_path }
 import gunbc.fleet.printer_actuation { printer_start_claim_path }
-import gunbc.fleet.printer_execution_hold { printer_execution_hold_path }
 import gunbc.fleet.printer_start_evidence_store { start_evidence_path }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_path }
 import gunbc.host_state_root { host_state_tree }
@@ -58,7 +57,7 @@ test fn w_tool_probe_requires_mosquitto_version_two_or_newer() -> Bool {
 // privileged install of a member would follow and chown. Each member store dir is fleet-owned and group-writable
 // setgid (2770), the group class the fleet collaborators reach records through. The parent precedes the members
 // it nests (the installer creates it first); print-run sits BESIDE the parent under the host state tree root, so
-// only the six members nest under the parent path.
+// only the five members nest under the parent path.
 test fn w_printer_state_parent_is_root_traverse_and_members_are_fleet_shared() -> Bool {
   let tree = host_state_tree()
   let ds = printer_state_directories(tree: tree)
@@ -68,14 +67,13 @@ test fn w_printer_state_parent_is_root_traverse_and_members_are_fleet_shared() -
     OwnedDirectoryModeResolved { mode: m } => !m.group.write && file_mode_octal(mode: m) == "0755"
     OwnedDirectoryModeRefused { reason: _ } => false
   }
-  count(ds) == 8 &&
+  count(ds) == 7 &&
   map(ds, d => owned_directory_path(t: d) as String) == [
     root,
     start_evidence_path(tree: tree) as String,
     print_request_path(tree: tree) as String,
     print_completion_path(tree: tree) as String,
     printer_start_claim_path(tree: tree) as String,
-    printer_execution_hold_path(tree: tree) as String,
     cassette_inventory_path(tree: tree) as String,
     print_run_directory(tree: tree) as String,
   ] &&
@@ -90,7 +88,7 @@ test fn w_printer_state_parent_is_root_traverse_and_members_are_fleet_shared() -
     (owned_directory_owner(t: d).group as String) == (fleet_automation_user.name as String) &&
     (match owned_directory_mode(t: d) { OwnedDirectoryModeResolved { mode: m } => m.group.write && file_mode_octal(mode: m) == "2770" OwnedDirectoryModeRefused { reason: _ } => false })
   ) &&
-  // the six members nest under the parent; print-run sits beside it under the host state tree root
-  all([start_evidence_path(tree: tree), print_request_path(tree: tree), print_completion_path(tree: tree), printer_start_claim_path(tree: tree), printer_execution_hold_path(tree: tree), cassette_inventory_path(tree: tree)], m => starts_with(s: m as String, prefix: concat(root, "/"))) &&
+  // the five members nest under the parent; print-run sits beside it under the host state tree root
+  all([start_evidence_path(tree: tree), print_request_path(tree: tree), print_completion_path(tree: tree), printer_start_claim_path(tree: tree), cassette_inventory_path(tree: tree)], m => starts_with(s: m as String, prefix: concat(root, "/"))) &&
   !starts_with(s: print_run_directory(tree: tree) as String, prefix: concat(root, "/"))
 }

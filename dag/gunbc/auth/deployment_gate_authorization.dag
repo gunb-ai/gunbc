@@ -59,8 +59,11 @@ import extdeps.github.deployment_protection_rule {
   // here would be a second authority over a route the substrate owns: rename the route upstream and
   // the copy stays green while the broker's real address moves.
   human_review_endpoint_path,
-  
-  
+  InstallationWireFields,
+  InstallationParsed,
+  InstallationRefused,
+  installation_identity_from_wire,
+  installation_readback_success_status,
   the_two_review_surfaces_are_distinguishable,
   // WHAT THE UPSTREAM DOES NOT PROMISE ABOUT COMPOSITION, consumed below rather than paraphrased.
   gate_composition_documented_guarantee,
