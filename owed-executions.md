@@ -86,3 +86,9 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 ## eval_cast class (lane adhoc-e72164c8-96a)
 - LIVE: router_proxy_config_witness 1/9 at main (cannot cast Int to Port, invocation 3d6e6fb0). The production 503 as HttpStatus / 2000 as Milliseconds are masked. The EpochSecs cast is a latent outage on the operator-dispatched RLM launch-receipt job.
 - UNOWNED: commit_writer_admission_witness 0/13, refused at LOAD (expected Product(PositiveInt), got Primitive(Int), at 8 sites). Pre-existing, outside the cast class.
+
+## From fierce-lark-531's final report (2026-11-10)
+- runner_host_deploy_witness 0/9: its own effect-summary errors (inv 918ff157). Unowned.
+- commit_writer_admission_witness 0/13, refused at LOAD: nine Product(PositiveInt) mismatches (:202 through :595). Unowned.
+- Sweep quality: the v1_src_dag_parse test does not count a `| Arm` head, an `operation` or a `service` as a declaration. About 31 of the 312 reference rows are spurious for that reason; the rest is real work. The 398-line list is attached to #16200 (comments 6756695262, 6756696281).
+- seed_builder_free_route_probe_witness is non-discriminating (2/2 at both legs).
