@@ -113,7 +113,6 @@ pub fn resolve_entry_graph_demand_acquired(
 /// (`DeclarationScope::ReachableFrom`); an empty `requested` is `EveryDeclaration`, the whole-closure
 /// typecheck. Signatures of every function still resolve, so imports and names refuse as before;
 /// only the bodies of declarations no requested function can reach go uninferred.
-///
 #[allow(clippy::type_complexity)]
 pub fn resolve_entry_graph_demand_acquired_scoped(
     source_roots: &[String],

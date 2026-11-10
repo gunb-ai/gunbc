@@ -973,22 +973,6 @@ pub enum CompilerDiagnostic {
         declared_variants: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
-    DeclarationRealizationGap {
-        reader: String,
-        target_module: String,
-        name: String,
-        span: Rc<SourceSpan>,
-    },
-    DeclarationRealizationProfile {
-        grain: String,
-        modules: i64,
-        modules_realized: i64,
-        declarations: i64,
-        declarations_realized: i64,
-        gaps: i64,
-        summary: String,
-        span: Rc<SourceSpan>,
-    },
 }
 
 #[derive(
@@ -1168,8 +1152,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::RefinementCastRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::CastRealizationRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { span: s, .. } => s.clone(),
-        CompilerDiagnostic::DeclarationRealizationGap { span: s, .. } => s.clone(),
-        CompilerDiagnostic::DeclarationRealizationProfile { span: s, .. } => s.clone(),
     }
 }
 
@@ -1257,8 +1239,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::RefinementCastRefused { source: src, target: tgt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), src.clone()), " as ".to_string()), tgt.clone()), " is a refinement cast, not a re-typing -- a value on ".to_string()), src.clone()), " reaches ".to_string()), tgt.clone()), " only through a checked constructor (or write a bare literal in the refined position, which needs no cast)".to_string()),
     CompilerDiagnostic::CastRealizationRefused { target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("cast cannot be emitted for target '".to_string(), tgt.clone()), "' -- ".to_string()), missing.clone()),
     CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("record literal names '".to_string(), t.clone()), "' which declares no record constructor: '".to_string()), t.clone()), "' is a union with variants [".to_string()), vs.clone().join(&", ".to_string())), "]; construct one of its variants instead (gunbc.design_argument::guarantee_ladder: a value inhabits its declared type)".to_string()),
-    CompilerDiagnostic::DeclarationRealizationGap { reader: r, target_module: m, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("read outside the realized set: reading check '".to_string(), r.clone()), "' asked for the row of declaration '".to_string()), n.clone()), "' in module '".to_string()), m.clone()), "', which no demanded declaration names; realization refused instead of reporting it absent (declare the edge from '".to_string()), r.clone()), "' to '".to_string()), n.clone()), "' in v1.compiler.infer realization_edges, or the read is a silent miss)".to_string()),
-    CompilerDiagnostic::DeclarationRealizationProfile { grain: g, summary: s, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("declaration-grain realization [".to_string(), g.clone()), "]: ".to_string()), s.clone()),
 }
 }
 
@@ -1637,14 +1617,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::DeclarationRealizationGap { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::DeclarationRealizationProfile { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityNonError,
-    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
 }
 }

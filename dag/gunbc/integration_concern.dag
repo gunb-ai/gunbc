@@ -796,7 +796,7 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
     requirement: "a gunbc run pays memory and wall time for the part of its entry's closure that evaluation reaches, not for every module the import closure names, while every refusal that typechecking the closure raises today still fires where it fires today",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") } },
+    standing: RequirementUnestablished { decided_by: "a design that shows how the signature and type-environment work every acquired closure module still pays (reconcile over all of them) can be discharged for modules no requested function reaches, without changing what a demanded declaration observes; function-body typechecking of unreached declarations is settled by run_unreached_function_bodies_typechecked and is not the open part" },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
@@ -812,53 +812,11 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
       },
       account: "Bisect of the private projection-drift regression (2026-11-05) and two isolated srv1 runs (qn-roster-peak40: roster cgroup peak 35.88 GiB; qn-auditpacket-peak40: audit_packet_witness VmHWM 26.84 GiB) put roughly 13-16 GiB of each private lane in pre-entry typecheck and the rest in one whole-pool burst plus per-witness evaluation. The same floor shows up as wall time on small entries: a read-only runner_host_file_observe on srv3 (run 42037046961) spent its whole 15-minute step typechecking v2.compiler modules its entry's closure names and timed out before reading a drop-in. Recorded so a lane blocked on it can cite a named cause rather than an assertion; no fix is designed.",
     },
-    tail: [ConcernSighting {
-      revision: "35812db9f22",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_profile_diagnostic") }],
-      },
-      account: "Public-corpus measurement of this floor at the fleet_converge_plan_wet acceptance entry, before the declaration-grain cut landed on this branch: compile.reconcile 11 minutes, whole run 931 s, peak RSS 16.5 GiB, with 3318 closure modules realized in full while only 796 of them held a demanded function body and the demanded declarations were 4915 of 49699 (about 10 percent). After the cut (the same entry, same machine): reconcile 9 minutes, run 776 s, peak RSS 11.0 GiB, zero realization gaps. The wall dropped less than the realized fraction because the per-module frame -- context assembly, parent merging, provider settlement over the dense closure -- is still paid for all 3318 modules; that residue is what stays open under this concern now that bodies and declarations are demanded.",
-    }, ConcernSighting {
-      revision: "61b01423d11",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded") }],
-      },
-      account: "Per-phase profile of the 9-minute residue (a temporary instrumented run: atomic timers around the census build, the realization pass, the first-pass per-module fold and the per-module machinery inside it; counters reverted, never committed). The first-pass realize_module fold is about 450 s of the roughly 540 s reconcile, and inside it build_module_context alone is 308 s -- paid by all 3324 modules, 2309 of which carry ZERO realized declarations. The census is 11.6 s and the realization pass 3.6 s: corpus-proportional but not the floor. Cutting the empty-realization modules' frame (context, analysis, audit over no inputs; the type env still builds so their own import diagnostics keep firing) took the same entry to reconcile 4 minutes, whole run about 6 minutes, peak RSS 9.7 GiB, zero realization gaps. What still stays open under this concern: the per-module frame of the 1015 modules that DO carry realized declarations, and the census plus realization passes.",
-    }],
-  },
-  disposition: Open,
-}
-
-
-data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: IntegrationConcern = IntegrationConcern {
-  identity: "grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of"),
-    requirement: "Hand-written Rust added inside the generated stage0 mirror must carry a checkable receipt -- a deleted scaffold path, a before/after seed census, or a deferral naming a lane and a tracking row (ctrl review policy). #16156 added about 345 lines of hand-written witness Rust at src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (the declaration-grain tests: inactive grain equals #16069, unreached stays unseen, reachable errors still refuse, out-of-set reads refuse typed, alias-body and provider-row reachability, the corpus witness). This row is the deferral: the witnesses are owed a landing -- rewritten as generated .dag test sources under the corpus, or admitted as a standing hand-written exception with a file-level receipt -- and the lane that decides and executes it is follow-up node adhoc-0eedbb6e-a35, the same node named by gunbc.design_ruling::run_realizes_only_demanded_declarations for enrolling the by-hand demanded_scope controls.",
-    standing: RequirementEstablished {
-      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "run_realizes_only_demanded_declarations") },
-    },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of"),
-    tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded")],
-  },
-  question: "Where do the hand-written grain witnesses end up? They test the declaration-grain realization from the host side and today live as hand-written Rust beside generated code in the stage0 mirror. The deferral names lane node adhoc-0eedbb6e-a35 and this tracking row: at enrollment the node either moves the witnesses into generated .dag test sources or records them as a standing hand-written exception with a receipt comment at the file, so no hand-written block in the mirror remains unaccounted.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "5a0a692fa9b",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded") }],
-      },
-      account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
-    },
     tail: [],
   },
   disposition: Open,
 }
+
 data run_unreached_function_bodies_typechecked: IntegrationConcern = IntegrationConcern {
   identity: "run_unreached_function_bodies_typechecked",
   kind: SuspectedCapabilityGap {
@@ -883,7 +841,7 @@ data run_unreached_function_bodies_typechecked: IntegrationConcern = Integration
     tail: [],
   },
   disposition: Integrated { evidence: IntegrationEvidence {
-    integrated_at: "71a247184d78679d9d526b4674713ba077270118" as CommitSha,
+    integrated_at: "6819101c8d88928d6eb4f2f7ceda6e8b6ccfb0b8" as CommitSha,
     superseded: [],
     replacement: FreeSemigroup { head: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped"), tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "reconcile_scoped")] },
     executions: FreeSemigroup { head: RetainedExecutionResult { control: decl_ref(module_path: "test.fixture.demanded_scope.scoped_pair", decl_name: "broken_entry"), run: "gunbc run --entry dag/test/fixture/demanded_scope/scoped_pair.dag --function broken_entry vs clean_entry", conclusion: "a reachable type error refuses; an unreached one (unreached_broken) runs; declared as gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked" }, tail: [RetainedExecutionResult { control: decl_ref(module_path: "gunbc.fleet.fleet_converge_plan_cli", decl_name: "fleet_converge_plan_wet"), run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_operator_cli_entry, pre-change binary vs scoped", conclusion: "resolve_entry_graph_inclusive 1,528,505 -> 780,254 ms; reconcile 21 min -> 9 min; max_rss 16.9 -> 15.8 GiB; still not inside the 15-minute plan budget (signature/type-env cost remains in run_closure_typecheck_exceeds_eval_demand)" }] },

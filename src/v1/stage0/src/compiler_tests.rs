@@ -7540,9 +7540,6 @@ mod compiler_tests {
                     let t_env = Instant::now();
                     let env_result = crate::v1_compiler_infer::build_type_env(
                         resolved.clone(),
-                        // The whole-closure harness realizes every declaration: the item list it hands
-                        // the environment is the module's own, unfiltered.
-                        crate::v1_std_core::module_items(resolved.module.clone()),
                         module_index.clone(),
                         source_indices.clone(),
                         intern_table.clone(),

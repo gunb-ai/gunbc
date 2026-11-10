@@ -453,8 +453,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => {
             "TypeNameCarriesNoRecordConstructor"
         }
-        CompilerDiagnostic::DeclarationRealizationGap { .. } => "DeclarationRealizationGap",
-        CompilerDiagnostic::DeclarationRealizationProfile { .. } => "DeclarationRealizationProfile",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -620,10 +618,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name, .. } => {
             type_name.clone()
         }
-        // The declaration a read crossed out is the identity of a gap; the grain label is the
-        // identity of the single profile row a run emits.
-        CompilerDiagnostic::DeclarationRealizationGap { name, .. } => name.clone(),
-        CompilerDiagnostic::DeclarationRealizationProfile { grain, .. } => grain.clone(),
     };
     (class.to_string(), name)
 }
@@ -722,8 +716,6 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
             Some((expected.clone(), got.clone()))
         }
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
-        CompilerDiagnostic::DeclarationRealizationGap { .. } => None,
-        CompilerDiagnostic::DeclarationRealizationProfile { .. } => None,
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
         // INTERIM hand-Rust scaffold, same marker as the pair above
         // (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting): the
