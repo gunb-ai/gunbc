@@ -1,0 +1,9 @@
+module test.claim.runner.runner_replacement_readback_control
+
+// TEMPORARY, UNTRACKED, NEVER COMMITTED. This file exists for one dispatch: a claim run that reports
+// everything green proves nothing unless the same run can also report red. It is the positive control for
+// the claim_batch run over runner_replacement_readback_witness.dag, and it is deleted as soon as that run
+// has been read.
+test fn positive_control_a_claim_that_is_false_comes_back_red() -> Bool {
+  false
+}
