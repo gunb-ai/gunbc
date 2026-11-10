@@ -1,0 +1,255 @@
+module gunbc.plans.fleet_machine_naming
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, quote }
+
+fn fleet_machine_naming_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Goal:** each machine has one internal name, and every other name it answers to is derived from that one root: hostname, runner labels and registration names, BMC secret ids, `/etc/gunbc` paths, known_hosts entries, LAN and tailnet names. One physical board gets one identity, keyed by its board serial, and a second identity on an observed serial refuses. **Method:** `gunbc.design_argument::single_authority`, `gunbc.design_argument::root_generalization` and `gunbc.design_argument::replacement_migration` (the gap-intolerant carve-out for srv1-srv4, which serve the required job). **Standing:** this is investigation and a plan only. No rename lands before the operator approves it."),
+      p(text: "**Operator direction (2026-11-10):** one internal name per machine, which is the root. The hostname is downstream of that name and never authored beside it. srv1-srv4 and mtcollins1 are renamed with names drawn by `gunbc.hostname_allocation` `draw_human_name` over `gunbc.host_names.gen_z`, with the entropy recorded as the receipt. The Sparks (srv9-srv12), mtjade1, the Hetzner guests and the H11 host each converge on one name. Duplicates are removed: srv13 and srv15 are one board (kept as bobo); srv16 is a reserved key with no board."),
+      p(text: "**Read at:** gunbc main `b687f96f16bd` (census) and `b3c701d554f0` (plan). The two revisions differ by two commits that touch no file read here."),
+    ]),
+
+    h2(text: "1. Displaced cost"),
+    ul(items: [
+      li(text: "Each machine is restated in at least seven lists written by hand and keyed by `HostIdentity`: `gunbc.fleet.fleet_host_identity` `operator_hosts`, `gunbc.hostname_allocation` `gunbc_fleet_hostname_allocations`, `gunbc.fleet.fleet_enrollment` `fleet_enrollment_intents`, `gunbc.fleet.machine_board` `machine_board_rows`, `gunbc.fleet.fleet_asset_identity` `chassis_srvN`, `gunbc.runner.runner_host_deploy` `runner_host_spec_rows`, and `gunbc.fleet.fleet_host_key_enrollment` `fleet_host_key_enrollments`. Adding or renaming a machine means editing every one of them, and a forgotten one fails silently. Example: `gunbc.runner.runner_connectivity_recovery` `PerHostReplaceBudgetState` returns 0 for any host outside srv1-srv4."),
+      li(text: "The serial-keyed refusal already exists but the fleet roster does not consume it. `gunbc.machine_intake.subject` `bind_unit_key` refuses `BoardSerialDuplicatedAcrossUnits`. The fleet joins identity to unit only through `gunbc.fleet.fleet_host_backing` `HostBacking.unit`, and only for enrolled rows: srv1-srv4 are `Absent` (serial never read) and srv13/srv15 are not enrolled. Two identities for one board therefore entered twice: srv14 and host-94c81d (deleted 2026-11-05), and srv13 and srv15 (`gunbc.integration_concern::srv13_and_srv15_name_one_board`)."),
+      li(text: "Hostnames already diverge from identities for eight hosts: srv9-srv12, srv14, srv15, mtjade1 and host-6ce85c. Thirteen production sites compare the kernel hostname to the identity string without a lookup (section 4.4, class b*), so on those hosts they refuse or misbind today."),
+    ]),
+
+    h2(text: "2. Target model"),
+    h3(text: "2.1 One machine row, one root"),
+    ul(items: [
+      li(text: "**One machine row per physical unit.** It lives in `gunbc.fleet.fleet_host_identity`, which already holds the `HostIdentity` authority. The row has two parts. `name` is the drawn `gunbc.hostname_allocation` `HumanName` plus its `HumanNameDraw` receipt; the H11 and any other undrawn legacy spelling is `LegacyHostname`. `unit` is a `MachineUnit`, either `OwnedBoard { serial: BoardSerialObservation list | SerialUnread { read_obligation } }` or `ProviderInstance { resource: ProviderResourceBinding }`. The row reuses `gunbc.machine_intake.subject` `BoardSerialObservation` and `gunbc.fleet.fleet_host_backing` `ProviderResourceBinding` rather than minting either again."),
+      li(text: "**The identity is the rendered name, not a second spelling of it.** `HostIdentity` changes from a branded `NonEmptyStr` to `sole_constructor`, minted only by the roster admission (2.2) as the canonical rendering of `name` (`human_name_canonical_hostname`). Today any `\"srv1\" as HostIdentity` cast mints an identity. Afterwards no accepted program can, which is the wall this plan climbs to (2.4). This reverses `gunbc.hostname_allocation` `gunbc_hostname_allocation_scope_disposition`, which calls deriving a hostname from the identity nicknaming. Its objection holds only for a hostname that coincides with how an opaque string is spelled. Here the identity carries the typed name, and rendering it is a declared, total, exact function. The opaque-identity rule of 2026-10-07 still holds: a drawn name encodes no provider, architecture, role or rack. Decision D1."),
+      li(text: "**The roster is derived from the rows.** `operator_hosts` becomes the admitted roster's population, not a second list. `gunbc_fleet_hostname_allocations` is retired: what is left of it is each row's draw receipt. `machine_board_rows`, `fleet_enrollment_intents` and `runner_host_spec_rows` stay as separate facts, but each is keyed by an admitted identity and holds only its own columns. The same climb was made for instrument targets in `gunbc.recurring_failure_mode::a_target_roster_restates_the_labels_its_bindings_name`."),
+      li(text: "**`PhysicalAssetIdentity` `chassis-srvN` stays a separate concern.** A chassis is a physical container whose board can be swapped, so it is not the machine identity. Its spelling embeds a host name, though, and gets the opaque treatment `gpu_board_NN` already has. Decision D6."),
+    ]),
+    h3(text: "2.2 Admission: one identity per board"),
+    ul(items: [
+      li(text: "`admit_fleet_machines(rows)` folds the rows through `std.allocation_roster` `build_allocation_roster`. The primary key is the rendered name, so a name claimed twice refuses with `AllocationPrimaryKeyRepeated`. The secondary key is the unit key: the bound `UnitKey` for an owned board, or the provider resource id for a guest."),
+      li(text: "The serial axis reuses `bind_unit_key`, with `other_units` set to the keys already bound by earlier rows. A second row on an observed serial refuses `BoardSerialDuplicatedAcrossUnits { serial }` and names both rows. Contradictory serial readings refuse `BoardSerialContradictory`. A row whose serial has never been read carries its read obligation and claims no key: it is not refused and not counted as unique. This follows `gunbc.design_argument::epistemic_humility`, and the refusal applies on an observed serial, as asked."),
+      li(text: "The H11 host's intake rows are keyed by BMC MAC (`supermicro_h11ssl_unit1_*`). They join through the same unit key once the board serial is read. A MAC is not the key."),
+    ]),
+    h3(text: "2.3 Every derived name and its one derivation site"),
+    p(text: "Each function takes the admitted machine (or its `HostIdentity`) and nothing hand-spelled. Where a function already exists it is kept and its callers converge on it; `(new)` marks the ones to add."),
+    ul(items: [
+      li(text: "**Linux hostname:** `gunbc.fleet.fleet_naming` `linux_hostname` (exists; re-keyed from the allocation to the machine row). `hostnamectl` desired state comes from it through `gunbc.deployed_intent_v1` `deployed_intent_v1_from_fleet_slot`."),
+      li(text: "**Runner host label:** `gunbc.runner.runner_slot_allocation` `runner_host_label` (exists, `host as String`). It stays correct unchanged once the identity is the name. The six direct `host as String` label sites in `gunbc.fleet.fleet_converge_workflow` (gcp-iam, arrival-converge, printer, gcp-iam bootstrap, mtcollins1-boot) move onto it."),
+      li(text: "**Runner registration names:** `gunbc.build_cache.build_cache_instance` `runner_slot_instance_name_prefix` (exists). `gunbc.build_cache.build_cache_latency_probe` `host_from_runner_name`'s literal `srvN-` prefixes are deleted in favour of `gunbc.runner.runner_incarnation` `parse_jit_registration_name` over the roster."),
+      li(text: "**BMC secret ids:** `bmc_admin_secret_id(machine)` (new, lifted from `gunbc.bmc.bmc_onboarding` `altra_onboarding_plan`'s concat) and `gunbc.bmc.bmc_health_reader` `bmc_health_reader_secret_id` (exists). Each returns a branded id that the IAM binding rows in `gunbc.assimilate.bmc_token_federation` and `gunbc.auth.fleet_secret_accessor_roster` consume, replacing the literals `bmc-srv3-admin`, `bmc-srv4-admin`, `bmc-mtcollins1-gunbc` and `bmc-mtjade1-gunbc`. The same derivation covers the host-named non-BMC secrets: `mtcollins1-ssh-host-key` and `gunbc-srv4-strata-api-key`. Decision D4."),
+      li(text: "**`/etc/gunbc` per-host paths:** `bmc_known_hosts_path(machine)` and `bmc_identity_path(machine)` (new, in `gunbc.host.host_layout`). They replace the four literals in `gunbc.bmc.bmc_fan_converge`. The converge receipt path (`fleet_converge_receipt_dir`) is already derived."),
+      li(text: "**known_hosts address:** `gunbc.fleet.fleet_host_key_enrollment` rows are keyed by `HostIdentity` and get their address from `fleet_lan_name(machine)` / `fleet_tailnet_name(machine)`. The literal `\"srvN\" as HostIdentity` and `labels: [\"srvN\"]` are deleted."),
+      li(text: "**LAN name:** `fleet_lan_name(machine)` (new, in `gunbc.host.host_name_resolution`) is the label plus `lan_zone_wire`. It replaces `srv2_lan_name_under` and the `as String as DnsLabel` casts in `gunbc.host.boot_medium`."),
+      li(text: "**Tailnet name:** `gunbc.fleet.fleet_tailnet` `tailnet_host_from` (exists), re-typed to take the machine. The `srv1.tailecbe08.ts.net` and `srv2...` literals in `gunbc.auth.tracker_web_oauth_client` and `gunbc.serving.router_dev_policy` move onto it."),
+      li(text: "**SSH target:** `gunbc.runner.runner_host_deploy` `RunnerHostSpec.ssh_target` is derived as `<listener account>@<gunbc.fleet.fleet_intent_network host_lan_address(host)>`. `host_label` is deleted (it is `runner_host_label`). The users come from the fleet-wide account (the gunbc-runner cutover), so each row keeps only real overrides. `gunbc.fleet.fleet_reach_endpoint` `fleet_owned_probe_endpoint_for`, which today reaches a host at its bare identity string, resolves through `fleet_lan_name`."),
+      li(text: "**Router DNS:** not authored. The CR1000A publishes the DHCP client hostname (option 12), so the LAN name follows the Linux hostname once the lease renews; this explains why srv14 does not resolve while butch does. The model reads it (`gunbc.network_identity_subsumption`) and does not write it. The MAC-to-IP reservation is keyed by MAC and survives a rename."),
+    ]),
+    h3(text: "2.4 The rule a witness enforces, and its authorable reds"),
+    ul(items: [
+      li_blocks(blocks: [
+        p(text: "**W1, carrier (structurally guaranteed).** Planted rows reach `admit_fleet_machines`:"),
+        ul(items: [
+          li(text: "Two rows reading serial `BR80S6102300049` refuse `BoardSerialDuplicatedAcrossUnits` naming both. This is the srv13/srv15 shape, built as a fixture."),
+          li(text: "Two rows rendering `bobo` refuse `AllocationPrimaryKeyRepeated`."),
+          li(text: "A row with contradictory FRU and SMBIOS serials refuses."),
+          li(text: "A row with `SerialUnread` admits and carries its obligation."),
+          li(text: "Positive control: the production rows admit."),
+        ]),
+      ]),
+      li(text: "**W2, derivation by execution.** A fixture machine is admitted under name A and again under name B. Every 2.3 function, run through its real producer (the emitted fleet-converge `host` options, the onboarding plan's credential ref, the known_hosts anchor rows, the RunnerHostSpec lookup), yields A-forms under A and B-forms under B, and no output contains the other name. Deleting any one site's derivation (restoring a literal) makes that site's B-row fail. This is the discriminating red, and it is an inhabitance claim on the real path (`gunbc.design_argument::witness_one_interface`)."),
+      li(text: "**W3, the wall (structurally impossible for identity minting).** Fixture source `data x: HostIdentity = \"srv1\"` and `\"srv1\" as HostIdentity` are handed to the compiler and refuse, because `HostIdentity` is `sole_constructor`. The positive control compiles the production roster."),
+      li(text: "**Honest ceiling.** A derived name typed as a free `String` (an argv word, a prose receipt) can still be written as a literal anywhere. The types in 2.3 make the typed positions unwritable from literals; free text stays at review (mitigation). That residual is stated here and is not claimed as covered."),
+    ]),
+
+    h2(text: "3. Why the corpus forks: causes and root fixes"),
+    p(text: "Classes are the brief's four: (1) missing generic carrier, (2) missing host-keyed lookup, (3) a literal instead of a derivation, (4) a leaf written before its second instance existed. Git history cannot order most of these: `fleet_compute_host_for_identity`, `host_lan_address`, `PerHostReplaceBudgetState` and most host modules trace to the import commit `364fcb5a8c23` (2026-09-19). The (4) readings therefore rest on structure and comments, except in the boot and arrival lane, where the dates show the generic came first."),
+    ul(items: [
+      li(text: "**`gunbc.srv3.srv3_boot_once_cd`: (2) plus (3).** A Redfish boot-once PATCH and ForceRestart, hard-coding `srv3_onboarding_plan` and `/tmp/srv3_*.json`. It ignores `plan.redfish_system_id`. Its subject, scopes and attempt live in `srv3_os_install_actuate_workflow`. The generic parts already exist: `altra_onboarding_plan(host, bmc_host)` with rows for srv1-srv4, and `ActuatorBootOnce` / `boot_once_step` in `gunbc.nbd_proxy_virtual_media_install`. That realization itself hard-codes `BmcController { node: srv3_host }`. What is missing is `onboarding_plan_for(host)`. All of `dag/gunbc/srv3/` (14 modules) and `dag/test/claim/srv3/` (26 witnesses) are one host's copy of a lane that srv1, srv2, srv4 and bobo need too."),
+      li(text: "**`gunbc.auth.branch_dispatch_federation` `mtcollins1_boot_run_scoped_federation_for`: (3) plus (4).** It copies `fleet_run_scoped_federation`'s body field by field, with literal labels and service-account ids, and `boot_federation_names` is an `if host == mtcollins1` lookup. Both were written 2026-10-10, after the generic `gunbc.host.managed_host_boot_federation` (2026-10-03)."),
+      li(text: "**`gunbc.machine_intake.arrival_subject`: (4) plus (1).** The row has `wire: \"mtjade1\"` (a string, not a `HostIdentity`) and no grant field. Admission hard-wires `mtjade1_live_standing_grant` and the mtcollins1 exclusion. The module says itself that a second row would refuse until the fold joins each row to its own grant. srv13's identity-bind inputs are already waiting as that second row."),
+      li(text: "**`gunbc.runner.runner_connectivity_recovery` `PerHostReplaceBudgetState`: (1).** Fixed fields `srv1..srv4: Int`, with four-arm get and decrement chains. Any other host silently gets a budget of 0. `git grep 'Map<HostIdentity'` finds nothing, so no host-keyed carrier exists. The same file's `host_reach_admission_for_fleet_host` (`if srv3 || srv4` refuse) is (3)."),
+      li(text: "**`RunnerHostSpec` rows: (3).** The four rows have identical users and app, a `host_label` that duplicates the identity, and an `ssh_target` IP that duplicates `gunbc.fleet.fleet_intent_network` (which `host_lan_address(host)` already derives). `gunbc.fleet.print_converge` and `gunbc.runner.runner_capacity_operator_access` bypass the `runner_host_spec_for` lookup, and the latter falls back to the literal `briansrls`."),
+      li(text: "**Host-equality branches: (2) and (3).** These are four-arm chains that exist where a lookup already does. Examples: `gunbc.fleet.fleet_show_effective_read` `fleet_host_control_plane` beside `fleet_compute_host_for_identity`, and `gunbc.host.host_toolchain_ensure` `host_toolchain_direct_access`. Others are per-host policy written as literals: `gunbc.host.host_converge` `if host == operator_host_srv3 { FreshStandup }`, and `gunbc.host.host_memory_observation` `gunbc_ci_host_fixed_overhead_for`."),
+      li(text: "**The common upstream cause:** the identity is a free string any site may cast, and there is no per-machine row to hang a column on. The cheapest local move is therefore always `if host == X` or a new `X_`-prefixed declaration. Each such leaf is `gunbc.recurring_failure_mode::a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`. Each kernel-hostname-equals-identity comparison is `gunbc.recurring_failure_mode::symptom_link_patched_without_the_earliest_unjustified_boundary`: the earliest unjustified link is the unmodeled identity-to-hostname relation, not the comparator."),
+    ]),
+    h3(text: "3.1 Root fixes, ranked by the forks they stop"),
+    ol(items: [
+      li(text: "**R1, the machine row and the sole_constructor identity (2.1-2.2).** This stops new identity literals, second identities for one board, and new per-host lists, which become columns keyed by an admitted identity."),
+      li(text: "**R2, one host-keyed record lookup.** `fleet_host_record_for(host) -> FleetHostRecord?` joins the compute host, baseboard, deploy access, ssh transport, `BmcOnboardingPlan` and `RunnerHostSpec`. It absorbs `host_toolchain_direct_access`, `fleet_host_control_plane`, `fleet_host_ssh_transport`, the `briansrls` fallback, the direct `srvN_runner_host_spec` and `srvN_onboarding_plan` imports, and the `srv3_host` target in the nbd-proxy realization."),
+      li(text: "**R3, a host-keyed total map.** Search `std.allocation_roster`, which already holds a keyed map, before minting `HostKeyed<T>`: a total get, update and fold over the admitted roster. It absorbs `PerHostReplaceBudgetState`, `materialized_width_for_host`, `gunbc_ci_host_fixed_overhead_for` and the 11 branches in `host_memory_observation`, and it ends the silent zero for hosts outside srv1-srv4."),
+      li(text: "**R4, per-host policy as row fields** on `gunbc.fleet.fleet_enrollment` `HostEnrollmentIntent`: apply mode, reach admission, arrival standing grant, run-scoped federation names. It absorbs `host_reach_admission_for_fleet_host`, `arrival_subject`'s grant and exclusion, and `mtcollins1_boot_run_scoped_federation_for` (routed through `fleet_run_scoped_federation`), and it admits srv13/bobo's arrival as a second row."),
+      li(text: "**R5, Redfish boot-once keyed by `BmcOnboardingPlan`** (`onboarding_plan_for(host)`, with a generic boot-override subject). It dissolves the per-host part of `dag/gunbc/srv3/` and gives boot-once to the other ALTRAD8UD hosts."),
+      li(text: "**Review tell, not a new gate or census:** a production declaration or file whose name embeds a machine name, or a new `host == operator_host_X` arm, is a presumption of fork. The author answers why it should not be generalized, or names the trigger for doing so (`gunbc.design_argument::root_generalization`)."),
+    ]),
+
+    h2(text: "4. Fork census at grain"),
+    p(text: "All counts were taken at `b687f96f16bd` over `dag src/v2` with bounded `git grep` plus source inspection. A negative match is not proof that nothing exists, and no census instrument is proposed. The test witnesses were inspected only where a search surfaced them."),
+    h3(text: "4.1 Identity string literals"),
+    ul(items: [
+      li(text: "Command: `git grep -oF '\"srvN\"' -- dag src/v2 | wc -l` (exact), plus an embedded-literal regex `'\"[^\"]*\\bsrvN\\b[^\"]*\"'`. The regex can span two adjacent literals, so its counts are approximate."),
+      li(text: "**Exact literals, production / test:** `\"srv1\"` 486 (56 / 430), `\"srv2\"` 192 (24 / 168), `\"srv3\"` 171 (35 / 136), `\"srv4\"` 112 (30 / 82), `\"mtcollins1\"` 174 (7 / 167)."),
+      li(text: "**Embedded literals (not exact):** 1616, 314, 1095, 425 and 613 respectively."),
+      li(text: "**Disposition: derive** for production live-path literals (examples: `gunbc.ci.ci_budget_tree`, `gunbc.fabric.fabric_writer_roster`, `gunbc.fleet.fleet_multi_principal_probe`, `gunbc.host.host_reach_identity_probe`, `gunbc.fabric.workspace_source` `workspace_source_pack_host`)."),
+      li(text: "**Disposition: keep** for historical observations: a captured hostname, a receipt line, an `artifacts/` path. They record what was seen on a date, and rewriting them would fabricate history (decision D7)."),
+      li(text: "**Disposition: generalize** for test fixtures that test a generic rule. They move to fixture identities minted through the admission, so they stop asserting a real host's name."),
+      li(text: "**Unknown:** the split of the embedded literals between live-path and historical."),
+    ]),
+    h3(text: "4.2 Per-host branches"),
+    ul(items: [
+      li(text: "Command: `git grep -nE '(==|!=) *\\(?operator_host_[a-z0-9]+|host_identity_eq\\([^)]*operator_host_[a-z0-9]+' -- dag src/v2`."),
+      li(text: "Result: 279 lines in 94 files. runner 20/6, host 31/10, fleet 31/7. Top modules: `host_memory_observation` 11, `runner_connectivity_recovery` 10, `fleet_runner_connectivity` 8, `fleet_show_effective_read` 8. The brief's regex also misses the common `(host as String) == (operator_host_srvN as String)` form."),
+      li(text: "**Disposition: generalize** through R2-R4. A branch that selects a per-host fact becomes a lookup; a branch that encodes per-host policy becomes a row field."),
+      li(text: "**Unknown:** the arms written as string comparisons against unquoted names."),
+    ]),
+    h3(text: "4.3 Declaration names embedding a machine"),
+    ul(items: [
+      li(text: "Command: `git grep -ohE '\\b(data|fn|type) +[A-Za-z0-9_]*(srv[0-9]+|mtcollins1|mtjade1|183527|3dde7f|6ce85c)[A-Za-z0-9_]*' -- dag src/v2 | wc -l`."),
+      li(text: "Result: 2902 (1943 production, 959 test; 3021 case-insensitive). By host: mtcollins1 804, srv1 802, srv3 606, srv4 261, srv2 214, mtjade1 164, srv13 60, everything else at most 10 each."),
+      li(text: "Top directories: `gunbc/machine_intake` 559, `gunbc/fleet` 379, `gunbc/host` 199, `gunbc/serving` 175, `gunbc/srv3` 134."),
+      li(text: "167 files carry a machine name in their path (srv3 82, mtcollins1 75, srv1 22, mtjade1 16, h11ssl_unit 7)."),
+      li(text: "**Disposition: generalize** for rules named after one host (the srv3 install lane, the mtcollins1 boot run and federation, `mtjade1` arrival, `srvN_onboarding_plan`, `srvN_runner_host_spec`)."),
+      li(text: "**Disposition: keep, keyed by identity** for facts about one machine (its captures, its DIMM census, its first-contact readings). They are legitimately per machine, but they cite the machine through its identity symbol, and their declaration names follow decision D2."),
+      li(text: "**Disposition: delete** for rows of retired identities (srv13 by the bobo lane, srv16)."),
+      li(text: "**Unknown:** the per-declaration split between rule and fact. It is decided per PR, by `gunbc.design_argument::root_generalization` step 2."),
+    ]),
+    h3(text: "4.4 Derived-name sites"),
+    ul(items: [
+      li(text: "Classes: (a) derived through the allocation, (b) concatenated or cast from the identity string, (b*) kernel hostname compared to or cast into the identity with no lookup, (c) a hand literal."),
+      li_blocks(blocks: [
+        p(text: "**Hostname:**"),
+        ul(items: [
+          li(text: "(a), 8 sites: `deployed_intent_v1_from_fleet_slot`, `host_reset_return_run`, `host_reach_identity_probe`, `managed_host_unit_hold`, `network_identity_subsumption`, `workspace_allocation_supply`, `workspace_tool_observer`, `fleet_converge_cli` `converge_host_selector_identity`."),
+          li(text: "(b*), 13 sites: `fabric_writer_identity_observe`, `host_memory_envelope_observe`, `runner_microvm_host_ready`, `runner_microvm_slot_controller`, `runner_microvm_network_converge`, `runner_microvm_network_apply`, `runner_service_slot_controller`, `workspace_host_offer_observe`, `approval_request_client` `classify_approval_origin`, `ci_deploy_target_host`, `runner_browser_toolchain`."),
+          li(text: "(c), 2 sites: `workspace_source_pack_host`, `srv3_fleet_slot_host_name`."),
+          li(text: "**Disposition: derive.** Every (b*) resolves through `resolve_host_selector` before the flip (PR-3). It refuses wrongly on renamed hosts today."),
+        ]),
+      ]),
+      li(text: "**Runner labels and registration names:** (b) through `runner_host_label` and its six bypasses; (c) `host_from_runner_name` and the four `host_label` literals. **Disposition: derive.**"),
+      li(text: "**BMC and host-named secrets:** (b) `altra_onboarding_plan`, `bmc_health_reader_secret_id`; (c) the `bmc_fan_converge` srv3/srv4 credential refs, `bmc_srv3_secret_name`, `srv3_os_install_actuate_*`, `mtcollins1_bmc_gunbc_secret_ref`, `mtjade1_bmc_gunbc_secret_ref`, the `bmc-mtcollins1` controller in `bmc_first_contact_reading`, `mtcollins1-ssh-host-key`, `gunbc-srv4-strata-api-key`. Command: `git grep -n 'bmc-srv\\|bmc-mtcollins'` gives 25 and 41 matches, most in artifacts and prose. **Disposition: derive.**"),
+      li(text: "**`/etc/gunbc` paths:** (c), 4 in `bmc_fan_converge`. Command: `git grep -n '/etc/gunbc'` gives 120 matches, of which 5 carry a host. **Disposition: derive.**"),
+      li(text: "**known_hosts:** (c) `fleet_host_key_enrollments` (srv1-srv4 and `srv1.tailecbe08.ts.net`, identity and label both hand-written). **Disposition: derive the address; the host key stays an observation.**"),
+      li(text: "**LAN and tailnet:** (b) `srv2_lan_name_under`, `boot_medium`, `tailnet_host_from`; (c) the zones `mynetworksettings.com` and `tailecbe08.ts.net` (legitimate zone facts) and the `srv1/srv2.tailecbe08.ts.net` literals in `tracker_web_oauth_client` and `router_dev_policy`. Endpoint labels in `fleet_intent_network` (`srv1-host-lan` and others) are (c). **Disposition: derive.**"),
+      li(text: "**SSH targets:** (c) the four `RunnerHostSpec.ssh_target`; (b) `fleet_owned_probe_endpoint_for` (bare identity as a DNS name, 7 callers); (c) the `node@srvN` rows in `fleet_shell_transport_observation`, which are historical observations and kept. **Disposition: derive.**"),
+      li(text: "**Not host-named:** sccache endpoints and docker contexts (none found). The Rust seed constructs no names."),
+    ]),
+    h3(text: "4.5 Live artifacts"),
+    ul(items: [
+      li(text: "Each machine's `/etc/hostname` and kernel hostname."),
+      li(text: "GitHub runner registrations. JIT `<identity>-NN-<epoch>-<pid>` names carry labels `[self-hosted, linux, arm64, <identity>, gunbc-heavy]`. The required `v2-bootstrap` job runs on `[self-hosted, linux, arm64]`, any fleet slot, with no host label. Six host-pinned job families in `.github/workflows/fleet-converge.yml` (75 `srvN` occurrences) are pinned to srv1 or `inputs.host`."),
+      li(text: "Secret Manager: `bmc-srv3-admin`, `bmc-srv4-admin`, `bmc-<host>-health-reader`, `bmc-mtcollins1-gunbc`, `bmc-mtjade1-gunbc`, `mtcollins1-ssh-host-key`, `gunbc-srv4-strata-api-key`, plus their IAM grants. **Unknown:** whether `bmc-srv1-admin` and `bmc-srv2-admin` exist live. They are not modeled as grants."),
+      li(text: "known_hosts anchors (`gunbc.fleet.fleet_known_hosts_anchor` over the enrollment rows)."),
+      li(text: "Router DHCP option-12 names (read only)."),
+      li(text: "Tailscale machine names. **Unknown:** whether they equal the identity or the hostname; the corpus has no observation."),
+      li(text: "The OAuth client redirect URIs registered for `srv1/srv2.tailecbe08.ts.net`. These are outward-facing (decision D8)."),
+      li(text: "`/etc/gunbc/bmc-known-hosts/srvN` and `/etc/gunbc/bmc-identities/srvN-machine-id` on srv3 and srv4."),
+      li(text: "**Disposition:** each is produced from the 2.3 derivation by the modes in section 5, or recorded as a gap there."),
+    ]),
+
+    h2(text: "5. Staged cutover"),
+    h3(text: "5.1 Modes that exist and gaps"),
+    ul(items: [
+      li(text: "**Hostname set:** partial. `gunbc.host.host_effect` `SetHostnameCas`, realized by `gunbc.hostname_set` `hostname_set_cas` with read-back and a no-op re-run in `gunbc.host.host_identity_assimilation` `host_identity_converge_from_base`. Wet entries exist for srv1 and srv2 only. The stored baselines in `gunbc.deployed_intent_v0` are the pre-2026-07 names, so a three-way merge hits `ConflictPlan` until the baselines are re-adopted (`gunbc.host.host_identity_adopt`). **Gap:** no fleet-converge mode, and nothing for srv3, srv4 or mtcollins1. A mode run from a peer host is needed, because a host's own fleet-converge job is pinned to its label."),
+      li(text: "**Runner re-registration:** exists. `runner_host_file_converge` leads to `gunbc.runner.runner_slot_actuation` `activate_runner_slot_over`, which mints each JIT registration with `runner_host_label(host)`. Labels follow the identity on the next mint, with no separate re-registration. Drain and restore: `gunbc.runner.runner_host_withdraw` and `runner_host_restore`. **Gap:** dead offline registrations under the old name have no sweep for JIT names (`gunbc.recurring_failure_mode::a_registration_name_model_drifts_from_the_name_the_runner_registers_under`)."),
+      li(text: "**DNS:** none needed. It follows option 12 once the DHCP lease renews (2.3). The router transport is `WebUiManual`, so a reservation edit, if ever needed, is an operator step."),
+      li(text: "**Secrets and IAM:** gap. `gunbc.auth.gcp_iam_converge` `GcpIamEffect` has only `CreateProvider` and `AddPolicyCells`, with no secret create and no removal. Bare secret creation exists only in `gunbc.auth.gcp_iam_bootstrap` `iam_bootstrap_ensure_bare_secret`, for grant-set secrets. The needed mode is a shadow copy: create `bmc-<new>-admin`, copy the latest version, and add the same cells, all additive. Retirement of the old secret follows `gunbc.bmc` rotation's derived published-credential retirement (#15317)."),
+      li(text: "**known_hosts:** partial. `fleet_host_key_scan_wet` and `fleet_host_key_enroll_wet` are wired in `gunbc.ci.ci_spec`, but no mode calls them. Re-enrollment is a row under the new name with the same host key (additive). The anchor's `known_hosts_endpoint_conflict` catches a mismatch."),
+      li(text: "**Listener account `briansrls` to `gunbc-runner`:** owned by cool-lark-40. Today it exists only for image-baked hosts (`gunbc.runner.runner_host_listener_account`). No converge exists for the SSH-applied srv1-srv4."),
+      li(text: "**Board serial read:** the srv1-srv4 serials are unread (`fleet_host_backing` `HostUnitUnobserved`). The producer is `gunbc.machine_intake.arrival_converge` `identity_bind_provisional` (FRU plus SMBIOS), which already ran for mtcollins1 and mtjade1."),
+    ]),
+    h3(text: "5.2 Stages"),
+    ol(items: [
+      li(text: "**S0, model (no live change).** PR-1 to PR-6 (section 6). Identity values do not change, so labels, secrets and hostnames are untouched. CI: unchanged; v2-bootstrap is unaffected. Rollback: revert."),
+      li(text: "**S1, per host: serial read.** `identity_bind_provisional` runs for the host and its `SerialUnread` becomes observations; W1 then covers it. A refusal here stops that host's cutover (the line stops). CI: unchanged."),
+      li_blocks(blocks: [
+        p(text: "**S2, per host: shadow, additive.**"),
+        ul(items: [
+          li(text: "Create secrets under the new name, with IAM cells."),
+          li(text: "Add known_hosts rows under the new name."),
+          li(text: "Register the new Tailscale name and the OAuth redirect URIs if the host has them."),
+          li(text: "Re-adopt the hostname baseline."),
+        ]),
+        p(text: "Old artifacts stay valid. CI: unchanged. Rollback: delete the new artifacts."),
+      ]),
+      li_blocks(blocks: [
+        p(text: "**S3, per host: the flip, one window.**"),
+        ul(items: [
+          li(text: "`runner_host_withdraw` drains the host."),
+          li(text: "The flip PR changes that one row's name to its accepted draw; generated workflows regenerate."),
+          li(text: "The peer-run hostname mode sets and reads back the new hostname."),
+          li(text: "In the same window, the host moves to `gunbc-runner` (cool-lark-40's cutover), so its live state changes once."),
+          li(text: "`runner_host_file_converge` and `runner_host_restore` bring it back; the next JIT mints carry the new label."),
+          li(text: "A DHCP renew updates the router name; `network_identity_subsumption` reads it back."),
+        ]),
+        p(text: "CI: the required pool loses that host's slots for the window. Host-pinned fleet-converge jobs for that host queue until its runners return under the new label. Rollback until S4: revert the flip PR and run the hostname mode back. Runners re-mint under the old label, and the old secrets and known_hosts rows still exist."),
+      ]),
+      li(text: "**S4, per host: retire the old name**, after the host has served v2-bootstrap green for an operator-chosen soak. Disable the old secrets (then delete them on the rotation route's retirement), delete the old known_hosts rows, sweep the offline registrations, delete the old OAuth redirect URIs. Rollback from here is a forward rename."),
+    ]),
+    h3(text: "5.3 Order across hosts (runner capacity)"),
+    ul(items: [
+      li(text: "**srv2 first.** It has no established runner width (`WidthMemoryDenominatorUnestablished`), so its flip costs v2-bootstrap nothing, and it already has a hostname wet entry."),
+      li(text: "**srv4, then srv3.** Each serves at least 7 GitHub slots (memory admission up to 17). One at a time keeps the other and srv1 serving. srv3 carries the BMC fan and install lane literals, so the R5 generalization lands before its flip."),
+      li(text: "**srv1 last of the four.** It hosts the srv1-pinned jobs (gcp-iam, mtcollins1-boot, arrival-converge, printer) and the fabric and revision slots. The pinned jobs derive their label after PR-2, so they follow the flip with no edit."),
+      li(text: "**mtcollins1 at any point after S0.** It is image-baked, already uses `gunbc-runner`, and takes 5 slots. Its flip changes the image's baked label, so the next image build carries it."),
+      li(text: "**Then the hosts whose names are already drawn**, with no draw needed and the identity set to the drawn name: the Sparks srv9-srv12 (francis, emerson, mil, bastien), mtjade1 (eric), host-183527 (damien), host-3dde7f (gus), host-6ce85c (h11-a16, legacy). srv14 becomes butch in cool-lark-40's enrollment window (kept as is until this plan lands), and srv15 becomes bobo after smart-crane-730's admission has deleted srv13."),
+    ]),
+
+    h2(text: "6. PR sequence"),
+    ol(items: [
+      li(text: "**PR-0, this plan** (small)."),
+      li(text: "**PR-1, model** (medium): the machine row, `MachineUnit`, `admit_fleet_machines` over `std.allocation_roster` plus `bind_unit_key`, `operator_hosts` derived, `gunbc_fleet_hostname_allocations` reduced to draw receipts, W1 and the hostname-allocation witness re-drawing every receipt. The identity values are unchanged. The accepted draws (section 7) are recorded as receipts for the hosts not yet flipped."),
+      li(text: "**PR-2, derivations** (medium-large): the 2.3 functions; each (b) and (c) live-path site moves onto them; W2."),
+      li(text: "**PR-3, the b* comparators** (medium): the 13 sites resolve through `resolve_host_selector`. This fixes the renamed hosts that are already wrong today."),
+      li(text: "**PR-4a to PR-4d, generalizations** (medium each): R2 `fleet_host_record_for`; R3 the host-keyed map (`PerHostReplaceBudgetState` and the others); R4 policy columns plus `arrival_subject` and the run-scoped federation; `RunnerHostSpec` derived. Coordinate R4 with cool-lark-40, which owns the access template."),
+      li(text: "**PR-5, R5 boot-once** (large): `onboarding_plan_for`, a generic subject, and `dag/gunbc/srv3/` dissolved to its truly per-machine facts. Search open PRs touching `gunbc.srv3` first."),
+      li(text: "**PR-6, modes** (medium each): the peer-run hostname mode; the secret shadow-copy plus IAM effect; known_hosts enroll wired as a fleet-converge mode; a JIT offline-registration sweep."),
+      li(text: "**PR-7, the wall** (large, mechanical): `HostIdentity` `sole_constructor`, W3, and every `as HostIdentity` cast and identity literal moved to the admission or to fixture identities."),
+      li(text: "**PR-8.x, one flip per host** (small each, plus its live window): srv2, srv4, srv3, srv1, mtcollins1, then the drawn hosts. Each renames that machine's identity value and its declaration symbols (D2) and regenerates the workflows."),
+      li(text: "**PR-9.x, retire per host** (small): S4 deletions."),
+    ]),
+    p(text: "Before each PR, search the open PRs that touch its files: `gh pr list --json files` filtered by path. At this revision: #16058 and #16246 touch the `runner_host_*` files, #16035 and #15978 touch `runner_host_file_converge`, #15221 touches `runner_connectivity_recovery`, and #15287 touches the mtcollins1 boot approval."),
+
+    h2(text: "7. Proposed draws (receipts for the operator; not applied)"),
+    p(text: "Drawn 2026-11-10 with fresh 12-digit entropy. The names were computed by a transcription of `draw_human_name` (first-part corpus 432 entries, last-part 24), which reproduces all nine recorded draws exactly. Each draw was taken against every existing selector form and against the draws before it. The real allocator re-draws each receipt in PR-1's witness, so a mismatch reds there instead of standing."),
+    ul(items: [
+      li(text: "srv1: entropy 458621672034, forms ricky / ricky-energy / ricky-dexter-energy, so **ricky**."),
+      li(text: "srv2: entropy 905841313466, forms cubby / cubby-coded / cubby-vincent-coded, so **cubby**."),
+      li(text: "srv3: entropy 710002629885, forms bruno / bruno-girlboss / bruno-wes-girlboss, so **bruno**."),
+      li(text: "srv4: entropy 434002117982, forms erik / erik-check / erik-lincoln-check, so **erik**. It is close to mtjade1's eric when spoken; a second entropy is the remedy if the operator wants one."),
+      li(text: "mtcollins1: entropy 374329216198, forms connor / connor-slaps / connor-nicolas-slaps, so **connor**."),
+      li(text: "**Order matters.** The witness re-draws each row against the rows before it, so a converted row stays at the end of the receipt list, in draw order, rather than replacing srv1's row in place (where nothing would precede it)."),
+    ]),
+
+    h2(text: "8. Decisions for the operator"),
+    ul(items: [
+      li(text: "**D1.** The identity becomes the typed drawn name, and the hostname is its rendering. This reverses `gunbc_hostname_allocation_scope_disposition` (2.1). Recommendation: yes; it is what the direction asks, and the disposition's objection does not apply to a typed name."),
+      li(text: "**D2, declaration symbols.** `operator_host_srv1` and its 970 references, and the declarations named for a host. Option (a): rename the symbols to the new name in each host's flip PR. Option (b): keep the historical symbols as keys. Recommendation: (a), after PR-4 and PR-5 have generalized the rule-shaped leaves away, so that the rename touches facts about the machine rather than forks. A symbol still saying srv1 for a machine named ricky is a nickname."),
+      li(text: "**D3.** Accept the five draws in section 7, or redraw srv4 away from erik. Recommendation: accept srv1, srv2, srv3 and mtcollins1, and redraw srv4."),
+      li(text: "**D4, BMC secret ids keyed by name (as directed) or by board unit key.** By name means every rename costs an S2 and S4 secret migration. By unit key would be rename-stable but is not a name a person reads. Recommendation: by name, as directed, with the shadow-copy mode making the migration routine."),
+      li(text: "**D5, srv16.** Delete the reserved row (no board, nothing to observe) rather than renaming it. Recommendation: delete in PR-1. srv13's deletion stays with smart-crane-730."),
+      li(text: "**D6.** `chassis-srvN` asset identities become opaque (`chassis-NN`), as `gpu_board_NN` already are. Recommendation: yes, in PR-1."),
+      li(text: "**D7.** Historical observations (captured hostnames, receipt text, `artifacts/` paths) keep the spelling that was observed. Recommendation: yes; rewriting them would fabricate evidence."),
+      li(text: "**D8, outward-facing changes.** These are operator actions in S2: the OAuth client redirect URIs for `srv1/srv2.tailecbe08.ts.net` and the Tailscale machine names. Recommendation: the operator performs them; the plan only derives the values."),
+      li(text: "**D9, order and coupling.** srv2, srv4, srv3, srv1, then mtcollins1, with each host's `gunbc-runner` cutover in the same S3 window as its flip, sequenced with cool-lark-40. Recommendation: yes."),
+      li(text: "**D10, soak before S4.** Recommendation: 48 hours of green v2-bootstrap service per host."),
+    ]),
+
+    h2(text: "9. What this does not claim"),
+    ul(items: [
+      li(text: "The census is a candidate set from name search and source inspection at one revision. A site it missed is added to section 4 when found; this list does not rule one out."),
+      li(text: "Live state was not read in this lane: live hostnames, Tailscale names, which BMC secrets exist, and router names all come from the corpus. S1 and S2 read them before acting."),
+      li(text: "The draw names were computed by a transcription of the allocator, not the allocator itself. PR-1's witness is the execution that confirms them."),
+    ]),
+  ]
+}
+
+data fleet_machine_naming_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "fleet-machine-naming",
+  title: "Fleet machine naming: one name per machine, every other name derived",
+  body: fleet_machine_naming_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every machine in gunbc.fleet.fleet_host_identity is one admitted row whose identity is its rendered name; gunbc_fleet_hostname_allocations holds only draw receipts; HostIdentity is sole_constructor with W1, W2 and W3 enrolled; srv1-srv4, mtcollins1 and the already-drawn hosts have flipped and retired their old names (S4); and the R2-R5 generalizations have landed or been recorded with their triggers. This plan then deletes.") },
+}
