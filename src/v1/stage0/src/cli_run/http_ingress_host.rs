@@ -648,6 +648,41 @@ fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
             "http_ingress_handler_identity",
             vec![("b", binding.clone())],
         )?;
+        // FAIL FAST ON THE DECLARED KEY SET. The fold names this host consults by name are
+        // declared ONCE in .dag (gunbc.http_ingress `data http_ingress_host_read_folds` + its
+        // reader fold); the infer-side registry (src/v1/04_infer.dag `runtime_key_readers`,
+        // instance `loaded_index_keyed_call`) seeds them into the demanded realization -- and
+        // the host reads THE SAME ROW here, at the top of startup, before its first real consult
+        // (this replaced the srv1 crash-loop: the demanded grain realized none of these folds,
+        // and the first consult aborted the unit ~110s in with one opaque loaded-index miss).
+        // If this execution's loaded index is missing any declared key -- or the argv-carried
+        // handler -- refuse HERE, naming EVERY missing key.
+        let mut missing: Vec<String> =
+            match &fold(ctx, "http_ingress_host_read_folds_reader", vec![])? {
+                Value::List(items) => items
+                    .iter()
+                    .filter_map(|item| match item {
+                        Value::Str(s) => Some(s.as_ref().to_string()),
+                        _ => None,
+                    })
+                    .filter(|name| !v1_interpreter::function_exists(ctx, name))
+                    .collect(),
+                other => {
+                    return Err(format!(
+                        "http_ingress_host_read_folds_reader answered a non-list: {}",
+                        format_value(ctx, other)
+                    ))
+                }
+            };
+        if !v1_interpreter::qualified_function_exists(ctx, &handler) {
+            missing.push(handler.clone());
+        }
+        if !missing.is_empty() {
+            return Err(format!(
+                "runtime-keyed reads not realized by this execution's loaded index: {}",
+                missing.join(", ")
+            ));
+        }
         let limits = Limits {
             head: usize::try_from(fold_int(ctx, "http_ingress_head_limit_bytes", &binding)?)
                 .map_err(|e| e.to_string())?,

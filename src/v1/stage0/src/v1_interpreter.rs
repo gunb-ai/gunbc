@@ -787,6 +787,20 @@ pub fn str_value(s: impl AsRef<str>) -> Value {
     Value::Str(RcStr::new(Rc::from(s.as_ref())))
 }
 
+/// Does this execution's loaded index carry a callable by this exact name? The runtime-key
+/// readers (the host side of the 04_infer `runtime_key_readers` registry instances) ask before
+/// their first consult, so a key the demanded grain failed to realize surfaces as a startup
+/// refusal that NAMES every missing key -- not an opaque mid-sequence miss (the srv1 crash-loop).
+pub fn function_exists(ctx: &InterpContext, name: &str) -> bool {
+    ctx.lookup_fn(name).is_some()
+}
+
+/// Qualified-identity form of [`function_exists`], for argv-carried keys: the ingress host calls
+/// the handler by the `module.decl` text its `DeclarationRef` composes.
+pub fn qualified_function_exists(ctx: &InterpContext, qualified: &str) -> bool {
+    ctx.lookup_fn_node(qualified).is_some()
+}
+
 /// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
 ///
 /// A signalled process has no exit code, so it gets the signal arm, not a fabricated integer:
@@ -7939,7 +7953,6 @@ impl InterpContext {
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
         self.indexes.fn_nodes.get(qualified_name).cloned()
     }
-
     pub fn resolved_graph(&self) -> ResolvedGraph {
         ResolvedGraph {
             modules: self.modules.clone(),
