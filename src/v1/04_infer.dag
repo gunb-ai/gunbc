@@ -3930,7 +3930,31 @@ fn equality_optional_payload(n: Node) -> Node {
 fn equality_argument_identity(a: Node, scope: InferScope) -> String? {
   let peeled = normalize_access_type_node(n: a)
   let source_indices = scope.type_env.source_indices
-  let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))
+  let authored = authored_name_at(source_indices: source_indices, node: peeled)
+  let leaf = qualified_last_segment(name: authored)
+  // A QUALIFIED cross-module spelling (v2.std.host_run.EmitHostRunReceipt) is INVISIBLE to the bare classifier
+  // when the type is referenced only by its dotted path -- there is no bare import whose leaf the classifier can
+  // find -- so the leaf lookup returns Absent, the walk falls back to the use-site identity, and the derived
+  // function is keyed at the reference's OWN file: no derived fn is emitted and the emitter compares the member
+  // by raw Rust '==', reaching a routed Node whose provenance-SENSITIVE PartialEq the declared route
+  // (node_equal_ignoring_provenance) exists to avoid (gunbc#16143, D19). Resolve the dotted spelling through the
+  // symbol index's QUALIFIED surface -- the very authority type-annotation resolution uses, keyed
+  // module_path + '.' + name (04_env symbol_index_lookup) -- never by string surgery. A qualified spelling the
+  // index does not name falls through to the bare classifier, so nothing that resolved before can regress.
+  if authored != leaf {
+    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: authored) {
+      Present { value: d } => Present { value: node_declaration_identity(n: d, source_indices: source_indices) }
+      Absent => equality_bare_occurrence_identity(peeled: peeled, leaf: leaf, scope: scope)
+    }
+  } else {
+    equality_bare_occurrence_identity(peeled: peeled, leaf: leaf, scope: scope)
+  }
+}
+
+// The bare-name classifier path, extracted so the qualified-lookup arm above can fall through to it on a miss.
+// Reads the declaration the classifier binds for a BARE leaf; kernel names keep their use-site reference identity.
+fn equality_bare_occurrence_identity(peeled: Node, leaf: String, scope: InferScope) -> String? {
+  let source_indices = scope.type_env.source_indices
   match bare_occurrence_binding(index: scope.type_env.symbol_index, name: leaf, reference: peeled) {
     BareOccurrenceDeclaredInItsFile { declaration: d } => Present { value: node_declaration_identity(n: d, source_indices: source_indices) }
     BareOccurrenceImportedByName { module_path: _, declaration: d } => Present { value: node_declaration_identity(n: d, source_indices: source_indices) }
@@ -3965,11 +3989,17 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
       // host_run.dag -- carrying a bogus kernel spelling as its identity, so its arms were never expanded and a
       // routed member (Diagnostic.correction -> Correction.Suggested { node: Node }) went UNJUDGED, admitting a
       // derived '==' that compares a routed Node by Rust PartialEq (gunbc#16143, D19).
-      let walk_identity = match equality_argument_identity(a: n, scope: scope) {
-        Present { value: k } => k
-        Absent => identity
-      }
-      if walk_identity != "::" && map_contains_key(visited, walk_identity) {
+      let ea = equality_argument_identity(a: n, scope: scope)
+      let walk_identity = match ea { Present { value: k } => k, Absent => identity }
+      // (A) FAIL CLOSED on an unresolvable QUALIFIED reference: a dotted (qualified) name that neither the symbol
+      // index nor the bare classifier names a declaration for must NOT key at the use-site identity -- that emits
+      // no derived function and lets the emitter compare the member by raw '==' over unjudged arms. Refuse via the
+      // same :4126 fail-closed family instead: '==' is refused rather than admitted on a name resolving to nothing
+      // (condition 2 of the A1 ruling, applied to qualified names). A BARE name the classifier cannot name (kernel
+      // scalar, extensional carrier, ambiguous leaf) still falls back to the use-site identity below.
+      if (match ea { Absent => name != leaf, Present { value: _ } => false }) {
+        equality_walk_refused(r: equality_refused(carrier: name, member: "a qualified cross-module reference that resolves to no declaration: its members cannot be judged, so '==' is refused rather than admitted on the use-site key", member_judged: false))
+      } else if walk_identity != "::" && map_contains_key(visited, walk_identity) {
         EqualityWalk { refusal: none, step: EqualityThroughPlan { declaration: walk_identity }, plans: [] }
       } else {
         let visited2 = if walk_identity == "::" { visited } else { map_insert(visited, walk_identity, true) }
