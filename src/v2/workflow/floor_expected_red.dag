@@ -361,8 +361,12 @@ fn floor_expected_red_chunk_03() -> List<String> {
   Cons { head: "test.claim.host.host_effect_apply_witness.witness_converged_is_settled", tail: Cons { head: "test.claim.host.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Cons { head: "test.claim.host.host_effect_apply_witness.witness_typed_read_on_host_success_converges", tail: Cons { head: "test.claim.host.host_effect_plan_real_execution_witness.host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution", tail: Cons { head: "test.claim.host.host_effect_plan_real_execution_witness.host_effect_plan_typed_read_witness_holds_by_real_execution", tail: Empty {} } } } } }
 }
 
+// ONE ROW LEFT WITH ITS WITNESS (census retirement, gunbc.design_ruling
+// bad_process_is_worse_than_no_process): test.claim.observation_raw_print_retirement_acceptance
+// observation_emit_frontier_is_zero counted gunbc.observation_emit_census, which was deleted
+// without a successor; the census and its acceptance module left the tree together.
 fn floor_expected_red_chunk_04() -> List<String> {
-     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } }
+  Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail: Empty {} } }
 }
 
 // shell-typed-invocation's acceptance oracle. It was RED until the node's slice landed (2026-09-29):

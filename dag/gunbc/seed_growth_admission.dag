@@ -1,6 +1,5 @@
 module gunbc.seed_growth_admission
 
-import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_address_census_seed_growth_justification }
 import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
@@ -43,7 +42,6 @@ import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifi
 import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
 import gunbc.portable_value_canonical_order_seed_growth { portable_value_canonical_order_seed_growth_justification }
 import gunbc.namespace_cut.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
-import gunbc.namespace_cut.emit_rust_reference_derived_rows_bridge_seed_growth { emit_rust_reference_derived_rows_bridge_seed_growth_justification }
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
 import gunbc.namespace_cut.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
@@ -283,7 +281,6 @@ data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST: gunbc.r
 fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
     claim_scope_fixture_seed_growth_justification,
-    evaluation_store_address_census_seed_growth_justification,
     anonymous_record_resolution_seed_growth_justification,
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
@@ -350,7 +347,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     portable_value_canonical_order_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
     filesystem_link_create_new_seed_growth_justification,
-    emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     namespace_baseline_seed_growth_justification,
     parsed_import_statement_bridge_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,

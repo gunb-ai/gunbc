@@ -25465,48 +25465,6 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            arm "free_call.languages_consumer_census_data_decl_count" { "languages_consumer_census_data_decl_count" } => Ok(Some(Value::Int(
-                crate::cli_run::languages_consumer_census_data_decl_count(),
-            ))),
-
-            arm "free_call.languages_consumer_census_per_language_row_count" { "languages_consumer_census_per_language_row_count" } => Ok(Some(Value::Int(
-                crate::cli_run::languages_consumer_census_per_language_row_count(),
-            ))),
-
-            arm "free_call.languages_consumer_census_format_row_count" { "languages_consumer_census_format_row_count" } => Ok(Some(Value::Int(
-                crate::cli_run::languages_consumer_census_format_row_count(),
-            ))),
-
-            arm "free_call.languages_consumer_census_external_consumer_count" { "languages_consumer_census_external_consumer_count" } => {
-                let decl_name = expect_str(
-                    $positional.first().copied(),
-                    "languages_consumer_census_external_consumer_count",
-                )?;
-                Ok(Some(Value::Int(
-                    crate::cli_run::languages_consumer_census_external_consumer_count(decl_name),
-                )))
-            },
-
-            arm "free_call.languages_consumer_census_is_composition_only" { "languages_consumer_census_is_composition_only" } => {
-                let decl_name = expect_str(
-                    $positional.first().copied(),
-                    "languages_consumer_census_is_composition_only",
-                )?;
-                Ok(Some(Value::Bool(
-                    crate::cli_run::languages_consumer_census_is_composition_only(decl_name),
-                )))
-            },
-
-            arm "free_call.languages_consumer_census_has_external_consumer" { "languages_consumer_census_has_external_consumer" } => {
-                let decl_name = expect_str(
-                    $positional.first().copied(),
-                    "languages_consumer_census_has_external_consumer",
-                )?;
-                Ok(Some(Value::Bool(
-                    crate::cli_run::languages_consumer_census_has_external_consumer(decl_name),
-                )))
-            },
-
             arm "free_call.shell_materialize_operation_argv" { "shell_materialize_operation_argv" } => {
                 let path = expect_str(
                     $positional.first().copied(),
@@ -25828,20 +25786,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.emit_rust_reference_derived_rows_bridge" { "emit_rust_reference_derived_rows_bridge" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                let repository = expect_str($positional.get(1).copied(), $name)?;
-                let measured_root_demands = expect_str($positional.get(2).copied(), $name)?;
-                Ok(Some(xl1_primary_root_tap_value(
-                    crate::cli_run::compile_xl1_primary_root_tap(
-                        &source_roots,
-                        &repository,
-                        &measured_root_demands,
-                    ),
-                    $ctx,
-                )))
-            },
-
             arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
@@ -25885,47 +25829,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.compile_dag_reference_occurrence_binding_census" { "compile_dag_reference_occurrence_binding_census" } => {
-                let paths = expect_str_list($positional.first().copied(), $name)?;
-                let contents = expect_str_list($positional.get(1).copied(), $name)?;
-                let entry = expect_str($positional.get(2).copied(), $name)?;
-                Ok(Some(reference_occurrence_binding_census_value(
-                    crate::cli_run::compile_dag_reference_occurrence_binding_census(&paths, &contents, &entry), $ctx,
-                )))
-            },
-
-            arm "free_call.compile_dag_importer_resolved_call_edges" { "compile_dag_importer_resolved_call_edges" } => {
-                let import_modules = expect_str_list($positional.first().copied(), $name)?;
-                let exclude_substrings = expect_str_list($positional.get(1).copied(), $name)?;
-                let pool_roots = expect_str_list($positional.get(2).copied(), $name)?;
-                let target_leaves = expect_str_list($positional.get(3).copied(), $name)?;
-                Ok(Some(resolved_call_edge_census_value(
-                    crate::cli_run::compile_dag_importer_resolved_call_edges(
-                        &import_modules,
-                        &exclude_substrings,
-                        &pool_roots,
-                        &target_leaves,
-                    ),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.compile_dag_callsite_resolved_call_edges" { "compile_dag_callsite_resolved_call_edges" } => {
-                let import_modules = expect_str_list($positional.first().copied(), $name)?;
-                let exclude_substrings = expect_str_list($positional.get(1).copied(), $name)?;
-                let pool_roots = expect_str_list($positional.get(2).copied(), $name)?;
-                let target_leaves = expect_str_list($positional.get(3).copied(), $name)?;
-                Ok(Some(resolved_call_edge_census_value(
-                    crate::cli_run::compile_dag_callsite_resolved_call_edges(
-                        &import_modules,
-                        &exclude_substrings,
-                        &pool_roots,
-                        &target_leaves,
-                    ),
-                    $ctx,
-                )))
-            },
-
             arm "free_call.compile_dag_operation_requires" { "compile_dag_operation_requires" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let service = expect_str($positional.get(1).copied(), $name)?;
@@ -25936,22 +25839,6 @@ macro_rules! v1_builtin_arms {
                     ))),
                     Err(msg) => Err(InterpError::TypeError { msg }),
                 }
-            },
-
-            arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {
-                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
-                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
-                let target_leaves = expect_str_list($positional.get(2).copied(), $name)?;
-                let exact_resolved_roots = expect_str_list($positional.get(3).copied(), $name)?;
-                Ok(Some(evaluation_store_address_production_coverage_value(
-                    crate::cli_run::compile_dag_call_form_leaf_guard(
-                        &exclude_substrings,
-                        &pool_roots,
-                        &target_leaves,
-                        &exact_resolved_roots,
-                    ),
-                    $ctx,
-                )))
             },
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
@@ -26041,43 +25928,6 @@ macro_rules! v1_builtin_arms {
                 }
                 Ok(Some(list_value(items)))
             },
-
-            arm "free_call.fallback_arm_census_facts" { "fallback_arm_census_facts" } => {
-                let facts = crate::cli_run::fallback_arm_census_facts();
-                let mut items: Vec<Value> = Vec::new();
-                for f in facts {
-                    items.push(Value::Record {
-                        type_name: $ctx.sym("FallbackArmCensusFact"),
-                        fields: Rc::new(sorted_fields(vec![
-                            (
-                                $ctx.sym("closed_coproduct_scrutinee"),
-                                Value::Bool(f.closed_coproduct_scrutinee),
-                            ),
-                            ($ctx.sym("class"), str_value(f.class.clone())),
-                            ($ctx.sym("fn_name"), str_value(f.fn_name.clone())),
-                            ($ctx.sym("owning_lane"), str_value(f.owning_lane.clone())),
-                            ($ctx.sym("rel_path"), str_value(f.rel_path.clone())),
-                            ($ctx.sym("site"), str_value(f.site.clone())),
-                        ])),
-                    });
-                }
-                Ok(Some(list_value(items)))
-            },
-            arm "free_call.fallback_arm_census_class_count" { "fallback_arm_census_class_count" } => {
-                let class = expect_str(
-                    $positional.first().copied(),
-                    "fallback_arm_census_class_count",
-                )?;
-                Ok(Some(Value::Int(
-                    crate::cli_run::fallback_arm_census_class_count(&class),
-                )))
-            },
-            arm "free_call.fallback_arm_census_total" { "fallback_arm_census_total" } => Ok(Some(Value::Int(
-                crate::cli_run::fallback_arm_census_total(),
-            ))),
-            arm "free_call.fallback_arm_census_reconciliation_holds" { "fallback_arm_census_reconciliation_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::fallback_arm_census_reconciliation_holds(),
-            ))),
 
             arm "free_call.complexity_linearity_syntactic_site_fired" { "complexity_linearity_syntactic_site_fired" } => {
                 let site = expect_str(

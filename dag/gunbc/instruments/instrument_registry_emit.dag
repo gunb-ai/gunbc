@@ -103,7 +103,6 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     V2NativeFrontierProducer => "TargetProducer::V2NativeFrontier"
     EmittedCrateWorkspaceProducer => "TargetProducer::EmittedCrateWorkspace"
     HeadsReadingDifferentialProducer => "TargetProducer::HeadsReadingDifferential"
-    EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
     BareReferenceChannelOutcomeProducer => "TargetProducer::BareReferenceChannelOutcome"

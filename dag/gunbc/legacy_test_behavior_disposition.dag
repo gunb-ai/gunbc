@@ -7,11 +7,6 @@ import std.witness_admission {
   FalsifierSubstrateLongLane,
   witness_cadence_has_scheduled_route,
 }
-import gunbc.deleted_cadence_reference_census {
-  ExecutingConsumerReceipt,
-  PastExecutionReceipt,
-  executing_consumer_receipt_holds,
-}
 import std.decl_ref { DeclarationRef, decl_ref }
 
 type LegacyTestBehavior {
@@ -269,6 +264,44 @@ fn legacy_test_behavior_disposition_graph_holds(
       discovered_witnesses: discovered_witnesses,
       dispositions: dispositions,
     )) == 0
+}
+
+// The workflow-or-scheduled-entry-point receipt an executing-consumer claim must produce.
+// Moved here from gunbc.deleted_cadence_reference_census when that census was retired
+// (gunbc.design_ruling bad_process_is_worse_than_no_process); this module is its only consumer.
+// Five facts, because a claim that a population is covered is only as good as the weakest
+// of them: a command with no workflow is a local recipe, a workflow that no longer exists
+// is a citation, and a population named without a terminal standing is a plan.
+type TerminalExecutionStanding
+  = TerminalVerdictObserved { run_identity: NonEmptyStr }
+  | NeverReachedTerminal
+
+type ExecutingConsumerReceipt {
+  scheduled_entry_point: NonEmptyStr
+  exact_command: NonEmptyStr
+  witness_population: NonEmptyStr
+  entry_point_exists: Bool
+  cadence: WitnessConsumerCadence
+  terminal: TerminalExecutionStanding
+}
+
+type PastExecutionReceipt {
+  cadence: WitnessConsumerCadence
+  run_identity: NonEmptyStr
+  observed_population: NonEmptyStr
+}
+
+fn terminal_execution_standing_is_terminal(standing: TerminalExecutionStanding) -> Bool {
+  match standing {
+    TerminalVerdictObserved { run_identity: _ } => true
+    NeverReachedTerminal => false
+  }
+}
+
+fn executing_consumer_receipt_holds(receipt: ExecutingConsumerReceipt) -> Bool {
+  receipt.entry_point_exists
+    && witness_cadence_has_scheduled_route(cadence: receipt.cadence)
+    && terminal_execution_standing_is_terminal(standing: receipt.terminal)
 }
 
 // TWO CLOCKS, SPLIT INTO TWO FACTS, AND THE SPLIT IS THE POINT RATHER THAN THE PROSE.

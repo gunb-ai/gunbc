@@ -40,13 +40,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "evaluation-store-address-exact-head".to_string(),
-            },
-            TargetProducer::EvaluationStoreAddressExactHead,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "typed-graph-exclusive-bytes".to_string(),
             },
             TargetProducer::TypedGraphExclusiveBytes,

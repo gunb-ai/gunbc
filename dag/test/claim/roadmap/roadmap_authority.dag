@@ -1002,16 +1002,11 @@ test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
 }
 
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
-  match bound_execution_contract_for(id: "observation-raw-print-retirement") {
+  match bound_execution_contract_for(id: "shell-typed-invocation") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
     NotAgentWork { mode: _ } => false
   }
-    && match bound_execution_contract_for(id: "shell-typed-invocation") {
-      ExecutionContractUnspecified => false
-      ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
-      NotAgentWork { mode: _ } => false
-    }
 }
 
 data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."

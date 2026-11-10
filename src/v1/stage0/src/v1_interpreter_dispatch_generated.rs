@@ -85,12 +85,6 @@ pub enum EvalBuiltinArm {
     FreeCallModuleDeclarationFacts,
     FreeCallModuleDeclarationFactsAt,
     FreeCallFactCardinalityDeclFacts,
-    FreeCallLanguagesConsumerCensusDataDeclCount,
-    FreeCallLanguagesConsumerCensusPerLanguageRowCount,
-    FreeCallLanguagesConsumerCensusFormatRowCount,
-    FreeCallLanguagesConsumerCensusExternalConsumerCount,
-    FreeCallLanguagesConsumerCensusIsCompositionOnly,
-    FreeCallLanguagesConsumerCensusHasExternalConsumer,
     FreeCallShellMaterializeOperationArgv,
     FreeCallShellTransportOperationRows,
     FreeCallExtdepsQualifiedNameResolvesInDerivedModuleSet,
@@ -107,16 +101,11 @@ pub enum EvalBuiltinArm {
     FreeCallFloorDiscoverySourceInventory,
     FreeCallParsedImportStatements,
     FreeCallNamespaceStructuralObservationAdmissions,
-    FreeCallEmitRustReferenceDerivedRowsBridge,
     FreeCallCompileDagRustEmitCheck,
     FreeCallCompileDagDiagnosticCensus,
     FreeCallCompileDagMultiModuleFixture,
     FreeCallClaimScopeDagMultiModuleFixture,
-    FreeCallCompileDagReferenceOccurrenceBindingCensus,
-    FreeCallCompileDagImporterResolvedCallEdges,
-    FreeCallCompileDagCallsiteResolvedCallEdges,
     FreeCallCompileDagOperationRequires,
-    FreeCallCompileDagCallFormLeafGuard,
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
     FreeCallRecordGeneratedArtifactDriftGateClean,
     FreeCallConsumeGeneratedArtifactDriftGateReceipt,
@@ -131,10 +120,6 @@ pub enum EvalBuiltinArm {
     FreeCallCommitWitnessClaimPairResolvable,
     FreeCallComplexityLinearitySyntacticFindingCount,
     FreeCallComplexityLinearityWildcardFacts,
-    FreeCallFallbackArmCensusFacts,
-    FreeCallFallbackArmCensusClassCount,
-    FreeCallFallbackArmCensusTotal,
-    FreeCallFallbackArmCensusReconciliationHolds,
     FreeCallComplexityLinearitySyntacticSiteFired,
     FreeCallCensusCorpusRootsFollowLayerAuthority,
 }
@@ -226,12 +211,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "module_declaration_facts" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFacts),
         "module_declaration_facts_at" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFactsAt),
         "fact_cardinality_decl_facts" => Some(EvalBuiltinArm::FreeCallFactCardinalityDeclFacts),
-        "languages_consumer_census_data_decl_count" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusDataDeclCount),
-        "languages_consumer_census_per_language_row_count" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusPerLanguageRowCount),
-        "languages_consumer_census_format_row_count" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusFormatRowCount),
-        "languages_consumer_census_external_consumer_count" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusExternalConsumerCount),
-        "languages_consumer_census_is_composition_only" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusIsCompositionOnly),
-        "languages_consumer_census_has_external_consumer" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusHasExternalConsumer),
         "shell_materialize_operation_argv" => Some(EvalBuiltinArm::FreeCallShellMaterializeOperationArgv),
         "shell_transport_operation_rows" => Some(EvalBuiltinArm::FreeCallShellTransportOperationRows),
         "extdeps_qualified_name_resolves_in_derived_module_set" => Some(EvalBuiltinArm::FreeCallExtdepsQualifiedNameResolvesInDerivedModuleSet),
@@ -248,16 +227,11 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "floor_discovery_source_inventory" => Some(EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory),
         "parsed_import_statements" => Some(EvalBuiltinArm::FreeCallParsedImportStatements),
         "namespace_structural_observation_admissions" => Some(EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions),
-        "emit_rust_reference_derived_rows_bridge" => Some(EvalBuiltinArm::FreeCallEmitRustReferenceDerivedRowsBridge),
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
         "compile_dag_diagnostic_census" => Some(EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus),
         "compile_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture),
         "claim_scope_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture),
-        "compile_dag_reference_occurrence_binding_census" => Some(EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus),
-        "compile_dag_importer_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges),
-        "compile_dag_callsite_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges),
         "compile_dag_operation_requires" => Some(EvalBuiltinArm::FreeCallCompileDagOperationRequires),
-        "compile_dag_call_form_leaf_guard" => Some(EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard),
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
         "record_generated_artifact_drift_gate_clean" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean),
         "consume_generated_artifact_drift_gate_receipt" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt),
@@ -272,10 +246,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "commit_witness_claim_pair_resolvable" => Some(EvalBuiltinArm::FreeCallCommitWitnessClaimPairResolvable),
         "complexity_linearity_syntactic_finding_count" => Some(EvalBuiltinArm::FreeCallComplexityLinearitySyntacticFindingCount),
         "complexity_linearity_wildcard_facts" => Some(EvalBuiltinArm::FreeCallComplexityLinearityWildcardFacts),
-        "fallback_arm_census_facts" => Some(EvalBuiltinArm::FreeCallFallbackArmCensusFacts),
-        "fallback_arm_census_class_count" => Some(EvalBuiltinArm::FreeCallFallbackArmCensusClassCount),
-        "fallback_arm_census_total" => Some(EvalBuiltinArm::FreeCallFallbackArmCensusTotal),
-        "fallback_arm_census_reconciliation_holds" => Some(EvalBuiltinArm::FreeCallFallbackArmCensusReconciliationHolds),
         "complexity_linearity_syntactic_site_fired" => Some(EvalBuiltinArm::FreeCallComplexityLinearitySyntacticSiteFired),
         "census_corpus_roots_follow_layer_authority" => Some(EvalBuiltinArm::FreeCallCensusCorpusRootsFollowLayerAuthority),
         _ => None,
@@ -365,12 +335,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.module_declaration_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFacts };
     ("free_call.module_declaration_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFactsAt };
     ("free_call.fact_cardinality_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFactCardinalityDeclFacts };
-    ("free_call.languages_consumer_census_data_decl_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusDataDeclCount };
-    ("free_call.languages_consumer_census_per_language_row_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusPerLanguageRowCount };
-    ("free_call.languages_consumer_census_format_row_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusFormatRowCount };
-    ("free_call.languages_consumer_census_external_consumer_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusExternalConsumerCount };
-    ("free_call.languages_consumer_census_is_composition_only") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusIsCompositionOnly };
-    ("free_call.languages_consumer_census_has_external_consumer") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusHasExternalConsumer };
     ("free_call.shell_materialize_operation_argv") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallShellMaterializeOperationArgv };
     ("free_call.shell_transport_operation_rows") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallShellTransportOperationRows };
     ("free_call.extdeps_qualified_name_resolves_in_derived_module_set") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExtdepsQualifiedNameResolvesInDerivedModuleSet };
@@ -387,16 +351,11 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.floor_discovery_source_inventory") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory };
     ("free_call.parsed_import_statements") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParsedImportStatements };
     ("free_call.namespace_structural_observation_admissions") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions };
-    ("free_call.emit_rust_reference_derived_rows_bridge") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEmitRustReferenceDerivedRowsBridge };
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };
     ("free_call.compile_dag_diagnostic_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus };
     ("free_call.compile_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture };
     ("free_call.claim_scope_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture };
-    ("free_call.compile_dag_reference_occurrence_binding_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus };
-    ("free_call.compile_dag_importer_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges };
-    ("free_call.compile_dag_callsite_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges };
     ("free_call.compile_dag_operation_requires") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagOperationRequires };
-    ("free_call.compile_dag_call_form_leaf_guard") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard };
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
     ("free_call.record_generated_artifact_drift_gate_clean") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean };
     ("free_call.consume_generated_artifact_drift_gate_receipt") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt };
@@ -411,10 +370,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.commit_witness_claim_pair_resolvable") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCommitWitnessClaimPairResolvable };
     ("free_call.complexity_linearity_syntactic_finding_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearitySyntacticFindingCount };
     ("free_call.complexity_linearity_wildcard_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearityWildcardFacts };
-    ("free_call.fallback_arm_census_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFallbackArmCensusFacts };
-    ("free_call.fallback_arm_census_class_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFallbackArmCensusClassCount };
-    ("free_call.fallback_arm_census_total") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFallbackArmCensusTotal };
-    ("free_call.fallback_arm_census_reconciliation_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFallbackArmCensusReconciliationHolds };
     ("free_call.complexity_linearity_syntactic_site_fired") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearitySyntacticSiteFired };
     ("free_call.census_corpus_roots_follow_layer_authority") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCensusCorpusRootsFollowLayerAuthority };
 }

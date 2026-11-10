@@ -11,7 +11,6 @@ import gunbc.target_binding {
   HeadsReadingDifferentialProducer,
   TypedGraphExclusiveBytesProducer,
   TypedGraphExclusiveBytesFloorSubjectProducer,
-  EvaluationStoreAddressExactHeadProducer,
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
   NativeServeProgramProducer,
@@ -512,12 +511,6 @@ fn fleet_convergence_verdict_route_function() -> String {
 // exit 1. Run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:value-position-block-nests`.
 
-// O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
-// call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
-// not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
-fn evaluation_store_address_exact_head_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "evaluation-store-address-exact-head" } }
-}
 
 // THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES at
 // `fixtures/bare_reference_channel`, one per condition, asserting per entry whether the bare half
@@ -608,10 +601,6 @@ fn self_host_target() -> BuildTarget {
 
 fn v2_native_cli_target() -> BuildTarget {
   instrument_test_target(label: v2_native_cli_label())
-}
-
-fn evaluation_store_address_exact_head_target() -> BuildTarget {
-  instrument_test_target(label: evaluation_store_address_exact_head_label())
 }
 
 
@@ -1073,9 +1062,6 @@ fn heads_reading_differential_binding() -> TargetBinding {
   }
 }
 
-fn evaluation_store_address_exact_head_binding() -> TargetBinding {
-  TargetBinding { target: evaluation_store_address_exact_head_label() producer: EvaluationStoreAddressExactHeadProducer {} }
-}
 
 fn typed_graph_exclusive_bytes_binding() -> TargetBinding {
   TargetBinding {
@@ -1182,7 +1168,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(),
     self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
-    evaluation_store_address_exact_head_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
+    typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), self_host_frontier_binding(),
     cardinality_realization_binding(),

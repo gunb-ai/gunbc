@@ -1335,7 +1335,8 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
     identity: "v2.test.claim.workflow.body_lowering_retention_census.two_productions_at_one_node_shape_stay_two_families" as NonEmptyStr,
     deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
-  }
+  },
+
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

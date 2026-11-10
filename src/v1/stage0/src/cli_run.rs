@@ -143,10 +143,8 @@ pub use entry_resolve::{
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
 mod p1_cohort;
-pub(crate) use p1_cohort::*;
-mod fallback_arm_census;
 pub(crate) use census_heads::*;
-pub(crate) use fallback_arm_census::*;
+pub(crate) use p1_cohort::*;
 mod declared_refs;
 pub use declared_refs::declared_import_closure_binding_observation_from_resolved;
 pub(crate) use declared_refs::*;
@@ -157,14 +155,10 @@ pub(crate) use complexity_gates::*;
 mod emit_host;
 pub(crate) use emit_host::*;
 pub use emit_host::{
-    compile_dag_call_form_leaf_guard, compile_dag_callsite_resolved_call_edges,
-    compile_dag_importer_resolved_call_edges, compile_dag_multi_module_fixture,
-    compile_dag_operation_requires, compile_dag_reference_occurrence_binding_census,
-};
-pub use emit_host::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
     compile_dag_rust_emit_check_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
 };
+pub use emit_host::{compile_dag_multi_module_fixture, compile_dag_operation_requires};
 pub use emit_host::{
     emit_resolved_for_target_counting, every_module_render_calls, non_empty_selected_render_calls,
 };
@@ -176,8 +170,6 @@ mod inert_carrier;
 pub(crate) use inert_carrier::*;
 mod external_authority;
 pub(crate) use external_authority::*;
-mod languages_census;
-pub(crate) use languages_census::*;
 mod class_b_census;
 pub(crate) use class_b_census::*;
 mod non_fold_residue;
@@ -24864,12 +24856,6 @@ mod nfr_tests {
 
 const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LanguagesDeclConsumerRecord {
-    pub decl_name: String,
-    pub external_consumer_paths: Vec<String>,
-}
-
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -25506,208 +25492,6 @@ fn cla_cached_wildcard_facts() -> Result<&'static ClaWildcardFactsCache, String>
         Ok(c) => Ok(c),
         Err(e) => Err(e.clone()),
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FallbackArmCensusFactRaw {
-    pub site: String,
-    pub fn_name: String,
-    pub rel_path: String,
-    pub class: String,
-    pub owning_lane: String,
-    pub closed_coproduct_scrutinee: bool,
-}
-
-#[derive(Default)]
-struct FacBodyMarks {
-    refuses: bool,
-    answers: bool,
-}
-
-fn fac_name_is_refuse(name: &str) -> bool {
-    name.contains("outcome_rejected")
-        || name.contains("Refused")
-        || name.ends_with("Rejected")
-        || name.contains("reject_")
-}
-
-fn fac_name_is_answer(name: &str) -> bool {
-    name.contains("outcome_accepted")
-        || name.contains("Accepted")
-        || name == "true"
-        || name == "True"
-}
-
-fn fac_walk_body_marks(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    marks: &mut FacBodyMarks,
-) {
-    // Explicit worklist: body depth is corpus-shaped (the #10610 class), and the marks are
-    // order-insensitive booleans.
-    let mut pending: Vec<&Rc<Node>> = vec![node];
-    while let Some(node) = pending.pop() {
-        match node.expr_data.as_ref() {
-            ExprData::ExprCall { .. } => {
-                let fname = expr_call_func_at(node.clone(), si.clone());
-                if fac_name_is_refuse(&fname) {
-                    marks.refuses = true;
-                }
-                if fac_name_is_answer(&fname) {
-                    marks.answers = true;
-                }
-            }
-            ExprData::ExprVar { binding_kind: _ } => {
-                let name = authored_name_at(si.clone(), node.clone());
-                if fac_name_is_refuse(&name) {
-                    marks.refuses = true;
-                }
-                if fac_name_is_answer(&name) {
-                    marks.answers = true;
-                }
-            }
-            _ => {}
-        }
-        pending.extend(node.children.iter());
-    }
-}
-
-fn fac_owning_lane(rel_path: &str) -> &'static str {
-    if rel_path.contains("/05_emit")
-        || rel_path.contains("/emit_")
-        || rel_path.contains("wrap_decision")
-        || rel_path.contains("06_translate")
-    {
-        "gate-1"
-    } else if rel_path.contains("/03_resolve")
-        || rel_path.contains("/04_infer")
-        || rel_path.contains("/01_tokenize")
-        || rel_path.contains("/02_parse")
-    {
-        "resolver"
-    } else if rel_path.contains("workflow")
-        || rel_path.contains("gunbc/")
-        || rel_path.contains("fleet")
-        || rel_path.contains("ci_floor")
-    {
-        "workflow-fleet"
-    } else {
-        "intake"
-    }
-}
-
-fn fac_classify_arm(
-    body: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    closed_scrutinee: bool,
-    interim_declared: bool,
-) -> &'static str {
-    if interim_declared {
-        return "declared_interim";
-    }
-    let mut marks = FacBodyMarks::default();
-    fac_walk_body_marks(body, si, &mut marks);
-    // Refuse wins when both marks fire (mirrors classify_fallback_arm in
-    // v2.lens.fallback_arm_census — a propagating refusal is not AnswersOnOpen).
-    if marks.refuses {
-        "refuses"
-    } else if marks.answers {
-        if closed_scrutinee {
-            "completes_closed_total"
-        } else {
-            "answers_on_open"
-        }
-    } else {
-        "unknown"
-    }
-}
-
-fn fac_collect_wildcard_arms(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    param_types: &BTreeMap<String, String>,
-    closed: &BTreeSet<String>,
-    interim_declared: bool,
-    fn_name: &str,
-    rel_path: &str,
-    out: &mut Vec<FallbackArmCensusFactRaw>,
-) {
-    if let ExprData::ExprMatch = node.expr_data.as_ref() {
-        let scrutinee = match_scrutinee(node.clone());
-        let scrutinee_name = expr_var_name_at(scrutinee, si.clone());
-        let closed_scrutinee = !scrutinee_name.is_empty()
-            && cla_is_closed_coproduct_param_scrutinee(&scrutinee_name, param_types, closed);
-        for (arm_idx, arm) in match_arm_nodes(node.clone()).iter().enumerate() {
-            if !cla_is_wildcard_arm(arm) {
-                continue;
-            }
-            let body = arm_body(arm.clone());
-            let class = fac_classify_arm(&body, si, closed_scrutinee, interim_declared);
-            out.push(FallbackArmCensusFactRaw {
-                site: format!("{rel_path}::{fn_name}#arm{arm_idx}"),
-                fn_name: fn_name.to_string(),
-                rel_path: rel_path.to_string(),
-                class: class.to_string(),
-                owning_lane: fac_owning_lane(rel_path).to_string(),
-                closed_coproduct_scrutinee: closed_scrutinee,
-            });
-        }
-    }
-    for child in node.children.iter() {
-        fac_collect_wildcard_arms(
-            child,
-            si,
-            param_types,
-            closed,
-            interim_declared,
-            fn_name,
-            rel_path,
-            out,
-        );
-    }
-}
-
-fn fac_compute_census_facts(roots: &[String]) -> Vec<FallbackArmCensusFactRaw> {
-    let walk = decl_facts_corpus_walk(roots);
-    let closed = non_fold_residue_closed_coproduct_type_names();
-    let mut out = Vec::new();
-    for fact in &walk.facts {
-        if !matches!(fact.kind, ItemKind::FnItem) {
-            continue;
-        }
-        let Some(body) = fact.node.body.as_ref() else {
-            continue;
-        };
-        let param_types = cla_fn_param_type_heads(&fact.node, &fact.source_indices);
-        // DeclaredInterim requires a dissolve_on / FrontierRow marker beside the arm.
-        // Host cannot yet pair arms to FrontierRows reliably — leave false here; the
-        // planted DeclaredInterim fixture covers the class, and Unknown absorbs the
-        // undecided interim residue until a typed join lands.
-        let interim = false;
-        fac_collect_wildcard_arms(
-            body,
-            &fact.source_indices,
-            &param_types,
-            closed,
-            interim,
-            &fact.name,
-            &fact.rel_path,
-            &mut out,
-        );
-    }
-    out.sort();
-    out
-}
-
-struct FacCensusCache {
-    facts: Vec<FallbackArmCensusFactRaw>,
-}
-
-fn fac_cached_census_facts() -> &'static FacCensusCache {
-    static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
-    CACHE.get_or_init(|| FacCensusCache {
-        facts: fac_compute_census_facts(&witness_layer_roots()),
-    })
 }
 
 #[cfg(test)]
