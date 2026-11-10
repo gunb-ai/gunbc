@@ -246,10 +246,9 @@ test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
 // is not converged at width five. The fixture now hands whole populations.
 test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
   runner_capacity_reapply_plans_zero_additions(
-    srv3_width: 5,
-    srv4_width: 5,
-    observed_srv3: derived_members_of(host: operator_host_srv3),
-    observed_srv4: derived_members_of(host: operator_host_srv4),
+    hosts: [operator_host_srv3, operator_host_srv4],
+    width: 5,
+    observed_for: h => derived_members_of(host: h),
   )
 }
 
@@ -257,10 +256,9 @@ test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
 // anything. One member removed from srv3's population must produce work.
 test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
   !runner_capacity_reapply_plans_zero_additions(
-    srv3_width: 5,
-    srv4_width: 5,
-    observed_srv3: [],
-    observed_srv4: derived_members_of(host: operator_host_srv4),
+    hosts: [operator_host_srv3, operator_host_srv4],
+    width: 5,
+    observed_for: h => if (h as String) == "srv3" { [] } else { derived_members_of(host: h) },
   )
 }
 

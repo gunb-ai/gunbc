@@ -1,6 +1,7 @@
 module gunbc.apply
 
 import std.types { String, Bool, List }
+import std.algebra { length }
 import std.apply_mode { Plan, Apply, ModeParsed, ModeParseRefused, parse_apply_mode }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.apply { live_deploy_apply_prod_role_wet, approval_broker_dark_install_wet }
@@ -8,6 +9,8 @@ import gunbc.runner.runner_capacity_plan {
   RunnerCapacityPlan,
   PlanReady,
   PlanRefused,
+  HostCapacityPlanOutcome,
+  HostCapacityPlanRefused,
   runner_capacity_plan,
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
@@ -45,18 +48,32 @@ fn parse_apply_workflow(value: String) -> ApplyWorkflowParse {
   }
 }
 
+fn plan_refusal_reason(rs: List<HostCapacityPlanOutcome>) -> String {
+  fold(
+    rs,
+    init: "plan refused for hosts: ",
+    f: (acc, r) =>
+      match r {
+        HostCapacityPlanRefused { host: h, reason: rr } =>
+          concat(concat(concat(acc, h as String), ": "), rr)
+        HostCapacityPlanReady { plan: _ } => acc
+      },
+  )
+}
+
 fn runner_capacity_plan_exit(plan: RunnerCapacityPlan) -> ProcessExit {
   match plan {
-    PlanReady { hosts: _, refusals: _ } => ExitSuccess
+    PlanReady { hosts: _, refusals: rs } =>
+      if length(rs) > 0 {
+        exit_failure(reason: plan_refusal_reason(refusals: rs))
+      } else {
+        ExitSuccess
+      }
     PlanRefused { reason: r } => exit_failure(reason: r)
   }
 }
 
-fn apply_runner_capacity_plan(
-  srv3_width: String,
-  srv4_width: String,
-  mode: String,
-) -> ProcessExit {
+fn apply_runner_capacity_plan(mode: String) -> ProcessExit {
   match parse_apply_mode(value: mode) {
     ModeParseRefused { reason: r } => exit_failure(reason: r)
     ModeParsed { mode: Apply } =>
@@ -92,7 +109,7 @@ fn apply_dispatch(
         exit_failure(reason: "approval-broker-dark supports mode=apply only: there is no plan pole for an additive unit install, and a plan arm that printed the script without a preflight would be a second, ungated path to the same mutation")
       }
     WorkflowParsed { workflow: RunnerCapacity } =>
-      apply_runner_capacity_plan(srv3_width: srv3_width, srv4_width: srv4_width, mode: mode)
+      apply_runner_capacity_plan(mode: mode)
   }
 }
 

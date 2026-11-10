@@ -13,6 +13,9 @@ import gunbc.runner.runner_capacity_plan {
   RunnerSlotRemove,
   RunnerIncarnationReplace,
   WidthAdmitted,
+  HostCapacityPlanOutcome,
+  HostCapacityPlanRefused,
+  HostCapacityPlanReady,
   runner_capacity_plan,
   runner_capacity_add_count,
   addition_actions,
@@ -169,7 +172,15 @@ fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerC
           Absent =>
             RunnerCapacityHostApplyReceipt {
               host: host_plan.host,
-              outcome: HostApplySucceeded { add_actions_executed: adds },
+              outcome: HostApplyRefused {
+                reason: concat(
+                  concat(
+                    concat("preconditions met (disk sufficient) but ", to_string(adds)),
+                    " RunnerSlotAdd actions require the converge path: runner_host_file_converge_ci_wet",
+                  ),
+                  " performs file convergence and slot activation over FleetSsh; invoke it after this plan",
+                ),
+              },
             }
         }
       } else {
@@ -202,13 +213,15 @@ fn reapply_additions_are_zero(host: HostIdentity, requested_width: Int, observed
 }
 
 fn runner_capacity_reapply_plans_zero_additions(
-  srv3_width: Int,
-  srv4_width: Int,
-  observed_srv3: List<RunnerSlotIdentity>,
-  observed_srv4: List<RunnerSlotIdentity>,
+  hosts: List<HostIdentity>,
+  width: Int,
+  observed_for: fn(HostIdentity) -> List<RunnerSlotIdentity>,
 ) -> Bool {
-  reapply_additions_are_zero(host: operator_host_srv3, requested_width: srv3_width, observed: observed_srv3)
-    && reapply_additions_are_zero(host: operator_host_srv4, requested_width: srv4_width, observed: observed_srv4)
+  fold(
+    hosts,
+    init: true,
+    f: (acc, h) => acc && reapply_additions_are_zero(host: h, requested_width: width, observed: observed_for(h)),
+  )
 }
 
 fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
@@ -218,9 +231,11 @@ fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOu
       RunnerCapacityApplyCompleted {
         hosts: concat(
           map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
-          map(rs, r => RunnerCapacityHostApplyReceipt {
-            host: r.host,
-            outcome: HostApplyRefused { reason: r.reason },
+          map(rs, r => match r {
+            HostCapacityPlanRefused { host: rh, reason: rr } =>
+              RunnerCapacityHostApplyReceipt { host: rh, outcome: HostApplyRefused { reason: rr } }
+            HostCapacityPlanReady { plan: _ } =>
+              RunnerCapacityHostApplyReceipt { host: operator_host_srv3, outcome: HostApplyRefused { reason: "internal: ready plan in refusals list" } }
           }),
         ),
       }

@@ -88,13 +88,8 @@ type RunnerCapacityHostPlan {
   actions: List<RunnerCapacityAction>
 }
 
-type HostCapacityPlanRefusal {
-  host: HostIdentity
-  reason: String
-}
-
 type RunnerCapacityPlan
-  = PlanReady { hosts: List<RunnerCapacityHostPlan>, refusals: List<HostCapacityPlanRefusal> }
+  = PlanReady { hosts: List<RunnerCapacityHostPlan>, refusals: List<HostCapacityPlanOutcome> }
   | PlanRefused { reason: String }
 
 // THE FIFTH BUCKET, AND THE ONE THAT MADE THE OTHER FOUR ACADEMIC. This recognized exactly "7",
@@ -675,7 +670,7 @@ fn plan_runner_capacity_host_against_observation(
 
 type PlanFoldAccum {
   ready: List<RunnerCapacityHostPlan>
-  refused: List<HostCapacityPlanRefusal>
+  refused: List<HostCapacityPlanOutcome>
 }
 
 fn runner_capacity_plan_for_host(
@@ -709,7 +704,7 @@ fn runner_capacity_plan(
         HostCapacityPlanRefused { host: _, reason: r } =>
           PlanFoldAccum {
             ready: acc.ready,
-            refused: list_push(acc.refused, HostCapacityPlanRefusal { host: h, reason: r }),
+            refused: list_push(acc.refused, HostCapacityPlanRefused { host: h, reason: r }),
           }
       }
   )

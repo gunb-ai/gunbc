@@ -293,10 +293,14 @@ test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() ->
   match runner_capacity_plan(roster: incident_2026_08_06_roster_fixture(), receipt_for: _ => ReceiptAbsent) {
     PlanReady { hosts: _, refusals: rs } =>
       fold(rs, init: false, f: (acc, r) =>
-        acc || ((r.host as String) == "srv2"
-          && string_contains(s: r.reason, pattern: "committed width unresolved")
-          && string_contains(s: r.reason, pattern: "UNRESOLVED, not zero")
-          && string_contains(s: r.reason, pattern: srv2_reservation_policy_cause_fragment))
+        acc || match r {
+          HostCapacityPlanRefused { host: rh, reason: rr } =>
+            (rh as String) == "srv2"
+              && string_contains(s: rr, pattern: "committed width unresolved")
+              && string_contains(s: rr, pattern: "UNRESOLVED, not zero")
+              && string_contains(s: rr, pattern: srv2_reservation_policy_cause_fragment)
+          HostCapacityPlanReady { plan: _ } => false
+        }
       )
     PlanRefused { reason: _ } => false
   }
@@ -783,7 +787,10 @@ test fn plan_covers_all_runner_executor_hosts_not_just_a_fixed_pair() -> Bool {
           acc && fold(
             concat(
               map(hs, p => p.host as String),
-              map(rs, r => r.host as String),
+              flat_map(rs, r => match r {
+                HostCapacityPlanRefused { host: rh, reason: _ } => [rh as String]
+                HostCapacityPlanReady { plan: _ } => []
+              }),
             ),
             init: false,
             f: (found, name) => found || name == (h as String),
