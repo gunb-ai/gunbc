@@ -51,6 +51,25 @@ data probe_as_int_source: String = concat(
   "fn probe_widen() -> Int { probe_chan() as Int }\n"
 )
 
+// The declaration-keyed identity probe (closes review 92887 / 92877(a)): two range-refined Int carriers
+// that share a LEAF name (`Port`) but are DIFFERENT declarations in different fixture modules. The operand
+// reaches the cast through ...fork_a's foreign constructor `make_a` (so its type is fork_a's Port by
+// declaration, not by a name this module imports); the target `Port` is fork_b's Port. Old leaf-name
+// identity compared the two "Port" strings equal and the checker stayed silent while eval_cast refused --
+// the fork. Declaration-keyed identity does NOT compare equal, so the arm fires. Its own base shares the
+// same imports and one dead fn, so the count is a clean differential of just the added cast.
+data probe_same_leaf_base_source: String = concat(
+  "module p\nimport std.types { Int }\n"
+  "import test.fixture.refined_int_cast_fork_a { make_a }\n"
+  "import test.fixture.refined_int_cast_fork_b { Port }\n"
+  "fn probe_keep() -> Int { 0 }\n"
+)
+
+data probe_same_leaf_source: String = concat(
+  probe_same_leaf_base_source,
+  "fn probe_same_leaf() -> Port { make_a() as Port }\n"
+)
+
 // The class the arm reports its refusal under -- the typed CompilerDiagnostic variant this arm emits,
 // asserted BY NAME (not "any blocking row"): a RefinementCastRefused, NOT InternalError (that variant is
 // reserved for a compiler fault; a refusal of user source names its own reason -- DESIGN fail_closed). It
@@ -97,4 +116,19 @@ test fn widening_a_refined_int_value_back_to_int_is_not_refused() -> Bool {
   let base_total = total_blocking_count(source: probe_base_source)
   let int_total = total_blocking_count(source: probe_as_int_source)
   (int_total - base_total) == 0
+}
+
+// The declaration-keyed identity close: a cast whose operand and target share a LEAF name but resolve to
+// DIFFERENT range-refined Int declarations (fork_a.Port -> fork_b.Port) adds a blocking row of the arm's
+// class. Red at base (the checker's leaf-name identity admit `source_name == target_name` treated the two
+// `Port`s as the same carrier and stayed silent while eval_cast refused, the fork), green at head (the
+// arm now keys identity on declaration_ref_eq, which does not hold). Distinct from the cross-refinement
+// row: there the names already differ, so only the leaf-name-identical population separates the fix from
+// the pre-fix behaviour -- this is the row that locks review 92887's finding, not a restatement.
+test fn same_leaf_name_different_declaration_cast_is_refused_by_the_checker() -> Bool {
+  let base_total = total_blocking_count(source: probe_same_leaf_base_source)
+  let leaf_total = total_blocking_count(source: probe_same_leaf_source)
+  let base_arm = arm_blocking_count(source: probe_same_leaf_base_source)
+  let leaf_arm = arm_blocking_count(source: probe_same_leaf_source)
+  (leaf_total - base_total) >= 1 && (leaf_arm - base_arm) >= 1
 }

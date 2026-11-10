@@ -583,11 +583,11 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
-        // The NAME is the refusal fact, which names the uncastable pair: the burn-down is the
-        // list of cast routes awaiting a declaration or a realization.
         // The NAME is the TARGET carrier: the burn-down this feeds is the list of refined Int carriers
         // still awaiting a checked constructor, keyed by the carrier the author targeted.
         CompilerDiagnostic::RefinementCastRefused { target, .. } => target.clone(),
+        // The NAME is the refusal fact, which names the uncastable pair: the burn-down is the
+        // list of cast routes awaiting a declaration or a realization.
         CompilerDiagnostic::CastRealizationRefused {
             missing_realization_fact,
             ..
