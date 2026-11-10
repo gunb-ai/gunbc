@@ -110,6 +110,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_release_stage_dir, witness_release_stage_member, witness_stage_release_binary,
   witness_write_locus_file, witness_install_locus_file, witness_locus_executables,
   witness_guest_tree_revision, witness_locus_install, witness_locus_install_converged,
+  witness_locus_installed_roots_digest, witness_locus_key,
   witness_sudo_elevation_available,
   witness_locus_install_spine, witness_fold_spine_dir_is_admissible,
 }
@@ -550,7 +551,7 @@ fn wet_plant_guest_runtime(instance: HostDashboardInstance) -> Bool {
 // refusal text is what makes this class readable from one log line, and the reason it is a value and
 // not a `wet_stage` side effect is that three different arms have to branch on it.
 type WetLocusState
-  = WetLocusReady { revision: String, dir: String }
+  = WetLocusReady { key: String, dir: String }
   | WetLocusRefused { cause: String, reason: String, capability: String }
 
 // PREPARE THE LOCUS THE DRAIN AND THE PROBE RUN FROM: stage the operator-named image where production's
@@ -580,6 +581,7 @@ data witness_locus_reason_fold_needs_elevation: NonEmptyStr = "locus-install-nee
 data witness_locus_reason_fold_refused: NonEmptyStr = "locus-install-fold-refused"
 data witness_locus_reason_seal_unwritable: NonEmptyStr = "locus-receipt-seal-unwritable"
 data witness_locus_reason_paths_absent_after_fold: NonEmptyStr = "locus-paths-absent-after-fold"
+data witness_locus_reason_key_unreadable: NonEmptyStr = "locus-key-unreadable"
 
 // WHY THE REASON TRAVELS ON THE REFUSAL. A fold refusal reaches the caller carrying the production
 // fold's step name glued to its reason, so re-deriving "was this a capability gap?" from the joined
@@ -614,7 +616,7 @@ fn witness_locus_install_refusal(verdict: ApprovalBrokerTreeInstallVerdict) -> W
 // refusal a claim is about. Empty means the locus reads as installed.
 fn wet_locus_refusal_reason(instance: HostDashboardInstance) -> String {
   match wet_locus_prepare(instance: instance) {
-    WetLocusReady { revision: _, dir: _ } => "",
+    WetLocusReady { key: _, dir: _ } => "",
     WetLocusRefused { cause: _, reason: reason, capability: _ } => reason,
   }
 }
@@ -629,31 +631,50 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
     }
   } else {
     let revision = witness_guest_tree_revision(instance: instance)
-    if revision != "" && wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
+    let key = witness_locus_key(instance: instance, image_source: named)
+    if key == "" {
+      // The key is the digest of the roots the fold would install plus the image it would copy in. If
+      // either cannot be taken there is no locus to name or reuse, and a leg that folded anyway would be
+      // installing into a directory it cannot name afterwards.
+      WetLocusRefused {
+        cause: "the installed roots of the planted tree, or the image the row names, could not be digested, so no locus can be named",
+        reason: witness_locus_reason_key_unreadable as String,
+        capability: "",
+      }
+    } else if revision != "" && wet_locus_reads_as_installed(instance: instance, locus_key: key) {
       // ONE FOLD PER CLAIM, NOT ONE PER LEG -- THE COST SHAPE. srv2's S1 at 06995b57 measured
       // `the_worker_worktree_is_writable_inside_the_same_sandbox` at 663 s wall / 450 s CPU / 27.5M eval
       // steps for TWO legs, and the bin leg at 4ffbdfcc at 1,656 s / 570 s CPU / 36.6M eval steps for
       // three gate calls. The cause is not the wait: every leg called wet_locus_prepare, and each call
       // re-ran production's whole install fold -- observe_tree_hashes over the planted tree (the two
       // release-locus subdirs of this repo are 10,117 files), sort, per-file digest on both sides -- into
-      // the SAME directory, for the SAME revision, because witness_claim_locus_dir is keyed by
+      // the SAME directory, for the SAME revision, because the locus was keyed by
       // (instance_root, revision) and nothing else. A leg that only has to ask "is my locus there" was
       // re-installing it. The fold now runs when the locus is NOT there; a leg that finds it answers with
-      // the three-path readback the drain itself will ask. That is not a memo across claims -- each claim
-      // builds its own root, so each claim pays the fold exactly once, and a locus whose revision differs
-      // names a different directory and so runs the fold again. What the cheap arm does NOT re-check is
+      // the three-path readback the drain itself will ask.
+      //
+      // THE KEY IS THE CONTENT, SO THIS IS A MEMO ACROSS CLAIMS. The directory is named by
+      // witness_locus_key -- production's digest over the two release subdirs plus the digest of the image
+      // the fold copies in -- so every leg whose installed content is the same shares ONE locus and the
+      // fold runs once per content for the whole batch, not once per claim. srv2 run15794v (2026-11-10)
+      // measured what naming it by the commit instead cost: each launching leg plants its own guest tree,
+      // so each read a different HEAD, so each named a different locus (523cab24..., 72cdce39...) and ran
+      // the whole fold again -- and the second fold died inside the interpreter's call-depth ceiling
+      // before that leg reached the unit at all. A leg whose installed content differs by one byte names a
+      // different locus and runs the fold; the_locus_is_named_by_what_it_holds_and_not_by_the_claim_s_commit
+      // pins both halves of that rule. What the cheap arm does NOT re-check is
       // the per-file digest of every planted file -- a locus that LOST files after installing would still
       // read as installed here. The check that would catch that is the one every launching leg still runs:
       // the served probe, the image answering its own route. So the reuse arm trades a re-install for the
       // probe that leg was going to run anyway, and nothing is trusted that was not trusted before.
-      wet_stage(stage: "claim-locus-reused", ok: true)
+      let _ = wet_stage(stage: join(["claim-locus-reused:", key], ""), ok: true)
       WetLocusReady {
-        revision: revision,
-        dir: witness_locus_dir_text(instance: instance, revision_text: revision),
+        key: key,
+        dir: witness_locus_dir_text(instance: instance, locus_key: key),
       }
     } else if revision != ""
-      && wet_path_exists(path: witness_locus_receipt_path(instance: instance, revision_text: revision))
-      && !wet_locus_receipt_is_sealed_by_the_fold(instance: instance, revision_text: revision) {
+      && wet_path_exists(path: witness_locus_receipt_path(instance: instance, locus_key: key))
+      && !wet_locus_receipt_is_sealed_by_the_fold(instance: instance, locus_key: key) {
       // A RECEIPT WITHOUT ITS SEAL IS A RECEIPT ANSWER, NOT A FOLD ANSWER. Asked in this order, the
       // refusal names what is wrong -- an unsealed receipt -- instead of running the fold and coming
       // back with "this host has no elevation", which is what a non-elevating host used to answer even
@@ -664,7 +685,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
         cause: join(
           [
             "the locus receipt at ",
-            witness_locus_receipt_path(instance: instance, revision_text: revision),
+            witness_locus_receipt_path(instance: instance, locus_key: key),
             " is present but is not sealed by the fold, so no leg may reuse this locus on a digest",
           ],
           "",
@@ -687,11 +708,11 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
       // production route may still refuse before folding, and measured here (no elevation on this host)
       // ten launch legs recorded attempts while zero folds actually ran. A claim that wants the fold
       // itself reports its own convergence and step count.
-      let _ = wet_stage(stage: "claim-locus-fold-attempted", ok: true)
-      let verdict = witness_locus_install(instance: instance, revision_text: revision)
+      let _ = wet_stage(stage: join(["claim-locus-fold-attempted:", key], ""), ok: true)
+      let verdict = witness_locus_install(instance: instance, locus_key: key, revision_text: revision)
       if !witness_locus_install_converged(verdict: verdict) {
         witness_locus_install_refusal(verdict: verdict)
-      } else if !witness_seal_locus_receipt(instance: instance, revision_text: revision) {
+      } else if !witness_seal_locus_receipt(instance: instance, locus_key: key) {
         // THE SEAL IS WRITTEN HERE, after the fold and before the readback, because this is the only
         // caller of the fold: every leg that later REUSES this locus will trust the digest this line
         // wrote. A fold that cannot seal its receipt has not delivered anything the batch may reuse on
@@ -700,7 +721,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
           cause: join(
             [
               "the install fold converged but its receipt could not be sealed at ",
-              witness_locus_receipt_seal_path(instance: instance, revision_text: revision),
+              witness_locus_receipt_seal_path(instance: instance, locus_key: key),
               ", so no leg may reuse this locus on a digest",
             ],
             "",
@@ -708,14 +729,14 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
           reason: witness_locus_reason_seal_unwritable as String,
           capability: "",
         }
-      } else if !wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
+      } else if !wet_locus_reads_as_installed(instance: instance, locus_key: key) {
         // The fold said it converged; the filesystem still gets the last word, because the question the
         // drain will be asked is the filesystem's, not the fold's.
         WetLocusRefused {
           cause: join(
             [
               "the install fold converged but the locus does not read as one: ",
-              witness_locus_receipt_path(instance: instance, revision_text: revision),
+              witness_locus_receipt_path(instance: instance, locus_key: key),
               " or the locus dag dir is absent",
             ],
             "",
@@ -725,8 +746,8 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
         }
       } else {
         WetLocusReady {
-          revision: revision,
-          dir: witness_locus_dir_text(instance: instance, revision_text: revision),
+          key: key,
+          dir: witness_locus_dir_text(instance: instance, locus_key: key),
         }
       }
     }
@@ -737,10 +758,10 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
 // `dag` directory and a regular receipt file, and the drain execs the member by name). Asking before the
 // drain runs is what keeps a half-installed locus from becoming a 245-second leg whose failure says
 // nothing about why.
-fn wet_locus_reads_as_installed(instance: HostDashboardInstance, revision_text: String) -> Bool {
-  wet_path_exists(path: witness_locus_dag_dir(instance: instance, revision_text: revision_text))
-    && wet_path_exists(path: witness_locus_receipt_path(instance: instance, revision_text: revision_text))
-    && wet_path_is_executable(path: witness_locus_binary_path(instance: instance, revision_text: revision_text))
+fn wet_locus_reads_as_installed(instance: HostDashboardInstance, locus_key: String) -> Bool {
+  wet_path_exists(path: witness_locus_dag_dir(instance: instance, locus_key: locus_key))
+    && wet_path_exists(path: witness_locus_receipt_path(instance: instance, locus_key: locus_key))
+    && wet_path_is_executable(path: witness_locus_binary_path(instance: instance, locus_key: locus_key))
     // THE RECEIPT IS TRUSTED ON IDENTITY, NOT ON SHAPE. Now that the locus lives at a base every leg
     // shares (`witness_batch_locus_base`), "the three paths exist" lets a leg reuse a tree another leg
     // put there -- including the hand-staged one the reuse claim below writes. So the cheap arm asks
@@ -752,7 +773,7 @@ fn wet_locus_reads_as_installed(instance: HostDashboardInstance, revision_text: 
     // holds the reader to all of those. What it still does NOT re-check is that each digest matches the
     // file under it: that is the fold's duty on the leg that runs it, and the claim about CONTENT every
     // launching leg pays for anyway is the served probe, which asks the image to answer its own route.
-    && wet_locus_receipt_is_sealed_by_the_fold(instance: instance, revision_text: revision_text)
+    && wet_locus_receipt_is_sealed_by_the_fold(instance: instance, locus_key: locus_key)
 }
 
 // THE ONLY THING THE REUSE ARM TRUSTS BEYOND EXISTENCE. The seal names the digest of the receipt's own
@@ -760,9 +781,9 @@ fn wet_locus_reads_as_installed(instance: HostDashboardInstance, revision_text: 
 // altered -- the locus is NOT read as installed and the leg runs the fold. The seal is read trimmed and
 // compared WHOLE, so a seal with trailing text cannot match as a prefix of it, and an unreadable seal or
 // an undigestable receipt is a refusal, never a pass.
-fn wet_locus_receipt_is_sealed_by_the_fold(instance: HostDashboardInstance, revision_text: String) -> Bool {
-  let receipt = witness_locus_receipt_path(instance: instance, revision_text: revision_text)
-  let seal = witness_locus_receipt_seal_path(instance: instance, revision_text: revision_text)
+fn wet_locus_receipt_is_sealed_by_the_fold(instance: HostDashboardInstance, locus_key: String) -> Bool {
+  let receipt = witness_locus_receipt_path(instance: instance, locus_key: locus_key)
+  let seal = witness_locus_receipt_seal_path(instance: instance, locus_key: locus_key)
   let read = Filesystem.Read(path: seal as String)
   let now = witness_file_sha256_hex(path: receipt)
   if !read.success {
@@ -777,19 +798,19 @@ fn wet_locus_receipt_is_sealed_by_the_fold(instance: HostDashboardInstance, revi
 
 // RECEIPT BYTES THE WAY A FOLD WOULD NOT PRODUCE THEM: lines that look exactly like a receipt, with no
 // seal beside them. This is the input that an existence check, a shape check, or a line count accepts.
-fn wet_write_unsealed_receipt(instance: HostDashboardInstance, revision_text: String, lines: Int) -> Bool {
+fn wet_write_unsealed_receipt(instance: HostDashboardInstance, locus_key: String, lines: Int) -> Bool {
   witness_write_locus_file(
     instance: instance,
-    destination: witness_locus_receipt_path(instance: instance, revision_text: revision_text),
+    destination: witness_locus_receipt_path(instance: instance, locus_key: locus_key),
     content: repeat_string(s: "0000000000000000000000000000000000000000000000000000000000000000  dag/line.dag\n", n: lines),
-    stage_key: join(["unsealed-", revision_text], ""),
+    stage_key: join(["unsealed-", locus_key], ""),
   )
 }
 
 // REWRITE A SEALED RECEIPT WITH ITS FIRST LINE REPLACED AND ITS LINE COUNT INTACT: the case a count and
 // a shape check are both blind to. Everything after the swapped line is written back unchanged.
-fn wet_rewrite_receipt_line(instance: HostDashboardInstance, revision_text: String, replacement: String) -> Bool {
-  let receipt = witness_locus_receipt_path(instance: instance, revision_text: revision_text)
+fn wet_rewrite_receipt_line(instance: HostDashboardInstance, locus_key: String, replacement: String) -> Bool {
+  let receipt = witness_locus_receipt_path(instance: instance, locus_key: locus_key)
   let read = Filesystem.Read(path: receipt as String)
   let lines = filter(split(s: read.content, delimiter: "\n"), l => l != "")
   if count(lines) == 0 {
@@ -811,7 +832,7 @@ fn wet_rewrite_receipt_line(instance: HostDashboardInstance, revision_text: Stri
       instance: instance,
       destination: receipt,
       content: join(kept, "\n"),
-      stage_key: join(["receipt-edit-", revision_text], ""),
+      stage_key: join(["receipt-edit-", locus_key], ""),
     )
   }
 }
@@ -819,8 +840,8 @@ fn wet_rewrite_receipt_line(instance: HostDashboardInstance, revision_text: Stri
 // TRUNCATE A SEALED RECEIPT BY ONE LINE: the other thing a count cannot see from the top -- a fold that
 // died mid-write, or a tree cut short, leaves a receipt that is a strict prefix of the real one. Every
 // line in it still looks perfect.
-fn wet_truncate_receipt(instance: HostDashboardInstance, revision_text: String) -> Bool {
-  let receipt = witness_locus_receipt_path(instance: instance, revision_text: revision_text)
+fn wet_truncate_receipt(instance: HostDashboardInstance, locus_key: String) -> Bool {
+  let receipt = witness_locus_receipt_path(instance: instance, locus_key: locus_key)
   let read = Filesystem.Read(path: receipt as String)
   let lines = filter(split(s: read.content, delimiter: "\n"), l => l != "")
   if count(lines) <= 1 {
@@ -835,21 +856,30 @@ fn wet_truncate_receipt(instance: HostDashboardInstance, revision_text: String) 
       instance: instance,
       destination: receipt,
       content: join(kept, "\n"),
-      stage_key: join(["receipt-edit-", revision_text], ""),
+      stage_key: join(["receipt-edit-", locus_key], ""),
     )
   }
 }
 
+// THE KEY AS EVERY LEG READS IT: the image is the one the row names in the environment, digested where it
+// sits -- staging it into the claim's release dir is the fold's job, and a leg that only has to ask "is my
+// locus there" must not pay a copy of the image to find out.
+fn witness_locus_key_from_environment(instance: HostDashboardInstance) -> String {
+  let named = wet_environment_value(name: wet_served_binary_env_var)
+
+  if named == "" { "" } else { witness_locus_key(instance: instance, image_source: named) }
+}
+
 // THE GATE, WITH ITS STAGE NAME. One call per leg records whether the locus converged or which arm
 // refused, so a run log names the arm instead of leaving it to be inferred from the leg that failed;
-// the value handed back is the revision, which is all a leg needs since every locus path is an accessor
+// value handed back is the locus KEY, which is all a leg needs since every locus path is an accessor
 // over it. `Absent` means do not proceed: the same `false` the legs already carried, with the cause
 // written down before the leg stops.
 fn wet_locus_gate(instance: HostDashboardInstance, label: String, claim: String) -> Optional<String> {
   match wet_locus_prepare(instance: instance) {
-    WetLocusReady { revision: revision, dir: _ } =>
+    WetLocusReady { key: key, dir: _ } =>
       if wet_stage(stage: join(["claim-locus-installed:", label], ""), ok: true) {
-        Present { value: revision }
+        Present { value: key }
       } else {
         Absent
       }
@@ -891,11 +921,11 @@ data wet_served_probe_refusal_marker: NonEmptyStr = "served probe refuses by des
 // and so would otherwise never be asked at all. A refusal here means the claim has no route to speak of
 // -- a red verdict, not a skip, because the route is what these claims are about.
 fn wet_served_image_answers_under_locus(instance: HostDashboardInstance, claim: String) -> Bool {
-  let revision_text = wet_locus_gate_text(instance: instance, label: "served-image", claim: claim)
-  revision_text != "" && wet_served_image_answers_the_route(instance: instance, revision_text: revision_text)
+  let locus_key = wet_locus_gate_text(instance: instance, label: "served-image", claim: claim)
+  locus_key != "" && wet_served_image_answers_the_route(instance: instance, locus_key: locus_key)
 }
 
-fn wet_served_image_answers_the_route(instance: HostDashboardInstance, revision_text: String) -> Bool {
+fn wet_served_image_answers_the_route(instance: HostDashboardInstance, locus_key: String) -> Bool {
   // THE DIRECTORY IS PART OF THE ROUTE. The CLI keys its module graph by a path RELATIVE to its
   // process workspace root and refuses -- by panic, exit 101 -- an entry outside it
   // (cli_run.rs `repo_relative_path_normalized`: "path ... is not under process workspace root").
@@ -910,11 +940,11 @@ fn wet_served_image_answers_the_route(instance: HostDashboardInstance, revision_
   // 125 with env's own message; nothing here fabricates a working directory.
   let ok_run = shell.Exec.RunArgvOutcome(
     program: wet_served_probe_env_program,
-    arguments: wet_served_probe_argv(instance: instance, revision_text: revision_text, function: wet_served_probe_success_fn),
+    arguments: wet_served_probe_argv(instance: instance, locus_key: locus_key, function: wet_served_probe_success_fn),
   )
   let refuse_run = shell.Exec.RunArgvOutcome(
     program: wet_served_probe_env_program,
-    arguments: wet_served_probe_argv(instance: instance, revision_text: revision_text, function: wet_served_probe_refusal_fn),
+    arguments: wet_served_probe_argv(instance: instance, locus_key: locus_key, function: wet_served_probe_refusal_fn),
   )
   match ok_run.outcome {
     ShellSpawnRefused { program: _, cause: _ } => false
@@ -943,13 +973,13 @@ data wet_served_probe_env_program: NonEmptyStr = "/usr/bin/env"
 // `the_planted_serve_binary_is_the_image_the_operator_named` while every leg serving through the image
 // died, because the probe ran from the source cwd without the env the units serve under: an image that
 // could not serve a locus looked fine. Sharing one builder is what makes that impossible now.
-fn wet_served_probe_argv(instance: HostDashboardInstance, revision_text: String, function: NonEmptyStr) -> List<String> {
+fn wet_served_probe_argv(instance: HostDashboardInstance, locus_key: String, function: NonEmptyStr) -> List<String> {
   concat(
     ["-C", instance.repo_root as String],
     map(
       wet_image_serve_argv(
         instance: instance,
-        revision_text: revision_text,
+        locus_key: locus_key,
         entry_relative: wet_served_probe_module_relative,
         function: function,
       ),
@@ -1833,7 +1863,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
   // THE LOCUS (same env, same workspace root), so it can only be asked once the locus exists. On a host
   // with no elevation the gate refuses here with its cause on the trail, which is the same posture the
   // root-launcher refusal above already takes -- a typed "needs elevation" stop, never a silent skip.
-  let revision_text = wet_locus_gate_text(instance: instance, label: unit_key, claim: claim)
+  let locus_key = wet_locus_gate_text(instance: instance, label: unit_key, claim: claim)
   if !wet_root_launcher_is_available() {
     WetRootLaunchRefused {
       // NOT OBSERVED, SAID BY TYPE AS FAR AS THIS LANE ALLOWS. Every root-launch leg that reaches this line on a
@@ -1846,7 +1876,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
         cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it",
       ),
     }
-  } else if revision_text == "" {
+  } else if locus_key == "" {
     // THE LOCUS IS A PREREQUISITE, NOT A DETAIL THE DRAIN DISCOVERS. srv2's S1 at 114bcf31 learned this
     // the expensive way: with no installed locus the drain's GUNBC_WORKSPACE_ROOT named a copied tree,
     // the CLI refused it, and nine legs reported a failed drain instead of the one fact that mattered.
@@ -1871,7 +1901,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
     // runs (measured: a couple of seconds) and turns that into a refusal with a named cause before a
     // transient unit exists, which is also before anything could leave a root-owned file behind.
     stage: join(["served-image-answers-the-route:", unit_key], ""),
-    ok: wet_served_image_answers_the_route(instance: instance, revision_text: revision_text),
+    ok: wet_served_image_answers_the_route(instance: instance, locus_key: locus_key),
   ) {
     WetRootLaunchRefused {
       cause: "the planted image does not answer the served route -- it is not the gunbc CLI the row names; see the served-probe pair in the witness",
@@ -1979,8 +2009,8 @@ fn wet_root_drain_elevated(
   // callable with a revision some other conjunct remembered -- which is the drift srv2's S1 at 114bcf31
   // caught in the other direction. An empty text means the locus is not there: this leg says false and
   // the trail already carries the cause under claim-locus-refused.
-  let revision_text = wet_locus_gate_text(instance: instance, label: join(["drain:", unit_key], ""), claim: claim)
-  if revision_text == "" {
+  let locus_key = wet_locus_gate_text(instance: instance, label: join(["drain:", unit_key], ""), claim: claim)
+  if locus_key == "" {
     false
   } else if !wet_stage(stage: join(["root-launcher-available:", unit_key], ""), ok: wet_root_launcher_is_available()) {
     false
@@ -2013,7 +2043,7 @@ fn wet_root_drain_elevated(
         // `wet_image_serve_argv`, the same builder the served-image probe uses.
         let command = wet_image_serve_argv(
           instance: instance,
-          revision_text: revision_text,
+          locus_key: locus_key,
           entry_relative: wet_witness_entry_relative,
           function: "wet_root_side_cli" as NonEmptyStr,
         )
@@ -2356,10 +2386,10 @@ fn wet_witness_entry(instance: HostDashboardInstance) -> String {
 // THE SAME FILE, INSIDE THE LOCUS THE DRAIN NAMES. `repo_relative_path_normalized` refuses an entry
 // outside the process workspace root, so a drain that sets GUNBC_WORKSPACE_ROOT to the locus and hands
 // over a source-tree entry panics 101 before it drains anything.
-fn wet_witness_entry_in_locus(instance: HostDashboardInstance, revision_text: String) -> String {
+fn wet_witness_entry_in_locus(instance: HostDashboardInstance, locus_key: String) -> String {
   join(
     [
-      witness_locus_dir_text(instance: instance, revision_text: revision_text),
+      witness_locus_dir_text(instance: instance, locus_key: locus_key),
       "/",
       wet_witness_entry_relative as String,
     ],
@@ -2388,20 +2418,20 @@ fn wet_locus_gate_text(instance: HostDashboardInstance, label: String, claim: St
 // whole difference between them.
 fn wet_image_serve_argv(
   instance: HostDashboardInstance,
-  revision_text: String,
+  locus_key: String,
   entry_relative: NonEmptyStr,
   function: NonEmptyStr,
 ) -> List<NonEmptyStr> {
   gunbc_entry_run_argv(
-    workspace_root: witness_locus_dir_text(instance: instance, revision_text: revision_text) as NonEmptyStr,
-    binary: witness_locus_binary_path(instance: instance, revision_text: revision_text) as NonEmptyStr,
+    workspace_root: witness_locus_dir_text(instance: instance, locus_key: locus_key) as NonEmptyStr,
+    binary: witness_locus_binary_path(instance: instance, locus_key: locus_key) as NonEmptyStr,
     source_roots: map(
-      witness_locus_source_roots(instance: instance, revision_text: revision_text),
+      witness_locus_source_roots(instance: instance, locus_key: locus_key),
       s => s as NonEmptyStr,
     ),
     entry: join(
       [
-        witness_locus_dir_text(instance: instance, revision_text: revision_text),
+        witness_locus_dir_text(instance: instance, locus_key: locus_key),
         "/",
         entry_relative as String,
       ],
@@ -3713,7 +3743,11 @@ fn wet_fold_cost_probe(
     // (b) THE FOLD ITSELF. `files_installed` is the host's count of what it put in place, staged beside
     // the observation so a reader can see the two agree; a refusal other than the documented one is a
     // real failure of the fold, not a host limitation.
-    && (match witness_locus_install(instance: inst, revision_text: witness_guest_tree_revision(instance: inst)) {
+    && (match witness_locus_install(
+         instance: inst,
+         locus_key: witness_locus_key_from_environment(instance: inst),
+         revision_text: witness_guest_tree_revision(instance: inst),
+       ) {
          TreeInstallConverged { installed_digest: _, files_installed: files } => wet_stage(
            stage: join(["fold-cost-installed:", tag, ":", to_string(files)], ""),
            ok: files >= at_least && files <= at_most,
@@ -3780,9 +3814,9 @@ test fn the_install_fold_over_the_whole_planted_tree_reports_its_cost() -> Bool 
 // THE GATE, SAID AS A PREDICATE. `wet_locus_gate` is what the legs call; wrapping it keeps this claim's
 // phases readable and, more importantly, keeps the WANT explicit -- asking for the served revision and asking
 // for a refusal are two different questions and the claim must say which it is asking at each step.
-fn wet_locus_gate_serves(instance: HostDashboardInstance, label: String, revision_text: String, want_served: Bool, claim: String) -> Bool {
+fn wet_locus_gate_serves(instance: HostDashboardInstance, label: String, locus_key: String, want_served: Bool, claim: String) -> Bool {
   match wet_locus_gate(instance: instance, label: label, claim: claim) {
-    Present { value: read } => want_served && read == revision_text
+    Present { value: read } => want_served && read == locus_key
     Absent => !want_served
   }
 }
@@ -3812,26 +3846,27 @@ test fn a_locus_whose_seal_cannot_be_written_is_not_read_as_installed() -> Bool 
   // A revision needs a committed guest tree -- the plant route commits one -- and the hand stage installs the
   // binary FROM the instance's release stage directory, so the image has to be staged there first.
   let planted = wet_plant_confined_tree(instance: inst)
+  let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
-  let seal = witness_locus_receipt_seal_path(instance: inst, revision_text: revision)
+  let seal = witness_locus_receipt_seal_path(instance: inst, locus_key: key)
   let verdict = planted
     && named != ""
     && revision != ""
     && wet_stage(stage: join(["seal-unwritable:image:", named], ""), ok: witness_stage_release_binary(instance: inst, image: named))
-    && wet_stage_locus_by_hand(instance: inst, revision_text: revision, image: named)
+    && wet_stage_locus_by_hand(instance: inst, locus_key: key, image: named)
     // THE CONTROL FIRST: with nothing in its way the seal lands and the gate serves the locus. Without this
     // arm the claim could be green because nothing in it ever worked.
-    && wet_stage(stage: "seal-unwritable:control-accepts", ok: witness_seal_locus_receipt(instance: inst, revision_text: revision))
-    && wet_stage(stage: "seal-unwritable:control-gate", ok: wet_locus_gate_serves(instance: inst, label: "seal-control", revision_text: revision, want_served: true, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
+    && wet_stage(stage: "seal-unwritable:control-accepts", ok: witness_seal_locus_receipt(instance: inst, locus_key: key))
+    && wet_stage(stage: "seal-unwritable:control-gate", ok: wet_locus_gate_serves(instance: inst, label: "seal-control", locus_key: key, want_served: true, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
     && wet_ok(command: rm_recursive_force_command(path: seal))
     && wet_ok(command: mkdir_parents_command(path: seal))
     // THE SEAL MUST REFUSE, and the gate must then refuse the locus: an unsealed locus is not installed.
-    && wet_stage(stage: "seal-unwritable:seal-must-refuse", ok: !witness_seal_locus_receipt(instance: inst, revision_text: revision))
-    && wet_stage(stage: "seal-unwritable:gate-must-refuse", ok: wet_locus_gate_serves(instance: inst, label: "seal-obstructed", revision_text: revision, want_served: false, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
+    && wet_stage(stage: "seal-unwritable:seal-must-refuse", ok: !witness_seal_locus_receipt(instance: inst, locus_key: key))
+    && wet_stage(stage: "seal-unwritable:gate-must-refuse", ok: wet_locus_gate_serves(instance: inst, label: "seal-obstructed", locus_key: key, want_served: false, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
     // AND IT RETURNS when the obstruction is gone -- the refusal was the obstruction, not a stuck writer.
     && wet_ok(command: rm_recursive_force_command(path: seal))
-    && wet_stage(stage: "seal-unwritable:seal-returns", ok: witness_seal_locus_receipt(instance: inst, revision_text: revision))
-    && wet_stage(stage: "seal-unwritable:gate-returns", ok: wet_locus_gate_serves(instance: inst, label: "seal-cleared", revision_text: revision, want_served: true, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
+    && wet_stage(stage: "seal-unwritable:seal-returns", ok: witness_seal_locus_receipt(instance: inst, locus_key: key))
+    && wet_stage(stage: "seal-unwritable:gate-returns", ok: wet_locus_gate_serves(instance: inst, label: "seal-cleared", locus_key: key, want_served: true, claim: "a_locus_whose_seal_cannot_be_written_is_not_read_as_installed"))
   wet_claim_verdict_with_root_readback(verdict: verdict, root: root as NonEmptyStr)
 }
 
@@ -4102,8 +4137,8 @@ test fn no_unit_this_witness_names_ever_ends_in_a_doubled_service_suffix() -> Bo
 // fold's readback checks, written by the claim rather than by the fold. What it does NOT claim: the
 // per-file digests. Those are the FOLD's duty, on the leg that runs it, and this claim says so instead
 // of pretending to have re-verified them.
-fn wet_stage_locus_by_hand(instance: HostDashboardInstance, revision_text: String, image: String) -> Bool {
-  wet_ok(command: mkdir_parents_command(path: witness_locus_dag_dir(instance: instance, revision_text: revision_text)))
+fn wet_stage_locus_by_hand(instance: HostDashboardInstance, locus_key: String, image: String) -> Bool {
+  wet_ok(command: mkdir_parents_command(path: witness_locus_dag_dir(instance: instance, locus_key: locus_key)))
     // THE RECEIPT IS WRITTEN IN THE SHAPE A FOLD WRITES, AND DELIBERATELY LEFT UNSEALED. A real receipt
     // is one "<hex>  <path>" line per installed file and the fold seals it after writing it, so a hand
     // stage that wants the reuse arm to believe it has to call `witness_seal_locus_receipt` like any
@@ -4114,17 +4149,17 @@ fn wet_stage_locus_by_hand(instance: HostDashboardInstance, revision_text: Strin
     // host, never the fold's verification.
     && witness_write_locus_file(
       instance: instance,
-      destination: witness_locus_receipt_path(instance: instance, revision_text: revision_text),
+      destination: witness_locus_receipt_path(instance: instance, locus_key: locus_key),
       content: repeat_string(
         s: "0000000000000000000000000000000000000000000000000000000000000000  dag/line.dag\n",
         n: 64,
       ),
-      stage_key: join(["hand-receipt-", revision_text], ""),
+      stage_key: join(["hand-receipt-", locus_key], ""),
     )
     && witness_install_locus_file(
       instance: instance,
       source: image,
-      destination: witness_locus_binary_path(instance: instance, revision_text: revision_text),
+      destination: witness_locus_binary_path(instance: instance, locus_key: locus_key),
       mode: "0755" as NonEmptyStr,
     )
 }
@@ -4141,19 +4176,21 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let named = wet_environment_value(name: wet_served_binary_env_var)
   let planted = wet_plant_confined_tree(instance: inst)
+  let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
-  let staged_tree = named != "" && revision != "" && wet_stage_locus_by_hand(instance: inst, revision_text: revision, image: named)
+  let staged_tree = named != "" && revision != "" && key != ""
+    && wet_stage_locus_by_hand(instance: inst, locus_key: key, image: named)
 
   let verdict = planted
     && staged_tree
     && wet_path_exists(path: inst.instance_root as String)
     // NO SEAL: the receipt the hand stage wrote is the right shape and is still refused.
-    && wet_locus_reads_as_installed(instance: inst, revision_text: revision) == false
+    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
     // LOOKS LIKE A FOLD RECEIPT, UNSEALED, and the file really is there -- so the refusal above was the
     // seal, not a missing path.
-    && wet_write_unsealed_receipt(instance: inst, revision_text: revision, lines: 64)
-    && wet_path_exists(path: witness_locus_receipt_path(instance: inst, revision_text: revision))
-    && wet_locus_reads_as_installed(instance: inst, revision_text: revision) == false
+    && wet_write_unsealed_receipt(instance: inst, locus_key: key, lines: 64)
+    && wet_path_exists(path: witness_locus_receipt_path(instance: inst, locus_key: key))
+    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
     // AND THE GATE REFUSES IT BY NAME. Asking only for `== false` would accept ANY refusal: on a host
     // without elevation the gate used to answer "this host has no sudo" for this very state, because it
     // ran the install fold before it asked the receipt -- a green earned from a refusal that had nothing
@@ -4162,27 +4199,27 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
     && wet_locus_refusal_reason(instance: inst)
       == (witness_locus_reason_receipt_seal_mismatch as String)
     // THE SAME BYTES, SEALED: the reader is not stuck, and the gate has no refusal to name.
-    && witness_seal_locus_receipt(instance: inst, revision_text: revision)
-    && wet_locus_reads_as_installed(instance: inst, revision_text: revision)
+    && witness_seal_locus_receipt(instance: inst, locus_key: key)
+    && wet_locus_reads_as_installed(instance: inst, locus_key: key)
     && wet_locus_refusal_reason(instance: inst) == ""
     // ONE PATH ALTERED, LINE COUNT UNCHANGED: blind to a count, blind to a shape.
-    && wet_rewrite_receipt_line(instance: inst, revision_text: revision, replacement: "0000000000000000000000000000000000000000000000000000000000000000  dag/tampered.dag")
-    && wet_locus_reads_as_installed(instance: inst, revision_text: revision) == false
+    && wet_rewrite_receipt_line(instance: inst, locus_key: key, replacement: "0000000000000000000000000000000000000000000000000000000000000000  dag/tampered.dag")
+    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
     && wet_locus_refusal_reason(instance: inst)
       == (witness_locus_reason_receipt_seal_mismatch as String)
     // RESTORED, THE VERDICT RETURNS.
-    && witness_seal_locus_receipt(instance: inst, revision_text: revision)
-    && wet_locus_reads_as_installed(instance: inst, revision_text: revision)
+    && witness_seal_locus_receipt(instance: inst, locus_key: key)
+    && wet_locus_reads_as_installed(instance: inst, locus_key: key)
     // TRUNCATED BY ONE LINE from the accepted state: a strict prefix of a receipt the reader had just
     // accepted, every remaining line still well-formed -- the fold dying mid-write is exactly this.
-    && wet_truncate_receipt(instance: inst, revision_text: revision)
-    && wet_locus_reads_as_installed(instance: inst, revision_text: revision) == false
+    && wet_truncate_receipt(instance: inst, locus_key: key)
+    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
     && wet_locus_refusal_reason(instance: inst)
       == (witness_locus_reason_receipt_seal_mismatch as String)
     // RESTORED A SECOND TIME: three refusals and three acceptances, alternating, so neither a reader stuck
     // true nor one stuck false can print this claim green.
-    && witness_seal_locus_receipt(instance: inst, revision_text: revision)
-    && wet_locus_reads_as_installed(instance: inst, revision_text: revision)
+    && witness_seal_locus_receipt(instance: inst, locus_key: key)
+    && wet_locus_reads_as_installed(instance: inst, locus_key: key)
     && wet_locus_refusal_reason(instance: inst) == ""
 
   wet_claim_verdicts_with_root_readbacks(verdict: verdict, roots: [root as NonEmptyStr])
@@ -4255,8 +4292,9 @@ test fn the_fold_is_never_handed_the_run_keyed_locus_base_as_a_spine_dir() -> Bo
   // every other locus conjunct in this file uses, so a mutation of the real derivation has somewhere to
   // show up.
   let planted = wet_plant_confined_tree(instance: inst)
+  let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
-  let locus = witness_locus_dir_text(instance: inst, revision_text: revision)
+  let locus = witness_locus_dir_text(instance: inst, locus_key: key)
   let live_root = srv1_lab_dashboard_instance().instance_root as String
 
   // ONE STAGE PER CONJUNCT, because the trail is what an adjudication reads: a FAIL with no stage line
@@ -4316,17 +4354,19 @@ test fn a_leg_that_finds_its_locus_installed_does_not_reinstall_it() -> Bool {
   let named = wet_environment_value(name: wet_served_binary_env_var)
   // A revision needs a committed guest tree, and the plant route is what commits one.
   let planted = wet_plant_confined_tree(instance: inst)
+  let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
   let staged =
     named != ""
       && revision != ""
-      && wet_stage_locus_by_hand(instance: inst, revision_text: revision, image: named)
+      && key != ""
+      && wet_stage_locus_by_hand(instance: inst, locus_key: key, image: named)
       // THE SEAL, through the same call the fold makes after its own receipt. Without it the reader
       // rightly refuses the tree and the leg would reinstall it -- the discrimination is
       // `an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed`.
-      && witness_seal_locus_receipt(instance: inst, revision_text: revision)
+      && witness_seal_locus_receipt(instance: inst, locus_key: key)
   let reused = staged && match wet_locus_gate(instance: inst, label: "reuse-arm", claim: "a_leg_that_finds_its_locus_installed_does_not_reinstall_it") {
-    Present { value: read } => wet_stage(stage: "locus-reuse-arm-converged", ok: read == revision)
+    Present { value: read } => wet_stage(stage: "locus-reuse-arm-converged", ok: read == key)
     Absent => wet_stage(stage: "locus-reuse-arm-refused", ok: false)
   }
   // THE OTHER ARM, ON THE SAME HOST. With no locus on disk this host has no way to install one -- the
@@ -4342,6 +4382,73 @@ test fn a_leg_that_finds_its_locus_installed_does_not_reinstall_it() -> Bool {
   wet_claim_verdicts_with_root_readbacks(
     verdict: planted && reused && refused_without_elevation,
     roots: [root as NonEmptyStr, bare_root as NonEmptyStr],
+  )
+}
+
+// THE LOCUS IS NAMED BY WHAT IT HOLDS, NOT BY THE CLAIM'S COMMIT. srv2 run15794v (stern, 2026-11-10)
+// measured what the old naming cost: every launching leg plants its own guest tree, so every leg read a
+// different HEAD, so every leg named a different locus directory and ran the whole install fold again --
+// two digests (523cab24..., 72cdce39...), two folds, and the second died inside the interpreter's
+// call-depth ceiling before it reached the unit at all. The quantity that IS the same across legs is the
+// content the fold copies. So the key is production's own digest over the two release subdirs plus the
+// digest of the image the fold copies in, and this claim pins the rule in both directions:
+//   - a commit that changes NOTHING the locus holds moves the commit and leaves the key alone -- that is
+//     what lets a later leg reuse a fold instead of paying for it a second time;
+//   - one byte added INSIDE what the locus holds moves the key, so no leg can reuse a locus that is
+//     missing that byte;
+//   - the key is not the commit, and the fold is still handed the commit separately, so the receipt's
+//     candidate_revision line stays a real revision (the fold legs read it back on srv2).
+// No elevation is needed to take a digest of one's own tree, so every arm here runs on a sudo-less host.
+test fn the_locus_is_named_by_what_it_holds_and_not_by_the_claim_s_commit() -> Bool {
+  let root = wet_claim_root(tag: "locus-key" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let named = wet_environment_value(name: wet_served_binary_env_var)
+  let repo = inst.repo_root as String
+  let planted = wet_plant_confined_tree(instance: inst)
+
+  let revision_before = witness_guest_tree_revision(instance: inst)
+  let roots_before = witness_locus_installed_roots_digest(instance: inst)
+  let image_digest = witness_file_sha256_hex(path: named)
+  let key_before = witness_locus_key_from_environment(instance: inst)
+  let premise = wet_stage(
+    stage: join(["locus-key:planted:", revision_before], ""),
+    ok: planted && revision_before != "" && named != "" && roots_before != "" && image_digest != ""
+      && key_before != "",
+  )
+  // 1. THE KEY IS THE TWO DIGESTS OF WHAT THE LOCUS HOLDS, joined -- and it is not a git answer.
+  let shape = wet_stage(
+    stage: "locus-key:shape-is-the-two-digests",
+    ok: key_before == join([roots_before, "-", image_digest], "") && key_before != revision_before,
+  )
+  // 2. A COMMIT OUTSIDE WHAT THE LOCUS HOLDS MOVES THE COMMIT AND NOT THE KEY. The file sits in the guest
+  // tree but outside both release subdirs, and the commit goes through the same production sequence the
+  // plant uses. A key that follows the commit here is the srv2 defect: it names a second locus for content
+  // that has not changed, and pays for a second fold.
+  let outside_written = Filesystem.Write(
+    path: join([repo, "/locus-key-outside-the-roots.txt"], "") as FilePath,
+    content: "outside both installed subdirs\n",
+  ).success && wet_make_source_repository(instance: inst)
+  let revision_after = witness_guest_tree_revision(instance: inst)
+  let key_after = witness_locus_key_from_environment(instance: inst)
+  let outside_moves_commit_only = wet_stage(
+    stage: join(["locus-key:outside-commit:", revision_after], ""),
+    ok: outside_written && revision_after != "" && revision_after != revision_before
+      && key_after == key_before,
+  )
+  // 3. ONE BYTE INSIDE WHAT THE LOCUS HOLDS MOVES THE KEY. Written into the guest tree's own dag/, which
+  // is one of the two subdirs the fold installs; no commit is needed, because the digest is of the tree.
+  let inside_written = Filesystem.Write(
+    path: join([repo, "/dag/locus-key-inside-the-roots.dag"], "") as FilePath,
+    content: "// inside an installed root\n",
+  ).success
+  let key_inside = witness_locus_key_from_environment(instance: inst)
+  let inside_moves_key = wet_stage(
+    stage: "locus-key:byte-inside-moves-the-key",
+    ok: inside_written && key_inside != "" && key_inside != key_before,
+  )
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: premise && shape && outside_moves_commit_only && inside_moves_key,
+    roots: [root as NonEmptyStr],
   )
 }
 
@@ -4900,13 +5007,13 @@ test fn the_drain_names_the_installed_locus_and_not_the_source_copy() -> Bool {
   let words = map(
     wet_image_serve_argv(
       instance: inst,
-      revision_text: revision,
+      locus_key: revision,
       entry_relative: wet_witness_entry_relative,
       function: "wet_root_side_cli" as NonEmptyStr,
     ),
     word => word as String,
   )
-  let locus = witness_locus_dir_text(instance: inst, revision_text: revision)
+  let locus = witness_locus_dir_text(instance: inst, locus_key: revision)
   let repo = inst.repo_root as String
   let verdict = wet_claim_is_confined(instance: inst, root: root)
     // 1. PREFIXED THE WAY PRODUCTION PREFIXES: `env_prefixed_argv`'s own env program first, then the
@@ -4917,7 +5024,7 @@ test fn the_drain_names_the_installed_locus_and_not_the_source_copy() -> Bool {
         && wet_word_at(words: words, index: 1)
           == join([gunbc_workspace_root_env_name, "=", locus], "")
         && wet_word_at(words: words, index: 2)
-          == witness_locus_binary_path(instance: inst, revision_text: revision),
+          == witness_locus_binary_path(instance: inst, locus_key: revision),
     )
     // 2. THE BINARY IS THE LOCUS MEMBER AND NOT THE ROW's SERVE BINARY. `attempt_system_unit_launch_gunbc_argv_at`
     // passes the locus member; the srv2 drain did not, and every leg that failed was downstream of that
@@ -4925,16 +5032,16 @@ test fn the_drain_names_the_installed_locus_and_not_the_source_copy() -> Bool {
     // (gunbc.roadmap.attempt_system_unit_launch::attempt_system_unit_start_admitted admits on it); the drain is a different route and names a different file.
     && wet_stage(
       stage: "drain-argv-binary-is-the-locus-member",
-      ok: contains(xs: words, item: witness_locus_binary_path(instance: inst, revision_text: revision))
+      ok: contains(xs: words, item: witness_locus_binary_path(instance: inst, locus_key: revision))
         && !contains(xs: words, item: inst.serve_binary as String),
     )
     // 3. BOTH SOURCE ROOTS ARE THE LOCUS'S, from `release_locus_tree_subdirs` joined under it -- the
     // list production's argv builder joins, not two strings this claim typed.
     && wet_stage(
       stage: "drain-argv-source-roots-are-the-locus",
-      ok: length(xs: witness_locus_source_roots(instance: inst, revision_text: revision)) == 2
+      ok: length(xs: witness_locus_source_roots(instance: inst, locus_key: revision)) == 2
         && all(
-          xs: witness_locus_source_roots(instance: inst, revision_text: revision),
+          xs: witness_locus_source_roots(instance: inst, locus_key: revision),
           predicate: root_word => contains(xs: words, item: root_word),
         )
         && contains(xs: words, item: "--source-root"),

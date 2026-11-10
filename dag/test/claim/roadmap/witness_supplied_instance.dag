@@ -19,13 +19,15 @@ import extdeps.shell
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host.host_effect_realize {
-  ApprovalBrokerTreeInstallVerdict, TreeInstallConverged, TreeInstallRefused, TreeInstallStep,
-  TreeStepSourceObserve, TreeStepInstallDirectory,
-  approval_broker_tree_install_at, one_transport_route, tree_install_step_name,
+  ApprovalBrokerTreeInstallVerdict, TreeDigestComputed, TreeDigestRefused, TreeInstallConverged,
+  TreeInstallRefused, TreeInstallStep, TreeLinesDigest, TreeObserved, TreeObservation,
+  TreeObservationFailed, TreeStepInstallDirectory, TreeStepSourceObserve,
+  approval_broker_tree_install_at, observe_tree_hashes, one_transport_route, tree_digest_lines,
+  tree_hash_lines, tree_install_step_name,
 }
 import gunbc.live_deploy.release_locus {
   HelperLocus, ReleaseRevisionBinding, RevisionBoundAtEmission,
-  approval_broker_helper_root_principal, helper_locus_dir, release_locus_tree_subdirs,
+  approval_broker_helper_root_principal, release_locus_tree_subdirs,
 }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_locus }
@@ -662,10 +664,6 @@ fn witness_claim_helper_locus(instance: HostDashboardInstance) -> HelperLocus {
 // THE ONE WAY ANY CONJUNCT NAMES THE LOCUS. A write target or a run target re-derived from a literal
 // here would be a second rule beside production's, and a mutation of the real derivation would then
 // still find a hand-written path to pass on.
-fn witness_claim_locus_dir(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
-  helper_locus_dir(locus: witness_claim_helper_locus(instance: instance), revision: revision)
-}
-
 // WHAT A HELPER LOCUS MUST CARRY, in the names the fold is handed. ONE list, two consumers: the install
 // route above passes it to `approval_broker_tree_install_at`, and `the_plant_leaves_the_executables_the_fold_
 // contract_requires` requires a staged file for every name in it. A plant that stages half of it is caught
@@ -706,6 +704,50 @@ fn witness_stage_release_binary(instance: HostDashboardInstance, image: String) 
 // one, which is what the empty reading below refuses.
 fn witness_guest_tree_revision(instance: HostDashboardInstance) -> String {
   wet_out(command: git_rev_parse_head_command(repository_dir: instance.repo_root as String))
+}
+
+// THE LOCUS IS NAMED BY WHAT THE FOLD INSTALLS, NOT BY THE CLAIM'S COMMIT. srv2 run15794v (2026-11-10)
+// measured what the old naming cost: every launching leg plants its own guest tree, so every leg read a
+// different HEAD, so every leg named a different locus directory and ran the whole install fold again --
+// two digests, two folds, and the second one died inside the interpreter's call-depth ceiling before it
+// reached the unit at all. The quantity that IS the same across legs is the content the fold copies: the
+// two release subtrees. So the key is production's own digest over those roots -- observe_tree_hashes,
+// tree_hash_lines, tree_digest_lines, the same three rows the fold runs to compute the installed_digest
+// its receipt attests -- taken over the SOURCE tree, where no elevation is needed and the claim principal
+// owns every byte. Two legs whose installed roots hold the same bytes name the SAME locus, so the fold
+// runs once per content and every later leg answers with the readback; a leg whose installed roots differ
+// by one byte names a different locus and runs the fold.
+//
+// THE STAGED RELEASE IMAGE IS PART OF WHAT THE LOCUS HOLDS -- the fold's executables step copies it in
+// -- so its digest is the key's second component: a leg that staged a different image must not reuse a
+// locus holding the old one.
+//
+// "" means a digest could not be taken, and no leg may paper over that: the caller refuses.
+fn witness_locus_installed_roots_digest(instance: HostDashboardInstance) -> String {
+  match observe_tree_hashes(
+    root: instance.repo_root as String,
+    subs: release_locus_tree_subdirs,
+    transport: one_transport_route(transport: LocalShell),
+  ) {
+    TreeObservationFailed { reason: _ } => ""
+
+    TreeObserved { entries: es } =>
+      match tree_digest_lines(
+        lines: tree_hash_lines(entries: es),
+        transport: one_transport_route(transport: LocalShell),
+      ) {
+        TreeDigestRefused { reason: _ } => ""
+
+        TreeDigestComputed { hex: h } => h
+      }
+  }
+}
+
+fn witness_locus_key(instance: HostDashboardInstance, image_source: String) -> String {
+  let roots = witness_locus_installed_roots_digest(instance: instance)
+  let image = witness_file_sha256_hex(path: image_source)
+
+  if roots == "" || image == "" { "" } else { join([roots, "-", image], "") }
 }
 
 // THE CAUSE A NO-ELEVATION HOST REPORTS, spelled once so the claim, the probe and the body all name
@@ -753,18 +795,32 @@ fn witness_locus_install_spine(instance: HostDashboardInstance) -> List<String> 
 // PRODUCTION'S FOLD, CALLED AS-IS. The spine is what the fold owns above the locus (see above: nothing,
 // by rule); `source_root` is the planted guest tree, whose `dag/` and `src/v2` the fold observes,
 // installs and reads back; `executables` is exactly what production's helper-snapshot comment says a
-// helper locus holds — `gunbc_release_bin_name` alone. The refusal arms are the two ways this claim can
-// be unable to proceed, each with its own cause; neither is a pass, and the fold's own `TreeInstallRefused`
+// helper locus holds — `gunbc_release_bin_name` alone.
+//
+// TWO ARGUMENTS, TWO DIFFERENT JOBS, AND THEY ARE NOT INTERCHANGEABLE. `locus_key` names the DIRECTORY
+// the fold installs into (the digest of what that directory will hold -- see witness_locus_key);
+// `revision_text` is the commit that goes in the receipt's `candidate_revision` line, which production
+// writes verbatim (release_locus.tree_receipt_body) and the CLI drain reads back. Passing the key where
+// the commit belongs would forge a candidate the guest tree never made; passing the commit where the key
+// belongs is the naming srv2 run15794v measured as costing a second whole fold per launching leg.
+// The refusal arms are the ways this claim cannot proceed -- no content to name a locus by, no commit to
+// record, no elevation -- each with its own cause; none is a pass, and the fold's own `TreeInstallRefused`
 // names the step that failed.
 fn witness_locus_install(
   instance: HostDashboardInstance,
+  locus_key: String,
   revision_text: String,
 ) -> ApprovalBrokerTreeInstallVerdict {
   let revision = RevisionBoundAtEmission { revision: revision_text as CommitSha }
-  if revision_text == "" {
+  if locus_key == "" {
     TreeInstallRefused {
       step: TreeStepSourceObserve,
-      reason: "the guest tree names no commit: the plant's git add/commit did not land, so there is no content to name a locus by",
+      reason: "the roots the fold would install cannot be digested, so there is no content to name a locus by",
+    }
+  } else if revision_text == "" {
+    TreeInstallRefused {
+      step: TreeStepSourceObserve,
+      reason: "the guest tree names no commit: the plant's git add/commit did not land, so the fold's receipt could not record a candidate_revision",
     }
   } else if !witness_sudo_elevation_available() {
     TreeInstallRefused {
@@ -776,7 +832,7 @@ fn witness_locus_install(
       owner: approval_broker_helper_root_principal,
       spine: witness_locus_install_spine(instance: instance),
       source_root: instance.repo_root as String,
-      locus: witness_claim_locus_dir(instance: instance, revision: revision),
+      locus: witness_locus_dir_text(instance: instance, locus_key: locus_key),
       revision: revision,
       executables: witness_locus_executables,
       transport: one_transport_route(transport: LocalShell),
@@ -805,18 +861,17 @@ fn witness_locus_install_refusal_cause(verdict: ApprovalBrokerTreeInstallVerdict
 // THE THREE PATHS THE CLI ASKS ABOUT, ALL OFF THE ONE ACCESSOR. The fold's readback already proved the
 // digests agree; these are the paths the drain, the probe and the presence conjuncts all read, so no
 // conjunct re-derives a locus path from a literal and a mutation of the real derivation has nowhere
-// left to hide. `dir_text` is the same text `witness_claim_locus_dir` yields for the binding, reached
-// from the revision text the claim read out of git.
-fn witness_locus_dir_text(instance: HostDashboardInstance, revision_text: String) -> String {
-  helper_locus_dir(
-    locus: witness_claim_helper_locus(instance: instance),
-    revision: RevisionBoundAtEmission { revision: revision_text as CommitSha },
-  )
+// left to hide. `dir_text` hangs the key under the batch locus base -- the same base
+// `witness_claim_helper_locus` names, and the same join production's `helper_locus_dir` performs -- with
+// the CONTENT digest in the slot production fills with a candidate sha, because a witness locus is named
+// by what it holds and a leg's commit is not that content (see witness_locus_key).
+fn witness_locus_dir_text(instance: HostDashboardInstance, locus_key: String) -> String {
+  join([witness_batch_locus_base(instance: instance), "/", locus_key], "")
 }
 
 // The `dag` DIRECTORY the reader requires (cli_run.rs:611), inside the locus.
-fn witness_locus_dag_dir(instance: HostDashboardInstance, revision_text: String) -> String {
-  join([witness_locus_dir_text(instance: instance, revision_text: revision_text), "/", "dag"], "")
+fn witness_locus_dag_dir(instance: HostDashboardInstance, locus_key: String) -> String {
+  join([witness_locus_dir_text(instance: instance, locus_key: locus_key), "/", "dag"], "")
 }
 
 // THE SEAL THE FOLD WRITES LAST: the digest of the receipt's own bytes, in a file beside it. Written
@@ -824,8 +879,8 @@ fn witness_locus_dag_dir(instance: HostDashboardInstance, revision_text: String)
 // finished, or edited afterwards, no longer matches what sits beside it.
 data witness_locus_receipt_seal_suffix: String = ".sha256"
 
-fn witness_locus_receipt_seal_path(instance: HostDashboardInstance, revision_text: String) -> String {
-  join([witness_locus_receipt_path(instance: instance, revision_text: revision_text), witness_locus_receipt_seal_suffix], "")
+fn witness_locus_receipt_seal_path(instance: HostDashboardInstance, locus_key: String) -> String {
+  join([witness_locus_receipt_path(instance: instance, locus_key: locus_key), witness_locus_receipt_seal_suffix], "")
 }
 
 // THE DIGEST OF ONE FILE, through the fleet's own sha256sum route; "" when it cannot be taken.
@@ -887,26 +942,26 @@ fn witness_install_locus_file(instance: HostDashboardInstance, source: String, d
 }
 
 // SEAL IT. A fold that cannot seal its receipt has not delivered a locus the batch may reuse.
-fn witness_seal_locus_receipt(instance: HostDashboardInstance, revision_text: String) -> Bool {
-  let hex = witness_file_sha256_hex(path: witness_locus_receipt_path(instance: instance, revision_text: revision_text))
+fn witness_seal_locus_receipt(instance: HostDashboardInstance, locus_key: String) -> Bool {
+  let hex = witness_file_sha256_hex(path: witness_locus_receipt_path(instance: instance, locus_key: locus_key))
 
   if hex == "" {
     false
   } else {
     witness_write_locus_file(
       instance: instance,
-      destination: witness_locus_receipt_seal_path(instance: instance, revision_text: revision_text),
+      destination: witness_locus_receipt_seal_path(instance: instance, locus_key: locus_key),
       content: join([hex, "\n"], ""),
-      stage_key: join(["seal-", revision_text], ""),
+      stage_key: join(["seal-", locus_key], ""),
     )
   }
 }
 
 // The receipt FILE the reader requires, named by production's constant and no other spelling.
-fn witness_locus_receipt_path(instance: HostDashboardInstance, revision_text: String) -> String {
+fn witness_locus_receipt_path(instance: HostDashboardInstance, locus_key: String) -> String {
   join(
     [
-      witness_locus_dir_text(instance: instance, revision_text: revision_text),
+      witness_locus_dir_text(instance: instance, locus_key: locus_key),
       "/",
       release_locus_tree_receipt_name,
     ],
@@ -916,10 +971,10 @@ fn witness_locus_receipt_path(instance: HostDashboardInstance, revision_text: St
 
 // The binary the drain execs and the probe execs, named by `gunbc_release_bin_name` — the same name the
 // fold installed it under, so the drain cannot quietly begin running the row's serve binary instead.
-fn witness_locus_binary_path(instance: HostDashboardInstance, revision_text: String) -> String {
+fn witness_locus_binary_path(instance: HostDashboardInstance, locus_key: String) -> String {
   join(
     [
-      witness_locus_dir_text(instance: instance, revision_text: revision_text),
+      witness_locus_dir_text(instance: instance, locus_key: locus_key),
       "/",
       gunbc_release_bin_name,
     ],
@@ -930,9 +985,9 @@ fn witness_locus_binary_path(instance: HostDashboardInstance, revision_text: Str
 // BOTH SOURCE ROOTS THE DRAIN PASSES, as production's argv builder spells them: each entry of
 // `release_locus_tree_subdirs` joined under the locus dir. A drain that named the source copy here
 // would fail the reader for the same reason srv2's did.
-fn witness_locus_source_roots(instance: HostDashboardInstance, revision_text: String) -> List<String> {
+fn witness_locus_source_roots(instance: HostDashboardInstance, locus_key: String) -> List<String> {
   map(
     release_locus_tree_subdirs,
-    sub => join([witness_locus_dir_text(instance: instance, revision_text: revision_text), "/", sub], ""),
+    sub => join([witness_locus_dir_text(instance: instance, locus_key: locus_key), "/", sub], ""),
   )
 }
