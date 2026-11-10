@@ -83,13 +83,13 @@ data lawful_defer_source: String = "module probe_spool_queue_lawful_defer\nimpor
 // the field shape or the uid. MINTED CONTROL: a store produced by spool_open_uid (the business-key mint) carries
 // no violation.
 
-data forged_partitioned_store_source: String = "module probe_spool_queue_forged_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore, UidPartitionedStore }\nfn f() -> SpoolStore {\n  UidPartitionedStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
+data forged_partitioned_store_source: String = "module probe_spool_queue_forged_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore, UidPartitionedStore }\nfn f() -> SpoolStore {\n  UidPartitionedStore { kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
 
-data forged_unpartitioned_store_source: String = "module probe_spool_queue_forged_unpartitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore, UnpartitionedStore }\nfn f() -> SpoolStore {\n  UnpartitionedStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\" }\n}\n"
+data forged_unpartitioned_store_source: String = "module probe_spool_queue_forged_unpartitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, SpoolStore, UnpartitionedStore }\nfn f() -> SpoolStore {\n  UnpartitionedStore { kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\" }\n}\n"
 
-data twin_partitioned_store_source: String = "module probe_spool_queue_twin_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport test.fixture.spool_queue_seal.unsealed { SpoolStore, UidPartitionedStore }\nfn f() -> SpoolStore {\n  UidPartitionedStore { kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
+data twin_partitioned_store_source: String = "module probe_spool_queue_twin_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport test.fixture.spool_queue_seal.unsealed { SpoolStore, UidPartitionedStore }\nfn f() -> SpoolStore {\n  UidPartitionedStore { kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
 
-data minted_partitioned_store_source: String = "module probe_spool_queue_minted_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store: _ } => \"ready\"\n    SpoolOpenRefused { cause: _ } => \"refused\"\n  }\n}\n"
+data minted_partitioned_store_source: String = "module probe_spool_queue_minted_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store: _ } => \"ready\"\n    SpoolOpenRefused { cause: _ } => \"refused\"\n  }\n}\n"
 
 test fn a_forged_key_cannot_defer_an_entry() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
@@ -146,9 +146,9 @@ test fn a_minted_partitioned_store_has_no_seal_violation() -> ProcessExit {
 // diagnostic; the reader that instead hand-joins the done path via the deleted compute_attempt_exit_spool_done_dir
 // is refused (review 92698: provisioning and the hook/door must build the path through ONE sealed function, never
 // by hand). present -> 0, hand-joined -> RED. This is the pairing that proves the reader claim is fresh, not vacuous.
-data partitioned_reader_twin_source: String = "module probe_partitioned_reader_twin\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, spool_role_path, RoleDone, SpoolOpenReady, SpoolOpenRefused }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store } => match spool_role_path(store: store, role: RoleDone) {\n      Present { value: _ } => \"readable\"\n      Absent => \"refused\"\n    }\n    SpoolOpenRefused { cause: _ } => \"unready\"\n  }\n}\n"
+data partitioned_reader_twin_source: String = "module probe_partitioned_reader_twin\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, spool_role_path, RoleDone, SpoolOpenReady, SpoolOpenRefused }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store } => match spool_role_path(store: store, role: RoleDone) {\n      Present { value: _ } => \"readable\"\n      Absent => \"refused\"\n    }\n    SpoolOpenRefused { cause: _ } => \"unready\"\n  }\n}\n"
 
-data partitioned_reader_handjoined_source: String = "module probe_partitioned_reader_handjoined\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_done_dir }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store: _ } => compute_attempt_exit_spool_done_dir(\"/tmp/compute/root\", 1000)\n    SpoolOpenRefused { cause: c } => c\n  }\n}\n"
+data partitioned_reader_handjoined_source: String = "module probe_partitioned_reader_handjoined\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenRefused }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_done_dir }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store: _ } => compute_attempt_exit_spool_done_dir(\"/tmp/compute/root\", 1000)\n    SpoolOpenRefused { cause: c } => c\n  }\n}\n"
 
 test fn the_partitioned_reader_reaches_the_realization_and_the_handjoined_reader_is_refused() -> ProcessExit {
   census_verdict_all(verdicts: [
@@ -162,9 +162,9 @@ test fn the_partitioned_reader_reaches_the_realization_and_the_handjoined_reader
 // Zero and admits a real principal uid (Succ -> uid 1). This is a POLICY claim, not a type fact (absence is already
 // typed by Optional<Nat>), so it must be witnessed -- dropping it is a policy regression.
 test fn a_partitioned_store_mint_refuses_the_root_uid_and_admits_a_real_uid() -> ProcessExit {
-  match spool_open_uid(kind: SpoolComputeExit, instance_root: "/tmp/compute/root", uid: Zero) {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Zero) {
     SpoolOpenRefused { cause: _ } =>
-      match spool_open_uid(kind: SpoolComputeExit, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+      match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
         SpoolOpenReady { store: _ } => ExitSuccess
         SpoolOpenRefused { cause: _ } => exit_failure(reason: "a real principal uid (1) was refused")
       }
@@ -179,7 +179,7 @@ test fn a_partitioned_store_mint_refuses_the_root_uid_and_admits_a_real_uid() ->
 // returns Absent. It is a positive control that must stay green AND is the witness that goes RED if the sealed
 // derivation is broken -- not a one-off mutation, so it runs in CI every time.
 test fn the_partitioned_done_directory_is_derived_under_the_uid_segment() -> ProcessExit {
-  match spool_open_uid(kind: SpoolComputeExit, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
     SpoolOpenReady { store } =>
       match spool_role_path(store: store, role: RoleDone) {
         Present { value: p } =>
@@ -536,8 +536,8 @@ test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
 // are each refused by the same decision.
 test fn a_malformed_stage_graph_is_refused() -> ProcessExit {
   let base = spool_declaration(kind: SpoolAttemptUnit)
-  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2, partition: base.partition }
-  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0, partition: base.partition }
+  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2, root_name: base.root_name }
+  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0, root_name: base.root_name }
   if spool_declaration_wellformed(declaration: overlapping) || spool_declaration_wellformed(declaration: keyless) {
     exit_failure(reason: "a malformed stage graph was admitted")
   } else {
@@ -673,7 +673,7 @@ test fn the_parked_stage_is_declared_by_the_attempt_unit_spool_alone() -> Proces
 
 test fn a_parked_role_in_the_chain_is_refused() -> ProcessExit {
   let base = spool_declaration(kind: SpoolAttemptUnit)
-  let doubled = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: base.terminals, parked: [SpoolStage { role: RolePending, directory: "deferred" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: base.key_separator, key_part_count: base.key_part_count, partition: base.partition }
+  let doubled = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: base.terminals, parked: [SpoolStage { role: RolePending, directory: "deferred" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: base.key_separator, key_part_count: base.key_part_count, root_name: base.root_name }
   if spool_declaration_wellformed(declaration: doubled) {
     exit_failure(reason: "a parked role standing in the chain was admitted")
   } else {

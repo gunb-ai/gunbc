@@ -1991,42 +1991,8 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
-// THE COMPUTE-EXIT SPOOL'S UNPARTITIONED-STORE ESCAPE. With SpoolStore a coproduct, the readers
-// (compute_attempt_exit_hook, compute_attempt_exit_record_listing) refuse an UnpartitionedStore that
-// names the partitioned SpoolComputeExit kind, so the cross-uid planting the deleted
-// ComputeAttemptExitSpoolDeclaration existed to prevent stays shut. But spool_open still ACCEPTS a
-// ByPrincipalUid kind and builds UnpartitionedStore{kind: <that kind>}; only the reader refuses it,
-// downstream of the mint. The stronger form is making the malformed store unwritable at spool_open,
-// which spool_open cannot do until it can return a Verdict -- that is #15794's (keen-crane-53) file.
-// No live caller opens a partitioned kind through spool_open; the compute-exit spool opens through
-// spool_open_uid. Recorded so the escape hatch is a counted standing, not a silent one.
-data compute_exit_unpartitioned_store_escape: IntegrationConcern = IntegrationConcern {
-  identity: "compute_exit_unpartitioned_store_escape",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_open"),
-    requirement: "spool_open should refuse a kind whose declaration is ByPrincipalUid, so an UnpartitionedStore can never name a partitioned spool; today it builds UnpartitionedStore{kind: <partitioned kind>} and only the compute-exit readers refuse it",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_open") } },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_open"),
-    tail: [decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_root_dir")],
-  },
-  question: "spool_open accepts any SpoolKind and returns UnpartitionedStore; a ByPrincipalUid kind opened through it yields a store with no uid, which the compute-exit hook and listing refuse. Should spool_open itself refuse a partitioned kind, rather than the reader?",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "1da6809b0fab738a27c7a939240b904771d1cae2",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_open") },
-        tail: [],
-      },
-      account: "No live caller opens a partitioned kind through spool_open (the compute-exit spool opens through spool_open_uid). If one did, spool_open would build UnpartitionedStore{kind: SpoolComputeExit} with no uid. spool_root_dir on such a store resolves to the SHARED base root (<compute_root>/attempt-exit-spool), NOT to a refusal -- so the cross-uid planting the deleted declaration existed to prevent is reachable by any spool operation that does not itself inspect the variant. Today the only guards are the two readers (compute_attempt_exit_hook, compute_attempt_exit_record_listing) checking spool_store_has_uid and refusing; that guard is load-bearing, not decorative. Trigger to close: #15794 (keen-crane-53) -- once its dispatch witness can consume a verdict from spool_open (it currently calls spool_role_path(store: spool_open(...)) directly), spool_open returns a verdict that refuses a ByPrincipalUid kind, the illegal store becomes unwritable at the mint, and the reader guard comes out.",
-    },
-    tail: [],
-  },
-  disposition: Open,
-}
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, compute_exit_unpartitioned_store_escape]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

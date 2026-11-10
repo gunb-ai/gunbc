@@ -8,8 +8,8 @@ import extdeps.posix.identity { PosixOwnerNames }
 import extdeps.tools.gnu_coreutils { install_directory_owned_argv_command, mkdir_create_only_command }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
 import gunbc.spool_queue {
-  SpoolAttemptExit, SpoolComputeExit, SpoolStore, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
-  SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_directory_listing, spool_role_path, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused, spool_store_has_uid, spool_store_kind,
+  SpoolAttemptExit, SpoolStore, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
+  SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_directory_listing, spool_role_path, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
@@ -335,16 +335,16 @@ fn compute_attempt_exit_entry_parts(done_dir: String, identity: String) -> List<
 // "...+${INVOCATION_ID}+..." -- which attempt_exit_record_put_mkdir_name refuses to write and
 // attempt_exit_entry_decode refuses to read, at the two ends of the only routes that touch it.
 fn compute_attempt_exit_hook(store: SpoolStore, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
-  // The store's KIND and its UID PARTITION are both sealed facts: only a uid-partitioned compute-exit store
-  // may be hooked. A foreign kind, or an UnpartitionedStore of SpoolComputeExit (the recorded residual --
-  // spool_open can still build one; no live caller does), is refused rather than rendered into a done
-  // directory (review 92720 finding 3; review 92878 residual guard).
-  if !spool_store_has_uid(store: store) {
-    AttemptExitHookRefused { reason: "compute_attempt_exit_hook renders only a uid-partitioned compute-exit store" as NonEmptyStr }
-  } else if spool_store_kind(store: store) != SpoolComputeExit {
-    AttemptExitHookRefused { reason: "compute_attempt_exit_hook renders only the compute-exit spool" as NonEmptyStr }
-  } else {
-    compute_attempt_exit_hook_open_store(store: store, identity: identity, record_owner: record_owner)
+  // The store's VARIANT is the sealed fact: only a UidPartitionedStore may be hooked. A UidPartitionedStore's
+  // kind is a PartitionedSpoolKind, whose only constructor is SpoolComputeExit -- so "renders only the compute-exit
+  // spool" is carried by the TYPE, not a check, and the former spool_store_has_uid / wrong-kind guards and the
+  // recorded residual are gone (review 92720 finding 3 / review 92878 / review 92916: the sum replaced the guards;
+  // making the wrong state unwritable rather than catching it). An UnpartitionedStore has no uid partition, so it
+  // is refused rather than rendered into the shared root.
+  match store {
+    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => compute_attempt_exit_hook_open_store(store: store, identity: identity, record_owner: record_owner)
+    UnpartitionedStore { kind: _, instance_root: _ } =>
+      AttemptExitHookRefused { reason: "compute_attempt_exit_hook renders only a uid-partitioned compute-exit store" as NonEmptyStr }
   }
 }
 
@@ -370,16 +370,15 @@ fn compute_attempt_exit_hook_open_store(store: SpoolStore, identity: String, rec
 // cannot support, and the door keeps the seat on it. The path derives from the declaration through
 // spool_role_path; the caller passes the sealed store, never a path.
 fn compute_attempt_exit_record_listing(store: SpoolStore) -> SpoolListing {
-  // Refuse a foreign kind AND an UnpartitionedStore (a compute-exit store must carry its uid partition; the
-  // latter is the recorded residual -- spool_open can still build it, no live caller does). Listing another
-  // kind's `done` directory, or the shared root, through the compute-exit reader is the cross-kind planting
-  // the sealed store exists to prevent (review 92720 finding 3; review 92878 residual guard).
-  if !spool_store_has_uid(store: store) {
-    SpoolListingUnreadable { reason: "compute_attempt_exit_record_listing lists only a uid-partitioned compute-exit store" }
-  } else if spool_store_kind(store: store) != SpoolComputeExit {
-    SpoolListingUnreadable { reason: "compute_attempt_exit_record_listing lists only the compute-exit spool" }
-  } else {
-    compute_attempt_exit_listing_open_store(store: store)
+  // The store's VARIANT is the sealed fact: only a UidPartitionedStore may be listed. Its kind is a
+  // PartitionedSpoolKind, whose only constructor is SpoolComputeExit, so "lists only the compute-exit spool" is
+  // carried by the TYPE, not a check (review 92720 finding 3 / review 92878 / review 92916). An UnpartitionedStore
+  // has no uid partition, so it is refused rather than listing the shared root -- the cross-kind planting the
+  // sealed store exists to prevent is now unrepresentable, not merely guarded.
+  match store {
+    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => compute_attempt_exit_listing_open_store(store: store)
+    UnpartitionedStore { kind: _, instance_root: _ } =>
+      SpoolListingUnreadable { reason: "compute_attempt_exit_record_listing lists only a uid-partitioned compute-exit store" }
   }
 }
 
