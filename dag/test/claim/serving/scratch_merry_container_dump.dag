@@ -1,0 +1,22 @@
+module test.claim.serving.scratch_merry_container_dump
+
+// SCRATCH, NOT FOR MERGE. Prints srv1 replica 0's container-command lines, joined by newlines,
+// between sentinels so the bytes can be diffed against the host's installed launcher body.
+// Run: gunbc run --source-root dag --source-root src/v2 --entry <this file> --function main
+
+import std.types { String, List }
+import std.process { ExitSuccess }
+import std.algebra { string_concat_join }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.serving.srv1_serving_replica_layout {
+  srv1_replica_container_command_lines, srv1_replica_0, srv1_admitted_launch_config,
+}
+
+fn main() -> CliWireResponse {
+  let lines: List<String> =
+    srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config);
+  CliWirePrintable {
+    bytes: concat("<<<BEGIN>>>\n", concat(string_concat_join(lines, "\n"), "\n<<<END>>>\n")),
+    exit: ExitSuccess,
+  }
+}
