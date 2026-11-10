@@ -521,6 +521,15 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
             };
             let service_realized = realization.realized.contains_key("test.RestReplay");
+            // CENSUS-MEMBERSHIP DISCRIMINATOR. The corpus census (build_symbol_index_census over
+            // graph.modules, @04_infer:18815) is what feeds scope.service_registry via
+            // service_census_registry (@19891). A `gunbc run` uses --source-root dag, so dag/test IS
+            // scanned and the probe's declaring module IS in graph.modules -- so if the census CONTAINS
+            // the service yet the demanded run still refuses the op, the drop is NOT census-membership
+            // (directory exclusion) but the demand-driven assembly of the registry: the op entries stop
+            // reaching scope.service_registry once #16156 narrowed realization. That is the fix target.
+            let census = infer::build_symbol_index_census(modules.clone(), si.clone());
+            let census_has_service = census.services.contains_key("test.RestReplay");
             // DEMANDED-VERSUS-CLOSURE EQUIVALENCE. The demanded chain and the full (EveryDeclaration)
             // chain each thread their own module index; the demanded chain must refuse no method surface
             // the full chain does not. The service is realized, so the full chain resolves the Observe op
@@ -546,8 +555,9 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 .cloned()
                 .collect();
             eprintln!(
-                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} demanded_refusals={} closure_refusals={} surface={:?}",
+                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} census_has_service={} demanded_refusals={} closure_refusals={} surface={:?}",
                 service_realized,
+                census_has_service,
                 surface.len(),
                 closure_surface.len(),
                 surface
