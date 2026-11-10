@@ -314,6 +314,31 @@ fn single_replica_grant(layout: ServingLayoutResult, deployment: String) -> Serv
   }
 }
 
+// A PER-REPLICA RETENTION GRANT (B4a): which replica the grant is for, and what it admits. Keyed by the
+// layout's own group name -- the replica's identity -- so a host running N engines yields N grants, each
+// bounded by that replica's own admitted conversations.
+type ServingReplicaGrant {
+  group: NonEmptyStr
+  grant: ServingRetentionGrant
+}
+
+// THE GRANT, FOLDED PER REPLICA RATHER THAN PER HOST (B4a). `single_replica_grant` above refuses any layout
+// that is not exactly one replica, because a per-host grant cannot say WHICH replica it grants -- so a
+// second engine on a host was ungrantable, not merely unmodeled. This folds the layout's replicas: every
+// configured replica gets its own grant of its own admitted conversations, and a refused layout grants
+// nothing (the empty fold is the refusal -- a refused layout has no replica whose conversations could be
+// admitted, and nothing here defaults a grant). N replicas per host is a row-per-replica fact now, so the
+// grant is too (gunbc.design_argument::root_generalization: the derivation counts over replicas, it does
+// not branch on a fixed count).
+fn serving_replica_grants(layout: ServingLayoutResult, deployment: String) -> List<ServingReplicaGrant> {
+  match layout {
+    ServingLayoutRefused { refusal: _ } => [] as List<ServingReplicaGrant>
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
+      fold(rs, init: [] as List<ServingReplicaGrant>, f: (acc, c) =>
+        concat(acc, [ServingReplicaGrant { group: c.group, grant: GrantAdmits { conversations: c.admitted_conversations } }]))
+  }
+}
+
 // Holding exactly the active turns' conversations when no warm path qualifies assumes their KV stays resident on the
 // GPU between turns; nothing here reads that, so it is carried as a bet.
 fn gpu_resident_turns() -> CitedFigureStanding {

@@ -187,6 +187,30 @@ fn strata_replica_verdict(l: ServingLayoutResult, budget: ServingMemoryReading, 
   }
 }
 
+// A PER-REPLICA PARKED-TIER VERDICT (B4a): which replica the verdict is for, keyed by the layout's own group
+// name, and that replica's own admissibility.
+type StrataReplicaVerdict {
+  group: NonEmptyStr
+  admissibility: ServingRungAdmissibility
+}
+
+// THE PARKED-TIER VERDICT, PER REPLICA RATHER THAN SUMMED OVER THE HOST (B4a). `strata_replica_verdict` above
+// folds every replica's active_slots into ONE figure and asks the slot question once -- so two batch-1 engines
+// on one host summed to two active slots and were refused together, when each alone would have admitted. The
+// slot-file refusal is a property of ONE replica's batch size (server.py:4091 refuses when THAT replica runs
+// parallel requests); summing it made a second batch-1 engine a suspect in a rule the first never broke, and
+// refused two engines that each ran batch 1 (the finding's "two batch-1 engines would be refused"). This
+// folds the replicas and asks the slot question of EACH on its own active_slots, so N replicas get N verdicts
+// and adding an engine is another row, not a shared refusal (gunbc.design_argument::root_generalization).
+fn strata_replica_verdicts(l: ServingLayoutResult, budget: ServingMemoryReading, free: ServingMemoryReading, guard: StrataRestoreGuard) -> List<StrataReplicaVerdict> {
+  match l {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
+      fold(rs, init: [] as List<StrataReplicaVerdict>, f: (acc, c) =>
+        concat(acc, [StrataReplicaVerdict { group: c.group, admissibility: strata_slot_file_admissible(active_slots: c.active_slots, budget: budget, free: free, guard: guard) }]))
+    ServingLayoutRefused { refusal: _ } => [] as List<StrataReplicaVerdict>
+  }
+}
+
 // SRV4 AND SRV3 AS THEY RUN, each on its OWN rows and its OWN guard. srv4's engine is parallel 1, so its slot
 // endpoint answers save and restore; srv3 runs --batch 8, so the same question refuses -- and that refusal is the
 // answer, not a gap to fill in.

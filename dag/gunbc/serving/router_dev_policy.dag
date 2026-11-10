@@ -5,7 +5,7 @@ import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
 import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused }
-import gunbc.serving.serving_replica_profile { srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape }
+import gunbc.serving.serving_replica_profile { srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape, replica_shape_named, ServingReplicaProfile }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
@@ -1052,7 +1052,14 @@ fn router_dev_shaped(shape: ServingCapacityShape, row: fn(RouterDevCapacity, Rou
 // refused, never defaulted to a plausible number (gunbc.design_argument::fail_closed). The bus lives INSIDE the h11
 // arm: an h11 row is addressed by bus and needs one, srv3/srv4 carry none, so the state "an h11 row with no bus"
 // (which the projection had to refuse at run time) cannot be written -- construction where a check used to stand.
-type RouterDevReplicaAnchor = AnchorH11Strata { bus: String } | AnchorSrv3Strata | AnchorSrv4Strata
+// A REPLICABLE SHAPE SOURCE. h11's, srv3's and srv4's are named because their capacity rests on host-specific
+// machinery (h11's per-card warm store on the bus, srv3/srv4's fixed layer-split profile). `AnchorStrataProfile`
+// is the OPEN arm (B4a): a host whose Strata shape is a profile carried as DATA -- its throughput figures, cards
+// and context come from the profile row, so adding a serving host is a profile row and a roster row, never a new
+// named anchor or a new `router_dev_first_party_for` argument. A profile with no throughput reading yet (a host
+// that has never served -- the not-yet-deployed case) yields an unread shape here, which the projection names but
+// keeps out of service rather than refusing the whole router.
+type RouterDevReplicaAnchor = AnchorH11Strata { bus: String } | AnchorSrv3Strata | AnchorSrv4Strata | AnchorStrataProfile { profile: ServingReplicaProfile }
 
 // h11's group is the bus, prefixed -- the layout names its h11 device groups "h11-strata@<bus>", so deriving the
 // group from the bus keeps the two from drifting apart (review 92443): the bus is stated once, on the anchor.
@@ -1084,6 +1091,7 @@ fn router_dev_replica_shape(n: RouterDevReplicaNaming, admitted: Nat) -> Serving
     AnchorH11Strata { bus: b } => h11_strata_shape(deployment: n.name, bus: b, admitted: admitted)
     AnchorSrv3Strata => srv3_strata_shape()
     AnchorSrv4Strata => srv4_strata_shape()
+    AnchorStrataProfile { profile: p } => replica_shape_named(p: p, deployment: n.name)
   }
 }
 
@@ -1099,6 +1107,36 @@ fn router_dev_replica_row(n: RouterDevReplicaNaming, admitted: Nat) -> RouterDev
     effort_effects: iq3_s_effort_rules(),
     capacity_rests_on: rests,
   })
+}
+
+// IS THIS SHAPE REFUSED *BECAUSE THE THROUGHPUT IS UNREAD*? A replica with no throughput reading is a host that
+// has never served -- not a broken host. This is the exact refusal `serving_capacity_shape` raises for
+// ThroughputUnread (serving_capacity_anchor), matched by the reason it carries rather than a fuzzy substring, so
+// the "named but not in service" arm fires for precisely that case and for nothing else: any OTHER shape refusal
+// (mutable model, batch-disabled store, unread build, too-slow swap) is still a hard refusal, because those are
+// faults, not absences of reading (fail_closed).
+fn router_dev_shape_is_throughput_unread(shape: ServingCapacityShape) -> Bool {
+  match shape {
+    ServingShapeRefused { deployment: _, reason: r } => (r as String) == "the anchor's aggregate throughput is unread"
+    _ => false
+  }
+}
+
+// A NAMED-BUT-NOT-IN-SERVICE ROW (B4a): the naming's endpoint facts (name, scheme, address, port, TLS) so the
+// replica is NAMED and discoverable, with a zero owned cap, no retention and `in_service: false` so the router
+// never sends a turn to an engine that has never produced a throughput reading. This is the finding's "a replica
+// with no throughput reading is named but not in service (its own arm) instead of refusing the whole router": the
+// row exists and says so, and its host's refusal -- if it had none -- would refuse only itself, never its
+// siblings' rows.
+fn router_dev_unread_row(n: RouterDevReplicaNaming) -> RouterDevUpstream {
+  RouterDevUpstream {
+    name: n.name, scheme: n.scheme, host: n.host, port: n.port, tls_name: n.tls_name,
+    model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 0 }, max_model_len: 229376, path_prefix: "",
+    retiring_names: n.retiring, in_service: false,
+    retention: NoRetention,
+    effort_effects: iq3_s_effort_rules(),
+    capacity_rests_on: [] as List<CitedFigureStanding>,
+  }
 }
 
 // THE ROWS FOLLOW EACH HOST'S LAYOUT REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied

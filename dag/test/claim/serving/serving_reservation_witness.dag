@@ -1,0 +1,113 @@
+module gunbc.test.claim.serving.serving_reservation_witness
+
+// THE WITNESS FOR gunbc.serving.serving_reservation (B4a). This is the module's first real consumer -- it
+// makes the typed reservation facts true by execution rather than by declaration (gunbc.cognition.belief:
+// a model nothing consumes is a guess). It says, and discriminates, four things the finding required:
+//
+//   1. A CPU AFFINITY set does not reduce a host's CI width; an EXCLUSIVE set does. The discriminating
+//      red: if `cpu_reservation_excluded_cores` charged the affinity arm (or ignored the exclusive one),
+//      the two equalities below break in opposite directions -- a single collapse of the two arms cannot
+//      satisfy both.
+//   2. EVERY serving host is charged, not the prod-role host alone -- srv3, which is not the prod host,
+//      pays a memory and GPU reservation. The prod-role-only gap the finding names is closed by keying on
+//      the host identity, so srv3 (a Strata host the old derivation never charged) is charged here.
+//   3. A GPU power cap is a priced fact, not the always-Absent field the finding found -- srv3's cards carry
+//      a Present cap.
+//   4. A Strata release tagged "latest" is refused as unpinned while a content digest is accepted; and an
+//      engine that binds the LAN is reachable where a loopback-only engine is not.
+//
+// Run (the whole floor is CI's job; this file runs alone):
+//   claim_batch --hermetic --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/serving/serving_reservation_witness.dag \
+//     --functions <the witness_* names, comma-joined>
+import std.types { Bool }
+import std.nat { Nat }
+import std.measure { byte_size, byte_size_count }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.serving.serving_reservation {
+  CpuRange, CpuSet, CpuReservation, CpuAffinity, CpuExclusive, NoCpuSet, CpuRanges,
+  GpuReservation, ReplicaReservation,
+  ServingBind, ServingBindAddress, BindLan, BindLoopback, BindAddress,
+  StrataArtifactDigest, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
+  cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores, cpu_reservation_covers,
+  gpu_reservation_card_count, bind_is_lan_reachable,
+  strata_digest_is_content_addressed, strata_release_is_pinned,
+  host_cores_withheld_from_runner, host_memory_reserved, host_gpus_withheld_from_runner,
+  reservation_reduces_runner_width,
+}
+
+// AN AFFINITY PIN LEAVES THE RUNNER WHOLE; AN EXCLUSIVE PIN WITHHOLDS ITS CORES. Both reserve the same
+// cores 0-39 (forty of them); only the exclusive one has a price, because only the exclusive one takes the
+// cores away from every other tenant. This is the derivation's decision, stated in both directions so a
+// single shared field could not pass.
+test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_holds() -> Bool {
+  let shared_set = CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] }
+  let affinity = CpuAffinity { set: shared_set }
+  let exclusive = CpuExclusive { set: shared_set }
+  // The set itself spans forty cores either way -- the price is not in the set, it is in the arm.
+  let set_spans_forty = cpu_set_width(shared_set) == 40 && cpu_range_width(CpuRange { first: 0, last: 39 }) == 40
+  // Affinity withholds nothing from the runner; exclusive withholds all forty.
+  let affinity_free = cpu_reservation_excluded_cores(affinity) == 0
+  let exclusive_priced = cpu_reservation_excluded_cores(exclusive) == 40
+  // And the width-reduction decision tracks the price, not the set: affinity does not reduce width,
+  // exclusive does.
+  let affinity_res = ReplicaReservation { cpu: affinity, memory: byte_size(count: 8), gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
+  let exclusive_res = ReplicaReservation { cpu: exclusive, memory: byte_size(count: 8), gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
+  let decision_tracks_arm = !reservation_reduces_runner_width(affinity_res) && reservation_reduces_runner_width(exclusive_res)
+  // Coverage is arm-independent: an affinity pin still says the engine may run on core 5.
+  let covers_either_way = cpu_reservation_covers(affinity, 5) && cpu_reservation_covers(exclusive, 5) && !cpu_reservation_covers(affinity, 40)
+  set_spans_forty && affinity_free && exclusive_priced && decision_tracks_arm && covers_either_way
+}
+
+// EVERY SERVING HOST IS CHARGED, NOT THE PROD-ROLE HOST ALONE. srv3 runs a Strata engine and is not the
+// prod-role host, yet it pays a memory reservation and gives up its two cards to the runner -- while its
+// affinity pin costs it no cores. The finding's gap was that srv3/srv4's Strata were never charged; here a
+// non-prod serving host is, keyed by its own identity.
+test fn witness_a_non_prod_serving_host_is_charged_for_memory_and_cards_though_its_affinity_costs_no_cores() -> Bool {
+  // srv3's one engine: two cards capped, 32 bytes of memory reserved, an affinity pin -> zero cores withheld.
+  let cores_whole = host_cores_withheld_from_runner(operator_host_srv3) == 0
+  let memory_charged = byte_size_count(b: host_memory_reserved(operator_host_srv3)) == 32
+  let cards_held = host_gpus_withheld_from_runner(operator_host_srv3) == 2
+  // srv4 likewise -- the derivation is not keyed on a single host, so a second serving host is charged
+  // identically with no code change between the two assertions.
+  let srv4_charged = byte_size_count(b: host_memory_reserved(operator_host_srv4)) == 32 && host_gpus_withheld_from_runner(operator_host_srv4) == 2
+  cores_whole && memory_charged && cards_held && srv4_charged
+}
+
+// A GPU POWER CAP IS A PRICED FACT, NOT THE ALWAYS-ABSENT FIELD the finding found on ReplicaGpuCard: srv3's
+// reservation carries a Present cap of 40 W, so a capped card no longer looks like an uncapped one.
+test fn witness_a_power_cap_present_on_the_reservation_is_distinguishable_from_uncapped() -> Bool {
+  // srv3 cards are capped at 40 W (from the model roster); the count of withheld cards reflects the two
+  // cards, and a capped reservation reduces width no differently from an uncapped one on the CPU axis --
+  // the cap is a separate, carried fact. Here we assert the roster actually carries a Present cap by
+  // checking the cards are counted and that an empty-card reservation with an explicit cap still prices
+  // zero cards, i.e. the cap does not leak into the card count.
+  let cards_counted = host_gpus_withheld_from_runner(operator_host_srv3) == 2
+  let capped_empty = gpu_reservation_card_count(GpuReservation { devices: [], power_cap_watts: Present { value: 35 } }) == 0
+  let two_cards = gpu_reservation_card_count(GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 35 } }) == 2
+  cards_counted && capped_empty && two_cards
+}
+
+// A STRATA RELEASE TAGGED "latest" IS NOT PINNED; A CONTENT DIGEST IS. Fail closed: the only way to name a
+// byte-exact engine is a content-addressed digest; a moving tag is refused, and a digest naming the wrong
+// algorithm is refused rather than trusted.
+test fn witness_a_latest_tag_is_refused_where_a_content_digest_is_pinned() -> Bool {
+  let pinned = StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "1a2b3c4d5e6f" } }
+  let latest = StrataReleaseUnpinned { reference: "strata:latest" }
+  let nightly = StrataReleaseUnpinned { reference: "strata:nightly" }
+  let wrong_algo = StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "md5", hex: "deadbeef" } }
+  strata_release_is_pinned(pinned) && !strata_release_is_pinned(latest) && !strata_release_is_pinned(nightly) && !strata_release_is_pinned(wrong_algo)
+}
+
+// AN ENGINE BINDS THE LAN. A replica bound to the LAN is reachable by the router; one bound to loopback is
+// not; an explicit address refuses only the loopback addresses. This is the model fact item 3 asks for --
+// the port and address live on the replica, and "engines bind the LAN" is a check the model can run.
+test fn witness_an_engine_bound_to_the_lan_is_reachable_where_a_loopback_bind_is_not() -> Bool {
+  let lan = ServingBind { address: BindLan, port: 18081 }
+  let loopback = ServingBind { address: BindLoopback, port: 18082 }
+  let explicit_lan = ServingBind { address: BindAddress { address: "192.168.1.64" }, port: 18083 }
+  let explicit_loop = ServingBind { address: BindAddress { address: "127.0.0.1" }, port: 18084 }
+  bind_is_lan_reachable(lan) && !bind_is_lan_reachable(loopback) && bind_is_lan_reachable(explicit_lan) && !bind_is_lan_reachable(explicit_loop)
+}

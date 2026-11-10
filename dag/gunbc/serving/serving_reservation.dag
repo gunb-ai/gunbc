@@ -1,0 +1,295 @@
+module gunbc.serving.serving_reservation
+
+// A SERVING REPLICA'S CLAIM ON ITS HOST, SAID AS TYPED FACTS, BEFORE ANY OF IT IS SPENT.
+//
+// WHY THIS MODULE EXISTS (B4a, 2026-11-10). The serving path could already say how MANY replicas a host
+// runs and WHAT each is configured as (serving_layout's ServingReplicaConfig, serving_replica_profile's
+// ServingReplicaProfile), but nowhere could it say what a replica TAKES OFF THE HOST while it runs: which
+// cores it may run on, whether those cores are held back from every other tenant, how much memory is set
+// aside for it, which cards and at what power cap, and on which port and address its engine listens. The
+// finding B4a closes is that these were expressible nowhere on the serving path (ServingDeviceGroup,
+// ServingReplicaConfig, ServingReplicaProfile, ReplicaGpuCard, extdeps.strata.serve_flags carried none of
+// them), so the only place a port appeared at all was the router's own naming row, and the runner's width
+// derivation (gunbc.runner.runner_slot_allocation, gunbc.live_deploy.served_slice_charge) could charge only
+// the one prod-role host and never srv3's or srv4's Strata -- because it had nothing typed to charge with.
+//
+// A RESERVATION IS PRICED BEFORE CI WIDTH, NOT DISCOVERED AFTER IT (operator ruling, B4a). A core the
+// engine is given exclusively is a core the runner cannot hand to a CI slot; a core the engine is merely
+// ALLOWED on is still a core the runner may use. The distinction is the whole of the module's reason for
+// being: affinity is a fact about where a process may run, exclusivity is a fact about what is withheld
+// from everyone else, and only the second one has a price against CI width. Collapsing them -- pinning and
+// reserving with one field -- would either overcharge (a pinned-but-shared cpuset wrongly shrinks the
+// runner) or undercharge (an exclusive range wrongly leaves its cores bookable by a second tenant). So
+// they are two arms, and the width derivation reads only the exclusive one.
+//
+// PER-REPLICA, NOT PER-HOST (B4a ruling, and operator ruling D2 in gunbc.plans.fleet_machine_naming: a
+// per-host fact is a DATA ROW keyed by the machine, never a named per-host declaration). A host that runs
+// N replicas prices N reservations, one per replica row, each keyed by (host, replica id). The width a host
+// gives back to the runner is the fold over its replicas' reservations -- so adding a second engine to a
+// host is another row, not a fork of the derivation.
+//
+// NOTHING HERE DEPLOYS. This is the model the live deploy (B4b, cool-lark-40) and the runner width
+// derivation consume; the witnesses under dag/test/claim/serving are the consumers that make it true by
+// execution. The production consumer for the width charge is the runner's served-deployment claim, which
+// today (gunbc.live_deploy.served_slice_charge, owned by PR 16058) charges the prod-role host's container
+// MEMORY only -- this module supplies the CPU/GPU/memory-reservation face and charges it for EVERY serving
+// host, keyed by host identity, so the prod-role restriction the finding names is not inherited here.
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.measure { ByteSize, byte_size_count, byte_size }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+
+// ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
+
+// AN INCLUSIVE RANGE OF CORE INDICES. `first` is never above `last` -- a witness pins that, because the
+// width below is `last - first + 1` and a reversed range would underflow the naturals rather than mean
+// "empty."
+type CpuRange {
+  first: Nat
+  last: Nat
+}
+
+// A CPUSASET: the cores a process is placed among. Either nothing (an engine with no placement, which
+// shares whatever the cgroup was handed) or a list of inclusive ranges. Modelled as ranges and not as a
+// string like "0-39" so the width is a fact of the carrier rather than of a parser: a host's cpuset is
+// counted, not decoded (gunbc.design_argument::minimize_redundancy -- no parser where data will do).
+type CpuSet
+  = NoCpuSet
+  | CpuRanges { ranges: List<CpuRange> }
+
+// THE PRICE-RELEVANT DISTINCTION. `CpuAffinity` says which cores the engine may run on; the host keeps
+// them bookable, so the runner may still spend them on a CI slot. `CpuExclusive` says those cores are
+// withheld from every other tenant for the engine's life; the runner may NOT spend them. The two carry the
+// same set and cost the host different amounts, which is why they are two arms and not one field with a
+// boolean.
+type CpuReservation
+  = CpuAffinity { set: CpuSet }
+  | CpuExclusive { set: CpuSet }
+
+// HOW MANY CORES A RANGE SPANS. Both endpoints are addressable cores, hence `+ 1`. Well-formedness
+// (`first <= last`) is the caller's duty and is witnessed; a reversed range is a bug in the row, not an
+// empty set.
+fn cpu_range_width(r: CpuRange) -> Nat {
+  r.last - r.first + 1
+}
+
+fn cpu_set_width(set: CpuSet) -> Nat {
+  match set {
+    NoCpuSet => 0
+    CpuRanges { ranges: rs } => fold(rs, init: 0, f: (acc, r) => acc + cpu_range_width(r))
+  }
+}
+
+// THE WIDTH PRICE: only exclusive cores leave the runner's bookable pool. An affinity cpuset prices zero
+// against CI width, because the scheduler may still place a runner on a core an engine is merely permitted
+// to use. This single line is what "affinity-only does not reduce CI width while exclusive does" rests on,
+// and the witness says it in both directions.
+fn cpu_reservation_excluded_cores(r: CpuReservation) -> Nat {
+  match r {
+    CpuAffinity { set: _ } => 0
+    CpuExclusive { set: s } => cpu_set_width(s)
+  }
+}
+
+// IS THIS CORE INSIDE THE RESERVATION'S SET (either arm -- placement, not price).
+fn cpu_reservation_covers(r: CpuReservation, core: Nat) -> Bool {
+  let set = match r {
+    CpuAffinity { set: s } => s
+    CpuExclusive { set: s } => s
+  }
+  match set {
+    NoCpuSet => false
+    CpuRanges { ranges: rs } => any(rs, range => core >= range.first && core <= range.last)
+  }
+}
+
+// ── GPU: WHICH CARDS, AT WHAT CAP ────────────────────────────────────────────────────────────────────
+
+// THE CARDS A REPLICA HOLDS AND THE POWER FLOOR IT SETS ON THEM. The power cap is the reason a card's
+// reservation is not merely a device list: ReplicaGpuCard.power_cap was always Absent on the serving path,
+// so a card an operator had capped to 35 W looked identical to an uncapped one. A Present cap is a priced
+// fact (heat and clock headroom the host has committed away); Absent says nothing was capped, not that the
+// cap is unknown to the point of being unusable.
+type GpuReservation {
+  devices: List<NonEmptyStr>
+  power_cap_watts: Optional<Nat>
+}
+
+fn gpu_reservation_card_count(g: GpuReservation) -> Nat {
+  count(g.devices)
+}
+
+// ── THE REPLICA'S RESERVATION, AND THE HOST'S BIND ───────────────────────────────────────────────────
+
+// WHAT ONE REPLICA TAKES OFF ITS HOST: cores (affinity or exclusive), a memory reservation, and its cards
+// with their cap. Every field is a fact a row states; none is derived from a count of co-resident replicas,
+// which is what let a per-host verdict wrongly add a second batch-1 engine onto the first.
+type ReplicaReservation {
+  cpu: CpuReservation
+  memory: ByteSize
+  gpu: GpuReservation
+}
+
+// THE ADDRESS AN ENGINE BINDS AND THE PORT IT BINDS IT ON. `BindLan` is the address a Strata engine
+// listens on so its siblings on the LAN can reach it -- the finding's "engines bind the LAN." `BindLoopback`
+// is a local-only engine; `BindAddress` pins an explicit interface. The port is a Nat so a collision
+// (two replicas one host gave the same port) is decidable rather than a string-compare accident.
+type ServingBindAddress
+  = BindLan
+  | BindLoopback
+  | BindAddress { address: NonEmptyStr }
+
+type ServingBind {
+  address: ServingBindAddress
+  port: Nat
+}
+
+// AN ENGINE BINDS THE LAN: a serving replica's bind must be LAN-addressable to serve, so a loopback-only
+// replica is not reachable by the router and is refused by the reachability check below. `BindAddress` on a
+// LAN interface counts as binding the LAN.
+fn bind_is_lan_reachable(b: ServingBind) -> Bool {
+  match b.address {
+    BindLan => true
+    BindLoopback => false
+    BindAddress { address: a } => (a as String) != "127.0.0.1" && (a as String) != "localhost"
+  }
+}
+
+// ── THE STRATA RELEASE IS PINNED BY ARTIFACT DIGEST, NOT TAGGED "latest" ─────────────────────────────
+
+// THE CONTENT REFERENCE OF THE STRATA ARTIFACT, held as an algorithm and its hex rather than one string to
+// be parsed: a producer supplies "sha256" and the hex, so "is this pinned?" is a fact of the carrier and
+// not of a parser (gunbc.design_argument::minimize_redundancy). A tag -- "latest", "v1", "nightly" -- is a
+// name standing where the content should be (gunbc.design_argument::name_should_match_reality), so it is
+// not representable as a digest at all.
+type StrataArtifactDigest {
+  algorithm: NonEmptyStr
+  hex: NonEmptyStr
+}
+
+// A STRATA RELEASE THE MODEL WILL RUN. `Pinned` carries the digest; `Unpinned` records a reference (a
+// moving tag like "strata:latest") and is refused by every consumer that must reproduce a byte-exact
+// engine. Keeping `Unpinned` as a variant -- rather than making a digest required -- lets the model NAME a
+// host's current unpinned state and refuse it, which is more honest than pretending every host already has
+// a digest.
+type StrataRelease
+  = StrataReleasePinned { digest: StrataArtifactDigest }
+  | StrataReleaseUnpinned { reference: NonEmptyStr }
+
+// A digest is content-addressed when it names a real content algorithm; the algorithm is the discriminator,
+// because a tag ("latest", "nightly", "v1") is a name, never a content algorithm, and a wrong algorithm is
+// refused rather than trusted. Fail closed: an unpinned release is never assumed pinned.
+fn strata_digest_is_content_addressed(d: StrataArtifactDigest) -> Bool {
+  (d.algorithm as String) == "sha256"
+}
+
+fn strata_release_is_pinned(r: StrataRelease) -> Bool {
+  match r {
+    StrataReleasePinned { digest: d } => strata_digest_is_content_addressed(d)
+    StrataReleaseUnpinned { reference: _ } => false
+  }
+}
+
+// ── THE WIDTH DERIVATION: EVERY SERVING HOST PAYS FOR THE RESERVATIONS IT RUNS ────────────────────────
+
+// A SERVING HOST'S RESERVATIONS: its identity and the per-replica reservation rows it runs. A host with no
+// row is not a serving host in this model; a host with N rows runs N replicas and pays for all of them.
+// This is the shape the runner width derivation folds, so the prod-role-only restriction the finding names
+// (served_slice_charge keys its charge on the single prod host) cannot recur here: the key is the host's own
+// identity, and any host with a row is charged.
+type ServingHostReservation {
+  host: HostIdentity
+  replicas: List<ReplicaReservation>
+}
+
+// THE ROSTER OF SERVING HOSTS AND THEIR RESERVATIONS. Extending the fleet is a row here -- the operator's
+// "adding the next machine is boring" bar -- never a branch on a machine name in the derivation below.
+// srv3 and srv4 run one Strata engine each on an AFFINITY cpuset (pinned to their engine cores, but the
+// cores stay bookable by the runner), so they are charged GPU and memory and cost the runner no cores; a
+// host that pins its engine EXCLUSIVELY would carry a CpuExclusive row and the width would fall. This is a
+// MODEL roster: butch's own rows and the live cpusets land with B4b (cool-lark-40); the rows here are the
+// fleet's standing claims, and the derivation reads them all the same.
+data serving_host_reservations: List<ServingHostReservation> = [
+  // srv3: one Strata engine, its two cards capped, an affinity pin that leaves cores bookable.
+  ServingHostReservation {
+    host: operator_host_srv3,
+    replicas: [
+      ReplicaReservation {
+        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
+        memory: byte_size(count: 32),
+        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 40 } },
+      },
+    ],
+  },
+  // srv4: one Strata engine, its two cards capped, an affinity pin.
+  ServingHostReservation {
+    host: operator_host_srv4,
+    replicas: [
+      ReplicaReservation {
+        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
+        memory: byte_size(count: 32),
+        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 40 } },
+      },
+    ],
+  },
+]
+
+fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
+  match filter(serving_host_reservations, r => host_identity_eq(r.host, host)) |> first() {
+    Present { value: r } => Present { value: r }
+    Absent => Absent
+  }
+}
+
+// HOW MANY CORES A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive cores
+// only. An affinity-pinned host gives back zero cores here -- which is the witness, stated.
+fn host_cores_withheld_from_runner(host: HostIdentity) -> Nat {
+  match host_reservations_for(host) {
+    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + cpu_reservation_excluded_cores(c.cpu))
+    Absent => 0
+  }
+}
+
+// HOW MUCH MEMORY A SERVING HOST COMMITS TO ITS SERVING REPLICAS, for EVERY serving host -- not the
+// prod-role host alone. The width derivation charges this against the host's runner-usable memory the same
+// way served_slice_charge charges the prod host's container allowance.
+fn host_memory_reserved(host: HostIdentity) -> ByteSize {
+  let total = match host_reservations_for(host) {
+    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + byte_size_count(b: c.memory))
+    Absent => 0
+  }
+  byte_size(count: total)
+}
+
+// HOW MANY CARDS A SERVING HOST COMMITS TO SERVING, so the runner never counts a serving card as free for
+// a GPU CI job on that host.
+fn host_gpus_withheld_from_runner(host: HostIdentity) -> Nat {
+  match host_reservations_for(host) {
+    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + gpu_reservation_card_count(c.gpu))
+    Absent => 0
+  }
+}
+
+// THE WIDTH THE RUNNER MAY SPEND ON A SERVING HOST: its total runner cores less the cores its serving
+// replicas reserve EXCLUSIVELY. Affinity reservations do not appear here -- a pinned-but-shared cpuset
+// leaves the runner whole -- so an engine pinned to cores 0-39 affinitively costs the runner zero of its
+// width, while an engine that takes cores 0-39 exclusively costs the runner forty. Fail closed on the
+// natural subtraction: if a host's exclusive reservations would exceed its cores, the claim asks a host to
+// give back more than it has, which the caller must treat as a refusal rather than a zero.
+fn runner_cores_available_on(host: HostIdentity, total_runner_cores: Nat) -> Optional<Nat> {
+  let withheld = host_cores_withheld_from_runner(host)
+  if withheld <= total_runner_cores {
+    Present { value: total_runner_cores - withheld }
+  } else {
+    Absent
+  }
+}
+
+// THE DERIVATION'S DECISION, STATED FOR THE WITNESS: a reservation reduces a host's CI width exactly when
+// it withholds cores from the runner -- i.e. only when it is exclusive. An affinity-only set does not
+// reduce width; an exclusive one does.
+fn reservation_reduces_runner_width(res: ReplicaReservation) -> Bool {
+  cpu_reservation_excluded_cores(res.cpu) > 0
+}
