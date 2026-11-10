@@ -35,15 +35,15 @@ import std.process { ProcessExit }
 // `t.v` refuses "no field 'v' on type 'FreeMonoid'" -- and it is asserted beside the advisory so the
 // red cannot green by silencing the advisory while the mistyping stays.
 
-data call_form_source: String = "module test.claim.fold_copies_call_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+data call_form_source: String = "module test.claim.fold_copies_call_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
 
-data method_form_source: String = "module test.claim.fold_copies_method_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried = xs.fold(init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+data method_form_source: String = "module test.claim.fold_copies_method_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried = xs.fold(init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
 
 // ACCEPTED POSITIVE CONTROL (typability): the method-form carrier with its accumulator annotated was
 // clean before any change and must stay clean, which is what makes the red cell mean "the argument
 // was present and dropped by the copy without the generic test" rather than "this fold cannot be
 // typed at all."
-data method_form_annotated_source: String = "module test.claim.fold_copies_method_annotated_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried: List<FcciItem> = xs.fold(init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+data method_form_annotated_source: String = "module test.claim.fold_copies_method_annotated_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty, list_snoc_item }\ntype FcciItem { v: Int }\nfn probe(xs: List<FcciItem>) -> Int {\n  let carried: List<FcciItem> = xs.fold(init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
 
 // DISCRIMINATING RED, in the repaired direction. At main the method-form fold raises the advisory
 // once and refuses `t.v` once (its copy of the rule omits the generic test, so `carried` is left an
