@@ -76,3 +76,9 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 ## EMITTER THIRD BOUNDARY (masked; recorded in concern row branch_match_arm_closure_declared_return_not_admitted, #16195)
 - Becomes testable once any upstream blocker admits the shape. Blocker (ii), inhabitance, is being worked in lane adhoc-b66614dd-46c.
 - The fix is mapped (cool-newt-294): thread the FunctionTypeAtItemReturn position through target_project_branch_bool_if_else and the match projector to target_project_realized_closure, at BOTH item-body routes. In target_serialize project_arrow_body_from_inferred_facts, add ComputationBody{Branch}/{Match} arms mirroring #16180's Bind arm. In target_model target_project_arrow_body_by_kind, pass Present(FunctionTypeAtItemReturn) at the Branch/Match arms. Fixture-first; rustc is the referee.
+
+## FIELD-DEFAULT SCOPE (#16196 landed, class FoundBelowTheLadder, per-path)
+- NEXT (priority 1): rest_exchange_selection in src/v1/stage0/src/v1_interpreter.rs turns RestReplayExchangeAbsent{invocation} into a bare TypeError and DROPS the bound invocation. Surface it (render invocation.target into the refusal, or return a typed refusal a witness can read). The zero-fixture op-route probe then shows path 2's bound value, after which #16185's explicit fields become removable. Do NOT hand-key a fixture (rest_bound_invocation_eq is exact on host-computed input_digest).
+- Path 3: the type layer's parameter_default_emissions still types an omitted default in the call site's scope (silent). It needs its own claim.
+- The four claim cells are not enrolled in any lane (path 1's limit).
+- dag/test/claim/github_workflow_runs_witness.dag: 0/27, refused at load (LiveTreeDisposition, SubstrateInputsOnly, WorkflowRunStatus/Conclusion arm imports).
