@@ -22152,7 +22152,11 @@ pub enum RestResponseDecodeCause {
 /// `rest_refusal_text` published only 'status 200 undecodable' and the 2026-11-10 heal-publish outage
 /// (every `github.Pulls.Get` refused at `NoWireContract`) was undiagnosable from CI. This rendering keeps
 /// what is DECLARED — the cause kind, the coproduct's name, the encoding and naming policy, the row count
-/// — and drops what the body supplied. The located `field_path` is KEPT, for the mirror-image reason:
+/// — and drops what the body supplied. The overall shape, `... at <located field> (<coproduct>)`, is
+/// pinned by claims this module does not own (`an_unknown_spelling_refuses_at_the_located_field` and
+/// `a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match` in
+/// `dag/test/claim/rest_exchange_replay.dag`), so it is not free to drift. The located `field_path` is
+/// KEPT, for the mirror-image reason:
 /// every part of it is an authored name out of the DECLARATION, never a key out of the body —
 /// `decode_json_by_declared_field` seeds it from `authored_name_at` of the declared field, a list descent
 /// appends the position, and the coproduct arm appends a DECLARED member's authored name. That is also
@@ -22186,7 +22190,7 @@ fn rest_body_not_json_cause(parse_error: &str) -> String {
 
 fn rest_body_null_members_cause(missing: &str) -> String {
     format!(
-        "the declared output has {} uninhabited members; their names are withheld on a credential path",
+        "body did not inhabit the declared output: {} declared members were left uninhabited, their names withheld on a credential path",
         missing.split(',').filter(|name| !name.is_empty()).count()
     )
 }
@@ -22206,7 +22210,7 @@ fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
         RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
     };
     format!(
-        "body did not inhabit the declared output: {} at {} (coproduct {})",
+        "body did not inhabit the declared output: {} at {} ({})",
         declared, refusal.field_path, refusal.coproduct
     )
 }

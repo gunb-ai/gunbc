@@ -21,7 +21,7 @@ fn marker() -> String { "FAKE-SECRET-MARKER" }
 fn carries_no_marker(text: String) -> Bool { !string_contains(s: text, pattern: marker()) }
 
 // The shape v1_interpreter rest_response_declared_cause mints for the cause the 2026-11-10 outage
-// printed: '<kind text> at <located DECLARED field> (coproduct <name>)'. The located field is part of the
+// printed: '<kind text> at <located DECLARED field> (<coproduct name>)'. The located field is part of the
 // published text and not an accident of it -- every segment of that path is an authored name out of the
 // declaration tree (decode_json_by_declared_field seeds it from authored_name_at of the declared field),
 // so it carries no response content and it is what a refusal is diagnosed from. This is a RECORDED shape,
@@ -30,7 +30,7 @@ fn carries_no_marker(text: String) -> Bool { !string_contains(s: text, pattern: 
 // record descending into PullRequest.state; what is pinned here is that a located field appears between
 // the kind text and the coproduct, which is the property the publisher diagnoses from.
 fn no_wire_contract_cause() -> String {
-  "body did not inhabit the declared output: no CoproductWireContract row is realized for this coproduct and its module declares no wire_contract, so its wire spelling is undeclared at pull.state (coproduct PullRequestState)"
+  "body did not inhabit the declared output: no CoproductWireContract row is realized for this coproduct and its module declares no wire_contract, so its wire spelling is undeclared at pull.state (PullRequestState)"
 }
 
 test fn witness_a_status_refusal_keeps_only_its_status() -> Bool {
