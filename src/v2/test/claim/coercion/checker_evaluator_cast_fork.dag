@@ -53,11 +53,12 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 // range", which is the in-range case this fixture is asked to pose.
 
 import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
-import v2.std.node { Node, Symbol, node_subtree_nodes, positional_child_target_nodes }
+import v2.std.node { Node, Symbol, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.runtime { RuntimeValue }
 import v2.std.text { String }
 import v2.std.type_binder { cast_target_optional }
@@ -65,6 +66,7 @@ import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import std.algebra { list_at_optional, list_find_first }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import std.types { Bool, List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -257,5 +259,93 @@ test fn cecf_class_probes_refuse_at_the_checker_for_one_named_reason() -> Bool {
       Absent => false
       Present { value: crossref_reason } => literal_reason == crossref_reason
     }
+  }
+}
+
+// ============================ VERDICT CENSUS (diagnostic row) ============================
+// A Bool row says only "false". The class question is about WHICH of two authorities refused, at WHICH
+// node, for WHICH reason -- so this row reports the whole reading as a typed refusal reason, which
+// claim_batch prints verbatim on its FAIL row (dag/std/process.dag: the claim path carries typed refusal
+// reasons to the executor surface, cli_run.rs ClaimOutcome::ExitFailure). It exits success only when every
+// probe reads the pair the way the class claim expects; otherwise the reason string IS the census:
+//   <tag>:pre=<y|n>,chk=<y|n>,cast=<y|n>,opd=<y|n>,eop=<y|n>,eca=<y|n>,er=<reason>
+// pre  -- v2.compiler.infer's infer alone admitted (separates the checker from the refinement discharge)
+// chk  -- v2.compiler.refinement_discharge's infer_and_discharge admitted (the pipeline verdict)
+// cast -- the tree carries the probe's `<cast-target>` node
+// opd  -- that node's positional child 1 (its operand) is present
+// eop  -- the evaluator admitted the OPERAND root          <- the differential's base
+// eca  -- the evaluator admitted the CAST root             <- the differential's top
+// er   -- the evaluator's refusal reason at the cast; cr -- the checker's refusal reason
+// er and cr carry the refusing side's own reason name, rendered by v2.std.node's `symbol_lexeme`, so the
+// census says the reason rather than a code: expect `infer_transform_operand_type_mismatch` where the
+// crossing refuses (#16224's counterpart in v2), `refinement_predicate_violated` or
+// `refinement_obligation_undischargeable` where the refinement discharge refuses, and
+// `eval_rejected_resolved_type_mismatch` on the evaluator side -- the reason the class's fork would carry.
+
+fn cecf_tag_yes_no(admitted: Bool) -> String {
+  if admitted { "y" } else { "n" }
+}
+
+// The checker's verdict BEFORE the refinement discharge: infer alone. A probe that infer admits and the
+// discharge refuses is a discharge refusal, not a cast-crossing refusal, and the census must be able to say
+// which -- the two sit on opposite sides of the wall this row is reading.
+fn cecf_pre_admits(src: String) -> Bool {
+  match bind_outcome(o: tpb_assemble(src: src), f: fn(r) { infer(tree: r) }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cecf_check_reason_tag(src: String) -> String {
+  match cecf_check(src: src) {
+    Accepted { value: _, diagnostics: _ } => "-"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+fn cecf_eval_reason_tag(t: InferredTree, n: Node) -> String {
+  match cecf_eval_node(t: t, n: n) {
+    Accepted { value: _, diagnostics: _ } => "-"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+fn cecf_census_row(tag: String, src: String) -> String {
+  let head = tag + ":pre=" + cecf_tag_yes_no(admitted: cecf_pre_admits(src: src)) + ",chk="
+  match cecf_check(src: src) {
+    Accepted { value: t, diagnostics: _ } =>
+      match cecf_cast_node(t: t) {
+        Absent => head + "y,cast=n"
+        Present { value: cast } =>
+          match cecf_cast_operand(n: cast) {
+            Absent => head + "y,cast=y,opd=n"
+            Present { value: operand } =>
+              head + "y,cast=y,opd=y,eop=" + cecf_tag_yes_no(admitted: cecf_eval_admits(t: t, n: operand)) +
+                ",eca=" + cecf_tag_yes_no(admitted: cecf_eval_admits(t: t, n: cast)) +
+                ",er=" + cecf_eval_reason_tag(t: t, n: cast)
+          }
+      }
+    Rejected { diagnostics: _ } => head + "n,cr=" + cecf_check_reason_tag(src: src)
+  }
+}
+
+// THE CENSUS. Success requires every probe's pair to read admitted (the controls) or to be a checker
+// refusal (the class probes); anything else -- a control the checker refuses, a control whose operand never
+// evaluated, or a cast the evaluator refused -- comes back as a failure whose reason is the full census.
+test fn cecf_verdict_census() -> ProcessExit {
+  let rows = cecf_census_row(tag: "lit", src: cecf_literal_source) +
+    " | " + cecf_census_row(tag: "xref", src: cecf_crossref_source) +
+    " | " + cecf_census_row(tag: "ident", src: cecf_identity_source) +
+    " | " + cecf_census_row(tag: "widen", src: cecf_widening_source)
+  let ident = cecf_read_probe(src: cecf_identity_source)
+  let widen = cecf_read_probe(src: cecf_widening_source)
+  let lit = cecf_read_probe(src: cecf_literal_source)
+  let xref = cecf_read_probe(src: cecf_crossref_source)
+  let clean = cecf_is_pair_admitted(r: ident) && cecf_is_pair_admitted(r: widen) &&
+    !cecf_is_pair_refused(r: lit) && !cecf_is_pair_refused(r: xref)
+  if clean {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: concat("CECF-CENSUS ", rows) }
   }
 }
