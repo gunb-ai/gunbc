@@ -85,37 +85,24 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
 // the same receipt always serializes byte-identically — the determinism the close's replay relies
 // on. An evidence-free receipt has no wire form: it is not closable, and "" says so.
 
+// THE ONE SPELLING, THE ONE FUNCTION. The bytes come from the same member builder the event log nests its
+// receipt with (gunbc.roadmap.roadmap_event_log roadmap_acceptance_receipt_members), so the line an operator
+// dictates and the event the fold reads cannot drift apart: one fact, one grammar, one function that writes
+// it. The receipt's own "node" is a member of the NESTED object, where it does not collide with the node the
+// event is filed under. A receipt whose red control never ran, or whose handback was never delivered, has no
+// closable line -- "" says so rather than closing on an evidence-free acceptance.
+fn roadmap_operator_acceptance_receipt_is_closable(receipt: RoadmapAcceptanceReceipt) -> Bool {
+  let red_ran = match receipt.red_control { RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => true  RedControlNotRun => false }
+  let handback_given = match receipt.handback { HandbackDelivered { first_artifact: _, further_artifacts: _ } => true  HandbackNotDelivered => false }
+  red_ran && handback_given
+}
+
 fn roadmap_operator_acceptance_receipt_line(receipt: RoadmapAcceptanceReceipt) -> String {
-  let red_members = match receipt.red_control {
-    RedControlExecuted { witness_module: wm, witness_fn: wf, executed_on: eo } => [
-      json_kv("variant", json_string("red_control_executed")),
-      json_kv("witness_module", json_string(wm as String)),
-      json_kv("witness_fn", json_string(wf as String)),
-      json_kv("executed_on", json_string(eo)),
-    ]
-    RedControlNotRun => [] as List<JsonKeyValue>
-  }
-  let handback_members = match receipt.handback {
-    HandbackDelivered { first_artifact: fa, further_artifacts: extra } => [
-      json_kv("variant", json_string("handback_delivered")),
-      json_kv("first_artifact", json_string(fa as String)),
-      json_kv("further_artifacts", json_array(map(extra, a => json_string(a as String)))),
-    ]
-    HandbackNotDelivered => [] as List<JsonKeyValue>
-  }
-  if count(red_members) == 0 || count(handback_members) == 0 {
-    ""
-  } else {
+  if !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt) { "" }
+  else {
     serialize_json(v: json_object([
       json_kv("variant", json_string("acceptance_recorded")),
-      json_kv("receipt", json_object([
-        json_kv("node", json_string(receipt.node as String)),
-        json_kv("criteria_digest", json_string(serialize_content_hash(hash: Fnv1a64(receipt.criteria_digest)) as String)),
-        json_kv("red_control", json_object(red_members)),
-        json_kv("handback", json_object(handback_members)),
-        json_kv("accepted_by", json_string(receipt.accepted_by as String)),
-        json_kv("accepted_on", json_string(receipt.accepted_on)),
-      ])),
+      json_kv("receipt", json_object(roadmap_acceptance_receipt_members(r: receipt))),
     ]))
   }
 }

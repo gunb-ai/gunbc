@@ -58,7 +58,15 @@ import gunbc.roadmap.roadmap_event_log {
   AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
   roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_migration_problems, EventPrincipalAuthenticated,
   roadmap_acceptance_pr_evidence_url, roadmap_acceptance_pr_evidence_merged_at, roadmap_acceptance_pr_evidence_head_sha,
+  RoadmapEvent, RoadmapEventKind, RoadmapEventDecoded, RoadmapEventUndecodable,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_envelope, roadmap_event_wire_text,
+  roadmap_event_decode, roadmap_acceptance_receipt_members,
 }
+import gunbc.roadmap.roadmap_acceptance_history_carrier {
+  parse_roadmap_acceptance_event_history_carrier, RoadmapAcceptanceEventHistoryParsed,
+  RoadmapAcceptanceEventHistoryParseRefused,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
 import gunbc.principal_projection { PrincipalRef }
 
 // THE PULL REQUEST AN ACCEPTANCE WAS EARNED BY, spelled once as the typed fact. A LOCAL fact record: this
@@ -361,4 +369,87 @@ test fn a_migration_verifier_refuses_a_retired_node_the_log_does_not_hold_retire
     closed_nodes: verifier_closed(), not_retired: ["node-never-retired"])
   claim("a node the runbook claims retired that the log does not hold retired refuses",
     count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-never-retired")))
+}
+
+// ── THE LOG'S BYTES ARE THE LINE'S BYTES ────────────────────────────────────────────────
+// THE DEFECT THIS ROW EXISTS TO CATCH, witnessed where it can be caught without a carrier. An acceptance is
+// written by the log's own canonical emitter and read back by the log's own decoder, and the receipt must
+// come home intact. When the receipt's members were flattened into the event, its own "node" sat beside the
+// event's "node", json_object_unique_member refused the object and the log could write an acceptance it could
+// never read — the wet driver met it as an append that succeeded and a read that refused "event has no node".
+// Nesting the receipt under "receipt" / "exact_prior_receipt" is what makes the bytes readable; this row is
+// the claim that says so, and it fails if anyone flattens them again.
+fn one_grammar_event(kind: RoadmapEventKind) -> RoadmapEvent {
+  RoadmapEvent {
+    node: "node-one-grammar" as NonEmptyStr as RoadmapNodeId,
+    author: opr_principal(),
+    parent: Absent,
+    kind: kind,
+    recorded_at: "2026-11-03T09:00:00Z",
+  }
+}
+
+fn receipt_facts(receipt: RoadmapAcceptanceReceipt) -> String {
+  serialize_json(v: json_object(members: roadmap_acceptance_receipt_members(r: receipt)))
+}
+
+test fn an_acceptance_event_written_by_the_log_reads_back_with_its_receipt_intact() -> Bool {
+  let receipt = sample_receipt("node-one-grammar")
+  let text = roadmap_event_wire_text(env: roadmap_event_envelope(e: one_grammar_event(
+    kind: AcceptanceRecordedEvent { receipt: receipt, evidence: NoPullRequest })))
+  match roadmap_event_decode(text: text) {
+    RoadmapEventUndecodable { reason: _ } => false
+    RoadmapEventDecoded { envelope: env } => match env.event.kind {
+      AcceptanceRecordedEvent { receipt: back, evidence: _ } => receipt_facts(receipt: back) == receipt_facts(receipt: receipt)
+      _ => false
+    }
+  }
+}
+
+// The revocation is the sharper case: it names the receipt it revokes (the live receipt, or the fold refuses
+// it), carries its disposition as the tagged sub-fact it is, and keeps the reason that says why. Every one of
+// those has to survive the bytes, because the standing the node ends in is read from them and not from what
+// was intended when they were written.
+test fn an_acceptance_revocation_reads_back_naming_the_receipt_it_revokes() -> Bool {
+  let prior = sample_receipt("node-one-grammar")
+  let text = roadmap_event_wire_text(env: roadmap_event_envelope(e: one_grammar_event(kind: AcceptanceRevokedEvent {
+    receipt: prior,
+    disposition: AcceptanceNodeRemainsSuperseded {},
+    revoked_by: "briansrls",
+    revoked_on: "2026-11-05",
+    reason: "The floor cut retired this work's subject",
+  })))
+  match roadmap_event_decode(text: text) {
+    RoadmapEventUndecodable { reason: _ } => false
+    RoadmapEventDecoded { envelope: env } => match env.event.kind {
+      AcceptanceRevokedEvent { receipt: back, disposition: _, revoked_by: by, revoked_on: on, reason: why } =>
+        receipt_facts(receipt: back) == receipt_facts(receipt: prior)
+          && (by as String) == "briansrls" && (on as String) == "2026-11-05"
+          && string_contains(s: why as String, pattern: "floor cut")
+      _ => false
+    }
+  }
+}
+
+// THE ONE GRAMMAR, CHECKED AGAINST THE TRUSTED LAW. The receipt the log nests, wrapped in the acceptance
+// line's envelope, must parse under the carrier's own parser — the native seed law that read the eighteen
+// lines and that the migration replays. This is the row that fails if the log and the line ever spell the
+// same fact differently: the variant words, the nesting, the digest and the member order are the parser's,
+// because the parser is the law and the log is its newest reader, not a second authority beside it.
+test fn the_receipt_the_log_nests_is_the_line_the_carrier_parser_admits() -> Bool {
+  let receipt = sample_receipt("node-one-grammar")
+  let line = serialize_json(v: json_object(members: [
+    json_kv(key: "variant", value: json_string(s: "acceptance_recorded")),
+    json_kv(key: "receipt", value: json_object(members: roadmap_acceptance_receipt_members(r: receipt))),
+  ]))
+  match parse_roadmap_acceptance_event_history_carrier(text: join([line, ""], "\n")) {
+    RoadmapAcceptanceEventHistoryParseRefused { detail: _ } => false
+    RoadmapAcceptanceEventHistoryParsed { events: parsed } =>
+      count(parsed) == 1 && match parsed {
+        Cons { head: AcceptanceRecorded { receipt: admitted }, tail: _ } =>
+          receipt_facts(receipt: admitted) == receipt_facts(receipt: receipt)
+        Empty => false
+        _ => false
+      }
+  }
 }

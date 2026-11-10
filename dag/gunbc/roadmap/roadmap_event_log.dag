@@ -305,17 +305,28 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
     ], attempt_result_outcome_members(o: outcome))
     // The acceptance members exist only in this schema generation: v1 and v2 predate the kind, and
     // an event naming it under those schemas decodes as missing its members and is refused.
+    // THE ONE GRAMMAR. The receipt is written NESTED, under "receipt" / "exact_prior_receipt", with the
+    // member names and variant words the acceptance line has always used (see
+    // gunbc.roadmap.roadmap_operator_acceptance roadmap_operator_acceptance_receipt_line and the eighteen
+    // lines of the deleted seed, which the migration replays): a receipt is one fact, so it has one
+    // spelling in the log and on the line, and a line the operator dictates parses into the same bytes the
+    // fold reads back. The nesting is not style: the event object already carries "node", and
+    // json_object_unique_member REFUSES a duplicated member, so a flattened receipt -- whose first member is
+    // its own "node" -- could be written and never read. That was a real defect, and the wet driver caught
+    // it: the append succeeded and the very next read of the chain refused "event has no node".
     AcceptanceRecordedEvent { receipt, evidence } =>
       if schema == roadmap_event_schema {
-        concat(roadmap_acceptance_pr_evidence_members(evidence: evidence),
-          roadmap_acceptance_receipt_members(r: receipt)) } else { [] }
+        concat([json_kv(key: "receipt", value: json_object(members: roadmap_acceptance_receipt_members(r: receipt)))],
+          roadmap_acceptance_pr_evidence_members(evidence: evidence)) } else { [] }
     AcceptanceRevokedEvent { receipt, disposition, revoked_by, revoked_on, reason } =>
-      if schema == roadmap_event_schema { concat([
-        json_kv(key: "disposition", value: json_string(s: match disposition { AcceptanceNodeReopensActiveFrontier {} => "reopens_active_frontier"  AcceptanceNodeRemainsSuperseded {} => "remains_superseded" })),
+      if schema == roadmap_event_schema { [
+        json_kv(key: "exact_prior_receipt", value: json_object(members: roadmap_acceptance_receipt_members(r: receipt))),
+        json_kv(key: "disposition", value: json_object(members: [
+          json_kv(key: "variant", value: json_string(s: roadmap_acceptance_revocation_disposition_word(d: disposition)))])),
         json_kv(key: "revoked_by", value: json_string(s: revoked_by)),
         json_kv(key: "revoked_on", value: json_string(s: revoked_on)),
         json_kv(key: "reason", value: json_string(s: reason)),
-      ], roadmap_acceptance_receipt_members(r: receipt)) } else { [] }
+      ] } else { [] }
   }
 }
 
@@ -434,18 +445,18 @@ fn roadmap_acceptance_pr_evidence_head_sha(evidence: AcceptancePrEvidence) -> St
 // so a migrated receipt and a freshly recorded one name the same bytes.
 fn roadmap_acceptance_receipt_members(r: RoadmapAcceptanceReceipt) -> List<JsonKeyValue> {
   let red_members = match r.red_control {
-    RedControlNotRun {} => [json_kv(key: "variant", value: json_string(s: "not_run"))]
+    RedControlNotRun {} => [json_kv(key: "variant", value: json_string(s: "red_control_not_run"))]
     RedControlExecuted { witness_module: wm, witness_fn: wf, executed_on: eo } => [
-      json_kv(key: "variant", value: json_string(s: "executed")),
+      json_kv(key: "variant", value: json_string(s: "red_control_executed")),
       json_kv(key: "witness_module", value: json_string(s: wm)),
       json_kv(key: "witness_fn", value: json_string(s: wf)),
       json_kv(key: "executed_on", value: json_string(s: eo)),
     ]
   }
   let handback_members = match r.handback {
-    HandbackNotDelivered {} => [json_kv(key: "variant", value: json_string(s: "not_delivered"))]
+    HandbackNotDelivered {} => [json_kv(key: "variant", value: json_string(s: "handback_not_delivered"))]
     HandbackDelivered { first_artifact: fa, further_artifacts: fas } => [
-      json_kv(key: "variant", value: json_string(s: "delivered")),
+      json_kv(key: "variant", value: json_string(s: "handback_delivered")),
       json_kv(key: "first_artifact", value: json_string(s: fa)),
       json_kv(key: "further_artifacts", value: json_array(elements: map(fas, f => json_string(s: f)))),
     ]
@@ -637,7 +648,7 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
     // word is refused here rather than decoded into a receipt it never carried.
     if schema != roadmap_event_schema { none }
     else {
-      match roadmap_acceptance_receipt_decode(node: node, doc: doc) {
+      match roadmap_acceptance_receipt_decode(node: node, doc: doc, key: "receipt") {
         Absent => none
         Present { value: receipt } => match roadmap_acceptance_pr_evidence_decode(doc: doc) {
           Absent => none
@@ -648,27 +659,30 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
   } else if word == "acceptance_revoked" {
     if schema != roadmap_event_schema { none }
     else {
-      match roadmap_acceptance_receipt_decode(node: node, doc: doc) {
+      match roadmap_acceptance_receipt_decode(node: node, doc: doc, key: "exact_prior_receipt") {
         Absent => none
-        Present { value: receipt } => match event_member_string(doc: doc, key: "disposition") {
+        Present { value: receipt } => match event_member_object(doc: doc, key: "disposition") {
           Absent => none
-          Present { value: disposition_word } =>
-            match roadmap_acceptance_revocation_disposition_decode(word: disposition_word) {
-              Absent => none
-              Present { value: disposition } =>
-                match event_member_nonempty(doc: doc, key: "revoked_by") {
-                  Absent => none
-                  Present { value: revoked_by } =>
-                    match event_member_nonempty(doc: doc, key: "revoked_on") {
-                      Absent => none
-                      Present { value: revoked_on } =>
-                        match event_member_nonempty(doc: doc, key: "reason") {
-                          Absent => none
-                          Present { value: reason } => Present { value: AcceptanceRevokedEvent { receipt: receipt, disposition: disposition, revoked_by: revoked_by, revoked_on: revoked_on, reason: reason } }
-                        }
-                    }
-                }
-            }
+          Present { value: disposition_object } => match event_member_string(doc: disposition_object, key: "variant") {
+            Absent => none
+            Present { value: disposition_word } =>
+              match roadmap_acceptance_revocation_disposition_decode(word: disposition_word) {
+                Absent => none
+                Present { value: disposition } =>
+                  match event_member_nonempty(doc: doc, key: "revoked_by") {
+                    Absent => none
+                    Present { value: revoked_by } =>
+                      match event_member_nonempty(doc: doc, key: "revoked_on") {
+                        Absent => none
+                        Present { value: revoked_on } =>
+                          match event_member_nonempty(doc: doc, key: "reason") {
+                            Absent => none
+                            Present { value: reason } => Present { value: AcceptanceRevokedEvent { receipt: receipt, disposition: disposition, revoked_by: revoked_by, revoked_on: revoked_on, reason: reason } }
+                          }
+                      }
+                  }
+              }
+          }
         }
       }
     }
@@ -748,7 +762,17 @@ fn event_member_string_elements(es: List<JsonValue>, acc: List<String>) -> List<
 // says non-empty, and of the right shape -- a digest that is not lowercase hex is refused, not
 // guessed -- because this is the fold reading a live acceptance back and a half-read receipt is a
 // fabricated acceptance waiting to happen. The receipt names the node its event is filed under.
-fn roadmap_acceptance_receipt_decode(node: RoadmapNodeId, doc: JsonValue) -> RoadmapAcceptanceReceipt? {
+// The wrapper: the receipt is held NESTED under its own key -- "receipt" on an acceptance,
+// "exact_prior_receipt" on a revocation -- because the event object already names the node, and a JSON object
+// carrying two members of the same name is refused outright by the reader.
+fn roadmap_acceptance_receipt_decode(node: RoadmapNodeId, doc: JsonValue, key: String) -> RoadmapAcceptanceReceipt? {
+  match event_member_object(doc: doc, key: key) {
+    Absent => none
+    Present { value: held } => roadmap_acceptance_receipt_from_doc(node: node, doc: held)
+  }
+}
+
+fn roadmap_acceptance_receipt_from_doc(node: RoadmapNodeId, doc: JsonValue) -> RoadmapAcceptanceReceipt? {
   match event_member_nonempty(doc: doc, key: "node") {
     Absent => none
     Present { value: receipt_node } =>
@@ -802,15 +826,21 @@ fn roadmap_acceptance_receipt_decode(node: RoadmapNodeId, doc: JsonValue) -> Roa
   }
 }
 
+// The disposition is read, never defaulted: an unrecognised word is a refusal, not a guess. The words are
+// the ones the acceptance line carries inside {"variant": …}, so one spelling serves the line and the log.
+fn roadmap_acceptance_revocation_disposition_word(d: AcceptanceRevocationDisposition) -> String {
+  match d { AcceptanceNodeReopensActiveFrontier {} => "acceptance_node_reopens_active_frontier"  AcceptanceNodeRemainsSuperseded {} => "acceptance_node_remains_superseded" }
+}
+
 fn roadmap_acceptance_revocation_disposition_decode(word: String) -> AcceptanceRevocationDisposition? {
-  if word == "reopens_active_frontier" { Present { value: AcceptanceNodeReopensActiveFrontier {} } }
-  else if word == "remains_superseded" { Present { value: AcceptanceNodeRemainsSuperseded {} } }
+  if word == "acceptance_node_reopens_active_frontier" { Present { value: AcceptanceNodeReopensActiveFrontier {} } }
+  else if word == "acceptance_node_remains_superseded" { Present { value: AcceptanceNodeRemainsSuperseded {} } }
   else { none }
 }
 
 fn roadmap_red_control_decode(red: JsonValue, variant: String) -> RedControlEvidence? {
-  if variant == "not_run" { Present { value: RedControlNotRun {} } }
-  else if variant == "executed" {
+  if variant == "red_control_not_run" { Present { value: RedControlNotRun {} } }
+  else if variant == "red_control_executed" {
     match event_member_nonempty(doc: red, key: "witness_module") {
       Absent => none
       Present { value: witness_module } =>
@@ -831,8 +861,8 @@ fn roadmap_red_control_decode(red: JsonValue, variant: String) -> RedControlEvid
 }
 
 fn roadmap_handback_decode(handback: JsonValue, variant: String) -> HandbackEvidence? {
-  if variant == "not_delivered" { Present { value: HandbackNotDelivered {} } }
-  else if variant == "delivered" {
+  if variant == "handback_not_delivered" { Present { value: HandbackNotDelivered {} } }
+  else if variant == "handback_delivered" {
     match event_member_nonempty(doc: handback, key: "first_artifact") {
       Absent => none
       Present { value: first_artifact } =>
