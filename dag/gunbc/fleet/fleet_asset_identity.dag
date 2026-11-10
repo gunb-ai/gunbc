@@ -37,6 +37,15 @@ data gpu_board_03: PhysicalAssetIdentity = "gpu-board-03" as PhysicalAssetIdenti
 data gpu_board_04: PhysicalAssetIdentity = "gpu-board-04" as PhysicalAssetIdentity
 data gpu_board_05: PhysicalAssetIdentity = "gpu-board-05" as PhysicalAssetIdentity
 data gpu_board_06: PhysicalAssetIdentity = "gpu-board-06" as PhysicalAssetIdentity
+// srv14/butch's four NVIDIA A2 cards, read on butch 2026-11-10 (nvidia-smi over ssh from the session,
+// driver 595.91.07): gpu-board-07 = GPU0 0000:01:00.0 slot PCIE5 serial 1321522057289; gpu-board-08 =
+// GPU1 0001:01:00.0 slot PCIE4 serial 1321522058306; gpu-board-09 = GPU2 0004:01:00.0 slot PCIE7 serial
+// 1321522036087; gpu-board-10 = GPU3 0004:02:00.0 slot PCIE6 serial 1321522057766. Device bindings are
+// the typed rows in gunbc.fleet.gpu_device_observation, not restated here.
+data gpu_board_07: PhysicalAssetIdentity = "gpu-board-07" as PhysicalAssetIdentity
+data gpu_board_08: PhysicalAssetIdentity = "gpu-board-08" as PhysicalAssetIdentity
+data gpu_board_09: PhysicalAssetIdentity = "gpu-board-09" as PhysicalAssetIdentity
+data gpu_board_10: PhysicalAssetIdentity = "gpu-board-10" as PhysicalAssetIdentity
 
 
 // Inventory identity is independent of a host-slot or router-observation binding.
