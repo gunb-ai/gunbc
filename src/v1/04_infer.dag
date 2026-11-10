@@ -4138,10 +4138,7 @@ fn equality_applied_argument_is_structural(n: Node, scope: InferScope, visited: 
   if depth > 64 {
     false
   } else if equality_operand_is_type_variable(n: n, scope: scope) || equality_operand_is_type_variable(n: child_type_node(ch: n), scope: scope) {
-    // A bare, unsubstituted type parameter is instantiation-blind (the walk sees a free variable): NEVER
-    // credited by-target, fail closed (DESIGN 5). An applied generic's by-target reading comes from the
-    // table + substituted arguments path, not this arm. Ruling silent-bee-845, 2026-11-10.
-    false
+    true
   } else {
     let peeled = normalize_access_type_node(n: n)
     let si = scope.type_env.source_indices
@@ -4192,10 +4189,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
   if depth > 64 {
     false
   } else if equality_operand_is_type_variable(n: n, scope: scope) || equality_operand_is_type_variable(n: child_type_node(ch: n), scope: scope) {
-    // A bare, unsubstituted type parameter is instantiation-blind (the walk sees a free variable): NEVER
-    // credited by-target, fail closed (DESIGN 5). The by-target reading of an applied generic is decided
-    // through the table + substituted arguments (equality_table_arguments_by_target), not here.
-    false
+    true
   } else {
     let peeled = normalize_access_type_node(n: n)
     let source_indices = scope.type_env.source_indices
