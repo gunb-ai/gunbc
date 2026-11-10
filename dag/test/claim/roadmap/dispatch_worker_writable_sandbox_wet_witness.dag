@@ -154,7 +154,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
 }
 import gunbc.roadmap.spool_stall { SpoolStallClaim, SpoolStallListRequests, spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
-import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolRole, RolePending, RoleClaimed, RoleDeferred, RoleDone, SpoolListed, SpoolListingUnreadable, spool_open, spool_role_path, SpoolKind }
+import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolRole, RolePending, RoleClaimed, RoleDeferred, RoleDone, SpoolListed, SpoolListingUnreadable, spool_open, spool_role_path, spool_declared_roles, spool_role_dirs, SpoolKind }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 import test.claim.roadmap.sandbox_touch_reading {
   SandboxTouch, SandboxTouchRan, SandboxTouchUnrunnable, SandboxTouchReading, SandboxTouchNeverRan,
@@ -4371,14 +4371,26 @@ fn launcher_run_refused(instance: HostDashboardInstance, entry: String, request_
   }
 }
 
+// THE SPOOL LAYOUT A SUPPLIED INSTANCE NEEDS BEFORE ANY LEG TOUCHES IT. The role directories are not spelled
+// here: they are read off the spool's own declaration (gunbc.spool_queue spool_declared_roles, spool_role_dirs),
+// which for SpoolAttemptUnit is requests/ claimed/ deferred/ -- the same three the install fold creates
+// (dag/gunbc/live_deploy/apply_legs deploy_apply_attempt_spool_legs, steps "attempt-spool-request",
+// "attempt-spool-claimed", "attempt-spool-deferred"). staging/ and answers/ are not spool roles; they are the
+// launcher's own staging and answer directories from gunbc.host.host_layout.
+//
+// A fixture that hand-keeps this list goes stale the day the declaration changes, and it already did: the list
+// this helper carried omitted deferred/, while the drain pass lists deferred/ at the START of every pass and
+// reads an unreadable parked listing as an outcome of the pass (gunbc.roadmap.attempt_system_unit_launch
+// attempt_system_unit_requeue_deferred). The local battery at e119f4e9 measured the result -- four drain claims
+// RED with no capability record, a stall no installed instance would produce, because no installed instance
+// lacks the directory. Deriving it from the declaration is what keeps this helper from being wrong again.
 fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
   fold(
-    [
-      attempt_unit_spool_staging_dir(instance_root: instance_root),
-      unit_request_dir(instance_root: instance_root),
-      unit_claimed_dir(instance_root: instance_root),
-      attempt_unit_spool_answer_dir(instance_root: instance_root),
-    ],
+    concat(
+      [attempt_unit_spool_staging_dir(instance_root: instance_root)],
+      spool_role_dirs(kind: SpoolAttemptUnit, instance_root: instance_root, roles: spool_declared_roles(kind: SpoolAttemptUnit)),
+      [attempt_unit_spool_answer_dir(instance_root: instance_root)],
+    ),
     init: true,
     f: (ok, dir) => ok && shell.Mkdir.Parents(path: dir as FilePath).success,
   )
