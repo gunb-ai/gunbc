@@ -224,7 +224,17 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
     members: committed_members_of(host: operator_host_srv1),
     requested_width: committed_width_of(host: operator_host_srv1),
     observed: []
-  )) == [1, 2]
+  )) == [1, 2, 3, 4, 5, 6]
+    // srv1's committed GitHub identities are 01..06 since gunbc.design_ruling::srv1_microvm_slot_charge_waits_for_realization
+    // released srv1-13/14's charge while they are read not realized (width 8 = 01..06 + 13 + 14); before it
+    // they were 01..02. The proposition is unchanged: the additions are exactly the GitHub identities, and the
+    // two fabric-purpose members inside the committed range are never among them.
+    && !added_indices_contains(
+      added_indices(actions: addition_actions(
+        members: committed_members_of(host: operator_host_srv1),
+        requested_width: committed_width_of(host: operator_host_srv1),
+        observed: []
+      )), v: 13)
     // WHERE THE CARVE USED TO SIT ON THESE TWO HOSTS. The same planner, over a managed host at its own
     // committed width, now steps ONTO indices 6 and 7 -- the slots the superseded roster of 2026-08-21 /
     // 2026-09-18 held for fabric execution (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci

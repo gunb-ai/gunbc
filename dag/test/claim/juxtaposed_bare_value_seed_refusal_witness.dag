@@ -1,0 +1,122 @@
+module test.claim.juxtaposed_bare_value_seed_refusal_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  ClaimScopeFixtureOutcome,
+  fixture_source,
+  claim_scope_fixture,
+  claim_scope_was_accepted,
+  claim_scope_compile_refusal_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SEED-SIDE STANDING CONTROL OF THE JuxtaposedBareValue CLASS
+// (gunbc.recurring_failure_mode::juxtaposed_bare_value_lowers_to_the_last_at_body_lowering).
+//
+// WHY THIS WITNESS LIVES UNDER `test.claim` AND NOT UNDER `v1.tests.claim`, which heal taught the
+// hard way (run 42651128700): modules under `src/v1` are the SEED's own source root, so every module
+// they reach must have a stage0 crate partition row, and `gunbc.instruments.multi_module_compile_fixture`
+// / `gunbc.compile_diagnostic_census` are dag-layer instruments with none -- an instrument-reading witness
+// placed in the seed root makes the fixed point refuse with Stage0EmittedEdgesNotCovered. Seed-root claim
+// tests may read only seed-side modules (`v1.compiler.parse`, `v1.compiler.tokenize`, ...), as
+// `v1.tests.claim.keyword_pattern_binder_refusal_test` does; instrument witnesses belong beside the
+// instruments, as `test.claim.bare_name_ambiguity_wall_witness` already is.
+//
+// WHAT IT PINS. The v2 fold already refuses a body whose statement sequence leaves a non-final bare value
+// (`v2.compiler.body_lowering_fold::body_lower_stmt_spine`, pinned by
+// `v2.test.claim.body_lowering.juxtaposed_bare_value`). The seed fold -- the v1 frontend that
+// actually compiles and RUNS the harness corpus -- threaded `last_type` through every statement and
+// silently kept the last value: measured at the base revision, a body of `[1, 2, 3]` over `[4, 5]`
+// evaluated to `[4, 5]` with no diagnostic, the same silent last-wins that shipped five of eight
+// harness tools until PR #16148 repaired that instance at the data level. The refusal now lives in
+// `v1.compiler.infer::infer_block_stmts` (the fold, not the grammar -- see the WHY annotation there
+// and gunbc.design_argument::earliest_unjustified_boundary). These rows are what say the seed
+// refuses the SAME shape for the SAME cause: a fold that went back to keeping the last value would
+// compile every fixture below and turn every refusal row red, while a refusal that was too broad
+// would refuse the two accepted controls.
+//
+// THE CAUSE LEXEME THE SEED CARRIES is `statement_precedes_without_binding`, the same cause the v2
+// fold names (`body_lowering_reason_statement_precedes_without_binding`), carried in the message of a
+// blocking `InternalError` located at the offending statement. The census projection this instrument
+// reads exposes class and subject but NOT the message text, so these rows pin the CLASS of the
+// refusal and its fire/no-fire against the controls; the message and its node location are executed
+// reads reported with the run receipts, not asserted here (gunbc.design_argument::fail_closed: no row
+// asserts what this projection cannot read).
+//
+// WHY THE FIXTURES CARRY NO IMPORTS AND BARELY ANY SYNTAX (measured, from the sibling witness
+// `test.claim.bare_name_ambiguity_wall_witness`): the instrument compiles the manifest with NO corpus
+// roots, so any `import` names a module the subject does not contain and refuses the WHOLE compile --
+// including the controls that must be ACCEPTED. `Int` is in the kernel type set and needs no import.
+// The literal fixtures are therefore `Int`-bodied; the bracketed-literal fixture -- the canonical
+// instance of the class -- is the one shape that needs a container return.
+
+// THE RED FIXTURES. Two bare values, one under the other: juxtaposed Int literals, juxtaposed
+// bracketed list literals (the observed harm shape), and juxtaposed bare names.
+data juxtaposed_literals_source: String = "module juxtap.lit\n\nfn bad_literals() -> Int {\n  1\n  2\n}\n"
+data juxtaposed_lists_source: String = "module juxtap.lists\n\nfn bad_lists() -> List<Int> {\n  [1, 2, 3]\n  [4, 5]\n}\n"
+data juxtaposed_names_source: String = "module juxtap.names\n\nfn bad_names(a: Int) -> Int {\n  a\n  a\n}\n"
+data juxtaposed_binop_source: String = "module juxtap.binop\n\nfn bad_binop(a: Int) -> Int {\n  a + 1\n  a\n}\n"
+data juxtaposed_unary_source: String = "module juxtap.unary\n\nfn bad_unary() -> Int {\n  -1\n  1\n}\n"
+
+// THE ACCEPTED CONTROLS, differing from the reds by exactly the absence of a preceding bare value:
+// a single-statement body, and a `let` binding followed by its tail reference.
+data single_literal_source: String = "module juxtap.one\n\nfn ok_single() -> Int {\n  1\n}\n"
+data let_then_tail_source: String = "module juxtap.lettail\n\nfn ok_let_tail() -> Int {\n  let x = 1\n  x\n}\n"
+
+fn juxtaposed_scope(path: String, module_name: String, source: String) -> ClaimScopeFixtureOutcome {
+  claim_scope_fixture(
+    MultiModuleCompileFixture {
+      sources: [fixture_source(path, source)],
+      entry: path
+    },
+    module_name
+  )
+}
+
+// THE SEED REFUSES: the fold hands a blocking located refusal for a body whose statement sequence
+// leaves a non-final bare value, instead of evaluating to the last one. Red at the base revision,
+// where the body compiled clean; green once `v1.compiler.infer::infer_block_stmts` refuses.
+test fn juxtaposed_bare_value_statements_refuse_at_the_seed_fold_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/lit.dag", "juxtap.lit", juxtaposed_literals_source)
+  claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
+}
+
+test fn juxtaposed_bracketed_list_literals_refuse_at_the_seed_fold_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/lists.dag", "juxtap.lists", juxtaposed_lists_source)
+  claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
+}
+
+test fn juxtaposed_bare_name_statements_refuse_at_the_seed_fold_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/names.dag", "juxtap.names", juxtaposed_names_source)
+  claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
+}
+
+// AND THE NON-BINDING VARIANTS: a pure value expression that is not a literal or a name — a
+// binop, a unary — is the same invalid state, and the admitted-set fold catches it by
+// exclusion (gunbc.design_argument::fail_closed: "A failure arm refuses, never widens").
+test fn juxtaposed_binop_statement_refuses_at_the_seed_fold_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/binop.dag", "juxtap.binop", juxtaposed_binop_source)
+  claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
+}
+
+test fn juxtaposed_unary_statement_refuses_at_the_seed_fold_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/unary.dag", "juxtap.unary", juxtaposed_unary_source)
+  claim_scope_compile_refusal_has_class(o: o, wanted: "InternalError")
+}
+
+// THE REFUSAL IS NOT OVER-BROAD: a well-formed body of one value statement still compiles. This is
+// what stops a fold that refuses EVERY multi-expression reading from passing as repaired.
+test fn a_single_bare_value_body_is_still_accepted_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/one.dag", "juxtap.one", single_literal_source)
+  claim_scope_was_accepted(o: o)
+}
+
+// AND `let` REMAINS THE ADMITTED BINDING: a binding statement followed by its tail is the corpus
+// shape this class must never refuse.
+test fn a_let_bound_statement_then_its_tail_is_still_accepted_holds() -> Bool {
+  let o = juxtaposed_scope("juxtap/lettail.dag", "juxtap.lettail", let_then_tail_source)
+  claim_scope_was_accepted(o: o)
+}

@@ -32,8 +32,8 @@ import gunbc.ci.deploy_route_requirement { DeployRouteJobTenancy, SharesJobUidWi
 //     a_slot_isolated_by_uid_leaves_its_runner_credentials_readable_by_other_uids).
 // gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08), D3 precondition.
 
-// The runner group and the runner label are one string (as private_heal_publisher_runner_group_name
-// is): the label the deploy job selects is the group that restricts who may use it.
+// The runner group and the runner label are one string: the label the deploy job selects is the group that
+// restricts who may use it.
 data deploy_slot_runner_group_name: NonEmptyStr = "gunbc-deploy"
 
 // The job uid of the deploy slot, distinct from srv1's pull request job uid. Its grants are the

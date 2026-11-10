@@ -1,0 +1,19 @@
+module extdeps.github.issues_contracts
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/issues/issues"
+  }
+}
+
+// An issue's `state` is "open" or "closed" (docs.github.com/en/rest/issues/issues).
+data issue_state_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.github.issues", decl_name: "IssueState", field: WholeDeclaration },
+  encoding: StringVariant { naming: SnakeCase }
+}

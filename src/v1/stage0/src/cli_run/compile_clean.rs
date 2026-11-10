@@ -206,97 +206,6 @@ pub(crate) fn compile_clean_departed_paths_outside_docs(
     )
 }
 
-pub(crate) fn compile_clean_scope_plan_from_touched_paths(
-    touched_paths: &[String],
-    departed_paths: &HashSet<String>,
-) -> Result<CompileCleanScopePlan, String> {
-    let roots = default_source_roots();
-    let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
-        .map_err(|e| format!("dag_compile_clean_scope resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let paths: Vec<v1_interpreter::Value> =
-        touched_paths.iter().map(|s| str_value(s.clone())).collect();
-    let mut departed_sorted: Vec<&String> = departed_paths.iter().collect();
-    departed_sorted.sort();
-    let departed: Vec<v1_interpreter::Value> = departed_sorted
-        .into_iter()
-        .map(|s| str_value(s.clone()))
-        .collect();
-    let args = [
-        (
-            Some("touched_paths".to_string()),
-            list_value_from_vec(paths),
-        ),
-        (
-            Some("departed_paths".to_string()),
-            list_value_from_vec(departed),
-        ),
-    ];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "compile_clean_scope_disposition_from_diff",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("compile_clean_scope_disposition_from_diff: {e}"))?;
-    match &result {
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "ScopedRun") => {
-            let entry_paths = match ctx.field(fields, "entry_paths") {
-                Some(v) => string_list_from_value(v, "entry_paths")?,
-                None => return Err("ScopedRun missing `entry_paths`".to_string()),
-            };
-            Ok(CompileCleanScopePlan::Scoped { entry_paths })
-        }
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "SkipNoAffectedEntries") => {
-            let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => r.to_string(),
-                _ => "no compile-clean entry affected".to_string(),
-            };
-            Ok(CompileCleanScopePlan::SkipNoAffected { reason })
-        }
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "RequireWholeTree") => {
-            let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => r.to_string(),
-                _ => "whole-tree baseline required".to_string(),
-            };
-            eprintln!("compile-clean scope: {reason}");
-            Ok(CompileCleanScopePlan::WholeTree)
-        }
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "RefuseShardRosterDuplicate") => {
-            let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => r.to_string(),
-                _ => {
-                    return Err(
-                        "RefuseShardRosterDuplicate missing `reason` string field".to_string(),
-                    )
-                }
-            };
-            eprintln!("compile-clean scope: refused ({reason})");
-            Ok(CompileCleanScopePlan::Refused { reason })
-        }
-        other => Err(format!(
-            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree | RefuseShardRosterDuplicate",
-            ctx.format_value(other)
-        )),
-    }
-}
-
 /// `gunbc.ci.ci_layer_roots.compile_clean_source_roots` — witness pool + `src/v1` for cross-tree
 /// import resolution in compile-clean scope disposition (not the gate receipt pool).
 pub(crate) fn compile_clean_source_roots() -> Vec<String> {
@@ -308,7 +217,9 @@ pub(crate) fn compile_clean_source_roots() -> Vec<String> {
 }
 
 /// Host realization of `gunbc.instruments.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
-/// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+/// without resolving a cold scope-authority scan (the interpreter path cold-scans ~minutes; its
+/// old target `gunbc.instruments.dag_compile_clean_scope` was deleted in read-set convergence P0,
+/// gunbc.plans.read_set_convergence C3).
 ///
 /// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER` / gunbc.design_argument::self_hosting):
 /// routes shard roster construction through `std.keyed_roster.keyed_roster_build` on the floor
@@ -354,134 +265,6 @@ pub(crate) fn compile_clean_shard_entry_paths_fast() -> Result<Vec<String>, Stri
     compile_clean_shard_entry_paths_from_decl_facts(&module_declaration_facts(&entry_roots))
 }
 
-/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
-/// (`gunbc.instruments.dag_compile_clean_scope`, module-graph import-closure grain — channel 2 of
-/// operator fork (c) 2026-07-10) without the Wet interpreter fold over
-/// `compile_clean_shard_entry_paths()`. Selection reuses the SAME certified realization
-/// as the discovery-corpus channel (`entry_file_touched_via_import_closure`); every arm
-/// that cannot answer falls back to the gate's whole-tree baseline, loudly.
-///
-/// Roster construction matches `compile_clean_scope_disposition_from_diff`: build and
-/// validate the keyed shard roster before any disposition arm, so duplicate path keys
-/// refuse even when the diff would otherwise skip or widen to whole-tree.
-pub(crate) fn compile_clean_scope_plan_from_touched_paths_floor_fast(
-    touched_paths: &[String],
-    departed_paths: &HashSet<String>,
-) -> CompileCleanScopePlan {
-    compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
-        touched_paths,
-        departed_paths,
-        compile_clean_shard_entry_paths_fast(),
-    )
-}
-
-pub(crate) fn compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
-    touched_paths: &[String],
-    departed_paths: &HashSet<String>,
-    roster: Result<Vec<String>, String>,
-) -> CompileCleanScopePlan {
-    let roster = match roster {
-        Ok(paths) => paths,
-        Err(reason) => {
-            eprintln!("compile-clean scope: refused ({reason})");
-            return CompileCleanScopePlan::Refused { reason };
-        }
-    };
-
-    if touched_paths.is_empty() {
-        // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
-        // observation that saw nothing is indistinguishable from one that could not
-        // observe, so the whole tree is the only sound baseline. A main-push squash
-        // merge lands here, which is what makes main-push a real cold control.
-        eprintln!(
-            "compile-clean scope: empty touched-path set — whole-tree baseline (diff observed nothing, or could not observe)"
-        );
-        return CompileCleanScopePlan::WholeTree;
-    }
-
-    match compile_clean_all_touched_paths_docs_universe(touched_paths) {
-        Ok(true) => {
-            let reason =
-                "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
-                    .to_string();
-            eprintln!("compile-clean scope: skipped ({reason})");
-            return CompileCleanScopePlan::SkipNoAffected { reason };
-        }
-        Ok(false) => {}
-        Err(msg) => {
-            return CompileCleanScopePlan::Refused { reason: msg };
-        }
-    }
-
-    match compile_clean_all_touched_paths_selectable(touched_paths) {
-        Ok(true) => {}
-        Ok(false) => {
-            eprintln!(
-                "compile-clean scope: touched path outside the selectable universe — compiler/infra change, whole-tree baseline"
-            );
-            return CompileCleanScopePlan::WholeTree;
-        }
-        Err(msg) => {
-            return CompileCleanScopePlan::Refused { reason: msg };
-        }
-    }
-
-    match compile_clean_departed_paths_outside_docs(departed_paths) {
-        Ok(true) => {
-            eprintln!(
-                "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
-            );
-            return CompileCleanScopePlan::WholeTree;
-        }
-        Ok(false) => {}
-        Err(msg) => {
-            return CompileCleanScopePlan::Refused { reason: msg };
-        }
-    }
-
-    let pool_roots = compile_clean_source_roots();
-    let facts = build_module_graph_facts_live(&pool_roots);
-    let declared_paths = facts.declared_repo_paths();
-    let mut affected = Vec::new();
-    for entry_path in roster {
-        match entry_file_touched_via_import_closure(
-            &entry_path,
-            &facts,
-            &declared_paths,
-            touched_paths,
-        ) {
-            Ok(true) => affected.push(entry_path),
-            Ok(false) => {}
-            Err(msg) => {
-                eprintln!("compile-clean scope: {msg} — whole-tree baseline");
-                return CompileCleanScopePlan::WholeTree;
-            }
-        }
-    }
-    if !affected.is_empty() {
-        eprintln!(
-            "compile-clean scope: {} affected entr{} (floor fast path)",
-            affected.len(),
-            if affected.len() == 1 { "y" } else { "ies" }
-        );
-        return CompileCleanScopePlan::Scoped {
-            entry_paths: affected,
-        };
-    }
-    eprintln!(
-        "compile-clean scope: non-empty diff with no shard intersection — whole-tree baseline"
-    );
-    CompileCleanScopePlan::WholeTree
-}
-
-pub(crate) fn compile_clean_scoping_active() -> bool {
-    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
-        || std::env::var("GITHUB_ACTIONS")
-            .map(|v| v == "true")
-            .unwrap_or(false)
-        || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
-}
-
 // ---------------------------------------------------------------------------
 // Class B import-closure gate affected-set skip (#7835).
 //
@@ -494,39 +277,6 @@ pub(crate) fn compile_clean_scoping_active() -> bool {
 // failure arms carry grep-countable labels distinct from structural run_class_b_gate).
 // Gated to pull_request events — push-to-main runs the full gate as the cold control.
 // ---------------------------------------------------------------------------
-
-pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
-    // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
-    // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
-    // control, not an escape hatch (the deterministic whole-tree counterpart to the scoped
-    // per-PR admission, on the falsifier cadence).
-    if std::env::var("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-    {
-        eprintln!(
-            "compile-clean scope: whole-tree cold control forced (GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1)"
-        );
-        return CompileCleanScopePlan::WholeTree;
-    }
-    if !compile_clean_scoping_active() {
-        eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
-        return CompileCleanScopePlan::WholeTree;
-    }
-    match floor_git_diff_name_status_range() {
-        Ok((changed_paths, departed_paths)) => {
-            match compile_clean_scope_plan_from_touched_paths(&changed_paths, &departed_paths) {
-                Ok(plan) => plan,
-                Err(msg) => CompileCleanScopePlan::Refused {
-                    reason: format!("compile-clean scope disposition failed: {msg}"),
-                },
-            }
-        }
-        Err(msg) => CompileCleanScopePlan::Refused {
-            reason: format!("diff observation failed: {msg}"),
-        },
-    }
-}
 
 fn unlisted_import_rows_from_resolved(
     result: &v1_compiler_compile::ResolvedPipelineResult,
@@ -1049,10 +799,7 @@ pub(crate) fn compile_clean_broad_stop_line_blocks_skip(
         return false;
     }
     let entry_rel = workspace_relative_repo_path(entry_path);
-    [
-        COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
-        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-    ]
-    .iter()
-    .any(|check| workspace_relative_repo_path(check) == entry_rel)
+    [COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY]
+        .iter()
+        .any(|check| workspace_relative_repo_path(check) == entry_rel)
 }

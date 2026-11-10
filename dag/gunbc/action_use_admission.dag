@@ -360,19 +360,6 @@ type CommitOutputProducer {
   declaration_step: String?
 }
 
-// THE SEED-PIN VERIFIER'S IDENTITY IS MODEL-OWNED, NOT ROW DATA. A repository's profile row decides WHICH
-// repository it seeds, WHERE it checks out and WHAT it builds -- never what the verifier job is called or
-// which output names the commit. One spelling of that identity exists, here: it is the same record that
-// admits the consumer's `needs.` read, that gunbc.ci.repository_seed_steps builds the job, the earning step
-// and the checkout's ref from, and that the consumer's guard names when it refuses an empty output. A row
-// cannot steer one of those away from the others, which is what makes the entry earned rather than typed.
-data seed_pin_verifier_producer_row: CommitOutputProducer = CommitOutputProducer {
-  job_id: "verify-seed-pin",
-  output_name: "committed_sha",
-  earns_it_by: "the emitted step verify-seed-pin-check fetches the pinned commit into an isolated object store from the intended repository and writes the output only after `git cat-file -t` says commit and the fetched object's own id equals the pin (gunbc.ci.repository_seed_steps::seed_pin_proofs)",
-  declaration_step: Present { value: "verify-seed-pin-check" },
-}
-
 data commit_output_producers: List<CommitOutputProducer> = [
   CommitOutputProducer {
     job_id: "plan-revision",
@@ -386,24 +373,7 @@ data commit_output_producers: List<CommitOutputProducer> = [
     earns_it_by: "the step re-exports either the admitted plan revision or the event sha, each of which is a commit",
     declaration_step: Absent,
   },
-  seed_pin_verifier_producer_row,
 ]
-
-// The one record the seed verifier is emitted from, and the projections of it other modules read. Nothing
-// else may spell these names: an id written by hand in an emitter beside an id kept here would be two
-// authorities over which step earns the output.
-fn seed_pin_verifier_producer() -> CommitOutputProducer { seed_pin_verifier_producer_row }
-
-fn seed_pin_verifier_job_id() -> String { seed_pin_verifier_producer_row.job_id as String }
-
-fn seed_pin_verifier_output_name() -> String { seed_pin_verifier_producer_row.output_name as String }
-
-fn seed_pin_verifier_check_step_id() -> String {
-  match seed_pin_verifier_producer_row.declaration_step {
-    Present { value: step_id } => step_id
-    Absent {  } => join([seed_pin_verifier_job_id(), "-check"], "")
-  }
-}
 
 // THE OUTPUT PATH A CONSUMER MAY READ, derived from the producer rather than spelled beside it. One
 // spelling of "job J's output O" exists, and it is this -- the emitter puts it in the checkout's ref

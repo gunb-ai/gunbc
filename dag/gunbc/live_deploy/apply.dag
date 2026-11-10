@@ -165,10 +165,10 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
   microvm_slot_unit_instance_name, microvm_slot_reserve_unit_name,
 }
-import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv1_deploy_slot }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv1_deploy_slot, microvm_slots_releasing_their_charge }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { systemd_unit_property_wire, LoadState }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.measure { Second, second, second_count }
 import gunbc.readiness { Ready, Pending, Refused }
@@ -1110,6 +1110,14 @@ data microvm_controller_install_attempt_raw: String = "microvm-controller-instal
 fn microvm_controller_install_wet() -> ProcessExit
   uses net: std.resources.Network
 {
+  // A slot whose realization row still RELEASES its memory charge has had that memory committed to CI
+  // width (gunbc.runner.runner_slot_allocation microvm_slots_releasing_their_charge). Installing the
+  // controller would make the slot real while the width still assumes it is not, so the install
+  // refuses before any grant is read and nothing runs (review 92701, gunbc.design_argument::fail_closed).
+  let releasing = microvm_slots_releasing_their_charge()
+  if length(xs: releasing) > 0 {
+    exit_failure(reason: join(["microvm_controller_install: refused; nothing ran: the realization rows still release the memory charge of ", join(map(releasing, s => runner_slot_instance_name(slot: s)), ", "), ", whose memory is committed to CI width; set those rows to MicrovmSlotRealized (or delete them) in gunbc.runner.runner_slot_allocation microvm_slot_realization_rows so the committed width drops first"], ""))
+  } else {
   match srv1_root_mutation_inherited_grant(required: microvm_controller_install_root_scopes) {
     Srv1InheritedGrantRefused { reason: r } => exit_failure(reason: concat("microvm_controller_install: not authorized; nothing ran: ", r))
     Srv1InheritedGrantAdmitted { grant: _ } =>
@@ -1117,6 +1125,7 @@ fn microvm_controller_install_wet() -> ProcessExit
         DesiredApplyRefused { reason } => exit_failure(reason: reason)
         DesiredApplySelected { deployment } => microvm_controller_install_over_edge(spec: selected_deployment_spec(row: deployment))
       }
+  }
   }
 }
 

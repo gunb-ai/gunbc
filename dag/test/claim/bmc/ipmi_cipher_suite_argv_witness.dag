@@ -221,7 +221,7 @@ fn bindings_chassis_boot_options_clear() -> List<OperationInputBinding> {
   ]
 }
 
-data main_argv_chassis_boot_options_clear: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "raw", "0x00", "0x08", "0x05", "0x01", "0x00", "0x00", "0x00", "0x00", "0x00"]
+data main_argv_chassis_boot_options_clear: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "raw", "0x00", "0x08", "0x05", "0x00", "0x00", "0x00", "0x00", "0x00"]
 
 test fn chassis_boot_options_clear_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
   materialize(operation: "ChassisBootOptionsClear", bindings: bindings_chassis_boot_options_clear(), suite: mtcollins1_observation_suite()) == main_argv_chassis_boot_options_clear
