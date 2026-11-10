@@ -120,6 +120,25 @@ fn mbp_arm_body(n: Node) -> Optional<Node> {
   })
 }
 
+// THE FIRST ARM BODY'S RESOLVED TYPE AS THE NAMES OF ITS APPLICATION CHILDREN, read the same way
+// mbp_fact_in reads the binder base but returning t.children's names rather than mbp_type_name(t): the
+// arm-body type is an UNNAMED application (Outcome<ParseTree>) so its own name is ^mbp_type_not_named and
+// only the child list identifies it (quick-newt probe, invocation f401278f).
+fn mbp_arm_body_type_children(inferred: ObligatedInferredTree, subject: Optional<Node>) -> List<Symbol> {
+  match subject {
+    Absent => [^mbp_subject_absent]
+    Present { value: s } =>
+      match inferred.facts.lookup(s) {
+        Absent => [^mbp_no_facts]
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => [^mbp_underived]
+            Holds { value: t } => map(t.children, e => mbp_type_name(t: e.target))
+          }
+      }
+  }
+}
+
 fn mbp_find_atom(n: Node, id: Symbol) -> Optional<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: s } } => if s == id { optional_present(value: n) } else { optional_absent() }
@@ -491,12 +510,15 @@ type MbtDeclReading {
   binder_base_fact: Symbol
   match_fact: Symbol
   arm_body_underived_at_binder_projection: Bool
-  // The first arm body's resolved TYPE NAME (mbp_type_name), read the same way binder_base_fact reads the
-  // binder base: facts.lookup(body) -> inferred_facts_resolved_type -> mbp_type_name. ^mbp_subject_absent /
-  // ^mbp_no_facts / ^mbp_underived where the route stops. The re-land (#15992 re-land) now TYPES the
-  // constructor arm bodies, so a row that used to assert infer_match_arm_body_type_underived instead
-  // asserts this name.
-  arm_body_type: Symbol
+  // The FIRST arm body's resolved TYPE as the names of its application CHILDREN (head first, then args),
+  // read the same way binder_base_fact reads the binder base: facts.lookup(body) ->
+  // inferred_facts_resolved_type -> [mbp_type_name(t: e.target) for e in t.children]. The type is an
+  // UNNAMED application, so mbp_type_name(t) itself is ^mbp_type_not_named; the meaningful reading is the
+  // child list. ^mbp_subject_absent / ^mbp_no_facts / ^mbp_underived where the route stops. The re-land
+  // (#15992 re-land) now TYPES the constructor arm bodies as the application Outcome<ParseTree> (quick-newt
+  // probe, invocation f401278f), so a row that used to assert infer_match_arm_body_type_underived instead
+  // asserts this child list == [^Outcome, ^ParseTree] (see mbt_arm_body_is_outcome_parsetree).
+  arm_body_type_children: List<Symbol>
 }
 
 type MbtProgramReading {
@@ -547,7 +569,7 @@ fn mbp_reasons_within(d: Diagnostics, declaration: Node) -> List<Symbol> {
 }
 
 fn mbp_unread_declaration(fact: Symbol) -> MbtDeclReading {
-  MbtDeclReading { reasons_within: Empty, binder_base_fact: fact, match_fact: fact, arm_body_underived_at_binder_projection: false, arm_body_type: ^mbp_subject_absent }
+  MbtDeclReading { reasons_within: Empty, binder_base_fact: fact, match_fact: fact, arm_body_underived_at_binder_projection: false, arm_body_type_children: [^mbp_subject_absent] }
 }
 
 fn mbp_declaration_reading(inferred: ObligatedInferredTree, d: Diagnostics, root: Node, name: Symbol) -> MbtDeclReading {
@@ -562,7 +584,7 @@ fn mbp_declaration_reading(inferred: ObligatedInferredTree, d: Diagnostics, root
         reason: ^infer_match_arm_body_type_underived,
         at: mbp_binder_projection(n: declaration)
       ),
-      arm_body_type: mbp_fact_in(inferred: inferred, subject: mbp_arm_body(n: declaration))
+      arm_body_type_children: mbp_arm_body_type_children(inferred: inferred, subject: mbp_arm_body(n: declaration))
     }
   }
 }
@@ -608,10 +630,22 @@ fn mbt_reports_within(r: MbtDeclReading, reason: Symbol) -> Bool {
 // inhabitance claim is the tracked row gunbc.recurring_failure_mode
 // underived_scrutinee_arm_has_no_source_route_inhabitance.
 
+// THE ARM BODY'S TYPE, READ AS A TYPE (not merely as "underived"). The re-land now TYPES the constructor
+// arm bodies; the quick-newt probe (invocation f401278f) reads them as the UNNAMED application
+// Outcome<ParseTree>, i.e. resolved-type children [^Outcome, ^ParseTree]. This predicate fails if the type
+// is dropped, underived (^mbp_underived), or anything other than exactly Outcome<ParseTree> -- so a
+// regression that loses or mis-types the body turns the row red rather than letting it pass vacuously.
+fn mbt_arm_body_is_outcome_parsetree(cs: List<Symbol>) -> Bool {
+  match cs {
+    Cons { head: h, tail: Cons { head: h2, tail: Empty } } => (h == ^Outcome) && (h2 == ^ParseTree)
+    _ => false
+  }
+}
+
 test fn mbt_the_sevens_call_scrutinee_is_typed_and_its_constructor_bodies_are_counted_holds() -> Bool {
   mbt_program_reading().infers
     && (mbt_program_reading().seven.binder_base_fact == ^ParseArtifact)
-    && mbt_reports_within(r: mbt_program_reading().seven, reason: ^infer_match_arm_body_type_underived)
+    && mbt_arm_body_is_outcome_parsetree(cs: mbt_program_reading().seven.arm_body_type_children)
     && !mbt_reports_within(r: mbt_program_reading().seven, reason: ^infer_match_scrutinee_type_underived)
 }
 
@@ -654,7 +688,7 @@ fn mbt_underived_scrutinee_entry() -> Map<Node, List<InferredFacts>> {
 
 test fn mbt_an_underived_arm_body_is_a_counted_frontier_holds() -> Bool {
   mbt_program_reading().infers
-    && mbt_reports_within(r: mbt_program_reading().constructor_body, reason: ^infer_match_arm_body_type_underived)
+    && mbt_arm_body_is_outcome_parsetree(cs: mbt_program_reading().constructor_body.arm_body_type_children)
     && (mbt_program_reading().constructor_body.binder_base_fact == ^ParseArtifact)
 }
 
