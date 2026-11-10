@@ -1375,18 +1375,19 @@ fn ctx_svc_registry_decides_the_service_op_leaf() {
                 .expect("claim module present in graph");
             let claim_name =
                 crate::v1_std_core::authored_name_at(si.clone(), claim.module.clone());
-            let contributions: Rc<Vec<Rc<crate::v1_compiler_infer::ItemContribution>>> = Rc::new(
-                crate::v1_std_core::module_items(claim.module.clone())
-                    .iter()
-                    .map(|item| {
-                        crate::v1_compiler_infer::analyze_item(
-                            item.clone(),
-                            env.clone(),
-                            claim_name.clone(),
-                        )
-                    })
-                    .collect(),
-            );
+            let contributions: Rc<im::Vector<Rc<crate::v1_compiler_infer::ItemContribution>>> =
+                Rc::new(
+                    crate::v1_std_core::module_items(claim.module.clone())
+                        .iter()
+                        .map(|item| {
+                            crate::v1_compiler_infer::analyze_item(
+                                item.clone(),
+                                env.clone(),
+                                claim_name.clone(),
+                            )
+                        })
+                        .collect::<im::Vector<_>>(),
+                );
             for (tag, requested) in
                 [("demanded", vec!["decoded_pull_request".to_string()]), ("closure", vec![])]
             {
