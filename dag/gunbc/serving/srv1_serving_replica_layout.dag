@@ -38,6 +38,9 @@ import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import gunbc.serving.lil_serving_defects { LilServingDefect, srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
+import gunbc.serving.serving_replica_profile {
+  ServingReplicaProfile, replica_gpu_uuid, srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile,
+}
 
 // ── the per-replica identity ─────────────────────────────────────────────────────────────────────────
 //
@@ -54,9 +57,12 @@ type Srv1ServingReplicaSpec {
   index: Nat
   // The container name on the host. The systemd helper adopts a running container by this name.
   container_name: NonEmptyStr
-  // The GPU's NVIDIA UUID (from nvidia-smi --query-gpu=uuid). This is what gets passed to Docker as
-  // --device nvidia.com/gpu=<UUID>.
-  gpu_uuid: NonEmptyStr
+  // THE PROFILE THIS UNIT IS. The hardware facts -- NVIDIA UUID, PCI bus, board edition, power cap -- are
+  // the profile's card rows (gunbc.serving.serving_replica_profile, the one roster); this unit keeps only
+  // the deployment wiring the card rows do not carry (container name, host port, serve/kv dirs). The UUID
+  // this unit pins Docker's --device to is read from the row via srv1_replica_gpu_uuid -- no second copy of
+  // the hardware pin stands here (which edition is which card was spelled in comments until the row owned it).
+  profile: ServingReplicaProfile
   // The host port the engine is published on. Inside the container the engine always binds 18000
   // (-e PORT=18000, --port 18000); Docker's -p maps the host port to the container port.
   host_port: Port
@@ -75,11 +81,13 @@ type Srv1ServingReplicaSpec {
 data srv1_replica_0: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
   index: 0,
   container_name: "lil-flash-next" as NonEmptyStr,
-  gpu_uuid: "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr,
+  profile: srv1_vllm_replica_0_profile,
   host_port: 18000,
   host_serve_dir: "/home/briansrls/lil/serve" as NonEmptyStr,
   host_kv_dir: "/home/briansrls/lil/kv" as NonEmptyStr,
-  label: "srv1-vllm" as NonEmptyStr,
+  // The router's upstream name for this replica IS the profile's deployment name -- one owner, so the
+  // router, the anchor and the roster cannot spell the replica differently.
+  label: srv1_vllm_replica_0_profile.id,
 }
 
 // GPU1: NVIDIA RTX PRO 6000 Blackwell Workstation (300 W cap, 0004:01:00.0), UUID from nvidia-smi (srv1,
@@ -87,11 +95,11 @@ data srv1_replica_0: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
 data srv1_replica_1: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
   index: 1,
   container_name: "lil-flash-next-1" as NonEmptyStr,
-  gpu_uuid: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" as NonEmptyStr,
+  profile: srv1_vllm_replica_1_profile,
   host_port: 18001,
   host_serve_dir: "/home/briansrls/lil/serve-gpu1" as NonEmptyStr,
   host_kv_dir: "/home/briansrls/lil/kv-gpu1" as NonEmptyStr,
-  label: "srv1-vllm-1" as NonEmptyStr,
+  label: srv1_vllm_replica_1_profile.id,
 }
 
 // The authoritative roster. The router and systemd iterate over this list.
@@ -713,7 +721,17 @@ fn srv1_launch_check_f26(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
 // extdeps.container.nvidia_container_toolkit.nvidia_cdi_device_selector_of (the same home #16048's TP-group
 // path uses), so the per-replica launcher and the group launcher cannot spell the selector differently.
 fn srv1_replica_device_words(replica: Srv1ServingReplicaSpec) -> List<NonEmptyStr> {
-  ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: replica.gpu_uuid)]
+  match srv1_replica_gpu_uuid(replica: replica) {
+    // A unit whose profile carries no card UUID cannot pin a container to a card: no --device word, which
+    // leaves the boot guard to refuse the unit rather than let it float across both cards.
+    Absent => []
+    Present { value: u } => ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
+  }
+}
+
+// The hardware pin, read from the profile's card row -- the ONLY place a unit's UUID is obtained.
+fn srv1_replica_gpu_uuid(replica: Srv1ServingReplicaSpec) -> Optional<NonEmptyStr> {
+  replica_gpu_uuid(p: replica.profile)
 }
 
 // The engine command the boot path runs, CONSTRUCTED from the typed launch configuration (construction, not

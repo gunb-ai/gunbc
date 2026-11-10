@@ -1,7 +1,7 @@
 module gunbc.serving.serving_capacity_anchor
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_max }
 import std.optional { Optional, Present, Absent }
 import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, token_count_duration_at }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
@@ -10,9 +10,11 @@ import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings, 
 import gunbc.serving.flash_next_topology { topology_dp }
 import gunbc.serving.srv1_topology_comparison { Srv1TopologyReading, srv1_topology_reading, srv1_layout }
 import gunbc.serving.serving_layout { ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, srv3_layout, srv4_layout }
+import gunbc.serving.strata_parked_tier { strata_warm_admission, srv4_strata_rung_admissible }
+import gunbc.serving.serving_warm_admission { ServingWarmAdmission, WarmAdmit, WarmRungUnread, WarmRungRefused }
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, ServingEngineMemory, ConversationSnapshotCost,
-  conversation_snapshot_bytes, serving_warm_sessions_within,
+  conversation_snapshot_bytes, serving_warm_sessions_within, srv4_strata_parked_budget,
   srv3_strata_engine_memory, srv4_serving_engine_memory, host_6ce85c_engine_as_launched,
   srv3_strata_snapshot_cost, srv4_strata_snapshot_cost, strata_iq3_s_snapshot_cost, srv1_vllm_disk_snapshot_cost, srv1_vllm_disk_tier,
 }
@@ -41,15 +43,54 @@ import gunbc.serving.serving_host_memory {
 // WHERE A PARKED CONVERSATION'S KV WAITS BETWEEN TURNS.
 type ServingSwapTier = SwapTierHostRam | SwapTierDisk
 
-// THE WARM TIER, ONE RULE FOR EVERY DEPLOYMENT. It keeps as many conversations as its warm bytes hold snapshots of
-// the anchor context, capped by its slots where the engine has them: gunbc.serving.serving_host_memory
+// HOW A RUNG PUTS ITS CONVERSATIONS THERE. LMCache evicts to its own tier without being told; Strata's parked
+// conversations are saved and restored by the ROUTER driving the engine's slot-file endpoint
+// (extdeps.strata.session_file, gunbc.serving.strata_checkpoint_transfer). The mechanism is not decoration: it says
+// who pays for the save and what a miss costs the host, and it is what makes the same bytes mean different things.
+type ServingSwapMechanism = SwapByEngineEviction | SwapByRouterSlotFile
+
+// WHAT A RESTART COSTS THE RUNG. Host-RAM conversations die with the process; a saved slot file is on disk and comes
+// back. Whether it CAN come back is not a weaker durability but a restore ADMISSIBILITY question (the model must be
+// immutable while its files are retained, and SessionFileIdentity must match the engine that saved it) -- refused at
+// the rung that realizes it, never softened into a durability arm's name.
+//
+// FRONTIER: mechanism and durability have NO consuming policy in this commit. They are minted now because the Strata
+// disk rung needs a place to state them, and their only declared consumer is gentle-swift-129's follow-up selection
+// profile, which will read durability to decide what a host may still hold across a restart and mechanism to price
+// the save. Until that profile lands they are carried, not branched on -- if no consumer arrives they are the shape-
+// first drift this rule warns against, so that profile is where they must first be read.
+type ServingSwapDurability = LostWithProcess | SurvivesProcessRestart
+
+// WHETHER A COLDER RUNG ADDS CONVERSATIONS OR RE-HOLDS ONES A HOTTER RUNG ALREADY HOLDS. LMCache's L1 is a hot copy
+// of its L2; Strata's RAM cache may still hold a conversation the router has also saved to disk. An inclusive rung
+// contributes max(hotter, itself), an exclusive one adds. Every rung STATES its sharing (review 92669: an optional
+// field let Absent and RungInclusiveOfHotter spell one fold twice and left the add-versus-include decision unmade).
+// Not knowing is its own arm, distinct from knowing the rung is inclusive, and it folds inclusive so a rung whose
+// sharing is unread never enlarges what the deployment promises (gunbc.design_argument::fail_closed,
+// gunbc.design_argument::epistemic_humility).
+type ServingRungSharing = RungAdds | RungInclusiveOfHotter | RungSharingUnread { reason: NonEmptyStr }
+
+// ONE RUNG OF THE WARM LADDER, ONE RULE FOR EVERY RUNG. It keeps as many conversations as its warm bytes hold
+// snapshots of the anchor context, capped by its slots where the engine has them: gunbc.serving.serving_host_memory
 // serving_warm_sessions_within over conversation_snapshot_bytes, the same rule engine_warm_sessions applies. Only the
-// inputs differ by deployment: a Strata engine's warm bytes and slots are its ServingEngineMemory row (host RAM);
-// srv1's are LMCache's disk tier at its eviction watermark. An unread byte figure is not unbounded: the derivation
-// holds such a deployment to its active turns unless a store miss is itself cheap.
+// inputs differ by rung: a Strata engine's warm bytes and slots are its ServingEngineMemory row (host RAM); srv1's are
+// LMCache's disk tier at its eviction watermark. An unread byte figure is not unbounded: such a rung contributes
+// nothing and carries its obligation.
+//
+// A DEPLOYMENT CARRIES A LADDER OF THESE, HOTTEST FIRST, NOT A SECOND STORE: a host with a small RAM tier and a
+// larger disk tier is one store with two rungs (operator, 2026-11-09: "small RAM L1 + larger disk"), and each rung is
+// judged by the same rule -- a rung whose restore exceeds the policy's swap wait contributes NOTHING (it cannot
+// resume a conversation in time), a rung whose bytes are unread contributes nothing and joins its obligation to the
+// standings so the shape is Estimated, and rungs combine by their sharing, never blindly summed.
 type ServingWarmSwap
-  = WarmSwapRestores { tier: ServingSwapTier, restore: Millisecond, cache: ServingMemoryReading, slots: Nat?, cost: ConversationSnapshotCost, standing: CitedFigureStanding }
+  = WarmSwapRestores { tier: ServingSwapTier, mechanism: ServingSwapMechanism, durability: ServingSwapDurability, sharing: ServingRungSharing, restore: Millisecond, cache: ServingMemoryReading, slots: Nat?, cost: ConversationSnapshotCost, standing: CitedFigureStanding, admission_standings: List<CitedFigureStanding> }
   | WarmSwapAbsent
+  // A rung the deployment adapter refused outright. Distinct from an unread rung (WarmSwapRestores with an
+  // unread cache): this is not "we have not looked", it is "this store cannot be used here" -- batch disables the
+  // slot endpoint, the model is mutable, the build changed, the disk budget does not fit, or the layout refused.
+  // It contributes nothing to held and is named in the bound (review 92430 / gentle-swift-129), so it can never
+  // masquerade as a read obligation.
+  | WarmSwapRefused { reason: NonEmptyStr, cites: NonEmptyStr }
 
 type ServingWarmStore
   = WarmStoreKeeps { conversations: Nat }
@@ -63,9 +104,92 @@ fn serving_warm_store(cache: ServingMemoryReading, slots: Nat?, cost: Conversati
   }
 }
 
-// A Strata engine's warm tier, read from its memory row so the bytes and slots have one authority.
+// A Strata engine's warm tier, read from its memory row so the bytes and slots have one authority. The engine keeps
+// these conversations itself and they die with the process.
+// The engine's RAM cache is the HOTTEST rung: there is nothing hotter for it to re-hold, so it adds to the empty tally.
 fn engine_warm_swap(e: ServingEngineMemory, cost: ConversationSnapshotCost, restore: Millisecond, standing: CitedFigureStanding) -> ServingWarmSwap {
-  WarmSwapRestores { tier: SwapTierHostRam, restore: restore, cache: e.conversation_cache, slots: e.conversation_slots, cost: cost, standing: standing }
+  WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: restore, cache: e.conversation_cache, slots: e.conversation_slots, cost: cost, standing: standing, admission_standings: [] }
+}
+
+// A RUNG THE ROUTER REALIZES, NOT THE ENGINE. The bytes are a DECLARED BUDGET (the operator wants capped disk and
+// minimal host impact), never the filesystem's free space: free space is a reading that must ADMIT the budget, and
+// the check that it does belongs to the deployment adapter that knows the host (see gunbc.serving.strata_parked_tier
+// strata_slot_file_admissible). The adapter answers with a ServingWarmAdmission, and the two failure kinds stay
+// distinct through this fold: an outright REFUSAL (batch disables the slot endpoint, mutable model, changed build,
+// free space below the budget, a refused layout) arrives as WarmSwapRefused -- a typed refusal that contributes
+// nothing and is NAMED in the held bound, never folded into a fabricated read obligation; only a genuinely UNREAD
+// figure (budget not declared, free space not read) arrives as an unread rung, carrying its obligation into the
+// standings (review 92430 / gentle-swift-129).
+fn slot_file_warm_swap(admissible: ServingWarmAdmission, budget: ServingMemoryReading, cost: ConversationSnapshotCost, restore: Millisecond, standing: CitedFigureStanding, durability: ServingSwapDurability) -> ServingWarmSwap {
+  match admissible {
+    // The disk rung's sharing is UNREAD -- we do not know whether a conversation the router has saved is still
+    // resident in the engine's RAM cache -- so it says so, and the ladder folds it INCLUSIVE (max with the hotter
+    // rung), never a sum: the store never over-promises on an unknown (rule 2, operator's "unknown folds inclusive").
+    WarmAdmit { admission_standings: adm } => WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: durability, sharing: RungSharingUnread { reason: strata_slot_file_sharing_unread }, restore: restore, cache: budget, slots: Absent, cost: cost, standing: standing, admission_standings: adm }
+    WarmRungUnread { reason: r } => WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: durability, sharing: RungSharingUnread { reason: strata_slot_file_sharing_unread }, restore: restore, cache: ServingMemoryUnread { reason: r }, slots: Absent, cost: cost, standing: standing, admission_standings: [] }
+    WarmRungRefused { reason: r, cites: c } => WarmSwapRefused { reason: r, cites: c }
+  }
+}
+
+// WHAT THE LADDER FOLDS TO: the conversations it resumes in time, and the standings of what decided that. A rung that
+// read its bytes sets read_any even when it holds none -- a store that is read and empty is a refusal, not an absence.
+type ServingLadderTally { kept: Nat, read_any: Bool, too_slow_any: Bool, used: List<CitedFigureStanding>, unread: List<NonEmptyStr>, refused: List<NonEmptyStr> }
+
+data strata_slot_file_sharing_unread: NonEmptyStr = "whether a conversation the router saved to a Strata slot file is still resident in the engine's RAM cache is not read" as NonEmptyStr
+
+fn rung_adds_hotter(sh: ServingRungSharing) -> Bool {
+  match sh {
+    RungAdds => true
+    RungInclusiveOfHotter => false
+    RungSharingUnread { reason: _ } => false
+  }
+}
+
+fn ladder_step(t: ServingLadderTally, rung: ServingWarmSwap, wait: Millisecond, context: TokenCount) -> ServingLadderTally {
+  match rung {
+    WarmSwapAbsent => t
+    // A rung the deployment adapter REFUSED outright (batch, immutability, build, free space below the budget,
+    // a refused layout) contributes NOTHING and is NOT an unread figure: it is carried in `refused` so the held
+    // bound can NAME why the store cannot hold, rather than the fold inventing a read obligation for it (review
+    // 92430 / gentle-swift-129). A genuinely unread rung (undeclared budget, unread free space) is a different
+    // thing and arrives as WarmSwapRestores with an unread cache below.
+    WarmSwapRefused { reason: r, cites: _ } =>
+      ServingLadderTally { kept: t.kept, read_any: t.read_any, too_slow_any: t.too_slow_any, used: t.used, unread: t.unread, refused: concat(t.refused, [r]) }
+    WarmSwapRestores { tier: _, mechanism: _, durability: _, sharing: sh, restore: r, cache: ch, slots: sl, cost: co, standing: st, admission_standings: adm } =>
+      if millisecond_count(m: r) > millisecond_count(m: wait) {
+        ServingLadderTally { kept: t.kept, read_any: t.read_any, too_slow_any: true, used: concat(concat(t.used, [st]), adm), unread: t.unread, refused: t.refused }
+      } else {
+        match serving_warm_store(cache: ch, slots: sl, cost: co, context: context) {
+          WarmStoreUnread { obligation: o } =>
+            ServingLadderTally { kept: t.kept, read_any: t.read_any, too_slow_any: t.too_slow_any, used: concat(concat(t.used, [st, TranscribedUncited { read_obligation: o }]), adm), unread: concat(t.unread, [o]), refused: t.refused }
+          WarmStoreKeeps { conversations: n } => {
+            let grew = if rung_adds_hotter(sh: sh) { t.kept + n } else { nat_max(a: t.kept, b: n) }
+            // The rung's admission standings fold into `used` ONLY (gentle-swift-129, review 92497): an assumed build
+            // match is a bet on ADMISSIBILITY, so its TranscribedUncited reaches `used` (making the shape Estimated);
+            // it never enters `unread`, which means "this rung's bytes were not read" and drives the unread-cache shape.
+            ServingLadderTally { kept: grew, read_any: true, too_slow_any: t.too_slow_any, used: concat(concat(concat(t.used, [st]), cache_standings(cache: ch)), adm), unread: t.unread, refused: t.refused }
+          }
+        }
+      }
+  }
+}
+
+fn ladder_tally(rungs: List<ServingWarmSwap>, wait: Millisecond, context: TokenCount) -> ServingLadderTally {
+  fold(rungs, init: ServingLadderTally { kept: 0, read_any: false, too_slow_any: false, used: [], unread: [], refused: [] }, f: (acc, rung) => ladder_step(t: acc, rung: rung, wait: wait, context: context))
+}
+
+fn first_obligation(os: List<NonEmptyStr>) -> NonEmptyStr {
+  match os |> first() {
+    Present { value: o } => o
+    Absent => "no rung of the warm ladder reported its bytes" as NonEmptyStr
+  }
+}
+
+fn first_refusal(os: List<NonEmptyStr>) -> NonEmptyStr {
+  match os |> first() {
+    Present { value: o } => o
+    Absent => "a rung of the warm ladder was refused" as NonEmptyStr
+  }
 }
 
 // THE RESOURCE GRANT A DEPLOYMENT'S RETENTION MAY NOT EXCEED. Where a serving layout configures the replica
@@ -91,7 +215,9 @@ type ServingCapacityAnchor {
   // The rate a store miss re-reads the anchor context at. Absent when unread, never a stand-in zero.
   cold_prefill: TokensPerSecond?
   cold_prefill_standing: CitedFigureStanding
-  warm_swap: ServingWarmSwap
+  // THE LADDER, HOTTEST RUNG FIRST. One element is the single-tier case every deployment had before rungs existed;
+  // [] or [WarmSwapAbsent] is no warm path at all, which holds the deployment to its active turns.
+  warm_swap: List<ServingWarmSwap>
 }
 
 type ServingConversationPolicy {
@@ -108,6 +234,13 @@ type ServingHeldBound
   | HeldToTurnsNoWarmSwap
   | HeldToTurnsSwapTooSlow
   | HeldToTurnsStoreUnread { obligation: NonEmptyStr }
+  | HeldToTurnsRungRefused { reason: NonEmptyStr }
+  // A rung was READ (so the ladder has a real held figure) AND another rung was REFUSED outright. The held value is
+  // correct (the refused rung contributes nothing), but the bound must still NAME the refusal so a refused disk rung
+  // beside a read RAM rung does not silently vanish from the bound (gentle-swift-129 sign-off, review 92430 fold:
+  // refusals stay typed on every path, never dropped). The limiter (swap store vs active share) is kept.
+  | HeldBySwapStoreRungRefused { reason: NonEmptyStr }
+  | HeldByActiveShareRungRefused { reason: NonEmptyStr }
   | HeldByRetentionGrant
 
 // THE SHAPE KEEPS THE STANDING OF WHAT IT WAS DERIVED FROM (gunbc.design_argument::epistemic_humility: an inference is
@@ -204,24 +337,33 @@ fn serving_held(turns: Nat, by_share: Nat, cold: Millisecond, a: ServingCapacity
   if millisecond_count(m: cold) <= wait {
     ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: [] }
   } else {
-    match a.warm_swap {
-      WarmSwapAbsent => ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsNoWarmSwap, cold_reread: cold, used: [gpu_resident_turns()] }
-      WarmSwapRestores { tier: t, restore: r, cache: ch, slots: sl, cost: co, standing: st } =>
-        if millisecond_count(m: r) > wait {
-          ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsSwapTooSlow, cold_reread: cold, used: [st, gpu_resident_turns()] }
+    let t = ladder_tally(rungs: a.warm_swap, wait: p.max_swap_wait, context: p.anchor_context)
+    if t.read_any {
+      if count(t.refused) > 0 {
+        // A rung was read AND another was refused: keep the correct held value, but the bound names the refusal so it
+        // does not disappear beside a read rung (gentle-swift-129). The limiter is preserved: swap store if the read
+        // rungs alone are the smaller figure, active share if the cap binds.
+        if t.kept < by_share {
+          ServingHeldFigures { turns: turns, held: t.kept, bound: HeldBySwapStoreRungRefused { reason: first_refusal(os: t.refused) }, cold_reread: cold, used: t.used }
         } else {
-          match serving_warm_store(cache: ch, slots: sl, cost: co, context: p.anchor_context) {
-            WarmStoreUnread { obligation: o } => ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsStoreUnread { obligation: o }, cold_reread: cold, used: [st, gpu_resident_turns()] }
-            WarmStoreKeeps { conversations: n } => {
-              let used = concat([st], cache_standings(cache: ch))
-              if n < by_share {
-                ServingHeldFigures { turns: turns, held: n, bound: HeldBySwapStore, cold_reread: cold, used: used }
-              } else {
-                ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: used }
-              }
-            }
-          }
+          ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShareRungRefused { reason: first_refusal(os: t.refused) }, cold_reread: cold, used: t.used }
         }
+      } else if t.kept < by_share {
+        ServingHeldFigures { turns: turns, held: t.kept, bound: HeldBySwapStore, cold_reread: cold, used: t.used }
+      } else {
+        ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: t.used }
+      }
+    } else if count(t.refused) > 0 {
+      // The store could not be used at all and the reason is a REFUSAL, not an absence of reading: the bound names
+      // it (batch disables the slot endpoint, the model is mutable, the build changed, the budget does not fit, the
+      // layout refused) so a reader is never handed a fabricated read obligation (fail_closed / review 92430).
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsRungRefused { reason: first_refusal(os: t.refused) }, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
+    } else if count(t.unread) > 0 {
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsStoreUnread { obligation: first_obligation(os: t.unread) }, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
+    } else if t.too_slow_any {
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsSwapTooSlow, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
+    } else {
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsNoWarmSwap, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
     }
   }
 }
@@ -269,101 +411,11 @@ data serving_conversation_policy: ServingConversationPolicy = ServingConversatio
   max_swap_wait: millisecond(count: 5000),
 }
 
-// ── THE ANCHORS ────────────────────────────────────────────────────────────────────────────────────
+// ── THE ANCHORS LIVE IN THE ROSTER NOW ────────────────────────────────────────────────────────────
+//
+// The per-replica anchor rows that stood below (srv1's two vLLM replicas, srv3, srv4, h11) are now the
+// profile rows of gunbc.serving.serving_replica_profile -- the ONE roster every consumer reads -- and this
+// module supplies their machinery: the ladder types and constructors above, the shape derivation, the
+// conversation policy and the grant fold. A replica's host, engine, context, cold prefill, ladder and grant
+// stand in its row there; nothing here restates them.
 
-fn heuristic(o: String) -> CitedFigureStanding { TranscribedUncited { read_obligation: o as NonEmptyStr } }
-
-fn maxq_cold_prefill_128k() -> TokensPerSecond? {
-  fold(fork_prefill_readings, init: Absent, f: (acc, r) => if r.label == "cold prefill, 128k" { Present { value: r.tokens_per_second } } else { acc })
-}
-
-// srv1's vLLM: TWO TP=1 REPLICAS, one per RTX PRO 6000 (operator, 2026-11-08, on gunbc.serving.srv1_topology_comparison:
-// two replicas out-produced one TP=2 engine ~2.3x at 8 warm 150k sessions). Each replica's anchor is that run's 2xTP=1
-// reading divided across its replicas: the aggregate and the sessions over the data-parallel width, read rather than
-// copied, so an absent reading refuses the anchor. The two cards differ (Max-Q and Workstation Edition, both at 300 W),
-// so a per-replica figure is the pair's average. Cold prefill is the Max-Q fork's 128k reading. Each replica keeps its
-// own LMCache disk tier (L2, evicting above 0.80) and restored in ~156 ms p50 on the single-card launch (serve.log
-// RETRIEVE finish, 203 restores, 2026-11-08); its warm bytes and per-conversation cost are serving_host_memory rows.
-fn srv1_vllm_replica_anchor(deployment: String, r: Srv1TopologyReading) -> ServingCapacityAnchor {
-  ServingCapacityAnchor {
-    deployment: deployment as NonEmptyStr,
-    grant: GrantUnmodeled { obligation: "no serving layout models srv1's vLLM replicas (their LMCache tiers inside srv1's shared-host budget)" as NonEmptyStr },
-    context: r.context,
-    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: tokens_per_second_count(r: r.aggregate_output) / topology_dp(t: r.topology)), at_concurrency: r.sessions / topology_dp(t: r.topology), standing: r.standing },
-    cold_prefill: maxq_cold_prefill_128k(),
-    cold_prefill_standing: heuristic(o: "fork_prefill_readings cold prefill at 128k on the Max-Q fork"),
-    warm_swap: WarmSwapRestores {
-      tier: SwapTierDisk,
-      restore: millisecond(count: 156),
-      cache: srv1_vllm_disk_tier,
-      slots: Absent,
-      cost: srv1_vllm_disk_snapshot_cost,
-      standing: heuristic(o: "srv1 serve.log LMCache RETRIEVE finish_acknowledged p50 156 ms over 203 restores, 2026-11-08; restored sizes unread"),
-    },
-  }
-}
-
-// srv3's Strata on two RTX 2000 Ada (iq3_s). Its engine log (~/strata-pool/engine.log, read 2026-11-08) shows the
-// engine gains nothing from batching: one turn decodes at ~30 tok/s at 100-125k (median of 798 turns), and
-// windows with two groups in flight run ~26 tok/s in aggregate (median of 3,657). A miss re-reads cold at ~838
-// tok/s (median of 3,496 cold turns). Strata parks a conversation in host RAM and restores it in ~150-300 ms
-// for 64-131k tokens; its cache bytes and slots are its memory row (64 GiB, 24 slots).
-fn srv3_strata_anchor() -> ServingCapacityAnchor {
-  ServingCapacityAnchor {
-    deployment: "srv3-strata" as NonEmptyStr,
-    // srv3's replica is modelled now (gunbc.serving.serving_layout's srv3_layout: one engine across both RTX 2000
-    // Ada cards, its experts in a pinned private arena), so its cap is bounded by what that layout's retention
-    // budget admits — the same path srv4's anchor takes, and the reason no typed "cap 4" survives here.
-    grant: single_replica_grant(layout: srv3_layout, deployment: "srv3-strata"),
-    context: token_count(count: 100000),
-    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 26), at_concurrency: 2, standing: heuristic(o: "srv3 engine.log 'strata batch (pipelined, 2 groups)' rows/s median 26.3 over 3,657 windows, mixed context, 2026-11-08") },
-    cold_prefill: Present { value: tokens_per_second(count: 838) },
-    cold_prefill_standing: heuristic(o: "srv3 engine.log cold turns (0 reused, >20k read) median 838 tok/s over 3,496, 2026-11-08"),
-    warm_swap: engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: heuristic(o: "srv3 engine.log 'slot takes N tokens (copied in M ms)': 148-296 ms for 64-131k tokens, 2026-11-08")),
-  }
-}
-
-// srv4's Strata, the same card pair and model as srv3 but launched for one turn at a time (its unit is "one turn,
-// checkpoint capable"). Its own engine log is root-only, so its rates are BORROWED from srv3 and say so; its
-// cache bytes and slots are its memory row (gunbc.serving.serving_host_memory srv4_serving_engine_memory).
-fn srv4_strata_anchor() -> ServingCapacityAnchor {
-  ServingCapacityAnchor {
-    deployment: "srv4-strata" as NonEmptyStr,
-    grant: single_replica_grant(layout: srv4_layout, deployment: "srv4-strata"),
-    context: token_count(count: 100000),
-    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 30), at_concurrency: 1, standing: heuristic(o: "borrowed from srv3 (same RTX 2000 Ada pair and iq3_s): one turn at 100-125k decodes ~30 tok/s; read srv4's own engine log") },
-    cold_prefill: Present { value: tokens_per_second(count: 838) },
-    cold_prefill_standing: heuristic(o: "borrowed from srv3's cold turns; read srv4's own"),
-    warm_swap: engine_warm_swap(e: srv4_serving_engine_memory, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 300), standing: heuristic(o: "borrowed from srv3's restore times; read srv4's own")),
-  }
-}
-
-// One h11 Strata engine on one A16 GPU (iq3_s). ~12 tok/s single stream (the router's own note: 10-13 warm tok/s
-// at 200k on a 16 GB engine; 100k is at least that), one turn at a time (one slot), and a cold re-read of 50-115k
-// tokens takes 4-9 minutes (~210 tok/s). Its warm tier is host RAM, read from the engine's launched memory row
-// for its bus (gunbc.serving.serving_host_memory host_6ce85c_engine_as_launched) under h11's snapshot cost.
-fn h11_strata_anchor(deployment: String, bus: String, admitted: Nat) -> ServingCapacityAnchor {
-  ServingCapacityAnchor {
-    deployment: deployment as NonEmptyStr,
-    grant: GrantAdmits { conversations: admitted },
-    context: token_count(count: 100000),
-    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 12), at_concurrency: 1, standing: heuristic(o: "router_dev_policy note: one 16 GB A16 engine serves ~10-13 warm tok/s at 200k; read an h11 engine log at 100k") },
-    cold_prefill: Present { value: tokens_per_second(count: 210) },
-    cold_prefill_standing: heuristic(o: "router_dev_policy note: a moved Strata session re-reads 50-115k tokens in 4-9 min on an A16"),
-    warm_swap: engine_warm_swap(e: host_6ce85c_engine_as_launched(bus: bus), cost: strata_iq3_s_snapshot_cost, restore: millisecond(count: 300), standing: heuristic(o: "borrowed from srv3's Strata restore times; read an h11 engine log")),
-  }
-}
-
-// Each replica's shape reads the 2xTP=1 reading once: its throughput, concurrency and context all come from that one
-// row, so a later receipt cannot detach the rate from the context it was read at. No reading refuses.
-fn srv1_vllm_replica_shape(deployment: String) -> ServingCapacityShape {
-  match srv1_topology_reading(topology: srv1_layout(tp: 1, dp: 2), sessions: 8) {
-    Absent => ServingShapeRefused { deployment: deployment as NonEmptyStr, reason: "no srv1 2xTP=1 reading at 8 sessions in gunbc.serving.srv1_topology_comparison" as NonEmptyStr }
-    Present { value: r } => serving_capacity_shape(a: srv1_vllm_replica_anchor(deployment: deployment, r: r), p: serving_conversation_policy)
-  }
-}
-fn srv3_strata_shape() -> ServingCapacityShape { serving_capacity_shape(a: srv3_strata_anchor(), p: serving_conversation_policy) }
-fn srv4_strata_shape() -> ServingCapacityShape { serving_capacity_shape(a: srv4_strata_anchor(), p: serving_conversation_policy) }
-fn h11_strata_shape(deployment: String, bus: String, admitted: Nat) -> ServingCapacityShape {
-  serving_capacity_shape(a: h11_strata_anchor(deployment: deployment, bus: bus, admitted: admitted), p: serving_conversation_policy)
-}
