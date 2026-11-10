@@ -626,19 +626,29 @@ fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirector
 // SpoolStore and a SpoolEntryKey; it spells no stage, no stage path and no separator (DESIGN section 3).
 // ============================================================================================================
 
-// THE STORE IS A SUM, NOT A RECORD WITH AN OPTIONAL: an unpartitioned spool carries no uid at all; a
-// ByPrincipalUid spool carries the principal uid its entries are filed under. Declaring it as a coproduct
-// (not `partition_uid: Optional<Nat>` + runtime checks) makes the "which partition" question have exactly ONE
-// representation, so the malformed pairing (a partitioned spool missing its uid) is not a value this type
-// inhabits -- fail_closed: making the wrong state unwritable is stronger than catching it. The two sole-
-// constructor mints are the only producers: spool_open can ONLY build UnpartitionedStore; spool_open_uid is
-// the only way to obtain a UidPartitionedStore, and it refuses a kind that does not declare ByPrincipalUid.
+// THE STORE IS A SUM, NOT A RECORD WITH AN OPTIONAL: an unpartitioned store carries no uid at all; a
+// partitioned store carries the principal uid its entries are filed under. Declaring it as a coproduct
+// (not `partition_uid: Optional<Nat>` + runtime checks) makes the store's own uid-presence exactly one
+// representation: no store can be "partitioned but missing its uid" WITHIN itself -- there is no in-store
+// uid-less-partitioned value, so the old Absent arm and the wrong-cause refusal are gone (fail_closed).
+// WHAT THE SUM DOES *NOT* DO, STATED HONESTLY: it does not stop the store's variant from DISAGREEING with
+// the kind's declared partition. `UnpartitionedStore { kind: SpoolComputeExit, ... }` is a value this type
+// inhabits -- kind says ByPrincipalUid, the variant says unpartitioned. `spool_open` does not (yet) refuse a
+// ByPrincipalUid kind; it can only return a SpoolStore, and for a partitioned kind neither variant is right
+// (Unpartitioned mismatches the kind; UidPartitioned needs a uid spool_open does not have), so refusing it
+// would require a verdict return like spool_open_uid's -- which #15794's dispatch witness, which calls
+// `spool_role_path(store: spool_open(...))` directly and is owned by keen-crane-53, does not yet accept. The
+// residual is recorded, counted, not silent: integration_concern row `compute_exit_unpartitioned_store_escape`.
+// The two sole-constructor mints are the only producers: spool_open can ONLY build UnpartitionedStore;
+// spool_open_uid is the only way to obtain a UidPartitionedStore, and it refuses a kind that does not declare ByPrincipalUid.
 type SpoolStore sole_constructor
   = UnpartitionedStore { kind: SpoolKind, instance_root: String }
   | UidPartitionedStore { kind: SpoolKind, instance_root: String, uid: Nat }
 
 // THE MINT FOR AN UNPARTITIONED SPOOL: structurally the only thing it can produce is UnpartitionedStore --
-// there is no uid to stamp. A ByPrincipalUid kind is opened only through spool_open_uid (review 92878).
+// there is no uid to stamp. It does NOT inspect kind.partition; a ByPrincipalUid kind handed here yields the
+// variant/kind disagreement the type comment above names, guarded only by the readers and recorded in the
+// `compute_exit_unpartitioned_store_escape` concern. A ByPrincipalUid kind is opened only through spool_open_uid.
 fn spool_open(kind: SpoolKind, instance_root: String) -> SpoolStore {
   UnpartitionedStore { kind: kind, instance_root: instance_root }
 }
