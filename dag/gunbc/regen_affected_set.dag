@@ -43,7 +43,12 @@ import v2.std.read_set { read_set_member_covers }
 //
 // REFUSAL, NEVER WIDENING. When an edited path cannot be located as a module -- a departed .dag
 // whose module name is no longer readable from the tree, or a .dag under no source root -- the
-// answer is EditedSetUnlocatable naming the paths. It does not fall back to WholePopulation:
+// answer is EditedSetUnlocatable naming the paths. ONE CARVE-OUT (operator decision 2026-11-10, on
+// gunbc#16280): a DEPARTED .dag under none of the regen's input roots (src/v1, and the layout's dag
+// and src/v2) was never a regen input, so no mirror can have read it; it is outside the selection's
+// subject rather than unlocatable, and it still counts as a population change, which answers the
+// whole population. A departed path under src/v1 stays unlocatable, because v1 names a module by its
+// module line, not its path. It does not fall back to WholePopulation:
 // "whole rebuild required" and "the selection could not answer" are different states, and
 // collapsing them would erase the only signal that the locator has a deficit (gunbc.design_argument::fail_closed,
 // the absorbing fallback; operator ruling 2026-08-30).

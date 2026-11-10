@@ -11604,6 +11604,10 @@ pub struct EditedPopulation {
     pub edited_modules: Vec<String>,
     pub unlocatable: Vec<String>,
     pub non_dag_paths: Vec<String>,
+    /// Departed `.dag` paths under none of the regen's input roots (`src/v1`, and the layout's `dag`
+    /// and `src/v2`): no mirror can have read them, so they are not the selection's subject. They are
+    /// counted here, and each stays a population change below.
+    pub outside_regen_roots: Vec<String>,
     /// The `.dag` files this change ADDS or DELETES: a change to the module population, which the
     /// model answers with the whole mirror population (`regen_affected_set_over_change`).
     pub population_changes: Vec<String>,
@@ -11631,6 +11635,7 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
     let mut edited_modules: BTreeSet<String> = BTreeSet::new();
     let mut unlocatable = Vec::new();
     let mut non_dag_paths = Vec::new();
+    let mut outside_regen_roots = Vec::new();
     for path in paths {
         if !path.ends_with(".dag") {
             non_dag_paths.push(path);
@@ -11639,15 +11644,20 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
         // A DEPARTED MODULE IS NAMED BY ITS PATH. The layout fixes where module `a.b.c` is stored
         // (`gunbc.source_layout`), so a deleted file's module name is known without the file; its
         // importers still name it, so the reverse closure reaches every mirror that read it. Only a
-        // departed path outside the layout stays unlocatable (gunbc.plans.read_set_convergence P2).
+        // departed path outside the layout is not named by its path. Under `src/v1` it may still be a
+        // v1 module (v1 names modules by their `module` line, not their path), so it stays
+        // unlocatable and the round refuses (gunbc.plans.read_set_convergence P2). Under none of the
+        // regen's input roots it was never a regen input -- a test fixture root, say -- so no mirror
+        // read it: it is outside the subject, counted, and still a population change.
         if departed.contains(&path) {
             match super::native_lane_runner::dag_module_name_from_path(&path) {
                 Some(module) => {
                     edited_modules.insert(module);
                 }
-                None => unlocatable.push(format!(
+                None if path.starts_with("src/v1/") => unlocatable.push(format!(
                     "{path} (departed, and outside the source layout: no module name derivable)"
                 )),
+                None => outside_regen_roots.push(path),
             }
             continue;
         }
@@ -11665,6 +11675,7 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
         edited_modules: edited_modules.into_iter().collect(),
         unlocatable,
         non_dag_paths,
+        outside_regen_roots,
         population_changes,
     }
 }
@@ -12906,6 +12917,12 @@ deleted file mode 100644
 +++ /dev/null
 @@ -1,1 +0,0 @@
 -module stray.gone
+diff --git a/src/v1/gone_v1.dag b/src/v1/gone_v1.dag
+deleted file mode 100644
+--- a/src/v1/gone_v1.dag
++++ /dev/null
+@@ -1,1 +0,0 @@
+-module v1.compiler.gone
 diff --git a/dag/std/never_written.dag b/dag/std/never_written.dag
 new file mode 100644
 --- /dev/null
@@ -12932,7 +12949,12 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
         );
         assert!(population.unlocatable[0].starts_with("dag/std/never_written.dag (unreadable"));
         assert!(population.unlocatable[1]
-            .starts_with("fixtures/stray/gone.dag (departed, and outside the source layout"));
+            .starts_with("src/v1/gone_v1.dag (departed, and outside the source layout"));
+        // A departed path under none of the regen's input roots is outside the subject, not a refusal.
+        assert_eq!(
+            population.outside_regen_roots,
+            vec![s("fixtures/stray/gone.dag")]
+        );
         assert_eq!(
             population.non_dag_paths,
             vec![s("src/v1/stage0/src/v1_rt.rs")]
@@ -12943,7 +12965,8 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
             vec![
                 s("dag/std/gone.dag"),
                 s("dag/std/never_written.dag"),
-                s("fixtures/stray/gone.dag")
+                s("fixtures/stray/gone.dag"),
+                s("src/v1/gone_v1.dag")
             ]
         );
     }
