@@ -29,6 +29,38 @@ type CensusStanding
   | CensusBlocked { host: HostIdentity, cause: String }
   | CensusExcluded { host: HostIdentity, reason: String }
 
+// CAPACITY AS AN OBSERVED OUTCOME: a host counts as available runner capacity only after ALL
+// four conditions are met. The standing is not granted by enrollment or planning alone -- it
+// requires evidence of actual execution. A host that has not run a real CI job is NOT counted
+// as available capacity, regardless of its enrollment or plan status.
+type RunnerCapacityStanding
+  = CapacityAvailable { host: HostIdentity }
+  | CapacityNotYetAvailable { host: HostIdentity, missing: List<String> }
+
+type CapacityEvidence {
+  services_healthy: Bool
+  registrations_observed: Bool
+  resource_admission_resolved: Bool
+  job_executed: Bool
+}
+
+fn capacity_standing(host: HostIdentity, evidence: CapacityEvidence) -> RunnerCapacityStanding {
+  let missing = capacity_missing_conditions(evidence: evidence)
+  if length(missing) == 0 {
+    CapacityAvailable { host: host }
+  } else {
+    CapacityNotYetAvailable { host: host, missing: missing }
+  }
+}
+
+fn capacity_missing_conditions(evidence: CapacityEvidence) -> List<String> {
+  let m1 = if evidence.services_healthy { [] } else { ["runner services not healthy"] }
+  let m2 = if evidence.registrations_observed { [] } else { ["registrations not observed in org roster"] }
+  let m3 = if evidence.resource_admission_resolved { [] } else { ["resource admission unresolved"] }
+  let m4 = if evidence.job_executed { [] } else { ["no CI job executed on this host"] }
+  concat(concat(m1, m2), concat(m3, m4))
+}
+
 type CensusFoldAccum {
   rows: List<CensusStanding>
 }
