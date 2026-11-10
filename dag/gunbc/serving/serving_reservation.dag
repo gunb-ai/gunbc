@@ -37,7 +37,8 @@ module gunbc.serving.serving_reservation
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { ByteSize, byte_size_count, byte_size }
+import std.measure { ByteSize, byte_size_count, byte_size, Watt, watt, watt_count }
+import product.fabric.flex_serving_image { flex_lil_serving_image }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 
@@ -114,11 +115,38 @@ fn cpu_reservation_covers(r: CpuReservation, core: Nat) -> Bool {
 // cap is unknown to the point of being unusable.
 type GpuReservation {
   devices: List<NonEmptyStr>
-  power_cap_watts: Optional<Nat>
+  power_cap_watts: Optional<Watt>
 }
 
 fn gpu_reservation_card_count(g: GpuReservation) -> Nat {
   count(g.devices)
+}
+
+// A REPLICA'S MEMORY RESERVATION IS A MEASURED FACT, A MODELED ALLOWANCE, OR HONESTLY UNMEASURED -- never a
+// fabricated number. This mirrors the module's other quantity faces: a quantity observed carries bytes with a
+// provenance; a quantity the runner needs before it is observed carries a conservative bytes WITH a basis that
+// says it is modeled, not measured; a quantity nobody has read yet is Unmeasured, and the width derivation
+// FAILS CLOSED on it rather than charge a made-up figure (fail_closed). Storing a bare placeholder in a
+// ByteSize field, as this module once did, let the width silently consume a lie.
+type ReplicaMemoryReservation
+  = MemoryMeasured { bytes: ByteSize, provenance: String }
+  | MemoryModeledAllowance { bytes: ByteSize, basis: String }
+  | MemoryUnmeasured { reason: String }
+
+fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> ByteSize {
+  match m {
+    MemoryMeasured { bytes: b, provenance: _ } => b
+    MemoryModeledAllowance { bytes: b, basis: _ } => b
+    MemoryUnmeasured { reason: _ } => byte_size(count: 0)
+  }
+}
+
+fn memory_reservation_is_measured(m: ReplicaMemoryReservation) -> Bool {
+  match m {
+    MemoryMeasured { bytes: _, provenance: _ } => true
+    MemoryModeledAllowance { bytes: _, basis: _ } => false
+    MemoryUnmeasured { reason: _ } => false
+  }
 }
 
 // ── THE REPLICA'S RESERVATION, AND THE HOST'S BIND ───────────────────────────────────────────────────
@@ -128,7 +156,7 @@ fn gpu_reservation_card_count(g: GpuReservation) -> Nat {
 // which is what let a per-host verdict wrongly add a second batch-1 engine onto the first.
 type ReplicaReservation {
   cpu: CpuReservation
-  memory: ByteSize
+  memory: ReplicaMemoryReservation
   gpu: GpuReservation
 }
 
@@ -212,50 +240,54 @@ type ServingHostReservation {
 // MODEL roster: butch's own rows and the live cpusets land with B4b (cool-lark-40); the rows here are the
 // fleet's standing claims, and the derivation reads them all the same.
 data serving_host_reservations: List<ServingHostReservation> = [
-  // srv3: one Strata engine, its two cards capped, an affinity pin that leaves cores bookable.
+  // srv3: one Strata engine, its two cards capped, an affinity pin that leaves cores bookable. Its per-engine
+  // MEMORY reservation is not yet observed, so it is a MODELED ALLOWANCE AT ZERO -- established (so srv3's
+  // committed runner width is not built on a fabricated figure) but plainly a model value, not a measurement;
+  // B4b (cool-lark-40) replaces it with MemoryMeasured once the per-engine reservation is read.
   ServingHostReservation {
     host: operator_host_srv3,
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: byte_size(count: 32),
-        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 40 } },
+        memory: MemoryModeledAllowance { bytes: byte_size(count: 0), basis: "per-engine Strata memory reservation not yet observed; modeled at zero so the committed width uses only measured facts -- B4b records MemoryMeasured" },
+        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
   },
-  // srv4: one Strata engine, its two cards capped, an affinity pin.
+  // srv4: one Strata engine, its two cards capped, an affinity pin; memory modeled at zero as above.
   ServingHostReservation {
     host: operator_host_srv4,
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: byte_size(count: 32),
-        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 40 } },
+        memory: MemoryModeledAllowance { bytes: byte_size(count: 0), basis: "per-engine Strata memory reservation not yet observed; modeled at zero so the committed width uses only measured facts -- B4b records MemoryMeasured" },
+        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
   },
   // BUTCH (srv14) -- THE FIRST REAL ROW, AND THE FIRST HOST THAT RUNS TWO REPLICAS. This is the operator's
   // hand-deployed serving host (2026-11-10): strata-pool@a (butch-a) and strata-pool@b (butch-b), one engine
   // each, each holding two of the four A2 cards (0+1 / 2+3) that a2-power-cap.service holds at 35 W. Its
-  // cpusets are AFFINITY (the operator's word): 0-39 and 40-79 pin each engine but leave the cores bookable,
-  // so butch gives the runner back no cores while still paying the memory and all four cards -- the N-per-host
-  // price the finding's per-host code could not express. The memory here is a MODEL PLACEHOLDER: the operator
-  // stated ports, cpusets, cards and the 35 W cap, not a memory figure, and B4a must not invent one -- B4b
-  // (cool-lark-40) reads the real per-engine reservation off the box and replaces the placeholder. The ports,
-  // router cap (2) and sticky count (4) are the ROUTER's facts (RouterDevReplicaNaming / RouterDevUpstream),
-  // not a reservation, so they are not duplicated here.
+  // cpusets are AFFINITY (the operator's word): 0-39 and 40-79 pin each engine but leave the cores bookable, so
+  // butch gives the runner back no cores while still handing over all four cards -- the N-per-host price the
+  // finding's per-host code could not express. Its per-engine MEMORY is HONESTLY UNMEASURED: the operator gave
+  // ports, cpusets, cards and the 35 W cap, NOT a memory figure, so B4a refuses to invent one -- the row says
+  // MemoryUnmeasured and the width derivation FAILS CLOSED on butch until B4b reads the reservation from the
+  // box (which is correct: butch is a serving host, and an unmeasured reservation must not be charged as zero).
+  // The ports, router cap (2) and sticky count (4) are the ROUTER's facts (RouterDevReplicaNaming /
+  // RouterDevUpstream.capacity/retention), not a reservation, so they are not duplicated here.
   ServingHostReservation {
     host: operator_host_srv14,
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] } },
-        memory: byte_size(count: 32),
-        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 35 } },
+        memory: MemoryUnmeasured { reason: "operator stated butch-a ports/cpusets/cards/35W cap, not a per-engine memory figure; B4b reads it from the running box" },
+        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 35) } },
       },
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, last: 79 } ] } },
-        memory: byte_size(count: 32),
-        gpu: GpuReservation { devices: ["GPU-2", "GPU-3"], power_cap_watts: Present { value: 35 } },
+        memory: MemoryUnmeasured { reason: "operator stated butch-b ports/cpusets/cards/35W cap, not a per-engine memory figure; B4b reads it from the running box" },
+        gpu: GpuReservation { devices: ["GPU-2", "GPU-3"], power_cap_watts: Present { value: watt(count: 35) } },
       },
     ],
   },
@@ -277,15 +309,22 @@ fn host_cores_withheld_from_runner(host: HostIdentity) -> Nat {
   }
 }
 
-// HOW MUCH MEMORY A SERVING HOST COMMITS TO ITS SERVING REPLICAS, for EVERY serving host -- not the
-// prod-role host alone. The width derivation charges this against the host's runner-usable memory the same
-// way served_slice_charge charges the prod host's container allowance.
-fn host_memory_reserved(host: HostIdentity) -> ByteSize {
-  let total = match host_reservations_for(host) {
-    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + byte_size_count(b: c.memory))
-    Absent => 0
+// HOW MUCH MEMORY A SERVING HOST COMMITS TO ITS SERVING REPLICAS, for EVERY serving host -- not the prod-role
+// host alone. The width derivation charges this against the host's runner-usable memory the same way
+// served_slice_charge charges the prod host's container allowance. It returns Absent when a replica's
+// reservation is unmeasured, so the consumer FAILS CLOSED instead of charging a fabricated figure; a host with
+// no reservation row is established at zero (it runs no replica, and refusing it would refuse every non-serving
+// host). An allowance contributes its bytes; only MemoryUnmeasured blocks the width.
+fn host_memory_reserved(host: HostIdentity) -> Optional<ByteSize> {
+  match host_reservations_for(host) {
+    Absent => Present { value: byte_size(count: 0) }
+    Present { value: r } =>
+      if any(r.replicas, c => match c.memory { MemoryUnmeasured { reason: _ } => true _ => false }) {
+        Absent
+      } else {
+        Present { value: byte_size(count: fold(r.replicas, init: 0, f: (acc, c) => acc + byte_size_count(b: memory_reservation_bytes(c.memory)))) }
+      }
   }
-  byte_size(count: total)
 }
 
 // HOW MANY CARDS A SERVING HOST COMMITS TO SERVING, so the runner never counts a serving card as free for
@@ -377,20 +416,25 @@ fn serving_api_key_source_path(host: HostIdentity, replica: NonEmptyStr) -> Opti
 // ── EACH SERVING HOST'S STRATA IS PINNED BY THE DIGEST OF THE BUILD ACTUALLY RUNNING ─────────────────
 
 // WHICH STRATA EACH HOST RUNS. Pinning lives on the host (a data row keyed by the machine), so "butch runs
-// the same build as srv3" is two rows naming the same digest, not a branch. The digest hex below is a MODEL
-// PLACEHOLDER: the byte-exact digest of the binary running on butch is read over ssh by B4b (cool-lark-40)
-// and replaces it -- B4a must not invent a production digest as if it were observed. What the model fixes now
-// is the SHAPE: a release is a content digest, never the moving tag "latest" that a hand deploy drifts toward.
+// the same build as srv3" is two rows naming the SAME digest, not a branch. The digest is the authoritative
+// content-addressed digest of the serving image -- flex_lil_serving_image (product.fabric.flex_serving_image) --
+// which the operator confirmed is the build butch and srv3 run ("same build and server as srv3 production",
+// 2026-11-10). It is REFERENCED, never restated, so the hex has one authority (single_authority); a row that
+// copied a hex literal here would be a second definition to drift. B4b (cool-lark-40) reads the byte-exact
+// digest of the binary running on each box over ssh and OVERRIDES a host's row if its build differs; until
+// then every host is pinned to the real image digest, not to a made-up string and never to the moving tag
+// "latest" that a hand deploy drifts toward. host_strata_is_pinned is true here only because the hex is a real
+// content digest; a host with no row, or one left StrataReleaseUnpinned, is not pinned (fail_closed).
 type ServingHostStrata {
   host: HostIdentity
   strata: StrataRelease
 }
 
 data serving_host_strata_releases: List<ServingHostStrata> = [
-  ServingHostStrata { host: operator_host_srv3, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "model-placeholder-srv3-build" } } },
-  ServingHostStrata { host: operator_host_srv4, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "model-placeholder-srv4-build" } } },
-  // butch runs the same build as srv3 -- the same digest, keyed to a second host. No "latest."
-  ServingHostStrata { host: operator_host_srv14, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "model-placeholder-srv3-build" } } },
+  ServingHostStrata { host: operator_host_srv3, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: flex_lil_serving_image.digest_sha256 } } },
+  ServingHostStrata { host: operator_host_srv4, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: flex_lil_serving_image.digest_sha256 } } },
+  // butch runs the same build as srv3 -- the same content digest, keyed to a second host. No "latest."
+  ServingHostStrata { host: operator_host_srv14, strata: StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: flex_lil_serving_image.digest_sha256 } } },
 ]
 
 fn strata_release_for(host: HostIdentity) -> Optional<StrataRelease> {

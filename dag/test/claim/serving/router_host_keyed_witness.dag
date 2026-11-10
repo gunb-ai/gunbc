@@ -1,4 +1,4 @@
-module gunbc.test.claim.serving.router_host_keyed_witness
+module test.claim.serving.router_host_keyed_witness
 
 // THE HOST-KEYED ROUTER WITNESS (B4a, item 4). It replaces the finding's closed h11/srv3/srv4 enum + three-arg
 // `router_dev_first_party_for` with a list keyed by host, and turns a throughput-unread replica into a row that

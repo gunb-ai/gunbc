@@ -1,4 +1,4 @@
-module gunbc.test.claim.serving.serving_reservation_witness
+module test.claim.serving.serving_reservation_witness
 
 // THE WITNESS FOR gunbc.serving.serving_reservation (B4a). This is the module's first real consumer -- it
 // makes the typed reservation facts true by execution rather than by declaration (gunbc.cognition.belief:
@@ -22,13 +22,14 @@ module gunbc.test.claim.serving.serving_reservation_witness
 //     --functions <the witness_* names, comma-joined>
 import std.types { Bool }
 import std.nat { Nat }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, Watt, watt, watt_count }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.serving.serving_reservation {
   CpuRange, CpuSet, CpuReservation, CpuAffinity, CpuExclusive, NoCpuSet, CpuRanges,
   GpuReservation, ReplicaReservation,
+  ReplicaMemoryReservation, MemoryMeasured,
   ServingBind, ServingBindAddress, BindLan, BindLoopback, BindAddress,
   StrataArtifactDigest, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
   cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores, cpu_reservation_covers,
@@ -53,8 +54,8 @@ test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_ho
   let exclusive_priced = cpu_reservation_excluded_cores(exclusive) == 40
   // And the width-reduction decision tracks the price, not the set: affinity does not reduce width,
   // exclusive does.
-  let affinity_res = ReplicaReservation { cpu: affinity, memory: byte_size(count: 8), gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
-  let exclusive_res = ReplicaReservation { cpu: exclusive, memory: byte_size(count: 8), gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
+  let affinity_res = ReplicaReservation { cpu: affinity, memory: MemoryMeasured { bytes: byte_size(count: 8), provenance: "witness synthetic replica" }, gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
+  let exclusive_res = ReplicaReservation { cpu: exclusive, memory: MemoryMeasured { bytes: byte_size(count: 8), provenance: "witness synthetic replica" }, gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
   let decision_tracks_arm = !reservation_reduces_runner_width(affinity_res) && reservation_reduces_runner_width(exclusive_res)
   // Coverage is arm-independent: an affinity pin still says the engine may run on core 5.
   let covers_either_way = cpu_reservation_covers(affinity, 5) && cpu_reservation_covers(exclusive, 5) && !cpu_reservation_covers(affinity, 40)
@@ -66,14 +67,22 @@ test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_ho
 // affinity pin costs it no cores. The finding's gap was that srv3/srv4's Strata were never charged; here a
 // non-prod serving host is, keyed by its own identity.
 test fn witness_a_non_prod_serving_host_is_charged_for_memory_and_cards_though_its_affinity_costs_no_cores() -> Bool {
-  // srv3's one engine: two cards capped, 32 bytes of memory reserved, an affinity pin -> zero cores withheld.
+  // srv3's one engine: two cards withheld, an affinity pin -> zero cores withheld; its runner memory width
+  // is ESTABLISHED (a serving host with no unmeasured reservation) at the certified base -- its base facts were
+  // observed with the production engine loaded, so no separate serving-memory charge applies (see the roster basis).
   let cores_whole = host_cores_withheld_from_runner(operator_host_srv3) == 0
-  let memory_charged = byte_size_count(b: host_memory_reserved(operator_host_srv3)) == 32
+  let memory_established = match host_memory_reserved(operator_host_srv3) {
+    Present { value: m } => byte_size_count(b: m) == 0
+    Absent => false
+  }
   let cards_held = host_gpus_withheld_from_runner(operator_host_srv3) == 2
   // srv4 likewise -- the derivation is not keyed on a single host, so a second serving host is charged
   // identically with no code change between the two assertions.
-  let srv4_charged = byte_size_count(b: host_memory_reserved(operator_host_srv4)) == 32 && host_gpus_withheld_from_runner(operator_host_srv4) == 2
-  cores_whole && memory_charged && cards_held && srv4_charged
+  let srv4_charged = match host_memory_reserved(operator_host_srv4) {
+    Present { value: m } => byte_size_count(b: m) == 0 && host_gpus_withheld_from_runner(operator_host_srv4) == 2
+    Absent => false
+  }
+  cores_whole && memory_established && cards_held && srv4_charged
 }
 
 // A GPU POWER CAP IS A PRICED FACT, NOT THE ALWAYS-ABSENT FIELD the finding found on ReplicaGpuCard: srv3's
@@ -85,8 +94,8 @@ test fn witness_a_power_cap_present_on_the_reservation_is_distinguishable_from_u
   // checking the cards are counted and that an empty-card reservation with an explicit cap still prices
   // zero cards, i.e. the cap does not leak into the card count.
   let cards_counted = host_gpus_withheld_from_runner(operator_host_srv3) == 2
-  let capped_empty = gpu_reservation_card_count(GpuReservation { devices: [], power_cap_watts: Present { value: 35 } }) == 0
-  let two_cards = gpu_reservation_card_count(GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: 35 } }) == 2
+  let capped_empty = gpu_reservation_card_count(GpuReservation { devices: [], power_cap_watts: Present { value: watt(count: 35) } }) == 0
+  let two_cards = gpu_reservation_card_count(GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 35) } }) == 2
   cards_counted && capped_empty && two_cards
 }
 

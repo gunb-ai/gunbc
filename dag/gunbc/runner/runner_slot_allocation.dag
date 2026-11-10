@@ -451,10 +451,17 @@ type RunnerMemoryEnvelope
 // because nothing typed existed to charge with. Now it does (gunbc.serving.serving_reservation) and the
 // width folds it here. CPU and GPU reservations price on their own axes (the CPU axis below reads the
 // exclusive-withheld cores); a host with no reservation row is charged zero, so the prod-role host and every
-// non-serving host are unaffected. The single-host entry is unchanged so no consumer notices; the
-// _with_serving sibling lets the witness flip the charge on and off to prove it is CONSUMED, not orphaned.
+// non-serving host are unaffected. An EXPLICITLY unmeasured reservation (MemoryUnmeasured) returns Absent and
+// the width FAILS CLOSED rather than charge a fabricated figure (fail_closed) -- charging zero for an
+// unmeasured engine would silently overbook CI. The _with_serving sibling lets the witness flip a charge on
+// and off to prove it is CONSUMED, not orphaned.
 fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnvelope {
-  host_runner_memory_envelope_resolution_with_serving(host: host, serving: host_memory_reserved(host: host))
+  match host_memory_reserved(host: host) {
+    Present { value: serving } => host_runner_memory_envelope_resolution_with_serving(host: host, serving: serving)
+    Absent => RunnerMemoryEnvelopeUnestablished {
+      cause: "a serving replica on this host carries an unmeasured memory reservation: the runner width cannot be certified until the per-engine reservation is measured (gunbc.serving.serving_reservation MemoryUnmeasured); charging it a fabricated figure -- or nothing -- would understate the host and overbook CI"
+    }
+  }
 }
 
 fn host_runner_memory_envelope_resolution_with_serving(host: HostIdentity, serving: ByteSize) -> RunnerMemoryEnvelope {
@@ -462,7 +469,12 @@ fn host_runner_memory_envelope_resolution_with_serving(host: HostIdentity, servi
 }
 
 fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
-  runner_memory_envelope_of_with_serving(f: f, serving: host_memory_reserved(host: f.host))
+  match host_memory_reserved(host: f.host) {
+    Present { value: serving } => runner_memory_envelope_of_with_serving(f: f, serving: serving)
+    Absent => RunnerMemoryEnvelopeUnestablished {
+      cause: "a serving replica on this host carries an unmeasured memory reservation: the runner width cannot be certified until the per-engine reservation is measured (gunbc.serving.serving_reservation MemoryUnmeasured); charging it a fabricated figure -- or nothing -- would understate the host and overbook CI"
+    }
+  }
 }
 
 fn runner_memory_envelope_of_with_serving(f: HostWidthFacts, serving: ByteSize) -> RunnerMemoryEnvelope {
@@ -927,7 +939,7 @@ fn compute_host_cpu_admitted_width(host: ComputeHost) -> Int {
 // cores_per_slot above 1, or a box that is not an M128-30). A serving replica that takes cores EXCLUSIVELY is
 // that day arriving: exclusively-withheld cores belong to no other tenant and so cannot be offered to CI. An
 // AFFINITY pin -- a cpuset the engine may run on -- is NOT withheld; the runner keeps those cores and the width
-// is unchanged. The derivation's decision, witnessed in gunbc.test.claim.serving.serving_runner_width_witness:
+// is unchanged. The derivation's decision, witnessed in test.claim.serving.serving_runner_width_witness:
 // only the exclusive arm reduces width, and it reduces it by exactly the cores withheld. srv3/srv4 pin their
 // engines AFFINITIVELY, so their offered threads are unchanged (the axis stays 128 and non-binding, as the
 // 2026-09-19 ruling intends); a host that reserved cores exclusively offers the pool minus the withheld count,

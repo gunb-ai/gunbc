@@ -1,4 +1,4 @@
-module gunbc.test.claim.serving.serving_multi_replica_witness
+module test.claim.serving.serving_multi_replica_witness
 
 // THE N-REPLICAS-PER-HOST WITNESS (B4a). It says, and discriminates, the two per-replica findings:
 //

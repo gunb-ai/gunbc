@@ -1,4 +1,4 @@
-module gunbc.test.claim.serving.serving_runner_width_witness
+module test.claim.serving.serving_runner_width_witness
 
 // THE WITNESS THAT THE RUNNER WIDTH DERIVATION CONSUMES THE SERVING RESERVATIONS (B4a, item 2). The
 // reservation facts live in gunbc.serving.serving_reservation, but a fact nothing consumes is a guess: the
@@ -7,12 +7,12 @@ module gunbc.test.claim.serving.serving_runner_width_witness
 // file is the real consumer on the OTHER side: it drives the width derivation itself and discriminates the
 // two axes the finding required.
 //
-//   1. MEMORY (the binding axis at cores_per_slot 1). srv3 -- a Strata host that is NOT the prod host -- pays
-//      its reserved memory into the runner envelope, to the byte; the prod host srv1 carries no serving row
-//      and so is charged nothing. The discriminating red: if the derivation orphaned the reservation (never
-//      subtracted it) or ignored it and charged zero, the envelope would not fall by the charge and the
-//      equality breaks. srv1 being charged zero is checked too, so a host that runs no Strata replica cannot
-//      be silently shrunk.
+//   1. MEMORY IS CONSUMED, NOT ORPHANED (the binding axis at cores_per_slot 1). The same width derivation
+//      run with an explicit nonzero serving charge is smaller than with zero by EXACTLY that charge -- so a
+//      missing subtraction or a zero feed breaks the equality. srv3's own row is then shown to sit at the
+//      certified base (charge 0: its engine is already in its observed base facts, so nothing is fabricated on
+//      top of it), and the prod host srv1 (no serving row) is charged nothing. Butch -- whose per-engine memory
+//      was never measured -- has its width FAIL CLOSED to Unestablished, not charged a made-up zero.
 //   2. CPU (an axis the module kept for the day it binds). An AFFINITY pin leaves the offered threads whole;
 //      an EXCLUSIVE pin loses exactly the cores it withholds. srv3 pins affinitively, so its axis stays 128
 //      and non-binding, exactly as the 2026-09-19 ruling intends -- a witness that could not tell affinity
@@ -24,7 +24,8 @@ module gunbc.test.claim.serving.serving_runner_width_witness
 //     --functions witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_byte,witness_an_affinity_pin_leaves_the_cpu_axis_whole_where_an_exclusive_pin_withholds_its_cores
 import std.types { Bool }
 import std.measure { byte_size, byte_size_count, hardware_thread_count }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv14 }
 import gunbc.runner.runner_slot_allocation {
   RunnerMemoryEnvelopeDerived, RunnerMemoryEnvelopeUnestablished,
   host_runner_memory_envelope_resolution, host_runner_memory_envelope_resolution_with_serving,
@@ -37,9 +38,10 @@ import gunbc.serving.serving_reservation { host_memory_reserved, host_cores_with
 // equality -- base and charged are the SAME derivation with the charge flipped on -- so neither a missing
 // subtraction nor a zero feed can pass.
 test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_byte() -> Bool {
-  let charge = byte_size_count(b: host_memory_reserved(operator_host_srv3))
+  // (a) THE FEED IS CONSUMED TO THE BYTE. Same host, same derivation, only the serving charge differs: zero vs
+  //     4096. The envelope must fall by exactly 4096 -- an orphaned subtraction or an ignored feed breaks it.
   let base = host_runner_memory_envelope_resolution_with_serving(host: operator_host_srv3, serving: byte_size(count: 0))
-  let charged = host_runner_memory_envelope_resolution(host: operator_host_srv3)
+  let charged = host_runner_memory_envelope_resolution_with_serving(host: operator_host_srv3, serving: byte_size(count: 4096))
   let base_bytes = match base {
     RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
     RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
@@ -48,12 +50,38 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
     RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
     RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
   }
-  let prod_carries_nothing = byte_size_count(b: host_memory_reserved(operator_host_srv1)) == 0
-  charge == 32
-    && base_bytes > 0
+  // (b) srv3's OWN row sits at that certified base: its reservation is established (not absent) and adds no
+  //     charge beyond the observed base -- no fabricated figure is folded into its width.
+  let srv3_real = match host_runner_memory_envelope_resolution(host: operator_host_srv3) {
+    RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
+  }
+  let srv3_charge_is_zero = match host_memory_reserved(operator_host_srv3) {
+    Present { value: m } => byte_size_count(b: m) == 0
+    Absent => false
+  }
+  // (c) THE PROD HOST srv1 runs no serving replica: charged nothing, its width is its own base, and it is not shrunk.
+  let prod_charge_is_zero = match host_memory_reserved(operator_host_srv1) {
+    Present { value: m } => byte_size_count(b: m) == 0
+    Absent => false
+  }
+  let prod_bytes = match host_runner_memory_envelope_resolution(host: operator_host_srv1) {
+    RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
+  }
+  // (d) BUTCH FAILS CLOSED: an unmeasured per-engine reservation makes its width Unestablished, not a zero charge.
+  let butch_closed = match host_runner_memory_envelope_resolution(host: operator_host_srv14) {
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => true
+    RunnerMemoryEnvelopeDerived { bytes: _ } => false
+  }
+  base_bytes > 0
     && charged_bytes > 0
-    && base_bytes == charged_bytes + charge
-    && prod_carries_nothing
+    && base_bytes == charged_bytes + 4096
+    && srv3_real == base_bytes
+    && srv3_charge_is_zero
+    && prod_charge_is_zero
+    && prod_bytes > 0
+    && butch_closed
 }
 
 // CPU: AFFINITY LEAVES THE WIDTH WHOLE, EXCLUSIVE PAYS ITS CORES. The axis is fed by the withheld count and
