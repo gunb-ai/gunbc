@@ -170,7 +170,13 @@ fn bmc_boot_options_clear_reply(world: BmcWorld, call: OperationCall) -> BmcRepl
   match bmc_call_raw_request(call: call) {
     Absent => BmcReplyFault { reason: "ChassisBootOptionsClear's argv did not materialize as an ipmitool raw request" as NonEmptyStr }
     Present { value: req } =>
-      if req.netfn != 0 || req.cmd != 8 || req.data.first() != Present { value: ipmi_boot_flags_parameter_selector } {
+      // THE SELECTOR IS COMPARED AS A NUMBER, unwrapped by match: an optional is not compared against a literal
+      // Present (a number and its optional encoding are two representations, and == does not decide them).
+      let is_boot_flags_selector = match req.data.first() {
+        Present { value: s } => s == ipmi_boot_flags_parameter_selector
+        Absent => false
+      }
+      if req.netfn != 0 || req.cmd != 8 || !is_boot_flags_selector {
         BmcReplyFault { reason: "ChassisBootOptionsClear's argv is not a Set System Boot Options request for the boot-flags parameter" as NonEmptyStr }
       } else if count(req.data) != 1 + ipmi_boot_flags_parameter_data_octets {
         BmcRefused {

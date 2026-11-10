@@ -90,7 +90,7 @@ test fn the_six_byte_clear_is_refused_as_the_wrong_length_and_changes_nothing() 
         && string_contains(s: err, pattern: "rsp=0xc7")
         && string_contains(s: err, pattern: "Request data length invalid")
         && after.boot_override == BootOverrideCdromEfiNextBoot
-        && ipmitool_raw_stderr_completion(stderr: err) == Present { value: 199 }
+        && completion_is(read: ipmitool_raw_stderr_completion(stderr: err), expected: 199)
     BmcReplied { stdout: _, world: _ } => false
     BmcReplyFault { reason: _ } => false
   }
@@ -136,8 +136,20 @@ test fn the_real_clear_is_the_parameters_length_and_clears_the_override() -> Boo
 // (0xC7) and a one-digit one (0x8), and the bare one-digit line as ipmitool would print it. RED for the
 // two-character read this replaced: it answers Absent for the one-digit lines.
 test fn the_refusal_code_round_trips_at_one_and_two_digits() -> Bool {
-  ipmitool_raw_stderr_completion(stderr: ipmitool_raw_refusal_stderr(netfn: 0, cmd: 8, completion: 199, completion_name: "Request data length invalid")) == Present { value: 199 }
-    && ipmitool_raw_stderr_completion(stderr: ipmitool_raw_refusal_stderr(netfn: 0, cmd: 8, completion: 8, completion_name: "x")) == Present { value: 8 }
-    && ipmitool_raw_stderr_completion(stderr: "Unable to send RAW command (channel=0x0 netfn=0x0 lun=0x0 cmd=0x8 rsp=0x8): x") == Present { value: 8 }
-    && ipmitool_raw_stderr_completion(stderr: "Unable to send RAW command (channel=0x0 netfn=0x0 lun=0x0 cmd=0x8)") == Absent
+  completion_is(read: ipmitool_raw_stderr_completion(stderr: ipmitool_raw_refusal_stderr(netfn: 0, cmd: 8, completion: 199, completion_name: "Request data length invalid")), expected: 199)
+    && completion_is(read: ipmitool_raw_stderr_completion(stderr: ipmitool_raw_refusal_stderr(netfn: 0, cmd: 8, completion: 8, completion_name: "x")), expected: 8)
+    && completion_is(read: ipmitool_raw_stderr_completion(stderr: "Unable to send RAW command (channel=0x0 netfn=0x0 lun=0x0 cmd=0x8 rsp=0x8): x"), expected: 8)
+    && match ipmitool_raw_stderr_completion(stderr: "Unable to send RAW command (channel=0x0 netfn=0x0 lun=0x0 cmd=0x8)") {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// A READ CODE IS THE EXPECTED ONE: unwrapped by match and compared as a number, never an optional against a
+// literal Present.
+fn completion_is(read: Int?, expected: Int) -> Bool {
+  match read {
+    Present { value: c } => c == expected
+    Absent => false
+  }
 }
