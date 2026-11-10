@@ -83,51 +83,74 @@ fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_er
          emit_rust_rest_result_lowering\n--- emitted ---\n{emitted}"
     );
 
-    // The body-read arm publishes the fixed read-refused phrase from the single authority, as a
-    // constant -- not the io error. Absent at main (which emitted `cause: error.to_string()`).
-    assert!(
-        emitted.contains(
-            "RestBodyUndecodable { status: status as i64, cause: \"the response body could not be \
-             read from the host\".to_string() }"
-        ),
-        "the emitted body-read arm did not publish the declared read-refused phrase\n--- emitted ---\n{emitted}"
-    );
+    // ALLOW-LIST, not a deny-list. A deny-list of two spellings (error.to_string(), format!()) misses the
+    // NEXT splice form -- a different binding name, a helper that takes the error -- so instead every
+    // emitted RestBodyUndecodable CONSTRUCTION's cause must be EXACTLY one of the two declared-side forms
+    // the shared text module (v1.compiler.rest_cause_text) produces, as a single string literal. Anything
+    // else fails: a runtime splice under any binding, a helper call, a format!, concatenation, an
+    // unforeseen form, or a wording drift from the authority.
+    //
+    // A CONSTRUCTION is identified by the emit's construction marker `status: status as i64`; the
+    // RestBodyUndecodable VARIANT DECLARATION (which carries the field TYPE `cause: NonEmptyStr`, not a
+    // value) and unrelated mentions of the name are not constructions and are correctly not checked.
+    //
+    // The two allowed literals are the authority's exact text, so a wording change in the authority fails
+    // this too (single authority). The decode form keeps the pinned '... at <located> (<coproduct>)' /
+    // 'did not inhabit' shape the claims in dag/test/claim/rest_exchange_replay.dag pin, with <located>
+    // honestly the withheld-field phrase (fail_closed / epistemic_humility -- never the output type).
+    const READ_REFUSED_CAUSE: &str = "the response body could not be read from the host";
+    const DECODE_CAUSE_PREFIX: &str =
+        "body did not inhabit the declared output: the response body does \
+         not inhabit its declared output type at the failing field withheld on a credential path (";
 
-    // The decode arm publishes the pinned 'body did not inhabit the declared output: <declared> at
-    // <located> (<coproduct>)' template, but the emitted whole-body serde decode never located a
-    // field, so <located> must honestly say the field is withheld -- NOT stand the output type in for
-    // a field it never computed (gunbc.design_argument::fail_closed / epistemic_humility). Absent at
-    // main, which emitted the '{}' format over `error`.
-    assert!(
-        emitted.contains(
-            "body did not inhabit the declared output: the response body does not inhabit its \
-             declared output type at the failing field withheld on a credential path ("
-        ),
-        "the emitted decode arm did not publish the declared 'did not inhabit ... at <withheld> \
-         (<coproduct>)' template\n--- emitted ---\n{emitted}"
-    );
-    // The shape the claims in dag/test/claim/rest_exchange_replay.dag pin (the '... at <located>
-    // (<coproduct>)' region) is kept, and no fabricated field: the located slot carries the
-    // withheld-field phrase rather than a field the emitter never worked out.
-    assert!(
-        emitted.contains(" at ") && emitted.contains(" (") && emitted.contains(")"),
-        "the emitted decode cause lost the pinned '... at <located> (<coproduct>)' shape\n--- emitted ---\n{emitted}"
-    );
-
-    // NO BODY-DERIVED TEXT REACHES THE CAUSE. Every RestBodyUndecodable arm must splice nothing from
-    // the runtime error binding -- the only vector a body-derived credential could use to reach the
-    // cause. At main these fire (the arms emitted `cause: error.to_string()` and
-    // `format!("...", error)`); at head they hold (the cause is a constant declared-side literal).
+    let mut saw_read = false;
+    let mut saw_decode = false;
     for (idx, line) in emitted.lines().enumerate() {
-        if line.contains("RestBodyUndecodable") {
-            assert!(
-                !line.contains("error.to_string()"),
-                "emitted RestBodyUndecodable splices the body-derived error at line {idx}: {line}"
-            );
-            assert!(
-                !line.contains("format!("),
-                "emitted RestBodyUndecodable formats body-derived text at line {idx}: {line}"
-            );
+        if !(line.contains("RestBodyUndecodable") && line.contains("status: status as i64")) {
+            continue;
+        }
+        // The cause expression is what follows `cause: ` up to its `.to_string()`.
+        let after = line.split_once("cause: ").map_or(line, |(_, rest)| rest);
+        let cause_expr = after
+            .split_once(".to_string()")
+            .map_or(after, |(expr, _)| expr)
+            .trim();
+        // A safe cause is a SINGLE string literal: it begins and ends with a double quote and the only
+        // double quotes on it are those two -- so `" + <expr> + "` splicing cannot survive, and neither
+        // can a format!/call form (which never begins with a quote).
+        let inner = cause_expr
+            .strip_prefix('"')
+            .and_then(|s| s.strip_suffix('"'));
+        let single_literal = match inner {
+            Some(body) => {
+                !body.contains('"') && !cause_expr.contains("format!") && !cause_expr.contains('+')
+            }
+            None => false,
+        };
+        let is_read = single_literal && inner == Some(READ_REFUSED_CAUSE);
+        let is_decode = single_literal
+            && inner.map_or(false, |b| {
+                b.starts_with(DECODE_CAUSE_PREFIX) && b.ends_with(')')
+            });
+        assert!(
+            is_read || is_decode,
+            "emitted RestBodyUndecodable cause is not a declared-side constant literal (a runtime \
+             splice or unforeseen form) at line {idx}: {line}"
+        );
+        if is_read {
+            saw_read = true;
+        }
+        if is_decode {
+            saw_decode = true;
         }
     }
+
+    // Both declared-side arms must be present, so the test cannot pass vacuously if an arm disappears
+    // or is rewritten to an unlisted form. At main both constructions splice `error`, so the per-arm
+    // assert above fires first and the run is RED; the presence guard is the corroboration at head.
+    assert!(
+        saw_read && saw_decode,
+        "expected both the read-refused and the pinned-decode declared-side cause arms; \
+         saw_read={saw_read} saw_decode={saw_decode}\n--- emitted ---\n{emitted}"
+    );
 }
