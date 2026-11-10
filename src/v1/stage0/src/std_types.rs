@@ -444,6 +444,18 @@ pub type Milliseconds = i64;
 
 pub type Seconds = i64;
 
+pub fn epoch_sec_min() -> i64 {
+    0
+}
+
+pub fn checked_int_to_epoch_secs(n: i64) -> Option<i64> {
+    if (n.clone() < epoch_sec_min()) {
+        crate::std_optional::optional_absent()
+    } else {
+        crate::std_optional::optional_present(n.clone())
+    }
+}
+
 pub type LogicalTime = String;
 
 pub type IntentId = String;
