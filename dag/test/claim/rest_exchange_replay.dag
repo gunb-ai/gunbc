@@ -183,6 +183,32 @@ test fn rest_replay_missing_fixture_refuses_without_network_fallback() -> Bool {
   }
 }
 
+// Field-default path 2 (the #16196 follow-up). The SAME zero-fixture op-route, but the claim is
+// about the refusal TEXT, not only that it refused. RestReplayExchangeAbsent carries the
+// host-computed bound invocation; until the seed renders `invocation.target` the reason is a bare
+// TypeError naming no bound value. This asserts the refusal names the target the op-route actually
+// bound at the real service declaration — https://rest-replay.invalid/answer — so path 2's bound
+// value is observable at the refusal. On a seed that drops the invocation the target half fails;
+// that base-versus-head contrast is the executed reading quick-newt-573 runs, and #16185's explicit
+// Jwt fields become removable only once the head half passes.
+test fn rest_replay_missing_fixture_refusal_names_the_bound_target() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: []),
+    subject: fn(_scope) { test.RestReplay.Observe() }
+  )
+  match result {
+    WitnessReturned { value } => false
+    WitnessRefused { diagnostic } => string_contains(
+      s: witness_diagnostic_rendered_reason(diagnostic: diagnostic),
+      pattern: "missing exact REST replay fixture"
+    ) && string_contains(
+      s: witness_diagnostic_rendered_reason(diagnostic: diagnostic),
+      pattern: "https://rest-replay.invalid/answer"
+    )
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
 test fn rest_replay_duplicate_exact_fixture_refuses() -> Bool {
   let fixture = fixture_for(operation: "Observe", observation: denied_observation())
   let result = evaluate_in_witness_frame(
