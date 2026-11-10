@@ -21130,7 +21130,7 @@ fn bare_import_owner_index(modules: List<TypedModule>, registry: Map<String, Ite
           match map_get(inner_names, imported_name) {
             Present { value: _ } => inner_names
             Absent =>
-              if lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: import_path, decl_name: imported_name }) != none {
+              if map_get(registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: import_path, decl_name: imported_name })) != none {
                 map_insert(inner_names, imported_name, import_path)
               } else {
                 inner_names
