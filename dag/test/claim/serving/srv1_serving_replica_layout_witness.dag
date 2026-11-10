@@ -12,7 +12,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   Srv1KvCacheDtype,
   srv1_launch_admission,
   srv1_replica_unit_contract, srv1_disk_guard_contract,
-  srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words,
+  srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words, srv1_replica_gpu_uuid,
   srv1_replica_helper,
   srv1_contract_verifies_container_name, srv1_contract_verifies_gpu_uuid, srv1_contract_verifies_image_digest,
   srv1_contract_verifies_port_binding, srv1_contract_verifies_mounts, srv1_contract_verifies_memory_limit,
@@ -135,9 +135,18 @@ test fn the_roster_has_two_replicas() -> Bool {
   length(xs: srv1_serving_replica_roster) == 2
 }
 
-// The two replicas have distinct GPU UUIDs (they are on different cards).
+// The two replicas have distinct GPU UUIDs (they are on different cards). The UUIDs are read from each
+// unit's PROFILE card row -- gunbc.serving.serving_replica_profile is their owner; the unit asks for them.
 test fn the_replica_gpu_uuids_are_distinct() -> Bool {
-  srv1_replica_0.gpu_uuid != srv1_replica_1.gpu_uuid
+  let u0 = srv1_replica_gpu_uuid(replica: srv1_replica_0)
+  let u1 = srv1_replica_gpu_uuid(replica: srv1_replica_1)
+  match u0 {
+    Absent => false
+    Present { value: a } => match u1 {
+      Absent => false
+      Present { value: b } => a != b
+    }
+  }
 }
 
 // The two replicas have distinct host ports (they publish on different ports).
@@ -259,7 +268,10 @@ test fn the_engine_argv_is_constructed_from_typed_rows() -> Bool {
 // either copy independently breaks here, so the two cannot silently diverge.
 test fn the_launcher_case_statement_matches_the_roster() -> Bool {
   let body = srv1_serving_gpu_launcher.body as String
-  let uuids_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: r.gpu_uuid as String))
+  let uuids_ok = all(srv1_serving_replica_roster, r => match srv1_replica_gpu_uuid(replica: r) {
+    Absent => false
+    Present { value: u } => string_contains(s: body, pattern: u as String)
+  })
   let names_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: r.container_name as String))
   let ports_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: to_string(r.host_port as Int)))
   let dirs_ok = string_contains(s: body, pattern: "lil-flash-next-1")
@@ -274,7 +286,10 @@ test fn the_replica_device_word_uses_the_shared_selector() -> Bool {
   let r = srv1_replica_0
   let words = srv1_replica_device_words(replica: r)
   // The model's device word is the shared selector's output tagged --device (one home for nvidia.com/gpu=<UUID>).
-  let model_ok = words == ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: r.gpu_uuid)]
+  let model_ok = match srv1_replica_gpu_uuid(replica: r) {
+    Absent => false
+    Present { value: u } => words == ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
+  }
   // gpu.sh pins the device with the SAME CDI prefix the shared selector emits; it binds the UUID itself from
   // the case statement into `--device nvidia.com/gpu=$GPU`, so the launcher carries the prefix, not the literal
   // UUID, on the docker line. The UUID↔index binding to the roster is asserted by

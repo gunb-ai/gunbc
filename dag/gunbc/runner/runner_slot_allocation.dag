@@ -76,10 +76,11 @@ fn gunbc_runner_slot_offer_envelope() -> ResourceEnvelope {
 // (memory.peak of a fresh per-attempt cgroup) and never a larger request: no arm here or downstream
 // raises the ceiling on a failed fit.
 //
-// THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason fabric_first_slot_index gives:
-// an index at the width moves when the width moves. It need not sit inside 1..width: the slot is a
-// committed member by identity (host_committed_identities_at), and the fleet range beneath it is
-// 1..(width - 1). 13 is the index the live unit, cell slice and allocation-store key already carry.
+// THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason the deleted srv3/srv4
+// `fabric_first_slot_index` note gave: an index at the width moves when the width moves. It need not sit
+// inside 1..width: the slot is a committed member by identity (host_committed_identities_at), and the
+// fleet range beneath it is 1..(width - 1). 13 is the index the live unit, cell slice and allocation-store
+// key already carry.
 data gunbc_microvm_shakedown_slot_memory_max: ByteSize = byte_size(30064771072)
 
 data gunbc_microvm_shakedown_slot_index: Nat = 13
@@ -126,10 +127,14 @@ data deploy_slot_identities: List<RunnerSlotIdentity> = [srv1_deploy_slot()]
 // gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names. So the
 // operator ruled option (a): keep srv1-01 until the deploy slot serves (2026-11-05, relayed by
 // merry-fox-82 msg_07ba9a54 and keen-otter-392). The row is charged ON TOP of the memory-admitted
-// width. srv1's charged envelope after the two authored microVM slots is 47.85 GiB (the derivation in
-// test.claim.runner.runner_slot_allocation_witness: 145.85 GiB less 52 shakedown and 46 revision-job),
-// so two 25 GiB fleet slots would over-admit it by ~2.15 GiB. The operator narrowed option (a) to B on
-// 2026-11-06: srv1-01 is granted the envelope remainder (~22.85 GiB), so there is no over-admission. Keeping the
+// width. WHAT IT IS GRANTED IS WHATEVER THE FOLD LEAVES, never a pinned figure: while authorship
+// charged the two microVM slots unconditionally srv1's charged envelope was 47.85 GiB (145.85 less 52
+// shakedown and 46 revision-job) and the remainder granted srv1-01 ~22.85 GiB; since those slots read
+// MicrovmSlotNotRealized (microvm_slot_realization below, gunbc.design_ruling::
+// srv1_microvm_slot_charge_waits_for_realization) the envelope is 145.85 GiB, the fold admits five
+// fleet rows, and the remainder granted is ~20.85 GiB. Both figures are the same fold over a different
+// standing, which is the point of deriving it (operator narrowed option (a) to B on 2026-11-06: grant
+// the remainder, so there is no over-admission). Keeping the
 // slot preserves an OBSERVED route, not guaranteed scheduling: srv1-01 is a shared CI slot.
 // THE EXIT IS NOT MODELED HERE (gunbc.design_argument::consumption, a declared frontier): it is the deletion of this row, taken when
 // ALL of (1) the three deploy_slot_tenancy walls (gunbc.ci.deploy_slot_tenancy) read back current,
@@ -583,6 +588,117 @@ fn memory_admitted_width_of(f: HostWidthFacts) -> Int {
   )
 }
 
+// AN AUTHORED MICROVM SLOT IS NOT A RUNNING ONE. srv1-13 and srv1-14 have been authored since their
+// rows landed -- shape, identity, controller slice -- and nothing microVM has ever been installed on
+// srv1: no controller unit, no `gunbc-microvm-slot@` instance, only the network ruleset unit
+// gunbc-microvm-nft.service is active (operator reading, 2026-11-09 ~01:20Z). Charging their ~98 GiB
+// anyway reserved memory for slots that do not exist and took two CI slots off srv1 with them
+// (gunbc.design_ruling::srv1_microvm_slot_charge_waits_for_realization, operator 2026-11-09 "yes
+// please do A and then B"). The charge now follows the slot's REALIZATION; the shape, the identity and
+// the lane's own rows are untouched, so the charge returns the moment the lane is installed.
+//
+// REALIZATION IS A STANDING, NOT A BOOLEAN (gunbc.design_argument::fail_closed). Three arms, because
+// "nobody looked" and "we looked and it is not there" are different facts and only ONE of them is
+// allowed to move memory:
+//   MicrovmSlotRealized          -- a positive read that the controller is installed AND the slot is
+//                                   live. Charges, exactly as authorship charged before.
+//   MicrovmSlotNotRealized       -- a positive read that they are not. Releases the charge.
+//   MicrovmSlotRealizationUnobserved -- nobody read it, the read failed, or the reader could not tell.
+//                                   CHARGES. Absence of an observation must never silently free memory,
+//                                   so the release direction requires a POSITIVE read of absence.
+// That requirement is why the wet receipt home cannot be this gate: gunbc.runner.runner_microvm_slot_unit
+// microvm_receipt_store and microvm_receipt_history answer MicrovmReceiptStoreUnready /
+// MicrovmReceiptHistoryRefused for "the store directory is not there" and "the store is not root-owned"
+// in the SAME arm, so on an uninstalled host they report unobserved, and an unobserved host keeps its
+// charge. The read that legitimately WRITES MicrovmSlotRealized is the install route's own readback --
+// gunbc.live_deploy.apply microvm_controller_install_wet, which reads the candidate's tree receipt, the
+// VMM receipt and whether systemd loads the slot template. Until that route writes a row, the rows
+// below are the model's own readings with their provenance in the carrier.
+type MicrovmSlotRealization
+  = MicrovmSlotRealized { observed_at: String, reading: String }
+  | MicrovmSlotNotRealized { observed_at: String, reading: String, invalidated_by: DeclarationRef }
+  | MicrovmSlotRealizationUnobserved { cause: String }
+
+// THE ROW, KEYED BY SLOT. A slot with no row is MicrovmSlotRealizationUnobserved by
+// microvm_slot_realization below: the rows ARE the positive reads and are never the default, which is
+// what keeps a new authored slot -- or a slot whose row was deleted -- charged rather than free.
+type MicrovmSlotRealizationRow {
+  slot: RunnerSlotIdentity
+  realization: MicrovmSlotRealization
+}
+
+// THE srv1 READING, 2026-11-09 ~01:20Z (operator, to bold-wren-111; facts carried verbatim into the
+// row). `invalidated_by` is the row's DISSOLUTION: the named route is the event after which this
+// reading is false, so an install that leaves the row standing is contradicted by the model rather
+// than by a comment. gunbc.integration_concern::microvm_lane_install_must_flip_its_slot_realization
+// carries the obligation on the lane to flip it.
+data srv1_microvm_shakedown_slot_realization: MicrovmSlotRealizationRow = MicrovmSlotRealizationRow {
+  slot: srv1_microvm_shakedown_slot(),
+  realization: MicrovmSlotNotRealized {
+    observed_at: "2026-11-09T01:20Z",
+    reading: "no controller unit and no microVM slot instance is installed or live on srv1; the only active microVM unit is the network ruleset gunbc-microvm-nft.service",
+    invalidated_by: decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet"),
+  },
+}
+
+data srv1_microvm_revision_job_slot_realization: MicrovmSlotRealizationRow = MicrovmSlotRealizationRow {
+  slot: srv1_revision_job_slot(),
+  realization: MicrovmSlotNotRealized {
+    observed_at: "2026-11-09T01:20Z",
+    reading: "no controller unit and no microVM slot instance is installed or live on srv1; the only active microVM unit is the network ruleset gunbc-microvm-nft.service",
+    invalidated_by: decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet"),
+  },
+}
+
+data microvm_slot_realization_rows: List<MicrovmSlotRealizationRow> = [
+  srv1_microvm_shakedown_slot_realization,
+  srv1_microvm_revision_job_slot_realization,
+]
+
+// THE LOOKUP, AND THE DEFAULT THAT KEEPS MEMORY RESERVED. A slot absent from the rows is unobserved,
+// and unobserved charges (see the standing above); a fold rather than an optional so the refusal to
+// release is a value the width chain can see, not an absence it must remember to handle.
+fn microvm_slot_realization_over(rows: List<MicrovmSlotRealizationRow>, slot: RunnerSlotIdentity) -> MicrovmSlotRealization {
+  fold(
+    rows,
+    init: MicrovmSlotRealizationUnobserved { cause: "no realization row is declared for this slot: the host has not been read, so authorship's charge stands" },
+    f: (found, row) => if runner_slot_identity_equal(a: row.slot, b: slot) { row.realization } else { found }
+  )
+}
+
+fn microvm_slot_realization(slot: RunnerSlotIdentity) -> MicrovmSlotRealization {
+  microvm_slot_realization_over(rows: microvm_slot_realization_rows, slot: slot)
+}
+
+// WHICH ARMS MOVE MEMORY, read from the standing and nowhere else (gunbc.design_argument::single_authority).
+// Both retaining arms are spelled out rather than collapsed into a default arm so that adding a fourth
+// arm to the standing reddens here instead of defaulting into a free release of host memory.
+fn microvm_slot_charge_is_owed(standing: MicrovmSlotRealization) -> Bool {
+  match standing {
+    MicrovmSlotRealized { observed_at: _, reading: _ } => true
+    MicrovmSlotNotRealized { observed_at: _, reading: _, invalidated_by: _ } => false
+    MicrovmSlotRealizationUnobserved { cause: _ } => true
+  }
+}
+
+fn microvm_slot_charge_is_owed_for(slot: RunnerSlotIdentity) -> Bool {
+  microvm_slot_charge_is_owed(standing: microvm_slot_realization(slot: slot))
+}
+
+// THE RELEASE IS A PRECONDITION THE INSTALL ROUTE REFUSES ON, not only a row it is expected to flip
+// (review 92701). While a slot's row releases its charge, its memory is already promised to CI width;
+// the route that would make the slot real (gunbc.live_deploy.apply microvm_controller_install_wet, each
+// row's invalidated_by) must refuse until the row stops releasing -- set to MicrovmSlotRealized, or
+// deleted so the slot is unobserved and charged -- which drops the committed width back BEFORE the slot
+// can exist. A stale release can therefore not oversubscribe the host: it blocks the install instead.
+fn microvm_slots_releasing_their_charge_over(rows: List<MicrovmSlotRealizationRow>) -> List<RunnerSlotIdentity> {
+  map(filter(rows, r => !microvm_slot_charge_is_owed(standing: r.realization)), r => r.slot)
+}
+
+fn microvm_slots_releasing_their_charge() -> List<RunnerSlotIdentity> {
+  microvm_slots_releasing_their_charge_over(rows: microvm_slot_realization_rows)
+}
+
 // THE SHAKEDOWN SLOT'S CHARGE IS THE ATTEMPT'S CEILING PLUS ITS CONTROLLER'S OWN SLICE. The
 // controller runs beside the cell, not inside it (gunbc.runner.runner_microvm_slot_unit
 // microvm_controller_slice_memory_max), and that is host memory charged PER SLOT all the same: a
@@ -615,13 +731,31 @@ fn gunbc_microvm_shakedown_slot_charge() -> ByteSize {
   authored_microvm_slot_charge(slot: srv1_microvm_shakedown_slot())
 }
 
-// THE CHARGE OF A HOST'S AUTHORED SLOTS IS THE SUM OF EACH SLOT'S OWN CHARGE, in the carrier.
-fn authored_microvm_slots_charge(slots: List<RunnerSlotIdentity>) -> ByteSize {
+// WHAT THE ENVELOPE ACTUALLY PAYS FOR ONE AUTHORED SLOT: its full charge while the standing owes it,
+// and nothing once a POSITIVE reading says the slot is not realized. The shape function above is left
+// alone -- a slot that is not running still has a shape, and gunbc.runner.runner_microvm_slot_unit
+// renders the controller slice from it; only the envelope stops paying.
+fn authored_microvm_slot_envelope_charge_over(slot: RunnerSlotIdentity, rows: List<MicrovmSlotRealizationRow>) -> ByteSize {
+  if microvm_slot_charge_is_owed(standing: microvm_slot_realization_over(rows: rows, slot: slot)) {
+    authored_microvm_slot_charge(slot: slot)
+  } else {
+    byte_size(0)
+  }
+}
+
+// THE CHARGE OF A HOST'S AUTHORED SLOTS IS THE SUM OF WHAT THE ENVELOPE PAYS FOR EACH, in the carrier.
+// `_over` takes the standing rows so the width question can be asked against a supplied reading -- that
+// is how the witness restores the charge for a live controller without touching a declared row.
+fn authored_microvm_slots_charge_over(slots: List<RunnerSlotIdentity>, rows: List<MicrovmSlotRealizationRow>) -> ByteSize {
   fold(
     slots,
     init: byte_size(0),
-    f: (acc, s) => measure_add(a: acc, b: authored_microvm_slot_charge(slot: s))
+    f: (acc, s) => measure_add(a: acc, b: authored_microvm_slot_envelope_charge_over(slot: s, rows: rows))
   )
+}
+
+fn authored_microvm_slots_charge(slots: List<RunnerSlotIdentity>) -> ByteSize {
+  authored_microvm_slots_charge_over(slots: slots, rows: microvm_slot_realization_rows)
 }
 
 // THE WIDTH COST OF THE SHAKEDOWN SLOT IS DERIVED HERE AND NOWHERE ELSE. The host that carries it
@@ -638,8 +772,17 @@ fn authored_microvm_slots_charge(slots: List<RunnerSlotIdentity>) -> ByteSize {
 // zero-divisor guard -- so the conservation arithmetic the shakedown rung-drop depends on is
 // unit-checked end to end instead of trusted across an unwrap.
 fn memory_admitted_width_of_envelope(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>) -> Int {
+  memory_admitted_width_of_envelope_over(envelope: envelope, authored_slots: authored_slots, rows: microvm_slot_realization_rows)
+}
+
+// THE SAME FOLD AGAINST SUPPLIED REALIZATION ROWS. Nothing else in the width chain reads a standing:
+// the fold takes the rows, looks each authored slot up in them, and charges what the standing owes.
+// Passing the rows is how a live controller is put back in front of the same arithmetic -- with both
+// srv1 microVM slots read as MicrovmSlotRealized this returns the width srv1 had while authorship
+// charged unconditionally, which is the discriminating claim the witness pins.
+fn memory_admitted_width_of_envelope_over(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>, rows: List<MicrovmSlotRealizationRow>) -> Int {
   if authored_slots.length() > 0 {
-    match measure_sub(a: envelope, b: authored_microvm_slots_charge(slots: authored_slots)) {
+    match measure_sub(a: envelope, b: authored_microvm_slots_charge_over(slots: authored_slots, rows: rows)) {
       MeasureSubtrahendExceedsMinuend => 0
       MeasureDifference { value: rest } =>
         authored_slots.length() + (measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int)
@@ -660,7 +803,21 @@ fn memory_admitted_width_of_envelope(envelope: ByteSize, authored_slots: List<Ru
 // grants zero; committed_width_of REFUSES that case by name (WidthSlotShapeInadmissible) and never commits the
 // slot at MemoryMax zero. Both arms (envelope under the authored charge; exact-fit remainder of zero) are that refusal.
 fn transitional_ci_slot_memory_max_of_envelope(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>, transitional_count: Int) -> ByteSize {
-  match measure_sub(a: envelope, b: authored_microvm_slots_charge(slots: authored_slots)) {
+  transitional_ci_slot_memory_max_of_envelope_over(
+    envelope: envelope,
+    authored_slots: authored_slots,
+    transitional_count: transitional_count,
+    rows: microvm_slot_realization_rows,
+  )
+}
+
+// THE GRANDFATHERED GRANT DIVIDES THE SAME ENVELOPE THE WIDTH DIVIDES, standing rows included: a slot
+// released from the charge by a positive not-realized reading widens BOTH the width and the remainder,
+// and a reading that says it is realized narrows both. Any drift between this fold and
+// memory_admitted_width_of_envelope_over is the over-admission gunbc.ci.ci_runner_placement refuses by
+// name (HostAllocationOversubscribedOnHost), so the two are given the same rows by construction.
+fn transitional_ci_slot_memory_max_of_envelope_over(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>, transitional_count: Int, rows: List<MicrovmSlotRealizationRow>) -> ByteSize {
+  match measure_sub(a: envelope, b: authored_microvm_slots_charge_over(slots: authored_slots, rows: rows)) {
     MeasureSubtrahendExceedsMinuend => byte_size(0)
     MeasureDifference { value: rest } =>
       match measure_sub(
@@ -1017,6 +1174,15 @@ fn gunbc_runner_committed_width(host: HostIdentity) -> RunnerWidthResolution {
 }
 
 fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
+  committed_width_of_over(f: f, rows: microvm_slot_realization_rows)
+}
+
+// THE SAME WIDTH QUESTION AGAINST SUPPLIED REALIZATION ROWS, so the model can be asked what a host's
+// width would be under a reading it has not taken -- which is how a witness shows that a live microVM
+// controller restores the charge and pulls the width back down, without editing a declared row. The
+// rows reach BOTH envelope folds (the width and the transitional grant), never one of them: a width
+// that widened while the grant stayed put is the over-admission gunbc.ci.ci_runner_placement refuses.
+fn committed_width_of_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationRow>) -> RunnerWidthResolution {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
     RunnerSlotShapeRefusedZeroMemoryMax =>
       RunnerWidthUnresolved {
@@ -1031,7 +1197,7 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
             cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
           }
         MemoryDenominatorEstablished =>
-          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host))) == 0 {
+          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host), rows: rows)) == 0 {
             RunnerWidthUnresolved {
               cause: WidthSlotShapeInadmissible {
                 reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
@@ -1042,7 +1208,7 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
             CpuWidthOfferAbsent { host: h } =>
               RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
             CpuWidthDerived { slots: by_cpu } =>
-              RunnerWidthDerived { slots: derived_runner_slots_of(f: f, by_cpu: by_cpu) }
+              RunnerWidthDerived { slots: derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: rows) }
           }
           }
       }
@@ -1050,7 +1216,15 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
 }
 
 fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
-  let by_memory_plus_transitional = memory_admitted_width_of(f: f) + host_transitional_ci_slot_count(host: f.host)
+  derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: microvm_slot_realization_rows)
+}
+
+fn derived_runner_slots_of_over(f: HostWidthFacts, by_cpu: Int, rows: List<MicrovmSlotRealizationRow>) -> Int {
+  let by_memory_plus_transitional = memory_admitted_width_of_envelope_over(
+    envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
+    authored_slots: f.authored_slots,
+    rows: rows,
+  ) + host_transitional_ci_slot_count(host: f.host)
   let by_mem_cpu = if by_cpu < by_memory_plus_transitional { by_cpu } else { by_memory_plus_transitional }
   match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
@@ -1113,12 +1287,22 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
 // This is the BUDGET charge, not the runner slice's systemd cap (gunbc_runner_slice_cap_for_width):
 // the controller slice is its own unit and is charged here, not inside the runner slice.
 fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
+  host_runner_pool_charge_over(host: host, slots: slots, rows: microvm_slot_realization_rows)
+}
+
+// THE POOL CHARGE IS AN ENTRY POINT LIKE THE WIDTH, so it reads the standing rather than keeping a second
+// one: what a host's slots cost is the same answer the width divided by, and a witness that has to speak
+// about a lane that has arrived and a lane that has not -- gunbc.test.claim.runner.runner_slot_allocation_witness
+// asserts both readings of srv1's pool -- takes the rows explicitly. Consumers: the placement verdict
+// (gunbc.ci.ci_runner_placement) and the conservation claims (gunbc.test.claim.host.host_allocation_conservation)
+// through the unqualified entry point; the `_over` shape is the witness's seam.
+fn host_runner_pool_charge_over(host: HostIdentity, slots: Int, rows: List<MicrovmSlotRealizationRow>) -> ByteSize {
   let authored = host_authored_slots_within_width(host: host, width: slots)
   let transitional = host_transitional_slots_within_width(host: host, committed: slots)
   if authored.length() > 0 {
     byte_size(
       byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - authored.length() - transitional.length()))
-        + byte_size_count(b: authored_microvm_slots_charge(slots: authored))
+        + byte_size_count(b: authored_microvm_slots_charge_over(slots: authored, rows: rows))
         + byte_size_count(b: transitional_slots_charge(slots: transitional))
     )
   } else {
@@ -1762,52 +1946,52 @@ type RunnerSlotMembership
 // count-as-authority one level below the enumeration where it was just removed. Two measured
 // consequences: the fabric slot MOVED with the width (srv3 at width 7 would have made srv3-07 the
 // fabric slot and handed srv3-06 back to Actions, silently relabelling a slot that may be running),
-// and it answered SlotServesComputeFabric for identities that are not slots at all -- executed:
+// and it answered SlotServesComputeFabric for identities that are not slots at all -- executed
+// against that version, before either number meant anything it now would:
 // runner_slot_purpose(srv1, 6) and (srv3, 99) both returned fabric, though srv1 is five wide and
-// neither index is a committed member.
+// neither index is a committed member. Both subjects are named as history: srv3 carries no fabric
+// member at all since the 2026-11-09 ruling below, and srv1's members are 13 and 14.
 //
-// So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. srv3-06
-// stays srv3-06 when the width moves, and if the width ever falls below 6 the slot leaves the
-// committed population and says so, rather than the fabric role sliding onto srv3-05.
-data fabric_first_slot_index: Nat = 6
-
-fn srv3_fabric_first_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_first_slot_index }
-}
-
-// THE SECOND MEMBER ON EACH EXECUTION HOST, AUTHORED AS AN IDENTITY FOR THE SAME REASON THE FIRST
-// WAS. Index 7 sits beside 6 rather than at the top of the committed width, because an index near
-// the width is an index that MOVES when the width moves: the width is a derived three-axis minimum
-// and it has already changed once under this module (the 2026-08-22 DIMM upgrade), so pinning a
-// member to "the top two" would re-create the sliding-role defect in a slower form.
-data fabric_second_slot_index: Nat = 7
-
-fn srv3_fabric_second_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_second_slot_index }
-}
-
-fn srv4_fabric_first_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_first_slot_index }
-}
-
-fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_second_slot_index }
-}
-
-// srv3 AND srv4 CARRY TWO FABRIC EXECUTION SLOTS EACH AND srv1 DELIBERATELY DOES NOT (operator,
-// 2026-08-21, widened 2026-09-18). The canary population was one slot on one host, which made
-// placement a selection with a single admissible candidate -- a front standing as a winner, not a
-// placement. Two hosts is the smallest population in which a failure domain can be chosen.
+// So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. A fabric
+// member stays the same identity when the width moves, and if the width ever falls below its index
+// the slot leaves the committed population and says so, rather than the fabric role sliding onto the
+// slot below it.
 //
-// WHY srv1 STAYS OUT, RE-DERIVED RATHER THAN INHERITED, because the 2026-08-21 reason no longer
-// describes the tree: that ruling excluded srv1 because the control plane was taking a temporary
-// srv1 slice, and `gunbc.fabric.fabric_control_plane_charge` `fabric_control_plane_placement` is
-// ControlPlaneUnplaced -- the control plane is on no host at all. The constraint that survives is a
+// srv3 AND srv4 NO LONGER CARRY FABRIC EXECUTION SLOTS. They did -- srv3-06/07 and srv4-06/07, by the
+// operator decisions of 2026-08-21 and 2026-09-18 -- and the identities, the two index literals that
+// minted them, and the notes that recorded those decisions are DELETED here by gunbc.design_ruling::
+// srv3_srv4_fabric_slots_serve_ci (operator, 2026-11-09: "hand srv3's and srv4's fabric slots to CI in
+// runner_slot_allocation, so 18 CI runners on each", answered "A is fine"). The two decisions
+// SUPERSEDED by it are not restated in this file any more; the ruling row carries their provenance and
+// the live read that falsified them (masked, no install tree under /opt/actions-runner, no fabric cell
+// and no fabric slice on either host). What is kept from the deleted notes is the reason the members
+// were authored as identities at all, above: it describes a mechanism this module still uses for the
+// members srv1 carries.
+//
+// WHAT THE FLEET STANDS IN AFTER THE DELETION, STATED RATHER THAN LEFT TO BE INFERRED FROM A SHORTER
+// LIST. Fabric execution is NOT an empty role: srv1-13 (the bounded microVM shakedown, placed on srv1 by
+// the operator on 2026-09-21 -- the host with the KVM grant, the Firecracker install and the built guest
+// image) and srv1-14 (the revision job) remain execution members, so the role still has members and every
+// consumer that folds over them still has something to fold over. What IS now true, and was not before,
+// is that they are all on ONE HOST.
+//
+// WHY THE POPULATION IS NOW ONE HOST, RE-DERIVED RATHER THAN INHERITED. The 2026-08-21 ruling excluded
+// srv1 because the control plane was taking a temporary srv1 slice, and
+// `gunbc.fabric.fabric_control_plane_charge` `fabric_control_plane_placement` is
+// ControlPlaneUnplaced -- the control plane is on no host at all. The constraint that survived was a
 // RELATION between two placements, neither of which is pinned: the control plane must not share a
 // host with the capacity it schedules. Filling every host with execution slots would settle that
-// relation by omission, so srv1 is held free as the host the control plane can still land on. If
-// the control plane is later pinned elsewhere, srv1 becomes admissible and this note is the reason
-// to revisit rather than a standing prohibition.
+// relation by omission, so srv1 was held free as the host the control plane can still land on and the
+// execution members went to srv3 and srv4 instead; the 2026-09-18 note deleted above added the second
+// member per host as "the smallest population in which a failure domain can be chosen". The 2026-11-09
+// ruling ends that arrangement: srv1 keeps the two members the operator placed on it by name, srv3 and
+// srv4 carry none, no failure domain can be chosen inside fabric execution (an execution cell has exactly
+// one place to be), and the control-plane relation is no longer protected by this list at all. This
+// module does not pretend otherwise and does not restore either property by quietly re-placing a member:
+// whether the control plane may share srv1 with the entire execution population, whether fabric execution
+// needs a second host, and where the control plane is pinned are operator decisions this module cannot
+// make from its own facts. The list below changes only when such a decision is recorded as a
+// gunbc.design_ruling row naming the member.
 //
 // srv2 IS ABSENT AND THAT IS A REFUSAL IT AUTHORED, NOT AN OMISSION HERE. Its committed width is
 // zero because host_runner_memory_envelope_resolution answers RunnerMemoryEnvelopeUnestablished for
@@ -1840,21 +2024,23 @@ fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
 // plane is placed by host convergence, never appears in a SupplierOffer, and must not need a Grant to
 // start. Overloading one variant across both would erase exactly that distinction, which is why
 // the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
-// srv1 NOW CARRIES EXACTLY ONE FABRIC MEMBER, THE microVM SHAKEDOWN SLOT, AND THE PARAGRAPH ABOVE
-// STILL GOVERNS THE OTHERS. The 2026-09-21 operator decision places the bounded microVM shakedown on
-// srv1 (the host with the KVM grant, the Firecracker install and the built guest image), which
-// makes srv1-13 a fabric execution member: the fleet-converge spine creates its cell and its slice
-// from this list, and the slot controller's attempt is derived from a reservation on that cell.
-// The control-plane relation the paragraph above preserves is not settled by omission here -- one
-// slot does not fill the host -- but a second srv1 member should re-read that paragraph first.
+// srv1 NOW CARRIES THE ENTIRE EXECUTION POPULATION, AND THE PARAGRAPH ABOVE STILL GOVERNS THE
+// CONTROL-PLANE SLICE. The 2026-09-21 operator decision places the bounded microVM shakedown on srv1 and
+// the revision job slot is srv1-14, so both remaining members -- srv1-13 and srv1-14 -- are on the host
+// that also holds the fabric's slice capacity and, if it is ever pinned, its control plane. The fleet-
+// converge spine creates their cells and slices from this list, and the slot controller's attempt is
+// derived from a reservation on each cell. Nothing here re-derives the width: srv1's committed width comes
+// from gunbc_runner_committed_width like every other host's, and these two indices are members of it.
+// AND THEY ARE THE SAME TWO SLOTS THE MICROVM STANDING PRICES, NOT A THIRD FAMILY. srv1-13 is the bounded
+// microVM shakedown slot and srv1-14 the revision job slot -- the same identities the microVM realization
+// standing weighs for memory. "Fabric execution member" is a ROLE those two slots also hold, which is what
+// makes them the fleet's execution population; it is not a third kind of slot, and nothing here should be
+// read as re-labelling srv1's microVM slots as fabric-only. When that standing gates a charge it is
+// talking about these same identities, and the two readings must not be allowed to drift apart.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
   [
     srv1_microvm_shakedown_slot(),
     srv1_revision_job_slot(),
-    srv3_fabric_first_slot(),
-    srv3_fabric_second_slot(),
-    srv4_fabric_first_slot(),
-    srv4_fabric_second_slot(),
   ]
 }
 

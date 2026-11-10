@@ -128,7 +128,7 @@ data param_served_model: ContextParameter = ContextParameter {
   identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "param_served_model"),
 }
 
-data gh200_datasheet_ground: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+data gh200_datasheet_ground: CitedFigureStanding = CitedToAuthority { authority: extdeps.systems.nvidia_gh200.extdeps_external_authority_anchor }
 
 data term_gpu_local_capacity: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_gpu_local_capacity"),
@@ -510,7 +510,7 @@ fn power_ground(routes: List<NodeRoute>) -> CitedFigureStanding {
 }
 
 fn memory_coupling(term: ObjectiveTerm) -> CausalCoupling {
-  VendorDocumentedCoupling { authority: extdeps_external_authority_anchor, term: term.identity, variable: var_node_platform.identity, subject: node_platform_subject_identity }
+  VendorDocumentedCoupling { authority: extdeps.systems.nvidia_gh200.extdeps_external_authority_anchor, term: term.identity, variable: var_node_platform.identity, subject: node_platform_subject_identity }
 }
 
 fn node_platform_causal_model(routes: List<NodeRoute>) -> CausalModelPopulation {

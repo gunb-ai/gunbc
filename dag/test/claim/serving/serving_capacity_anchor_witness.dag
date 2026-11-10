@@ -4,17 +4,22 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { tokens_per_second, token_count, permille, millisecond, millisecond_count, byte_size }
-import gunbc.serving.serving_host_memory { ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread, ConversationSnapshotCost }
+import std.measure { tokens_per_second, token_count, permille, millisecond, millisecond_count, byte_size, byte_size_count }
+import gunbc.serving.serving_host_memory { ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread, ConversationSnapshotCost, srv4_serving_engine_memory, srv4_strata_parked_budget, serving_reading_bytes_or_zero }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ExternalAuthority }
 import extdeps.uri { uri_https }
 import product.fabric.serving_throughput { ThroughputOperatorReading, ThroughputUnread }
 import gunbc.serving.serving_capacity_anchor {
   ServingCapacityAnchor, ServingConversationPolicy, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
-  ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread, HeldByRetentionGrant,
+  ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread, HeldByRetentionGrant, HeldBySwapStoreRungRefused, HeldByActiveShareRungRefused,
   ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused, single_replica_grant,
-  ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, SwapTierHostRam, SwapTierDisk,
-  serving_capacity_shape, serving_conversation_policy, srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape,
+  ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, WarmSwapRefused, SwapTierHostRam, SwapTierDisk,
+  ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
+  ServingRungSharing, RungAdds, RungInclusiveOfHotter, RungSharingUnread,
+  serving_capacity_shape, serving_conversation_policy,
+}
+import gunbc.serving.serving_replica_profile {
+  srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, srv3_strata_anchor, srv4_strata_anchor,
 }
 import gunbc.serving.serving_layout { ServingLayoutRefused, ServingLayoutNoGroups, host_6ce85c_layout }
 import gunbc.serving.router_dev_policy {
@@ -42,7 +47,65 @@ fn ca_cost() -> ConversationSnapshotCost {
 fn ca_store(n: Nat) -> ServingMemoryReading { ServingMemoryRead { bytes: byte_size(count: n * 100000), provenance: "fixture" as NonEmptyStr } }
 
 fn ca_warm_slots(ms: Nat, store: ServingMemoryReading, slots: Nat?) -> ServingWarmSwap {
-  WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: ms), cache: store, slots: slots, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }
+  WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: ms), cache: store, slots: slots, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
+}
+
+// A rung of the ladder, for the combination rules below: one tier's holds, restore, and how it shares the hotter rung.
+data ca_cold_rung_sharing_unread: NonEmptyStr = "witness: cold rung sharing not read" as NonEmptyStr
+data ca_disk_rung_sharing_unread: NonEmptyStr = "witness: disk rung sharing not read" as NonEmptyStr
+
+fn ca_rung(ms: Nat, n: Nat, sharing: ServingRungSharing) -> ServingWarmSwap {
+  WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: sharing, restore: millisecond(count: ms), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
+}
+
+// The same policy at concurrency 100 (aggregate 3000 so each turn still streams 30 tok/s, above the policy's
+// least 10) and a cold prefill rate of 10 tok/s -- a 10-second cold reread, past the policy's 5 s swap wait -- so
+// the cold path is off the table and HELD comes from the ladder: the active-share bound is 100 / 250 per mille =
+// 400 conversations, above every figure below, so the store is what binds and each rung rule is observable.
+fn ca_ladder_anchor(rungs: List<ServingWarmSwap>) -> ServingCapacityAnchor {
+  ServingCapacityAnchor {
+    deployment: "ladder" as NonEmptyStr,
+    grant: GrantAdmits { conversations: 1000 },
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 3000), at_concurrency: 100, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
+    cold_prefill: Present { value: tokens_per_second(count: 10) },
+    cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr },
+    warm_swap: rungs,
+  }
+}
+
+fn ca_ladder_held(rungs: List<ServingWarmSwap>) -> Nat {
+  match serving_capacity_shape(a: ca_ladder_anchor(rungs: rungs), p: ca_policy()) {
+    ServingShapeDerived { deployment: _, turns: _, held: held, bound: _, cold_reread: _ } => held
+    ServingShapeEstimated { deployment: _, turns: _, held: held, bound: _, cold_reread: _, standings: _ } => held
+    ServingShapeRefused { deployment: _, reason: _ } => 0,
+  }
+}
+
+fn ca_ladder_is_estimated(rungs: List<ServingWarmSwap>) -> Bool {
+  match serving_capacity_shape(a: ca_ladder_anchor(rungs: rungs), p: ca_policy()) {
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, cold_reread: _, standings: os } => count(os) > 0
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, cold_reread: _ } => false
+    ServingShapeRefused { deployment: _, reason: _ } => false,
+  }
+}
+
+fn ca_ladder_binds_store(rungs: List<ServingWarmSwap>) -> Bool {
+  match serving_capacity_shape(a: ca_ladder_anchor(rungs: rungs), p: ca_policy()) {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: b, cold_reread: _ } => ca_bound_text(b: b) == "store"
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: b, cold_reread: _, standings: _ } => ca_bound_text(b: b) == "store"
+    ServingShapeRefused { deployment: _, reason: _ } => false,
+  }
+}
+
+// The bound a ladder produces, by name -- so a test can tell "rung-refused" apart from "store-unread", which is
+// exactly the distinction a hard refusal must keep from collapsing into an unread rung.
+fn ca_ladder_bound_is(rungs: List<ServingWarmSwap>, want: String) -> Bool {
+  match serving_capacity_shape(a: ca_ladder_anchor(rungs: rungs), p: ca_policy()) {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: b, cold_reread: _ } => ca_bound_text(b: b) == want
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: b, cold_reread: _, standings: _ } => ca_bound_text(b: b) == want
+    ServingShapeRefused { deployment: _, reason: _ } => false,
+  }
 }
 
 fn ca_warm(ms: Nat, store: ServingMemoryReading) -> ServingWarmSwap { ca_warm_slots(ms: ms, store: store, slots: Absent) }
@@ -55,7 +118,7 @@ fn ca_anchor(context: Nat, agg: Nat, at: Nat, prefill: Nat, warm: ServingWarmSwa
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: agg), at_concurrency: at, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
     cold_prefill: Present { value: tokens_per_second(count: prefill) },
     cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr },
-    warm_swap: warm,
+    warm_swap: [warm],
   }
 }
 
@@ -74,7 +137,29 @@ fn ca_bound_text(b: ServingHeldBound) -> String {
     HeldToTurnsNoWarmSwap => "no-warm"
     HeldToTurnsSwapTooSlow => "too-slow"
     HeldToTurnsStoreUnread { obligation: _ } => "store-unread"
+    HeldToTurnsRungRefused { reason: _ } => "rung-refused"
+    HeldBySwapStoreRungRefused { reason: _ } => "store-refused"
+    HeldByActiveShareRungRefused { reason: _ } => "share-refused"
     HeldByRetentionGrant => "grant"
+  }
+}
+
+// The refusal a read ladder's bound NAMES, or "" when the bound names none -- so a test can check the refused
+// rung's reason survives all the way into the bound (gentle-swift-129: "carried in `refused`, named in the bound").
+fn ca_bound_reason(b: ServingHeldBound) -> String {
+  match b {
+    HeldBySwapStoreRungRefused { reason: r } => to_string(r)
+    HeldByActiveShareRungRefused { reason: r } => to_string(r)
+    HeldToTurnsRungRefused { reason: r } => to_string(r)
+    _ => ""
+  }
+}
+
+fn ca_ladder_bound_reason(rungs: List<ServingWarmSwap>) -> String {
+  match serving_capacity_shape(a: ca_ladder_anchor(rungs: rungs), p: ca_policy()) {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: b, cold_reread: _ } => ca_bound_reason(b: b)
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: b, cold_reread: _, standings: _ } => ca_bound_reason(b: b)
+    ServingShapeRefused { deployment: _, reason: _ } => ""
   }
 }
 
@@ -159,7 +244,7 @@ test fn holding_turns_without_a_warm_path_is_an_estimate() -> Bool {
   let s = serving_capacity_shape(a: ServingCapacityAnchor {
     deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000),
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
-    cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: ca_cited(), warm_swap: WarmSwapAbsent }, p: ca_policy())
+    cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: ca_cited(), warm_swap: [WarmSwapAbsent] }, p: ca_policy())
   ca_turns_held(s: s, turns: 8, held: 8) && ca_bound_is(s: s, want: "no-warm") && ca_opt_is(x: ca_estimate_count(s: s), n: 1)
 }
 
@@ -183,12 +268,12 @@ test fn a_cold_reread_within_the_wait_ignores_the_store() -> Bool {
 }
 
 test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
-  let unread = ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000), throughput: ThroughputUnread, cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }
+  let unread = ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000), throughput: ThroughputUnread, cold_prefill: Present { value: tokens_per_second(count: 1000) }, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: [WarmSwapAbsent] }
   ca_refused(s: serving_capacity_shape(a: unread, p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 32000, agg: 300, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 9, at: 8, prefill: 1000, warm: WarmSwapAbsent), p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_anchor(context: 100000, agg: 300, at: 8, prefill: 0, warm: WarmSwapAbsent), p: ca_policy()))
-    && ca_refused(s: serving_capacity_shape(a: ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000), throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }, cold_prefill: Absent, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: WarmSwapAbsent }, p: ca_policy()))
+    && ca_refused(s: serving_capacity_shape(a: ServingCapacityAnchor { deployment: "fixture" as NonEmptyStr, grant: GrantAdmits { conversations: 1000 }, context: token_count(count: 100000), throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }, cold_prefill: Absent, cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, warm_swap: [WarmSwapAbsent] }, p: ca_policy()))
     && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 0), active_share: permille(count: 250), max_swap_wait: millisecond(count: 5000) }))
     && ca_refused(s: serving_capacity_shape(a: ca_base(), p: ServingConversationPolicy { anchor_context: token_count(count: 100000), min_stream_rate: tokens_per_second(count: 10), active_share: permille(count: 0), max_swap_wait: millisecond(count: 5000) }))
 }
@@ -243,7 +328,7 @@ fn ca_anchor_standing(throughput: CitedFigureStanding, prefill: CitedFigureStand
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: throughput },
     cold_prefill: Present { value: tokens_per_second(count: 1000) },
     cold_prefill_standing: prefill,
-    warm_swap: WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: warm },
+    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: warm, admission_standings: [] }],
   }
 }
 
@@ -295,7 +380,7 @@ fn ca_anchor_grant(g: ServingRetentionGrant) -> ServingCapacityAnchor {
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
     cold_prefill: Present { value: tokens_per_second(count: 1000) },
     cold_prefill_standing: ca_cited(),
-    warm_swap: WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: ca_cited() },
+    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: 200), cache: ca_store(n: 40), slots: Absent, cost: ca_cost(), standing: ca_cited(), admission_standings: [] }],
   }
 }
 
@@ -330,6 +415,127 @@ fn ca_anchor_cited_store(n: Nat) -> ServingCapacityAnchor {
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: ca_cited() },
     cold_prefill: Present { value: tokens_per_second(count: 1000) },
     cold_prefill_standing: ca_cited(),
-    warm_swap: WarmSwapRestores { tier: SwapTierHostRam, restore: millisecond(count: 200), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: ca_cited() },
+    warm_swap: [WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: millisecond(count: 200), cache: ca_store(n: n), slots: Absent, cost: ca_cost(), standing: ca_cited(), admission_standings: [] }],
   }
+}
+
+// THE LADDER'S COMBINATION RULES (the store is a List of tiers; gunbc.design_argument::root_generalization in
+// gunbc.serving.strata_parked_tier). A rung is counted only when it can restore within the policy's wait; rungs
+// combine by their stated sharing, never by blind summation; an unread rung contributes 0 and carries its
+// obligation instead of voiding the rungs that were read.
+//
+// The fixtures run at concurrency 100 (active-share bound 25), so the store ladder is what binds held: a rule that
+// is broken shows up as a wrong figure, not a passing shape.
+
+// Rule 1 (each rung is gated by the policy's swap wait, the same rule a single store applied before the ladder):
+// the 9000 ms rung exceeds the 5000 ms wait and contributes nothing -- the ladder holds exactly what the fast
+// rung alone holds. Delete the gate and the 50-conversation cold tier would lift held past 4.
+test fn witness_ladder_rung_slower_than_the_wait_contributes_nothing() -> Bool {
+  ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds)]) == 4
+    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 9000, n: 50, sharing: RungAdds)]) == 4
+}
+
+// Rule 2 (a rung never double-counts the hotter one): inclusive contributes the MAX of the two figures, exclusive
+// adds them, and a rung whose sharing is unread folds as inclusive so the store never over-promises. With the hot rung
+// at 4 and the cold at 10: inclusive 10, exclusive 14, unread 10.
+test fn witness_ladder_combines_by_stated_sharing_never_by_summation() -> Bool {
+  ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 300, n: 10, sharing: RungInclusiveOfHotter)]) == 10
+    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 300, n: 10, sharing: RungAdds)]) == 14
+    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), ca_rung(ms: 300, n: 10, sharing: RungSharingUnread { reason: ca_cold_rung_sharing_unread })]) == 10
+}
+
+// Rule 3 (an unread rung is refused its figure, not the ladder): the read rung still holds, and the shape is
+// Estimated because the unread rung's obligation joined the standings -- never Derived, never voided. This is the
+// genuinely-UNMEASURED case (an undeclared budget, an unread free-space reading), which IS owed a read obligation.
+test fn witness_ladder_unread_rung_contributes_zero_and_its_obligation() -> Bool {
+  // A rung the adapter could not MEASURE -- its cache is an UNREAD reading carrying why: it contributes 0, its
+  // obligation joins the standings, and the rungs that WERE read still bind.
+  let unread = WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: ca_disk_rung_sharing_unread }, restore: millisecond(count: 1500), cache: ServingMemoryUnread { reason: "the host's free disk has not been read" as NonEmptyStr }, slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
+  ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), unread]) == 4
+    && ca_ladder_binds_store(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), unread])
+    && ca_ladder_held(rungs: [unread, ca_rung(ms: 200, n: 4, sharing: RungAdds)]) == 4
+    && ca_ladder_is_estimated(rungs: [unread])
+    && !ca_ladder_binds_store(rungs: [unread])
+    // A rung whose restore time is an assumption is Estimated too -- an assumption never yields Derived.
+    && ca_ladder_is_estimated(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds)])
+}
+
+// A HARD REFUSAL IS NOT AN UNREAD RUNG (review 92430 / gentle-swift-129). A ladder whose only store rung the adapter
+// REFUSED outright -- --batch disables the slot endpoint, the model is mutable, the build changed, the budget does
+// not fit, the layout refused -- is bound by that refusal NAMED, never by "store-unread" (which would hand the
+// deployment a read obligation for a store it can simply never use). The two must be distinguishable, which this
+// test discriminates: same ladder shape, different input arm, different bound.
+test fn witness_ladder_hard_refusal_is_named_not_unread() -> Bool {
+  let refused = WarmSwapRefused { reason: "the replica runs --batch 8: slot save/restore is refused (server.py:4091)" as NonEmptyStr, cites: "serve/server.py:4091" as NonEmptyStr }
+  let unread = WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: ca_disk_rung_sharing_unread }, restore: millisecond(count: 1500), cache: ServingMemoryUnread { reason: "the declared disk budget has not been declared" as NonEmptyStr }, slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }
+  // the refused rung alone: bound NAMES the refusal, and it is NOT a store bound and NOT the store-unread shape.
+  ca_ladder_bound_is(rungs: [refused], want: "rung-refused")
+    && !ca_ladder_binds_store(rungs: [refused])
+    && ca_ladder_held(rungs: [refused]) == ca_ladder_held(rungs: [])
+    // an unread rung alone still binds store-unread -- so the two arms do not collapse into one.
+    && ca_ladder_bound_is(rungs: [unread], want: "store-unread")
+    // a read rung sets the held figure; a refusal beside it contributes NOTHING to held but must still be NAMED in
+    // the bound (gentle-swift-129) -- so the arm is the *_RungRefused variant, not a bare "store".
+    && ca_ladder_bound_is(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), refused], want: "store-refused")
+    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), refused]) == 4
+}
+
+// A read rung must not SWALLOW a refused sibling (gentle-swift-129 sign-off): once one rung is read (read_any) and
+// another is refused outright, serving_held keeps the correct held figure -- the refused rung adds nothing -- but the
+// bound must still NAME the refusal, on BOTH limiters: swap store when the read rungs are the smaller figure, active
+// share when the cap binds. Pre-fix, the read path dropped t.refused and the bound came out a bare "store"/"share";
+// every assertion below fails under that defect, so this is red-capable. The reason string riding into the bound is
+// checked too, proving the refused rung is named rather than merely counted.
+test fn witness_a_read_rung_does_not_swallow_a_refused_sibling() -> Bool {
+  let refused = WarmSwapRefused { reason: "the replica runs --batch 8: slot save/restore is refused (server.py:4091)" as NonEmptyStr, cites: "serve/server.py:4091" as NonEmptyStr }
+  ca_ladder_bound_is(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), refused], want: "store-refused")
+    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), refused]) == ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds)])
+    && ca_ladder_bound_reason(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), refused]) == "the replica runs --batch 8: slot save/restore is refused (server.py:4091)"
+    && ca_ladder_bound_is(rungs: [ca_rung(ms: 200, n: 500, sharing: RungAdds), refused], want: "share-refused")
+    && ca_ladder_bound_reason(rungs: [ca_rung(ms: 200, n: 500, sharing: RungAdds), refused]) == "the replica runs --batch 8: slot save/restore is refused (server.py:4091)"
+}
+
+// A disk rung whose restore is an ASSUMPTION (standing Estimated, rule 7) still counts within the wait, and the
+// shape it helps produce is never Derived from it: the shape's standing carries the read obligation.
+test fn witness_ladder_assumed_restore_gates_counting_and_standing() -> Bool {
+  let assumed = WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungInclusiveOfHotter, restore: millisecond(count: 1500), cache: ca_store(n: 30), slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "restore time is an assumption until one measured turn replays it" as NonEmptyStr }, admission_standings: [] }
+  ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), assumed]) == 30
+    && ca_ladder_is_estimated(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), assumed])
+    // Durability is carried, not computed: the same rung keeps the same figure whether it survives a restart or
+    // not -- who PERSISTS the copy is a property of the tier, never an input to how much it holds.
+    && ca_ladder_held(rungs: [ca_rung(ms: 200, n: 4, sharing: RungAdds), WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: LostWithProcess, sharing: RungInclusiveOfHotter, restore: millisecond(count: 1500), cache: ca_store(n: 30), slots: Absent, cost: ca_cost(), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, admission_standings: [] }]) == 30
+}
+
+// THE SRV4 LADDER, AS A ROW (the Strata parked-conversation tier): the anchor carries its RAM tier AND a disk
+// tier realized by router-driven slot files. The tier's identity fields are pinned, not just its arithmetic --
+// who moves the copy and whether it outlives the engine are what make it a different tier, and the declared
+// budget must be what the adapter was given, never free space.
+test fn witness_srv4_anchor_ladder_carries_the_slot_file_disk_rung() -> Bool {
+  let rungs = srv4_strata_anchor().warm_swap
+  count(rungs) == 2
+    // exactly one RAM rung, the engine's own eviction tier, charging the engine row's conversation cache;
+    && count(filter(rungs, r => match r {
+         WarmSwapRestores { tier: SwapTierHostRam, mechanism: SwapByEngineEviction, durability: LostWithProcess, sharing: RungAdds, restore: _, cache: c, slots: _, cost: _, standing: _, admission_standings: _ } =>
+           byte_size_count(b: serving_reading_bytes_or_zero(r: c)) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_serving_engine_memory.conversation_cache))
+         _ => false
+       })) == 1
+    // and exactly one disk rung, the router's slot files: it survives the restart, its sharing is UNREAD (Absent --
+    // the ladder folds it inclusive of the RAM rung), restores in the assumed 1500 ms, and charges the DECLARED
+    // budget -- never free space.
+    && count(filter(rungs, r => match r {
+         WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: ca_disk_rung_sharing_unread }, restore: r1, cache: c, slots: Absent, cost: _, standing: _, admission_standings: _ } =>
+           millisecond_count(m: r1) == 1500
+             && byte_size_count(b: serving_reading_bytes_or_zero(r: c)) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_strata_parked_budget))
+         _ => false
+       })) == 1
+}
+
+// SRV3 DOES NOT GET THE RUNG (rule 6): its live pool runs --batch 8, and batch > 1 disables slot save/restore on
+// the installed release (server.py:4091 returns 501) -- so its anchor keeps exactly ONE rung, the engine's own
+// conversation cache. The refusal lives in the layout's active slots; if srv3's batch drops to 1, this test
+// failing IS the signal to re-admit the rung, not a pin to update.
+test fn witness_srv3_anchor_keeps_only_the_engine_rung() -> Bool {
+  // srv3's engine is parallel 8 => the derived replica holds 8 active slots => the disk rung is refused and only
+  // the engine's RAM tier survives. srv1 keeps its own one-rung ladder under gunbc.serving.srv1_topology_comparison.
+  count(srv3_strata_anchor().warm_swap) == 1
 }

@@ -31,6 +31,8 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 import gunbc.guarantee_stall { GuaranteeStall }
 import gunbc.guarantee_stall.roster { guarantee_stall_roster }
+import gunbc.layout_namespace_row { LayoutNamespaceRow }
+import gunbc.layout_namespace_row.roster { layout_namespace_row_roster }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
 
@@ -117,6 +119,10 @@ fn guarantee_stall_identity(s: GuaranteeStall) -> String {
   s.subject
 }
 
+fn layout_namespace_row_identity(r: LayoutNamespaceRow) -> String {
+  r.repository
+}
+
 test fn the_native_rung_drop_roster_agrees_with_the_seeds() -> Bool {
   agrees_with_seed(
     name: "gunbc.rung_drop.roster",
@@ -132,6 +138,15 @@ test fn the_native_recurring_failure_mode_roster_agrees_with_the_seeds() -> Bool
     declaration: "recurring_failure_mode_roster",
     directory: "dag/gunbc/recurring_failure_mode",
     seed_identities: list_map(xs: recurring_failure_mode_roster, f: failure_mode_identity)
+  )
+}
+
+test fn the_native_layout_namespace_row_roster_agrees_with_the_seeds() -> Bool {
+  agrees_with_seed(
+    name: "gunbc.layout_namespace_row.roster",
+    declaration: "layout_namespace_row_roster",
+    directory: "dag/gunbc/layout_namespace_row",
+    seed_identities: list_map(xs: layout_namespace_row_roster, f: layout_namespace_row_identity)
   )
 }
 

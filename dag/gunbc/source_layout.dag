@@ -12,7 +12,9 @@ import std.algebra { collection_concat_shape }
 // v2-compiled entry can import it without crossing the tree direction the storage lookup refuses.
 //
 // The namespace rows themselves are gunbc.source_layout_namespaces: one row per namespace that
-// directly contains modules, parents derived, no per-module rows. Whether a file is generated is
+// directly contains modules, parents derived, no per-module rows -- the union of one row file per
+// source tree (gunbc.layout_namespace_row, a derived roster below), so a repository whose dag/ is
+// composed into gunbc's declares its own namespaces beside gunbc's. Whether a file is generated is
 // NOT recorded here -- gunbc.generated_artifact_registry is that fact's single authority, and the
 // layout check joins it at file level.
 type LayoutTree
@@ -107,6 +109,7 @@ fn layout_derived_rosters() -> List<LayoutDerivedRoster> {
   [
     LayoutDerivedRoster { row_namespace: "gunbc.recurring_failure_mode", row_type: "RecurringFailureMode" },
     LayoutDerivedRoster { row_namespace: "gunbc.rung_drop", row_type: "RungDrop" },
-    LayoutDerivedRoster { row_namespace: "gunbc.guarantee_stall", row_type: "GuaranteeStall" }
+    LayoutDerivedRoster { row_namespace: "gunbc.guarantee_stall", row_type: "GuaranteeStall" },
+    LayoutDerivedRoster { row_namespace: "gunbc.layout_namespace_row", row_type: "LayoutNamespaceRow" }
   ]
 }
