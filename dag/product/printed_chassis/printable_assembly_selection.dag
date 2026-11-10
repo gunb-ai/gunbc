@@ -73,7 +73,7 @@ fn printed_assembly_root_from_wire(s: String) -> PrintedAssemblyRoot? {
 // source-model construction in gpu_duct.
 // BOTH CASSETTE ROOTS ARE BUILT FROM THE SAME PANELS, so both pass the one board-seat gate before either
 // assembly is constructed. A refused seat would otherwise emit panels with no posts and no socket window
-// under a package that says r07 carries both (reviews 91282, 5789766315); it refuses here with the seat's
+// under a package whose revision says it carries both (reviews 91282, 5789766315); it refuses here with the seat's
 // cause, which is what the print route's preparation reads (check_printable_cad -> this selector).
 fn cassette_root_selection(root: PrintedAssemblyRoot, seat: BoardSeat) -> PrintableAssemblySelection {
   match seat {
