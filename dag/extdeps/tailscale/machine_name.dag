@@ -27,7 +27,7 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable,
 }
 import std.optional { Optional, Absent, Present }
-import std.types { List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String, string_non_empty }
 
 // BOTH SURFACES RUN THE SAME BINARY, AND THE PROGRAM ROW IS THE ONE serve.dag ALREADY CARRIES:
 // `tailscale_program()`, PATH-resolved, for the reason that module gives (the fleet hosts carry distro

@@ -102,7 +102,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String, string_non_empty }
 
 // THE STAGE CLAIM, IN THE INVOCATION ENVIRONMENT. Two named claims, and the absence of a claim is its own
 // arm rather than a default: "which stage am I in" must never be answered by a value that happens to be

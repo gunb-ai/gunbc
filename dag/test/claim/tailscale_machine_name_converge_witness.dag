@@ -13,7 +13,7 @@
 module test.claim.tailscale_machine_name_converge_witness
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
-import std.text { string_join }
+import v2.std.text { string_join }
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.exec.command { argv_words }
 import extdeps.sudo.elevation { argv_command_is_sudo_elevated, sudo_elevate_argv, sudo_elevate_command }
@@ -33,9 +33,9 @@ import extdeps.tailscale.machine_name {
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
-import gunbc.fleet.fleet_known_hosts_anchor { ssh_target_destination }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetRefused, SshTargetResolved, ssh_target_destination }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_host_from }
-import gunbc.runner.runner_host_file_converge { administrator_ssh_target, SshTargetRefused, SshTargetResolved }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.tailscale_machine_name_converge {
   ApplyInsideWindow,
   DerivedName,
