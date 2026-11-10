@@ -646,6 +646,34 @@ pub struct BlockInferState {
     pub typed_stmts: Rc<Vec<Rc<Node>>>,
 }
 
+pub fn block_bare_value_refusal_message() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "a bare value statement precedes another statement in the same block, so its value would be silently dropped; bind it with `let` or delete it: statement_precedes_without_binding".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn stmt_is_bare_value(stmt: Rc<Node>) -> bool {
+    match (*stmt.expr_data.clone()).clone() {
+        ExprData::NoExprData => false,
+        ExprData::ExprLet => false,
+        ExprData::ExprReturn => false,
+        ExprData::ExprCall { .. } => false,
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => false,
+        ExprData::ExprIf => false,
+        ExprData::ExprMatch => false,
+        ExprData::ExprForEach => false,
+        ExprData::ExprBlock => false,
+        ExprData::ExprError { .. } => false,
+        _ => true,
+    }
+}
+
 pub fn infer_block_stmts(
     mut __tco_loop_remaining: Rc<Vec<Rc<Node>>>,
     mut __tco_loop_remaining_count: i64,
@@ -687,7 +715,23 @@ pub fn infer_block_stmts(
                     } else {
                         std::option::Option::None
                     };
-                    let stmt_result = infer_expr(stmt.clone(), scope.clone(), stmt_expected);
+                    let stmt_result = if (!is_last.clone() && stmt_is_bare_value(stmt.clone())) {
+                        Rc::new(InferResult {
+                            typed: semantic_expr_error_node(
+                                block_bare_value_refusal_message(),
+                                stmt.span.clone(),
+                            ),
+                            emissions: infer_emissions_of_diagnostics(Rc::new(vec![
+                                inference_error(
+                                    block_bare_value_refusal_message(),
+                                    stmt.span.clone(),
+                                    scope.module_name.clone(),
+                                ),
+                            ])),
+                        })
+                    } else {
+                        infer_expr(stmt.clone(), scope.clone(), stmt_expected)
+                    };
                     let stmt_typed = stmt_result.typed.clone();
                     let stmt_emissions = stmt_result.emissions.clone();
                     let stmt_rt = crate::v1_compiler_infer_types::resolved_type(stmt_typed.clone());
@@ -1502,13 +1546,15 @@ pub fn expected_decided_variant_type(
 
 pub fn optional_nullary_arm_of(owner: Rc<Node>, name: String, scope: Rc<InferScope>) -> bool {
     match (*variant_parent_identity_of(Some(owner.clone()), scope.clone())).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. }
-            if matches!(
-                key.as_ref(),
-                VariantParentKey::VariantParentDeclaration { declaration: _, .. }
-            ) =>
+        VariantParentIdentity::VariantParentIdentified {
+            key: ref __rc_key, ..
+        } if matches!(
+            __rc_key.as_ref(),
+            VariantParentKey::VariantParentDeclaration { declaration: _, .. }
+        ) =>
         {
-            let VariantParentKey::VariantParentDeclaration { declaration: d, .. } = key.as_ref()
+            let VariantParentKey::VariantParentDeclaration { declaration: d, .. } =
+                __rc_key.as_ref()
             else {
                 unreachable!()
             };
@@ -5064,10 +5110,11 @@ pub fn expected_type_head_exposure(
 
 pub fn exposure_is_application(exposure: Rc<TypeHeadExposure>) -> bool {
     match (*exposure.clone()).clone() {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-        {
-            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+        TypeHeadExposure::ExposedTypeHead {
+            view: ref __rc_view,
+            ..
+        } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+            let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                 unreachable!()
             };
             true
@@ -5889,7 +5936,10 @@ pub fn equality_exposure_refusal(
     at_operand_root: bool,
 ) -> Option<Rc<EqualityAdmissionRefusal>> {
     match (*exposure.clone()).clone() {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. } => match view.as_ref() {
+        TypeHeadExposure::ExposedTypeHead {
+            view: ref __rc_view,
+            ..
+        } => match __rc_view.as_ref() {
             TypeHeadView::KernelScalarHead {
                 type_identity: _, ..
             } => std::option::Option::None,
@@ -7627,10 +7677,11 @@ pub fn literal_introduction_type_mismatch(
             formal.clone(),
         );
         match (*actual_expr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-            {
-                let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => {
+                let LiteralValue::LitInt { value: _, .. } = __rc_value.as_ref() else {
                     unreachable!()
                 };
                 false
@@ -9103,26 +9154,29 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
             "".to_string()
         } else {
             match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-                {
-                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+                    let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                         unreachable!()
                     };
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(
-                        view.as_ref(),
-                        TypeHeadView::ProductHead {
-                            type_identity: _,
-                            ..
-                        }
-                    ) =>
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(
+                    __rc_view.as_ref(),
+                    TypeHeadView::ProductHead {
+                        type_identity: _,
+                        ..
+                    }
+                ) =>
                 {
                     let TypeHeadView::ProductHead {
                         type_identity: _, ..
-                    } = view.as_ref()
+                    } = __rc_view.as_ref()
                     else {
                         unreachable!()
                     };
@@ -9189,26 +9243,29 @@ pub fn nominal_coproduct_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String
             "".to_string()
         } else {
             match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-                {
-                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+                    let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                         unreachable!()
                     };
                     nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
                 }
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(
-                        view.as_ref(),
-                        TypeHeadView::CoproductHead {
-                            type_identity: _,
-                            ..
-                        }
-                    ) =>
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(
+                    __rc_view.as_ref(),
+                    TypeHeadView::CoproductHead {
+                        type_identity: _,
+                        ..
+                    }
+                ) =>
                 {
                     let TypeHeadView::CoproductHead {
                         type_identity: _, ..
-                    } = view.as_ref()
+                    } = __rc_view.as_ref()
                     else {
                         unreachable!()
                     };
@@ -9363,10 +9420,11 @@ pub fn nominal_coproduct_application_head_name(n: Rc<Node>, scope: Rc<InferScope
             "".to_string()
         } else {
             match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-                {
-                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+                    let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                         unreachable!()
                     };
                     {
@@ -9540,10 +9598,11 @@ pub fn applied_type_argument_conflicts(
 
 pub fn applied_type_argument_is_nested_application(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
     match (*exposure_view_for_node(n, scope.type_env.source_indices.clone())).clone() {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-        {
-            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+        TypeHeadExposure::ExposedTypeHead {
+            view: ref __rc_view,
+            ..
+        } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+            let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                 unreachable!()
             };
             true
@@ -14024,7 +14083,7 @@ pub fn grounded_cast_verdict(
     cause: crate::std_literal_elaboration::kernel_crossing_refusal_message(c.clone()),
 }),
 },
-    CarrierGroundingLookup::CarrierGroundingRefused { ref cause, .. } if matches!(cause.as_ref(), KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. }) => { let KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. } = cause.as_ref() else { unreachable!() }; if natural.clone() {
+    CarrierGroundingLookup::CarrierGroundingRefused { cause: ref __rc_cause, .. } if matches!(__rc_cause.as_ref(), KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. }) => { let KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. } = __rc_cause.as_ref() else { unreachable!() }; if natural.clone() {
             Rc::new(GroundedCastVerdict::GroundedCastRefused {
     cause: v1_rt::concat("no declared conversion route onto ".to_string(), crate::std_decl_ref::declaration_ref_display_key(t.clone())),
 })
@@ -22030,7 +22089,9 @@ pub fn name_is_std_optional_payload_member(scope: Rc<InferScope>, name: String) 
 
 pub fn parent_name_is_std_optional(parent_name: String) -> bool {
     match (*kernel_mint_parent_identity(parent_name)).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
+        VariantParentIdentity::VariantParentIdentified {
+            key: ref __rc_key, ..
+        } => match __rc_key.as_ref() {
             VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
                 crate::v1_compiler_infer_types::declaration_is_std_optional(d.clone())
             }
@@ -22131,7 +22192,9 @@ pub fn optional_reading_by_census(
 
 pub fn optional_reading_of_kernel_mint(kernel: String) -> Rc<OptionalDeclarationReading> {
     match (*kernel_mint_parent_identity(kernel.clone())).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
+        VariantParentIdentity::VariantParentIdentified {
+            key: ref __rc_key, ..
+        } => match __rc_key.as_ref() {
             VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
                 if crate::v1_compiler_infer_types::declaration_is_std_optional(d.clone()) {
                     Rc::new(OptionalDeclarationReading::IsStdOptional)
@@ -35917,10 +35980,11 @@ pub fn grounded_signed_construct(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     match (*payload.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-        {
-            let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => {
+            let LiteralValue::LitInt { value: j, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             grounded_int_literal(
@@ -35969,10 +36033,11 @@ pub fn grounded_successor(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     match (*prev.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-        {
-            let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => {
+            let LiteralValue::LitInt { value: j, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             grounded_int_literal(
@@ -36834,15 +36899,20 @@ pub fn grounded_arm_body(
     {
         let body = crate::v1_std_core::arm_body(arm.clone());
         match (*reading.clone()).clone() {
-            GroundedArmReading::GroundedArmPlan { ref binding, .. }
-                if matches!(binding.as_ref(), GroundedBinding::GroundedBinder { .. }) =>
+            GroundedArmReading::GroundedArmPlan {
+                binding: ref __rc_binding,
+                ..
+            } if matches!(
+                __rc_binding.as_ref(),
+                GroundedBinding::GroundedBinder { .. }
+            ) =>
             {
                 let GroundedBinding::GroundedBinder {
                     declaration: decl,
                     value: bound,
                     binder_type: bt,
                     ..
-                } = binding.as_ref()
+                } = __rc_binding.as_ref()
                 else {
                     unreachable!()
                 };

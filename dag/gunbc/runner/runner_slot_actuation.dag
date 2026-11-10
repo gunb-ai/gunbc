@@ -13,6 +13,10 @@ import extdeps.posix.getconf { clock_ticks_reading, ClockTicksObserved, ClockTic
 import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.gnu_coreutils { cat_command }
 import std.checked_arithmetic { checked_int_to_nat }
+import gunbc.runner.runner_retirement_causes {
+  RetirePendingCause, RetireRefusalCause, RetireUndecidedCause,
+  retire_pending_cause_wire, retire_refusal_cause_wire, retire_undecided_cause_wire,
+}
 import extdeps.systemd {
   IdProperty, MainPID, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
@@ -128,6 +132,30 @@ type SlotActuationOutcome
   | SlotNotInstalled { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
+  // THE RETIREMENT IS WITHHELD BY THE REPLACEMENT GATE: the unit is a required retiree whose replacement
+  // has not proven itself -- registered in the org roster AND one job completed -- on this run's readback.
+  // Nothing was touched: the unit keeps running, which is the fail-closed direction, and the cause names
+  // the replacement the plan is waiting on. NOT settled, because while this stands the committed width is
+  // not the live population and the host's quota must not be sized as if it were.
+  | SlotRetirementWithheld { unit: NonEmptyStr, cause: RetirePendingCause }
+  // THE RETIREMENT IS REFUSED: the unit is not this plan's to take at all -- hand-started working capacity
+  // outside every derived population, a unit the committed population still desires while a retiree list
+  // claims it, or a drain candidate nothing declares. No readback on a replacement moves this; the cause
+  // says what the operator has to decide. Nothing was touched, and it is NOT settled: a plan carrying a
+  // refusal has not reached its declared population either.
+  | SlotRetirementRefused { unit: NonEmptyStr, cause: RetireRefusalCause }
+  // THE GATE NEVER SPOKE ABOUT THIS CANDIDATE: the drain leg asked, and no decision came back. Neither a
+  // withhold (which consulted a readback) nor a refusal (which classified the unit), and it is carried as
+  // its own typed cause so a caller cannot report it with a string it assembled by hand. Nothing was
+  // drained, and it is NOT settled -- a drain leg with a silent gate has not reached its population either.
+  | SlotRetirementUndecided { unit: NonEmptyStr, cause: RetireUndecidedCause }
+  // A HAND-STARTED SLOT IS REPORTED, NOT TOUCHED: the unit is running on this host, is in no committed
+  // population and is not a required retiree -- it is capacity somebody started by hand (srv1-07/08/09,
+  // srv3/srv4 19/20). Converge never drains it; the notice is the operator's signal that the derived unit
+  // replacing it has now PROVEN itself (registered + one job completed), so retiring the hand runner by
+  // hand is safe. It is a notice, not an actuation: nothing was requested for this unit, so nothing can be
+  // outstanding on it -- SETTLED, and it must not veto the host's quota being sized to the committed width.
+  | SlotHandCapacityHeld { unit: NonEmptyStr, notice: String }
   | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
 
 fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
@@ -137,6 +165,10 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
     SlotNotInstalled { unit: _ } => true
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
+    SlotRetirementWithheld { unit: _, cause: _ } => false
+    SlotRetirementRefused { unit: _, cause: _ } => false
+    SlotRetirementUndecided { unit: _, cause: _ } => false
+    SlotHandCapacityHeld { unit: _, notice: _ } => true
     SlotActuationRefused { unit: _, step: _, reason: _ } => false
   }
 }
@@ -148,6 +180,18 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
     SlotNotInstalled { unit: u } => join(["actuation ", u as String, " not-installed (LoadState=not-found: nothing to drain)"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
+    // THE CAUSES ARE CARRIED TYPED AND RENDERED HERE AND ONLY HERE, the way `SlotDrainPending` already
+    // carries `SlotDrainPendingCause` to this renderer. A fact that must survive -- which replacement is
+    // being waited on, which standing refused the drain -- belongs in a typed carrier
+    // (DESIGN.md, Source: "a fact that must survive belongs in a typed carrier"); prose at the moment the
+    // decision is made would make this wire a second representation for later readers to parse back.
+    SlotRetirementWithheld { unit: u, cause: why } =>
+      join(["actuation ", u as String, " RETIRE-WITHHELD ", retire_pending_cause_wire(cause: why)], "")
+    SlotRetirementRefused { unit: u, cause: why } =>
+      join(["actuation ", u as String, " RETIRE-REFUSED ", retire_refusal_cause_wire(cause: why)], "")
+    SlotRetirementUndecided { unit: u, cause: why } =>
+      join(["actuation ", u as String, " RETIRE-UNDECIDED ", retire_undecided_cause_wire(cause: why)], "")
+    SlotHandCapacityHeld { unit: u, notice: text } => join(["actuation ", u as String, " HAND-HELD ", text], "")
     SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
   }
 }

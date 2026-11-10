@@ -9,12 +9,14 @@ import product.printed_chassis.assembly_geometry {
   LayOnXZ, LayOnXY, LayOnYZ, InterfaceStatus, Proposed, OriginalPlateFitOnly, Unresolved, FastenerKind, M3PanelClamp,
   PrintedRetainingPin, M4FanThroughBolt, M4SocketThroughBolt, BoardSupportPending, GravitySeatOnLocatingNubs, ProtectedDcBranch, BondingHardwarePending,
   FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, LocatingSleeveNoRetention, M3IntoCardInsert, M5FanScrewIntoBlowerLug,
+  PrintPlane, print_pose, print_pose_rows,
 }
+import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
 import product.printed_chassis.assembly_inventory { required_slots_json }
 import product.printed_chassis.export_profile { exercised_stl_knobs }
 import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
 import extdeps.printing.fdm { build_envelope_x, build_envelope_y, build_envelope_z }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, json_int, json_array }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, json_int, json_array, json_null }
 
 // WHAT IS BEING PRINTED IS SELECTED, NOT HARD-WIRED. The print path (CAD check, plate preparation,
 // prepared-output identity) was written against one assembly and reached it by calling that
@@ -132,8 +134,16 @@ fn primitive_json(p: Primitive) -> JsonValue {
   RoundPrism {diameter:d,length:l,axis:a,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"cylinder")),json_kv(key:"diameter_um",value:json_int(n:micrometer_count(m:d))),json_kv(key:"length_um",value:json_int(n:micrometer_count(m:l))),json_kv(key:"axis",value:text(s:match a {Axis3X=>"x",Axis3Y=>"y",Axis3Z=>"z"})),json_kv(key:"center_um",value:xyz(p:c))]),
  }
 }
+// A plane whose pose cannot be minted emits null, which the kernel's pose_rows refuses before any geometry is
+// written, so the refusal reaches the CAD check rather than a default pose.
+fn print_pose_json(plane: PrintPlane) -> JsonValue {
+ match print_pose(plane: plane) {
+  OrthogonalReady { value: r } => json_array(elements: map(print_pose_rows(r: r), row => json_array(elements: map(row, v => json_int(n: v)))))
+  OrthogonalRefused { cause: _ } => json_null()
+ }
+}
 fn part_json(p: AssemblyPart) -> JsonValue {
- json_object(members:[json_kv(key:"id",value:text(s:p.id)),json_kv(key:"name",value:text(s:p.name)),json_kv(key:"kind",value:text(s:match p.kind {Printed=>"printed",Purchased=>"purchased",Metal=>"metal",Clearance=>"clearance"})),json_kv(key:"scope",value:text(s:match p.scope {Cassette=>"cassette",FixedFrame=>"fixed"})),json_kv(key:"adds",value:json_array(elements:p.adds |> map(a=>primitive_json(p:a)))),json_kv(key:"cuts",value:json_array(elements:p.cuts |> map(a=>primitive_json(p:a)))),json_kv(key:"at_um",value:xyz(p:p.at)),json_kv(key:"explode_um",value:xyz(p:p.explode)),json_kv(key:"print_plane",value:text(s:match p.print_plane {LayOnXZ=>"XZ",LayOnXY=>"XY",LayOnYZ=>"YZ"})),json_kv(key:"notes",value:text(s:p.notes))])
+ json_object(members:[json_kv(key:"id",value:text(s:p.id)),json_kv(key:"name",value:text(s:p.name)),json_kv(key:"kind",value:text(s:match p.kind {Printed=>"printed",Purchased=>"purchased",Metal=>"metal",Clearance=>"clearance"})),json_kv(key:"scope",value:text(s:match p.scope {Cassette=>"cassette",FixedFrame=>"fixed"})),json_kv(key:"adds",value:json_array(elements:p.adds |> map(a=>primitive_json(p:a)))),json_kv(key:"cuts",value:json_array(elements:p.cuts |> map(a=>primitive_json(p:a)))),json_kv(key:"at_um",value:xyz(p:p.at)),json_kv(key:"explode_um",value:xyz(p:p.explode)),json_kv(key:"print_plane",value:text(s:match p.print_plane {LayOnXZ=>"XZ",LayOnXY=>"XY",LayOnYZ=>"YZ"})),json_kv(key:"print_pose",value:print_pose_json(plane:p.print_plane)),json_kv(key:"notes",value:text(s:p.notes))])
 }
 fn fastener_display(f: FastenerKind) -> String {
  match f {M3PanelClamp=>"M3 top-accessible panel clamp + nut" M4SocketThroughBolt=>"M4 socket through-bolt + washers + nut" M4FanThroughBolt=>"M4 diagonal through-bolt + nut" PrintedRetainingPin=>"Broad-grip printed retaining pin" BoardSupportPending=>"Standoff hardware unresolved" GravitySeatOnLocatingNubs=>"Board rests on printed posts, located by printed nubs through its holes; gravity holds it, no hardware" ProtectedDcBranch=>"Rated protected/isolatable DC branch" BondingHardwarePending=>"Permanent metal bonding hardware unresolved" FanSelfTappingScrew=>"Fan self-tapping screw into the printed plate" FrictionFitPlug=>"Friction-fit plug, no hardware" FrictionFitSleeve=>"Friction-fit sleeve, no hardware" LocatingSleeveNoRetention=>"Locating sleeve, not retained: hold or tape the blower in place" M3IntoCardInsert=>"M3 screw into a threaded insert on the card" M5FanScrewIntoBlowerLug=>"M5 x 10 fan screw through the printed arm into the blower's lug, self-tapping"}

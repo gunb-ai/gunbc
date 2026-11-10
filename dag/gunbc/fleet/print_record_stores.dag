@@ -28,7 +28,7 @@ import gunbc.fleet.print_request {
 // no function takes a path. A request record is `requests/<sha256(request_id)>.request.json`, byte for
 // byte what the flat layout wrote (the requests/ child already existed). A completion record is
 // `completions/<attempt-claim-key>.completed.json`; the flat layout wrote the same bytes as
-// `<claim-key>.claimed.completed.json` in the parent, and gunbc.fleet.printer_state_layout moves them.
+// `<claim-key>.claimed.completed.json` in the parent; that layout was retired on 2026-11-09.
 //
 // The seal is on CONSTRUCTION only (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module):
 // a holder can read the field, so the rung claimed is that no forged store or store over the wrong root
@@ -97,7 +97,7 @@ fn print_completion_legacy_entry(name: String) -> Bool { ends_with(s: name, suff
 fn print_completion_store(tree: HostStateTree) -> PrintCompletionStoreReading {
   match printer_starts_legacy_scan(tree: tree, owns: n => print_completion_legacy_entry(name: n)) {
     PrinterStartsUnreadable { detail: d } => PrintCompletionStoreUnready { detail: d }
-    PrinterStartsLegacyEntries { names: n } => PrintCompletionStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
+    PrinterStartsLegacyEntries { names: n } => PrintCompletionStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); the flat layout is retired, so these entries must be removed by hand"], "") }
     PrinterStartsClean => print_completion_store_admitted(admission: listed_slot_store(member: print_completion_slots.member as String, root: print_completion_path(tree: tree)))
   }
 }
