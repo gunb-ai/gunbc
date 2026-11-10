@@ -205,7 +205,7 @@ fn fact_set() -> OperatorClosePrFacts {
 // THE PULL REQUEST THE CLOSE EARNED, spelled ONCE as the typed fact the command carries — the url, the
 // merge time and the head arrive together because the type says they do
 // (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence).
-fn earned(facts: RoadmapAcceptanceFacts) -> AcceptancePrEvidence {
+fn earned(facts: OperatorClosePrFacts) -> AcceptancePrEvidence {
   EarnedByPullRequest {
     pr_url: facts.url as NonEmptyStr, merged_at: facts.merged_at as NonEmptyStr, head_sha: facts.head as NonEmptyStr,
   }
