@@ -15,8 +15,9 @@ import extdeps.proxy.openresty {
   ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorSrv3Strata, OwnedCap, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_h11_naming, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorSrv3Strata, AnchorStrataProfile, AnchorStrataUnread, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_h11_naming, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal, RouterDevHostRoster, router_dev_first_party_for_roster }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups, ServingReplicaConfig }
+import gunbc.serving.serving_replica_profile { srv3_strata_profile }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
@@ -847,6 +848,47 @@ fn fragments_held(t: String) -> Bool {
     && contains(s: t, p: "string.match(v, '^[A-Za-z0-9._:/%-]+$')") && !contains(s: t, p: "v ~= ''")
 }
 
+// B4a helpers: the first-party router is now a HOST-KEYED LIST (`RouterDevHostRoster`), not a closed three-enum +
+// fixed-three-arg call. A fourth host joins the router purely as a DATA ROW, and a replica with no throughput
+// reading is NAMED but NOT IN SERVICE instead of refusing the whole router -- the old `ThroughputUnread` path
+// refused everything. These falsify the closed-router and refuse-everything behaviors without a live daemon.
+fn first_party_row(rs: List<RouterDevUpstream>, name: String) -> Optional<RouterDevUpstream> {
+  filter(rs, r => (r.name as String) == name) |> first()
+}
+
+fn row_is_in_service(rs: List<RouterDevUpstream>, name: String) -> Bool {
+  match first_party_row(rs: rs, name: name) { Present { value: u } => u.in_service Absent => false }
+}
+
+fn row_is_present(rs: List<RouterDevUpstream>, name: String) -> Bool {
+  match first_party_row(rs: rs, name: name) { Present { value: _ } => true Absent => false }
+}
+
+fn fourth_strata_host_joins_as_a_row() -> Bool {
+  let roster = [
+    RouterDevHostRoster { host: "h11", layout: host_6ce85c_layout, namings: router_dev_h11_namings() },
+    RouterDevHostRoster { host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings() },
+    RouterDevHostRoster { host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings() },
+    RouterDevHostRoster { host: "b4a-read", layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-read-host", scheme: UpstreamHttps, host: "10.0.0.5", port: 19001, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }] },
+  ]
+  match router_dev_first_party_for_roster(roster) {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } => row_is_in_service(rs: rs, name: "b4a-read-host") && row_is_present(rs: rs, name: "srv3-strata")
+  }
+}
+
+fn unread_replica_named_not_in_service() -> Bool {
+  let roster = [
+    RouterDevHostRoster { host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings() },
+    RouterDevHostRoster { host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings() },
+    RouterDevHostRoster { host: "b4a-unread", layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-unread-host", scheme: UpstreamHttps, host: "10.0.0.6", port: 19002, tls_name: Absent, anchor: AnchorStrataUnread { obligation: "no throughput reading has been taken for this host" }, retiring: [] }] },
+  ]
+  match router_dev_first_party_for_roster(roster) {
+    RouterDevFirstPartyRefused { reason: _ } => false
+    RouterDevFirstPartyRows { rows: rs } => row_is_present(rs: rs, name: "b4a-unread-host") && !row_is_in_service(rs: rs, name: "b4a-unread-host") && row_is_in_service(rs: rs, name: "srv3-strata")
+  }
+}
+
 fn row_cases() -> List<FalsifierCase> {
   let body = v1_body(ds: rows())
   let passes = count(filter(body, d => is_pass(d: d)))
@@ -1154,6 +1196,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorSrv3Strata, retiring: [] }])),
     case_of(identity: "srv3_projects_one_row_for_its_one_replica_across_both_cards", held: srv3_one_row_for_two_devices(), observed: srv3_projection_summary()),
     case_of(identity: "srv4_projects_one_tls_endpoint_because_its_layout_grants_one_replica", held: srv4_one_row_one_tls_endpoint(), observed: h11_projection_summary(layout: srv4_layout, engines: router_dev_srv4_namings())),
+    case_of(identity: "a_fourth_strata_host_joins_the_first_party_router_as_a_data_row", held: fourth_strata_host_joins_as_a_row(), observed: "a fourth host joins the host-keyed router as a data row, in service"),
+    case_of(identity: "an_unread_replica_is_named_but_not_in_service_without_refusing_the_router", held: unread_replica_named_not_in_service(), observed: "an unread replica is named, not in service, and does not refuse its siblings"),
     case_of(identity: "comparison_rows_carry_the_cited_quote_values_and_the_live_shape", held: priced_entry_is(models: dev_models, model: "Qwen3.8-Flash-Next", input: "0.15", cached: "0.016", output: "0.47", as_of: "2026-10-26") && unpriced_entry_has_no_price(models: dev_models, model: "m-a") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Input-Per-M: 0.15") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Cached-Per-M: 0.016") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Output-Per-M: 0.47") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Estimated: true") && has_line(text: priced_turn, want: "X-Gunbc-Comparison-Read-On: 2026-10-26") && !contains(s: unpriced_turn, p: "X-Gunbc-Comparison-Output-Per-M"), observed: concat(one_line(s: priced_turn), one_line(s: unpriced_turn))),
     case_of(identity: "dev_drained_predecessor_does_not_reclaim_a_retired_binding", held: w13.success && drained_copy.exit_code == 0 && reloaded_drained.exit_code == 0 && contains(s: reloaded_drained_models, p: "4326") && last_line(text: drained_other_model) == "409 exit=0" && last_line(text: drained_new_session) == "429 exit=0", observed: concat(one_line(s: drained_other_model), one_line(s: drained_new_session))),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
@@ -1241,6 +1285,8 @@ fn falsifier_expected_identities() -> List<String> {
     "a_refused_layout_refuses_the_h11_projection_and_stops_the_write",
     "a_granted_replica_without_or_with_two_namings_is_refused",
     "comparison_rows_carry_the_cited_quote_values_and_the_live_shape",
+    "a_fourth_strata_host_joins_the_first_party_router_as_a_data_row",
+    "an_unread_replica_is_named_but_not_in_service_without_refusing_the_router",
     "dev_drained_predecessor_does_not_reclaim_a_retired_binding",
     "world_is_removed",
   ]
