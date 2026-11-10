@@ -1462,3 +1462,216 @@ fn ctx_svc_registry_decides_the_service_op_leaf() {
         .join()
         .unwrap();
 }
+// CALLER-SIDE PROBE (mgr ask (a)). CTX (BB e62e2007) and TIER1_REPLAY (BB 1d3ff02f) eliminated
+// ctx assembly, the census, the exported gate, and the stored receiver node. The only measured
+// divergence is the CALL node's stored inference (#0c empty vs RestResult#1c). This probe walks
+// each scope's TYPED entry body to the PullRequestPage call node, dumps its full shape and its
+// receiver CHILD subtree, then replays the caller-side chain the checker runs at the
+// ExprMethodCall: resolve_method_receiver_type(receiver.inferred, pass.env) followed by
+// check_service_method_call_node on THAT result with the ctx.svc_registry (from
+// build_module_context, per the ctx probe). PRESENT => the drop is in infer_expr's call-site
+// branch selection (ownership ruling needed); REFUSED-with-different-shape => the receiver child
+// differs from the top-level receiver node and localizes the fix to the caller-side typing.
+#[test]
+fn caller_side_recv_rt_decides_the_service_op_leaf() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, intern, si, _modules, graph) =
+                graph_from("dag/test/claim/github_pull_request_decode_witness.dag");
+            let intern = crate::v1_compiler_infer::seed_kernel_intern_table(intern.clone());
+            let symbol_index = crate::v1_compiler_infer::build_symbol_index_census(
+                graph.modules.clone(),
+                si.clone(),
+            );
+            let env = crate::v1_compiler_infer::type_env_over_symbol_index(
+                crate::v1_compiler_infer::compiler_kernel_type_env(si.clone(), intern.clone()),
+                symbol_index.clone(),
+            );
+            let census = Some(crate::v1_compiler_infer::service_census_registry(env.clone()));
+            let claim = graph
+                .modules
+                .iter()
+                .find(|rm| {
+                    crate::v1_std_core::authored_name_at(si.clone(), rm.module.clone())
+                        .contains("github_pull_request_decode_witness")
+                })
+                .expect("claim module present");
+            let claim_name =
+                crate::v1_std_core::authored_name_at(si.clone(), claim.module.clone());
+            for (tag, requested) in
+                [("demanded", vec!["decoded_pull_request".to_string()]), ("closure", vec![])]
+            {
+                let scope = if requested.is_empty() {
+                    Rc::new(crate::v1_compiler_infer::DeclarationScope::EveryDeclaration)
+                } else {
+                    Rc::new(crate::v1_compiler_infer::DeclarationScope::ReachableFrom {
+                        requested: Rc::new(requested.iter().map(|x| x.to_string()).collect()),
+                    })
+                };
+                let pass = crate::v1_compiler_infer::typecheck_scoped(
+                    graph.clone(),
+                    si.clone(),
+                    intern.clone(),
+                    scope,
+                );
+                // ctx.svc_registry exactly as the fold builds it (mirrors the ctx probe).
+                let contributions: Rc<im::Vector<Rc<crate::v1_compiler_infer::ItemContribution>>> =
+                    Rc::new(
+                        crate::v1_std_core::module_items(claim.module.clone())
+                            .iter()
+                            .map(|item| {
+                                crate::v1_compiler_infer::analyze_item(
+                                    item.clone(),
+                                    env.clone(),
+                                    claim_name.clone(),
+                                )
+                            })
+                            .collect::<im::Vector<_>>(),
+                    );
+                let mut parent_index = crate::v1_rt::rc_empty_map::<
+                    String,
+                    Rc<crate::v1_compiler_infer::TypedModule>,
+                >();
+                for tm in pass.graph.modules.iter() {
+                    parent_index = crate::v1_rt::rc_map_insert(
+                        parent_index.clone(),
+                        crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone()),
+                        tm.clone(),
+                    );
+                }
+                let ctx = crate::v1_compiler_infer::build_module_context(
+                    contributions.clone(),
+                    parent_index.clone(),
+                    crate::v1_rt::rc_empty_map::<
+                        String,
+                        Rc<crate::v1_compiler_infer::VariantExportSurface>,
+                    >(),
+                    claim.resolved_imports.clone(),
+                    env.clone(),
+                    claim_name.clone(),
+                    crate::v1_compiler_infer::build_global_bare_variant_locals(
+                        symbol_index.global_bare.clone(),
+                        si.clone(),
+                    ),
+                    census.clone(),
+                );
+                // Walk the typed entry body; collect the PullRequestPage call node and every
+                // node whose auth is test.RestReplay (receiver candidates), with full shape.
+                let mut rows: Vec<String> = Vec::new();
+                fn shape(
+                    n: &Rc<crate::v1_std_core::Node>,
+                    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+                ) -> String {
+                    format!(
+                        "auth={} conn={:?} ch={} inf={}",
+                        crate::v1_std_core::authored_name_at(si.clone(), n.clone()),
+                        n.connective,
+                        n.children.len(),
+                        n.inferred
+                            .as_ref()
+                            .map(|i| match i.as_ref() {
+                                crate::v1_std_core::InferredNode::Resolved { node, .. } => format!(
+                                    "Resolved({})",
+                                    crate::v1_std_core::authored_name_at(si.clone(), node.clone())
+                                ),
+                                other => format!("{other:?}"),
+                            })
+                            .unwrap_or_else(|| "-".to_string())
+                    )
+                }
+                fn walk(
+                    n: &Rc<crate::v1_std_core::Node>,
+                    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+                    depth: usize,
+                    rows: &mut Vec<String>,
+                ) {
+                    let a = crate::v1_std_core::authored_name_at(si.clone(), n.clone());
+                    if a == "PullRequestPage" || a == "test.RestReplay" || a == "rest_replay" {
+                        rows.push(format!(
+                            "d{depth} {}",
+                            shape(n, si)
+                        ));
+                    }
+                    for c in n.children.iter() {
+                        walk(c, si, depth + 1, rows);
+                    }
+                }
+                for tm in pass.graph.modules.iter() {
+                    if !crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone())
+                        .contains("github_pull_request_decode_witness")
+                    {
+                        continue;
+                    }
+                    for item in tm.items.iter() {
+                        if crate::v1_std_core::qualified_last_segment(
+                            crate::v1_std_core::authored_name_at(si.clone(), item.clone()),
+                        ) != "decoded_pull_request"
+                        {
+                            continue;
+                        }
+                        walk(item, &si, 0, &mut rows);
+                    }
+                }
+                // Caller-side replay: the deepest test.RestReplay node is the receiver child;
+                // reground through resolve_method_receiver_type and re-query tier1.
+                let mut replay = "no-receiver".to_string();
+                'outer: for tm in pass.graph.modules.iter() {
+                    if !crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone())
+                        .contains("github_pull_request_decode_witness")
+                    {
+                        continue;
+                    }
+                    for item in tm.items.iter() {
+                        if crate::v1_std_core::qualified_last_segment(
+                            crate::v1_std_core::authored_name_at(si.clone(), item.clone()),
+                        ) != "decoded_pull_request"
+                        {
+                            continue;
+                        }
+                        let mut stack = vec![item.clone()];
+                        while let Some(n) = stack.pop() {
+                            if crate::v1_std_core::authored_name_at(si.clone(), n.clone())
+                                == "test.RestReplay"
+                                && n.children.is_empty()
+                            {
+                                let rt = n.inferred.clone().map(|i| match i.as_ref() {
+                                    crate::v1_std_core::InferredNode::Resolved { node, .. } => {
+                                        node.clone()
+                                    }
+                                    _ => n.clone(),
+                                });
+                                let recv_rt =
+                                    crate::v1_compiler_infer_lookup::resolve_method_receiver_type(
+                                        rt.unwrap_or_else(|| n.clone()),
+                                        pass.env.clone(),
+                                    );
+                                let hit = crate::v1_compiler_infer_service::check_service_method_call_node(
+                                    recv_rt.clone(),
+                                    "PullRequestPage".to_string(),
+                                    ctx.svc_registry.clone(),
+                                    si.clone(),
+                                );
+                                replay = format!(
+                                    "recv_rt={} tier1={}",
+                                    shape(&recv_rt, &si),
+                                    hit.is_some()
+                                );
+                                break 'outer;
+                            }
+                            for c in n.children.iter() {
+                                stack.push(c.clone());
+                            }
+                        }
+                    }
+                }
+                eprintln!(
+                    "CALLER_SIDE tag={} replay=[{}] rows={:?}",
+                    tag, replay, rows
+                );
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
