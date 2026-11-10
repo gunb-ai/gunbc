@@ -351,12 +351,13 @@ test fn the_write_words_are_one_joined_hostname_word_not_two() -> Bool {
 }
 
 // THE WRITE IS THE ELEVATED LEG: `tailscale set` needs root on the host, and the carrier is the sudo row --
-// including its non-interactive claim, which is the row's own rather than something this mode adds. The read
-// is not elevated, which is the other half of the case: a mode that wrapped both would be running a read it
-// has no reason to run as root.
+// including its non-interactive claim, which is the row's own rather than something this mode adds. The row
+// names the binary by path and puts the flag first, which is the whole point of routing elevation through it:
+// which binary, which flag, which position are stated once. The read is NOT elevated, and that is the other
+// half of the case -- a mode that wrapped both would run a read as root for no reason.
 test fn the_write_carries_the_sudo_row_and_the_read_does_not() -> Bool {
   let elevated = sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: "fox")))
-  elevated == ["sudo", "-n", "tailscale", "set", "--hostname=fox"]
+  elevated == ["/usr/bin/sudo", "-n", "tailscale", "set", "--hostname=fox"]
     && argv_command_is_sudo_elevated(command: sudo_elevate_command(command: tailscale_set_hostname_argv(name: "fox")))
     && !argv_command_is_sudo_elevated(command: tailscale_status_json_command())
 }
