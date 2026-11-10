@@ -1,0 +1,249 @@
+module extdeps.tailscale.machine_name
+
+// WHAT IS UPSTREAM HERE: a Tailscale device's MACHINE NAME -- the name the tailnet carries for the node
+// this node's tailscaled runs as -- and the two CLI surfaces that touch it: `tailscale set
+// --hostname=<name>`, which CHANGES it, and `tailscale status --json`, which REPORTS it. Nothing else is
+// claimed here. Which name a fleet machine should carry, when changing one is licensed, and what a
+// disagreement between the two means for the fleet is product policy, and that lives in
+// gunbc.tailscale_machine_name_converge (gunbc.design_argument::external_upstreams: an external module states
+// what the upstream does, keeps the upstream's names, and carries the citation that says so -- it does not
+// smuggle a fleet decision in wearing upstream clothes).
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.tailscale.serve { tailscale_program }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse {
+  json_document_gap_text,
+  json_field,
+  json_field_string,
+  parse_json_document,
+  FieldAbsent,
+  FieldMalformed,
+  FieldRead,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
+import std.optional { Optional, Absent, Present }
+import std.types { List, NonEmptyStr, String }
+
+// BOTH SURFACES RUN THE SAME BINARY, AND THE PROGRAM ROW IS THE ONE serve.dag ALREADY CARRIES:
+// `tailscale_program()`, PATH-resolved, for the reason that module gives (the fleet hosts carry distro
+// installs whose exact path and version no receipt here has observed, so naming /usr/bin/tailscale would
+// be a location claim no observation supports). Reusing that row rather than writing a second row for the
+// same binary is gunbc.design_argument::single_authority.
+
+// Tailscale's own page for the subject, validated by them Jan 5 2026: what a machine name IS, how it is
+// first chosen, and that changing it moves the MagicDNS name with it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "tailscale.com/docs/concepts/machine-names" }
+}
+
+data extdeps_cli_reference_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "tailscale.com/docs/reference/tailscale-cli" }
+}
+
+// THE status --json MEMBER NAMES ARE NOT DOCUMENTED MEMBERS. The CLI reference documents that
+// `tailscale status --json` "returns a machine-readable JSON response" that "includes additional metadata
+// associated with your device", and the human-readable table's second column is "the machine name"; neither
+// page spells the JSON member names. So this module keeps them from the upstream implementation, which is
+// the source of truth for a wire format no prose describes -- cmd/tailscale/cli/status.go reads `st.Self`
+// and each peer's `HostName` / `DNSName`. They are kept in the upstream's own spelling, in the upstream's
+// own casing, and the fleet's first real reading of them is an observe receipt against a real host rather
+// than a fixture this module invented.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tailscale.machine_name",
+      decl_name: "TailscaleStatusSelfName",
+      field: WholeDeclaration,
+    }
+  }
+  first_citation: extdeps_external_authority_anchor
+  further_citations: [
+    extdeps_cli_reference_citation,
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/status.go" }
+    }
+  ]
+}
+
+// THE FACTS THIS MODULE EXISTS TO CARRY, IN THE UPSTREAM'S WORDS.
+//
+// 1. A MACHINE NAME IS CANONICAL AND SINGLE. "On Tailscale, machines are distinguishable by a 100.x.y.z IP
+// address, and by a machine name. The machine name ... is the canonical name for your machine on your
+// Tailscale network. If you use MagicDNS, the machine name also determines the URL your machine is
+// accessible at." So the name is not a label hung alongside others: a device has ONE, and MagicDNS is a
+// projection of it.
+//
+// 2. `tailscale set --hostname=<name>` MOVES THAT ONE NAME; IT IS NOT AN ADDITIVE ALIAS. The machine-names
+// page: "You can edit the machine name through the UI in the admin console, or through the Tailscale CLI.
+// If MagicDNS is enabled for your network, editing the machine name also edits the MagicDNS domain name.
+// Once renamed, your machine will be accessible over MagicDNS using its new name," and, under "Renaming a
+// machine in the CLI": "In the Tailscale CLI, set the machine name as part of `tailscale set`: `tailscale
+// set --hostname=<name>`". The CLI reference's `set` section is the same subject from the other side --
+// "Change specified preferences. Unlike `tailscale up`, this command does not require the complete set of
+// desired settings. It only updates the settings you explicitly set" -- and its flag list reads "--hostname=
+// <name> Hostname to use for the device instead of the one provided by the OS. Note that this will change
+// the machine name used in MagicDNS." "Instead of", "change", "renamed": replacement language, on the
+// device the daemon already has. NO ADDITIVE-ALIAS SEMANTICS ARE DOCUMENTED AND THIS MODULE CLAIMS NONE.
+// The consequence is structural: there is no second name to leave behind, so a rename window's ROLLBACK is
+// the SAME verb pointed at the old name, and every set must be bounded by a read on each side of it.
+//
+// 3. WHETHER THE NAME FOLLOWS AN OS HOSTNAME CHANGE ON ITS OWN IS A PER-DEVICE PREF, AND THE DEVICE IS THE
+// ONLY THING THAT KNOWS IT. The same page: machine names are generated at first join "from its OS
+// hostname", which "gets reported to Tailscale on startup"; and "When the Auto-generate from OS hostname
+// box is checked, as it is by default, the machine name is generated from the OS hostname as described
+// above. If the OS updates the hostname, the machine name will also get updated the next time Tailscale is
+// started up. To avoid these automatic name changes, uncheck this box." So the honest model has three
+// parts, and none of them may be replaced by a default: the follow is ON by default, it is a preference a
+// given tailnet or device may have turned OFF, and even when it is on it lands only at the next Tailscale
+// start. The page also records that a name once generated is sticky in at least one way -- a device that
+// was de-duplicated to `<hostname>-1` "will still maintain the <hostname>-1 machine name" after the
+// conflict moves. What a SPECIFIC device will do is therefore not knowable from the documentation at all;
+// only `tailscale status --json` on that device says (gunbc.design_argument::epistemic_humming: the absence
+// is recorded at the edge that would act on it, rather than closed with a guess that then reads as a
+// finding). The procedure that follows is forced, not chosen: read the device's reported name, decide
+// against the derivation, write only if they disagree, then read again.
+//
+// 4. WHAT YOU ASK FOR IS NOT NECESSARILY WHAT THE TAILNET CARRIES. The same page: "OS hostnames can also
+// have characters that we don't allow in machine names, so we derive the names following a number of rules
+// that aim to produce sensible results. For example: John's-iPhone-6S.local becomes johns-iphone-6s ... As
+// corner cases in these rules are found, they will change, so they are not listed here," and "We enforce
+// unique machine names across a Tailscale network so they may be used as part of the MagicDNS domain name
+// for a machine" -- a name already used by another device is not available, and a device that joined while
+// its name was taken was itself renamed to `<hostname>-1`. So the value handed to `set --hostname` is an
+// REQUEST whose spelling the upstream may alter and whose availability the tailnet decides. Nothing in this
+// module can tell a caller what the tailnet will accept; the only answer is the document the device
+// reports afterwards, compared to the requested name exactly, which is why the reading below is a typed
+// reading and not a string.
+//
+// The reading keeps the upstream's member names: the document's `Self` object carries `HostName` (the
+// machine name) and `DNSName` (the MagicDNS name, which the pages above say moves with it). A real fleet
+// reading reports DNSName WITH A TRAILING DOT (`srv1.tailecbe08.ts.net.`); this module carries that text
+// verbatim rather than tidying it, because "is the trailing dot part of the name upstream?" is exactly the
+// question this module is not entitled to answer.
+
+// A READING OF ONE DEVICE'S MACHINE NAME AS THE status DOCUMENT REPORTS IT. `dns_name` is Optional because
+// this module does not require it: a document whose `Self` names no `DNSName` is still a machine-name
+// reading, and inventing a requirement here would make an unrelated upstream state look like a fleet
+// failure. `host_name` is required and non-empty because an empty machine name is not a name, and a mode
+// that converged onto one would be converging onto nothing.
+type TailscaleStatusSelfName {
+  host_name: NonEmptyStr
+  dns_name: Optional<String>
+}
+
+// WHY EACH WAY OF NOT SEEING THE NAME IS ITS OWN ARM: a mode that cannot read the current name has to say
+// why, because the repairs differ. A document that is not JSON at all is tailscale missing, or an SSH
+// session that printed a shell error instead. A document with no `Self` is a tailscale with no session. A
+// `Self` with no `HostName` is a version or state this module has not read. Collapse them and one line of
+// prose sends an operator to the wrong place; that is the gunbc.design_argument::fail_closed shape.
+type TailscaleMachineNameRefusal
+  = StatusDocumentUnreadable { detail: String }
+  | StatusSelfMemberAbsent
+  | StatusSelfMemberMalformed { detail: String }
+  | StatusHostNameMemberAbsent
+  | StatusHostNameMemberMalformed { detail: String }
+  | StatusHostNameEmpty
+  | StatusDnsNameMemberMalformed { detail: String }
+
+type TailscaleMachineNameReading
+  = SelfNameRead { self_name: TailscaleStatusSelfName }
+  | ReadingRefused { cause: TailscaleMachineNameRefusal }
+
+// `tailscale status --json` -- the read side. The machine-readable form is what the CLI reference points
+// automation at; the human table is not a parse target, and a mode that read it would be parsing prose.
+fn tailscale_status_json_argv() -> List<String> {
+  ["status", "--json"]
+}
+
+fn tailscale_status_json_command() -> ArgvCommand {
+  argv_command(program: tailscale_program(), arguments: tailscale_status_json_argv())
+}
+
+// `tailscale set --hostname=<name>` -- the write side. The upstream's flag form carries the value INSIDE
+// the argument (`--hostname=<name>`), so the name is one word with the flag, not a flag plus a loose
+// argument: that is the spelling both pages print, and it is the spelling a sudoers line naming this step
+// would have to match.
+fn tailscale_set_hostname_argv(name: NonEmptyStr) -> List<String> {
+  ["set", join(["--hostname=", name], "")]
+}
+
+fn tailscale_set_hostname_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: tailscale_program(), arguments: tailscale_set_hostname_argv(name: name))
+}
+
+// READ THE NAME OUT OF A `status --json` DOCUMENT. The order is the document's own: parse, then find
+// `Self`, then the members inside it. A document that parses but carries no `Self` is not reported as "a
+// name that is empty" -- that would turn a state problem into a value problem.
+fn tailscale_status_self_name(status_json: String) -> TailscaleMachineNameReading {
+  match parse_json_document(s: status_json) {
+    JsonDocumentUnreadable { gap: gap } =>
+      ReadingRefused {
+        cause: StatusDocumentUnreadable { detail: json_document_gap_text(gap: gap) }
+      }
+    JsonDocumentParsed { value: document } =>
+      match json_field(obj: document, key: "Self") {
+        FieldAbsent => ReadingRefused { cause: StatusSelfMemberAbsent }
+        FieldMalformed { cause: cause } =>
+          ReadingRefused { cause: StatusSelfMemberMalformed { detail: cause } }
+        FieldRead { value: subject } => tailscale_self_name_members(subject: subject)
+      }
+  }
+}
+
+fn tailscale_self_name_members(subject: JsonValue) -> TailscaleMachineNameReading {
+  match json_field_string(obj: subject, key: "HostName") {
+    FieldAbsent => ReadingRefused { cause: StatusHostNameMemberAbsent }
+    FieldMalformed { cause: cause } =>
+      ReadingRefused { cause: StatusHostNameMemberMalformed { detail: cause } }
+    FieldRead { value: host_name } =>
+      if !string_non_empty(value: host_name) {
+        ReadingRefused { cause: StatusHostNameEmpty }
+      } else {
+        match json_field_string(obj: subject, key: "DNSName") {
+          FieldAbsent =>
+            SelfNameRead {
+              self_name: TailscaleStatusSelfName {
+                host_name: host_name as NonEmptyStr,
+                dns_name: Absent,
+              }
+            }
+          FieldMalformed { cause: cause } =>
+            ReadingRefused { cause: StatusDnsNameMemberMalformed { detail: cause } }
+          FieldRead { value: dns_name } =>
+            SelfNameRead {
+              self_name: TailscaleStatusSelfName {
+                host_name: host_name as NonEmptyStr,
+                dns_name: Present { value: dns_name },
+              }
+            }
+        }
+      }
+  }
+}
+
+// NAME EVERY WAY THE READING FAILED, IN ITS OWN WORDS. A refusal that cannot be named cannot be acted
+// on, and this module's whole value is that the failures are distinguished (gunbc.design_argument::
+// fail_closed: a typed located cause, not a bare "unreadable").
+fn tailscale_machine_name_refusal_wire(cause: TailscaleMachineNameRefusal) -> String {
+  match cause {
+    StatusDocumentUnreadable { detail: detail } =>
+      join(["the status output is not a JSON document (", detail, ")"], "")
+    StatusSelfMemberAbsent =>
+      join(["the status document has no `Self` member: this node has no tailnet session to name"], "")
+    StatusSelfMemberMalformed { detail: detail } =>
+      join(["the status document's `Self` member is unusable (", detail, ")"], "")
+    StatusHostNameMemberAbsent =>
+      join(["the status document's `Self` names no `HostName`: no machine name is being reported"], "")
+    StatusHostNameMemberMalformed { detail: detail } =>
+      join(["the status document's `Self.HostName` is unusable (", detail, ")"], "")
+    StatusHostNameEmpty =>
+      join(["the status document reports an empty `Self.HostName`: an empty machine name is not a name"], "")
+    StatusDnsNameMemberMalformed { detail: detail } =>
+      join(["the status document's `Self.DNSName` is unusable (", detail, ")"], "")
+  }
+}

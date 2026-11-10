@@ -1,0 +1,503 @@
+module test.claim.tailscale_machine_name_converge_witness
+
+// THE WITNESS FOR ONE HOST-GENERIC MODE: read a device's Tailscale machine name, decide against the one
+// name derivation, set only when they disagree and only inside the rename window, then read again and
+// require agreement. Everything here is hermetic: the fixtures are status documents, the plan and the
+// read-back rule are pure functions, and the one effectful thing asserted is the WORDS the emitter emits
+// -- driven through the real argv builders, not through a copy of them.
+//
+// THE FIXTURES ARE NOT ALL INVENTED. `tailscale_machine_name_status_document_from_srv1` is the reading a
+// real fleet host gave back on 2026-11-10T17:18:54Z (tailscale 1.104.2, `tailscale status --json` over
+// SSH, read-only), cut to the members this mode consumes. Its value is that the parser and the plan are
+// exercised against bytes a machine produced -- including the trailing dot on `DNSName`, which no one
+// would have written in a fixture of their own invention.
+
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.exec.command { argv_words }
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.tailscale.machine_name {
+  TailscaleMachineNameRefusal,
+  tailscale_machine_name_refusal_wire,
+  tailscale_set_hostname_command,
+  tailscale_status_json_command,
+  tailscale_status_self_name,
+  ReadingRefused,
+  SelfNameRead,
+  StatusDocumentUnreadable,
+  StatusHostNameEmpty,
+  StatusHostNameMemberAbsent,
+  StatusHostNameMemberMalformed,
+  StatusSelfMemberAbsent,
+  StatusSelfMemberMalformed,
+}
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_host_from }
+import gunbc.product.host_identity { HostIdentity }
+import gunbc.tailscale_machine_name_converge {
+  ApplyInsideWindow,
+  NameChangeReported,
+  ObserveOnly,
+  RunPlanRefused,
+  RunRefused,
+  WindowIsNotTheRenameWindow,
+  DeviceNameAlreadyCurrent,
+  DeviceNameChangeOwed,
+  DeviceNameReported,
+  DerivedName,
+  DesiredNameNotDerivable,
+  LabelRead,
+  LabelUnusable,
+  ObservationRefused,
+  PlanRefused,
+  PrepareWindow,
+  ReadBackConfirmsRequested,
+  ReadBackContradictsRequest,
+  ReadBackRefused,
+  RenameWindow,
+  StatusDocumentRefused,
+  StatusLegFailed,
+  TailscaleMachineNameObservation,
+  TailscaleMachineNameWindow,
+  WindowUndeclared,
+  tailscale_machine_name_desired,
+  tailscale_machine_name_label,
+  tailscale_machine_name_mode_wire,
+  tailscale_machine_name_outcome_wire,
+  tailscale_machine_name_plan,
+  tailscale_machine_name_plan_refusal_wire,
+  tailscale_machine_name_read_back,
+  tailscale_machine_name_window_is_rename_window,
+  tailscale_machine_name_window_parse,
+  tailscale_machine_name_window_wire,
+}
+import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
+
+// THE OBSERVE RECEIPT, AS AN INPUT. `tailscale status --json` against srv1, 2026-11-10T17:18:54Z, cut to
+// what this mode reads. Nothing was tidied: `DNSName` ends in a dot because the device reported it that
+// way.
+data tailscale_machine_name_status_document_from_srv1: String =
+  "{\"Version\":\"1.104.2\",\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"srv1\",\"DNSName\":\"srv1.tailecbe08.ts.net.\"}}"
+
+// A DEVICE STILL CARRYING AN OLD NAME, and the same device after a rename window that was rolled back:
+// the two directions of the same mode, one fixture each.
+data tailscale_machine_name_status_document_naming_srv4: String =
+  "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"srv4\",\"DNSName\":\"srv4.example.invalid.\"}}"
+data tailscale_machine_name_status_document_naming_fox: String =
+  "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"fox\",\"DNSName\":\"fox.example.invalid.\"}}"
+
+// THE FOUR WAYS A DOCUMENT CAN FAIL TO NAME A DEVICE, each a different repair for an operator: nothing
+// came back that parses, no session, a `Self` that is not the shape upstream reports, and a `Self` with no
+// usable name in it.
+data tailscale_machine_name_document_not_json: String = "Connection status: Offline\n"
+data tailscale_machine_name_document_without_self: String = "{\"Version\":\"1.104.2\",\"BackendState\":\"NeedsLogin\"}"
+data tailscale_machine_name_document_self_not_an_object: String = "{\"Self\":\"srv1\"}"
+data tailscale_machine_name_document_self_duplicated: String =
+  "{\"Self\":{\"HostName\":\"srv1\"},\"Self\":{\"HostName\":\"fox\"}}"
+data tailscale_machine_name_document_name_absent: String = "{\"Self\":{\"DNSName\":\"srv1.example.invalid.\"}}"
+data tailscale_machine_name_document_name_empty: String = "{\"Self\":{\"HostName\":\"\",\"DNSName\":\"srv1.example.invalid.\"}}"
+data tailscale_machine_name_document_name_not_a_string: String = "{\"Self\":{\"HostName\":7}}"
+
+// THE OBSERVATION SIDE OF EACH PLAN CASE, built through the real parser so no fixture bypasses it.
+fn observation_of(document: String) -> TailscaleMachineNameObservation {
+  match tailscale_status_self_name(status_json: document) {
+    SelfNameRead { self_name: self_name } =>
+      DeviceNameReported { name: self_name.host_name, dns_name: self_name.dns_name }
+    ReadingRefused { cause: cause } =>
+      ObservationRefused { cause: StatusDocumentRefused { cause: cause } }
+  }
+}
+
+// ── THE THREE CASES THE PLAN OWES ───────────────────────────────────────────────────────────────
+
+// A REAL READING, ADOPTED: the host handle the registry carries for that device is `srv1`, which is what
+// the one derivation names today, and the device reported `srv1`. The mode must find nothing to do -- and
+// it finds it by parsing bytes a real tailscale produced, not a fixture shaped to agree.
+test fn tailnet_device_already_naming_the_derived_name_is_noop() -> Bool {
+  match tailscale_machine_name_plan(
+    host: "srv1" as HostIdentity,
+    window: RenameWindow,
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_status_document_from_srv1),
+  ) {
+    DeviceNameAlreadyCurrent { name: name } => name == "srv1"
+    DeviceNameChangeOwed { from_name: _, to_name: _ } => false
+    PlanRefused { cause: cause } => false
+  }
+}
+
+// FORWARD, THE WAY srv4's window will look when it opens: the registry has moved to the drawn name, the
+// device has not followed yet. The owed set is named in BOTH directions, because a plan that says only
+// "different" cannot be reviewed -- the operator has to see which name is leaving and which is arriving.
+test fn device_naming_the_old_handle_owes_a_set_to_the_drawn_name() -> Bool {
+  match tailscale_machine_name_plan(
+    host: "fox" as HostIdentity,
+    window: RenameWindow,
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_srv4),
+  ) {
+    DeviceNameChangeOwed { from_name: from_name, to_name: to_name } =>
+      from_name == "srv4" && to_name == "fox"
+    DeviceNameAlreadyCurrent { name: _ } => false
+    PlanRefused { cause: _ } => false
+  }
+}
+
+// THE REVERSE DIRECTION IS NOT A SECOND MODE. A rollback is the same mode with the registry row moved
+// back: same function, same window claim, the owed set pointed the other way. Asserting this pair is what
+// stops a later "add a rollback entry" from being the shape of this code.
+test fn the_rollback_is_the_same_plan_pointed_at_the_previous_name() -> Bool {
+  match tailscale_machine_name_plan(
+    host: "srv4" as HostIdentity,
+    window: RenameWindow,
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_fox),
+  ) {
+    DeviceNameChangeOwed { from_name: from_name, to_name: to_name } =>
+      from_name == "fox" && to_name == "srv4"
+    DeviceNameAlreadyCurrent { name: _ } => false
+    PlanRefused { cause: _ } => false
+  }
+}
+
+// ── THE REFUSALS: EACH UNREADABLE DOCUMENT KEEPS ITS OWN CAUSE ──────────────────────────────────
+
+// Output that is not a document at all -- tailscale missing, or an SSH session that printed a status line.
+test fn a_document_that_does_not_parse_refuses_as_not_being_a_document() -> Bool {
+  match tailscale_machine_name_plan(
+    host: "srv1" as HostIdentity,
+    window: RenameWindow,
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_document_not_json),
+  ) {
+    PlanRefused { cause: StatusDocumentRefused { cause: StatusDocumentUnreadable { detail: detail } } } =>
+      string_contains(s: tailscale_machine_name_plan_refusal_wire(cause: StatusDocumentRefused { cause: StatusDocumentUnreadable { detail: detail } }), pattern: "not a JSON document")
+    PlanRefused { cause: _ } => false
+    DeviceNameAlreadyCurrent { name: _ } => false
+    DeviceNameChangeOwed { from_name: _, to_name: _ } => false
+  }
+}
+
+// NO `Self` IS NOT AN EMPTY NAME. A node with no session has nothing named; a node that names nothing is a
+// different fault, and the repairs are in different places (log in vs read the version).
+test fn an_absent_self_refuses_as_no_session_and_says_so() -> Bool {
+  match tailscale_machine_name_plan(
+    host: "srv1" as HostIdentity,
+    window: RenameWindow,
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_document_without_self),
+  ) {
+    PlanRefused { cause: StatusDocumentRefused { cause: cause } } =>
+      match cause {
+        StatusSelfMemberAbsent =>
+          string_contains(s: tailscale_machine_name_refusal_wire(cause: cause), pattern: "no `Self` member")
+        _ => false
+      }
+    PlanRefused { cause: _ } => false
+    DeviceNameAlreadyCurrent { name: _ } => false
+    DeviceNameChangeOwed { from_name: _, to_name: _ } => false
+  }
+}
+
+// THE DISTINCTIONS THAT ARE THE WHOLE POINT OF TYPING THE FAILURE: a `Self` that is a string, a `Self`
+// that appears twice, a missing `HostName`, an empty one, and one that is a number. Five causes, five
+// arms, no bucket shared -- which is what gunbc.design_argument::fail_closed asks of a reading
+// ("unparseable, absent, duplicate and malformed kept as different causes").
+test fn the_document_failures_keep_their_own_causes() -> Bool {
+  let self_as_string = cause_of_document(document: tailscale_machine_name_document_self_not_an_object)
+  let self_duplicated = cause_of_document(document: tailscale_machine_name_document_self_duplicated)
+  let name_absent = cause_of_document(document: tailscale_machine_name_document_name_absent)
+  let name_empty = cause_of_document(document: tailscale_machine_name_document_name_empty)
+  let name_not_a_string = cause_of_document(document: tailscale_machine_name_document_name_not_a_string)
+  is_self_member_malformed(cause: self_as_string)
+    && is_self_member_malformed(cause: self_duplicated)
+    && is_host_name_absent(cause: name_absent)
+    && is_host_name_empty(cause: name_empty)
+    && is_host_name_malformed(cause: name_not_a_string)
+    && !(wire_of(cause: name_absent) == wire_of(cause: name_empty))
+    && !(wire_of(cause: name_empty) == wire_of(cause: name_not_a_string))
+    && !(wire_of(cause: self_as_string) == wire_of(cause: name_absent))
+}
+
+fn is_self_member_malformed(cause: Optional<TailscaleMachineNameRefusal>) -> Bool {
+  match cause {
+    Present { value: StatusSelfMemberMalformed { detail: _ } } => true
+    _ => false
+  }
+}
+
+fn is_host_name_absent(cause: Optional<TailscaleMachineNameRefusal>) -> Bool {
+  match cause {
+    Present { value: StatusHostNameMemberAbsent } => true
+    _ => false
+  }
+}
+
+fn is_host_name_empty(cause: Optional<TailscaleMachineNameRefusal>) -> Bool {
+  match cause {
+    Present { value: StatusHostNameEmpty } => true
+    _ => false
+  }
+}
+
+fn is_host_name_malformed(cause: Optional<TailscaleMachineNameRefusal>) -> Bool {
+  match cause {
+    Present { value: StatusHostNameMemberMalformed { detail: _ } } => true
+    _ => false
+  }
+}
+
+fn cause_of_document(document: String) -> Optional<TailscaleMachineNameRefusal> {
+  match tailscale_status_self_name(status_json: document) {
+    SelfNameRead { self_name: _ } => none
+    ReadingRefused { cause: cause } => Present { value: cause }
+  }
+}
+
+fn wire_of(cause: Optional<TailscaleMachineNameRefusal>) -> String {
+  match cause {
+    Present { value: value } => tailscale_machine_name_refusal_wire(cause: value)
+    Absent => ""
+  }
+}
+
+// A LEG THAT DID NOT RUN, and a leg that ran and failed, are not document failures: the first is a
+// transport or admission fault, the second says tailscale itself refused. A mode that folded them into
+// "unreadable" would send an operator to the wrong subsystem.
+test fn a_failed_status_leg_is_not_reported_as_a_document_problem() -> Bool {
+  let cause = StatusLegFailed { exit_code: 127, detail: "bash: tailscale: command not found" }
+  let wire = tailscale_machine_name_plan_refusal_wire(cause: cause)
+  string_contains(s: wire, pattern: "exited 127")
+    && string_contains(s: wire, pattern: "command not found")
+    && !string_contains(s: wire, pattern: "unreadable")
+}
+
+// ── THE HOLD TO THE RENAME WINDOW (S3) ─────────────────────────────────────────────────────────
+
+// A WRITE IN THE PREPARE STAGE: refused, and the refusal names the stage it was handed. The additive
+// stage is where a fleet's name must NOT move, because S2 adds without disturbing and a renamed device
+// mid-prepare moves a name other steps are already citing.
+test fn a_write_claimed_inside_the_prepare_stage_is_refused_by_name() -> Bool {
+  let plan = tailscale_machine_name_plan(
+    host: "fox" as HostIdentity,
+    window: PrepareWindow,
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_srv4),
+  )
+  match plan {
+    PlanRefused { cause: cause } =>
+      string_contains(s: tailscale_machine_name_plan_refusal_wire(cause: cause), pattern: "prepare-window")
+        && string_contains(s: tailscale_machine_name_plan_refusal_wire(cause: cause), pattern: "rename window")
+    _ => false
+  }
+}
+
+// THE ORDINARY STATE OF EVERY RUN TODAY: no stage claimed at all. That is a refusal for a write, never a
+// default that happens to be safe -- an absent claim is reported as absent, in the receipt.
+test fn a_write_with_no_stage_claimed_at_all_is_refused_as_undeclared() -> Bool {
+  let window = tailscale_machine_name_window_parse(claim: "")
+  match tailscale_machine_name_plan(
+    host: "fox" as HostIdentity,
+    window: window,
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_srv4),
+  ) {
+    PlanRefused { cause: cause } =>
+      string_contains(s: tailscale_machine_name_plan_refusal_wire(cause: cause), pattern: "undeclared stage")
+        && tailscale_machine_name_window_wire(window: window) == "undeclared stage ()"
+    _ => false
+  }
+}
+
+// THE CONTROL THAT MAKES THE TWO REFUSALS ABOVE MEAN SOMETHING: the identical observation and the identical
+// mode, claimed inside the rename window, is actionable. Without this, the refusals could be produced by
+// a mode that never acts at all.
+test fn the_same_owage_inside_the_rename_window_is_actionable() -> Bool {
+  match tailscale_machine_name_plan(
+    host: "fox" as HostIdentity,
+    window: tailscale_machine_name_window_parse(claim: "rename-window"),
+    mode: ApplyInsideWindow,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_srv4),
+  ) {
+    DeviceNameChangeOwed { from_name: from_name, to_name: to_name } =>
+      from_name == "srv4" && to_name == "fox" && tailscale_machine_name_window_is_rename_window(window: RenameWindow)
+    _ => false
+  }
+}
+
+// A REHEARSAL IS RUNNABLE BEFORE THE WINDOW (the plan requires each window step to have one): an
+// observe-only run in the prepare stage REPORTS the owed change, and the window fact still says no write
+// is licensed there. Reporting drift is not the same as being licensed to close it.
+test fn a_rehearsal_reports_owed_drift_without_licensing_a_write() -> Bool {
+  let window = tailscale_machine_name_window_parse(claim: "prepare-window")
+  match tailscale_machine_name_plan(
+    host: "fox" as HostIdentity,
+    window: window,
+    mode: ObserveOnly,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_srv4),
+  ) {
+    DeviceNameChangeOwed { from_name: from_name, to_name: to_name } =>
+      from_name == "srv4" && to_name == "fox" && !tailscale_machine_name_window_is_rename_window(window: window)
+    _ => false
+  }
+}
+
+test fn the_stage_claims_parse_into_their_own_arms() -> Bool {
+  match tailscale_machine_name_window_parse(claim: "rename-window") {
+    RenameWindow =>
+      match tailscale_machine_name_window_parse(claim: "prepare-window") {
+        PrepareWindow =>
+          match tailscale_machine_name_window_parse(claim: "banana") {
+            WindowUndeclared { claim: carried } =>
+              carried == "banana"
+                && tailscale_machine_name_mode_wire(mode: ObserveOnly) == "observe-only"
+                && tailscale_machine_name_mode_wire(mode: ApplyInsideWindow) == "apply-inside-window"
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// ── THE READ-BACK: THE WRITE'S OWN EXIT CODE IS NOT THE VERDICT ────────────────────────────────
+
+test fn a_read_back_naming_the_requested_name_confirms_the_change() -> Bool {
+  match tailscale_machine_name_read_back(
+    requested: "fox" as NonEmptyStr,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_fox),
+  ) {
+    ReadBackConfirmsRequested { name: name } => name == "fox"
+    _ => false
+  }
+}
+
+// THE ACCEPTANCE CASE, IN ITS SHARPEST FORM: the set ran, and the device came back with a name that is
+// NOT the one asked for. Upstream sanitises machine names and enforces uniqueness across the tailnet, so
+// this is a reachable outcome and it is a REFUSAL -- the rename window may not proceed on a name the
+// tailnet did not accept.
+test fn a_read_back_naming_a_different_name_refuses_naming_both() -> Bool {
+  match tailscale_machine_name_read_back(
+    requested: "fox" as NonEmptyStr,
+    observation: observation_of(document: tailscale_machine_name_status_document_naming_srv4),
+  ) {
+    ReadBackContradictsRequest { requested: requested, reported: reported } =>
+      requested == "fox" && reported == "srv4"
+    _ => false
+  }
+}
+
+// A READ-BACK THAT CANNOT BE READ REFUSES TOO: the write already happened, so "unknown" must arrive as a
+// refusal an operator sees, never as a success that leaves the tailnet's answer assumed.
+test fn an_unreadable_read_back_refuses_rather_than_passing() -> Bool {
+  match tailscale_machine_name_read_back(
+    requested: "fox" as NonEmptyStr,
+    observation: observation_of(document: tailscale_machine_name_document_without_self),
+  ) {
+    ReadBackRefused { cause: cause } =>
+      string_contains(s: tailscale_machine_name_plan_refusal_wire(cause: cause), pattern: "readable")
+        || string_contains(s: tailscale_machine_name_plan_refusal_wire(cause: cause), pattern: "unreadable")
+    _ => false
+  }
+}
+
+// ── THE INHABITANCE CONTROL: THE REAL EMITTER, DRIVEN ──────────────────────────────────────────
+//
+// Not a fixture of what the commands look like: the words below come out of the same builders the legs
+// execute, and are then put through the SSH edge's own portability admission -- the test that a word the
+// emitter invents could not reach the far shell. If either builder drifts from what extdeps.tailscale.
+// machine_name cites, these fail.
+test fn the_emitter_emits_the_two_verbs_the_upstream_documents() -> Bool {
+  let read_words = argv_words(command: tailscale_status_json_command())
+  let write_words = argv_words(command: tailscale_set_hostname_command(name: "fox" as NonEmptyStr))
+  // The name rides INSIDE the flag word, the spelling upstream prints: a separate word would be a
+  // different command, and a sudoers line naming this step would not match it.
+  read_words == ["tailscale", "status", "--json"]
+    && write_words == ["tailscale", "set", "--hostname=fox"]
+    && all(read_words, w => typed_argv_portable_argv_token(token: w))
+    && all(write_words, w => typed_argv_portable_argv_token(token: w))
+}
+
+// THE WRITE IS ELEVATED THROUGH THE SUDO MODULE'S OWN WORDS, and the payload survives elevation
+// unchanged: the words the extdeps row cites are the words that reach the host, with sudo's absolute
+// path in front of them.
+test fn the_set_leg_carries_the_same_words_after_elevation() -> Bool {
+  let plain = argv_words(command: tailscale_set_hostname_command(name: "fox" as NonEmptyStr))
+  let elevated = sudo_elevate_argv(command: plain)
+  // The elevation is the sudo module's own non-interactive form: absolute path, -n, and the payload
+  // words unchanged. A second flag, or a PATH-resolved sudo, would be a different claim on the host.
+  elevated == ["/usr/bin/sudo", "-n", "tailscale", "set", "--hostname=fox"]
+    && all(elevated, w => typed_argv_portable_argv_token(token: w))
+}
+
+// THE READING THE MODE CARRIES IS THE ONE THE DEVICE REPORTS, DOT INCLUDED: the MagicDNS name is kept
+// verbatim because whether a trailing dot is part of the name upstream is a question this corpus has not
+// answered, and a parser that tidied it would answer the question by silently choosing one side.
+test fn the_real_reading_keeps_the_dns_name_the_device_reported() -> Bool {
+  match tailscale_status_self_name(status_json: tailscale_machine_name_status_document_from_srv1) {
+    SelfNameRead { self_name: self_name } =>
+      self_name.host_name == "srv1"
+        && match self_name.dns_name {
+          Present { value: dns_name } => dns_name == "srv1.tailecbe08.ts.net."
+          Absent => false
+        }
+    ReadingRefused { cause: _ } => false
+  }
+}
+
+// ── THE ONE DERIVATION, AND WHAT IT REFUSES TO NAME ────────────────────────────────────────────
+
+// The desired name comes from the tailnet FQDN derivation's own first label -- so the mode and every other
+// consumer of that derivation cannot drift apart, which is what gunbc.design_argument::single_authority
+// is for. This asserts equality against the derivation itself rather than against a hand-written name.
+test fn the_desired_name_is_the_label_the_fqdn_derivation_places_first() -> Bool {
+  match tailscale_machine_name_desired(host: "fox" as HostIdentity) {
+    DerivedName { name: name } =>
+      match tailscale_machine_name_label(
+        fqdn: tailnet_host_from(host: "fox" as NonEmptyStr, domain: fleet_tailnet_domain)
+      ) {
+        LabelRead { label: label } => name == label
+        LabelUnusable { fqdn: _, cause: _ } => false
+      }
+    DesiredNameNotDerivable { host: _, cause: _ } => false
+  }
+}
+
+// A DERIVATION THAT PRODUCES NO LABEL IS REFUSED, NOT SHIPPED AS A NAME: a tailnet name with no dot has
+// no domain joined to it, and one that begins with a dot names nothing. Either handed to `set --hostname`
+// would rename a device to something the tailnet will sanitize or reject, and the mode would then read
+// back a third thing.
+test fn a_derivation_that_produces_no_label_refuses_the_name() -> Bool {
+  match tailscale_machine_name_label(fqdn: "fox") {
+    LabelUnusable { fqdn: _, cause: _ } =>
+      match tailscale_machine_name_label(fqdn: ".example.invalid") {
+        LabelUnusable { fqdn: _, cause: _ } =>
+          match tailscale_machine_name_label(fqdn: "fox.example.invalid") {
+            LabelRead { label: label } => label == "fox"
+            LabelUnusable { fqdn: _, cause: _ } => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE RECEIPT LINES NAME WHAT HAPPENED, INCLUDING THE DIRECTION: a receipt that says "changed" without
+// both names cannot be reviewed a week later, and a refusal that says "refused" without its cause cannot
+// be repaired.
+test fn the_receipt_lines_carry_the_direction_and_the_cause() -> Bool {
+  let owed = tailscale_machine_name_outcome_wire(
+    outcome: NameChangeReported {
+      host: "fox" as HostIdentity, from_name: "srv4" as NonEmptyStr, to_name: "fox" as NonEmptyStr
+    }
+  )
+  let refused = tailscale_machine_name_outcome_wire(
+    outcome: RunRefused {
+      host: "fox" as HostIdentity,
+      cause: RunPlanRefused { cause: WindowIsNotTheRenameWindow { window: PrepareWindow, mode: ApplyInsideWindow } }
+    }
+  )
+  string_contains(s: owed, pattern: "would be set to `fox`")
+    && string_contains(s: owed, pattern: "nothing written")
+    && string_contains(s: refused, pattern: "requires the rename-window stage")
+}
