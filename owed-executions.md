@@ -113,3 +113,10 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - disposition_redundancy: already 22/22 at main 00cacc14 (BuildBuddy 18cd136c). #16205 and #16200 fixed it after the sweep's reading. The lens is live: registry, contract, and cli_run_floor_lens_oracle_witness. Closed by deep-swift-104.
 - LOW, UNOWNED: v2.workflow.floor_grandfathered_roster still lists 6 deleted rows (redundancy_region_bmc_* and redundancy_region_rust_gates_*). The roadmap's removal protocol is a WitnessDeleted row in floor_grandfathered_removals. The roster's consumer is required_floor, which is v1-floor machinery that no required job runs, so this is low value.
 - WATCH: where_refinement_enforcement_witness fails 41/48 at both main and #16224's head (7 rows return false with no diagnostic). Where-refinements are retired by ruling; the witness may be obsolete. Unowned.
+
+## Field defaults (vivid-carp-423, 2026-11-10; #16232 4a4f790d + #16235 e1dd6b50 merged)
+- Path 2 DONE: the STS exchange binds the declaring-scope Jwt/RequestAccessToken defaults; present vs omitted gives a byte-identical refusal (digest efb5659d72073e77).
+- PENDING: a live non-vacuous heal-publish after e1dd6b50 must reach sts/iamcredentials/secretmanager (watcher hp-watch.sh).
+- PARKED, UNMERGED: branch field-default-path2-jwt-default-binds @ 378a917a790 (off 4a4f790d). It holds (a) input_digest in the RestReplayExchangeAbsent reason and (b) field_default_jwt_path_binds_default.dag, a permanent hermetic witness for the default bind; (b) depends on (a). Ship it if a regression witness is wanted. If the dashboard auto-opens a PR for it, close it with a pointer here.
+- UNOWNED: path 3 (the type layer's parameter_default_emissions types an omitted default in the call site's scope).
+- gunbc run cannot resolve rest_exchange_resolution ("has no body"); these claims run only via claim_batch.
