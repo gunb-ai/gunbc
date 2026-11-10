@@ -4119,11 +4119,21 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
   // imposes no equality obligation (gunbc#15175 re-land; shape per silent-bee-845's ruling after
   // #15952).
   let basis = if applied && (parameter_names |> count) > 0 { declaration_substitution_basis(n: rt, env: scope.type_env, generic_names: parameter_names) } else { rt }
-  let w = equality_resolved_declaration_structure_core(rt: basis, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !applied || equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: peeled.children, scope: scope, visited: visited, depth: depth + 1) {
-    w
-  } else {
+  // FAIL CLOSED when an APPLIED reference resolves to NOTHING parameterized: a qualified cross-module
+  // generic (e.g. v2.std.diagnostic.Outcome<...>) keyed at the use site whose arms the walk never sees.
+  // Judging such a node by the target would emit a raw `==` over its unjudged members. This is exactly
+  // the rule this fn's docstring already states -- 'one that resolves to nothing refuses rather than
+  // comparing by the target' (gunbc#15992 re-land, gunbc#16143); it was not firing because the unresolved
+  // reference reaches this fn via the operand_walk children>0 path with an empty parameter list.
+  if applied && (parameter_names |> count) == 0 {
     equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+  } else {
+    let w = equality_resolved_declaration_structure_core(rt: basis, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
+    if w.refusal != none || !applied || equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: peeled.children, scope: scope, visited: visited, depth: depth + 1) {
+      w
+    } else {
+      equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+    }
   }
 }
 
