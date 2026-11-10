@@ -384,9 +384,8 @@ data ned_family_helper_realized_source: String = "module test.claim.ned_family_h
 // CensusNotRunnable census is not the arm.
 fn eq_blocking_total_at_subject_in(census: CompileDiagnosticCensus, subject: String) -> Int {
   match census {
-    CensusObserved { rows: rows } => census_blocking_rows(rows: rows)
-      |> filter(r => r.subject_name == subject)
-      |> size
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: rows) |> filter(r => r.subject_name == subject))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
