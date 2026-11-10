@@ -7,6 +7,7 @@ module test.claim.roadmap.roadmap_status
 import gunbc.roadmap.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, DriftVerdict,
   pr_merged, item_is_done, item_drifted, status_drift,
+  merged_pr_numbers, prs_all_merged, item_drifts_against_prs,
 }
 import extdeps.github.github { GitHubUser }
 import extdeps.github.pulls { PullRequestRef }
