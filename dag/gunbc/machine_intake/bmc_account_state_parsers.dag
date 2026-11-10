@@ -232,6 +232,7 @@ fn ipmi_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAc
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_getaccess_table_decodes_every_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_malformed_privilege_word_refuses_never_a_defaulted_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_flag_column_of_garbage_refuses_though_the_carrier_drops_the_flags"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_account_state_transport"),
   ]
 {
   let lines = filter(split(s: text, delimiter: "\n"), l => {
@@ -403,6 +404,7 @@ fn redfish_account_names_from_collection(body: String) -> RedfishAccountsCollect
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_srv13_accounts_collection_decodes_its_members"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_collection_whose_count_contradicts_its_members_is_unreadable"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "census_for"),
   ]
 {
   match json_root_object(body: body) {
@@ -487,6 +489,7 @@ fn redfish_account_service_lockout_from_body(body: String) -> RedfishAccountServ
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_openbmc_account_service_body_decodes_the_lockout_props"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_account_service_without_a_threshold_is_unreadable_never_zero"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_account_state_transport"),
   ]
 {
   match json_root_object(body: body) {

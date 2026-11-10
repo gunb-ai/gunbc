@@ -1,0 +1,230 @@
+module test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness
+
+// THE CAPTURE-TO-TRANSPORT ASSEMBLER, WITNESSED (PR B hermetic half, sharp-crane-14).
+// gunbc.machine_intake.bmc_account_state_capture assemble_account_state_transport is the boundary that
+// turns committed capture BYTES into the decoded values BmcSuppliedAccountStateTransport carries. Its whole
+// reason to exist (review 93275#1 / 93279, single_authority) is that a decoded field must be a PROPERTY OF
+// THE BYTES it is paired with, never an independent caller boolean -- otherwise a caller could hand the
+// reader committed bytes recording a rejected user-test beside managed_accepted: true, and the observation
+// would mint ObservedCredentialAccepted on evidence showing a rejection. These witnesses prove that: over a
+// faithful committed capture set the assembler decodes each field from its body (and the result is the
+// transport the sibling supplied-transport witness already proves mints the dry observation), and four
+// discriminating reds fire exactly when a decoded value would disagree with its bytes -- a missing
+// threshold, a rejecting user-test, an unreadable Accounts body, a census the collection does not list --
+// plus the break-glass absence carried in the type. Every capture body here is one the shared parsers accept
+// (the committed srv13 Accounts collection, the h11ssl LAN print, the mtjade1 get-access table), so the
+// decodes are a real controller's bytes, not a transcription this test invented.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Optional, Present }
+import std.content_hash { content_hash_of_value }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.bmc_secure {
+  BmcSuppliedResponse, BreakGlassTested, BreakGlassUnmaterializable,
+  BmcRedfishAccountCensusReading, BmcRedfishCensusServed, BmcRedfishAccountCensusEntry,
+}
+import gunbc.machine_intake.bmc_account_state_capture {
+  BmcAccountStateCaptures, BmcAccountStateCaptureOutcome, CapturedTransportAssembled, CapturedTransportUndecodable,
+  AccountsCollectionUndecodableWhileServed, CensusNamesDisagreeWithCollection,
+  assemble_account_state_transport,
+}
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelCensusMember, IpmiLanBadPasswordThresholdRead, IpmiLanBadPasswordThresholdNotAvailable,
+  IpmiMedium8023Lan, ipmi_lan_channel_member,
+}
+import extdeps.bmc.redfish { RedfishAccountServiceLockoutPropertiesRead }
+import extdeps.network.ipv4 { ipv4_address }
+
+// A committed capture: the evidence-store readback whose digest corresponds to the bytes. The assembler
+// never checks this (the reader does); the witness supplies committed refs so assembly proceeds.
+fn committed(read: NonEmptyStr, response: NonEmptyStr) -> BmcSuppliedResponse {
+  BmcSuppliedResponse {
+    read: read,
+    response: response,
+    evidence: EvidenceRef { label: read, digest: content_hash_of_value(value: response) },
+  }
+}
+
+fn members() -> List<IpmiChannelCensusMember> {
+  [ipmi_lan_channel_member(
+    channel: 1, medium: IpmiMedium8023Lan,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 248),
+  )]
+}
+
+// The mtjade1 read-only probe's committed `ipmitool user list 1` table (verbatim: the get-access witness
+// decodes all fifteen slots from it); root-equivalent administrator in slot 1.
+data getaccess_capture: String = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      true       ADMINISTRATOR\n2   operator           false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+
+// The srv13 first-contact committed Accounts collection body (one account, root), and the OpenBMC
+// AccountService lockout body the parsers witness decodes to a served lockout.
+data accounts_capture: String = "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts\",\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":1}"
+data account_service_capture: String = "{\"AccountLockoutThreshold\":3,\"AccountLockoutDuration\":600,\"AccountLockoutCounterResetAfter\":600,\"AccountLockoutCounterResetEnabled\":true}"
+// The h11ssl committed Get LAN Configuration Parameters print (verbatim: the four lockout parameters read
+// 3 / yes / 300 / 300; note ipmitool's key alignment, "Bad Password Threshold  :" has a double space and
+// "Invalid password disable:" none). The threshold IS present, so it decodes to a Read, not NotAvailable.
+data lan_config_capture: String = "Set in Progress         : Set Complete\nAuth Type Support       : NONE MD2 MD5 PASSWORD \nIP Address Source       : DHCP Address\nIP Address              : 192.168.1.252\nMAC Address             : ac:1f:6b:e3:f5:7b\n802.1q VLAN ID          : Disabled\nBad Password Threshold  : 3\nInvalid password disable: yes\nAttempt Count Reset Int.: 300\nUser Lockout Interval   : 300\n"
+data surface_capture: String = "{\"@odata.id\":\"/redfish/v1/\",\"Links\":{\"Sessions\":{\"@odata.id\":\"/redfish/v1/SessionService/Sessions\"}}}"
+
+fn root_census() -> BmcRedfishAccountCensusReading {
+  BmcRedfishCensusServed { accounts: [BmcRedfishAccountCensusEntry { name: "root", enabled: true, is_managed_account: true }] }
+}
+
+// THE FAITHFUL CAPTURE SET: every read's real bytes, all committed, all decodable.
+fn faithful_captures() -> BmcAccountStateCaptures {
+  BmcAccountStateCaptures {
+    channel: 1,
+    channel_members: members(),
+    redfish_census: root_census(),
+    managed_answer: committed("ipmi-user-test-managed", "check-password: ok"),
+    census_answer: committed("ipmi-get-user-access", getaccess_capture),
+    redfish_accounts_answer: committed("redfish-accounts", accounts_capture),
+    redfish_surface_answer: committed("redfish-surface", surface_capture),
+    account_service_answer: committed("redfish-account-service", account_service_capture),
+    lan_config_answer: committed("ipmi-get-lan-config", lan_config_capture),
+    break_glass_answer: Present { value: committed("ipmi-user-test-break-glass", "check-password: ok") },
+  }
+}
+
+fn assembled(captures: BmcAccountStateCaptures) -> BmcAccountStateCaptureOutcome
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "the_assembled_transport_decodes_each_field_from_its_committed_bytes"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fabricated_read"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_rejecting_managed_user_test_assembles_managed_accepted_false"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_served_redfish_with_an_unreadable_accounts_body_refuses_never_a_fabricated_census"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_census_entry_the_collection_does_not_list_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "no_break_glass_answer_assembles_unmaterializable_never_a_substituted_reference"),
+  ]
+{
+  assemble_account_state_transport(captures: captures)
+}
+
+// GREEN. Over a faithful committed capture set the assembler decodes each field FROM ITS BYTES: the managed
+// user-test marker yields accepted; the fifteen-row get-access table yields fifteen decoded rows (not a
+// hand-authored census); the LAN print that carries the threshold yields a Read; the AccountService body
+// yields a served lockout; the Redfish surface body yields served and the census survives the collection
+// tie; the break-glass answer yields an accepted test. This is the transport the sibling supplied-transport
+// witness proves mints the dry observation, so the assembled world equals the dry world's.
+test fn the_assembled_transport_decodes_each_field_from_its_committed_bytes() -> Bool {
+  match assembled(captures: faithful_captures()) {
+    CapturedTransportUndecodable { cause: _ } => false
+    CapturedTransportAssembled { transport: t } =>
+      t.managed_accepted
+        && t.redfish_surface_served
+        && t.census.user_access.length() >= 1
+        && t.census.members.length() >= 1
+        && match t.lan_threshold {
+          IpmiLanBadPasswordThresholdRead { channel: _, served: _ } => true
+          _ => false
+        }
+        && match t.account_service {
+          RedfishAccountServiceLockoutPropertiesRead { served: _ } => true
+          _ => false
+        }
+        && match t.redfish_census {
+          BmcRedfishCensusServed { accounts: a } => a.length() == 1
+          _ => false
+        }
+        && match t.break_glass {
+          BreakGlassTested { accepted: accepted, answer: _ } => accepted
+          _ => false
+        }
+  }
+}
+
+// RED (byte-vs-decoded discriminator). A Get LAN Configuration Parameters print with NO threshold line must
+// assemble to NotAvailable -- NOT a fabricated Read. If the assembler let a caller boolean decide the
+// verdict, this would carry a Read regardless of the bytes.
+test fn a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fabricated_read() -> Bool {
+  let c = faithful_captures()
+  let bare = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
+    account_service_answer: c.account_service_answer,
+    lan_config_answer: committed("ipmi-get-lan-config", "Set In Progress         : Set Complete\nAuth Type Support       : MD5\n"),
+    break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: bare) {
+    CapturedTransportUndecodable { cause: _ } => false
+    CapturedTransportAssembled { transport: t } => match t.lan_threshold {
+      IpmiLanBadPasswordThresholdNotAvailable { channel: _ } => true
+      _ => false
+    }
+  }
+}
+
+// RED (byte-vs-decoded discriminator). A managed user-test whose committed bytes record a refusal must
+// assemble managed_accepted: false -- never the caller's preferred true. The exact failure a forked
+// decoded-value/bytes pair produces.
+test fn a_rejecting_managed_user_test_assembles_managed_accepted_false() -> Bool {
+  let c = faithful_captures()
+  let rejected = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: committed("ipmi-user-test-managed", "Set User Password command failed: Invalid user name or password"),
+    census_answer: c.census_answer, redfish_accounts_answer: c.redfish_accounts_answer,
+    redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
+    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: rejected) {
+    CapturedTransportUndecodable { cause: _ } => false
+    CapturedTransportAssembled { transport: t } => !t.managed_accepted
+  }
+}
+
+// RED (fail_closed, never fabricate a census). Redfish is served but the Accounts collection body is not
+// decodable: the assembler REFUSES with the collection cause. It must not mint a census it cannot read.
+test fn a_served_redfish_with_an_unreadable_accounts_body_refuses_never_a_fabricated_census() -> Bool {
+  let c = faithful_captures()
+  let broken = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    redfish_accounts_answer: committed("redfish-accounts", "500 Internal Server Error"),
+    redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
+    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: broken) {
+    CapturedTransportUndecodable { cause: AccountsCollectionUndecodableWhileServed { detail: _ } } => true
+    _ => false
+  }
+}
+
+// RED (the census-to-collection tie). The supplied census names an account the Accounts collection body does
+// NOT list: the assembler refuses with the disagreement cause, so a read can never present a stranger's
+// account as part of the census the controller proved exists.
+test fn a_census_entry_the_collection_does_not_list_refuses() -> Bool {
+  let c = faithful_captures()
+  let stranger = BmcRedfishCensusServed { accounts: [BmcRedfishAccountCensusEntry { name: "intruder", enabled: true, is_managed_account: true }] }
+  let broken = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: stranger,
+    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
+    account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
+    break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: broken) {
+    CapturedTransportUndecodable { cause: CensusNamesDisagreeWithCollection { detail: _ } } => true
+    _ => false
+  }
+}
+
+// RED (never invent a break-glass generation). With no break-glass user-test captured, the reading is
+// Unmaterializable -- the shared-account absence is carried in the type, not substituted with a plausible
+// reference or defaulted to an accepted test.
+test fn no_break_glass_answer_assembles_unmaterializable_never_a_substituted_reference() -> Bool {
+  let c = faithful_captures()
+  let none_bg = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
+    account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
+    break_glass_answer: Absent,
+  }
+  match assembled(captures: none_bg) {
+    CapturedTransportUndecodable { cause: _ } => false
+    CapturedTransportAssembled { transport: t } => match t.break_glass {
+      BreakGlassUnmaterializable { detail: _ } => true
+      _ => false
+    }
+  }
+}
