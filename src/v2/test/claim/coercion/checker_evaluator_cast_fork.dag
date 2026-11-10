@@ -46,33 +46,32 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //
 // WHAT THE EXECUTION SAID, so the rows below are read against a measurement and not a hope. Run by the
 // remote build owner under `claim_batch --hermetic --source-root dag --source-root src/v2 --entry
-// src/v2/test/claim/coercion/checker_evaluator_cast_fork.dag` at 764ec111eed04cf8bda1624903ef43b1f44b93f4
-// (BuildBuddy invocation 551bdfa9-36d5-466b-b65f-b06e3ae28321); the full receipt is on the pull request:
+// src/v2/test/claim/coercion/checker_evaluator_cast_fork.dag` at 22f63fe69f9eb15661f259bfb3e8d618ca7bf259
+// (BuildBuddy invocation ab5507ec-f9fa-4ce6-b8c9-10ebe1a956b1): 4 pass / 5 fail, rc 1. The receipt is also on
+// the class row (dag/gunbc/recurring_failure_mode/the_checker_admits_a_cast_the_evaluator_refuses.dag) and in
+// the pull request body.
 //   lit, xref   pre=n, chk=n, cr=find_witness_reason_no_candidate -- v2's CHECKER closes #16224's population:
 //                 the crossing refuses a kernel value entering a foreign refinement before any value is
 //                 realized (the reason is emitted by v2.std.find_witness at src/v2/std/find_witness.dag:73,
 //                 reached from v2.std.coercion's evidence search at src/v2/std/coercion.dag:182), so the exact
 //                 v1 fork -- check admits, eval_cast refuses -- cannot arise in v2 at that population.
-//   ident       pre=y, chk=y, cast=y, opd=y, eop=n, er=eval_rejected_grounding_not_derived
-//   widen       pre=y, chk=y, cast=y, opd=y, eop=n, er=eval_rejected_resolved_type_mismatch
+//   ident       pre=y, chk=y, cast=y, opd=y, eop=n, eca=n, er=eval_rejected_grounding_not_derived
+//   widen       pre=y, chk=y, cast=y, opd=y, eop=n, eca=n, er=eval_rejected_resolved_type_mismatch
 //                 -- both authorities admit the crossing, and the evaluator then refuses the refined-carrier
-//                 VALUE the checker admitted. That is #16224's producer-admits/consumer-refuses pair, landing
-//                 one node before the cast, and it is what
-//                 `cecf_no_probe_is_admitted_by_the_checker_and_refused_by_the_evaluator` is written to make
-//                 red. Whether it is specifically about refined carriers, or about any value reference
-//                 through this route, is what the two route controls decide.
-//
-// WHY THE PROBES ARE CLOSED AND READ BY A DIFFERENTIAL. v2.compiler.eval's `Inputs` carries a root and
-// nothing else, so an open term's free parameter has no binder to evaluate against; a probe whose operand is
-// a parameter would refuse for a reason that is not the cast's. Each probe is therefore a closed module, and
-// each pair reads eval(cast node) AGAINST eval(operand node): the two roots differ only by the cast, so a
-// refusal that appears at the cast and not at the operand is the cast's doing, which is the class's shape.
-//
-// WHY THE PREDICATES ARE CONSTANTS. The v2 evaluator realizes no comparison, so a range predicate over Int
-// cannot be DECIDED by it -- the same reason
-// src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag and body_cast_node.dag author
-// `fn p(x: Int) -> Bool { true }`. A constant-true predicate is the honest stand-in for "the literal is in
-// range", which is the in-range case this fixture is asked to pose.
+//                 VALUE the checker admitted, at the operand the cast wraps. That is #16224's
+//                 producer-admits/consumer-refuses pair one node before the cast, and it is why
+//                 `cecf_no_probe_is_admitted_by_the_checker_and_refused_by_the_evaluator` is RED.
+//   kern_lit    pre=y, chk=y, cast=y, opd=y, eop=y, eca=y
+//   kern_ref    pre=y, chk=y, cast=y, opd=y, eop=y, eca=y
+//                 -- the route controls close the artifact question: this route DOES evaluate a cast, over a
+//                 literal and over a data reference alike. What the evaluator will not realize is specifically
+//                 a value whose node type is a refinement over a numeric Int carrier. v2 stamps Int primitives
+//                 with `integer_int_type_node()` (v2_eval_int_runtime_value at src/v2/extdeps/runtimes/
+//                 v2_evaluator.dag:205), while the acceptance gate `eval_runtime_value_acceptance_witness`
+//                 (src/v2/compiler/eval.dag:922) requires `node_equal_ignoring_provenance` between the node's
+//                 inferred resolved type and the value's resolved type -- a node typed as a refinement can
+//                 therefore never accept the value its own operand realizes. The two refusals carry DIFFERENT
+//                 reason names and each needs its own diagnosis; neither is assumed to be the other.
 
 import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.infer { infer }
