@@ -639,7 +639,11 @@ fn cecf_pre_admits(src: String) -> Bool {
 // the same carrier must stay refused. Stamping the type is the only way to ask that question without a
 // second declaration path; the gate itself is never reimplemented.
 fn cecf_value_typed_as(n: Node) -> RuntimeValue {
-  RuntimeValue { RuntimeUnit { value: RuntimeUnitValue { unit_type: n } } }
+  RuntimeUnit {
+    value: RuntimeUnitValue {
+      unit_type: n
+    }
+  }
 }
 
 fn cecf_mode_target_node() -> Optional<Node> {
