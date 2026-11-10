@@ -5,6 +5,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.network.endpoint { socket_address, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
+// mac_address is called by the ProvisionedInstall fixtures below (added by #16107's planning
+// consolidation on 2026-11-09) but its import was dropped in that pass, so this witness failed to
+// resolve on main. Restoring it lets the uniqueness claims over fleet_host_key_enrollments -- which
+// the butch row this PR adds must satisfy -- actually run.
+import extdeps.network.mac { mac_address }
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow,
   ScannedFirstContact,

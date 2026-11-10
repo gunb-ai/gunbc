@@ -24,7 +24,8 @@ import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputA
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.mac { Eui48Address }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
-import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, render_network_host }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, host_by_ipv4, render_network_host }
+import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privkey_version_segment, fleet_automation_ssh_privkey_secret }
@@ -180,6 +181,25 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAID5/OXS9/f1VdH5sOKS+RL5MDKrfGtwFtFDJDvSz+IPB",
     sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
     provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as NonEmptyStr },
+  },
+  // srv14/butch. Its address is the LAN endpoint from fleet_intent_network (192.168.1.205), NOT a
+  // DNS name: `srv14` does not resolve in DNS (butch.mynetworksettings.com does), and the brief's
+  // directive is to derive the address from the topology row rather than the bare host identity, so
+  // the SocketAddress is built host_by_ipv4, matching the shape the witness's own fixture uses.
+  // The key VALUE was read 2026-11-10 by `cat /etc/ssh/ssh_host_ed25519key.pub` on butch over an
+  // ssh session that was authenticated BY A KEY WE HOLD (the fleet-automation key, ubuntu@
+  // 192.168.1.205) — the channel authenticated on our credential, not on the presented host key,
+  // so this is not trust-on-first-use: the key's value comes off the host's own filesystem through
+  // an already-authenticated channel. That is an independent anchor (IndependentlyAnchored), the
+  // honest arm — stronger than an external ssh-keyscan, weaker than a cited reservation (none exists
+  // for butch's DHCP lease yet; a router reservation is an operator-gated step).
+  KnownHostKeyRow {
+    host: "srv14" as HostIdentity,
+    address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 205)), port: openssh_standard_port),
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICGsQWUBtO/2m0sIIe+nsQQHaeYwuAtW5P7qbY9dwvDT",
+    sha256_fingerprint: "SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc",
+    provenance: IndependentlyAnchored { authority: "2026-11-10: read butch's own /etc/ssh/ssh_host_ed25519key.pub over an ssh session authenticated by the fleet-automation key (ubuntu@192.168.1.205); key value from the host's filesystem via an already-authenticated channel, not a presented-host-key TOFU scan" as NonEmptyStr },
   },
 ]
 
