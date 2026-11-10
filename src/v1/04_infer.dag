@@ -16948,28 +16948,31 @@ fn graph_has_rest_service(modules: List<ResolvedModule>, source_indices: Map<Str
 // holds them, in the authored form `realized` is keyed by (measured: the wire row realizes under
 // its BARE name). A declared-key row seeds ITSELF -- the host reads the row at run time, so the
 // row must be realized -- plus every key it lists.
+// THE SINGLE DEMAND-SEED SOURCE FOR ALL RUNTIME READERS: each reader's keys as the reader itself
+// holds them, in the authored form `realized` is keyed by (measured: the wire row realizes under
+// its BARE name). A declared-key row seeds ITSELF -- the host reads the row at run time, so the
+// row must be realized -- plus every key it lists.
 fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   fold(runtime_key_readers, init: [], f: (acc, r) =>
     match r {
-      // The wire-contract index keys over the CATEGORY: every declared CoproductWireContract row
-      // and every row the encoding reader can find named `wire_contract`.
+      // The wire-contract index keys over the CATEGORY: every row the encoding reader can find
+      // named `wire_contract`, exactly as before the registry existed.
       WireContractShape { name: _ } =>
-        concat(acc, realization_wire_contract_shape_keys(modules: modules, source_indices: source_indices))
-      // A declared-key row seeds the keys it lists, but only when its owning module is in THIS
-      // graph -- no serving module, no reader, no owed seed.
+        concat(acc, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+      // A declared-key row seeds itself plus the keys it lists, but only when its owning module
+      // is in THIS graph -- no serving module, no reader, no owed seed.
       DeclaredKeyRow { name: _, reader_module: reader_module, row_name: row_name } =>
         match runtime_key_declared_row(modules: modules, reader_module: reader_module, row_name: row_name, source_indices: source_indices) {
-          Present { value: row } => concat(acc, runtime_key_declared_row_keys(row: row))
           Absent => acc
+          Present { value: row } => concat(acc, concat(list_push(acc: [], item: authored_name_at(source_indices: source_indices, node: row)), runtime_key_declared_row_keys(row: row)))
         }
-      // THE REST CARRIER SEEDS ITS ONE DECLARATION IDENTITY: rest_operation_result_type resolves
-      // the synthesized carrier by the bare node name `RestResult` (04_infer.dag
-      // rest_operation_result_type -> resolve_generic_use_decl(env: scope.type_env, n: carrier) with the
-      // synthesized carrier Node named \"RestResult\"); that is
-      // the ONE spelling the reader looks up, so it is the ONE spelling demanded. The home-module
-      // AND rest-service gates keep a graph without either seeding nothing extra over main.
+      // THE REST CARRIER SEEDS ITS ONE DECLARATION IDENTITY: the reader is rest_operation_result_type
+      // -> resolve_generic_use_decl(env: scope.type_env, n: carrier) with the synthesized carrier
+      // Node named "RestResult"; that bare name is the ONE spelling looked up, so it is the ONE
+      // spelling demanded. The home-module AND rest-service gates keep a graph without either
+      // seeding nothing extra over main.
       RestCarrier { name: _, home_module: home_module, carrier_type: carrier_type } =>
-        if rest_carrier_home_in_graph(modules: modules, home_module: home_module, source_indices: source_indices) && graph_has_rest_service(modules: modules, source_indices: source_indices) {
+        if rest_carrier_home_in_graph(modules: modules, reader_module: home_module, source_indices: source_indices) && graph_has_rest_service(modules: modules, source_indices: source_indices) {
           concat(acc, [carrier_type])
         } else {
           acc
@@ -16984,12 +16987,15 @@ fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: 
 fn runtime_key_reader_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
   fold(runtime_key_readers, init: [], f: (acc, r) =>
     match r {
-      // The wire-contract category's keys are the rows themselves, found by the shape test; they
-      // are realized through the category seed above, and main recorded no per-row reader edge
-      // for them -- the audit polices the category, not a hand-listed name.
-      WireContractShape { name: _ } => acc
-      DeclaredKeyRow { name: name, reader_module: _, row_name: _ } =>
-        fold(runtime_key_declared_row_edges(item: item, source_indices: source_indices), init: acc, f: (a, key) => list_push(acc: a, item: RealizationEdge { reader: name, name: key, span: item.span }))
+      // The wire instance keeps its own row-to-designated-coproduct edges, unchanged.
+      WireContractShape { name: _ } =>
+        concat(acc, realization_wire_contract_row_edges(item: item, source_indices: source_indices))
+      DeclaredKeyRow { name: name, reader_module: _, row_name: row_name } =>
+        if item.module_item_kind == ModuleItemDataValue && item.name == row_name {
+          fold(runtime_key_declared_row_keys(row: item), init: acc, f: (a, key) => list_push(acc: a, item: RealizationEdge { reader: name, name: key, span: item.span }))
+        } else {
+          acc
+        }
       RestCarrier { name: name, home_module: _, carrier_type: carrier_type } =>
         if item.module_item_kind == ModuleItemService && service_is_rest_declared(item: item, source_indices: source_indices) {
           // THE REST CARRIER IS A SERVICE-DECLARED READ: every operation rest_operation_result_type
