@@ -1,6 +1,7 @@
 module test.claim.runner.runner_capacity_plan_witness
 
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
 
 import std.logic { Bool }
 import std.nat { Nat, nat_range_inclusive }
@@ -761,4 +762,33 @@ test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
     width: 5,
     roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05"]),
   )
+}
+
+// THE FOLD COVERS EVERY ENROLLED HOST, NOT A HAND LIST. A fifth enrolled fixture host would
+// appear in the plan without any code change to the planner: the fold iterates
+// runner_executor_hosts(), and every host in that population gets either a plan entry or a
+// typed refusal. This witness proves the structural property by checking that the plan's
+// hosts + refusals cover the full runner-executor population.
+test fn plan_covers_all_runner_executor_hosts_not_just_a_fixed_pair() -> Bool {
+  let plan = runner_capacity_plan(
+    roster: incident_2026_08_06_managed_roster_fixture(),
+    receipt_for: _ => ReceiptAbsent,
+  )
+  match plan {
+    PlanReady { hosts: hs, refusals: rs } =>
+      fold(
+        runner_executor_hosts(),
+        init: true,
+        f: (acc, h) =>
+          acc && fold(
+            concat(
+              map(hs, p => p.host as String),
+              map(rs, r => r.host as String),
+            ),
+            init: false,
+            f: (found, name) => found || name == (h as String),
+          ),
+      )
+    PlanRefused { reason: _ } => false
+  }
 }
