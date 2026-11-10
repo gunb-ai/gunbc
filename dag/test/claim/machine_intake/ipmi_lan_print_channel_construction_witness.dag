@@ -1,0 +1,113 @@
+module test.claim.machine_intake.ipmi_lan_print_channel_construction_witness
+
+// WHAT THIS FILE HOLDS.
+//
+// The two readings that name the controller's own IPMI channel, one per production module, are the
+// only places in the corpus that built an IpmiChannelNumber at all. Both wrote it as a refining cast
+// (`channel: 1 as IpmiChannelNumber`), and both modules therefore resolved and then died at
+// evaluation: the checker admits an in-range Int literal cast into a range-refined carrier with no
+// diagnostic whatsoever, while the seed interpreter's eval_cast matches the target name against
+// "Float", "Int" and "String" alone (src/v1/stage0/src/v1_interpreter.rs), so a refined alias whose
+// kernel is Int falls to its refusal arm. The sanctioned construction is the bare literal in the
+// refined position -- the wall in test.claim.long.where_refinement_enforcement_witness covers record
+// fields, direct returns, data inits, call args and as-casts alike -- which is how every other
+// range-refined Int value in this corpus is built, including
+// gunbc.machine_intake.mtjade1_factory_network::mtjade1_factory_segment_prefix and
+// gunbc.spark.fabric_rail_desired::fabric_rail_prefix_length.
+//
+// WHY THE TWO READING ROWS COME FIRST. They are the falsifier for that construction, and they are
+// only falsifiable because they force the evaluation of the records that carry the cast: a row that
+// merely imported the modules would have gone green while the modules were still unevaluable, which
+// is how both of them stayed broken in silence. They agree with the source on a number the source
+// states (channel 1, the controller's channel) and with nothing else, so a construction that returns
+// any other channel -- or no channel -- cannot pass them.
+//
+// WHAT THE CENSUS ROWS BELOW ARE FOR, and what they are NOT for. They keep the refusal that the
+// repair must not lose. Dropping the cast must not turn IpmiChannelNumber into an unchecked Int: an
+// out-of-range literal still has to be refused at type check, in either spelling, which is why the
+// out-of-range pair is asserted in both the bare and the cast form, and why the in-range forms must
+// stay silent -- an admitted construction that started carrying an advisory would mean the wall had
+// moved rather than been honoured. These rows say nothing about the CLASS. The disagreement between
+// the checker and the evaluator over `as` into an Int-kernel refinement is still live and is recorded
+// on gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses; this file proves
+// the two sites, not the class, and the counts here are scoped to a class on purpose because the
+// census row set is the whole compile's, so only class-scoped counts and differentials are exact
+// (gunbc.compile_diagnostic_census).
+
+import std.types { Bool, Int, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows_of_class,
+  census_total_count
+}
+import gunbc.machine_intake.ethernet {
+  BootpPacketCapture,
+  HostInterfaceListing,
+  IpmiLanPrint,
+  InterfaceReadingProvenance
+}
+import gunbc.machine_intake.host_interface_inventory { mtjade1_bmc_link_reading }
+import gunbc.machine_intake.mtcollins1_platform_observation { mtcollins1_dedicated_bmc_lan_reading }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ONE READING OF "which channel did the operator print", total over the coproduct so a missing
+// arm cannot fall through silently: the two non-IPMI instruments have no channel, and say so with a
+// value no reading of channel 0-15 can be mistaken for.
+fn reading_channel(provenance: InterfaceReadingProvenance) -> Int {
+  match provenance.instrument {
+    IpmiLanPrint { channel: channel, output_field: _ } => channel as Int
+    BootpPacketCapture { fields: _ } => 0 - 1
+    HostInterfaceListing { commands: _ } => 0 - 1
+  }
+}
+
+test fn mtjade1_bmc_link_reading_names_the_controller_channel() -> Bool {
+  reading_channel(provenance: mtjade1_bmc_link_reading) == 1
+}
+
+test fn mtcollins1_dedicated_bmc_lan_reading_names_the_controller_channel() -> Bool {
+  reading_channel(provenance: mtcollins1_dedicated_bmc_lan_reading) == 1
+}
+
+// THE REFUSAL THE REPAIR MUST NOT LOSE. Every source below shares one closure, so the pairs are read
+// against each other: the in-range spellings must add no blocking TypeMismatch row, the out-of-range
+// spellings must add one.
+data ipmi_probe_header: String = "module ipmi_channel_construction_probe\nimport extdeps.bmc.ipmi_channel { IpmiChannelNumber }\n"
+
+data probe_bare_in_range_source: String = concat(ipmi_probe_header, "type ProbeReading { channel: IpmiChannelNumber }\nfn probe_reading() -> ProbeReading { ProbeReading { channel: 1 } }\n")
+data probe_bare_out_of_range_source: String = concat(ipmi_probe_header, "type ProbeReading { channel: IpmiChannelNumber }\nfn probe_reading() -> ProbeReading { ProbeReading { channel: 16 } }\n")
+data probe_cast_in_range_source: String = concat(ipmi_probe_header, "type ProbeReading { channel: IpmiChannelNumber }\nfn probe_reading() -> ProbeReading { ProbeReading { channel: 1 as IpmiChannelNumber } }\n")
+data probe_cast_out_of_range_source: String = concat(ipmi_probe_header, "type ProbeReading { channel: IpmiChannelNumber }\nfn probe_reading() -> ProbeReading { ProbeReading { channel: 16 as IpmiChannelNumber } }\n")
+// A value that is already on the carrier casts by identity and must stay silent, so the in-range
+// rows above cannot be passed by an over-broad refusal.
+data probe_identity_source: String = concat(ipmi_probe_header, "fn probe_channel() -> IpmiChannelNumber { probe_channel_as_is() }\nfn probe_channel_as_is() -> IpmiChannelNumber { probe_channel_as_is() as IpmiChannelNumber }\n")
+
+fn blocking_type_mismatch_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "TypeMismatch"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn bare_in_range_literal_in_a_channel_field_is_admitted() -> Bool {
+  blocking_type_mismatch_count(source: probe_bare_in_range_source) == 0
+}
+
+test fn bare_out_of_range_literal_in_a_channel_field_is_refused() -> Bool {
+  blocking_type_mismatch_count(source: probe_bare_out_of_range_source) >= 1
+}
+
+test fn in_range_cast_into_a_channel_field_is_admitted_by_the_checker() -> Bool {
+  blocking_type_mismatch_count(source: probe_cast_in_range_source) == 0
+}
+
+test fn out_of_range_cast_into_a_channel_field_is_refused() -> Bool {
+  blocking_type_mismatch_count(source: probe_cast_out_of_range_source) >= 1
+}
+
+test fn a_value_already_on_the_carrier_casts_by_identity() -> Bool {
+  blocking_type_mismatch_count(source: probe_identity_source) == 0
+}
