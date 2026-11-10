@@ -120,3 +120,9 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - PARKED, UNMERGED: branch field-default-path2-jwt-default-binds @ 378a917a790 (off 4a4f790d). It holds (a) input_digest in the RestReplayExchangeAbsent reason and (b) field_default_jwt_path_binds_default.dag, a permanent hermetic witness for the default bind; (b) depends on (a). Ship it if a regression witness is wanted. If the dashboard auto-opens a PR for it, close it with a pointer here.
 - UNOWNED: path 3 (the type layer's parameter_default_emissions types an omitted default in the call site's scope).
 - gunbc run cannot resolve rest_exchange_resolution ("has no body"); these claims run only via claim_batch.
+
+## Cast class closed (zesty-ferret-621; #16215 fe53b150 + #16224 9443e64f)
+- DONE: v1 validate_cast refuses Int/Nat into numeric int-predicate refinements with the typed RefinementCastRefused, identity keyed on DeclarationRef. Fork 4/4; router_proxy_config 1/9 to 9/9.
+- UNOWNED, v2 sibling: src/v2/compiler/infer.dag validate_cast may carry the same fork, UNTESTED. Trigger: a v2 witness shows it red.
+- RESIDUE (class rung stays Mitigatable/BelowCeiling): non-int-predicate refinements (NonEmptyStr, PciDeviceId, Sha256DigestHex) are eval-decided; casts outside dag_cast_rules are eval-decided; eval_cast's one-table std.coercion trigger is unbuilt.
+- BOOTSTRAP RECIPE (reusable): a new CompilerDiagnostic variant consumed by hand-Rust (compile_clean.rs) deadlocks heal with E0599. Break it with ONE operator-granted regen push: quick-newt-573 regenerates, blob shas are verified after base64 rc0 + gunzip rc0, and heal must reproduce it byte-identically (no bot commit).
