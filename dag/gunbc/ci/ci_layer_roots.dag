@@ -1298,6 +1298,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "roadmap_belt_exit_spool_times_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "worker_git_subtree_builder_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_argv_execution_reason,
