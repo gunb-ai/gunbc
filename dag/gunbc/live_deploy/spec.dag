@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
-import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
+import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count, ByteSize, byte_size_count }
 import std.os.types { OsPackageManager }
 import std.optional { Present, Absent }
 import extdeps.package_managers.apt {
@@ -706,11 +706,28 @@ fn declared_deployment_system_slice_row() -> DeclaredSliceMemoryMax {
   }
 }
 
-// THE census gunbc.compute.unit_bounds recognized_system_slice reads: the fleet-wide rows slice_bounds
-// declares, plus the derived deployment-slice row. A census that hand-typed the deployment slice would
-// drift the moment the deployment was renamed; composing it here keeps the name single-sourced.
+// THE census: the single answer to "which system slices are capped, and by how much". Both
+// gunbc.compute.unit_bounds recognized_system_slice and modeled_system_slice_memory_max below read it,
+// so they cannot disagree. It is the fleet-wide rows slice_bounds declares, plus the derived
+// deployment-slice row. A census that hand-typed the deployment slice would drift the moment the
+// deployment was renamed; composing it here keeps the name single-sourced.
 fn declared_system_slice_memory_maxes_including_deployment() -> List<DeclaredSliceMemoryMax> {
   concat(declared_system_slice_memory_maxes(), [declared_deployment_system_slice_row()])
+}
+
+// THE lookup over THE census. This replaces the old slice_bounds-side lookup of the same name, which
+// read only the fleet roster and so answered Absent for the deployment slice -- a second, disagreeing
+// answer to "is this a capped system slice" (DESIGN single_authority). Read from here it sees the same
+// rows recognized_system_slice does. It lives in spec, not in the slice_bounds leaf, because the census
+// needs spec's deployment naming and slice_bounds cannot import spec (spec imports slice_bounds).
+fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
+  match (
+    declared_system_slice_memory_maxes_including_deployment()
+      |> filter(row => (row.unit as String) == unit && byte_size_count(b: row.memory_max) > 0)
+  ).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.memory_max }
+  }
 }
 
 fn deployment_slice_unit_path(names: DeploymentNames) -> NonEmptyStr {

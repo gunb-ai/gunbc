@@ -156,7 +156,9 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // ExemptSystemUnit skips only when a cgroup path segment is a recognized slice
 // AND that slice's live memory.max is finite (live_modeled_slice_standing), carrying
 // the local bound. recognized_system_slice is a name census: sessions.slice plus
-// units whose declared memory_max is positive (modeled_system_slice_memory_max).
+// units whose declared memory_max is positive in the single census, gunbc.live_deploy.spec
+// declared_system_slice_memory_maxes_including_deployment (modeled_system_slice_memory_max reads that
+// same census, so recognition and the cap can no longer disagree).
 // Those declared magnitudes are not the skip bound; skip vs UncappedSystemSlice
 // is only the live memory.max. Unreadable, unbounded, or zero live memory.max
 // refuses UncappedSystemSlice.

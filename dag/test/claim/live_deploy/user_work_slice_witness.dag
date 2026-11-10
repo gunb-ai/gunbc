@@ -22,7 +22,7 @@ import gunbc.live_deploy.slice_bounds {
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
   repository_convergence_slice_memory_max, repository_convergence_slice_unit_name,
   fci1_controls_slice_unit_name, fci1_controls_slice_memory_max, fci1_controls_slice_memory_high, fci1_controls_slice_memory_swap_max,
-  declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
+  declared_system_slice_memory_maxes,
   attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
 }
 import gunbc.live_deploy.srv1_worker_slice_receipt { PeakBoundHolds, PeakBoundExceeded, attempt_worker_concurrent_peak_check, user_work_cgroup_peak_check, broker_peak_fits }
@@ -87,6 +87,7 @@ import gunbc.live_deploy.spec {
   srv1_live_deployment_names, deployment_slice_unit_name,
   deployment_belt_exit_drain_service_unit_name,
   declared_system_slice_memory_maxes_including_deployment,
+  modeled_system_slice_memory_max,
 }
 import gunbc.live_deploy.slice_bounds { live_deploy_slice_memory_max }
 
