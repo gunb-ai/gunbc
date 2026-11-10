@@ -121,6 +121,9 @@ import gunbc.fleet.site_pxe_edge_converge {
   VerifiedMediaSource,
   site_pxe_edge_fallback_grub_cfg,
   site_pxe_edge_grub_mac_path,
+  site_pxe_edge_stale_install_paths,
+  StaleInstallFilesNone, StaleInstallFilesFound, StaleInstallFilesUnobservable,
+  StaleRemoved, StaleLeftObserveOnly, StaleRemovalRefused,
   SitePxeEdgeInstallBinding,
   SitePxeEdgeInstallStanding,
   InstallAdmitted,
@@ -459,6 +462,7 @@ fn observe_run_with_unit(chains: List<SitePxeEdgeChainStanding>, causes: List<Si
     installs: [],
     placement: PlacementNotNeeded,
     files: [],
+    stale_install_files: StaleInstallFilesNone,
     activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
     unit_active: unit_active,
     post_activation: PostActivationNotRead { reason: "observe-only" },
@@ -475,6 +479,7 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
     installs: [],
     placement: PlacementNotNeeded,
     files: [],
+    stale_install_files: StaleInstallFilesNone,
     activation: SitePxeEdgeProbeHeld,
     unit_active: SitePxeEdgeProbeHeld,
     post_activation: post,
@@ -1169,8 +1174,8 @@ test fn the_listener_poll_retries_only_absent_and_stops_at_its_budget() -> Bool 
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
 test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   !site_pxe_edge_run_succeeded(run: wildcard) && site_pxe_edge_run_succeeded(run: bound)
 }
 
@@ -1178,7 +1183,7 @@ test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
 // reason, and an apply whose probe was unobservable is not converged either.
 test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
   !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
 }
 
@@ -1186,8 +1191,8 @@ test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Boo
 // line holding, because the one failing term was never rendered. Each listener arm prints its own finding.
 test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   contains(site_pxe_edge_run_text(run: other), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
     && contains(site_pxe_edge_run_text(run: bound), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
     && contains(site_pxe_edge_run_text(run: base), "\nhttp=not-needed\n")
@@ -1207,8 +1212,8 @@ test fn the_net_seed_token_is_built_once_and_quoted_by_grub() -> Bool {
 // AN APPLY WHOSE PLACEMENT REFUSED IS NOT CONVERGED, whatever else held.
 test fn an_apply_whose_placement_refused_is_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
-  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, stale_install_files: base.stale_install_files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
   !site_pxe_edge_run_succeeded(run: refused) && site_pxe_edge_run_succeeded(run: placed)
 }
 
@@ -1368,4 +1373,50 @@ test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -
             && contains(cfg.content, concat(concat("dhcp-host=", srv15_host_nic_mac as String), ",set:onboarding-known"))
       }
   }
+}
+
+// A WITHDRAWN INSTALL IS REMOVED FROM DISK, NOT ONLY FROM THE MODEL. Over a listing of the served tree, the stale set is
+// exactly the owned install files no admitted binding renders: a withdrawn host's grub/install/<mac>.cfg and seed
+// documents, and every legacy grub.cfg-01-<mac> the signed GRUB never read. The admitted binding's own files and the
+// chain members (grub/grub.cfg, the loaders) are never stale. Treating an owned path as unowned, or a desired file as
+// stale, turns this red.
+test fn a_withdrawn_install_and_the_legacy_per_mac_files_are_stale() -> Bool {
+  with_binding(mac: x86_mac, claim: b => {
+    let desired = install_files_of(b: b, image: servable_image())
+    let kept = map(desired, f => f.path as String)
+    let withdrawn = [
+      "/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg",
+      "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/user-data",
+      "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/meta-data",
+      "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63",
+    ]
+    let chain = [
+      "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg",
+      "/srv/gunbc-site-pxe-edge/tftp/bootaa64.efi",
+      "/srv/gunbc-site-pxe-edge/http/iso/ubuntu-24.04.3-live-server-arm64.iso",
+    ]
+    site_pxe_edge_stale_install_paths(listed: kept + withdrawn + chain, desired: desired) == withdrawn
+      && site_pxe_edge_stale_install_paths(listed: kept + chain, desired: desired) == []
+  })
+}
+
+// APPLY IS NOT DONE WHILE A STALE INSTALL FILE SURVIVES. An apply run whose stale files were removed succeeds; one
+// that left them (or whose removal was refused, or whose listing could not be read) refuses, and an observe run that
+// could not read the listing refuses rather than reporting nothing stale.
+test fn a_surviving_stale_install_file_refuses_the_apply() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let stale = ["/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg"]
+  let removed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemoved }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let left = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleLeftObserveOnly }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale, outcome: StaleRemovalRefused { path: "/srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:9c.cfg", reason: "rm exit=1" } }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let observe = observe_run(chains: [], causes: [])
+  let observe_blind = SitePxeEdgeRun { mode: observe.mode, package: observe.package, chains: observe.chains, gate_causes: observe.gate_causes, installs: observe.installs, placement: observe.placement, files: observe.files, stale_install_files: StaleInstallFilesUnobservable { reason: "find exit=1" }, activation: observe.activation, unit_active: observe.unit_active, post_activation: observe.post_activation, http: observe.http }
+  site_pxe_edge_run_succeeded(run: base)
+    && site_pxe_edge_run_succeeded(run: removed)
+    && !site_pxe_edge_run_succeeded(run: left)
+    && !site_pxe_edge_run_succeeded(run: refused)
+    && !site_pxe_edge_run_succeeded(run: blind)
+    && site_pxe_edge_run_succeeded(run: observe)
+    && !site_pxe_edge_run_succeeded(run: observe_blind)
 }

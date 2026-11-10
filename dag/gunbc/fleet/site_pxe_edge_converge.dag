@@ -1859,6 +1859,7 @@ type SitePxeEdgeRun {
   installs: List<SitePxeEdgeInstallStanding>
   placement: SitePxeEdgePlacementOutcome
   files: List<SitePxeEdgeFileResult>
+  stale_install_files: SitePxeEdgeStaleStanding
   activation: SitePxeEdgeProbe
   unit_active: SitePxeEdgeProbe
   post_activation: SitePxeEdgePostActivation
@@ -2223,6 +2224,95 @@ fn site_pxe_edge_placement_wire(placement: SitePxeEdgePlacementOutcome) -> Strin
   }
 }
 
+// THE INSTALL SURFACE THIS EDGE OWNS, AND WHAT A WITHDRAWAL MUST REMOVE FROM IT. Writing the desired files is
+// not enough to withdraw an install: a binding dropped from site_pxe_edge_install_requests leaves its served files
+// behind, and an install file left on disk is a standing authorization to erase whichever client reaches it. So
+// the edge owns three paths outright -- grub/install/ (the per-host configurations the entry grub.cfg loads),
+// grub/grub.cfg-01-* (the per-MAC names the signed GRUB never read, left by every run before 2026-11-10) and the
+// HTTP seed/ tree -- and every file under them that no admitted binding renders is stale. Apply removes each one,
+// whatever the gate says, because removing an install can only make the edge less destructive; observe reports
+// them. A listing that cannot be read is unobservable and fails the run, never "nothing stale".
+type SitePxeEdgeStaleOutcome
+  = StaleLeftObserveOnly
+  | StaleRemoved
+  | StaleRemovalRefused { path: String, reason: String }
+
+type SitePxeEdgeStaleStanding
+  = StaleInstallFilesUnobservable { reason: String }
+  | StaleInstallFilesNone
+  | StaleInstallFilesFound { paths: List<String>, outcome: SitePxeEdgeStaleOutcome }
+
+fn site_pxe_edge_owned_install_path(path: String) -> Bool {
+  starts_with(s: path, prefix: join([site_pxe_edge_tftp_root as String, "/grub/install/"], ""))
+    || starts_with(s: path, prefix: join([site_pxe_edge_tftp_root as String, "/grub/grub.cfg-01-"], ""))
+    || starts_with(s: path, prefix: join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_root], ""))
+}
+
+// The stale set as a pure fold over a listing, so the withdrawal is decidable from supplied values: every owned
+// path the listing names that no desired file renders.
+fn site_pxe_edge_stale_install_paths(listed: List<String>, desired: List<SitePxeEdgeFile>) -> List<String> {
+  filter(listed, p => site_pxe_edge_owned_install_path(path: p) && !any(desired, f => (f.path as String) == p))
+}
+
+fn site_pxe_edge_listing_paths(stdout: String) -> List<String> {
+  filter(map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), l => l != "")
+}
+
+fn site_pxe_edge_remove_stale(target: SshTarget, context: FleetSshExecutionContext, paths: List<String>) -> SitePxeEdgeStaleOutcome {
+  match paths.first() {
+    Absent => StaleRemoved
+    Present { value: p } =>
+      match site_pxe_edge_posix_leg(target: target, context: context, argv: ["rm", "-f", "--", p], step: "rm stale install file") {
+        Present { value: why } => StaleRemovalRefused { path: p, reason: why }
+        Absent => site_pxe_edge_remove_stale(target: target, context: context, paths: skip(xs: paths, n: 1))
+      }
+  }
+}
+
+// The served root may not exist on an edge that never ran; that is nothing stale, read as such by a second probe,
+// not assumed from find's failure.
+fn site_pxe_edge_stale_install_files(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode, desired: List<SitePxeEdgeFile>) -> SitePxeEdgeStaleStanding {
+  let root = path_parent_directory(path: site_pxe_edge_tftp_root as String)
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: ["find", root, "-type", "f"])) {
+    TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        let stale = site_pxe_edge_stale_install_paths(listed: site_pxe_edge_listing_paths(stdout: r.stdout), desired: desired)
+        if length(stale) == 0 {
+          StaleInstallFilesNone
+        } else {
+          StaleInstallFilesFound {
+            paths: stale,
+            outcome: match mode {
+              SitePxeEdgeObserveOnly => StaleLeftObserveOnly
+              SitePxeEdgeApply => site_pxe_edge_remove_stale(target: target, context: context, paths: stale)
+            },
+          }
+        }
+      } else {
+        match site_pxe_edge_posix_leg(target: target, context: context, argv: ["test", "-d", root], step: "test -d served root") {
+          Present { value: _ } => StaleInstallFilesNone
+          Absent => StaleInstallFilesUnobservable { reason: join(["find exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+        }
+      }
+  }
+}
+
+fn site_pxe_edge_stale_wire(standing: SitePxeEdgeStaleStanding) -> String {
+  match standing {
+    StaleInstallFilesUnobservable { reason: r } => join(["unobservable: ", r], "")
+    StaleInstallFilesNone => "none"
+    StaleInstallFilesFound { paths: ps, outcome: o } => join([
+      match o {
+        StaleLeftObserveOnly => "found (observe-only): "
+        StaleRemoved => "removed: "
+        StaleRemovalRefused { path: p, reason: why } => join(["removal refused at ", p, " (", why, "): "], "")
+      },
+      join(ps, " "),
+    ], "")
+  }
+}
+
 fn site_pxe_edge_file_results(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -2307,6 +2397,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
     }
   }
   let results = site_pxe_edge_file_results(target: target, context: context, mode: mode, gate_open: length(causes) == 0, files: files)
+  let stale = site_pxe_edge_stale_install_files(target: target, context: context, mode: mode, desired: files)
   let activation = match mode {
     SitePxeEdgeObserveOnly => SitePxeEdgeProbeNotAttempted { reason: "observe-only" }
     SitePxeEdgeApply =>
@@ -2358,10 +2449,23 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
     installs: installs,
     placement: placement,
     files: results,
+    stale_install_files: stale,
     activation: activation,
     unit_active: unit_active,
     post_activation: post_activation,
     http: http,
+  }
+}
+
+fn site_pxe_edge_stale_settled(standing: SitePxeEdgeStaleStanding) -> Bool {
+  match standing {
+    StaleInstallFilesUnobservable { reason: _ } => false
+    StaleInstallFilesNone => true
+    StaleInstallFilesFound { paths: _, outcome: o } => match o {
+      StaleRemoved => true
+      StaleLeftObserveOnly => false
+      StaleRemovalRefused { path: _, reason: _ } => false
+    }
   }
 }
 
@@ -2385,6 +2489,7 @@ fn site_pxe_edge_run_succeeded(run: SitePxeEdgeRun) -> Bool {
           PackageNotAttempted { reason: _ } => true
         })
         && site_pxe_edge_probe_observable(probe: run.unit_active)
+        && (match run.stale_install_files { StaleInstallFilesUnobservable { reason: _ } => false StaleInstallFilesNone => true StaleInstallFilesFound { paths: _, outcome: _ } => true })
         && !any(run.files, r => match r.before {
           EdgeFileUnobservable { reason: _ } => true
           EdgeFileIdentical => false
@@ -2395,6 +2500,7 @@ fn site_pxe_edge_run_succeeded(run: SitePxeEdgeRun) -> Bool {
       length(run.gate_causes) == 0
         && site_pxe_edge_package_outcome_settled(outcome: run.package)
         && all(run.files, r => site_pxe_edge_file_outcome_settled(outcome: r.outcome))
+        && site_pxe_edge_stale_settled(standing: run.stale_install_files)
         && site_pxe_edge_probe_held(probe: run.activation)
         && site_pxe_edge_probe_held(probe: run.unit_active)
         && (match run.placement {
@@ -2495,6 +2601,7 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
     join(map(run.chains, st => site_pxe_edge_chain_standing_text(standing: st)), ""),
     join(map(run.gate_causes, c => join(["gate-closed ", site_pxe_edge_gate_cause_text(cause: c), "\n"], "")), ""),
     join(map(run.files, r => join(["file ", r.file.subject as String, " path=", r.file.path as String, " before=", site_pxe_edge_file_standing_wire(standing: r.before), " outcome=", site_pxe_edge_file_outcome_wire(outcome: r.outcome), "\n"], "")), ""),
+    "stale-install-files=", site_pxe_edge_stale_wire(standing: run.stale_install_files), "\n",
     "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
     "unit-active=", site_pxe_edge_probe_wire(probe: run.unit_active), "\n",
     "post-activation-members=", site_pxe_edge_post_activation_wire(post: run.post_activation), "\n",
