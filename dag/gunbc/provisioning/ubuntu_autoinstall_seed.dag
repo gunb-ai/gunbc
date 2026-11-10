@@ -1618,6 +1618,15 @@ type SeedAddressFamily = DualStack | Ipv4Only
 // enumeration order is not identity, and on a multi-controller board it is not even stable across a
 // reboot. A future requirement (select by NVMe namespace, by subsystem NQN) adds a member with its own
 // probe-observable identity; it does not add a name.
+//
+// ITS NEIGHBOUR, RECORDED FROM BOTH SIDES: gunbc.provisioning.install_target_disk admits ONE reported disk reading
+// against a clock to authorize ONE actuation (a PXE install about to erase that disk) and renders upstream's
+// storage.layout.match keys. Two questions, not two spellings of one: this rule needs the population and carries no
+// instant; that admission needs the instant and has no population to count. The shared root — an identity-bearing
+// disk observation admitted before an erasure — is registered as
+// install_target_disk_binds_a_disk_beside_the_seed_selector in gunbc.integration_concern, whose trigger is PXE 2c,
+// the first run holding both halves. Until that revision neither side grows the other's question, and this route
+// stays sealed to select_target_disk rather than gaining a caller that would have to fabricate a population.
 type TargetDiskSelector =
     ByObservedSerial { serial: NonEmptyStr }
   | ByCatalogIdentity { part_number: NonEmptyStr, capacity_bytes: ByteSize }
