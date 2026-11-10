@@ -28,7 +28,7 @@ import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
   ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear,
 }
-import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_stderr_completion }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_stderr_completion, ipmitool_raw_refusal_stderr }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_valid_after_bootdev_none }
 import gunbc.bmc_model { BmcWorld, bmc_world, BmcPowerOff, bmc_with_override, BootOverrideNone, BootOverrideCdromEfiNextBoot }
 import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, bmc_ipmi_operation, BmcReplied, BmcRefused, BmcReplyFault }
@@ -129,4 +129,15 @@ test fn the_real_clear_is_the_parameters_length_and_clears_the_override() -> Boo
     _ => false
   }
   && boot_param5_clear_write_of(success: true, exit_code: 0, stderr: "") == ClearWriteAccepted
+}
+
+// THE PARSE READS WHAT THE RENDERING WRITES, AT BOTH WIDTHS. ipmitool prints the code with "%x", unpadded, so a
+// code under 0x10 is one digit. Round trip through the one rendering and the one parse, at a two-digit code
+// (0xC7) and a one-digit one (0x8), and the bare one-digit line as ipmitool would print it. RED for the
+// two-character read this replaced: it answers Absent for the one-digit lines.
+test fn the_refusal_code_round_trips_at_one_and_two_digits() -> Bool {
+  ipmitool_raw_stderr_completion(stderr: ipmitool_raw_refusal_stderr(netfn: 0, cmd: 8, completion: 199, completion_name: "Request data length invalid")) == Present { value: 199 }
+    && ipmitool_raw_stderr_completion(stderr: ipmitool_raw_refusal_stderr(netfn: 0, cmd: 8, completion: 8, completion_name: "x")) == Present { value: 8 }
+    && ipmitool_raw_stderr_completion(stderr: "Unable to send RAW command (channel=0x0 netfn=0x0 lun=0x0 cmd=0x8 rsp=0x8): x") == Present { value: 8 }
+    && ipmitool_raw_stderr_completion(stderr: "Unable to send RAW command (channel=0x0 netfn=0x0 lun=0x0 cmd=0x8)") == Absent
 }

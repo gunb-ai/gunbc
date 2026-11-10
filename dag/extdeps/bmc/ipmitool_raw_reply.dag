@@ -79,12 +79,19 @@ fn ipmitool_raw_byte_report(n: Int) -> String {
 // refusal, the same for every raw command -- which is why this parse lives here, once, and not per command.
 
 // The completion code ipmitool names on stderr ("rsp=0xc7"), when it names one. Absent means the command was
-// not answered with a code (a transport failure, a timeout), never that it succeeded.
+// not answered with a code (a transport failure, a timeout), never that it succeeded. The code is printed with
+// "%x" -- UNPADDED (ipmitool_raw_hex_unpadded below) -- so a code under 0x10 is ONE digit ("rsp=0x8): ..."):
+// two hex digits are read when two are there, else one. An earlier copy always read two characters, which
+// turned a one-digit code into "no code" (review 92729).
 fn ipmitool_raw_stderr_completion(stderr: String) -> Int? {
   let parts = split(s: stderr, delimiter: "rsp=0x")
   if count(parts) < 2 { none } else {
     let rest = match parts.skip(n: 1).first() { Absent => "" Present { value: r } => r }
-    if rest.length() < 2 { none } else { ipmitool_raw_byte_value(t: substring(s: rest, start: 0, end: 2)) }
+    let two = if rest.length() >= 2 { base16_word_value(word: substring(s: rest, start: 0, end: 2), max_digits: 2) } else { none }
+    match two {
+      Present { value: v } => Present { value: v }
+      Absent => if rest.length() >= 1 { base16_word_value(word: substring(s: rest, start: 0, end: 1), max_digits: 1) } else { none }
+    }
   }
 }
 
