@@ -13,7 +13,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv14, operator_host_srv15, operator_host_srv16,
   operator_host_183527, operator_host_3dde7f, operator_host_6ce85c,
 }
-import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv15_baseboard }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv14_baseboard, srv15_baseboard }
 
 // WHICH BOARD EACH MACHINE IN THE ROSTER CARRIES, for every member of
 // gunbc.fleet.fleet_host_identity operator_hosts, enrolled or not. Naming is not enrollment, and
@@ -77,7 +77,7 @@ data machine_board_rows: List<MachineBoardRow> = [
   uncatalogued(host: operator_host_srv10, board: "NVIDIA DGX Spark"),
   uncatalogued(host: operator_host_srv11, board: "NVIDIA DGX Spark"),
   uncatalogued(host: operator_host_srv12, board: "NVIDIA DGX Spark"),
-  identity_stated_board(host: operator_host_srv14, decl_name: "operator_host_srv14", catalog: asrock_altrad8ud_1l2t_catalog),
+  fleet_intent_board(host: operator_host_srv14, decl_name: "srv14_baseboard", catalog: srv14_baseboard.catalog),
   fleet_intent_board(host: operator_host_srv15, decl_name: "srv15_baseboard", catalog: srv15_baseboard.catalog),
   identity_stated_board(host: operator_host_srv16, decl_name: "operator_host_srv16", catalog: asrock_altrad8ud_1l2t_catalog),
   provider_owned(host: operator_host_183527),
