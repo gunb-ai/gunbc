@@ -43,7 +43,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, NotAModuleItem, ParsedModuleItemKind, declaration_provenance_of,
+import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, NotAModuleItem, ParsedModuleItemKind, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -16826,12 +16826,112 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
       }
     }
   }
-  if reader == "" { [] } else {
-    match rhs {
-      Absent => []
-      Present { value: r } => fold(realization_read_names(n: r, source_indices: source_indices), init: [], f: (acc, nm) =>
-        list_push(acc: acc, item: RealizationEdge { reader: reader, name: nm, span: item.span }))
+  concat(realization_wire_contract_row_edges(item: item, source_indices: source_indices),
+    if reader == "" { [] } else {
+      match rhs {
+        Absent => []
+        Present { value: r } => fold(realization_read_names(n: r, source_indices: source_indices), init: [], f: (acc, nm) =>
+          list_push(acc: acc, item: RealizationEdge { reader: reader, name: nm, span: item.span }))
+      }
+    })
+}
+
+// THE ROWS THE RESPONSE DECODE READS BY KEY, AND THE KEY IT READS. A JSON body decodes into a declared
+// type only through rows the declaring type does NOT spell: the interpreter's
+// build_coproduct_wire_contract_index (src/v1/stage0/src/v1_interpreter.rs) selects a coproduct's wire
+// spelling by matching EACH `CoproductWireContract` row's own `coproduct` DeclarationRef against the
+// coproduct's (module path, authored name), and resolve_module_encoding finds a module's default by the
+// data item named `wire_contract`, following an alias chain. Nothing in the declaring type's row names
+// either row: the contract lives in a sibling `_contracts` module that the type's module merely IMPORTS,
+// and an import is not a use. So the key is in no inventory -- neither spelled, nor a reader family's
+// declared edge, nor re-derivable from the typed form -- which is exactly the case
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag recorded as "no such read is
+// known". It is known now: with these rows excluded the index comes up empty, decode_nullary_coproduct
+// answers NoWireContract (v1_interpreter.rs), and the heal publisher's github.Pulls.Get printed
+// 'status 200 undecodable' for every PR it read. The class enters the way every other reading check
+// does: the CATEGORY the reader keys over is seeded, because no declaration can name it, and the key read
+// each row performs -- its own `coproduct` DeclarationRef -- is a declared edge, so growth follows it and
+// the boundary audit polices it. The category is the reader's own key set, not a list of names this file
+// wants: every data row whose declared type is `CoproductWireContract`, and every data row the reader can
+// find under the name `wire_contract`.
+fn realization_wire_contract_read_row(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if item.module_item_kind != ModuleItemDataValue {
+    false
+  } else if item.name == "wire_contract" {
+    true
+  } else {
+    match item.type_annotation {
+      Present { value: ta } =>
+        realization_last_segment(
+          name: authored_name_at(source_indices: source_indices, node: ta),
+          pos: 0,
+          length: string_length(s: authored_name_at(source_indices: source_indices, node: ta)))
+          == "CoproductWireContract"
+        && match item.body {
+             Present { value: body } =>
+               realization_record_field_value(record: body, field_name: "coproduct", source_indices: source_indices) != none
+               && realization_record_field_value(record: body, field_name: "encoding", source_indices: source_indices) != none
+             Absent => false
+           }
+      Absent => false
     }
+  }
+}
+
+// The rows of that category, by the closure's own authored names: seeds of the demanded set, because the
+// only thing that could name them is a reader that holds its key in another module's row.
+fn realization_wire_contract_read_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  fold(modules, init: [], f: (acc, m) =>
+    fold(module_items(n: m.module), init: acc, f: (a, item) =>
+      if !realization_wire_contract_read_row(item: item, source_indices: source_indices) { a }
+      else { list_push(acc: a, item: authored_name_at(source_indices: source_indices, node: item)) }))
+}
+
+// THE KEY READ THE ROW PERFORMS. A contract row IS a lookup key the interpreter holds: its `coproduct`
+// DeclarationRef designates the coproduct whose wire spelling it declares. The row names that
+// declaration by no lexeme of its own that the type reader walks, so the edge is declared here, named the
+// way the reader matches it (the DeclarationRef's `decl_name`, the segment it compares): a row whose key
+// designates a declaration this run did not realize then refuses at check time under reader
+// `wire_contract_index`, instead of leaving the run to answer 'no such coproduct' at the first body that
+// reaches it. A module's `wire_contract` default row carries no `coproduct` field and owes nothing: what
+// it decodes is decided by which module asks.
+fn realization_wire_contract_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  if !realization_wire_contract_read_row(item: item, source_indices: source_indices) { [] }
+  else {
+    match realization_wire_contract_row_target(item: item, source_indices: source_indices) {
+      Absent => []
+      Present { value: target } => list_push([], RealizationEdge { reader: "wire_contract_index", name: target, span: item.span })
+    }
+  }
+}
+
+// The coproduct a contract row designates: the `decl_name` of its body's `coproduct` DeclarationRef, read
+// the way the emitter reads the same field (v1.compiler.emit_rust coproduct_decl_ref_decl_name, whose
+// field_value_by_name / record_string_field idiom is reproduced here because 05_emit_rust sits downstream
+// of this file and its helpers cannot be imported upstream).
+fn realization_wire_contract_row_target(item: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match item.body {
+    Present { value: body } => match realization_record_field_value(record: body, field_name: "coproduct", source_indices: source_indices) {
+      Present { value: decl_ref_node } => realization_record_string_field(record: decl_ref_node, field_name: "decl_name", source_indices: source_indices)
+      Absent => none
+    }
+    Absent => none
+  }
+}
+
+// One field-init of a record body, by the name the parser recorded for it (the emitter's field_value_by_name).
+fn realization_record_field_value(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field_name) |> first {
+    Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+    Absent => none
+  }
+}
+
+// A record field that must be a string literal, read as the emitter reads it (record_string_field).
+fn realization_record_string_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match realization_record_field_value(record: record, field_name: field_name, source_indices: source_indices) {
+    Present { value: n } => expr_literal_string_optional(expr: n)
+    Absent => none
   }
 }
 
@@ -16922,7 +17022,8 @@ fn realization_names(modules: List<ResolvedModule>, seeds: List<String>, source_
   let declaration_index = fold(items, init: empty_map(), f: (idx, item) =>
     let nm = authored_name_at(source_indices: source_indices, node: item)
     map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item)))
-  let seeded = fold(seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let demand_seeds = concat(seeds, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+  let seeded = fold(demand_seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let first = fold(map_keys(seeded), init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, nm) =>
     fold(match map_get(declaration_index, nm) { Present { value: l } => l  Absent => [] }, init: w, f: (a, item) =>
       demand_wave_add(w: a, item: item, source_indices: source_indices)))
