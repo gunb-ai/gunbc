@@ -6,7 +6,7 @@ module test.claim.roadmap.roadmap_belt_exit_spool_times_witness
 // wet route). The launch-receipt job crosses each exit-spool entry's parsed stat mtime into the range-refined
 // EpochSecs carrier. That crossing was `t as EpochSecs` -- a NON-literal Int into a refined carrier, which the
 // v1 evaluator's eval_cast (Float/Int/String arms only) refuses outright, while validate_cast granted the
-// non-literal only the advisory WhereRefinementUnenforced (std.recurring_failure_mode::
+// non-literal only the advisory WhereRefinementUnenforced (gunbc.recurring_failure_mode::
 // the_checker_admits_a_cast_the_evaluator_refuses). The fix routes it through std.types::checked_int_to_epoch_secs.
 //
 // These controls EXECUTE the evaluator on the production crossing with chosen stat texts, so the conversion is

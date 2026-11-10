@@ -5,7 +5,7 @@ module test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness
 // folds belt_exit_spool_times over a readable exit spool; each entry's stat mtime is parsed to an Int and
 // crossed into the range-refined EpochSecs carrier. Before this fix the crossing was `t as EpochSecs` -- a
 // NON-literal Int into a refined carrier -- which the v1 evaluator refuses outright (eval_cast has only
-// Float/Int/String arms; std.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses).
+// Float/Int/String arms; gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses).
 // The checker had only an advisory WhereRefinementUnenforced for the same cast, so the job compiled green in
 // hermetic CI and the refusal surfaced only when a real spool listing made the branch fire: a LATENT OUTAGE
 // whose error text pointed nowhere near the cause. These controls build a spool under a fresh temp directory,

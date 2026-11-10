@@ -413,7 +413,7 @@ type Seconds       = Int where range(min: 0), brand("Seconds")
 // returning Optional. The predicate is the refinement's own bound (n >= 0); an out-of-range value
 // is Absent, never silently admitted. The value is delivered at the refined POSITION -- never
 // through a cast the evaluator would have to re-decide: eval_cast has no refined-Int arm, so
-// `t as EpochSecs` is refused at run time (std.recurring_failure_mode::
+// `t as EpochSecs` is refused at run time (gunbc.recurring_failure_mode::
 // the_checker_admits_a_cast_the_evaluator_refuses) -- and the checker grants the non-literal only an
 // advisory WhereRefinementUnenforced, so the constructor is the one authority that turns a proof
 // into a value. Modelled on http_status_of above; it reads epoch_sec_min so the bound is one data

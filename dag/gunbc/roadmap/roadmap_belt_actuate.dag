@@ -16418,7 +16418,7 @@ type BeltExitSpoolTimes
 // below is the only production caller; it feeds the real `stat -c %Y` output, the witness feeds a chosen one.
 // The crossing is a CHECKED route (checked_int_to_epoch_secs), not `t as EpochSecs` -- a non-literal into a
 // range-refined carrier that eval_cast (Float/Int/String arms only) refuses outright
-// (std.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses). The Absent arm is the old
+// (gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses). The Absent arm is the old
 // `if t >= 0` else arm's typed Unreadable, and the did-not-parse arm is unchanged: both refusals are
 // byte-for-byte what the fold emitted before, and nothing out of range is admitted.
 fn belt_exit_spool_entry_time(entries: List<BeltExitSpoolEntryTime>, stage: SpoolRole, entry: String, label: String, stat_text: String) -> BeltExitSpoolTimes {
