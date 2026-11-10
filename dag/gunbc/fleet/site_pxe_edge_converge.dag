@@ -70,7 +70,7 @@ import extdeps.package_managers.apt { package_dnsmasq_base, apt_exact_non_removi
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import extdeps.exec.command { argv_words }
 import product.host_identity { HostIdentity }
-import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word, observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
@@ -509,17 +509,35 @@ data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
     client: srv15_install_client,
     target_disk: target_disk_reading_for(host: operator_host_srv15),
     disk_admission_window: site_pxe_edge_disk_identity_admission_window,
-    decided_at: site_pxe_edge_install_decision_at,
     architecture: Aarch64,
   },
 ]
 
-// WHEN THIS MODEL AUTHORIZES ITS INSTALLS. A model has no clock; PXE 2c's workflow replaces this with the
-// reading it takes from the clock source IN THE SAME RUN as the boot, and passes it here as `decided_at`. The
-// instant below is this model run's authorization, and the witnesses' staleness claims are stated against it:
-// a reading older than the window before this instant is refused, so an authorization never rests on a disk
-// someone looked at some unquoted time ago.
-data site_pxe_edge_install_decision_at: EpochMs = 1794268800000
+// THE INSTANT AN INSTALL IS AUTHORIZED AT IS AN INPUT, NOT A ROW. A request is what a machine's provisioning
+// record says; WHEN the edge decides is a property of the deciding run, so the instant arrives at the boundary
+// that uses it — site_pxe_edge_request_admission / site_pxe_edge_seed_rendering / run_site_pxe_edge all take
+// `decided_at`, and no data in this file carries one.
+//
+// This was not so until the 2026-11-10 review of gunbc#16275 (review 93312), which caught the frozen form of
+// this field: a `data site_pxe_edge_install_decision_at = 1794268800000` passed onto the production request row
+// meant the staleness gate was compared against a stopped clock, so srv15's reading would have stayed admitted
+// past its own window with nobody able to make it refuse — a check that passes forever passes nothing
+// (gunbc.design_argument::fail_closed: "no plausible output is fabricated"; guarantee_ladder: "a type name ...
+// establishes nothing"). Moving the instant to the boundary is what makes the gate real: at any instant past
+// read_at + window the same production row refuses with TargetDiskReadingStale, and the fleet witness says so
+// with both halves of that boundary.
+//
+// WHO SUPPLIES IT, and from which clock: the run. site_pxe_edge_ci_wet reads it from this repository's own
+// observer clock (gunbc.clock_read observer_clock_read) and REFUSES to actuate when the clock is unreadable —
+// an install cannot be authorized against a time nobody can state. PXE 2c keeps that discipline in the run that
+// boots the client. A witness passes the instant its claim is made at, and says so in the claim.
+//
+// The clock caveat the reader deserves: gunbc.clock_read keeps observer instants typed by source
+// (ObserverInstantSource) because millis from two clocks are numbers on one scale and facts on another. The
+// reading being admitted was transcribed from a committed artifact (the capture instant in
+// gunbc.fleet.machine_target_disk_observations), and the deciding instant comes from the observer clock; the
+// window is days wide, so the comparison is a freshness bound rather than an ordering of two events, and it is
+// not the instant-ordering authority gunbc.clock_read order_observer_instants is for.
 
 data srv14_install_client: MacParseResult = parse_mac_address(text: srv14_host_nic_mac as String)
 
@@ -1043,16 +1061,24 @@ type SitePxeEdgeInstallBinding {
 }
 
 // ONE INSTALL AS REQUESTED, before admission: the client's MAC as parsed from its observation, the architecture,
-// and THE HOST'S OWN DISK READING with the window it must have been read inside of and the instant the install is
-// authorized at. The reading is a per-machine row (gunbc.fleet.machine_target_disk_observations), so the request
-// is where the shared seed becomes per-host: two requests over one payload render two different documents because
-// the disks they name are different facts. Admission is the only route from a request to a binding, and a request
-// carries no document to admit — see site_pxe_edge_seed_rendering.
+// and THE HOST'S OWN DISK READING with the window it must have been read inside of. The reading is a per-machine
+// row (gunbc.fleet.machine_target_disk_observations), so the request is where the shared seed becomes per-host: two
+// requests over one payload render two different documents because the disks they name are different facts.
+//
+// IT CARRIES NO DECISION INSTANT, on purpose. A request is a machine's provisioning record and outlives any
+// particular decision; the instant the edge authorizes at belongs to the run, and arrives as an input at
+// site_pxe_edge_request_admission / site_pxe_edge_seed_rendering / run_site_pxe_edge. A `decided_at` field here
+// would have to be filled from data, and data does not advance — which is precisely how a staleness gate gets
+// frozen (review 93312 on gunbc#16275; see the note above site_pxe_edge_install_requests). The window IS a
+// request field because how fresh an identity must be is policy the request declares; the NOW it is measured
+// against is not.
+//
+// Admission is the only route from a request to a binding, and a request carries no document to admit — see
+// site_pxe_edge_seed_rendering.
 type SitePxeEdgeInstallRequest {
   client: MacParseResult
   target_disk: TargetDiskReading
   disk_admission_window: Milliseconds
-  decided_at: EpochMs
   architecture: Architecture
 }
 
@@ -1066,10 +1092,10 @@ type SitePxeEdgeSeedRendering
   = SeedRendered { user_data: YamlValue }
   | SeedTargetDiskWithheld { host: HostIdentity, cause: InstallTargetDiskWithheldCause }
 
-fn site_pxe_edge_seed_rendering(request: SitePxeEdgeInstallRequest) -> SitePxeEdgeSeedRendering {
+fn site_pxe_edge_seed_rendering(request: SitePxeEdgeInstallRequest, decided_at: EpochMs) -> SitePxeEdgeSeedRendering {
   match admit_install_target_disk(
     reading: request.target_disk,
-    decided_at: request.decided_at,
+    decided_at: decided_at,
     window: request.disk_admission_window,
   ) {
     InstallTargetDiskWithheld { host: h, cause: c } => SeedTargetDiskWithheld { host: h, cause: c }
@@ -1087,11 +1113,11 @@ type SitePxeEdgeRequestAdmission
   | RequestWithheld { standing: SitePxeEdgeInstallStanding }
   | RequestClientUnparseable { error: MacParseError }
 
-fn site_pxe_edge_request_admission(request: SitePxeEdgeInstallRequest) -> SitePxeEdgeRequestAdmission {
+fn site_pxe_edge_request_admission(request: SitePxeEdgeInstallRequest, decided_at: EpochMs) -> SitePxeEdgeRequestAdmission {
   match request.client {
     MacParseFailed { error: e } => RequestClientUnparseable { error: e }
     MacParsed { address: mac } =>
-      match site_pxe_edge_seed_rendering(request: request) {
+      match site_pxe_edge_seed_rendering(request: request, decided_at: decided_at) {
         SeedTargetDiskWithheld { host: h, cause: c } =>
           RequestWithheld { standing: InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallDiskIdentityWithheld { host: h, cause: c }, tail: [] } } }
         SeedRendered { user_data: user_data } =>
@@ -2436,7 +2462,16 @@ fn site_pxe_edge_file_results(
 // ORDER: privilege, dnsmasq binary, every placed member's digest (the per-chain standings and the gate), then every desired file, then activation only when the gate is open
 // and every file settled, then the unit's active state read back. A closed gate still observes the files,
 // so an observe dispatch says what WOULD be written. Every effect is sequenced by a let.
-fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode) -> SitePxeEdgeRun
+fn run_site_pxe_edge(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  mode: SitePxeEdgeMode,
+  // THE INSTANT THIS RUN AUTHORIZES INSTALLS AT, read from the observer clock by the caller that started the run
+  // (see the note above site_pxe_edge_install_requests). It is an input rather than a reading taken in here so a
+  // caller that cannot state the time cannot start an actuation, and so every part of the run — including the
+  // receipt — can be shown the one instant the decisions were made at.
+  decided_at: EpochMs,
+) -> SitePxeEdgeRun
 {
   let pins = site_pxe_edge_chain_pins
   let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
@@ -2453,7 +2488,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   }
   let standings = map(pins, p => site_pxe_edge_chain_standing(pin: p, observations: observations))
   let servable = site_pxe_edge_servable_chains(standings: standings)
-  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: decided_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   let inputs = site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: bindings, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   let collisions = match inputs {
@@ -2720,10 +2755,19 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
         SitePxeEdgeSubjectAdmitted { target: target } =>
           match prepare_fleet_ssh_agent_context(attempt_raw: site_pxe_edge_converge_attempt_raw) {
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
-            FleetSshContextReady { context: context, receipt: context_receipt } => {
-              let run = run_site_pxe_edge(target: target, context: context, mode: mode)
-              let body = join([
-                "site_pxe_edge_converge host=", raw_host, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+            FleetSshContextReady { context: context, receipt: context_receipt } => match observer_clock_read() {
+              // NO CLOCK, NO ACTUATION. Every install this run serves is authorized by comparing the instant its
+              // disk was read against THIS run's instant; with no instant to compare against, every freshness
+              // decision would be a guess dressed as a check, so the run refuses before it touches the edge
+              // (gunbc.design_argument::fail_closed: fail with a typed, located diagnostic rather than fabricate a
+              // plausible one). A clock that cannot be read is an operator-actionable fact, not a default.
+              ObserverClockUnreadable { detail: d } =>
+                exit_failure(reason: join(["site_pxe_edge_converge: the observer clock is unreadable (", d, "); installs cannot be authorized against a time nobody can state"], ""))
+              ObserverClockObserved { instant: instant } => {
+                let decided_at = observer_instant_millis(instant: instant)
+                let run = run_site_pxe_edge(target: target, context: context, mode: mode, decided_at: decided_at)
+                let body = join([
+                "site_pxe_edge_converge host=", raw_host, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, " install_decided_at=", decided_at as String, "\n",
                 context_receipt,
                 site_pxe_edge_run_text(run: run),
               ], "")
@@ -2732,8 +2776,9 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
                 exit_failure(reason: join(["site_pxe_edge_converge: receipt write failed: ", w.error, "\n", body], ""))
               } else if site_pxe_edge_run_succeeded(run: run) == false {
                 exit_failure(reason: body)
-              } else {
-                ExitSuccess
+                } else {
+                  ExitSuccess
+                }
               }
             }
           }

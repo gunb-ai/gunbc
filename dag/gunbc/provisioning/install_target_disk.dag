@@ -241,7 +241,7 @@ type InstallTargetDiskAdmission
 // match for the disk to be a match" — erasing on a condition nobody observed.
 //
 // This is the ONE spelling of "identity in, match keys out" in the module: the admission builds the keys here,
-// checks them with install_target_disk_match_binds_one_disk below, and stores the result on the carrier, so
+// checks them with install_target_disk_binding_key below, and stores the result on the carrier, so
 // the rule that authorizes a disk and the keys that pin it cannot be stated twice and drift.
 fn install_target_disk_identity_match_keys(
   identity: ReportedDeviceIdentity,
@@ -285,8 +285,8 @@ fn install_target_disk_identity_match_keys(
 //   2. The reported identity is not a usable token (extdeps.storage.device_identification): withheld. This
 //      is where a serial that is really a glob — `CT*`, the reference's own example of matching a CLASS of
 //      disks — is refused, so no install is authorized against a wildcard.
-//   3. The keys those fields can build name no single disk: withheld (install_target_disk_match_binds_one_disk
-//      below, which reads extdeps.os.ubuntu_autoinstall's upstream fact). This is where a capture that
+//   3. The keys those fields can build name no single disk: withheld (install_target_disk_binding_key below,
+//      which reads extdeps.os.ubuntu_autoinstall's upstream fact). This is where a capture that
 //      reported a model and no serial is refused — the 2026-10-16 srv14 capture — instead of authorizing an
 //      install against every disk of that model.
 //   4. A reading from after the decision instant is not a reading of the current state: withheld. A clock
@@ -343,41 +343,68 @@ fn admit_install_target_disk(
               host: host, source: source, reported: admitted_identity,
             },
           }
-          Present { value: keys } => if install_target_disk_match_binds_one_disk(keys: keys) {
-            if decided_at < read_at {
-              InstallTargetDiskWithheld {
-                host: host,
-                cause: TargetDiskReadingFromTheFuture { host: host, read_at: read_at, decided_at: decided_at },
-              }
-            } else if decided_at > read_at + window {
-              InstallTargetDiskWithheld {
-                host: host,
-                cause: TargetDiskReadingStale {
-                  host: host, read_at: read_at, decided_at: decided_at, deadline: read_at + window,
-                },
-              }
-            } else {
-              InstallTargetDiskAdmitted {
-                target: InstallTargetDisk {
-                  host: host,
-                  device: device,
-                  identity: admitted_identity,
-                  layout_match: keys,
-                  source: source,
-                  read_at: read_at,
-                  admitted_at: decided_at,
-                },
-              }
-            }
-          } else {
-            InstallTargetDiskWithheld {
+          Present { value: keys } => match install_target_disk_binding_key(keys: keys) {
+            // THE RULE, APPLIED — not a comment beside it. install_target_disk_binding_key answers with THE KEY
+            // that binds a disk to one device; when it has no answer, there is no install. A match of `ssd` and
+            // `size` alone earns no authorization here, though os_install_emit would render it happily: the
+            // renderer stays a renderer, and the authorization is where the rule bites.
+            Absent => InstallTargetDiskWithheld {
               host: host,
               cause: TargetDiskMatchDoesNotBindOneDisk {
                 host: host, source: source, reported: admitted_identity,
               },
             }
+            Present { value: _ } => install_target_disk_admit_time(
+              host: host,
+              device: device,
+              identity: admitted_identity,
+              keys: keys,
+              source: source,
+              read_at: read_at,
+              decided_at: decided_at,
+              window: window,
+            )
           }
         }
+    }
+  }
+}
+
+// THE TIME HALF OF THE SAME ADMISSION, split out only so the arm above reads as one decision per question. Both
+// halves are reached from admit_install_target_disk alone; neither is a door of its own.
+fn install_target_disk_admit_time(
+  host: HostIdentity,
+  device: NonEmptyStr,
+  identity: ReportedDeviceIdentity,
+  keys: FreeSemigroup<AutoinstallStorageMatchKey>,
+  source: DiskIdentitySource,
+  read_at: EpochMs,
+  decided_at: EpochMs,
+  window: Milliseconds,
+) -> InstallTargetDiskAdmission {
+  if decided_at < read_at {
+    InstallTargetDiskWithheld {
+      host: host,
+      cause: TargetDiskReadingFromTheFuture { host: host, read_at: read_at, decided_at: decided_at },
+    }
+  } else if decided_at > read_at + window {
+    InstallTargetDiskWithheld {
+      host: host,
+      cause: TargetDiskReadingStale {
+        host: host, read_at: read_at, decided_at: decided_at, deadline: read_at + window,
+      },
+    }
+  } else {
+    InstallTargetDiskAdmitted {
+      target: InstallTargetDisk {
+        host: host,
+        device: device,
+        identity: identity,
+        layout_match: keys,
+        source: source,
+        read_at: read_at,
+        admitted_at: decided_at,
+      },
     }
   }
 }
@@ -407,13 +434,15 @@ fn install_target_disk_direct_layout_target(disk: InstallTargetDisk) -> Autoinst
 // rule that stops `os_install_emit` ever rendering a `match` that leaves the installer picking the disk, which
 // is the defect the operator's 2026-11-10 review named. It reads extdeps.os.ubuntu_autoinstall's
 // autoinstall_match_key_names_one_disk (the upstream fact: the serial is the only key that names a device) and
-// it is applied to the keys the identity can actually build — so an empty key list binds nothing, exactly as
+// it is applied to the keys the identity can actually build — so no key at all binds nothing, exactly as
 // upstream would honour it: a match spec with no keys matches every disk in the machine.
-fn install_target_disk_match_binds_one_disk(keys: FreeSemigroup<AutoinstallStorageMatchKey>) -> Bool {
-  match list_find_first(xs: non_empty_to_list(keys), predicate: fn(key) {
+//
+// IT ANSWERS WITH THE KEY, NOT WITH A BOOL. The caller that refuses has to say which fields it examined, and
+// the caller that admits has to record what pinned the erasure — a Bool forces the first to re-derive it and
+// leaves the second with nothing to record, so the search's answer is carried (2026-11-10 review of #16275).
+// Absent is the refusal; the key is the proof.
+fn install_target_disk_binding_key(keys: FreeSemigroup<AutoinstallStorageMatchKey>) -> Optional<AutoinstallStorageMatchKey> {
+  list_find_first(xs: non_empty_to_list(keys), predicate: fn(key) {
     autoinstall_match_key_names_one_disk(key: key)
-  }) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  })
 }

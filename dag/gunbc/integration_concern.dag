@@ -2182,7 +2182,7 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConce
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
     tail: [
-      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_match_binds_one_disk"),
+      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_binding_key"),
       decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "TargetDiskSelector"),
       decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "BoundDiskEvidence"),
     ],

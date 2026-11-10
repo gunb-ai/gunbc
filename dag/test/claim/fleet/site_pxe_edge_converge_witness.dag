@@ -184,7 +184,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_seed_rendering,
   SeedRendered,
   SeedTargetDiskWithheld,
-  site_pxe_edge_install_decision_at,
   site_pxe_edge_refusal_target_disk_cause,
   site_pxe_edge_seed_root_uri,
   SitePxeEdgeInstallRequest,
@@ -1074,7 +1073,7 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
 // cause is raised. srv14 is installed, so its NIC binds no install at all: restoring its request (a wipe of an
 // installed host on its next network boot) or dropping srv15's turns this red.
 test fn the_production_requests_bind_srv15_and_not_the_installed_srv14() -> Bool {
-  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
@@ -1137,8 +1136,8 @@ fn password_user_data() -> YamlValue {
 // A REQUEST CARRIES NO USER-DATA DOCUMENT ANY MORE (PXE 2a). The document is what admission RENDERS from the
 // admitted disk: a request whose disk cannot be admitted has no document to serve and its host is withheld by
 // name, and no author can hand a request a document that names a disk nobody read.
-fn request_with_disk(client: MacParseResult, disk: TargetDiskReading, decided_at: EpochMs, admission_window: Milliseconds) -> SitePxeEdgeInstallRequest {
-  SitePxeEdgeInstallRequest { client: client, target_disk: disk, disk_admission_window: admission_window, decided_at: decided_at, architecture: Aarch64 }
+fn request_with_disk(client: MacParseResult, disk: TargetDiskReading, admission_window: Milliseconds) -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest { client: client, target_disk: disk, disk_admission_window: admission_window, architecture: Aarch64 }
 }
 
 // THE WITNESS'S READING OF A DISK: what lsblk printed for srv15's NVMe, at the instant a claim needs.
@@ -1154,9 +1153,12 @@ fn disk_report(host: HostIdentity, serial: String, model: String, read_at: Epoch
   }
 }
 
-// THE INSTANT THIS MODEL AUTHORIZES INSTALLS, shared with the model's own requests so a claim about staleness is
-// measured against the same clock the fleet's rows are.
-data witness_decision_at: EpochMs = site_pxe_edge_install_decision_at
+// THE INSTANT THESE CLAIMS DECIDE AT. A witness is not a run and has no clock, so it says which instant it is
+// reasoning at rather than reading one off the model: the request record carries no instant (how fresh the disk
+// reading must be is the request's policy; WHEN it is checked is the deciding boundary's input), and every
+// admission below passes this — or, for the staleness pair, an instant computed from the reading. This value is
+// this file's own; a model that carried one would be a stopped clock (review 93312 on gunbc#16275).
+data witness_decision_at: EpochMs = 1794268800000
 
 // srv15's disk, as captured: artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt, "### disks".
 data witness_srv15_disk_serial: String = "25466Q801557"
@@ -1175,7 +1177,6 @@ fn srv15_request() -> SitePxeEdgeInstallRequest {
     client: srv15_install_client,
     target_disk: target_disk_reading_for(host: operator_host_srv15),
     disk_admission_window: site_pxe_edge_disk_identity_admission_window,
-    decided_at: witness_decision_at,
     architecture: Aarch64,
   }
 }
@@ -1185,7 +1186,6 @@ fn srv14_request() -> SitePxeEdgeInstallRequest {
     client: srv14_install_client,
     target_disk: target_disk_reading_for(host: operator_host_srv14),
     disk_admission_window: site_pxe_edge_disk_identity_admission_window,
-    decided_at: witness_decision_at,
     architecture: Aarch64,
   }
 }
@@ -1244,7 +1244,7 @@ fn has_key_at(document: YamlValue, path: List<String>) -> Bool {
 // RED: an admitted request that binds no client, or binds one whose MAC is not the seed directory's, or leaves
 // no menu entry for a host the operator can see on the console.
 test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
-  match site_pxe_edge_request_admission(request: srv15_request()) {
+  match site_pxe_edge_request_admission(request: srv15_request(), decided_at: witness_decision_at) {
     RequestBound { binding: binding } =>
       binding.architecture == Aarch64
         && production_request_binds_once(client: srv15_install_client, bindings: [binding])
@@ -1254,8 +1254,8 @@ test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
 
 // RED: a request whose client MAC does not parse names no host to withhold, so it closes the edge's gate.
 test fn an_unparseable_request_client_closes_the_gate() -> Bool {
-  let request = request_with_disk(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
-  let admissions = [site_pxe_edge_request_admission(request: request)]
+  let request = request_with_disk(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), admission_window: site_pxe_edge_disk_identity_admission_window)
+  let admissions = [site_pxe_edge_request_admission(request: request, decided_at: witness_decision_at)]
   length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
     && length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && site_pxe_edge_request_gate_causes(admissions: admissions) == [InstallRequestClientUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
@@ -1268,7 +1268,7 @@ test fn an_unparseable_request_client_closes_the_gate() -> Bool {
 // which is the gap the operator's 2026-11-10 review blocked. RED: drop the match block, swap the serial for the
 // reference's own `CT*` example, or let a class key through, and this is red.
 test fn the_pinned_seed_renders_the_match_block_for_the_hosts_own_disk() -> Bool {
-  match site_pxe_edge_seed_rendering(request: srv15_request()) {
+  match site_pxe_edge_seed_rendering(request: srv15_request(), decided_at: witness_decision_at) {
     SeedTargetDiskWithheld { host: _, cause: _ } => false
     SeedRendered { user_data: user_data } =>
       scalar_at(document: user_data, path: ["autoinstall", "storage", "layout", "name"]) == "direct"
@@ -1285,7 +1285,7 @@ test fn the_pinned_seed_renders_the_match_block_for_the_hosts_own_disk() -> Bool
 // closed schema, so this is where the pin is proved to reach the client: the bytes on the seed root name the
 // disk. RED: render the document before the disk is admitted, and the serial is gone from the file.
 test fn the_seed_served_to_a_bound_client_names_the_disk_serial() -> Bool {
-  match site_pxe_edge_request_admission(request: srv15_request()) {
+  match site_pxe_edge_request_admission(request: srv15_request(), decided_at: witness_decision_at) {
     RequestBound { binding: binding } =>
       string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: witness_srv15_disk_serial)
         && string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: "match:")
@@ -1338,7 +1338,7 @@ fn withheld_names_host(client: MacParseResult, standing: SitePxeEdgeInstallStand
 // different reason, that the host is installed and re-serving it would wipe it), and the MAC is named because
 // "host X is not installing" is only actionable if the reader can find host X's PXE client.
 test fn a_reading_that_names_no_single_disk_is_withheld_with_a_typed_cause() -> Bool {
-  match site_pxe_edge_request_admission(request: srv14_request()) {
+  match site_pxe_edge_request_admission(request: srv14_request(), decided_at: witness_decision_at) {
     RequestWithheld { standing: standing } =>
       withheld_names_host(client: srv14_install_client, standing: standing)
         && match get(xs: refusals_of(st: standing), index: 0) {
@@ -1367,10 +1367,9 @@ test fn a_disk_nobody_read_is_withheld_with_a_typed_cause() -> Bool {
       host: operator_host_srv14,
       why: "no capture has read this machine's storage" as NonEmptyStr,
     },
-    decided_at: witness_decision_at,
     admission_window: site_pxe_edge_disk_identity_admission_window,
   )
-  match site_pxe_edge_request_admission(request: never_read) {
+  match site_pxe_edge_request_admission(request: never_read, decided_at: witness_decision_at) {
     RequestWithheld { standing: standing } =>
       withheld_names_host(client: srv14_install_client, standing: standing)
         && match get(xs: refusals_of(st: standing), index: 0) {
@@ -1392,7 +1391,7 @@ test fn a_disk_nobody_read_is_withheld_with_a_typed_cause() -> Bool {
 // outage for the rest of the fleet — and the reverse failure, an install authorized because the fleet's one
 // unread disk was quietly skipped, is what the typed cause exists to make visible.
 test fn a_withheld_disk_withholds_only_its_own_host() -> Bool {
-  let admissions = map(append(site_pxe_edge_install_requests, [srv14_request()]), r => site_pxe_edge_request_admission(request: r))
+  let admissions = map(append(site_pxe_edge_install_requests, [srv14_request()]), r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(bindings) == 1
     && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
@@ -1406,9 +1405,9 @@ test fn a_withheld_disk_withholds_only_its_own_host() -> Bool {
 // identity, read inside the window, binds. A model that ignored read times would pass the first half and fail
 // the second; a model that refused everything would pass neither.
 test fn a_stale_disk_reading_refuses_the_install_and_a_fresh_one_binds() -> Bool {
-  let stale = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_stale_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
-  let fresh = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
-  match site_pxe_edge_request_admission(request: stale) {
+  let stale = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_stale_read_at), admission_window: site_pxe_edge_disk_identity_admission_window)
+  let fresh = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), admission_window: site_pxe_edge_disk_identity_admission_window)
+  match site_pxe_edge_request_admission(request: stale, decided_at: witness_decision_at) {
     RequestWithheld { standing: standing } =>
       withheld_names_host(client: srv15_install_client, standing: standing)
         && match get(xs: refusals_of(st: standing), index: 0) {
@@ -1423,9 +1422,44 @@ test fn a_stale_disk_reading_refuses_the_install_and_a_fresh_one_binds() -> Bool
         }
     _ => false
   }
-    && match site_pxe_edge_request_admission(request: fresh) {
+    && match site_pxe_edge_request_admission(request: fresh, decided_at: witness_decision_at) {
       RequestBound { binding: _ } => true
       _ => false
+    }
+}
+
+// THE GATE HAS A CLOCK, AND IT IS NOT THE MODEL'S (review 93312 on gunbc#16275). The claim is about the
+// fleet's OWN production row, decided at instants the claim computes from the reading rather than at anything
+// the model carries: at the last millisecond the window allows, srv15 is admitted and the bound carrier still
+// its seed is still served and still pinned to the serial; one millisecond later the same row, the same disk,
+// the same window, is
+// WITHHELD with TargetDiskReadingStale naming the host, the reading, the deciding instant and the deadline it
+// missed. The mirror halves are what make it discriminating: a model that read no instant would have no
+// `decided_at` to pass and would not compile; a model that refused everything would fail the first half; a
+// model that carried the instant as data (which is what this replaced — a frozen 2026-11-10 literal that let a
+// 2026-10-29 reading stay admissible forever) could not be asked these two questions at all.
+test fn the_fleet_row_goes_stale_at_the_instant_it_is_decided_and_not_one_it_carries() -> Bool {
+  let deadline = witness_srv15_disk_read_at + site_pxe_edge_disk_identity_admission_window
+  match site_pxe_edge_request_admission(request: srv15_request(), decided_at: deadline) {
+    RequestBound { binding: binding } =>
+      string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: witness_srv15_disk_serial)
+    RequestWithheld { standing: _ } => false
+  }
+    && match site_pxe_edge_request_admission(request: srv15_request(), decided_at: deadline + 1) {
+      RequestWithheld { standing: standing } =>
+        withheld_names_host(client: srv15_install_client, standing: standing)
+          && match get(xs: refusals_of(st: standing), index: 0) {
+            Absent => false
+            Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+              Absent => false
+              Present { value: cause } => match cause {
+                TargetDiskReadingStale { host: h, read_at: r, decided_at: d, deadline: dl } =>
+                  h == operator_host_srv15 && r == witness_srv15_disk_read_at && d == (deadline + 1) && dl == deadline
+                _ => false
+              }
+            }
+          }
+      RequestBound { binding: _ } => false
     }
 }
 

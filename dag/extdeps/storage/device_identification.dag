@@ -131,7 +131,7 @@ fn device_identification_last_is_space(rest: FreeMonoid<Char>) -> Bool {
 // not the other: the 2026-10-16 srv14 capture ran `lsblk --output=NAME,SIZE,MODEL,TRAN,TYPE` and so reported
 // models and no serials at all. THIS SHAPE CARRIES NO POLICY ABOUT WHICH COMBINATIONS ARE ENOUGH to pin an
 // erasure to one disk — that is the consumer's rule
-// (gunbc.provisioning.install_target_disk install_target_disk_match_binds_one_disk, which is upstream's
+// (gunbc.provisioning.install_target_disk install_target_disk_binding_key, which is upstream's
 // semantics, not a taste: a match key binds one device only when it names the device, so a model-only pair
 // narrows a class and authorizes nothing). An all-absent pair is still refused below, because a record that
 // reports neither field is not a record of an identity.
