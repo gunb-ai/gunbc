@@ -21,6 +21,7 @@ import gunbc.decl_facts_authored_string_attach_seed_growth {
   with_authored_string_literals_seed_growth_justification
 }
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
+import gunbc.declared_side_refusal_cause_seed_growth { declared_side_refusal_cause_seed_growth_justification }
 import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
 import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
@@ -398,7 +399,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     run_arg_typed_bind_seed_growth_justification,
     rust_shell_stderr_capture_seed_growth_justification,
     cli_wire_program_producer_seed_growth_justification,
-    compile_entry_demand_acquired_seed_growth_justification
+    compile_entry_demand_acquired_seed_growth_justification,
+    declared_side_refusal_cause_seed_growth_justification
   ]
 }
 
