@@ -86,9 +86,18 @@ data public_seed_user_data_schema: PublicSeedSchema = SeedMappingOf { fields: [
       PublicSeedField { key: "authorized-keys", schema: public_seed_public_keys },
       PublicSeedField { key: "allow-pw", schema: SeedBoolExactly { value: false } },
     ] } },
+    // THE DISK THE INSTALL IS AUTHORIZED AGAINST (PXE 2a). The direct layout names one disk by the identity a
+    // capture reported for it, and the schema admits exactly the reference's two identity keys and nothing else:
+    // a serial is what names one disk, a model is the second check on it, and the reference's class-shaped keys
+    // (`ssd`, `size`) have no field here at all — a seed that selects a CLASS of disks to wipe is not admitted,
+    // which is the whole point. `model` may be absent: serial alone names one disk.
     PublicSeedField { key: "storage", schema: SeedMappingOf { fields: [
       PublicSeedField { key: "layout", schema: SeedMappingOf { fields: [
         PublicSeedField { key: "name", schema: SeedStringOneOf { values: ["direct"] } },
+        PublicSeedField { key: "match", schema: SeedMappingOf { fields: [
+          PublicSeedField { key: "serial", schema: SeedDeviceIdentityToken },
+          PublicSeedField { key: "model", schema: SeedDeviceIdentityToken },
+        ] } },
       ] } },
     ] } },
     PublicSeedField { key: "interactive-sections", schema: SeedEmptySequence },
