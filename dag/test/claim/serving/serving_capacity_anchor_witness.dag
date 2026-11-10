@@ -300,19 +300,31 @@ fn ca_row(rows: List<RouterDevUpstream>, name: String, cap: Nat, retain: Nat) ->
   })) == 1
 }
 
+// THE ROSTER THIS WITNESS PINS FIGURES FOR. The set, not its size: the tests below check the roster against
+// THESE NAMES in both directions, so a row that joins the first-party set without a row here -- or outlives the
+// row that pinned it -- reads false. A size copied from the current tree would only be a change detector
+// (gunbc.design_argument::fail_closed); membership in the pinned set is the claim.
+type CaShippedRow { name: String, cap: Nat, retain: Nat }
+
+fn ca_shipped_rows() -> List<CaShippedRow> {
+  [
+    CaShippedRow { name: "srv1-vllm", cap: 4, retain: 16 },
+    CaShippedRow { name: "srv1-vllm-1", cap: 4, retain: 16 },
+    CaShippedRow { name: "srv3-strata", cap: 2, retain: 8 },
+    CaShippedRow { name: "srv4-strata", cap: 1, retain: 4 },
+    CaShippedRow { name: "h11-05", cap: 1, retain: 2 },
+    CaShippedRow { name: "h11-07", cap: 1, retain: 1 },
+    CaShippedRow { name: "h11-08", cap: 1, retain: 1 },
+    CaShippedRow { name: "h11-88", cap: 1, retain: 1 },
+  ]
+}
+
 test fn the_router_rows_carry_the_derived_cap_and_retain() -> Bool {
   match router_dev_first_party() {
     RouterDevFirstPartyRefused { reason: _ } => false
     RouterDevFirstPartyRows { rows: rs } =>
-      ca_row(rows: rs, name: "srv1-vllm", cap: 4, retain: 16)
-        && ca_row(rows: rs, name: "srv1-vllm-1", cap: 4, retain: 16)
-        && ca_row(rows: rs, name: "srv3-strata", cap: 2, retain: 8)
-        && ca_row(rows: rs, name: "srv4-strata", cap: 1, retain: 4)
-        && ca_row(rows: rs, name: "h11-05", cap: 1, retain: 2)
-        && ca_row(rows: rs, name: "h11-07", cap: 1, retain: 1)
-        && ca_row(rows: rs, name: "h11-08", cap: 1, retain: 1)
-        && ca_row(rows: rs, name: "h11-88", cap: 1, retain: 1)
-        && count(rs) == 8
+      all(ca_shipped_rows(), p => ca_row(rows: rs, name: p.name, cap: p.cap, retain: p.retain))
+        && all(rs, u => any(ca_shipped_rows(), p => p.name == u.name))
   }
 }
 
@@ -363,13 +375,15 @@ test fn the_router_admits_an_estimate_only_under_an_admission_and_carries_its_ob
 
 // EVERY shipped first-party row's capacity is an estimate, so every row carries what it rests on: no row is
 // exempt. The roster once held one rented row whose capacity rested on nothing and that this test carved out by
-// name; it was retired 2026-11-10 and the carve-out with it, and the roster is counted as well as named so a row
-// that outlives its anchor, or arrives without one, reads false instead of passing unnoticed.
+// name; it was retired 2026-11-10 and the carve-out with it. The roster is required to cover the pinned set --
+// so an emptied roster cannot pass the `all` below vacuously -- rather than counted against a size copied from
+// the tree.
 test fn the_shipped_rows_carry_the_obligations_their_capacity_rests_on() -> Bool {
   match router_dev_first_party() {
     RouterDevFirstPartyRefused { reason: _ } => false
     RouterDevFirstPartyRows { rows: rs } =>
-      count(rs) == 8 && count(filter(rs, u => count(u.capacity_rests_on) == 0)) == 0
+      all(ca_shipped_rows(), p => any(rs, u => u.name == p.name))
+        && all(rs, u => count(u.capacity_rests_on) > 0)
   }
 }
 
