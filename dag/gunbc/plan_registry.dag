@@ -12,6 +12,8 @@ import gunbc.plans.fleet_hardware_fact_consumption { fleet_hardware_fact_consump
 import gunbc.plans.host_thermal_operating_point { host_thermal_operating_point_plan }
 import gunbc.plans.v2_complexity_capability_parity { v2_complexity_capability_parity_plan }
 import gunbc.plans.read_set_convergence { read_set_convergence_plan }
+import gunbc.plans.fleet_machine_authority { fleet_machine_authority_plan }
+import gunbc.plans.closure_consolidation { closure_consolidation_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -21,10 +23,12 @@ import gunbc.plans.read_set_convergence { read_set_convergence_plan }
 // interpreter_kernel_d (v2.compiler.self_host.seed_retention_frontier). fleet_hardware_fact_consumption is an
 // active program carrier (three landings on 2026-11-08) and names host_thermal_operating_point as an owning
 // program; v2_complexity_capability_parity is a live roadmap carrier (pointer_resolves); read_set_convergence is the
-// active T11 / affected-set consolidation program (2026-11-09). Each deletes with its last consumer.
+// active T11 / affected-set consolidation program (2026-11-09); fleet_machine_authority is the machine-registry and host-name de-fork program
+// (2026-11-10; D1-D13 answered); closure_consolidation is the ci_spec dissolution and selective-generation program
+// (2026-11-10). Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
   input_envelope_roadmap_plan, fabric_serving_router_plan, fleet_subsumption_manual_gaps_plan, interpreter_kernel_d_plan,
   fleet_hardware_fact_consumption_plan, host_thermal_operating_point_plan, v2_complexity_capability_parity_plan,
-  read_set_convergence_plan,
+  read_set_convergence_plan, fleet_machine_authority_plan, closure_consolidation_plan,
 ]

@@ -901,9 +901,10 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
 }
 
 // THE FLOOR A QUALIFICATION RUNS IS THIS JOB'S OWN WORK, NOT A SECOND SPELLING OF IT: the prelude and the subject
-// steps, which build the seed and run one `gunbc test` per emitted subject under the memory envelope. The checkout
-// is left out because a qualification job checks out its pinned revision with its own guard
-// (gunbc.runner.runner_qualification_floor_job), and the tail is left out because every tail step is conditioned
+// steps, which build the seed and run one `gunbc test` per emitted subject under the memory envelope. The steps that
+// assemble the judged tree (compiler_gate_judged_tree_bound_steps: the checkout and, for a calling repository, the
+// composition) are left out because a qualification job checks out its pinned revision with its own guard
+// (gunbc.runner.runner_qualification_floor_job) and is never called, and the tail is left out because every tail step is conditioned
 // (parse-verdict restore and publish on main, the notice) and a qualification floor admits no step that can run past
 // a failure (gunbc.runner.runner_qualification_dispatch qualification_floor_admission).
 // THE CONTRACT-STAMP GUARD AND ITS EVIDENCE ARE LEFT OUT TOO, and not by carrying the stamp into another workflow:
@@ -913,11 +914,18 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
 // THE ISOLATED-HOMES WALL IS KEPT, UNCONDITIONED: the floor admits no step that can run past a failure, and in a job
 // where any failed step already fails the job the wall's !cancelled() buys nothing (gunbc.witness.witness_floor_workflow
 // witness_toolchain_homes_isolated_guard_step_under).
+fn compiler_gate_step_assembles_the_judged_tree(s: Step) -> Bool {
+  match list_find_first(xs: compiler_gate_judged_tree_bound_steps(), predicate: fn(b) { b.step == s }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn compiler_gate_floor_steps_after_checkout() -> List<Step> {
   list_map(
     xs: filter(
       list_map(xs: concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()), f: fn(b) { b.step }),
-      s => s != compiler_gate_fleet_checkout_step()
+      s => !compiler_gate_step_assembles_the_judged_tree(s: s)
         && s != compiler_gate_contract_stamp_guard_step()
         && s != compiler_gate_contract_stamp_evidence_step(),
     ),

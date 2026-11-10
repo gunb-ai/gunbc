@@ -1,0 +1,818 @@
+module test.claim.serving.srv1_replica_rendered_boot_path_witness
+
+// CONTROLS FOR THE 2026-11-09 LIVE SWITCH of the srv1 replica boot path onto the rendered argv.
+//
+// The switch replaces a hand-written launcher whose engine line carried the pool key in argv and an unbound
+// `$EXTRA` suffix. What makes that switch safe is not care on the day; it is that the rendered bytes are
+// compared, BEFORE installation, against what the two replicas were actually serving. So the goldens below
+// are not hand-written expectations: each one is a value read out of `docker inspect` on the running
+// container lil-flash-next on 2026-11-09 (`.Config.Cmd[1]`, the argument after `-lc`), transcribed into a
+// row, and then asserted against the render.
+//
+// TWO COMPARISONS, TWO PURPOSES:
+//   POSITIVE  -- the render over srv1_admitted_launch_config reproduces the captured command. Where it
+//               differs, the difference is one of the two documented ones (the engine flags arrive from the
+//               mounted args file; the bearer key arrives from the 0600 env file), never an unexplained one.
+//   RED       -- dropping or changing any single typed field changes the render. A field that no control
+//               discriminates on is a field that is not actually in the boot path, no matter how typed it
+//               looks; that is the shape srv1_helper_adoption_verification_gap was left open to catch.
+//
+// WHAT IS DELIBERATELY NOT COMPARED BYTE FOR BYTE: the captured command's leading empty line (an artifact of
+// the operator script's line continuation) and the inline `exec` line it ends with. The first is not
+// rendered at all; the second is the line this switch exists to replace, and its engine tokens are compared
+// instead against the args file, which is where they now live.
+
+import std.types { Bool, String, NonEmptyStr, List, FilePath, Port, Int }
+import std.nat { Nat }
+import std.algebra { length, string_contains, string_concat_join }
+import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_to_byte_size, seconds_per_day }
+import std.decimal { fixed_point_trimmed_wire }
+import std.content_hash { sha256_hex_of_text, lower_hex_64 }
+import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
+import gunbc.serving.srv1_serving_replica_layout {
+  Srv1LaunchConfig, Srv1LmCacheL2Placement, Srv1CheckpointRetentionPolicy, Srv1TlsMaterial,
+  Srv1ApiKeyReference, Srv1ContainerRunShape, Srv1ServingReplicaSpec,
+  srv1_admitted_launch_config, srv1_replica_container_run_shape, srv1_replica_rendered_args_dir,
+  srv1_replica_engine_args_body, srv1_replica_engine_args_host_path,
+  srv1_replica_container_command_lines, srv1_replica_docker_argv, srv1_replica_launcher_lines,
+  srv1_render_replica_launcher, srv1_render_replica_engine_args,
+  srv1_render_replica_launcher_sha256, srv1_render_replica_engine_args_sha256,
+  srv1_render_replica_helper, srv1_render_replica_helper_sha256, srv1_replica_helper_lines,
+  srv1_replica_helper_retired_lines, srv1_replica_helper_replacement_lines,
+  srv1_replica_helper_name_table_line, srv1_replica_launcher_host_path,
+  srv1_retained_gpu_launcher_host_path, srv1_replica_helper,
+  srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
+  srv1_tls_identity_source_dir, srv1_tls_key_file_name, srv1_tls_cert_file_name,
+  srv1_boot_path_runs_executed_2026_11_09, srv1_boot_path_ready_deadline,
+  srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
+  srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
+  srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
+  srv1_boot_path_run_ready_duration, srv1_boot_path_incident_downtime,
+  srv1_boot_path_window_router_counting_2026_11_09, srv1_router_window_count_balances, srv1_boot_path_incident_2026_11_09,
+  srv1_bash_emit_capability_gaps, srv1_bash_emit_scaffold_approval,
+  srv1_installed_boot_path_artifacts_2026_11_09,
+  srv1_serving_replica_roster,
+  srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
+  srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
+  srv1_replica_helper_bash_emit_dissolution,
+}
+import extdeps.units.iso8601_calendar {
+  Iso8601UtcInstant,
+  iso8601_utc_instant,
+  iso8601_utc_instant_seconds_between,
+  iso8601_utc_instant_text,
+}
+
+// ── the capture ─────────────────────────────────────────────────────────────────────────────────────
+//
+// Run identity for every value below: srv1, 2026-11-09, `docker inspect -f '{{json .Config.Cmd}}'
+// lil-flash-next` and `... lil-flash-next-1`, taken read-only before any change to the unit, the helper or
+// either container. Both containers reported the same shape; the per-replica fields (card, name, published
+// port, host directories) differ by the roster rows.
+
+// The engine argv as the running container ran it, one token per line: the same token sequence the captured
+// `-lc` string carries after `exec`, with `$D` expanded to its value on that line (`D=/root/serve`), and
+// with the bearer-key slot REMOVED -- the two tokens `--api-key` and `"$(cat /root/.pool_key)"`. That
+// removal is the switch's security content, so it is the one difference the positive control excuses by
+// name rather than by silence.
+data golden_engine_argv: String =
+  "/usr/local/bin/lil-serve\n--profile\nqwen38-flash-next\n--hardware\nrtx-pro-6000-pcie\n--env\nLMCACHE_MODE=ram-disk\n--env\nLMCACHE_L1_GB=12\n--env\nLMCACHE_L2_GB=125\n--env\nLMCACHE_L2_ROOT=/cache/kv\n--env\nLMCACHE_L2_WORKERS=16\n--env\nLMCACHE_L2_ODIRECT=1\n--env\nLMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5\n--env\nLMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800\n--\n--port\n18000\n--ssl-keyfile\n/root/serve/tls.key\n--ssl-certfile\n/root/serve/tls.crt\n--max-model-len\n229376\n"
+
+// The container command's first line, verbatim from the capture: the serve directory and the event logger.
+// The `$D`, `$*` and `$(...)` spellings are the CONTAINER-side shell's, kept exactly as captured -- they are
+// what `docker inspect` reports, so a render that "cleaned them up" would be a render that stopped matching
+// the thing it claims to produce.
+data golden_command_logger_line: String =
+  "D=/root/serve; ev(){ echo \"$(date -u +%FT%TZ) $*\" >> $D/events.log; }"
+
+// The TLS guard line, verbatim -- including the three spaces before `-days`, a line-continuation artifact of
+// the operator's script. Kept because a control that normalizes whitespace is a control that can wave
+// through a real difference.
+data golden_command_tls_line: String =
+  "[ -s $D/tls.key ] && [ -s $D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes   -days 3650 -subj /CN=pool-card -keyout $D/tls.key -out $D/tls.crt >> $D/events.log 2>&1"
+
+// The START event line as the running container reported it. Written here for replica 0; the claim derives
+// replica 1's by the same substitution, so a wrong card on either replica is caught, not assumed away.
+data golden_start_line_gpu0: String =
+  "ev \"START srv1 gpu0 GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\""
+
+data golden_start_line_gpu1: String =
+  "ev \"START srv1 gpu1 GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\""
+
+// ── positive controls ───────────────────────────────────────────────────────────────────────────────
+
+// THE POSITIVE CONTROL. The args file the boot path mounts is, token for token, the engine command the
+// running replica executed -- minus the bearer key, which no longer travels in argv at all. If this goes
+// red, the render does not describe what is serving, and the switch must not happen.
+test fn the_rendered_engine_argv_is_the_captured_container_command() -> Bool {
+  srv1_render_replica_engine_args() == golden_engine_argv
+}
+
+// The container command still sets up its serve directory, its event log and its TLS guard exactly as the
+// running container does. These three lines are the whole of what the container itself does before exec'ing
+// the engine, so pinning them pins the boot behaviour that the crash and cold-start tests then exercise.
+// THE CONTAINER COMMAND HEAD, LINE FOR LINE. Executed on 2026-11-09 the first rendered container exited 2
+// within a second: the START line had gained a trailing `)` from being CONCATENATED with the args-file guard,
+// and every control on that line asked whether the captured line appeared INSIDE it -- a question a line made
+// of the captured line plus one extra token answers yes. So this control compares LINES: a captured line must
+// occur as a whole line of the render, and the START line must be the only one of its kind.
+test fn the_container_command_head_is_the_captured_command() -> Bool {
+  let l0 = srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config)
+  let l1 = srv1_replica_container_command_lines(replica: srv1_replica_1, config: srv1_admitted_launch_config)
+  let logger0 = filter(l0, x => x == golden_command_logger_line)
+  let logger1 = filter(l1, x => x == golden_command_logger_line)
+  let tls0 = filter(l0, x => x == golden_command_tls_line)
+  let tls1 = filter(l1, x => x == golden_command_tls_line)
+  let start0 = filter(l0, x => string_contains(s: x, pattern: "ev \"START srv1"))
+  let start1 = filter(l1, x => string_contains(s: x, pattern: "ev \"START srv1"))
+  length(logger0) == 1 && length(logger1) == 1
+    && length(tls0) == 1 && length(tls1) == 1
+    && length(start0) == 1 && length(start1) == 1
+    && string_concat_join(start0, "") == golden_start_line_gpu0
+    && string_concat_join(start1, "") == golden_start_line_gpu1
+    && !string_contains(s: string_concat_join(start0, ""), pattern: "TLS)\";")
+    && !string_contains(s: string_concat_join(start1, ""), pattern: "TLS)\";")
+}
+
+// THE ARGS-FILE REFUSAL IS ITS OWN LINE, spelled exactly. It exists so a replica whose rendered argv file did
+// not install refuses instead of starting an engine with an empty argv; gluing it to another line made it
+// untestable, which is the bug above.
+data golden_args_guard_line: String =
+  "[ -s /root/engine.args ] || { ev \"FATAL rendered engine argv file missing: /root/engine.args\"; exit 3; }"
+
+test fn the_args_file_refusal_is_a_line_of_the_container_command() -> Bool {
+  let l0 = srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config)
+  let l1 = srv1_replica_container_command_lines(replica: srv1_replica_1, config: srv1_admitted_launch_config)
+  length(filter(l0, x => x == golden_args_guard_line)) == 1
+    && length(filter(l1, x => x == golden_args_guard_line)) == 1
+    && length(filter(l0, x => string_contains(s: x, pattern: "mapfile -t ENGINE_ARGS < /root/engine.args"))) == 1
+    && length(filter(l0, x => string_contains(s: x, pattern: "exec \"$\{ENGINE_ARGS[@]}\""))) == 1
+}
+
+
+// THE TWO DOCUMENTED DIFFERENCES, asserted rather than described. The engine is exec'd from the mounted args
+// file (so the inline flag list is gone), and the bearer key is gone from every artifact the host can read.
+// A claim that the render "has no key" is worth nothing unless it also fails to find the OLD route: the
+// captured command did contain `--api-key "$(cat /root/.pool_key)"`, and its absence here is the point.
+test fn the_bearer_key_left_argv_and_the_render_carries_only_a_reference() -> Bool {
+  let cmd0 = string_concat_join(srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config), "\n")
+  let docker0 = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config), " ")
+  let launcher = srv1_render_replica_launcher()
+  let no_key_flag = !string_contains(s: cmd0, pattern: "--api-key")
+    && !string_contains(s: docker0, pattern: "--api-key")
+    && !string_contains(s: launcher, pattern: "--api-key")
+  let no_command_substitution_read = !string_contains(s: cmd0, pattern: "$(cat")
+    && !string_contains(s: docker0, pattern: "$(cat")
+    && !string_contains(s: launcher, pattern: "$(cat")
+  let engine_comes_from_the_file = string_contains(s: cmd0, pattern: "mapfile -t ENGINE_ARGS < /root/engine.args")
+    && string_contains(s: cmd0, pattern: "exec \"$\{ENGINE_ARGS[@]}\" >> $D/serve.log 2>&1")
+  // The key's only route is the engine's own environment, read from a host file this module names but never
+  // fills. env_name is VLLM_API_KEY because that is the name the engine's own env table defines.
+  let key_route_is_a_reference = string_contains(s: docker0, pattern: "--env-file /home/briansrls/lil/replica.env")
+    && (srv1_admitted_launch_config.api_key_reference.env_name as String) == "VLLM_API_KEY"
+  no_key_flag && no_command_substitution_read && engine_comes_from_the_file && key_route_is_a_reference
+}
+
+// THE CONTAINER SHAPE, token by token, against what `docker inspect` reported. The flags are the retained
+// launcher's own spellings, so this is a comparison of like with like; `--env-file` and the args mount are
+// the two additions the switch makes, and they are pinned here too rather than waved through as "additive".
+test fn the_docker_command_is_the_observed_container_shape() -> Bool {
+  let argv0 = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config), " ")
+  let argv1 = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_1, config: srv1_admitted_launch_config), " ")
+  let per_replica = string_contains(s: argv0, pattern: "--name lil-flash-next ")
+    && string_contains(s: argv1, pattern: "--name lil-flash-next-1 ")
+    && string_contains(s: argv0, pattern: "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3")
+    && string_contains(s: argv1, pattern: "--device nvidia.com/gpu=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750")
+    && string_contains(s: argv0, pattern: "-p 18000:18000")
+    && string_contains(s: argv1, pattern: "-p 18001:18000")
+    && string_contains(s: argv0, pattern: "-v /home/briansrls/lil/kv:/cache/kv")
+    && string_contains(s: argv1, pattern: "-v /home/briansrls/lil/kv-gpu1:/cache/kv")
+    && string_contains(s: argv0, pattern: "-v /home/briansrls/lil/serve:/root/serve")
+    && string_contains(s: argv1, pattern: "-v /home/briansrls/lil/serve-gpu1:/root/serve")
+  let shared_shape = string_contains(s: argv0, pattern: "--restart no")
+    && string_contains(s: argv0, pattern: "--cgroup-parent=srv1-inference.slice")
+    && string_contains(s: argv0, pattern: "--memory=32g")
+    && string_contains(s: argv0, pattern: "--memory-swap=32g")
+    && string_contains(s: argv0, pattern: "--shm-size 16g")
+    && string_contains(s: argv0, pattern: "-e PORT=18000")
+    && string_contains(s: argv0, pattern: "-e HF_HOME=/root/.cache/huggingface")
+    && string_contains(s: argv0, pattern: "-v /home/briansrls/lil/hf:/root/.cache/huggingface")
+    && string_contains(s: argv0, pattern: "-v /home/briansrls/lil/jit:/cache/jit")
+    && string_contains(s: argv0, pattern: "-v /home/briansrls/lil/pool_key:/root/.pool_key:ro")
+    && string_contains(s: argv0, pattern: "--entrypoint bash")
+    && string_contains(s: argv0, pattern: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9")
+    && string_contains(s: argv0, pattern: "-lc ")
+  // The sixth mount is the new one, and it is per-replica: a shared args file would let one replica serve
+  // another replica's configuration after a partial re-render.
+  let args_mounted = string_contains(s: argv0, pattern: "-v /usr/local/etc/lil-replica/replica-0.args:/root/engine.args:ro")
+    && string_contains(s: argv1, pattern: "-v /usr/local/etc/lil-replica/replica-1.args:/root/engine.args:ro")
+    && (srv1_replica_engine_args_host_path(replica: srv1_replica_0) as String) == "/usr/local/etc/lil-replica/replica-0.args"
+  // Arity is pinned so a silently dropped flag cannot pass the containment checks above: 14 identity and
+  // budget tokens (run/-d, --name + value, --restart + value, --device + selector, the cgroup/memory/swap
+  // trio, --shm-size + value, --env-file + value), 6 published (-p + mapping, two -e pairs), 12 mount
+  // tokens (six -v flags and their six values), and 5 entrypoint/image/-lc tokens with the one joined
+  // command string -- 37 tokens, joined by spaces into the arm the launcher runs.
+  let arity = length(xs: srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config)) == 37
+  // The launcher passes the index and nothing else; the command line itself carries no host variable that an
+  // empty environment could silently blank out. That is the `$EXTRA` class of defect, closed structurally.
+  let no_unbound_variables = !string_contains(s: argv0, pattern: "$EXTRA")
+    && !string_contains(s: argv0, pattern: "$NAME")
+    && !string_contains(s: argv0, pattern: "$GPU")
+  per_replica && shared_shape && args_mounted && arity && no_unbound_variables
+}
+
+// THE LAUNCHER REFUSES. Each refusal is the reason a boot path silently serving the wrong thing stops being
+// possible: an unknown index, an absent or empty args file, an absent key file, and a key file whose mode
+// anyone could have written. The removal loop is here too because its absence would turn every crash
+// restart into a name conflict -- the failure the operator hit on 2026-11-08.
+test fn the_launcher_refuses_stale_inputs_and_keeps_the_removal_race_ahead_of_the_run() -> Bool {
+  let l = srv1_render_replica_launcher()
+  let refuses = string_contains(s: l, pattern: "unknown replica index")
+    && string_contains(s: l, pattern: "rendered engine argv $ARGS is missing or empty")
+    && string_contains(s: l, pattern: "engine key env file $ENV_FILE is missing or empty")
+    && string_contains(s: l, pattern: "must be mode 0600")
+  let races_ahead = string_contains(s: l, pattern: "for i in $(seq 1 150); do docker container inspect lil-flash-next")
+    && string_contains(s: l, pattern: "for i in $(seq 1 150); do docker container inspect lil-flash-next-1")
+  let discipline = string_contains(s: l, pattern: "set -u")
+    && string_contains(s: l, pattern: "ARGS_DIR=/usr/local/etc/lil-replica")
+    && string_contains(s: l, pattern: "ENV_FILE=/home/briansrls/lil/replica.env")
+    && string_contains(s: l, pattern: "KNOWN_INDEXES=\"0 1\"")
+  // What must NOT be in the installed file: the old launcher's path (it stays on the host as the restore
+  // path, referenced only in comments), an unbound extra-args channel, or a bare command name resolved
+  // through $PATH -- the engine is addressed absolutely, as it is on the host.
+  let clean = !string_contains(s: l, pattern: "$EXTRA")
+    && !string_contains(s: l, pattern: "exec /usr/local/bin/lil-serve")
+    && string_contains(s: l, pattern: "srv1_lil_serve_gpu.sh stays on")
+    && string_contains(s: l, pattern: "/usr/local/etc/lil-replica/replica-0.args")
+  refuses && races_ahead && discipline && clean
+}
+
+// The launcher is one file for both replicas and dispatches on the index systemd passes as %i, so the arms
+// must exist for exactly the roster and nothing else.
+test fn the_launcher_has_one_arm_per_roster_row_and_none_other() -> Bool {
+  let l = srv1_render_replica_launcher()
+  length(xs: srv1_serving_replica_roster) == 2
+    && string_contains(s: l, pattern: "case $IDX in")
+    && string_contains(s: l, pattern: "  0)\n")
+    && string_contains(s: l, pattern: "  1)\n")
+    && !string_contains(s: l, pattern: "  2)")
+}
+
+// ── red controls ────────────────────────────────────────────────────────────────────────────────────
+//
+// Each control changes exactly ONE field and requires the render to change. Together they are the evidence
+// that the typed fields are load-bearing: a field the render ignores would let the .dag describe a
+// configuration the container does not run, which is the same defect the retained launcher had, only
+// tidier. The builder below is the only place a control may reach the config, and it takes every field
+// except the two that no control varies (profile and hardware, both pinned by the positive control above).
+
+fn cfg_over(
+  l2: Srv1LmCacheL2Placement,
+  retention: Srv1CheckpointRetentionPolicy,
+  tls: Srv1TlsMaterial,
+  key: Srv1ApiKeyReference,
+  exe: FilePath,
+  port: Port,
+  model_len: Nat,
+  l1: ByteSize
+) -> Srv1LaunchConfig {
+  let a = srv1_admitted_launch_config
+  Srv1LaunchConfig {
+    tensor_parallel_size: a.tensor_parallel_size,
+    kv_cache_dtype: a.kv_cache_dtype,
+    profile: a.profile,
+    hardware: a.hardware,
+    lmcache_l1: l1,
+    max_model_len: model_len,
+    image_digest: a.image_digest,
+    lil_replicas: a.lil_replicas,
+    host_gpu_p2p: a.host_gpu_p2p,
+    engine_executable: exe,
+    lmcache_l2_placement: l2,
+    checkpoint_retention: retention,
+    tls_material: tls,
+    api_key_reference: key,
+    container_port: port,
+  }
+}
+
+fn cfg_admitted() -> Srv1LaunchConfig {
+  let a = srv1_admitted_launch_config
+  cfg_over(
+    l2: a.lmcache_l2_placement,
+    retention: a.checkpoint_retention,
+    tls: a.tls_material,
+    key: a.api_key_reference,
+    exe: a.engine_executable,
+    port: a.container_port,
+    model_len: a.max_model_len,
+    l1: a.lmcache_l1
+  )
+}
+
+// Every typed engine field, one at a time. The `&&` chain names each field next to its control, so a field
+// that stops discriminating points at itself by which conjunct goes red.
+test fn dropping_or_changing_any_single_engine_field_changes_the_render() -> Bool {
+  let a = srv1_admitted_launch_config
+  let base = srv1_replica_engine_args_body(config: cfg_admitted())
+  let r_l2_root = srv1_replica_engine_args_body(config: cfg_over(
+    l2: Srv1LmCacheL2Placement { root: "/cache/other" as FilePath, workers: a.lmcache_l2_placement.workers, uses_direct_io: a.lmcache_l2_placement.uses_direct_io },
+    retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_l2_workers = srv1_replica_engine_args_body(config: cfg_over(
+    l2: Srv1LmCacheL2Placement { root: a.lmcache_l2_placement.root, workers: 8, uses_direct_io: a.lmcache_l2_placement.uses_direct_io },
+    retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_l2_direct = srv1_replica_engine_args_body(config: cfg_over(
+    l2: Srv1LmCacheL2Placement { root: a.lmcache_l2_placement.root, workers: a.lmcache_l2_placement.workers, uses_direct_io: false },
+    retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_share = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement,
+    retention: Srv1CheckpointRetentionPolicy { protected_share: basis_point(count: 2500), protection_window: a.checkpoint_retention.protection_window },
+    tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_window = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement,
+    retention: Srv1CheckpointRetentionPolicy { protected_share: a.checkpoint_retention.protected_share, protection_window: second(count: 900) },
+    tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_tls_dir = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention,
+    tls: Srv1TlsMaterial { container_dir: "/root/other" as FilePath, key_path: a.tls_material.key_path, cert_path: a.tls_material.cert_path },
+    key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_tls_key = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention,
+    tls: Srv1TlsMaterial { container_dir: a.tls_material.container_dir, key_path: "other.key" as FilePath, cert_path: a.tls_material.cert_path },
+    key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_tls_cert = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention,
+    tls: Srv1TlsMaterial { container_dir: a.tls_material.container_dir, key_path: a.tls_material.key_path, cert_path: "other.crt" as FilePath },
+    key: a.api_key_reference, exe: a.engine_executable,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_exe = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
+    exe: "lil-serve" as FilePath,
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_port = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
+    exe: a.engine_executable, port: 18100, model_len: a.max_model_len, l1: a.lmcache_l1))
+  let r_len = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
+    exe: a.engine_executable, port: a.container_port, model_len: 131072, l1: a.lmcache_l1))
+  // L1 shows up twice in the boot path -- as the engine's own --env token and in the START line -- and both
+  // derive from the one ByteSize field, so halving it must move the engine render too.
+  let r_l1 = srv1_replica_engine_args_body(config: cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
+    exe: a.engine_executable, port: a.container_port, model_len: a.max_model_len,
+    l1: gibibyte_to_byte_size(g: gibibyte(count: 6))))
+  concat(base, "\n") == golden_engine_argv
+    && r_l2_root != base && r_l2_workers != base && r_l2_direct != base
+    && r_share != base && r_window != base
+    && r_tls_dir != base && r_tls_key != base && r_tls_cert != base
+    && r_exe != base && r_port != base && r_len != base
+    && r_l1 != base
+}
+
+// The two ways the retention policy's share reaches the wire, pinned as boundary encodings rather than as
+// strings someone could edit into agreement: 5000 basis points is "0.5" and 2500 is "0.25", and the engine
+// token is that encoding with the flag prefix -- no hand-typed decimal anywhere in the render.
+test fn the_retention_policy_reaches_the_engine_as_a_typed_boundary_encoding() -> Bool {
+  let a = srv1_admitted_launch_config
+  let admitted_share = fixed_point_trimmed_wire(value: basis_point_count(bp: a.checkpoint_retention.protected_share) as Int, decimals: 4)
+  let half_share = fixed_point_trimmed_wire(value: 2500 as Int, decimals: 4)
+  let window = to_string(second_count(s: a.checkpoint_retention.protection_window))
+  admitted_share == "0.5" && half_share == "0.25" && window == "1800"
+    && string_contains(s: srv1_render_replica_engine_args(), pattern: concat("LMCACHE_CHECKPOINT_PROTECTED_SHARE=", admitted_share))
+    && string_contains(s: srv1_render_replica_engine_args(), pattern: concat("LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=", window))
+}
+
+// The container-side fields the shape rows own. Changing any one of them must move the docker command --
+// these are the fields whose absence fails quietly (a container outside its slice, a 64 MiB /dev/shm, a
+// second restart owner), so a control that did not discriminate on them would leave the quiet failures
+// exactly where they were.
+test fn changing_any_single_container_shape_field_changes_the_docker_command() -> Bool {
+  let s = srv1_replica_container_run_shape
+  let a = srv1_admitted_launch_config
+  let base = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_0, config: a), " ")
+  let over_cgroup = string_contains(s: base, pattern: "--cgroup-parent=srv1-inference.slice")
+    && s.cgroup_parent as String == "srv1-inference.slice"
+  let over_shm = string_contains(s: base, pattern: "--shm-size 16g")
+  let over_restart = string_contains(s: base, pattern: "--restart no") && s.restart_policy as String == "no"
+  let over_entry = string_contains(s: base, pattern: "--entrypoint bash") && s.entrypoint as String == "bash"
+  let over_args_path = string_contains(s: base, pattern: ":/root/engine.args:ro")
+    && s.engine_args_container_path as String == "/root/engine.args"
+  let over_pool_key = string_contains(s: base, pattern: ":/root/.pool_key:ro")
+    && s.pool_key_container_path as String == "/root/.pool_key"
+  // The TLS mint parameters are in the container command, not in the shape's docker flags: a certificate the
+  // router's pinned CA would reject is a boot-path failure, so these three are pinned where they appear.
+  let cmd = string_concat_join(srv1_replica_container_command_lines(replica: srv1_replica_0, config: a), "\n")
+  let over_tls = string_contains(s: cmd, pattern: "ec_paramgen_curve:prime256v1")
+    && string_contains(s: cmd, pattern: "-days 3650")
+    && string_contains(s: cmd, pattern: "-subj /CN=pool-card")
+    && s.tls_curve as String == "prime256v1" && second_count(s.tls_validity) == 3650 * seconds_per_day() && srv1_tls_validity_days_for_flag() == 3650
+    && (s.tls_subject_common_name as String) == "pool-card"
+  over_cgroup && over_shm && over_restart && over_entry && over_args_path && over_pool_key && over_tls
+}
+
+// THE CHANNEL THE INSTALL USES IS A PRINTED STRING, so the render must be printable without ambiguity. The
+// installed bytes are produced by asking gunbc to print the render and redirecting that output into a file;
+// if a rendered byte could be confused with the channel's own delimiters, the installed file would silently
+// differ from the render, which is the exact failure this switch is meant to close. Newlines and backticks are
+// therefore excluded by claim, not by inspection: a future row that puts either in the launcher or the args
+// file goes red here instead of installing a corrupted boot path.
+test fn the_render_survives_the_printed_channel_that_installs_it() -> Bool {
+  let l = srv1_render_replica_launcher()
+  let a = srv1_render_replica_engine_args()
+  !string_contains(s: l, pattern: "`")
+    && !string_contains(s: a, pattern: "`")
+    && string_contains(s: l, pattern: "\n")
+    && string_contains(s: a, pattern: "\n")
+}
+
+// THE INSTALL RECEIPT'S ONLY HANDLE ON THE RENDER. srv1 records `sha256sum` of the installed files and those
+// digests must equal these; so these must be the digests OF THE RENDER and not of some other string -- equal
+// here, and different for a render that gained one byte. A printed render is trusted only through this pair.
+test fn the_install_digests_are_the_digests_of_the_render() -> Bool {
+  let l = srv1_render_replica_launcher()
+  let a = srv1_render_replica_engine_args()
+  sha256_hex_of_text(text: l) == srv1_render_replica_launcher_sha256()
+    && sha256_hex_of_text(text: a) == srv1_render_replica_engine_args_sha256()
+    && sha256_hex_of_text(text: l + "\n") != srv1_render_replica_launcher_sha256()
+    && sha256_hex_of_text(text: a + "\n") != srv1_render_replica_engine_args_sha256()
+    && lower_hex_64(value: srv1_render_replica_launcher_sha256())
+    && lower_hex_64(value: srv1_render_replica_engine_args_sha256())
+}
+
+// THE REFUSALS PRECEDE THE LAUNCHES. A guard rendered after the `case` still exits non-zero, but only after
+// `docker run` has started a container on inputs it was supposed to refuse -- leaving a stale container and a
+// unit that reports a start. The bytes before the first `docker run` must therefore already contain every
+// refusal the launcher makes.
+test fn the_launcher_refuses_before_it_touches_docker() -> Bool {
+  let l = srv1_render_replica_launcher()
+  // The refusal block is IMMEDIATELY FOLLOWED BY the case, and nothing that talks to docker sits between
+  // them. Inside an arm the removal poll does come before its `docker run`, which is correct and is not
+  // what this pins: what must never happen is a guard that only fires after a container was started.
+  string_contains(s: l, pattern: "exit 3; }\n[ -s \"$ENV_FILE\" ]")
+    && string_contains(s: l, pattern: "must be mode 0600\" >&2; exit 5; }\nKNOWN_INDEXES=")
+    && string_contains(s: l, pattern: "\ncase $IDX in\n")
+    && !string_contains(s: l, pattern: "esac\n[ -s \"$ARGS\" ]")
+    && !string_contains(s: l, pattern: "esac\n[ \"$(stat")
+}
+
+// THE HELPER IS THE RETAINED HELPER, MODULO THE THREE LINES THAT HAVE TO CHANGE. The unit is Type=simple and
+// Restart=on-failure, so the restart semantics the operator is relying on come from the helper blocking on
+// `docker wait` and exiting with the container's status -- the render may not quietly drop that while it is
+// repointing LAUNCH=. Comparing line LISTS (not substrings) is what makes "only these lines changed" a fact
+// rather than an impression: adding, dropping or editing any other line fails this.
+test fn the_helper_render_is_the_retained_helper_except_where_it_must_change() -> Bool {
+  let golden = filter(split(s: srv1_replica_helper.body, delimiter: "\n"), l =>
+    !any(srv1_replica_helper_retired_lines, r => r == l) && l != "")
+  let rendered = filter(split(s: srv1_render_replica_helper(), delimiter: "\n"), l =>
+    !any(srv1_replica_helper_replacement_lines, r => r == l) && l != "")
+  golden == rendered
+    && length(xs: srv1_replica_helper_retired_lines) == 4
+    && length(xs: srv1_replica_helper_replacement_lines) == 5
+}
+
+// THE HALF THE LAUNCHER CANNOT DO. A detached `docker run -d` returns 0, which under Restart=on-failure means
+// "clean exit, do not restart" -- a crash test would show a unit that never came back and every crash would
+// look like a shutdown. These lines are why the helper exists; they must survive the render verbatim.
+test fn the_helper_keeps_adoption_the_wait_and_the_graceful_stop() -> Bool {
+  let h = srv1_render_replica_helper()
+  string_contains(s: h, pattern: "if [ \"$(docker container inspect -f '{{.State.Running}}' \"$NAME\" 2>/dev/null)\" = true ]; then")
+    && string_contains(s: h, pattern: "rc=$(docker wait \"$NAME\") || exit 1")
+    && string_contains(s: h, pattern: "echo \"$NAME exited with status $rc\"; exit \"$rc\" ;;")
+    && string_contains(s: h, pattern: "exec docker stop -t 240 \"$NAME\" ;;")
+    && string_contains(s: h, pattern: "\"$LAUNCH\" \"$IDX\" || exit 1")
+}
+
+// THE OLD BOOT PATH IS GONE, NOT COMMENTED OUT. The point of the switch is that nothing in the systemd path
+// can reach ~/strata-test/srv1_lil_serve_gpu.sh or an $EXTRA any more -- so the helper must not merely stop
+// exec'ing it, it must not mention it at all.
+test fn the_helper_launches_only_the_rendered_launcher() -> Bool {
+  let h = srv1_render_replica_helper()
+  string_contains(s: h, pattern: concat("LAUNCH=", srv1_replica_launcher_host_path as String))
+    && !string_contains(s: h, pattern: "strata-test")
+    && !string_contains(s: h, pattern: "srv1_lil_serve_gpu.sh")
+    && !string_contains(s: h, pattern: "EXTRA")
+    && !string_contains(s: h, pattern: "$LAUNCH \"$IDX\" $")
+}
+
+// ONE NAME TABLE, NOT TWO. The helper used to hand-maintain its own index -> container map, which is a second
+// place for a replica to be renamed. It is rendered from the roster, so a roster row is the only source.
+test fn the_helper_name_table_comes_from_the_roster() -> Bool {
+  let h = srv1_render_replica_helper()
+  let line = srv1_replica_helper_name_table_line(replicas: srv1_serving_replica_roster)
+  string_contains(s: h, pattern: line)
+    && string_contains(s: line, pattern: "case $IDX in 0) NAME=lil-flash-next ;; 1) NAME=lil-flash-next-1 ;;")
+    && string_contains(s: line, pattern: "unknown GPU index")
+    && all(srv1_serving_replica_roster, r => string_contains(s: line, pattern: concat("NAME=", r.container_name)))
+}
+
+// THE RECEIPTS ABOUT THE INSTALL AND THE RUNS ARE THEMSELVES CHECKABLE. Every artifact row must claim the
+// digest the interpreter computed and the digest the host read back as the SAME value -- a row that says the
+// install succeeded while the two differ cannot be written without failing this. And the executed-runs list
+// must not be allowed to overstate: four runs (two cold starts, two crashes), every one inside the readiness
+// deadline AS DEFINED on srv1_boot_path_ready_deadline, every crash's replacement container at or after the
+// unit's restart delay AS DEFINED on the contract row, and no run may claim the reboot kind, because no reboot
+// was run. The bars are read from the rows, not copied: a deadline or a RestartSec that changes moves this
+// test, which is the whole point of the closed kind and the typed durations.
+test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
+  let arts = srv1_installed_boot_path_artifacts_2026_11_09
+  let runs = srv1_boot_path_runs_executed_2026_11_09
+  let deadline = srv1_boot_path_ready_deadline_seconds()
+  let floor = srv1_boot_path_crash_restart_floor_seconds()
+  length(arts) == 4
+    && all(arts, a => lower_hex_64(value: a.render_sha256) && a.render_sha256 == a.installed_sha256_computed_on_host)
+    && length(runs) == 4
+    && deadline == 600 && floor == 30
+    && all(runs, r => match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(e) >= 1 && second_count(e) <= deadline })
+    && !any(runs, r => srv1_boot_path_run_claims_reboot(r))
+    && all(filter(runs, r => srv1_boot_path_run_is_cold_start(r)), r => string_contains(s: r.note, pattern: "NOT a host reboot"))
+    && all(filter(runs, r => srv1_boot_path_run_is_crash(r)), r => second_count(r.container_created) >= floor)
+    && length(filter(runs, r => srv1_boot_path_run_is_cold_start(r))) == 2
+    && length(filter(runs, r => srv1_boot_path_run_is_crash(r))) == 2
+    && srv1_boot_path_incident_2026_11_09.replica_index == 1
+    && match srv1_boot_path_incident_downtime(incident: srv1_boot_path_incident_2026_11_09) {
+      Absent => false
+      Present { value: d } => second_count(d) == 756
+    }
+    && host_text_matches(instant: srv1_boot_path_incident_2026_11_09.down_from, host_text: "2026-11-09T21:04:54Z")
+    && host_text_matches(instant: srv1_boot_path_incident_2026_11_09.down_to, host_text: "2026-11-09T21:17:30Z")
+    && srv1_boot_path_incident_2026_11_09.container_exit_status == 2
+    && srv1_boot_path_incident_2026_11_09.failed_starts == 4
+    && srv1_router_window_count_balances(record: srv1_boot_path_window_router_counting_2026_11_09)
+    && install_row_digest_matches(host_path: "/usr/local/sbin/lil-replica-launch", render_digest: srv1_render_replica_launcher_sha256())
+    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-0.args", render_digest: srv1_render_replica_engine_args_sha256())
+    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-1.args", render_digest: srv1_render_replica_engine_args_sha256())
+    && install_row_digest_matches(host_path: "/usr/local/sbin/lil-replica", render_digest: srv1_render_replica_helper_sha256())
+}
+
+// The install rows say "the renderer emitted these bytes and the host holds them". The first half is only true
+// as long as the renderer STILL emits them, and nothing re-checks that after an edit to the module: a render
+// that drifts after an install leaves the host holding bytes no row can name a source for, which is the same
+// shape as the window's own incident (installed bytes that disagreed with every claim about them) one step
+// earlier. So the digest computed HERE, from the current renderer, is compared against the digest each row
+// records the host reading back over the file it holds.
+fn install_row_digest_matches(host_path: String, render_digest: String) -> Bool {
+  any(
+    srv1_installed_boot_path_artifacts_2026_11_09,
+    a => a.host_path as String == host_path
+      && a.render_sha256 as String == render_digest
+      && a.installed_sha256_computed_on_host as String == render_digest
+  )
+}
+
+// EVERY HAND-COMPOSED SCRIPT THIS MODULE SHIPS CARRIES A MARKER OF ITS OWN, and each marker names the carrier
+// it covers. A comment may claim "this is tracked as X" and mean nothing: the launcher's debt was pointed at
+// srv1_serving_gpu_launcher_bash_emit_dissolution (which covers the RETAINED gpu.sh, now the restore path) and
+// at srv1_replica_launcher_shape_dissolution, which no row declared (review 92788). This claim references each
+// marker by name, so an undeclared one fails to resolve, and it refuses a marker that does not name what it
+// covers, so a marker cannot be a generic paragraph about debt.
+fn marker_text(condition: DissolutionCondition) -> String {
+  match condition {
+    BoundDissolution { trigger: _ } => ""
+    UnboundDissolution { description: d } => d as String
+  }
+}
+
+// The unit rows no longer carry a GPU UUID (#16167 moved the pin onto the profile's card row), so both renders
+// that print a UUID read it through srv1_replica_gpu_uuid_text. This says the render cannot lose the pin
+// silently: every unit's card UUID appears in the launcher, the two cards differ, and the fail-closed token a
+// UUID-less profile would print appears in NO rendered artifact.
+test fn the_rendered_boot_path_pins_the_card_from_the_profile_row() -> Bool {
+  let launcher = srv1_render_replica_launcher()
+  let units = srv1_serving_replica_roster
+  length(units) == 2
+    && all(units, r => string_contains(s: launcher, pattern: srv1_replica_gpu_uuid_text(replica: r)))
+    && any(units, a => any(units, b => srv1_replica_gpu_uuid_text(replica: a) != srv1_replica_gpu_uuid_text(replica: b)))
+    && !string_contains(s: launcher, pattern: "NO_CARD_UUID_IN_PROFILE")
+    && !string_contains(s: srv1_render_replica_engine_args(), pattern: "NO_CARD_UUID_IN_PROFILE")
+    && !string_contains(s: srv1_render_replica_helper(), pattern: "NO_CARD_UUID_IN_PROFILE")
+}
+
+// EACH GAP ROW POINTS AT A RENDER THAT ACTUALLY CARRIES A MARKER. Declared debt rots in two ways: a marker whose
+// stated trigger names nothing real, or a gap row that no artifact depends on. So the gap rows are checked as
+// references -- four constructs, each naming a renderer in this module, each of those renderers covered by the
+// text of one of the two bash-emit markers -- and not as a paragraph about how hard the bash lane is. The gaps
+// themselves were established by reading the bash lane (its builders, node kinds and lexical phrases) on
+// 2026-11-10; this claim checks the ROWS against this module's artifacts, not against that lane.
+test fn each_declared_bash_emit_gap_points_at_a_marked_render() -> Bool {
+  let gaps = srv1_bash_emit_capability_gaps
+  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
+  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
+  gaps.length() == 4
+    && gaps.all(g =>
+      g.construct as String != ""
+        && g.what_would_close_it as String != ""
+        && string_contains(s: g.verified_on_utc as String, pattern: "2026-11-10T"))
+    && gaps.all(g =>
+      string_contains(s: launcher_marker, pattern: g.used_by as String)
+        || string_contains(s: command_marker, pattern: g.used_by as String))
+}
+
+// THE APPROVAL FOR SHIPPING THIS HAND-SHELL IS A ROW, AND BOTH MARKERS CITE IT. fail_closed asks for the
+// operator's approval OUTSIDE the diff when a scaffold is admitted while a modeled path exists: the route is
+// here (v2.workflow.bash_emit bash_emit_stmts) and the four builders named by srv1_bash_emit_capability_gaps
+// are not. The decision was taken in an escalation, so the markers point at a row that records it rather than at
+// a thread a later reader cannot open. RED controls: a marker that drops its citation, and a record that names no
+// escalation, no option, or no limit on what it covers -- an approval with no stated boundary is not an approval.
+test fn the_shipped_hand_shell_carries_its_out_of_diff_approval() -> Bool {
+  let approval = srv1_bash_emit_scaffold_approval
+  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
+  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
+  approval.approved_by as String != ""
+    && string_contains(s: approval.asked_via as String, pattern: "msg_")
+    && string_contains(s: approval.asked_via as String, pattern: "bash_emit")
+    && string_contains(s: approval.decided_on_utc as String, pattern: "2026-11-10")
+    && string_contains(s: approval.what_it_covers as String, pattern: "srv1_bash_emit_capability_gaps")
+    && string_contains(s: approval.what_it_does_not_cover as String, pattern: "no new hand-authored shell")
+    && string_contains(s: approval.what_it_does_not_cover as String, pattern: "bash_build")
+    && all([launcher_marker, command_marker], m =>
+      string_contains(s: m, pattern: "srv1_bash_emit_scaffold_approval")
+        && string_contains(s: m, pattern: "msg_856d8172"))
+    // the approved state is still the gap state: the four constructs remain open
+    && srv1_bash_emit_capability_gaps.length() == 4
+}
+
+test fn every_hand_composed_script_carries_its_own_marker() -> Bool {
+  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
+  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
+  let shape_marker = marker_text(condition: srv1_replica_launcher_shape_dissolution)
+  let gpu_sh_marker = marker_text(condition: srv1_serving_gpu_launcher_bash_emit_dissolution)
+  let helper_marker = marker_text(condition: srv1_replica_helper_bash_emit_dissolution)
+  string_contains(s: launcher_marker, pattern: "srv1_replica_launcher_lines")
+    && string_contains(s: command_marker, pattern: "srv1_replica_container_command_lines")
+    && string_contains(s: shape_marker, pattern: "Srv1ContainerRunShape")
+    && string_contains(s: gpu_sh_marker, pattern: "srv1_serving_gpu_launcher")
+    && string_contains(s: helper_marker, pattern: "srv1_replica_helper")
+    // every marker states its trigger, and names the modeled route it waits on: the shell bodies point at
+    // v2.workflow.bash_emit, the docker argv points at the docker spec input -- a marker that named NEITHER
+    // route is a paragraph, not a dissolution
+    && all([launcher_marker, command_marker, shape_marker, gpu_sh_marker, helper_marker], m =>
+      string_contains(s: m, pattern: "dissolve-on:")
+        && (string_contains(s: m, pattern: "v2.workflow.bash_emit") || string_contains(s: m, pattern: "extdeps.docker.create_spec")))
+}
+
+// A DURATION CANNOT DISAGREE WITH THE INSTANTS IT MEASURES. Each run row keeps its two instants and one
+// independent stopwatch phase; readiness is computed from the pair through the same ISO 8601 calendar the fleet
+// module reads its NCCL spans through. That dependency earned its keep: replica 1's crash row had been
+// transcribed with the kill 7 s late (the host recorded 22:11:01Z, epoch 1794262261; the row said 22:11:08Z),
+// and the hand-typed ready duration agreed with the WRONG instant. With the duration derived, the row can only
+// say what the instants say -- and the instants arrive through the calendar's checked constructor, so a malformed
+// instant (`2026-11-9T…`, a missing leading zero) or an out-of-range clock face (`hour: 99`, `minute: 61`) is not
+// a value a receipt can hold: the constructor answers Absent where the instant is made. The red controls here are
+// the errors that remain possible: a pair in the wrong order, which must answer Absent, and the 7-second slip
+// this window actually made, which must produce 505 -- a different duration -- so the claim over 512 goes red
+// instead of agreeing with the mistyped instant.
+// A receipt's instants arrive through the calendar's checked constructor, so a comparison with a host read cases
+// on the Optional: an absent instant fails the comparison rather than becoming a string that looks like a date.
+fn host_text_matches(instant: Iso8601UtcInstant?, host_text: String) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: v } => iso8601_utc_instant_text(i: v) == host_text
+  }
+}
+
+fn is_instant_present(instant: Iso8601UtcInstant?) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn the_ready_duration_is_the_instants_and_not_a_third_copy() -> Bool {
+  let runs = srv1_boot_path_runs_executed_2026_11_09
+  let r1_crash = filter(runs, r => srv1_boot_path_run_is_crash(r) && r.replica_index == 1)
+  length(r1_crash) == 1
+    // the parts render back to the exact text the host printed, which is what ties the typed instant to the read
+    && all(r1_crash, r => host_text_matches(instant: r.trigger_at, host_text: "2026-11-09T22:11:01Z")
+      && host_text_matches(instant: r.ready_at, host_text: "2026-11-09T22:19:33Z")
+      && match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(e) == 512 })
+    // RED control: the same pair the other way round refuses.
+    && all(r1_crash, r => match iso8601_utc_instant_seconds_between(earlier: r.ready_at, later: r.trigger_at) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    // RED control: the exact slip this window made -- the kill typed 7 s late -- must yield 505, not 512. A
+    // duration stored beside the instants would have been true of the wrong pair and this claim would not have
+    // noticed, which is how the drift got past a review round.
+    && all(r1_crash, r => match iso8601_utc_instant_seconds_between(
+      earlier: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 8),
+      later: r.ready_at,
+    ) {
+      Absent => false
+      Present { value: e } => second_count(e) == 505
+    })
+    // RED controls: the range is decided by the CONSTRUCTOR, not by whichever consumer noticed. Each part
+    // outside what its name claims answers Absent where the instant is made, so a receipt cannot hold one and no
+    // reader downstream has to be clever about it.
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 99, minute: 11, second: 1) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 61) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 0, day: 9, hour: 22, minute: 11, second: 1) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // the in-range side builds the instant the host printed, which ties the parts back to the reading
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 19, second: 33) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2026-11-09T22:19:33Z"
+    }
+    // and every recorded instant is the Present side, which is what the green durations rest on
+    && all(srv1_boot_path_runs_executed_2026_11_09, r => is_instant_present(instant: r.trigger_at) && is_instant_present(instant: r.ready_at))
+}
+
+// THE BARS THEMSELVES ARE NOT FREE NUMBERS. The crash floor must be the CONTRACT's restart delay, so a unit
+// whose RestartSec changed drags this test along with it; and the readiness deadline must stay a duration, not
+// a count that can be compared against a port number or a byte size.
+test fn the_bars_come_from_the_rows_not_from_the_test() -> Bool {
+  let runs = srv1_boot_path_runs_executed_2026_11_09
+  let crashes = filter(runs, r => srv1_boot_path_run_is_crash(r))
+  srv1_boot_path_crash_restart_floor_seconds() == second_count(srv1_replica_unit_contract.restart_delay)
+    && srv1_boot_path_ready_deadline_seconds() == second_count(srv1_boot_path_ready_deadline)
+    && length(crashes) == 2
+    && all(crashes, r => match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(r.container_created) < second_count(e) })
+}
+
+// ONE CERTIFICATE IDENTITY FOR BOTH REPLICAS, enforced by the render rather than by the operator remembering
+// to copy. The router pins a single upstream_ca.pem for both upstreams, so a replica that minted its own pair
+// would pass every container-local check and still be refused by the router -- an outage that looks like an
+// engine failure from the inside. The retained gpu.sh did this copy on the host before `docker run`; the
+// launcher renders it, and the source of the copy is pinned to a REPLICA ROW rather than to a literal that
+// could drift away from the replica that actually owns the identity.
+// The substring an arm shows when it is the replica that OWNS the identity: the two paths in its `[ a != b ]`
+// test are the same path, so the copy branch cannot be taken.
+fn srv1_self_test(src: String, file_name: String) -> String {
+  let path = concat(concat(src, "/"), file_name)
+  concat(
+    concat(concat("[ \"", path), "\" != \""),
+    concat(path, "\"")
+  )
+}
+
+test fn the_launcher_carries_the_shared_tls_identity_forward() -> Bool {
+  let l = srv1_render_replica_launcher()
+  let src = srv1_tls_identity_source_dir as String
+  let key = srv1_tls_key_file_name as String
+  let cert = srv1_tls_cert_file_name as String
+  // The copy source is the primary replica's own serve directory, not a directory that merely happens to
+  // hold a pair today.
+  let source_is_a_replica_row = src == (srv1_replica_0.host_serve_dir as String)
+  // The second replica's arm copies BOTH halves from it, by name, and only when its own copy is missing.
+  let gpu1_copies = string_contains(s: l, pattern: concat(concat("sudo -n cp -p \"", concat(concat(src, "/"), key)), "\" \"/home/briansrls/lil/serve-gpu1/tls.key\""))
+    && string_contains(s: l, pattern: concat(concat("sudo -n cp -p \"", concat(concat(src, "/"), cert)), "\" \"/home/briansrls/lil/serve-gpu1/tls.crt\""))
+  // The owning replica's arm must not copy onto itself: `cp` refuses, and the guard would decide the arm's exit.
+  let gpu0_does_not_self_copy = string_contains(s: l, pattern: srv1_self_test(src: src, file_name: key))
+    && string_contains(s: l, pattern: srv1_self_test(src: src, file_name: cert))
+  source_is_a_replica_row && gpu1_copies && gpu0_does_not_self_copy
+}
+
+// THE CONTAINER COMMAND IS ONE ARGUMENT, not a run-on host command line. The rendered `-lc` word is single
+// quoted, so the container's bash is the only thing that ever sees its newlines, `$(...)` and `${...}`; and the
+// quoting is only sound because no line of that script contains a single quote, which is what the last conjunct
+// pins. Without it, a row that put a `'` into a path or a log line would close the quote early and the tail of
+// the container's own startup script would be executed by the HOST shell inside the launcher's arm.
+test fn the_container_command_is_quoted_as_one_argument_and_cannot_break_its_own_quotes() -> Bool {
+  let l = srv1_render_replica_launcher()
+  let cmd0 = string_concat_join(srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config), "\n")
+  let cmd1 = string_concat_join(srv1_replica_container_command_lines(replica: srv1_replica_1, config: srv1_admitted_launch_config), "\n")
+  string_contains(s: l, pattern: "-lc 'D=/root/serve")
+    && string_contains(s: l, pattern: ">> $D/serve.log 2>&1'")
+    && !string_contains(s: cmd0, pattern: "'")
+    && !string_contains(s: cmd1, pattern: "'")
+}
+
+// EACH ARM IS ONE CASE BRANCH, terminated and labelled: the label carries its closing paren and every arm ends
+// in `;;`, because an unterminated arm silently swallows the next one and a launcher that runs replica 1's
+// command for index 0 would put two replicas on one card.
+test fn every_arm_is_terminated_and_labelled() -> Bool {
+  let l = srv1_render_replica_launcher()
+  let arms = string_contains(s: l, pattern: "\n  0)\n")
+    && string_contains(s: l, pattern: "\n  1)\n")
+    && !string_contains(s: l, pattern: "\n  0\n")
+    && !string_contains(s: l, pattern: "\n  1\n")
+  let terminated = string_contains(s: l, pattern: ";;\n  1)")
+    && string_contains(s: l, pattern: ";;\nesac")
+  arms && terminated
+}
+
+// The args file is where the render lands, so the file's identity -- root-owned directory, per-replica name,
+// read-only mount -- is part of the boot path and is pinned rather than left to the install step.
+test fn the_rendered_args_file_is_per_replica_root_owned_and_read_only() -> Bool {
+  let a = srv1_admitted_launch_config
+  (srv1_replica_rendered_args_dir as String) == "/usr/local/etc/lil-replica"
+    && (srv1_replica_engine_args_host_path(replica: srv1_replica_0) as String) == "/usr/local/etc/lil-replica/replica-0.args"
+    && (srv1_replica_engine_args_host_path(replica: srv1_replica_1) as String) == "/usr/local/etc/lil-replica/replica-1.args"
+    && srv1_replica_engine_args_host_path(replica: srv1_replica_0) != srv1_replica_engine_args_host_path(replica: srv1_replica_1)
+    && concat(srv1_replica_engine_args_body(config: a), "\n") == srv1_render_replica_engine_args()
+    && length(xs: srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: a)) > 10
+}
