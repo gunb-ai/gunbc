@@ -98,10 +98,6 @@ fn megarac_cleared_cd_at_the_current_build() -> MegaRacCdRow {
 }
 
 
-fn megarac_session_valid(world: MegaRacMediaWorld, cookie_jar: String, csrf_token: String) -> Bool {
-  !all(world.sessions, s => !(s.open && s.cookie_jar == cookie_jar && s.csrf_token == csrf_token))
-}
-
 fn megarac_session_by_jar(world: MegaRacMediaWorld, cookie_jar: String) -> Bool {
   !all(world.sessions, s => !(s.open && s.cookie_jar == cookie_jar))
 }
@@ -128,23 +124,15 @@ fn megarac_open_session(world: MegaRacMediaWorld, cookie_jar: String) -> MegaRac
   }
 }
 
-fn megarac_close_session(world: MegaRacMediaWorld, cookie_jar: String, csrf_token: String) -> MegaRacMediaWorld {
-  megarac_with_sessions(
-    world: world,
-    sessions: map(world.sessions, s => if s.cookie_jar == cookie_jar && s.csrf_token == csrf_token { MegaRacSession { cookie_jar: s.cookie_jar, csrf_token: s.csrf_token, open: false } } else { s }),
-    next_session: world.next_session,
-  )
-}
-
-// THE CSRF PRESENTATION, CHECKED THE WAY CURL NOW DELIVERS IT. Since extdeps.bmc.megarac takes the token
-// off argv, every session curl presents X-CSRFTOKEN by reading it from a 0600 file (`-H @FILE`). The dry
-// world therefore judges the presentation the way a real MegaRAC would judge the header curl SENDS: it
-// compares the file's whole content against the one line extdeps.bmc.megarac megarac_csrf_header_content
-// authors for the session's own token. A wrong token, an absent header file (which reads as the empty
-// string), or a session that has been closed all fail this and answer 401 -- the same verdicts
-// megarac_session_valid gave when the token rode argv, reached now through the file the caller staged.
-// These are the modeled-fs siblings of megarac_session_valid / megarac_close_session; the dry bindings
-// read the header file with filesystem_model and hand its content here.
+// THE CSRF PRESENTATION, CHECKED THE WAY CURL NOW DELIVERS IT — THE ONE SESSION AUTHORITY. Since
+// extdeps.bmc.megarac takes the token off argv, every session curl presents X-CSRFTOKEN by reading
+// it from a 0600 file (`-H @FILE`). The dry world therefore judges the presentation the way a real
+// MegaRAC would judge the header curl SENDS: it compares the file's whole content against the one
+// line extdeps.bmc.megarac megarac_csrf_header_content authors for the session's own token. A wrong
+// token, an absent header file (which reads as the empty string), or a session that has been closed
+// all fail this and answer 401. These are the session judges: the token value itself is never the
+// argument, only the header content the caller staged, so no dry route can judge a bare token; the
+// dry bindings read the header file with filesystem_model and hand its content here.
 fn megarac_session_valid_by_header(world: MegaRacMediaWorld, cookie_jar: String, header_content: String) -> Bool {
   !all(world.sessions, s => !(s.open && s.cookie_jar == cookie_jar && megarac_csrf_header_content(token: s.csrf_token) == header_content))
 }
