@@ -34,7 +34,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   Srv1ApiKeyReference, Srv1ContainerRunShape, Srv1ServingReplicaSpec,
   srv1_admitted_launch_config, srv1_replica_container_run_shape, srv1_replica_rendered_args_dir,
   srv1_replica_engine_args_body, srv1_replica_engine_args_host_path,
-  srv1_replica_container_command_lines, srv1_replica_docker_argv, srv1_replica_launcher_lines,
+  srv1_replica_container_command_lines, srv1_replica_docker_container, srv1_replica_launcher_lines,
   srv1_render_replica_launcher, srv1_render_replica_engine_args,
   srv1_render_replica_launcher_sha256, srv1_render_replica_engine_args_sha256,
   srv1_render_replica_helper, srv1_render_replica_helper_sha256, srv1_replica_helper_lines,
@@ -54,8 +54,8 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
   srv1_replica_helper_bash_emit_dissolution,
-import gunbc.fleet.gpu_interconnect_observation { srv1_window_seconds_between }
 }
+import gunbc.fleet.gpu_interconnect_observation { srv1_window_seconds_between }
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
 //
@@ -150,7 +150,7 @@ test fn the_args_file_refusal_is_a_line_of_the_container_command() -> Bool {
 // captured command did contain `--api-key "$(cat /root/.pool_key)"`, and its absence here is the point.
 test fn the_bearer_key_left_argv_and_the_render_carries_only_a_reference() -> Bool {
   let cmd0 = string_concat_join(srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config), "\n")
-  let docker0 = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config), " ")
+  let docker0 = string_concat_join(srv1_replica_docker_container(replica: srv1_replica_0, config: srv1_admitted_launch_config), " ")
   let launcher = srv1_render_replica_launcher()
   let no_key_flag = !string_contains(s: cmd0, pattern: "--api-key")
     && !string_contains(s: docker0, pattern: "--api-key")
@@ -171,8 +171,8 @@ test fn the_bearer_key_left_argv_and_the_render_carries_only_a_reference() -> Bo
 // launcher's own spellings, so this is a comparison of like with like; `--env-file` and the args mount are
 // the two additions the switch makes, and they are pinned here too rather than waved through as "additive".
 test fn the_docker_command_is_the_observed_container_shape() -> Bool {
-  let argv0 = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config), " ")
-  let argv1 = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_1, config: srv1_admitted_launch_config), " ")
+  let argv0 = string_concat_join(srv1_replica_docker_container(replica: srv1_replica_0, config: srv1_admitted_launch_config), " ")
+  let argv1 = string_concat_join(srv1_replica_docker_container(replica: srv1_replica_1, config: srv1_admitted_launch_config), " ")
   let per_replica = string_contains(s: argv0, pattern: "--name lil-flash-next ")
     && string_contains(s: argv1, pattern: "--name lil-flash-next-1 ")
     && string_contains(s: argv0, pattern: "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3")
@@ -206,7 +206,7 @@ test fn the_docker_command_is_the_observed_container_shape() -> Bool {
   // trio, --shm-size + value, --env-file + value), 6 published (-p + mapping, two -e pairs), 12 mount
   // tokens (six -v flags and their six values), and 5 entrypoint/image/-lc tokens with the one joined
   // command string -- 37 tokens, joined by spaces into the arm the launcher runs.
-  let arity = length(xs: srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config)) == 37
+  let arity = length(xs: srv1_replica_docker_container(replica: srv1_replica_0, config: srv1_admitted_launch_config)) == 37
   // The launcher passes the index and nothing else; the command line itself carries no host variable that an
   // empty environment could silently blank out. That is the `$EXTRA` class of defect, closed structurally.
   let no_unbound_variables = !string_contains(s: argv0, pattern: "$EXTRA")
@@ -390,7 +390,7 @@ test fn the_retention_policy_reaches_the_engine_as_a_typed_boundary_encoding() -
 test fn changing_any_single_container_shape_field_changes_the_docker_command() -> Bool {
   let s = srv1_replica_container_run_shape
   let a = srv1_admitted_launch_config
-  let base = string_concat_join(srv1_replica_docker_argv(replica: srv1_replica_0, config: a), " ")
+  let base = string_concat_join(srv1_replica_docker_container(replica: srv1_replica_0, config: a), " ")
   let over_cgroup = string_contains(s: base, pattern: "--cgroup-parent=srv1-inference.slice")
     && s.cgroup_parent as String == "srv1-inference.slice"
   let over_shm = string_contains(s: base, pattern: "--shm-size 16g")
