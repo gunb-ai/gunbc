@@ -346,11 +346,19 @@ fn cecf_is_pair_admitted(r: CecfProbeReading) -> Bool {
 // refusal" is what keeps the claim about the class it names: this fixture also measures a second refusal,
 // eval_rejected_grounding_not_derived at a cast rooted as the evaluation input, which is a different read
 // (the grounding read of a refinement-typed cast node), is named on the class row as the v2 gap this PR
-// does NOT close, and must not be able to turn these rows red or hide inside them.
+// does NOT close, and must not be able to turn these rows red or hide inside them. The reason fields are
+// Optional<Symbol>, so an absent reason is read as "not this gate": a refusal nobody explained is not
+// evidence of the realized-type fork, and no row may be satisfied by one. The census prints it regardless.
 fn cecf_is_realized_type_refusal(r: CecfProbeReading) -> Bool {
   match r {
-    CastRefused { cast_reason: reason } => reason == ^eval_rejected_resolved_type_mismatch
-    OperandRefused { operand_reason: reason } => reason == ^eval_rejected_resolved_type_mismatch
+    CastRefused { cast_reason: reason } => match reason {
+      Present { value: sym } => sym == ^eval_rejected_resolved_type_mismatch
+      Absent => false
+    }
+    OperandRefused { operand_reason: reason } => match reason {
+      Present { value: sym } => sym == ^eval_rejected_resolved_type_mismatch
+      Absent => false
+    }
     _ => false
   }
 }
