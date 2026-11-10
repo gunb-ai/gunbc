@@ -551,15 +551,52 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
 // WHAT THE OBLIGATION OWED, AND WHAT IT STILL OWES. The row keeps its obligation meaning: a reader who
 // reaches it by name gets an open task, never a finished one. The run that discharged the unloaded re-run
 // lives in srv1_collective_read_executed_2026_11_09 below, under a name that says it is a record.
-data srv1_collective_read_obligation: NonEmptyStr = "STILL OWED, after the 2026-11-09 unloaded re-run (recorded in srv1_collective_read_executed_2026_11_09): (1) the claim that the missing P2P path explains the gap between TP=2 and 2xTP=1 is NOT settled -- it needs the SAME instrument read across the two topologies on this host (a TP=2 group and a 2xTP=1 pair), which no reading here does; (2) both runs took the arms in the same order (default first, NCCL_P2P_DISABLE=1 second), so an order or warm-up effect is not excluded -- reverse the arm order; (3) neither run names the transport NCCL selected beyond the printed via-SHM/direct line and isAllDirectP2p 0 -- a run with NCCL_DEBUG_SUBSYS=TRANSPORT would say which path carried the bytes. The separation between the arms at 256 KiB and above is NOT one of the open items: it did not survive an unloaded host -- the comparison is arithmetic in the witness, not a figure repeated here -- and the row below records the run that showed it."
+// ONE OPEN TASK PER ROW. What is still owed after the 2026-11-09 unloaded re-run is three DIFFERENT reads, each
+// with its own cost and its own discriminating power. As one prose string they could be tracked only as a block:
+// one could be done while the row still read as wholly open, a witness could only grep it, and nothing recorded
+// how expensive each answer is. Each row says the control, what it would settle, how it is run, and whether it is
+// still open. The row keeps its old name as a pointer, so the references to it elsewhere still mean one thing.
+type Srv1CollectiveReadFollowUp {
+  control: NonEmptyStr,
+  what_it_settles: NonEmptyStr,
+  how_to_run: NonEmptyStr,
+  cost: NonEmptyStr,
+  open: Bool,
+}
 
-// THE RUN RECORD, named as one: window, what had to be stopped to take the read, the measurement
-// interval, and the reading rows it summarises. Kept separate from the obligation so an open task cannot
-// read as closed while keeping its name (review 92817).
+data srv1_collective_read_follow_ups_2026_11_09: List<Srv1CollectiveReadFollowUp> = [
+  Srv1CollectiveReadFollowUp {
+    control: "the same instrument read across BOTH serving topologies on this host: a TP=2 group and a 2xTP=1 pair" as NonEmptyStr,
+    what_it_settles: "the claim that the missing P2P path explains the serving gap between TP=2 and 2xTP=1 -- no reading in this module crosses the two topologies, so the claim stays a Hypothesis" as NonEmptyStr,
+    how_to_run: "nccl_test.py against a TP=2 process group, then the same bytes against the two standalone replicas' interconnect, same host, same image" as NonEmptyStr,
+    cost: "one more container group on the same two cards; a serving replica has to be stopped for it" as NonEmptyStr,
+    open: true,
+  },
+  Srv1CollectiveReadFollowUp {
+    control: "the two arms taken in the REVERSE order" as NonEmptyStr,
+    what_it_settles: "an order or warm-up effect -- both the 2026-11-08 and the 2026-11-09 runs took default first and NCCL_P2P_DISABLE=1 second, seconds apart" as NonEmptyStr,
+    how_to_run: "the same unloaded pair with the arm order flipped" as NonEmptyStr,
+    cost: "about one minute of an unloaded window" as NonEmptyStr,
+    open: true,
+  },
+  Srv1CollectiveReadFollowUp {
+    control: "a read that NAMES the transport NCCL selected" as NonEmptyStr,
+    what_it_settles: "which path actually carried the bytes -- both runs print only via SHM/direct and isAllDirectP2p 0, which says what was not available, not what was used" as NonEmptyStr,
+    how_to_run: "the same unloaded run with NCCL_DEBUG_SUBSYS extended to TRANSPORT" as NonEmptyStr,
+    cost: "about one minute of an unloaded window, more log" as NonEmptyStr,
+    open: true,
+  },
+]
+
+// A pointer, not a paragraph: the open work is the three rows above, and the closed item (the arm separation,
+// which did not survive an unloaded host) is decided arithmetically in the witness over the two runs, not quoted
+// here as a figure that could go stale against the reading rows.
+data srv1_collective_read_obligation: NonEmptyStr = "OPEN: three controls remain (srv1_collective_read_follow_ups_2026_11_09): the cross-topology read, the reversed arm order, and a transport-named read. CLOSED by the 2026-11-09 unloaded re-run: the separation between the arms at 256 KiB and above, which did not survive an unloaded host." as NonEmptyStr
+
 // THE RUN RECORD, with the identity that makes it checkable as FIELDS: which units had to be stopped, which
-// containers were removed, when the window was open, when the numbers were actually taken, the instrument and
-// the log that back them, and the reading rows this summarises. `outcome` is the one narrative field; a claim
-// that this run happened can check the fields instead of hunting substrings through a paragraph.
+// containers were removed, when the window was open, when the numbers were actually taken, the instrument and the
+// log that back them. It is a separate row from the obligation so an open task cannot read as closed while
+// keeping its name, and it carries no verdict field: what the run SHOWS is arithmetic over the reading rows.
 type Srv1CollectiveReadRun {
   window_start_utc: NonEmptyStr,
   window_end_utc: NonEmptyStr,

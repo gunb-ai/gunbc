@@ -33,6 +33,7 @@ import gunbc.fleet.gpu_interconnect_observation {
   srv1_collective_transport_readings_unloaded_2026_11_09,
   srv1_nccl_arm_default, srv1_nccl_arm_p2p_disabled,
   srv1_collective_read_obligation, srv1_collective_read_executed_2026_11_09,
+  srv1_collective_read_follow_ups_2026_11_09,
   srv1_collective_read_window_duration, srv1_collective_read_measurement_duration, srv1_window_seconds_between,
 }
 
@@ -311,15 +312,25 @@ test fn the_unloaded_rows_are_not_the_loaded_rows_relabelled() -> Bool {
 // named there, and the run window plus the rows it summarises carried by the record.
 test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
   let obligation = srv1_collective_read_obligation as String
+  let follow_ups = srv1_collective_read_follow_ups_2026_11_09
   let record = srv1_collective_read_executed_2026_11_09
   !string_contains(s: obligation, pattern: "EXECUTED")
     && !string_contains(s: obligation, pattern: "DONE")
     && !string_contains(s: obligation, pattern: "COMPLETED")
-    && string_contains(s: obligation, pattern: "STILL OWED")
-    && string_contains(s: obligation, pattern: "reverse the arm order")
-    && string_contains(s: obligation, pattern: "NCCL_DEBUG_SUBSYS=TRANSPORT")
-    && string_contains(s: obligation, pattern: "TP=2")
-    && string_contains(s: obligation, pattern: "srv1_collective_read_executed_2026_11_09")
+    // THE OPEN WORK IS THREE ROWS, NOT CLAUSES IN A SENTENCE. Each control gets its own row with what it
+    // settles, how it is run and what it costs; the count is asserted because a row that quietly folded two
+    // controls together would still read as "open" while losing one of them. The pointer row keeps the old name
+    // and points at the list, so every reference to the obligation still means one thing.
+    && follow_ups.length() == 3
+    && follow_ups.all(f => f.open && f.control as String != "" && f.what_it_settles as String != "" && f.how_to_run as String != "" && f.cost as String != "")
+    && any(follow_ups, f => string_contains(s: f.control as String, pattern: "topolog"))
+    && any(follow_ups, f => string_contains(s: f.control as String, pattern: "REVERSE"))
+    && any(follow_ups, f => string_contains(s: f.how_to_run as String, pattern: "TRANSPORT"))
+    // RED control: the pointer row must not read as finished work -- it closes one named item and says the
+    // other three are open. Flipping any follow-up's `open` to false would leave the count honest but the
+    // pointer row's "three controls remain" false, which is exactly the disagreement this claim catches.
+    && string_contains(s: obligation, pattern: "OPEN: three controls remain")
+    && string_contains(s: obligation, pattern: "srv1_collective_read_follow_ups_2026_11_09")
     && record.measurement_start_utc as String == "2026-11-09T22:40:35Z"
     && record.window_start_utc as String == "2026-11-09T22:39:48Z"
     && record.window_end_utc as String == "2026-11-09T22:47:37Z"
