@@ -57,7 +57,7 @@ data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
 // Manager is itself a privileged effect -- but it is now a WORKFLOW MINT and not a human shell step. The model
 // is gunbc.host.mtcollins1_ssh_host_key_mint, one of the two rows of the single keypair-mint policy
 // gunbc.host.fleet_keypair_mint (the other is the boot medium reader key), censused at
-// gunbc.auth.privileged_effect_census as a federated grant, and dispatched as the fleet-converge mode
+// gunbc.auth.privileged_effect_registry as a federated grant, and dispatched as the fleet-converge mode
 // FleetKeypairMint (one dispatch walks the roster; each row's own pin decides whether an effect is reached).
 // It replaces the scaffold that used to sit beside it
 // (anchored_host_key_mint_shell / anchored_host_key_mint_intervention / anchored_host_key_mint_effect,

@@ -49,7 +49,7 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 //
 // THIS IS THE LINEAGE ROOT the job's host-root writes inherit (gunbc.design_ruling
 // the_initial_convergence_is_the_only_approval): the scopes requested here are the scopes the census
-// root grants (gunbc.auth.privileged_effect_census srv1_root_mutation_approval_root consumes
+// root grants (gunbc.auth.privileged_effect_registry srv1_root_mutation_approval_root consumes
 // srv1_root_mutation_approved_scopes), so what the operator is shown and what the inheriting writes
 // are admitted against are one value.
 //

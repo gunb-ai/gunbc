@@ -98,8 +98,8 @@ import gunbc.auth.authorization_pattern_selection {
   HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ApprovedConvergenceGrant, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
 }
-import gunbc.auth.privileged_effect_census {
-  privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+import gunbc.auth.privileged_effect_registry {
+  privileged_effect_registry, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
 }
 import gunbc.spool_queue { SpoolAttemptUnit, SpoolRole, RolePending, spool_open, spool_role_path, SpoolKind }
 import gunbc.systemd_unit_names { dispatch_attempt_unit_stem }
@@ -218,8 +218,8 @@ test fn the_launcher_effect_selects_federated_scoped_grant() -> Bool {
   }
 }
 
-test fn the_launcher_site_conforms_in_the_privileged_effect_census() -> Bool {
-  let rows = filter(privileged_effect_census, r => (r.site.decl_name as String) == "attempt_system_unit_launch_cli")
+test fn the_launcher_site_conforms_in_the_privileged_effect_registry() -> Bool {
+  let rows = filter(privileged_effect_registry, r => (r.site.decl_name as String) == "attempt_system_unit_launch_cli")
   match rows.first() {
     Absent => false
     Present { value: row } =>

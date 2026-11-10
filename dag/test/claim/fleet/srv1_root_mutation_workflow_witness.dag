@@ -45,7 +45,7 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_step_margin, srv1_root_mutation_approval_step_timeout_minutes,
   srv1_root_mutation_approval_window,
 }
-import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
+import gunbc.auth.privileged_effect_registry { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_registry }
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }

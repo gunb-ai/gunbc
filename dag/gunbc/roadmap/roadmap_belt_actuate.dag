@@ -16317,7 +16317,7 @@ fn belt_exit_stall_clear_at(root: String, entry: String, whoami: BeltExitStallOb
 // THE PRIVILEGED HALF OF A RELEASE: the .path unit sits failed (trigger-limit-hit) after a stall, and re-arming
 // a SYSTEM unit is root's. Its argv is elevated through extdeps.sudo.elevation sudo_elevate_argv, and the
 // authorization it needs is whatever select_authorization_pattern selects for it
-// (gunbc.auth.privileged_effect_census, site belt_exit_stall_rearm_at) -- no sudoers line is coined here. A
+// (gunbc.auth.privileged_effect_registry, site belt_exit_stall_rearm_at) -- no sudoers line is coined here. A
 // refusal by the host is TYPED and carries the exact argv, so a privileged operator can run it.
 type BeltExitStallRearm
   = BeltExitStallRearmed

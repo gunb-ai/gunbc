@@ -22,9 +22,9 @@ import gunbc.machine_intake.bmc_inband_recovery_receipts {
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_3_06_00_capabilities, asrock_altrad8ud_openbmc_3_22_00_capabilities,
 }
-import gunbc.auth.privileged_effect_census {
+import gunbc.auth.privileged_effect_registry {
   SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
-  census_verdicts, recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect,
+  registry_verdicts, recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect,
 }
 import gunbc.auth.authorization_pattern_selection {
   PatternSelected, OperatorApprovedCapability, ReversibleByReapply, IrreversibleEffect, MintsNoCredential, MintsResourceScopedCredential,
@@ -34,7 +34,7 @@ import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigg
 import std.roster_frontier {
   DeclSubject, FrontierRow, PathSubject,
 }
-import gunbc.auth.privileged_effect_census {
+import gunbc.auth.privileged_effect_registry {
   PrivilegedEffectInterlock, privileged_effect_interlocks,
 }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
@@ -66,7 +66,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // extdeps.boards.asrock_rack (it is a vendor-build fact, not an OpenBMC fact, and the route only ever
 // ASKS the catalog for it), the completion code belongs to extdeps.bmc.ipmi (a byte out of the IPMI
 // specification's completion-code list, with the English kept as its description), and the
-// authorization pattern belongs to gunbc.auth.privileged_effect_census -- which is the module that
+// authorization pattern belongs to gunbc.auth.privileged_effect_registry -- which is the module that
 // answers which pattern a write is admitted under. Asserting any of them inside
 // gunbc.machine_intake.bmc_recovery_route would make the route vouch for its own upstream, which is
 // exactly how a firmware policy stops being a measured fact and starts being an assumption. Each test
@@ -246,7 +246,7 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
 // ── 2. BOTH WRITES ARE CENSUSED, AND THE DESTRUCTIVE ONE CANNOT DODGE OPERATOR APPROVAL ───────
 //
 // The route claims its two writes run through gunbc.auth.authorization_pattern_selection with
-// gunbc.auth.privileged_effect_census rows. Claimed is not done: these tests read the CENSUS and
+// gunbc.auth.privileged_effect_registry rows. Claimed is not done: these tests read the CENSUS and
 // require the rows to exist, to conform, and -- for the reset -- to have selection land on
 // OperatorApprovedCapability. The pattern is what the effect's characteristics force, so a row cannot
 // realize a friendlier pattern than its own effect permits.
@@ -257,14 +257,14 @@ data recovery_reset_site_name: String = "gunbc.machine_intake.bmc_recovery_route
 
 fn recovery_site_verdicts() -> List<SiteVerdict> {
   filter(
-    census_verdicts(),
+    registry_verdicts(),
     v => declaration_ref_display_key(v.site) == recovery_in_band_site_name
       || declaration_ref_display_key(v.site) == recovery_reset_site_name,
   )
 }
 
 fn verdict_for(wanted: String) -> SiteVerdict? {
-  filter(census_verdicts(), v => declaration_ref_display_key(v.site) == wanted) |> first()
+  filter(registry_verdicts(), v => declaration_ref_display_key(v.site) == wanted) |> first()
 }
 
 test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool {

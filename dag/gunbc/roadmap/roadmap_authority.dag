@@ -3810,10 +3810,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_CREDENTIAL0LIFECYCLE0REVOKE",
       id: "credential-lifecycle-revocation",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/auth/privileged_effect_census.dag"),
+      carriers: carrier(path: "dag/gunbc/auth/privileged_effect_registry.dag"),
       line: ticket(t: level_fields(
           headline: "Every service credential can be rotated and revoked, proven by an executed revocation drill",
-          boundary: "Issuance, scope, expiry, rotation and revocation for every machine and service credential: reviewer GitHub credentials, R2 publisher and reader identities, host identities, image signing, and customer-facing App credentials. Follows the leasing/grants/privileged-access conformance domain (gunbc.design_argument::conformance; gunbc.auth.authorization_pattern_selection, gunbc.auth.privileged_effect_census).",
+          boundary: "Issuance, scope, expiry, rotation and revocation for every machine and service credential: reviewer GitHub credentials, R2 publisher and reader identities, host identities, image signing, and customer-facing App credentials. Follows the leasing/grants/privileged-access conformance domain (gunbc.design_argument::conformance; gunbc.auth.authorization_pattern_selection, gunbc.auth.privileged_effect_registry).",
           approach: "DRAFT (operator 2026-10-03): first slice and closing contract pending; members join as implementation-ready tasks are cut.",
           red_control: "A credential with no executed revocation drill is not admitted to a customer-facing path. After revocation, no guest or workload retains access.",
           displaced_cost: "The fleet-wide reviewer 401 on 2026-10-03 froze every landing: a credential nobody could rotate on demand stopped the line, and the same gap exists for every customer-facing identity.",

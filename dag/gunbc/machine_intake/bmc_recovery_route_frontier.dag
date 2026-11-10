@@ -55,7 +55,7 @@ fn bmc_recovery_route_consumer_frontier_rows() -> List<FrontierRow> {
   ]
 }
 
-// THE PAIRING CONTROL THAT HAS TO ARRIVE. gunbc.auth.privileged_effect_census rosters one durable
+// THE PAIRING CONTROL THAT HAS TO ARRIVE. gunbc.auth.privileged_effect_registry rosters one durable
 // exclusive hold per unit as the interlock on Redfish Manager.ResetToDefaults, and this route is the
 // only site that actuates it. Today the fold takes both write admissions as PARAMETERS and never
 // acquires the hold itself, so the census cannot roster a root for it (it rostered converge_in_band_recovery

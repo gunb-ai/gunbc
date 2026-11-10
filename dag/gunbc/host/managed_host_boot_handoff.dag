@@ -198,7 +198,7 @@ fn boot_handoff_start_of(outcome: OobBootHandoffOutcome) -> BootStart {
 }
 
 // SEALED TO THE BOOT'S ACTUATION, AND IT TAKES THE UNIT-HOLD PROOF: the only roots that reach a managed
-// host's boot device or power are the ones rostered in gunbc.auth.privileged_effect_census. The
+// host's boot device or power are the ones rostered in gunbc.auth.privileged_effect_registry. The
 // proof must be for the subject's own host, so a hold taken on one unit cannot license a write to
 // another.
 fn boot_drive_handoff(

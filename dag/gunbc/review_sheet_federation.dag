@@ -22,7 +22,7 @@ import extdeps.google.drive { drive_full_oauth_scope }
 
 // ── THE REVIEW SHEETS CONVERGE WITH NO HUMAN IN THE LOOP, AS A FEDERATED FLEET-CONVERGE MODE ──────
 // The converge used to read a token a human minted for review-sheet-writer and exported by hand.
-// gunbc.auth.privileged_effect_census derives FederatedScopedGrant for a recurring automated effect,
+// gunbc.auth.privileged_effect_registry derives FederatedScopedGrant for a recurring automated effect,
 // so the run gets its own identity instead: GitHub OIDC -> this dedicated pool -> the workload account
 // review-sheet-converge (in the fleet project, where iam-converge already converges pools, accounts
 // and impersonation) -> a token for review-sheet-writer, minted by delegation.

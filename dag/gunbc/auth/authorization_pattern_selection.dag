@@ -114,7 +114,7 @@ type BillingConsequence
 // the read and its field are deleted. What remains is the ruling as the selection's modeled input:
 // its words, the effect it covers and the interlock it is conditional on. The census checks
 // statically that the interlock is rostered against the site
-// (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
+// (gunbc.auth.privileged_effect_registry rulings_without_a_rostered_interlock), and the site's
 // realization must take that hold before any write.
 //
 // TWO INTERLOCK STATES, NOT AN OPTIONAL HOLD. InterlockPending is a hold not yet named: it must
@@ -154,7 +154,7 @@ fn standing_ruling_discharges_irreversibility(r: StandingDestructiveAuthorizatio
 // root itself before it admits inheritance (inheritance_admission): the root must declare no lineage of
 // its own, and its own selection must be OperatorApprovedCapability. A root that fails either is a typed
 // refusal of the inheriting effect, never a silent fall back to another pattern. What stays a census join
-// is only that the root's site is a rostered row (gunbc.auth.privileged_effect_census
+// is only that the root's site is a rostered row (gunbc.auth.privileged_effect_registry
 // convergence_lineage_defects); the census shares the row's value as the root, so the characteristics
 // cannot drift from the row.
 //

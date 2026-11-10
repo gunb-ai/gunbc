@@ -43,7 +43,7 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_step_margin, srv1_root_mutation_approval_step_timeout_minutes,
   srv1_root_mutation_approval_window,
 }
-import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
+import gunbc.auth.privileged_effect_registry { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_registry }
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
@@ -236,7 +236,7 @@ test fn another_job_approval_an_unapproved_scope_and_an_empty_scope_list_refuse(
 // THE CENSUS ROW AND THE INSTALL ASK FOR ONE VALUE: the controller install's row requires exactly the
 // scopes the install authorizes against.
 test fn the_census_row_requires_the_scopes_the_install_authorizes() -> Bool {
-  any(privileged_effect_census, row =>
+  any(privileged_effect_registry, row =>
     declaration_ref_display_key(ref: row.site) == "gunbc.host.host_effect_realize::microvm_controller_staged_write_steps"
       && match row.effect.witness_discharge {
         EntailedByApprovedConvergence { root: _, required_scopes: r } => r == microvm_controller_install_root_scopes

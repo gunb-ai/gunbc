@@ -95,7 +95,7 @@ data approve_ios_oauth_client: NativeOauthClientRegistration = NativeOauthClient
 }
 
 // CREATED BY HAND IN THE CLOUD CONSOLE (operator, 2026-10-23): Auth Platform has no client write
-// API, so registration is a console act, recorded in gunbc.auth.privileged_effect_census.
+// API, so registration is a console act, recorded in gunbc.auth.privileged_effect_registry.
 data approve_ios_oauth_client_intervention_identity: String = "approve-ios-oauth-client-registration"
 
 fn approve_ios_oauth_client_intervention() -> HumanIntervention {

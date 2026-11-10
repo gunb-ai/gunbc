@@ -164,7 +164,7 @@ import gunbc.auth.standing_operator_grant {
   standing_grant_covers,
   standing_grant_arm_interlock,
 }
-import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
+import gunbc.auth.privileged_effect_registry { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_named }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }

@@ -27,7 +27,7 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
   OperatorOwnSession, PatternSelectionRefused, PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy,
 }
-import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, Conforms }
+import gunbc.auth.privileged_effect_registry { privileged_effect_registry, site_verdict, Conforms }
 import gunbc.auth.branch_run_grant {
   BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
   plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
@@ -301,7 +301,7 @@ fn boot_pattern_is_approved(on_reviewed_main: Bool) -> Bool {
 }
 
 fn census_boot_credential_effect_conforms(decl_name: String) -> Bool {
-  let rows = filter(privileged_effect_census, r => (r.site.decl_name as String) == decl_name)
+  let rows = filter(privileged_effect_registry, r => (r.site.decl_name as String) == decl_name)
   rows.length() == 1
     && match rows.first() {
       Present { value: r } => match site_verdict(row: r).conformance { Conforms => true  _ => false }

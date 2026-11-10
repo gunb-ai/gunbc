@@ -40,8 +40,8 @@ import gunbc.auth.fleet_secret_accessor_roster { cursor_api_key_harness_accessor
 import gunbc.auth.gcp_secret_access { GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.github_gcp_federation { federated_service_account_member }
 import gunbc.cloudflare.r2_origin { fabric_workspace_read_secret_id, fabric_workspace_write_secret_id }
-import gunbc.auth.privileged_effect_census {
-  PrivilegedEffectSite, privileged_effect_census, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code,
+import gunbc.auth.privileged_effect_registry {
+  PrivilegedEffectSite, privileged_effect_registry, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code,
 }
 import gunbc.auth.authorization_pattern_selection { PatternSelected, OperatorApprovedCapability }
 import gunbc.fleet.fleet_converge_workflow {
@@ -329,7 +329,7 @@ test fn iam_converge_is_impersonated_only_after_a_recorded_approval() -> Bool {
 // ── The rung, as the census reads it ─────────────────────────────────────────────────────────
 
 fn gcp_iam_site() -> PrivilegedEffectSite? {
-  filter(privileged_effect_census, r => (r.site.decl_name as String) == "gcp_iam_converge_apply_wet").first()
+  filter(privileged_effect_registry, r => (r.site.decl_name as String) == "gcp_iam_converge_apply_wet").first()
 }
 
 // THE SELECTION ASKS FOR AN APPROVED CAPABILITY AND THE REALIZATION IS A FEDERATED GRANT, so the site

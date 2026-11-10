@@ -30,7 +30,7 @@ import gunbc.runner.runner_group_restriction_ensure {
 }
 
 // THE CREATE, PERFORMED UNDER ONE OPERATOR APPROVAL -- the first site that turns an admitted approval
-// into a performed provider effect (gunbc.auth.privileged_effect_census rows it as
+// into a performed provider effect (gunbc.auth.privileged_effect_registry rows it as
 // RealizedApprovalCapability).
 //
 // WHY APPROVAL AND NOT THE RUN'S FEDERATED IDENTITY: the pattern is SELECTED, not chosen here.

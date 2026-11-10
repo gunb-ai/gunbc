@@ -47,7 +47,7 @@ import std.human_intervention { FleetOnce }
 // readback to iam-observe -- the converge job's next plan, whose delta must then be empty.
 //
 // THE PRIVILEGED EFFECT, as the authorization-pattern selection sees it (rostered in
-// gunbc.auth.privileged_effect_census). Its workload identity is UNBINDABLE in the selection's sense:
+// gunbc.auth.privileged_effect_registry). Its workload identity is UNBINDABLE in the selection's sense:
 // no federated run may hold this reach unattended, which is the point of the gate.
 data bootstrap_delta_privileged_effect: PrivilegedEffect = PrivilegedEffect {
   subject: "bind the bootstrap roster's missing cells on declared subjects (secrets, service accounts, workload identity pools), creating a subject bare when it is absent, under one operator approval of exactly those cells" as NonEmptyStr,

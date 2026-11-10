@@ -53,8 +53,8 @@ import extdeps.dns.domain_name { DnsLabel }
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed }
 import extdeps.filesystem.filesystem_io
 import std.human_intervention { FleetOnce }
-import gunbc.auth.privileged_effect_census {
-  privileged_effect_census, PrivilegedEffectSite, RealizedFederatedGrant, site_verdict, SiteVerdict,
+import gunbc.auth.privileged_effect_registry {
+  privileged_effect_registry, PrivilegedEffectSite, RealizedFederatedGrant, site_verdict, SiteVerdict,
   Conforms, DivergesWithReason, Diverges, SiteNotDecidable, mtcollins1_host_key_mint_effect,
 }
 import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly, PatternSelected, FederatedScopedGrant }
@@ -499,7 +499,7 @@ test fn the_private_key_never_appears_in_argv_or_rendered_text() -> Bool {
 // site, with a Conforms verdict (the pattern in test.claim.printer_authorization_census_witness).
 test fn the_readback_scan_effect_is_census_classified() -> Bool {
   let go = anchored_host_key_readback_go_step(host: operator_host_mtcollins1)
-  let rows = filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet")))
+  let rows = filter(privileged_effect_registry, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet")))
   match anchored_host_key_scan_effect(host: operator_host_mtcollins1).surface {
     HumanSurfaceOnly { step: step } =>
       step.identity == go.identity
@@ -569,7 +569,7 @@ test fn the_open_gaps_are_well_formed_frontier_rows() -> Bool {
 // owed. Rig the effect's fields and the selection stops matching, which is the only reason a reader has to
 // believe the retirement was earned rather than declared.
 fn host_mint_census_rows() -> List<PrivilegedEffectSite> {
-  filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet")))
+  filter(privileged_effect_registry, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet")))
 }
 
 fn host_mint_verdict_selects_federated(v: SiteVerdict) -> Bool {
@@ -592,7 +592,7 @@ test fn the_mint_effect_is_censused_as_a_federated_grant_that_the_fold_selects()
     // THE RETIRED SITE IS GONE FROM THE CENSUS, so the audit trail cannot be read as "both are live": a
     // census with a human mint step AND a workflow mint beside it would describe a fleet with two ways to
     // mint the same key, one of which nobody may use.
-    && count(filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_intervention")))) == 0
+    && count(filter(privileged_effect_registry, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_intervention")))) == 0
     // THE EFFECT'S OWN FIELDS ARE THE MINT'S, NOT A COPY OF THE READER KEY'S: the subject names THIS key's
     // secret row, so the census cannot be satisfied by pointing at the reader key's mint.
     && string_contains(s: mtcollins1_host_key_mint_effect().subject as String, pattern: "mtcollins1-ssh-host-key")

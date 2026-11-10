@@ -1,4 +1,4 @@
-module gunbc.auth.privileged_effect_census
+module gunbc.auth.privileged_effect_registry
 
 import gunbc.fleet.printer_federation { printer_service_account }
 import gunbc.auth.github_gcp_federation { federated_service_account_member }
@@ -60,7 +60,11 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern,
 }
 
-// ── EVERY PRIVILEGED-EFFECT SITE IN dag/, CLASSIFIED BY EXECUTING THE SELECTION ──────────────
+// ── PRIVILEGED-EFFECT SITES, CLASSIFIED BY EXECUTING THE SELECTION ───────────────────────────
+//
+// A PER-SITE REGISTRY, NOT A CENSUS (renamed from gunbc.auth.privileged_effect_census, 2026-11-10).
+// gunbc.design_ruling plans_reset_and_audit_recommendations_2026_11_08 (D8) kept it as a registry of
+// the sites it names and dropped its every-site completeness claim; a site joins by adding its row.
 //
 // THE VERDICT IS DERIVED, NOT AUTHORED. Each row supplies the site (module and symbol), the
 // effect's characteristics, and what the site REALIZES today; the fold runs
@@ -79,8 +83,8 @@ import gunbc.auth.authorization_pattern_selection {
 //
 // COMPLETENESS IS NOT CLAIMED BY THIS ROSTER. The population was enumerated by grepping every
 // gcp.SecretManager.*, gcp.STS.*, gcp.IAM.*, shell.GCloud.*, cloudflare.AccountTokens.* and
-// access_token_source consumer in dag/ on 2026-09-19; a discovery join that refuses an unrostered
-// site is the next rung, and it is the same trigger gunbc.host_convergence_census names for itself.
+// access_token_source consumer in dag/ on 2026-09-19. No discovery join refusing an unrostered
+// site is owed (D8 dropped the every-site claim); a changed site executes the selection itself.
 
 // WHAT A SITE REALIZES TODAY, read off its token-source binding.
 //   RealizedRunSelected -- gunbc.auth.access_token_source select_access_token_source /
@@ -768,7 +772,7 @@ fn ruling_discharge_interlock_defect(site_ref: DeclarationRef, ruling: StandingD
 }
 
 fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
-  flat_map(privileged_effect_census, row =>
+  flat_map(privileged_effect_registry, row =>
     match row.effect.witness_discharge {
       NoWitnessDischarge => []
       EntailedByApprovedConvergence { root: _, required_scopes: _ } => []
@@ -790,17 +794,17 @@ fn discharged_by_ruling(v: PrivilegedEffectSite) -> Bool {
   }
 }
 
-fn ruling_roots_missing_from_census() -> List<DeclarationRef> {
-  let sites = map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site)
+fn ruling_roots_missing_from_registry() -> List<DeclarationRef> {
+  let sites = map(filter(privileged_effect_registry, row => discharged_by_ruling(v: row)), row => row.site)
   filter(mtcollins1_operator_ruling_roots, r => !declaration_ref_in_list(target: r, refs: sites))
 }
 
-fn census_sites_outside_ruling_roots() -> List<DeclarationRef> {
-  filter(map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_operator_ruling_roots))
+fn registry_sites_outside_ruling_roots() -> List<DeclarationRef> {
+  filter(map(filter(privileged_effect_registry, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_operator_ruling_roots))
 }
 
-fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
-  let rostered = map(privileged_effect_census, row => row.site)
+fn interlocked_sites_missing_from_registry() -> List<DeclarationRef> {
+  let rostered = map(privileged_effect_registry, row => row.site)
   filter(map(privileged_effect_interlocks, i => i.site), s => !declaration_ref_in_list(target: s, refs: rostered))
 }
 
@@ -1213,7 +1217,7 @@ fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> Priv
   manual_no_api_effect(subject: subject, step: step, cause: "the act happens at the machine's console; no API reaches it" as NonEmptyStr, billing: NoBillingConsequence)
 }
 
-data privileged_effect_census: List<PrivilegedEffectSite> = [
+data privileged_effect_registry: List<PrivilegedEffectSite> = [
   srv1_root_mutation_approval_row,
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
@@ -2173,8 +2177,8 @@ data follow_up_sites: List<DeclarationRef> = [
 ]
 
 // ── Consumers ────────────────────────────────────────────────────────────────────────────────
-fn census_verdicts() -> List<SiteVerdict> {
-  map(privileged_effect_census, row => site_verdict(row: row))
+fn registry_verdicts() -> List<SiteVerdict> {
+  map(privileged_effect_registry, row => site_verdict(row: row))
 }
 
 fn verdict_is_unreasoned_divergence(v: SiteVerdict) -> Bool {
@@ -2196,11 +2200,11 @@ fn verdict_is_undecidable(v: SiteVerdict) -> Bool {
 }
 
 fn unreasoned_divergences() -> List<SiteVerdict> {
-  filter(census_verdicts(), v => verdict_is_unreasoned_divergence(v: v))
+  filter(registry_verdicts(), v => verdict_is_unreasoned_divergence(v: v))
 }
 
 fn undecidable_sites() -> List<SiteVerdict> {
-  filter(census_verdicts(), v => verdict_is_undecidable(v: v))
+  filter(registry_verdicts(), v => verdict_is_undecidable(v: v))
 }
 
 // THE IDENTITY JOIN between what the census finds unreasoned and what the follow-up roster admits.
@@ -2223,7 +2227,7 @@ type ReasonedDivergence {
 }
 
 fn reasoned_divergences() -> List<ReasonedDivergence> {
-  flat_map(census_verdicts(), v =>
+  flat_map(registry_verdicts(), v =>
     match v.conformance {
       DivergesWithReason { reason: r } => [ReasonedDivergence { site: v.site, reason: r }]
       Conforms => []
@@ -2261,7 +2265,7 @@ type SecretIamWriterArm
 
 type SecretIamWriter { site: DeclarationRef, arm: SecretIamWriterArm }
 
-data secret_iam_writer_census: List<SecretIamWriter> = [
+data secret_iam_writer_registry: List<SecretIamWriter> = [
   SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"), arm: SecretIamWriterConverge },
   SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_bootstrap_delta_run", decl_name: "gcp_iam_bootstrap_delta_apply_wet"), arm: SecretIamWriterDeltaApply },
   SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_bootstrap_apply"), arm: SecretIamWriterTrustRootCeremony { ceremony: IamBootstrapApply } },

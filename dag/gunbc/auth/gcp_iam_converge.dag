@@ -81,7 +81,7 @@ import gunbc.auth.gcp_iam_converge_federation {
 // claims, so a change merged to main that skipped the gate would federate without a tap. What holds
 // the line today is that the workflow file, this module and the run module land only through review
 // and the merge queue. The upgrade that moves it into the credential layer is a declared frontier,
-// gunbc.auth.privileged_effect_census gcp_iam_approval_enforced_in_reviewed_code.
+// gunbc.auth.privileged_effect_registry gcp_iam_approval_enforced_in_reviewed_code.
 
 // ── The principals ───────────────────────────────────────────────────────────────────────────
 // iam-converge IS THE ALLOCATION OF gunbc.spark.bootstrap_provision FleetCloudGrantAdministrator,

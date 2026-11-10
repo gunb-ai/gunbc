@@ -25,7 +25,7 @@ import gunbc.rung_drop { RungDrop }
 
 // ── THE BOOT'S FEDERATION IS POLICY FOR THE PAIR (MANAGED HOST, BOOT), NOT HOST IDENTITY ───────
 // (docs/plans/managed-host-untangle.md, cut 4c; operator ruling (b), 2026-10-03.) A boot of a
-// managed host is a recurring automated effect, so gunbc.auth.privileged_effect_census derives
+// managed host is a recurring automated effect, so gunbc.auth.privileged_effect_registry derives
 // FederatedScopedGrant for it: the run's own workload identity, holding one cell per secret it reads,
 // with no human per run, scoped to ONE job -- this repository, the fleet-converge workflow file at
 // reviewed main, a workflow_dispatch on main, and the job's GitHub environment -- never repo-wide.

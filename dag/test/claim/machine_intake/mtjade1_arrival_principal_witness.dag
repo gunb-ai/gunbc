@@ -31,8 +31,8 @@ import gunbc.auth.authorization_pattern_selection {
   InterlockPending, InterlockedBy,
   select_authorization_pattern,
 }
-import gunbc.auth.privileged_effect_census {
-  rulings_without_a_rostered_interlock, privileged_effect_census,
+import gunbc.auth.privileged_effect_registry {
+  rulings_without_a_rostered_interlock, privileged_effect_registry,
   RealizedUnauthorized, RealizedAdministratorEdge, RealizedFederatedGrant, RealizedRunSelected,
   RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession,
 }
@@ -211,7 +211,7 @@ test fn w_wet_door_refuses_unobserved_prior_life_world() -> Bool {
 }
 
 test fn w_archive_census_does_not_claim_a_write_the_wet_door_refuses() -> Bool {
-  any(privileged_effect_census, row =>
+  any(privileged_effect_registry, row =>
     (row.site.decl_name as String) == "mtjade1_arrival_archive_effect"
       && match row.realized {
         RealizedUnauthorized => true

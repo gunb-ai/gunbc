@@ -73,8 +73,8 @@ import gunbc.machine_intake.subject {
   MachineIntakeSubject, QualificationSubject, UnitKey,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
-import gunbc.auth.privileged_effect_census {
-  PrivilegedEffectSite, RealizedAuthorization, RealizedApprovalCapability, SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable, site_verdict, privileged_effect_census, ruling_discharge_interlock_defect, recovery_reset_operator_ruling, recovery_manager_reset_to_defaults_effect,
+import gunbc.auth.privileged_effect_registry {
+  PrivilegedEffectSite, RealizedAuthorization, RealizedApprovalCapability, SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable, site_verdict, privileged_effect_registry, ruling_discharge_interlock_defect, recovery_reset_operator_ruling, recovery_manager_reset_to_defaults_effect,
 }
 import gunbc.auth.authorization_pattern_selection {
   AuthorizationPattern, PatternSelected, OperatorApprovedCapability, HumanOnlyStep, ManualStepRequired, PatternSelectionRefused, PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, NoAdmissiblePattern, StandingDestructiveAuthorization,
@@ -1023,7 +1023,7 @@ fn in_band_channel_admission(
 
 // ── STEP 3: THE ACTUATION ──────────────────────────────────────────────────────────────────────
 //
-// Two writes, both privileged, both registered as rows in gunbc.auth.privileged_effect_census and
+// Two writes, both privileged, both registered as rows in gunbc.auth.privileged_effect_registry and
 // both run through gunbc.auth.authorization_pattern_selection:
 //
 //   WRITE 1 -- the in-band Set User Password that puts a temporary credential on the Administrator
@@ -1126,7 +1126,7 @@ fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActua
   }
 }
 
-// WHAT THE WRITES LOOK LIKE IN THE LEDGER. Each is a gunbc.auth.privileged_effect_census row
+// WHAT THE WRITES LOOK LIKE IN THE LEDGER. Each is a gunbc.auth.privileged_effect_registry row
 // (recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect) in the standing
 // scope selection assigns; the carrier below is the outcome of running the selection over those rows.
 // It is a carrier and not a boolean because gunbc.design_argument::epistemic_humility: a write is authorized, or it is refused with
@@ -1278,7 +1278,7 @@ type RecoveryWriteRecord
 
 // THE ADMISSION GATES THEMSELVES: WHICH DECLARATIONS THE CENSUS ROWS ARE FILED AGAINST.
 //
-// The two recovery write rows in gunbc.auth.privileged_effect_census carry `site` pointing at the two
+// The two recovery write rows in gunbc.auth.privileged_effect_registry carry `site` pointing at the two
 // functions below. That is the whole reason those rows exist: a census row whose decl_name names nothing is
 // a classification of a write that is not made anywhere (gunbc.design_argument::single_authority -- "a stale symbol is decidable from the
 // Node tree"; here it would be worse than stale, it was never there). A row must point at the code that
@@ -1293,7 +1293,7 @@ fn recovery_manager_reset_site() -> DeclarationRef {
 }
 
 fn recovery_census_row_at(site_ref: DeclarationRef) -> PrivilegedEffectSite? {
-  filter(privileged_effect_census, row => declaration_ref_eq(a: row.site, b: site_ref)) |> first()
+  filter(privileged_effect_registry, row => declaration_ref_eq(a: row.site, b: site_ref)) |> first()
 }
 
 // WHAT THE LEDGER HAS TO SAY ABOUT A RECOVERY WRITE. `site_verdict` is the census's own judgment: it asks

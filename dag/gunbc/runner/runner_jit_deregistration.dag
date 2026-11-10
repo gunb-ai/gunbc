@@ -38,7 +38,7 @@ import gunbc.github_effect_perform {
 // AUTHORIZATION IS THE DISPATCHING RUN'S (operator ruling 2026-10-03): registration and
 // deregistration are pre-approved under the fleet-converge run's own federated identity, with no
 // per-registration approval. That is recorded where the corpus records authorization patterns --
-// gunbc.auth.privileged_effect_census rows this site through
+// gunbc.auth.privileged_effect_registry rows this site through
 // gunbc.auth.authorization_pattern_selection select_authorization_pattern -- and the credential's
 // own capability is still checked here, against the same effect algebra the mint uses.
 // THE EXIT IS THE LISTENER'S OBSERVED TERMINATION, NOT A JOB RESULT. actions/runner exits 0 on a completed
