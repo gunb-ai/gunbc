@@ -297,6 +297,7 @@ fn seed_schema_findings(document: SeedDocument, path: String, schema: PublicSeed
     SeedBoolAny => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedIntExactly { lexeme: _ } => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedStringOneOf { values: _ } => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
+    SeedDeviceIdentityToken => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedPublicKeyLine => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedPosixName => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
   }

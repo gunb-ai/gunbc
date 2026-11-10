@@ -11,6 +11,7 @@ import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import gunbc.os_install_emit { autoinstall_user_data_document }
 import gunbc.fleet.machine_target_disk_observations {
   target_disk_reading_for,
   site_pxe_edge_disk_identity_admission_window,
@@ -1245,8 +1246,7 @@ test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
   match site_pxe_edge_request_admission(request: srv15_request()) {
     RequestBound { binding: binding } =>
       binding.architecture == Aarch64
-        && site_pxe_edge_binding_mac(binding: binding) == srv15_client_mac
-        && site_pxe_edge_menu_entry_for(client_mac: srv15_client_mac) is Present
+        && production_request_binds_once(client: srv15_install_client, bindings: [binding])
     _ => false
   }
 }
@@ -1314,16 +1314,31 @@ test fn an_unpinned_layout_renders_no_match_block() -> Bool {
     && !has_key_at(document: unpinned, path: ["autoinstall", "storage", "layout", "match"])
 }
 
-// A DISK NOBODY READ WITHHOLDS THE INSTALL, BY NAME, WITH THE CAUSE. This is srv14's real row: its 2026-10-16
-// capture ran lsblk with NAME,SIZE,MODEL and printed no SERIAL column, so there is no serial to pin to and the
-// install is withheld rather than aimed at a disk somebody guessed. The MAC is named because "host X is not
-// installing" is only actionable if the reader can find host X's PXE client, and the cause is typed because
-// "withheld" without a reason is the omission the operator's rule replaces.
+
+// WHICH HOST A WITHHELD STANDING NAMES. The MAC a request carried is what the operator looks for on the console,
+// so a withholding has to name it; the parse result is where that MAC lives.
+fn withheld_names_host(client: MacParseResult, standing: SitePxeEdgeInstallStanding) -> Bool {
+  match client {
+    MacParsed { address: mac } => match standing {
+      InstallWithheld { mac: withheld_mac, refusals: _ } => withheld_mac == mac
+      _ => false
+    }
+    MacParseFailed { error: _ } => false
+  }
+}
+
+// A DISK NOBODY READ WITHHOLDS THE INSTALL, BY NAME, WITH THE CAUSE. The reading is srv14's real row: its
+// 2026-10-16 capture ran lsblk with NAME,SIZE,MODEL and printed no SERIAL column, so there is no serial to pin
+// to and the install is withheld rather than aimed at a disk somebody guessed. The request is the one this edge
+// would receive if srv14 asked again — its install is withdrawn from the fleet's list for a different reason, that
+// the host is installed and re-serving it would wipe it — and the MAC is named because "host X is not installing"
+// is only actionable if the reader can find host X's PXE client. The cause is typed because "withheld" without a
+// reason is the omission the operator's rule replaces.
 test fn a_request_whose_disk_was_never_read_is_withheld_with_a_typed_cause() -> Bool {
   match site_pxe_edge_request_admission(request: srv14_request()) {
-    RequestWithheld { standing: InstallWithheld { mac: mac, refusals: refusals } } =>
-      mac == srv14_client_mac
-        && match get(xs: non_empty_to_list(xs: refusals), index: 0) {
+    RequestWithheld { standing: standing } =>
+      withheld_names_host(client: srv14_install_client, standing: standing)
+        && match get(xs: refusals_of(st: standing), index: 0) {
           Absent => false
           Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
             Absent => false
@@ -1342,16 +1357,14 @@ test fn a_request_whose_disk_was_never_read_is_withheld_with_a_typed_cause() -> 
 // outage for the rest of the fleet — and the reverse failure, an install authorized because the fleet's one
 // unread disk was quietly skipped, is what the typed cause exists to make visible.
 test fn a_withheld_disk_withholds_only_its_own_host() -> Bool {
-  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
-  length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
+  let admissions = map(append(site_pxe_edge_install_requests, [srv14_request()]), r => site_pxe_edge_request_admission(request: r))
+  let bindings = site_pxe_edge_request_bindings(admissions: admissions)
+  length(bindings) == 1
     && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
-    && site_pxe_edge_gate_closed(observe: SitePxeEdgeObserveOnly, post: PostActivationNotRead, http: HttpListenAbsent, probes: probe_list([]), chains: chain_list([])) == false
-    && any(site_pxe_edge_request_bindings(admissions: admissions), b => site_pxe_edge_binding_mac(binding: b) == srv15_client_mac)
-    && any(site_pxe_edge_request_withheld(admissions: admissions), s => match s {
-      InstallWithheld { mac: mac, refusals: _ } => mac == srv14_client_mac
-      _ => false
-    })
-    && !(site_pxe_edge_menu_entry_for(client_mac: srv14_client_mac) is Present)
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && production_request_binds_once(client: srv15_install_client, bindings: bindings)
+    && production_request_binds_none(client: srv14_install_client, bindings: bindings)
+    && any(site_pxe_edge_request_withheld(admissions: admissions), s => withheld_names_host(client: srv14_install_client, standing: s))
 }
 
 // A STALE DISK REFUSES THE INSTALL, and the mirror half is what makes the claim discriminating: the same
@@ -1361,9 +1374,9 @@ test fn a_stale_disk_reading_refuses_the_install_and_a_fresh_one_binds() -> Bool
   let stale = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_stale_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
   let fresh = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
   match site_pxe_edge_request_admission(request: stale) {
-    RequestWithheld { standing: InstallWithheld { mac: mac, refusals: refusals } } =>
-      mac == srv15_client_mac
-        && match get(xs: non_empty_to_list(xs: refusals), index: 0) {
+    RequestWithheld { standing: standing } =>
+      withheld_names_host(client: srv15_install_client, standing: standing)
+        && match get(xs: refusals_of(st: standing), index: 0) {
           Absent => false
           Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
             Absent => false

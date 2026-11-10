@@ -1093,7 +1093,7 @@ fn site_pxe_edge_request_admission(request: SitePxeEdgeInstallRequest) -> SitePx
     MacParsed { address: mac } =>
       match site_pxe_edge_seed_rendering(request: request) {
         SeedTargetDiskWithheld { host: h, cause: c } =>
-          RequestWithheld { standing: InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallTargetDiskWithheld { host: h, cause: c }, tail: [] } } }
+          RequestWithheld { standing: InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallDiskIdentityWithheld { host: h, cause: c }, tail: [] } } }
         SeedRendered { user_data: user_data } =>
           match admit_public_nocloud_seed(client_mac: mac, user_data: user_data) {
             PublicSeedAdmitted { seed: sd } => RequestBound { binding: SitePxeEdgeInstallBinding { seed: sd, architecture: request.architecture } }
@@ -1207,14 +1207,14 @@ type SitePxeEdgeInstallRefusal
   // `cause` says which state the reading was in — never read, not reported by that reader, an identity no tool
   // could have produced, a reading from after the decision, or older than the window — which is what lets an
   // operator go re-read the disk instead of guessing at a silent omission.
-  | InstallTargetDiskWithheld { host: HostIdentity, cause: InstallTargetDiskWithheldCause }
+  | InstallDiskIdentityWithheld { host: HostIdentity, cause: InstallTargetDiskWithheldCause }
 
 // WHAT THE DISK RULE HAD TO SAY, when the disk rule is what withheld the install. A reader holding a withheld
 // standing wants the one fact that tells them what to do — which state the reading was in — and this answers it
 // without handing them the standing's shape. Absent means a different rule withheld this install.
 fn site_pxe_edge_refusal_target_disk_cause(refusal: SitePxeEdgeInstallRefusal) -> Optional<InstallTargetDiskWithheldCause> {
   match refusal {
-    InstallTargetDiskWithheld { host: _, cause: c } => Present { value: c }
+    InstallDiskIdentityWithheld { host: _, cause: c } => Present { value: c }
     _ => Absent
   }
 }
