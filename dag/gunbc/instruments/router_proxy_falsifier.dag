@@ -1063,8 +1063,13 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_world_starts", held: dev_refusal() == "" && count(dev_upstreams()) == 7 && w5.success && w6.success && w7.success && dev_text() != "" && pinned.exit_code == 0 && started_dev == 0 && contains(s: dev_ready, p: "404"), observed: concat(dev_refusal(), dev_ready)),
     case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
     // The row fields the binding rules read are the ones in the emitted file: a drained row is present
-    // and false, an engine-local row is not silently shared, and every row carries the fields at all.
-    case_of(identity: "rows_carry_retain_capacity_and_in_service", held: shipped_json_holds(p: j => row_key_count(json: j, key: "retain") == 8 && row_key_count(json: j, key: "cap") == 8 && row_bool_field_count(json: j, key: "overflow", want: true) == 0 && row_bool_field_count(json: j, key: "in_service", want: true) == 8 && row_bool_field_count(json: j, key: "in_service", want: false) == 0) && contains(s: dev_text(), p: "retains(") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: ""),
+    // and false, an engine-local row is not silently shared, and every row carries the fields at all. The
+    // counts are DERIVED from the rows the render was built from, not copied from the roster -- a count read
+    // off the current tree is a change detector (gunbc.design_argument::fail_closed), while "the emitted file
+    // carries a cap for every row, a retain for every retaining row, in_service for every row, and an
+    // overflow true only where a row is rented" is a claim about the renderer. With the rented arms retired
+    // (2026-11-10) no row a model can write renders overflow true, so that count is zero by construction.
+    case_of(identity: "rows_carry_retain_capacity_and_in_service", held: shipped_json_holds(p: j => shipped_rows_hold(rows => row_key_count(json: j, key: "retain") == count(filter(rows, u => match u.retention { RetentionAdmitted { conversations: _ } => true NoRetention => false })) && row_key_count(json: j, key: "cap") == count(rows) && row_bool_field_count(json: j, key: "overflow", want: true) == count(filter(rows, u => match u.capacity { OwnedCap { turns: _ } => false })) && row_bool_field_count(json: j, key: "in_service", want: true) == count(filter(rows, u => u.in_service)) && row_bool_field_count(json: j, key: "in_service", want: false) == count(filter(rows, u => !u.in_service)))) && contains(s: dev_text(), p: "retains(") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: ""),
     // A NAME CANNOT BE BOTH LIVE AND RETIRING. The guard is a function of the rows, so it is tested on
     // rows: clean on the shipped set, and red on each defect it exists to refuse -- a live name in
     // another row's retiring list, and one name retired by two rows at once.
