@@ -29,7 +29,7 @@ import product.capacity.event_chain { ChainEvent, ChainEnvelope, ChainWalked, Ch
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_path }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
-import gunbc.spool_queue { SpoolComputeExit, spool_base_dir, partitioned_spool_declaration, spool_open_uid, SpoolOpenVerdict }
+import gunbc.spool_queue { SpoolComputeExit, partitioned_spool_base_dir, spool_open_uid, SpoolOpenVerdict }
 import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
@@ -184,13 +184,14 @@ fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
 }
 
 // THE ONE PROVISIONING TARGET FOR THE COMPUTE EXIT SPOOL: the shared root directory (no uid segment) derived
-// from the SpoolComputeExit declaration in gunbc.spool_queue. The deploy route plants this before any seat
-// has been launched; the per-uid directory below it is created idempotently by the seat's own hook (install -d)
-// using the same spool_root_dir derivation the reader uses.
+// through partitioned_spool_base_dir, the SAME derivation the reader's terminal path builds on. The deploy
+// route plants this before any seat has been launched; the per-uid directory below it is created idempotently
+// by the seat's own hook (install -d) using partitioned_spool_done_dir, which reads the same base -- so a
+// dropped segment breaks provisioning and the read together, never one alone.
 fn compute_attempt_exit_spool_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
   OwnedDirectoryDeclared {
     member: "compute-attempt-exit-spool" as NonEmptyStr,
-    path: spool_base_dir(declaration: partitioned_spool_declaration(kind: SpoolComputeExit {}), instance_root: compute_root(instance: instance) as String),
+    path: partitioned_spool_base_dir(kind: SpoolComputeExit {}, instance_root: compute_root(instance: instance) as String),
     owner: instance.directory_owner,
     mode: DirectoryOwnerAllEveryoneTraverse,
     group_adoption: ForeignOwnershipRefuses,

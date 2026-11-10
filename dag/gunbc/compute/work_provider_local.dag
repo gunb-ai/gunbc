@@ -115,7 +115,7 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root, compute_exit_spool_open,
   ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
 }
-import gunbc.spool_queue { SpoolStore, SpoolOpenReady, SpoolOpenRefused }
+import gunbc.spool_queue { PartitionedSpoolStore, SpoolOpenReady, SpoolOpenUidRoot }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
   ComputeProducerLeases, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_producer_leases, compute_producer_leases_reading_label, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused,
@@ -811,7 +811,7 @@ fn compute_launching_uid() -> Int? {
 // to the spool root, to another uid's directory, or to "there is no record" -- each of those would let an
 // absence this provider never observed stand for a seat's end. The caller keeps the seat and says why.
 type ComputeSeatExitSpoolDir
-  = ComputeSeatExitSpoolDirResolved { store: SpoolStore }
+  = ComputeSeatExitSpoolDirResolved { store: PartitionedSpoolStore }
   | ComputeSeatExitSpoolDirUidUnreadable { cause: String }
 
 fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatExitSpoolDir {
@@ -821,7 +821,10 @@ fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatEx
       Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "the effective uid is negative" }
       Present { value: uid_nat } => match compute_exit_spool_open(instance: instance, uid: uid_nat) {
         SpoolOpenReady { store } => ComputeSeatExitSpoolDirResolved { store: store }
-        SpoolOpenRefused { cause } => ComputeSeatExitSpoolDirUidUnreadable { cause: cause }
+        // Root (uid 0) never owns a seat's exit partition: no per-uid spool exists for it, so there is no
+        // record to read and no observability claim -- the same disposition as an unreadable uid, the caller
+        // keeps the seat. The mint's refusal is the closed nullary fact, not a string to parse.
+        SpoolOpenUidRoot => ComputeSeatExitSpoolDirUidUnreadable { cause: "the effective uid is 0, which never owns a seat's exit partition" }
       }
     }
   }
@@ -862,7 +865,7 @@ fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenv
 type ComputeUnitStopObservation
   = NoStopObservation
   | SccacheStatsAtStop
-  | AttemptExitRecordAtStop { store: SpoolStore, identity: String, record_owner: PosixOwnerNames }
+  | AttemptExitRecordAtStop { store: PartitionedSpoolStore, identity: String, record_owner: PosixOwnerNames }
 
 // NONE WHEN AN ARM CANNOT BE RENDERED, and compute_run_unit then refuses the LAUNCH. A seat started with a
 // silently dropped stop hook is a seat whose end can never be observed -- the exact condition srv1 holds

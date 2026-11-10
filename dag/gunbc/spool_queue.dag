@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, path_segment_is_safe }
-import std.nat { Nat, Zero }
+import std.nat { Nat, Zero, Succ }
 import std.algebra { trim }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
@@ -51,22 +51,10 @@ import std.dissolution { unbound_dissolution }
 // (spool_requeue_assess on boot-id evidence, then spool_stale_assess for the line stop). The effect layer (listing, create-only write, the rename) is
 // realized below; its former expecting-red claims are permanent controls in test.claim.spool_queue_seal_witness.
 
-// The UNPARTITIONED spool kinds. A store of one carries no principal uid at all. spool_open accepts EXACTLY
-// this type, so it is structurally unable to open a partitioned spool -- the value "an unpartitioned store of a
-// partitioned kind" is unconstructible, not runtime-refused (fail_closed: making the wrong state unwritable).
 type SpoolKind
   = SpoolAttemptUnit
   | SpoolAttemptExit
   | SpoolPublication
-
-// The PARTITIONED spool kinds: a disjoint sibling type of SpoolKind (a coproduct variant may not be shared
-// between two coproducts in this corpus, so the constructor is declared here and nowhere else). A store of one
-// files its entries under a principal uid segment (<root>/<root_name>/<uid>/<role>) and is admitted only by
-// spool_open_uid -- never by spool_open. Its sole constructor today is the compute exit spool. Which kind type a
-// spool belongs to IS its partition fact: there is no separate SpoolPartition field (that would be a second
-// representation of the same fact).
-type PartitionedSpoolKind
-  = SpoolComputeExit {}
 
 // The closed set of places an entry can stand (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed,
 // done = RoleDone, refused = RoleRefused for the exit spool). HostSpoolStage, the exit spool's former private enum, is deleted.
@@ -128,14 +116,9 @@ type SpoolDeclaration {
   claimant: SpoolPrincipal
   key_separator: String
   key_part_count: Int
-  root_name: String
 }
 
-// THE DECLARATION IS DATA: adding an unpartitioned spool is a SpoolKind variant and a row here, never a stage list
-// at a call site. The partitioned spools live in partitioned_spool_declaration below; both rows are read through
-// one accessor per kind type, and every fold over a store's declaration goes through store_declaration (below),
-// which matches the store's variant -- so there is a single declaration authority per kind type, never two rows
-// for one kind.
+// THE DECLARATION IS DATA: adding a spool is a variant and a row here, never a stage list at a call site.
 fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
   match kind {
     SpoolAttemptUnit => SpoolDeclaration {
@@ -148,7 +131,6 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "+",
       key_part_count: 2,
-      root_name: "attempt-unit-spool",
     }
     SpoolAttemptExit => SpoolDeclaration {
       exclusion: ExclusiveByRename,
@@ -160,7 +142,6 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "+",
       key_part_count: 7,
-      root_name: "attempt-exit-spool",
     }
     SpoolPublication => SpoolDeclaration {
       exclusion: ExclusiveByAgreement { consumer: PublicationServiceUnit { drainers_allowed: 1 } },
@@ -172,27 +153,6 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "-",
       key_part_count: 1,
-      root_name: "publication-spool",
-    }
-  }
-}
-
-// The partitioned spool declarations, read by a PartitionedSpoolKind. The compute exit spool files each seat's
-// exit records under the seat principal's uid: <compute_root>/attempt-exit-spool/<uid>/done. Its declaration is
-// the ONLY source of that root_name and its done terminal; provisioning and the readers both read it through here.
-fn partitioned_spool_declaration(kind: PartitionedSpoolKind) -> SpoolDeclaration {
-  match kind {
-    SpoolComputeExit {} => SpoolDeclaration {
-      exclusion: ExclusiveByRename,
-      entry_kind: SpoolEntryDirectory,
-      chain: [],
-      terminals: [SpoolStage { role: RoleDone, directory: "done" }],
-      parked: [],
-      enqueuer: PrincipalExternalHook,
-      claimant: PrincipalDrainer,
-      key_separator: "+",
-      key_part_count: 5,
-      root_name: "attempt-exit-spool",
     }
   }
 }
@@ -202,20 +162,13 @@ fn partitioned_spool_declaration(kind: PartitionedSpoolKind) -> SpoolDeclaration
 // role: the unit spool's refusal is an answers/ file (out of scope, the answer-store frontier) and the publication
 // helper works the request in place, so it has no claimed directory.
 fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<String> {
-  spool_role_dir_of(declaration: spool_declaration(kind: kind), role: role)
-}
-
-// The wire directory a role stands in, read off a declaration. Declaration-parameterized so BOTH the unpartitioned
-// readers (via spool_role_dir) and the store-parameterized spool_role_path (via store_declaration) share one
-// implementation -- no partitioned kind-param overload (jolly: route through the declaration, not a helper per kind).
-fn spool_role_dir_of(declaration: SpoolDeclaration, role: SpoolRole) -> Optional<String> {
-  match spool_stage_of(stages: declaration.chain, role: role) {
+  match spool_stage_of(stages: spool_declaration(kind: kind).chain, role: role) {
     Present { value: s } => Present { value: s.directory as String }
     Absent =>
-      match spool_stage_of(stages: declaration.terminals, role: role) {
+      match spool_stage_of(stages: spool_declaration(kind: kind).terminals, role: role) {
         Present { value: s } => Present { value: s.directory as String }
         Absent =>
-          match spool_stage_of(stages: declaration.parked, role: role) {
+          match spool_stage_of(stages: spool_declaration(kind: kind).parked, role: role) {
             Present { value: s } => Present { value: s.directory as String }
             Absent => Absent
           }
@@ -648,92 +601,31 @@ fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirector
 // SpoolStore and a SpoolEntryKey; it spells no stage, no stage path and no separator (DESIGN section 3).
 // ============================================================================================================
 
-// THE STORE IS A SUM OVER DISJOINT KIND TYPES: an unpartitioned store holds a SpoolKind and carries no uid at all;
-// a uid-partitioned store holds a PartitionedSpoolKind and carries the principal uid its entries are filed under.
-// Because the two variants hold DIFFERENT kind types, no store can pair an unpartitioned kind with a uid or a
-// partitioned kind with no uid -- the wrong state is UNCONSTRUCTIBLE, not runtime-refused (fail_closed: making the
-// wrong state unwritable; review 92878 / review 92916 finding 1). spool_open accepts only a SpoolKind and can never
-// produce a uid-partitioned store; spool_open_uid accepts only a PartitionedSpoolKind and is the only producer of
-// one. There is no residual illegal store, so the former integration_concern row `compute_exit_unpartitioned_store_escape`
-// is deleted, and the readers no longer need has_uid / wrong-kind guards: the store's variant already is the fact.
-// The two sole_constructor mints are the only producers, and store_declaration is the only store->declaration fold,
-// so a store's kind and its declaration provably agree.
-type SpoolStore sole_constructor
-  = UnpartitionedStore { kind: SpoolKind, instance_root: String }
-  | UidPartitionedStore { kind: PartitionedSpoolKind, instance_root: String, uid: Nat }
-
-// THE SINGLE STORE->DECLARATION FOLD: it matches the store's variant, so a store's kind type and its declaration
-// can never disagree -- a UidPartitionedStore's kind is a PartitionedSpoolKind and can only read a partitioned row,
-// and vice versa. Every spool-internal fold that needs a store's declaration calls this, never spool_declaration
-// directly off the store's kind, so there is one store->declaration path (the declaration authority stays singular).
-fn store_declaration(store: SpoolStore) -> SpoolDeclaration {
-  match store {
-    UnpartitionedStore { kind } => spool_declaration(kind: kind)
-    UidPartitionedStore { kind } => partitioned_spool_declaration(kind: kind)
-  }
+type SpoolStore {
+  kind: SpoolKind
+  instance_root: String
 }
 
-// THE MINT FOR AN UNPARTITIONED SPOOL: it accepts only a SpoolKind, so it is structurally unable to open a
-// partitioned spool (a partitioned kind is not a SpoolKind). The only thing it can produce is UnpartitionedStore.
 fn spool_open(kind: SpoolKind, instance_root: String) -> SpoolStore {
-  UnpartitionedStore { kind: kind, instance_root: instance_root }
+  SpoolStore { kind: kind, instance_root: instance_root }
 }
 
-// THE MINT FOR A PARTITIONED SPOOL: it accepts only a PartitionedSpoolKind together with the instance root and the
-// principal uid, and is the only producer of a UidPartitionedStore. Because the kind type already guarantees the
-// spool is partitioned, there is no "kind does not declare a partition" refusal to write -- such a check would
-// restate a constraint the type already carries (fail_closed: a check restating a constraint the model carries is a
-// second representation of it). HOST POLICY (not a type fact -- the sum already makes a uid-less partitioned store
-// unrepresentable): a seat's exit partition is keyed by the PRINCIPAL uid that ran the seat, and seats run under
-// unprivileged principals, so uid 0 (root) must never own a seat's exit partition; the mint refuses Zero. The claim
-// test.claim.spool_queue_seal_witness:a_partitioned_store_mint_refuses_the_root_uid_and_admits_a_real_uid asserts
-// this and its converse.
-type SpoolOpenVerdict
-  = SpoolOpenReady { store: SpoolStore }
-  | SpoolOpenRefused { cause: String }
-
-fn spool_open_uid(kind: PartitionedSpoolKind, instance_root: String, uid: Nat) -> SpoolOpenVerdict {
-  if uid == Zero {
-    SpoolOpenRefused { cause: "a seat's exit partition is keyed by a principal uid; root (uid 0) must never own one" }
-  } else {
-    SpoolOpenReady { store: UidPartitionedStore { kind: kind, instance_root: instance_root, uid: uid } }
+fn spool_root_name(kind: SpoolKind) -> String {
+  match kind {
+    SpoolAttemptUnit => "attempt-unit-spool"
+    SpoolAttemptExit => "attempt-exit-spool"
+    SpoolPublication => "publication-spool"
   }
 }
 
-// THE ONE SHARED PREFIX every path in a spool is built from: <instance_root>/<root_name>, the root_name read off
-// the spool's declaration. Provisioning and every reader derive the shared prefix through THIS ONE function
-// (review 92698): the unpartitioned deploy route and the partitioned owned-root target each pass their kind's
-// declaration in, and spool_root_dir / spool_role_path pass store_declaration(store). No root path is joined by
-// hand at a call site, so provisioning and the reader can never drift apart.
-fn spool_base_dir(declaration: SpoolDeclaration, instance_root: String) -> String {
-  join([instance_root, "/", declaration.root_name], "")
-}
-
-// THE ROOT DIRECTORY OF A STORE: the shared prefix, plus the principal uid segment for a UidPartitionedStore.
-// Matching the store's SUM variant makes this TOTAL -- there is no "partitioned store missing its uid" value to
-// guard and no unpartitioned fallback for a partitioned kind, because the variants carry disjoint kind types.
 fn spool_root_dir(store: SpoolStore) -> String {
-  match store {
-    UnpartitionedStore { kind: _, instance_root } => spool_base_dir(declaration: store_declaration(store: store), instance_root: instance_root)
-    UidPartitionedStore { kind: _, instance_root, uid } =>
-      join([spool_base_dir(declaration: store_declaration(store: store), instance_root: instance_root), "/", to_string(value: uid)], "")
-  }
+  join([store.instance_root, "/", spool_root_name(kind: store.kind)], "")
 }
 
-// THE PROVISIONING TARGET for an unpartitioned spool: the shared root directory, where the deploy route plants the
-// directory before any entry exists. It reads the same spool_base_dir as every role path, so provisioning and the
-// reader share one derivation. A partitioned spool's owned root is derived by the caller through spool_base_dir on
-// its partitioned declaration (see gunbc.compute.host_capacity.compute_attempt_exit_spool_directory).
-fn spool_deploy_root(kind: SpoolKind, instance_root: String) -> String {
-  spool_base_dir(declaration: spool_declaration(kind: kind), instance_root: instance_root)
-}
-
-// The directory a role stands in, absent for a role the spool has no directory for -- and absent for a
-// malformed partitioned store (see spool_root_dir), so the operation refuses rather than touching the shared root.
+// The directory a role stands in, absent for a role the spool has no directory for.
 fn spool_role_path(store: SpoolStore, role: SpoolRole) -> Optional<String> {
-  let root = spool_root_dir(store: store)
-  match spool_role_dir_of(declaration: store_declaration(store: store), role: role) {
-    Present { value: d } => Present { value: join([root, "/", d], "") }
+  match spool_role_dir(kind: store.kind, role: role) {
+    Present { value: d } => Present { value: join([spool_root_dir(store: store), "/", d], "") }
     Absent => Absent
   }
 }
@@ -746,15 +638,10 @@ type SpoolKeyKindVerdict
   | SpoolKeyKindRefused { detail: String }
 
 fn spool_key_kind_refusal(store: SpoolStore, key: SpoolEntryKey) -> SpoolKeyKindVerdict {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } =>
-      if key.kind == kind {
-        SpoolKeyKindAdmitted
-      } else {
-        SpoolKeyKindRefused { detail: join(["a key minted for one spool kind was presented to a store of another kind: ", key.name as String], "") }
-      }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } =>
-      SpoolKeyKindRefused { detail: join(["a key was presented to a uid-partitioned store, which files entries by uid and mints no keys: ", key.name as String], "") }
+  if key.kind == store.kind {
+    SpoolKeyKindAdmitted
+  } else {
+    SpoolKeyKindRefused { detail: join(["a key minted for one spool kind was presented to a store of another kind: ", key.name as String], "") }
   }
 }
 
@@ -854,29 +741,24 @@ fn spool_queue_observe(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryState
 }
 
 fn spool_queue_observe_admitted(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryState {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      let seen = spool_declared_roles(kind: kind) |> map(r => spool_role_presence(store: store, role: r, key: key))
-      let unknown = seen |> flat_map(p => match p {
-        PresenceUnknown { detail } => [detail]
-        PresenceAt { role: _ } => [] as List<String>
-        PresenceNone => [] as List<String>
-      })
-      let here = seen |> flat_map(p => match p {
-        PresenceAt { role } => [role]
-        PresenceUnknown { detail: _ } => [] as List<SpoolRole>
-        PresenceNone => [] as List<SpoolRole>
-      })
-      match unknown.first() {
-        Present { value: d } => EntryObservationUnavailable { detail: d }
-        Absent =>
-          match here.first() {
-            Absent => EntryAbsent
-            Present { value: r } => if count(here) > 1 { EntryAmbiguous { roles: here } } else { EntryStanding { role: r } }
-          }
+  let seen = spool_declared_roles(kind: store.kind) |> map(r => spool_role_presence(store: store, role: r, key: key))
+  let unknown = seen |> flat_map(p => match p {
+    PresenceUnknown { detail } => [detail]
+    PresenceAt { role: _ } => [] as List<String>
+    PresenceNone => [] as List<String>
+  })
+  let here = seen |> flat_map(p => match p {
+    PresenceAt { role } => [role]
+    PresenceUnknown { detail: _ } => [] as List<SpoolRole>
+    PresenceNone => [] as List<SpoolRole>
+  })
+  match unknown.first() {
+    Present { value: d } => EntryObservationUnavailable { detail: d }
+    Absent =>
+      match here.first() {
+        Absent => EntryAbsent
+        Present { value: r } => if count(here) > 1 { EntryAmbiguous { roles: here } } else { EntryStanding { role: r } }
       }
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => EntryObservationUnavailable { detail: "a uid-partitioned store files entries by uid; entry-key observation does not apply" }
   }
 }
 
@@ -886,26 +768,21 @@ type SpoolMoveOutcome
   | SpoolMoveRefused { detail: String }
 
 fn spool_move_between(store: SpoolStore, key: SpoolEntryKey, from: SpoolRole, into: SpoolRole) -> SpoolMoveOutcome {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      match spool_entry_path(store: store, role: from, key: key) {
-        SpoolEntryRoleUndeclared { role: _ } => SpoolMoveRefused { detail: "the source role has no directory" }
+  match spool_entry_path(store: store, role: from, key: key) {
+    SpoolEntryRoleUndeclared { role: _ } => SpoolMoveRefused { detail: "the source role has no directory" }
+    SpoolEntryKindRefused { detail: d } => SpoolMoveRefused { detail: d }
+    SpoolEntryPathReady { path: source } =>
+      match spool_entry_path(store: store, role: into, key: key) {
+        SpoolEntryRoleUndeclared { role: _ } => SpoolMoveRefused { detail: "the destination role has no directory" }
         SpoolEntryKindRefused { detail: d } => SpoolMoveRefused { detail: d }
-        SpoolEntryPathReady { path: source } =>
-          match spool_entry_path(store: store, role: into, key: key) {
-            SpoolEntryRoleUndeclared { role: _ } => SpoolMoveRefused { detail: "the destination role has no directory" }
-            SpoolEntryKindRefused { detail: d } => SpoolMoveRefused { detail: d }
-            SpoolEntryPathReady { path: destination } => {
-              let moved = match spool_declaration(kind: kind).entry_kind {
-                SpoolEntryDirectory => shell.Move.NoReplaceDirectory(source: source as FilePath, destination: destination as FilePath).success
-                SpoolEntryFile => shell.Move.File(source: source as FilePath, destination: destination as FilePath).success
-              }
-              if moved { SpoolMoved } else { SpoolMoveRefused { detail: join(["the rename ", source, " -> ", destination, " failed"], "") } }
-            }
+        SpoolEntryPathReady { path: destination } => {
+          let moved = match spool_declaration(kind: store.kind).entry_kind {
+            SpoolEntryDirectory => shell.Move.NoReplaceDirectory(source: source as FilePath, destination: destination as FilePath).success
+            SpoolEntryFile => shell.Move.File(source: source as FilePath, destination: destination as FilePath).success
           }
+          if moved { SpoolMoved } else { SpoolMoveRefused { detail: join(["the rename ", source, " -> ", destination, " failed"], "") } }
+        }
       }
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolMoveRefused { detail: "a uid-partitioned store has no key-based moves" }
   }
 }
 
@@ -938,36 +815,31 @@ type SpoolClaimRecordVerdict
   | SpoolClaimRecordRefused { detail: String }
 
 fn spool_claim_record_boot(store: SpoolStore, key: SpoolEntryKey, into: SpoolRole) -> SpoolClaimRecordVerdict {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      if !spool_role_is_last(kind: kind, role: into) {
-        SpoolClaimRecorded
-      } else {
-        match spool_declaration(kind: kind).entry_kind {
-          SpoolEntryFile => SpoolClaimRecorded
-          SpoolEntryDirectory =>
-            match spool_entry_path(store: store, role: into, key: key) {
-              SpoolEntryRoleUndeclared { role: _ } => SpoolClaimRecordRefused { detail: "the claimed role has no directory" }
-              SpoolEntryKindRefused { detail: d } => SpoolClaimRecordRefused { detail: d }
-              SpoolEntryPathReady { path: entry } =>
-                match spool_current_boot_id() {
-                  Absent => SpoolClaimRecordRefused { detail: "the current boot id could not be read" }
-                  Present { value: boot } => {
-                    let path = join([entry, "/", spool_claim_boot_file], "")
-                    let written = Filesystem.WriteCreateNew(path: path, content: boot as String)
-                    match filesystem_create_new(path: path, success: written.success, error: written.error, error_kind: written.error_kind) {
-                      FilesystemCreated { path: _ } => SpoolClaimRecorded
-                      FilesystemCreateTargetOccupied { path: p } => SpoolClaimRecordRefused { detail: join(["a claim record already stands at ", p], "") }
-                      FilesystemCreateRefused { path: p, kind: _, error: e } => SpoolClaimRecordRefused { detail: join(["the claim record ", p, " was refused: ", e], "") }
-                      FilesystemCreateKindUnrecognized { path: p, observed: _, error: e } => SpoolClaimRecordRefused { detail: join(["the claim record ", p, " failed: ", e], "") }
-                    }
-                  }
+  if !spool_role_is_last(kind: store.kind, role: into) {
+    SpoolClaimRecorded
+  } else {
+    match spool_declaration(kind: store.kind).entry_kind {
+      SpoolEntryFile => SpoolClaimRecorded
+      SpoolEntryDirectory =>
+        match spool_entry_path(store: store, role: into, key: key) {
+          SpoolEntryRoleUndeclared { role: _ } => SpoolClaimRecordRefused { detail: "the claimed role has no directory" }
+          SpoolEntryKindRefused { detail: d } => SpoolClaimRecordRefused { detail: d }
+          SpoolEntryPathReady { path: entry } =>
+            match spool_current_boot_id() {
+              Absent => SpoolClaimRecordRefused { detail: "the current boot id could not be read" }
+              Present { value: boot } => {
+                let path = join([entry, "/", spool_claim_boot_file], "")
+                let written = Filesystem.WriteCreateNew(path: path, content: boot as String)
+                match filesystem_create_new(path: path, success: written.success, error: written.error, error_kind: written.error_kind) {
+                  FilesystemCreated { path: _ } => SpoolClaimRecorded
+                  FilesystemCreateTargetOccupied { path: p } => SpoolClaimRecordRefused { detail: join(["a claim record already stands at ", p], "") }
+                  FilesystemCreateRefused { path: p, kind: _, error: e } => SpoolClaimRecordRefused { detail: join(["the claim record ", p, " was refused: ", e], "") }
+                  FilesystemCreateKindUnrecognized { path: p, observed: _, error: e } => SpoolClaimRecordRefused { detail: join(["the claim record ", p, " failed: ", e], "") }
                 }
+              }
             }
         }
-      }
     }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolClaimRecordRefused { detail: "a uid-partitioned store records no claim boot" }
   }
 }
 
@@ -975,30 +847,25 @@ fn spool_claim_record_boot(store: SpoolStore, key: SpoolEntryKey, into: SpoolRol
 // destination is a lost election, never an error; the entry still in the source is Unmovable (counted by the
 // caller's stall verdict).
 fn spool_queue_claim(store: SpoolStore, key: SpoolEntryKey) -> SpoolClaimOutcome {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      match spool_claim_assess(kind: kind, observed: spool_queue_observe(store: store, key: key)) {
-        ClaimAbsent => SpoolClaimAbsentEntry
-        ClaimAlreadyClaimed => SpoolClaimLost
-        ClaimEligible { from, into } =>
-          match spool_move_between(store: store, key: key, from: from, into: into) {
-            SpoolMoved =>
-              match spool_claim_record_boot(store: store, key: key, into: into) {
-                SpoolClaimRecorded => SpoolClaimWon { from: from, into: into }
-                SpoolClaimRecordRefused { detail: why } => SpoolClaimWonUnrecorded { from: from, into: into, cause: why }
-              }
-            SpoolMoveRefused { detail: why } =>
-              match spool_queue_observe(store: store, key: key) {
-                EntryStanding { role: r } => if (r == into) { SpoolClaimLost } else { SpoolClaimUnmovable { from: from, into: into, cause: why } }
-                EntryAbsent => SpoolClaimAbsentEntry
-                EntryAmbiguous { roles: _ } => SpoolClaimUnmovable { from: from, into: into, cause: why }
-                EntryObservationUnavailable { detail: _ } => SpoolClaimUnmovable { from: from, into: into, cause: why }
-              }
+  match spool_claim_assess(kind: store.kind, observed: spool_queue_observe(store: store, key: key)) {
+    ClaimAbsent => SpoolClaimAbsentEntry
+    ClaimAlreadyClaimed => SpoolClaimLost
+    ClaimEligible { from, into } =>
+      match spool_move_between(store: store, key: key, from: from, into: into) {
+        SpoolMoved =>
+          match spool_claim_record_boot(store: store, key: key, into: into) {
+            SpoolClaimRecorded => SpoolClaimWon { from: from, into: into }
+            SpoolClaimRecordRefused { detail: why } => SpoolClaimWonUnrecorded { from: from, into: into, cause: why }
           }
-        other => SpoolClaimNotDone { assessment: other }
+        SpoolMoveRefused { detail: why } =>
+          match spool_queue_observe(store: store, key: key) {
+            EntryStanding { role: r } => if (r == into) { SpoolClaimLost } else { SpoolClaimUnmovable { from: from, into: into, cause: why } }
+            EntryAbsent => SpoolClaimAbsentEntry
+            EntryAmbiguous { roles: _ } => SpoolClaimUnmovable { from: from, into: into, cause: why }
+            EntryObservationUnavailable { detail: _ } => SpoolClaimUnmovable { from: from, into: into, cause: why }
+          }
       }
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolClaimNotDone { assessment: ClaimRefused { detail: "a uid-partitioned store is not claimed by key" } }
+    other => SpoolClaimNotDone { assessment: other }
   }
 }
 
@@ -1008,23 +875,18 @@ type SpoolCompleteOutcome
   | SpoolCompleteUnmovable { from: SpoolRole, into: SpoolRole, cause: String }
 
 fn spool_queue_complete(store: SpoolStore, key: SpoolEntryKey, outcome: SpoolOutcome) -> SpoolCompleteOutcome {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      let observed = spool_queue_observe(store: store, key: key)
-      match spool_complete_assess(kind: kind, observed: observed, outcome: outcome) {
-        CompleteEligible { into } =>
-          match observed {
-            EntryStanding { role: from } =>
-              match spool_move_between(store: store, key: key, from: from, into: into) {
-                SpoolMoved => SpoolCompleted { into: into }
-                SpoolMoveRefused { detail: why } => SpoolCompleteUnmovable { from: from, into: into, cause: why }
-              }
-            other => SpoolCompleteNotDone { assessment: CompleteNotClaimed { state: other } }
+  let observed = spool_queue_observe(store: store, key: key)
+  match spool_complete_assess(kind: store.kind, observed: observed, outcome: outcome) {
+    CompleteEligible { into } =>
+      match observed {
+        EntryStanding { role: from } =>
+          match spool_move_between(store: store, key: key, from: from, into: into) {
+            SpoolMoved => SpoolCompleted { into: into }
+            SpoolMoveRefused { detail: why } => SpoolCompleteUnmovable { from: from, into: into, cause: why }
           }
-        other => SpoolCompleteNotDone { assessment: other }
+        other => SpoolCompleteNotDone { assessment: CompleteNotClaimed { state: other } }
       }
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolCompleteNotDone { assessment: CompleteRefused { detail: "a uid-partitioned store is not completed by key" } }
+    other => SpoolCompleteNotDone { assessment: other }
   }
 }
 
@@ -1047,21 +909,11 @@ fn spool_park_move(store: SpoolStore, key: SpoolEntryKey, assessment: SpoolParkA
 }
 
 fn spool_queue_defer(store: SpoolStore, key: SpoolEntryKey) -> SpoolParkOutcome {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      spool_park_move(store: store, key: key, assessment: spool_defer_assess(kind: kind, observed: spool_queue_observe(store: store, key: key)))
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolParkNotDone { assessment: ParkRefused { detail: "a uid-partitioned store is not deferred by key" } }
-  }
+  spool_park_move(store: store, key: key, assessment: spool_defer_assess(kind: store.kind, observed: spool_queue_observe(store: store, key: key)))
 }
 
 fn spool_queue_undefer(store: SpoolStore, key: SpoolEntryKey) -> SpoolParkOutcome {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      spool_park_move(store: store, key: key, assessment: spool_undefer_assess(kind: kind, observed: spool_queue_observe(store: store, key: key)))
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolParkNotDone { assessment: ParkRefused { detail: "a uid-partitioned store is not undeferred by key" } }
-  }
+  spool_park_move(store: store, key: key, assessment: spool_undefer_assess(kind: store.kind, observed: spool_queue_observe(store: store, key: key)))
 }
 
 type SpoolRequeueOutcome
@@ -1096,29 +948,24 @@ fn spool_queue_boot_evidence(store: SpoolStore, key: SpoolEntryKey) -> SpoolRequ
 // for a directory entry). The claim record is deleted BEFORE the rename, so a requeued entry never carries the dead
 // claim's boot id into its next claim; a failed delete refuses the requeue and the entry stays claimed.
 fn spool_queue_requeue_on_evidence(store: SpoolStore, key: SpoolEntryKey, evidence: SpoolRequeueEvidence) -> SpoolRequeueOutcome {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      let observed = spool_queue_observe(store: store, key: key)
-      match spool_requeue_assess(kind: kind, observed: observed, evidence: evidence) {
-        RequeueEligible { from, into } =>
-          match spool_entry_path(store: store, role: from, key: key) {
-            SpoolEntryRoleUndeclared { role: _ } => SpoolRequeueUnmovable { cause: "the claimed role has no directory" }
-            SpoolEntryKindRefused { detail: d } => SpoolRequeueUnmovable { cause: d }
-            SpoolEntryPathReady { path: entry } => {
-              let record = join([entry, "/", spool_claim_boot_file], "")
-              let gone = Filesystem.Delete(path: record)
-              match filesystem_delete(path: record, success: gone.success, error: gone.error, error_kind: gone.error_kind) {
-                FilesystemDeleted { path: _ } => spool_requeue_move(store: store, key: key, from: from, into: into)
-                FilesystemDeleteTargetAbsent { path: _ } => spool_requeue_move(store: store, key: key, from: from, into: into)
-                FilesystemDeleteRefused { path: p, kind: _, error: e } => SpoolRequeueUnmovable { cause: join(["the claim record ", p, " could not be deleted: ", e], "") }
-                FilesystemDeleteKindUnrecognized { path: p, observed: _, error: e } => SpoolRequeueUnmovable { cause: join(["the claim record ", p, " could not be deleted: ", e], "") }
-              }
-            }
+  let observed = spool_queue_observe(store: store, key: key)
+  match spool_requeue_assess(kind: store.kind, observed: observed, evidence: evidence) {
+    RequeueEligible { from, into } =>
+      match spool_entry_path(store: store, role: from, key: key) {
+        SpoolEntryRoleUndeclared { role: _ } => SpoolRequeueUnmovable { cause: "the claimed role has no directory" }
+        SpoolEntryKindRefused { detail: d } => SpoolRequeueUnmovable { cause: d }
+        SpoolEntryPathReady { path: entry } => {
+          let record = join([entry, "/", spool_claim_boot_file], "")
+          let gone = Filesystem.Delete(path: record)
+          match filesystem_delete(path: record, success: gone.success, error: gone.error, error_kind: gone.error_kind) {
+            FilesystemDeleted { path: _ } => spool_requeue_move(store: store, key: key, from: from, into: into)
+            FilesystemDeleteTargetAbsent { path: _ } => spool_requeue_move(store: store, key: key, from: from, into: into)
+            FilesystemDeleteRefused { path: p, kind: _, error: e } => SpoolRequeueUnmovable { cause: join(["the claim record ", p, " could not be deleted: ", e], "") }
+            FilesystemDeleteKindUnrecognized { path: p, observed: _, error: e } => SpoolRequeueUnmovable { cause: join(["the claim record ", p, " could not be deleted: ", e], "") }
           }
-        other => SpoolRequeueNotDone { assessment: other }
+        }
       }
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolRequeueUnmovable { cause: "a uid-partitioned store is not requeued by key" }
+    other => SpoolRequeueNotDone { assessment: other }
   }
 }
 
@@ -1138,27 +985,22 @@ type SpoolForeignOutcome
   | SpoolForeignUnmovable { cause: String }
 
 fn spool_queue_refuse_foreign(store: SpoolStore, name: String) -> SpoolForeignOutcome {
-  match store {
-    UnpartitionedStore { kind, instance_root: _ } => {
-      match spool_entry_key_of_name(kind: kind, name: name) {
-        SpoolKeyMinted { key: _ } => SpoolForeignIsAnEntry
-        SpoolKeyRefused { detail: _ } =>
-          match spool_role_path(store: store, role: RolePending) {
-            Absent => SpoolForeignUnmovable { cause: "the spool has no pending directory" }
-            Present { value: from } =>
-              match spool_role_path(store: store, role: RoleRefused) {
-                Absent => SpoolForeignUnmovable { cause: "the spool has no refused directory" }
-                Present { value: to } =>
-                  if shell.Move.NoReplaceDirectory(source: join([from, "/", name], "") as FilePath, destination: join([to, "/", name], "") as FilePath).success {
-                    SpoolForeignRefused { name: name }
-                  } else {
-                    SpoolForeignUnmovable { cause: join(["the rename of ", name, " to the refused role failed"], "") }
-                  }
+  match spool_entry_key_of_name(kind: store.kind, name: name) {
+    SpoolKeyMinted { key: _ } => SpoolForeignIsAnEntry
+    SpoolKeyRefused { detail: _ } =>
+      match spool_role_path(store: store, role: RolePending) {
+        Absent => SpoolForeignUnmovable { cause: "the spool has no pending directory" }
+        Present { value: from } =>
+          match spool_role_path(store: store, role: RoleRefused) {
+            Absent => SpoolForeignUnmovable { cause: "the spool has no refused directory" }
+            Present { value: to } =>
+              if shell.Move.NoReplaceDirectory(source: join([from, "/", name], "") as FilePath, destination: join([to, "/", name], "") as FilePath).success {
+                SpoolForeignRefused { name: name }
+              } else {
+                SpoolForeignUnmovable { cause: join(["the rename of ", name, " to the refused role failed"], "") }
               }
           }
       }
-    }
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => SpoolForeignUnmovable { cause: "a uid-partitioned store files entries by uid; foreign quarantine does not apply" }
   }
 }
 
@@ -1179,3 +1021,81 @@ data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "dissolve-on: each spool directory is creatable only by the principals spool_role_writers names, with every other principal kernel-refused (ownership and mode derived from spool_role_writers by gunbc.live_deploy.emit), and a permission-bits readback does not retire it. SUFFICIENT FOR deleting this row. The ownership authority is spool_role_writers, derived for the unit and publication pending directories; the kernel-refusal readback is the unbuilt capability.")
   )
 ]
+
+// ================================================================================================
+// THE PARTITIONED SPOOL FAMILY (gunbc#14944 / gunbc#14972 sealed-store pattern, typed partition per
+// jolly-hawk-60's 2026-11-09 ruling; review 93215 finding 1: a partitioned store and a keyed store have
+// DIFFERENT contracts, so they are TWO TYPES, not two arms of one sum).
+//
+// The keyed `SpoolStore` above (kind: SpoolKind) mints and moves entry KEYS within one instance root. The
+// compute-exit spool below has NO keys: it files one record per seat under a per-PRINCIPAL directory the
+// kernel already fixed for the writing process (`<root>/<root_name>/<uid>/done`), so its store carries the
+// uid and mints nothing. Because the shapes differ, neither is expressed as an arm of the other: the keyed
+// operations keep `SpoolStore` and never gain a partitioned arm to refuse, and the partitioned store exposes
+// only its base/role paths and the one mint. A mismatched value is UNWRITABLE, not runtime-refused.
+// ================================================================================================
+
+// THE CLOSED PARTITIONED KINDS, DISJOINT from SpoolKind: the compute-exit spool is its OWN kind (never the
+// keyed SpoolAttemptExit -- that reuse would be a meaning fork). A partitioned constructor can never be
+// handed to the keyed spool_open, and an unpartitioned kind can never reach the partitioned mint.
+type PartitionedSpoolKind
+  = SpoolComputeExit {}
+
+// THE ONE DECLARATION for the partitioned family, held beside its kinds. `root_name` is the directory under
+// the instance root the provider owns (the deploy route plants it, provisioning derives its mode/group);
+// `done_directory` is the terminal the hook writes and the reader lists, under the per-uid directory. This
+// record is the SOLE source of both segments: no other module spells them, and provisioning reads the base
+// through partitioned_spool_base_dir rather than joining the path by hand (the ruling's fourth defect).
+type PartitionedSpoolDeclaration {
+  root_name: String
+  done_directory: String
+}
+
+fn partitioned_spool_declaration(kind: PartitionedSpoolKind) -> PartitionedSpoolDeclaration {
+  match kind {
+    // The per-uid exit spool the ExecStopPost hook writes and the stop-observation door reads. Its records
+    // are payload-less directories named by the seat identity, one per principal under <root_name>/<uid>.
+    SpoolComputeExit {} => PartitionedSpoolDeclaration { root_name: "attempt-exit-spool", done_directory: "done" }
+  }
+}
+
+// THE SEALED PARTITIONED STORE. sole_constructor: only spool_open_uid mints it. The uid is a Nat -- a real
+// principal id, never a path and never a sign-bearing Int -- and it is PART OF THE STORE, so every read of
+// the spool carries the uid it is scoped to; no caller can point a partitioned read at the shared root.
+type PartitionedSpoolStore sole_constructor {
+  kind: PartitionedSpoolKind
+  instance_root: String
+  uid: Nat
+}
+
+// THE ONE DERIVATION. base = <instance_root>/<root_name>; the per-uid directory adds <uid>; the terminal adds
+// <done_directory>. Provisioning's owned root target and the hook/reader's terminal path are BOTH spelled here,
+// so a dropped segment breaks provisioning and the read TOGETHER (the realization witness's provisioning-drop
+// RED) rather than letting one drift from the other.
+fn partitioned_spool_base_dir(kind: PartitionedSpoolKind, instance_root: String) -> String {
+  join([instance_root, "/", partitioned_spool_declaration(kind: kind).root_name], "")
+}
+
+fn partitioned_spool_uid_dir(store: PartitionedSpoolStore) -> String {
+  join([partitioned_spool_base_dir(kind: store.kind, instance_root: store.instance_root), "/", to_string(value: store.uid)], "")
+}
+
+// THE TERMINAL DIRECTORY: where the seat's exit record is planted and read back, always under this store's uid.
+fn partitioned_spool_done_dir(store: PartitionedSpoolStore) -> String {
+  join([partitioned_spool_uid_dir(store: store), "/", partitioned_spool_declaration(kind: store.kind).done_directory], "")
+}
+
+// THE PARTITIONED MINT. It takes the business key (instance root + principal uid), NEVER a path. The uid-0
+// refusal is a HOST POLICY with no string cause to carry -- root (uid 0) never owns a seat's exit partition --
+// so it is the closed NULLARY fact SpoolOpenUidRoot, not a reason the caller must parse (review 93215 finding 2).
+type SpoolOpenVerdict
+  = SpoolOpenReady { store: PartitionedSpoolStore }
+  | SpoolOpenUidRoot
+
+fn spool_open_uid(kind: PartitionedSpoolKind, instance_root: String, uid: Nat) -> SpoolOpenVerdict {
+  if uid == Zero {
+    SpoolOpenUidRoot
+  } else {
+    SpoolOpenReady { store: PartitionedSpoolStore { kind: kind, instance_root: instance_root, uid: uid } }
+  }
+}

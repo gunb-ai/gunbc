@@ -10,6 +10,7 @@ import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryon
 import gunbc.spool_queue {
   SpoolAttemptExit, SpoolStore, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
   SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_directory_listing, spool_role_path, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
+  PartitionedSpoolStore, partitioned_spool_done_dir,
 }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
@@ -334,24 +335,20 @@ fn compute_attempt_exit_entry_parts(done_dir: String, identity: String) -> List<
 // record, so a hook whose variables were never substituted would leave a directory literally named
 // "...+${INVOCATION_ID}+..." -- which attempt_exit_record_put_mkdir_name refuses to write and
 // attempt_exit_entry_decode refuses to read, at the two ends of the only routes that touch it.
-fn compute_attempt_exit_hook(store: SpoolStore, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
-  // The store's VARIANT is the sealed fact: only a UidPartitionedStore may be hooked. A UidPartitionedStore's
-  // kind is a PartitionedSpoolKind, whose only constructor is SpoolComputeExit -- so "renders only the compute-exit
-  // spool" is carried by the TYPE, not a check, and the former spool_store_has_uid / wrong-kind guards and the
-  // recorded residual are gone (review 92720 finding 3 / review 92878 / review 92916: the sum replaced the guards;
-  // making the wrong state unwritable rather than catching it). An UnpartitionedStore has no uid partition, so it
-  // is refused rather than rendered into the shared root.
-  match store {
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => compute_attempt_exit_hook_open_store(store: store, identity: identity, record_owner: record_owner)
-    UnpartitionedStore { kind: _, instance_root: _ } =>
-      AttemptExitHookRefused { reason: "compute_attempt_exit_hook renders only a uid-partitioned compute-exit store" as NonEmptyStr }
-  }
-}
-
-fn compute_attempt_exit_hook_open_store(store: SpoolStore, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
-  match spool_role_path(store: store, role: RoleDone) {
-    Absent => AttemptExitHookRefused { reason: "SpoolComputeExit declares no Done terminal" as NonEmptyStr }
-    Present { value: done_dir } => match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
+//
+// The store's TYPE is the sealed fact: a PartitionedSpoolStore's kind is a PartitionedSpoolKind, whose only
+// constructor is SpoolComputeExit, and it carries the uid it files under. So "renders only the compute-exit
+// spool, scoped to one uid" is carried by the TYPE -- an unpartitioned store cannot be passed (different type)
+// and a root (uid 0) store cannot exist (the mint refuses it). The former kind-guards and the wrong-variant
+// refusal arms are GONE (review 93215 finding 1 / gunbc.design_argument::fail_closed: making the wrong state
+// unwritable, not catching it at every call). The done-directory path derives through the one shared
+// partitioned_spool_done_dir -- the caller passes the sealed store, never a path.
+fn compute_attempt_exit_hook(store: PartitionedSpoolStore, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
+  if !path_segment_is_safe(raw: identity) {
+    AttemptExitHookRefused { reason: "identity is not a safe path segment" as NonEmptyStr }
+  } else {
+    let done_dir = partitioned_spool_done_dir(store: store)
+    match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
       ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
       // THE RECORD IS CREATED OWNED BY THE PROVIDER THAT READS IT BACK -- the same owner the deploy route
       // gave the spool root -- and the reader only ever reads its own uid's directory, so ownership and
@@ -361,32 +358,18 @@ fn compute_attempt_exit_hook_open_store(store: SpoolStore, identity: String, rec
           ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
           ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
         }
-      }
+    }
   }
 }
 
 // WHAT THE SEAT'S DOOR CAN SEE: its own uid's done directory, listed once. An unreadable spool is
 // UNREADABLE, never empty -- "there is no record" is a claim about the seat's end that a failed listing
-// cannot support, and the door keeps the seat on it. The path derives from the declaration through
-// spool_role_path; the caller passes the sealed store, never a path.
-fn compute_attempt_exit_record_listing(store: SpoolStore) -> SpoolListing {
-  // The store's VARIANT is the sealed fact: only a UidPartitionedStore may be listed. Its kind is a
-  // PartitionedSpoolKind, whose only constructor is SpoolComputeExit, so "lists only the compute-exit spool" is
-  // carried by the TYPE, not a check (review 92720 finding 3 / review 92878 / review 92916). An UnpartitionedStore
-  // has no uid partition, so it is refused rather than listing the shared root -- the cross-kind planting the
-  // sealed store exists to prevent is now unrepresentable, not merely guarded.
-  match store {
-    UidPartitionedStore { kind: _, instance_root: _, uid: _ } => compute_attempt_exit_listing_open_store(store: store)
-    UnpartitionedStore { kind: _, instance_root: _ } =>
-      SpoolListingUnreadable { reason: "compute_attempt_exit_record_listing lists only a uid-partitioned compute-exit store" }
-  }
-}
-
-fn compute_attempt_exit_listing_open_store(store: SpoolStore) -> SpoolListing {
-  match spool_role_path(store: store, role: RoleDone) {
-    Absent => SpoolListingUnreadable { reason: "SpoolComputeExit declares no Done terminal" }
-    Present { value: done_dir } => spool_directory_listing(directory: done_dir)
-  }
+// cannot support, and the door keeps the seat on it. The path derives through the one shared
+// partitioned_spool_done_dir; the caller passes the sealed store, never a path. The store's TYPE is the
+// sealed fact (a PartitionedSpoolKind is only SpoolComputeExit, and it carries its uid), so there is no
+// cross-kind or shared-root arm to write.
+fn compute_attempt_exit_record_listing(store: PartitionedSpoolStore) -> SpoolListing {
+  spool_directory_listing(directory: partitioned_spool_done_dir(store: store))
 }
 
 // ONE DECODED RECORD. The process END is a closed pair: an exit with a status, or a signal. They are

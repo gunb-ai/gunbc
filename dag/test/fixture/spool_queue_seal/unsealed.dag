@@ -4,16 +4,20 @@ import std.types { NonEmptyStr, String }
 import std.nat { Nat }
 import gunbc.spool_queue { SpoolKind, PartitionedSpoolKind }
 
-// THE STRIPPED TWIN for test.claim.spool_queue_seal_witness: the SAME records as gunbc.spool_queue SpoolEntryKey and SpoolStore with the
-// SAME field names and types (including the disjoint SpoolKind / PartitionedSpoolKind variants), WITHOUT the
-// sole_constructor keyword, so the same forged text can be run against the twin and show the refusal is the keyword
-// and not the shape, name or field types.
+// THE STRIPPED TWIN for test.claim.spool_queue_seal_witness: the SAME records as gunbc.spool_queue's SEALED types
+// -- the keyed SpoolEntryKey and the partitioned PartitionedSpoolStore -- with the SAME field names and types,
+// WITHOUT the sole_constructor keyword, so the same forged text can be run against the twin and show the refusal
+// is the keyword and not the shape, name or field types. (The keyed SpoolStore is a plain record on main and is
+// not a seal boundary; its safety is the sealed key below. The partitioned store IS the boundary: it carries the
+// principal uid that fences a seat's exit record off from every other uid.)
 
 type SpoolEntryKey {
   kind: SpoolKind
   name: NonEmptyStr
 }
 
-type SpoolStore
-  = UnpartitionedStore { kind: SpoolKind, instance_root: String }
-  | UidPartitionedStore { kind: PartitionedSpoolKind, instance_root: String, uid: Nat }
+type PartitionedSpoolStore {
+  kind: PartitionedSpoolKind
+  instance_root: String
+  uid: Nat
+}

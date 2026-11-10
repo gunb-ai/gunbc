@@ -41,7 +41,7 @@ import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal,
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
 // variables spelled as systemd expansions and no shell anywhere.
-import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable, spool_open, SpoolAttemptExit }
+import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable, SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenUidRoot }
 
 fn drain_principal() -> PosixOwnerNames {
   PosixOwnerNames { user: "svc" as NonEmptyStr, group: "grp" as NonEmptyStr }
@@ -472,28 +472,40 @@ test fn a_worker_role_word_decodes_to_its_invocation_and_a_malformed_one_is_refu
   first && resumed && obligation && malformed
 }
 
-// review 92720 finding 3 / review 92878 / review 92916 (the sibling-kind SUM, not a guard): the compute-exit
-// readers accept ONLY a uid-partitioned store, enforced by a TOTAL match on the store's variant -- the
-// UnpartitionedStore arm refuses. A foreign-kind store minted by spool_open is UnpartitionedStore{SpoolAttemptExit};
-// each reader must refuse it. RED if the UnpartitionedStore arm ever defaults to rendering (it would fall through to
-// spool_role_path on the foreign kind, listing/installing into the wrong spool). The former "UnpartitionedStore of
-// SpoolComputeExit" witnesses are GONE: SpoolComputeExit is now a PartitionedSpoolKind constructor (disjoint from
-// SpoolKind), so that value cannot be constructed -- the wrong state is unwritable, not guarded (review 92916).
-test fn the_compute_exit_listing_refuses_a_foreign_unpartitioned_store() -> Bool {
-  let foreign = spool_open(kind: SpoolAttemptExit, instance_root: "/tmp/compute/root")
-  match compute_attempt_exit_record_listing(store: foreign) {
-    SpoolListingUnreadable { reason: r } => r == "compute_attempt_exit_record_listing lists only a uid-partitioned compute-exit store"
-    SpoolListed { names: _ } => false
+// review 93215 finding 1: the compute-exit hook and reader take the SEALED PartitionedSpoolStore, whose TYPE is
+// the guarantee -- a keyed SpoolStore is a DIFFERENT type and will not compile against them, and the disjoint
+// PartitionedSpoolKind means spool_open can never yield one. The former runtime "refuses a foreign unpartitioned
+// store" witnesses are GONE because the wrong state is now UNREPRESENTABLE, not guarded; the seal witness proves
+// a foreign module cannot even BUILD a PartitionedSpoolStore. These claims cover what the type does NOT already
+// prove: the hook renders through the store's uid partition, refuses an unsafe identity, and the reader is
+// FAIL-CLOSED (a missing done directory is unreadable, never empty) when reading through the sealed store.
+test fn the_compute_exit_hook_renders_through_the_sealed_partitioned_store() -> Bool {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+    SpoolOpenReady { store } => match compute_attempt_exit_hook(store: store, identity: "atm-1", record_owner: drain_principal()) {
+      AttemptExitHookRendered { exec_line: _ } => true
+      AttemptExitHookRefused { reason: _ } => false
+    }
+    SpoolOpenUidRoot => false
   }
 }
 
-// The HOOK refuses a foreign unpartitioned store too (the same total-match arm), so an install script is never
-// rendered into another kind's done directory or the shared root.
-test fn the_compute_exit_hook_refuses_a_foreign_unpartitioned_store() -> Bool {
-  let foreign = spool_open(kind: SpoolAttemptExit, instance_root: "/tmp/compute/root")
-  match compute_attempt_exit_hook(store: foreign, identity: "atm-1", record_owner: PosixOwnerNames { user: "svc" as NonEmptyStr, group: "svc" as NonEmptyStr }) {
-    AttemptExitHookRefused { reason } => reason as String == "compute_attempt_exit_hook renders only a uid-partitioned compute-exit store"
-    AttemptExitHookRendered { exec_line: _ } => false
+test fn the_compute_exit_hook_refuses_an_unsafe_identity() -> Bool {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
+    SpoolOpenReady { store } => match compute_attempt_exit_hook(store: store, identity: "atm 1/../../etc", record_owner: drain_principal()) {
+      AttemptExitHookRefused { reason: _ } => true
+      AttemptExitHookRendered { exec_line: _ } => false
+    }
+    SpoolOpenUidRoot => false
+  }
+}
+
+test fn the_compute_exit_record_listing_is_fail_closed_over_the_partitioned_store() -> Bool {
+  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root/definitely-not-a-real-spool-root", uid: Succ { prev: Zero }) {
+    SpoolOpenReady { store } => match compute_attempt_exit_record_listing(store: store) {
+      SpoolListingUnreadable { reason: _ } => true
+      SpoolListed { names: _ } => false
+    }
+    SpoolOpenUidRoot => false
   }
 }
 
