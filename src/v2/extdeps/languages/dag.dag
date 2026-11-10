@@ -7114,7 +7114,9 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
     conditional_form: TargetConditionalShape {
       if_token: ^dag_token_kw_if,
       then_token: ^dag_token_kw_then,
+      then_close_token: Absent,
       else_token: ^dag_token_kw_else,
+      else_open_token: Absent,
       delimiting: ConditionalSelfDelimiting
     },
     let_form: TargetBindLetShape {
