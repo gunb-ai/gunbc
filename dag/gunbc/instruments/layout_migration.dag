@@ -261,7 +261,7 @@ fn collect_inventory() -> Inventory {
 // trees and emitted at the position its own name gives it, so a re-run on an unchanged tree writes the
 // same bytes. A namespace added later is a new row the layout check demands (UndeclaredNamespace), and
 // a row whose namespace lost its last module is refused the other way (NamespaceRowWithoutModules).
-data namespaces_module_path: String = "dag/gunbc/source_layout_namespaces.dag"
+data namespaces_module_path: String = "dag/gunbc/layout_namespace_row/gunbc_tree.dag"
 
 fn namespaces_of_sites(sites: List<MigrationSite>) -> List<String> {
   sorted_distinct(values: sites |> filter(site => string_length(s: site.module) > 0) |> map(site => module_namespace(name: site.module)))
@@ -274,18 +274,17 @@ fn namespace_row_line(namespace: String) -> String {
 fn namespaces_module_text(namespaces: List<String>) -> String {
   join(
     [
-      "module gunbc.source_layout_namespaces",
+      "module gunbc.layout_namespace_row.gunbc_tree",
       "",
-      "import std.types { List, String }",
+      "import gunbc.layout_namespace_row { LayoutNamespaceRow }",
       "",
-      "// THE NAMESPACE ROWS OF THE REPOSITORY'S STORAGE POLICY: every namespace that directly contains a",
-      "// module, in byte order, parents derived. This module is emitted by",
-      "// gunbc.instruments.layout_migration layout_namespaces_emit; the layout check holds it to the",
-      "// governed trees as an identity join in both directions, so a namespace gained or lost is a row",
-      "// gained or lost here. Whether a file is generated is not recorded: gunbc.generated_artifact_registry",
-      "// is that fact's single authority.",
-      "fn layout_namespaces() -> List<String> {",
-      "  [",
+      "// THE NAMESPACES GUNBC'S OWN TREE OCCUPIES: every namespace that directly contains a module of this",
+      "// repository, in byte order. Emitted by gunbc.instruments.layout_migration layout_namespaces_emit;",
+      "// the layout check joins the union of every tree's row against the governed files in both",
+      "// directions, so a namespace gained or lost here is a module gained or lost in this tree.",
+      "data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {",
+      "  repository: \"gunb-ai/gunbc\",",
+      "  namespaces: [",
       join(namespaces |> map(namespace => namespace_row_line(namespace: namespace)), ",\n"),
       "  ]",
       "}",
@@ -295,8 +294,9 @@ fn namespaces_module_text(namespaces: List<String>) -> String {
   )
 }
 
-// THE NAMESPACE ROWS EMISSION. Writes gunbc.source_layout_namespaces from the module lines of the
-// governed trees; a tree whose inventory cannot be read emits nothing.
+// THE NAMESPACE ROWS EMISSION. Writes gunbc's own row (gunbc.layout_namespace_row.gunbc_tree) from the
+// module lines of the governed trees; a tree whose inventory cannot be read emits nothing. It walks the
+// checkout it runs in, so it is run in gunbc's own tree, never in a composed one.
 fn layout_namespaces_emit(report: String) -> ProcessExit {
   match collect_inventory() {
     InventoryRefused { reasons: reasons } =>

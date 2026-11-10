@@ -148,7 +148,7 @@ type WorkflowTrigger
   | PullRequest { branches: List<String>, types: List<PullRequestActivity>, paths: List<String> }
   | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
-  | WorkflowCall { inputs: List<DispatchInput> }
+  | WorkflowCall { inputs: List<WorkflowCallInput> }
   | WorkflowRunTriggered { workflows: List<String>, branches: List<String>, activity: WorkflowRunActivity }
   | MergeGroup
 
@@ -226,6 +226,22 @@ type DispatchInputType
   | InputBoolean
   | InputChoice { options: List<String> }
   | InputEnvironment
+
+// A REUSABLE WORKFLOW'S INPUT is not a dispatch input: GitHub admits only three types for
+// on.workflow_call.inputs.<input_id>.type -- boolean, number and string
+// (docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_callinputsinput_idtype,
+// read 2026-11-09) -- so choice and environment have no constructor here rather than a refusal later.
+type WorkflowCallInput {
+  name: String
+  description: String?
+  required: Bool
+  type: WorkflowCallInputType
+}
+
+type WorkflowCallInputType
+  = CallInputString
+  | CallInputBoolean
+  | CallInputNumber
 
 type SecretScope = StepScope | JobScope | WorkflowScope
 

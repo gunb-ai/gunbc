@@ -2,9 +2,27 @@ module test.claim.ci.ci_deploy_target_host_witness
 
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import gunbc.ci.ci_spec { gunbc_ci_deploy_srv1_stage }
-import gunbc.ci.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.ci.ci_deploy_target_host {
+  deploy_local_apply_refused_for_observed_host,
+  deploy_target_host_apply_permitted,
+  deploy_target_host_observed_hostname,
+  deploy_target_ssh_proof_structurally_valid,
+  gunbc_ci_deploy_srv1_runner_spec,
+  host_pinned_runner_spec,
+}
+import gunbc.ci.ci_deploy_access {
+  ci_deploy_srv1_access,
+  deploy_access_with_ssh_transport,
+  deploy_target_proof_from_access,
+}
+import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.ci.ci_fleet { srv3_offer, srv4_offer }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
 import gunbc.runner.runner_registration_labels {
   runner_evidence_gated_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,

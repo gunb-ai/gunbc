@@ -1,0 +1,28 @@
+module gunbc.serving.serving_warm_admission
+
+import std.types { NonEmptyStr, List }
+import extdeps.external_authority { CitedFigureStanding }
+
+// THE SHARED VOCABULARY BETWEEN A DEPLOYMENT ADAPTER AND THE ONE WARM STORE.
+//
+// The store (gunbc.serving.serving_capacity_anchor) must not hardcode one realization's refusal vocabulary -- that is
+// the "one store, many rungs" rule -- and the adapter (gunbc.serving.strata_parked_tier) must not own a type the
+// generic store consumes. So this tiny module owns the three generic arms the store accepts about a rung it can
+// realize but may refuse, and BOTH sides import it (no cycle: anchor and strata both depend on this, neither on each
+// other for this type). The adapter maps its own rich refusal into these arms; the ladder only ever sees these.
+//
+// The two genuinely-UNMEASURED cases fold to WarmRungUnread (a rung the store has not measured -- it contributes
+// nothing and carries a read obligation), while every HARD refusal folds to WarmRungRefused (the store cannot be
+// used here at all -- it contributes nothing and the held bound NAMES why, so a refusal never masquerades as a
+// missing reading). Keeping them distinct is the whole point: an unread rung owes a measurement; a refused rung owes
+// none and must not be handed one (gunbc.design_argument::fail_closed; review 92430 / gentle-swift-129).
+// WarmAdmit carries the standings of the deployment facts its admission rested on (gentle-swift-129, review 92497):
+// an ASSUMED restore contract is a bet that must reach the tally as a TranscribedUncited obligation, so the ladder
+// shows a rung that admitted on an unverified contract rather than consuming it as fact. An ESTABLISHED contract is a
+// fact and adds no standing. Empty means admitted on established evidence alone. This is the SAME CitedFigureStanding
+// the cache/budget readings use; it is deliberately NOT List<NonEmptyStr> so cited evidence and uncited bets share one
+// carrier if a future adapter cites one.
+type ServingWarmAdmission
+  = WarmAdmit { admission_standings: List<CitedFigureStanding> }
+  | WarmRungUnread { reason: NonEmptyStr }
+  | WarmRungRefused { reason: NonEmptyStr, cites: NonEmptyStr }

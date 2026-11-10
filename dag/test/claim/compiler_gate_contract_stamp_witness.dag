@@ -1,10 +1,10 @@
 module test.claim.compiler_gate_contract_stamp_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { for_all, length, list_map, string_contains }
+import std.algebra { for_all, length, list_append, list_map, string_contains }
 import std.optional { Present, Absent }
 import extdeps.github.actions { Step, RunStep, UsesStep }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_required_job }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_required_job, compiler_gate_judged_tree_step_names }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { dissolution_description }
@@ -467,7 +467,7 @@ fn step_name_text(step: Step) -> String {
   }
 }
 
-// THE GUARD IS THE SECOND STEP IN THE JOB -- immediately after the checkout that creates the subject --
+// THE GUARD IS THE FIRST STEP AFTER THE JUDGED TREE IS ASSEMBLED -- immediately after the steps that create the subject --
 // and every step that would run a binary built from that checkout comes later.
 test fn the_guard_precedes_every_binary_invoking_step_holds() -> Bool {
   let steps = compiler_gate_required_job().steps
@@ -475,8 +475,33 @@ test fn the_guard_precedes_every_binary_invoking_step_holds() -> Bool {
   // EXACTLY ONE GUARD STEP. A second one would be two verdicts on one checkout, and the later one would
   // be unreachable behind the first -- a step that can never fire is not a check.
   length(filter(names, n => n == compiler_gate_contract_stamp_step_name)) == 1
-    && guard_index(names) == 1
-    && first_invoking_index(steps) > 1
+    && guard_follows_the_judged_tree(names: names)
+    && first_invoking_index(steps) > guard_index(names)
+}
+
+// THE GUARD STANDS RIGHT AFTER THE STEPS THAT ASSEMBLE THE JUDGED TREE, and those steps are the job's
+// first steps in their declared order: the guard reads the tree they leave (gunbc's own checkout, or the
+// called form's composition), so nothing may run between them and it. Read from the emitter's own list,
+// so the called form's checkout and compose steps are not mistaken for binary-invoking steps.
+fn guard_follows_the_judged_tree(names: List<String>) -> Bool {
+  let tree = compiler_gate_judged_tree_step_names()
+  length(xs: tree) > 0
+    && guard_index(names) == length(xs: tree)
+    && for_all(xs: zip_index(tree), predicate: fn(p) { name_at(names: names, index: p.index) == p.name })
+}
+
+type IndexedName {
+  index: Int
+  name: String
+}
+
+fn zip_index(names: List<String>) -> List<IndexedName> {
+  fold(names, init: [], f: fn(acc, n) { list_append(left: acc, right: [IndexedName { index: length(xs: acc), name: n }]) })
+}
+
+// The name at `index`, or "" past the end -- a fold, for the same reason guard_position is one.
+fn name_at(names: List<String>, index: Int) -> String {
+  fold(zip_index(names), init: "", f: fn(acc, p) { if p.index == index { p.name } else { acc } })
 }
 
 // BOTH SCANS ARE FOLDS, NOT LIST PATTERNS. A `[head, ...rest]` match arm is not admitted by this
@@ -558,9 +583,9 @@ test fn the_evidence_step_is_enrolled_in_the_required_gate_holds() -> Bool {
   // invokes a built binary, so it costs seconds and runs on a checkout the guard would already have
   // refused.
   length(filter(names, n => n == compiler_gate_contract_stamp_evidence_step_name)) == 1
-    && guard_index(names) == 1
+    && guard_follows_the_judged_tree(names: names)
     && evidence_index(names) == guard_index(names) + 1
-    && first_invoking_index(compiler_gate_required_job().steps) > 1
+    && first_invoking_index(compiler_gate_required_job().steps) > evidence_index(names)
 }
 
 test fn the_evidence_step_carries_the_dissolution_marker_and_refuses_on_the_marker_holds() -> Bool {

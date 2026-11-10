@@ -28,9 +28,9 @@ module gunbc.host.boot_attempt
 // DissolutionFired (std.dissolution retires_dissolution; gunbc.design_argument::fail_closed). A row that wants its
 // console reading imports it from the neutral home.
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, trim }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, DissolutionStatus, dissolution_status, retires_dissolution }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -339,8 +339,34 @@ type StaleOverrideClearance
   // what stood before is unknown: the set may proceed -- the state it goes in over is positively read -- but
   // the attempt never learned what it removed, and the receipt has to carry that.
   | StaleOverrideClearedUnread { reason: NonEmptyStr }
-  | StaleOverrideWouldNotClear                    // cleared, and the readback still showed it pending: the attempt refuses
+  // cleared, and the readback still showed it pending: the attempt refuses. WHAT THE WRITE ITSELF ANSWERED
+  // rides beside it, because 'the controller refused the write' and 'the controller took the write and the
+  // flag is still set' are different defects with different remedies -- a request the controller will not
+  // accept, against a controller that re-asserts the flag -- and a readback alone cannot tell them apart.
+  | StaleOverrideWouldNotClear { write: StaleOverrideClearWrite }
   | StaleOverrideUnread { reason: NonEmptyStr }   // the clear or its readback never answered
+
+// WHAT THE CLEAR'S WRITE ITSELF ANSWERED -- THE ONE SUM FOR IT, stored by the row as it reads it (no row keeps
+// a sum of its own for this and maps it 1:1 into this one; review 92721, the MegaRacOverride lesson). A write's
+// answer is never the verdict of a clear -- the readback is -- but when the readback says the flag is still in
+// force, the write's answer is what says why. Accepted: the controller took the write. Refused: it answered and
+// declined, and `code` is the refusal code exactly as the controller's protocol numbers it (for an IPMI
+// controller, the completion-code byte), kept as a value so two different refusals -- a request of the wrong
+// length and a value the firmware's policy rejects -- are told apart without parsing words; `detail` is the
+// client's own report of it. Unanswered: no answer from the controller was received, so whether the write
+// landed is unknown.
+type StaleOverrideClearWrite
+  = ClearWriteAccepted
+  | ClearWriteRefused { code: Int, detail: String }
+  | ClearWriteUnanswered { exit_code: Int, detail: String }
+
+fn stale_override_clear_write_text(w: StaleOverrideClearWrite) -> String {
+  match w {
+    ClearWriteAccepted => "the controller accepted the write and the flag still reads valid"
+    ClearWriteRefused { code: c, detail: d } => join(["the controller refused the write with code ", to_string(c), ": ", trim(d)], "")
+    ClearWriteUnanswered { exit_code: x, detail: d } => join(["the write was not answered (client exited ", to_string(x), " naming no code), so whether it landed is unknown: ", trim(d)], "")
+  }
+}
 
 fn boot_override_clear_text(c: BootOverrideClear) -> String {
   match c {
@@ -357,7 +383,7 @@ fn stale_override_clearance_text(c: StaleOverrideClearance) -> String {
     StaleOverrideCleared => "stale override cleared"
     StaleOverrideClearedUnread { reason: r } =>
       concat("stale override cleared without a before-read (", r as String, ")")
-    StaleOverrideWouldNotClear => "would not clear"
+    StaleOverrideWouldNotClear { write: w } => concat("would not clear (", stale_override_clear_write_text(w: w), ")")
     StaleOverrideUnread { reason: r } => concat("unread: ", r as String)
   }
 }
@@ -373,7 +399,7 @@ fn boot_override_standing_after_clear(before: BootOverrideStanding, clearance: S
     StaleOverrideNoneFound => before
     StaleOverrideCleared => OverrideFlagNotPending
     StaleOverrideClearedUnread { reason: _ } => OverrideFlagNotPending
-    StaleOverrideWouldNotClear => OverrideFlagPending
+    StaleOverrideWouldNotClear { write: _ } => OverrideFlagPending
     StaleOverrideUnread { reason: r } => OverrideReadUnanswered { reason: concat("the stale override's clear never answered: ", r as String) }
   }
 }
@@ -646,7 +672,7 @@ fn run_record_derived_findings(record: BootRunRecord) -> List<DerivedFinding> {
       StaleOverrideNoneFound => []
       StaleOverrideClearedUnread { reason: r } => [OverrideStaleClearedUnread { reason: r }]
       StaleOverrideCleared => []
-      StaleOverrideWouldNotClear => [OverrideStaleNotCleared { clearance: record.override_stale }]
+      StaleOverrideWouldNotClear { write: _ } => [OverrideStaleNotCleared { clearance: record.override_stale }]
       StaleOverrideUnread { reason: _ } => []
     }
   let released =

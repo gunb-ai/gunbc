@@ -1,0 +1,987 @@
+module test.claim.runner.runner_replacement_readback_witness
+
+// THE WITNESS FOR THE TWO-PHASE POPULATION MOVE: a required retiree's drain is a function of its
+// replacement's READBACK, and nothing else. The claims are ordered the way the failure would be discovered:
+// the RED that matters is first -- a plan that retires a working slot whose replacement has never run a job
+// is refused -- and every claim after it moves exactly one fact, so a green suite says the gate is
+// discriminating rather than merely refusing everything.
+//
+// THE SCENARIO IS THE ONE RECORDED IN gunb-ai/gunbc#16137, not an invented one: srv3's committed population
+// moves so that slots 19/20 leave it and slots 06/07 enter it. 19/20 are hand-started and are holding the
+// host's capacity; 06/07 have no install tree, no registration and no job. A converge plan that drained
+// 19/20 in the same run that provisions 06/07 removes the capacity that was serving builds and replaces it
+// with capacity that has never executed anything.
+
+import product.host_identity { HostIdentity }
+import std.optional { Absent, Present }
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline, GitHubRunnerOffline }
+import extdeps.github.workflow_runs {
+  WorkflowRun, WorkflowJobRun, Completed, Success, Failure,
+}
+import gunbc.fleet.fleet_runner_connectivity {
+  OrganizationRunnerRosterEvidence, organization_runner_roster_from_page,
+}
+import gunbc.runner.runner_qualification_dispatch {
+  QualificationRunVerdict, RunVerdictCollected, replacement_job_evidence_of,
+}
+import gunbc.runner.runner_replacement_readback {
+  ReplacementProven, ReplacementIncoming, ReplacedBy, ShrunkOnly, IncomingUnresolved, replacement_registration_of, replacement_proven_of_host, replacement_incoming_for_host, drain_candidate_standing, retire_drain_decision, retire_drain_decisions, provisioning_slots, hand_retirement_notice
+}
+
+import gunbc.runner.runner_host_file_converge {
+  runner_host_drain_leg_decided, runner_host_hand_capacity_notices, runner_host_drain_units,
+  runner_host_hand_started_units,
+  runner_retirement_readback_of, runner_retirement_readback_observe_pass, runner_host_file_subject,
+  RunnerHostFileSubject, RunnerRetirementReadback,
+  RunnerHostFileSubjectAdmitted, RunnerSlotPopulation, RunnerSlotUnitResult, SlotPopulationObserved,
+  SlotPopulationUnobservable, RunnerSlotUnitStanding, SlotRetiredAsDeclared, SlotReloadStatus,
+  SlotReloadNotPending, SlotReloadReach, ReachesLiveCgroup,
+}
+
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationOutcome, SlotHandCapacityHeld, slot_actuation_outcome_wire,
+}
+
+import gunbc.runner.runner_retirement_causes {
+  RunnerHostDrainStep, DrainNow, DrainHeld, DrainRefusedByStanding, DrainUndecided, NoDecisionFor,
+  retire_drain_leg_step, ReplacementJobEvidence,
+  RegistrationUnreadable, RetireDrainDecision, RetireDrainAuthorized, RetireDrainWithheld, RetireDrainRefused, WaitingOnReplacement, ReplacementProofMissing, RegistrationPending, JobPending, NotRegistered, RegisteredOffline, JobUnreadable, IncomingUnprovable, StillDesiredUnit, HandStartedOutsideTheDerivedPopulation, DrainCandidateUnaccountedFor, retire_pending_cause_wire, retire_refusal_cause_wire, pending_cause_text, Registered
+}
+
+// THE FIXTURES ARE THE SHAPE OF THE SCENARIO, AND EVERY ONE OF THEM IS MEANT TO BE READ AS A FACT ABOUT
+// THE WORLD AND NOT AS A CONVENIENCE: the roster entries are what the org roster read answers, the verdict
+// is what the qualification readback answers, and the four name-lists are the same lists the converge
+// subject derives its drain candidates from.
+fn retiree(unit: String) -> NonEmptyStr { unit as NonEmptyStr }
+
+// THE POPULATIONS AS THE WIDTH AUTHORITIES DERIVE THEM for the move recorded in the PR: 19/20 out, 06/07 in.
+fn target_population() -> List<NonEmptyStr> {
+  ["srv3-01", "srv3-02", "srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr)
+}
+
+fn incoming() -> ReplacementIncoming { ReplacedBy { incoming: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr) } }
+
+fn shrink() -> ReplacementIncoming { ShrunkOnly }
+
+fn registration(slot: String, online: Bool) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
+    id: 40,
+    name: slot as NonEmptyStr,
+    status: if online { GitHubRunnerOnline } else { GitHubRunnerOffline },
+    busy: false,
+    ephemeral: none,
+    version: none,
+    os: "Linux" as NonEmptyStr,
+    labels: [],
+  }
+}
+
+// THE ROSTER IS BUILT THROUGH ITS OWN BOUNDARY CONSTRUCTOR, so a witness cannot assert completeness: the
+// arm the roster enters is computed from the count it carries against the authority's own total.
+fn roster(entries: List<GitHubSelfHostedRunnerRegistration>) -> OrganizationRunnerRosterEvidence {
+  organization_runner_roster_from_page(observed_on: "2026-11-09" as NonEmptyStr, registrations: entries, authority_total: count(entries))
+}
+
+fn partial_roster(entries: List<GitHubSelfHostedRunnerRegistration>) -> OrganizationRunnerRosterEvidence {
+  organization_runner_roster_from_page(observed_on: "2026-11-09" as NonEmptyStr, registrations: entries, authority_total: count(entries) + 1)
+}
+
+// THE FIXTURE IS THE REAL VERDICT, PROJECTED -- not a record the test invented. `collected` builds a
+// gunbc.runner.runner_qualification_dispatch::QualificationRunVerdict, the observation the qualification route
+// really returns, and hands it to that module's OWN projection, `replacement_job_evidence_of`, which is the
+// only way a `ReplacementJobEvidence` can exist. So every claim below judges the gate on the shape production
+// produces; had the gate kept its own copy of the verdict's fields, a fixture could have drifted from the real
+// record and still passed.
+fn collected(runner: String, concluded: Bool) -> ReplacementJobEvidence {
+  replacement_job_evidence_of(
+    slot: retiree(runner),
+    verdict: RunVerdictCollected {
+      run: workflow_run(),
+      floor_job: floor_job(runner: runner, concluded: concluded),
+      conclusion: if concluded { Success } else { Failure },
+    },
+  )
+}
+
+fn workflow_run() -> WorkflowRun {
+  WorkflowRun {
+    id: 40509253563,
+    name: none,
+    display_title: none,
+    path: Present { value: ".github/workflows/qualification.yml" },
+    head_sha: "2b1c3d5e6f708192a3b4c5d6e7f8091a2b3c4d5e" as CommitSha,
+    head_branch: Present { value: "main" },
+    event: "workflow_dispatch",
+    status: Completed,
+    conclusion: Present { value: Success },
+    workflow_id: 9,
+    run_number: 1,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/40509253563" as NonEmptyStr,
+    created_at: "2026-11-09T00:00:00Z",
+    updated_at: "2026-11-09T00:01:00Z",
+    pull_requests: [],
+  }
+}
+
+fn floor_job(runner: String, concluded: Bool) -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: 122206492701,
+    run_id: 40509253563,
+    run_attempt: 1,
+    name: "qualification floor",
+    status: Completed,
+    conclusion: Present { value: if concluded { Success } else { Failure } },
+    labels: [],
+    runner_id: Present { value: 40 },
+    runner_name: Present { value: runner },
+    created_at: Present { value: "2026-11-09T00:00:10Z" },
+    started_at: Present { value: "2026-11-09T00:01:00Z" },
+    completed_at: Present { value: "2026-11-09T00:09:00Z" },
+    steps: none,
+  }
+}
+
+// THE DECISION FOR ONE RETIREE UNDER ONE READBACK, spelled once so every claim below differs from the next
+// by exactly one fact about the world.
+fn decide(
+  unit: NonEmptyStr,
+  desired: List<NonEmptyStr>,
+  obligation: List<NonEmptyStr>,
+  fabric: List<NonEmptyStr>,
+  live: List<NonEmptyStr>,
+  incoming: ReplacementIncoming,
+  proven: List<ReplacementProven>,
+) -> RetireDrainDecision {
+  retire_drain_decision(
+    standing: drain_candidate_standing(
+      unit: unit,
+      desired: desired,
+      obligation: obligation,
+      fabric: fabric,
+      live: live,
+    ),
+    incoming: incoming,
+    // THE SAME DERIVATION THE PRODUCTION LEG USES, not a list this file authors: which slots the host is
+    // bringing up is one fact with one producer, and a witness that hand-wrote it could hold the gate to a
+    // set the route never computes.
+    provisioning: provisioning_slots(desired: desired, live: live),
+    proven: proven,
+  )
+}
+
+// ─────────────────────────── THE RED THAT MATTERS ───────────────────────────
+// A PLAN THAT RETIRES A WORKING SLOT WHOSE REPLACEMENT HAS NO COMPLETED-JOB READBACK IS REFUSED THE DRAIN.
+// 19/20 are required retirees of an open width move, they are running on the host, and 06/07 are registered
+// in the roster but have never taken a job: the drain is WITHHELD, and the cause names the replacement the
+// plan is waiting on. Delete the gate and this claim drains -- which is the bug the operator standing of
+// 2026-11-09 exists to prevent.
+test fn retirement_is_withheld_while_the_replacement_has_never_run_a_job() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: [])
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "no qualification run readback exists for this slot",
+  )
+}
+
+// THE SAME PLAN, ONE FACT DIFFERENT: both replacements registered AND both concluded a job. Now the drain
+// is authorized and names what it was authorized over -- so the claim above is a readback result and not a
+// blanket refusal.
+test fn retirement_is_authorized_once_every_replacement_has_registered_and_completed_a_job() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  decide(
+    unit: retiree("srv3-19"),
+    desired: target_population(),
+    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    live: ["srv3-01", "srv3-02", "srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    incoming: incoming(),
+    proven: proven,
+  )
+    == RetireDrainAuthorized { unit: retiree("srv3-19"), over: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr) }
+}
+
+// A KEPT SLOT THE HOST HAS NEVER REPORTED LIVE IS BEING BROUGHT UP TOO, and it is capacity a retirement
+// would be handed to. Both incoming slots have registered and run -- the claim above's world -- and yet the
+// host has not reported srv3-01/srv3-02 at all, which is srv1 of gunb-ai/gunbc#16144 before its trees
+// exist: a plan that retired here would stop a working runner and hand its work to a slot that has never
+// executed anything. The withhold names the slot it is waiting on and says no readback was produced for it.
+test fn a_kept_slot_the_host_has_never_reported_live_holds_the_retirement_too() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  decide(
+    unit: retiree("srv3-19"),
+    desired: target_population(),
+    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    // THE HOST ANSWERED WITH ONLY THE UNITS THAT LEAVE: the kept slots are not reported, so they are among
+    // the slots this converge is bringing up, and they have no registration and no job of their own.
+    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    incoming: incoming(),
+    proven: proven,
+  )
+    == RetireDrainWithheld {
+         unit: retiree("srv3-19"),
+         cause: ReplacementProofMissing {
+           replacement: retiree("srv3-01"),
+           cause: "no readback was produced for this replacement slot",
+         },
+       }
+}
+
+// ONE OF TWO IS NOT ALL OF TWO. The move is not complete until every incoming slot has proven itself; a
+// plan that retired on a partial proof would leave the host one runner short of its committed width with
+// the shortfall invisible.
+test fn one_proven_replacement_of_two_does_not_authorize_the_drain() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-20"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-20",
+    replacement: "srv3-07",
+    reason: "no qualification run readback exists for this slot",
+  )
+}
+
+// ─────────────────────────── THE JOB LEG IS A COMPLETED JOB, NOT A STARTED ONE ───────────────────────────
+// `RunVerdictCollected` is handed back once the floor job has STARTED on the registered runner; the
+// conclusion has to be read. A replacement whose floor job concluded Failure has been handed work and
+// failed it -- retiring the working runner at that moment would swap capacity that works for capacity that
+// demonstrably does not.
+test fn a_collected_run_that_concluded_failure_is_not_a_completed_job() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: false),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "the floor job concluded Failure",
+  )
+}
+
+// A VERDICT IS SPENT ON THE SLOT ITS JOB ACTUALLY RAN ON. A Success verdict whose job carried srv3-07's
+// runner name proves nothing for srv3-06: a gate that matched verdicts to slots by position or by "there is
+// a Success somewhere" would authorize 19's drain on 07's job.
+test fn a_completed_job_on_another_slot_proves_nothing_for_this_one() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let proven = replacement_proven_of_host(
+    slots: ["srv3-06"] |> map(u => u as NonEmptyStr),
+    roster: Present { value: roster(entries: entries) },
+    verdicts: [collected(runner: "srv3-07", concluded: true)],
+  )
+  withheld_waiting_on_job(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: ReplacedBy { incoming: ["srv3-06"] |> map(u => u as NonEmptyStr) }, proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "no qualification run readback exists for this slot",
+  )
+}
+
+// ─────────────────────────── THE REGISTRATION LEG ───────────────────────────
+test fn a_replacement_that_never_appeared_in_the_roster_is_not_registered() -> Bool {
+  let entries = [registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  withheld_waiting_on_registration(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "is not registered in the org runner roster",
+  )
+}
+
+// REGISTERED BUT OFFLINE IS NOT UNPROVISIONED: the operator's fix is the runner, not a second install tree.
+test fn a_replacement_registered_offline_is_not_a_slot_that_needs_provisioning() -> Bool {
+  let entries = [registration("srv3-06", false), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  withheld_waiting_on_registration(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "is registered in the org runner roster but offline",
+  )
+}
+
+// THE ABSENCE OF AN OBSERVATION IS NOT A NEGATIVE OBSERVATION. Nobody read the roster: the standing is
+// unreadable, and the retiree keeps running. Reading `none` as `NotRegistered` would report a replacement
+// that does not exist and keep the same safe outcome for the wrong reason -- and the next claim is the one
+// that says the two reasons are not interchangeable.
+test fn an_unreadable_roster_read_keeps_the_retiree_running_and_says_so() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: none, verdicts: verdicts)
+  withheld_waiting_on_registration(
+    decision: decide( unit: retiree("srv3-19"), desired: target_population(), obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), fabric: [], live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr), incoming: incoming(), proven: proven, ),
+    unit: "srv3-19",
+    replacement: "srv3-06",
+    reason: "the org runner roster was not read this run",
+  )
+}
+
+// THE ORG ROSTER IS PAGINATED. A read that saw 1 of 2 rows cannot support "srv3-06 is not registered" --
+// the runner may be on the page the read never reached. The standing is unreadable, and the plan's next
+// action is to read the roster properly rather than to provision a second tree over a slot that exists.
+test fn a_partial_roster_read_is_never_read_as_not_registered() -> Bool {
+  let standing = replacement_registration_of(
+    slot: retiree("srv3-06"),
+    roster: Present { value: partial_roster(entries: [registration("srv3-07", true)]) },
+  )
+  match standing {
+    RegistrationUnreadable { slot: s, cause: why } =>
+      (s as String) == "srv3-06" && contains(why, "partial")
+    Registered { slot: _ } => false
+    RegisteredOffline { slot: _ } => false
+    NotRegistered { slot: _ } => false
+  }
+}
+
+// ─────────────────────────── THE HAND-STARTED SLOTS (brief §2) ───────────────────────────
+// A LIVE UNIT IN NO DERIVED POPULATION IS WORKING CAPACITY, AND NO READBACK MOVES IT. srv3-19 here is not a
+// required retiree at all -- the model never admitted it -- and it is running. Even with BOTH replacements
+// fully proven, the drain is REFUSED rather than withheld: withheld would mean the same plan takes it as
+// soon as an unrelated slot proves its first job, which is exactly the destruction the invariant is about.
+test fn a_hand_started_slot_is_refused_even_when_every_replacement_is_proven() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  decide(
+    unit: retiree("srv3-19"),
+    desired: target_population(),
+    obligation: [],
+    fabric: [],
+    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    incoming: incoming(),
+    proven: proven,
+  )
+    == RetireDrainRefused { unit: retiree("srv3-19"), cause: HandStartedOutsideTheDerivedPopulation { unit: retiree("srv3-19") } }
+}
+
+// THE REFUSAL IS LOCATED AND SAYABLE, because the operator has to be able to tell why the plan stopped
+// short of its declared population.
+test fn the_refusal_names_the_unit_and_says_it_is_not_this_plans_to_take() -> Bool {
+  let text = retire_refusal_cause_wire(cause: HandStartedOutsideTheDerivedPopulation { unit: retiree("srv1-07") })
+  contains(text, "srv1-07") && contains(text, "hand-started working capacity") && !contains(text, "unknown occupant to kill")
+}
+
+// A UNIT THE COMMITTED POPULATION STILL DESIRES IS NOT DRAINED, even when a retiree list claims it: two
+// authorities disagreeing is the case where draining destroys live capacity, and the fail-closed answer is
+// to refuse and let the disagreement be looked at.
+test fn a_still_desired_unit_is_never_drained_even_when_a_retiree_list_claims_it() -> Bool {
+  decide(
+    unit: retiree("srv3-01"),
+    desired: target_population(),
+    obligation: ["srv3-01", "srv3-19"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    live: ["srv3-01"] |> map(u => u as NonEmptyStr),
+    incoming: incoming(),
+    proven: [],
+  )
+    == RetireDrainRefused { unit: retiree("srv3-01"), cause: StillDesiredUnit { unit: retiree("srv3-01") } }
+}
+
+// A CANDIDATE NOTHING DECLARES -- not desired, not retired, not fabric, and not even running -- is refused
+// as unaccounted for rather than drained as if it were a retiree.
+test fn a_drain_candidate_nothing_declares_is_refused() -> Bool {
+  decide(
+    unit: retiree("srv3-42"),
+    desired: target_population(),
+    obligation: ["srv3-19"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    live: [],
+    incoming: incoming(),
+    proven: [],
+  )
+    == RetireDrainRefused { unit: retiree("srv3-42"), cause: DrainCandidateUnaccountedFor { unit: retiree("srv3-42") } }
+}
+
+// ─────────────────────────── THE CASES THE INVARIANT DOES NOT COVER ───────────────────────────
+// A PURE SHRINK HAS NO REPLACEMENT: the operator narrowed the committed width and nothing is waiting to be
+// proven. This claim is what stops the gate being a blanket refusal -- and it is reached by the SAME
+// derivation, an empty incoming set rather than a hand-written permission.
+test fn a_pure_shrink_needs_no_replacement_readback() -> Bool {
+  decide(
+    unit: retiree("srv3-19"),
+    desired: ["srv3-01", "srv3-02"] |> map(u => u as NonEmptyStr),
+    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    live: ["srv3-01", "srv3-02", "srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    incoming: shrink(),
+    proven: [],
+  )
+    == RetireDrainAuthorized { unit: retiree("srv3-19"), over: [] }
+}
+
+// AN UNKNOWABLE REPLACEMENT POPULATION IS NOT AN EMPTY ONE. The target width will not resolve, so nothing
+// can be said about what is entering -- and the answer is to withhold, not to fall through to the shrink
+// arm above. This is the arm that a `[]`-for-`Unresolved` confusion would silently open, and it is why the
+// incoming set is a coproduct instead of a list.
+test fn an_unresolvable_target_population_withholds_rather_than_reading_empty() -> Bool {
+  decide(
+    unit: retiree("srv3-19"),
+    desired: target_population(),
+    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    live: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    incoming: IncomingUnresolved { cause: "the committed width for srv3 is not derivable" },
+    proven: [],
+  )
+    == RetireDrainWithheld {
+      unit: retiree("srv3-19"),
+      cause: IncomingUnprovable { cause: "the committed width for srv3 is not derivable" },
+    }
+}
+
+// A FABRIC MEMBER'S RUNNER UNIT IS THE MODEL'S OWN REASSIGNMENT OF THE SLOT, authorized without a CI
+// replacement readback -- the fabric workload is gated where it is admitted. Spelled as a claim so the
+// decision is pinned rather than implied by the absence of an arm.
+test fn a_fabric_member_is_authorized_without_a_replacement_readback() -> Bool {
+  decide(
+    unit: retiree("srv3-13"),
+    desired: target_population(),
+    obligation: [],
+    fabric: ["srv3-13"] |> map(u => u as NonEmptyStr),
+    live: ["srv3-13"] |> map(u => u as NonEmptyStr),
+    incoming: incoming(),
+    proven: [],
+  )
+    == RetireDrainAuthorized { unit: retiree("srv3-13"), over: [] }
+}
+
+// THE HAND RUNNERS DO NOT LINGER SILENTLY. The refusal of a hand-started slot is permanent -- converge
+// never kills hand capacity -- so the per-slot notice is the only place the operator can learn that the
+// population they would be handing capacity to has now proven itself. Both states are claims: the notice
+// while 06/07 have no completed job says what it is waiting on, and the notice once they have says the
+// hand retirement is safe to take. A plan that refused and stayed quiet would leave srv3 carrying two
+// populations with no line anywhere saying which one can now be let go of.
+test fn the_hand_notice_says_the_retirement_is_now_safe_once_the_replacements_are_proven() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), provisioning: [], proven: proven, read_live: true)
+  contains(text, "srv3-19")
+    && contains(text, "will not drain it")
+    && contains(text, "replacement srv3-06, srv3-07")
+    && contains(text, "hand retirement is now safe for the operator to decide")
+}
+
+test fn the_hand_notice_names_the_replacement_and_the_reason_while_it_is_unproven() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: [])
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), provisioning: [], proven: proven, read_live: true)
+  contains(text, "waiting on srv3-06")
+    && contains(text, "no qualification run readback exists for this slot")
+    && contains(text, "no retirement is safe to take yet")
+    && !contains(text, "now safe")
+}
+
+// ─────────────────────────── THE REPORT THE OPERATOR READS ───────────────────────────
+// A WITHHELD RETIREMENT IS ONLY SAFE IF IT IS ALSO LEGIBLE: each arm has to name the replacement it waits
+// on, or the plan reads as a refusal with no next action.
+test fn every_withheld_cause_names_the_replacement_it_is_waiting_on() -> Bool {
+  let causes = [
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: RegistrationPending { standing: RegistrationUnreadable { slot: retiree("srv3-06"), cause: "the org runner roster was not read this run" } },
+    },
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: RegistrationPending { standing: NotRegistered { slot: retiree("srv3-06") } },
+    },
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: RegistrationPending { standing: RegisteredOffline { slot: retiree("srv3-06") } },
+    },
+    WaitingOnReplacement {
+      replacement: retiree("srv3-06"),
+      pending: JobPending { standing: JobUnreadable { slot: retiree("srv3-06"), cause: "no qualification run readback exists for this slot" } },
+    },
+    ReplacementProofMissing { replacement: retiree("srv3-06"), cause: "no readback was produced for this replacement slot" },
+  ]
+  all(causes, c => contains(retire_pending_cause_wire(cause: c), "srv3-06"))
+}
+
+// THE AUTHORITY IS PER-UNIT: one withheld retiree does not wave through the next, and one authorized
+// retiree does not authorize the withheld one. The drain leg asks per candidate; this says asking is not
+// decorative.
+test fn the_authority_is_per_unit_and_not_per_host() -> Bool {
+  let entries = [registration("srv3-06", true), registration("srv3-07", true)]
+  let verdicts = [
+    collected(runner: "srv3-06", concluded: true),
+    collected(runner: "srv3-07", concluded: true),
+  ]
+  let proven = replacement_proven_of_host(slots: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr), roster: Present { value: roster(entries: entries) }, verdicts: verdicts)
+  let decisions = retire_drain_decisions(
+    candidates: ["srv3-19", "srv3-20", "srv3-21"] |> map(u => u as NonEmptyStr),
+    desired: target_population(),
+    obligation: ["srv3-19", "srv3-20"] |> map(u => u as NonEmptyStr),
+    fabric: [],
+    live: ["srv3-01", "srv3-02", "srv3-19", "srv3-20", "srv3-21"] |> map(u => u as NonEmptyStr),
+    incoming: incoming(),
+    roster: Present { value: roster(entries: entries) },
+    verdicts: verdicts,
+  )
+  // THE STEP THE APPLY ROUTE ACTS ON, not a paraphrase of it. Review 92516: this file used to ask a
+  // predicate (`retire_drain_is_authorized`) that the route never called, while the leg did its own lookup --
+  // so a leg wired to the wrong decision would have drained working capacity with every claim here still
+  // green. `retire_drain_leg_step` is the ONE lookup the leg calls, so these are now claims about the route.
+  retire_drain_leg_step(unit: retiree("srv3-19"), decisions: decisions) == DrainNow { unit: retiree("srv3-19") }
+    && retire_drain_leg_step(unit: retiree("srv3-20"), decisions: decisions) == DrainNow { unit: retiree("srv3-20") }
+    // srv3-21 is live and in no derived list: hand-started capacity, retained rather than drained, even
+    // though the two units beside it were just authorized -- the authority is per unit, not per host.
+    && match retire_drain_leg_step(unit: retiree("srv3-21"), decisions: decisions) {
+         DrainRefusedByStanding { unit: u, cause: _ } => (u as String) == "srv3-21"
+         _ => false
+       }
+    // THE LOOKUP MATCHES ON THE UNIT AND ON NOTHING ELSE. With srv3-19's own decision removed from the set,
+    // the two authorizations beside it must NOT carry it along: that mis-wire is exactly what a per-host or
+    // "first decision wins" lookup would have done, and it would have drained a working runner whose
+    // replacement had never run.
+    && retire_drain_leg_step(
+         unit: retiree("srv3-19"),
+         decisions: filter(
+           decisions,
+           d =>
+             match d {
+               RetireDrainAuthorized { unit: u, over: _ } => (u as String) != "srv3-19"
+               RetireDrainWithheld { unit: u, cause: _ } => (u as String) != "srv3-19"
+               RetireDrainRefused { unit: u, cause: _ } => (u as String) != "srv3-19"
+             },
+         ),
+       )
+       == DrainUndecided { unit: retiree("srv3-19"), cause: NoDecisionFor { candidate: retiree("srv3-19") } }
+    // AND A CANDIDATE NOBODY CLASSIFIED AT ALL is undecided, never drained: the arm the old helper had no
+    // counterpart for is now produced by the same function the leg calls.
+    && retire_drain_leg_step(unit: retiree("srv3-19"), decisions: [])
+      == DrainUndecided { unit: retiree("srv3-19"), cause: NoDecisionFor { candidate: retiree("srv3-19") } }
+}
+
+// THE OBSERVE PASS MAY NOT CLAIM WHAT IT DID NOT READ. An observe-only run holds no installation token for
+// the org roster, so its carrier is `ObservePassDidNotRead` and its proof list is empty by construction --
+// and a receipt that then printed "replacement srv3-06 registered and completed a job; hand retirement is
+// now safe" would be a plan-only run telling the operator to retire working capacity on the strength of
+// nobody having looked. The same per-slot line has to say the proof was not consulted.
+// THE WITHHELD CLAIMS READ THE DECISION'S ARMS AND THE RENDERED REASON, rather than comparing whole
+// values. A withheld cause now carries the standing that is holding the retirement, and the job standing
+// carries the workflow run it was read from -- so a whole-value comparison would make these claims depend on
+// structural equality over a GitHub run record, and a cause that merely LOOKED similar would still pass the
+// wrong test. Matching the arm says WHICH LEG is holding the retirement; matching the rendered reason says
+// the plan line tells the operator that in words.
+fn withheld_waiting_on_job(
+  decision: RetireDrainDecision,
+  unit: String,
+  replacement: String,
+  reason: String,
+) -> Bool {
+  match decision {
+    RetireDrainWithheld { unit: u, cause: c } =>
+      (u as String) == unit
+        && match c {
+          WaitingOnReplacement { replacement: r, pending: p } =>
+            (r as String) == replacement
+              && match p {
+                JobPending { standing: _ } => contains(retire_pending_cause_wire(cause: c), reason)
+                RegistrationPending { standing: _ } => false
+              }
+          ReplacementProofMissing { replacement: _, cause: _ } => false
+          IncomingUnprovable { cause: _ } => false
+        }
+    RetireDrainAuthorized { unit: _, over: _ } => false
+    RetireDrainRefused { unit: _, cause: _ } => false
+  }
+}
+
+fn withheld_waiting_on_registration(
+  decision: RetireDrainDecision,
+  unit: String,
+  replacement: String,
+  reason: String,
+) -> Bool {
+  match decision {
+    RetireDrainWithheld { unit: u, cause: c } =>
+      (u as String) == unit
+        && match c {
+          WaitingOnReplacement { replacement: r, pending: p } =>
+            (r as String) == replacement
+              && match p {
+                RegistrationPending { standing: _ } => contains(retire_pending_cause_wire(cause: c), reason)
+                JobPending { standing: _ } => false
+              }
+          ReplacementProofMissing { replacement: _, cause: _ } => false
+          IncomingUnprovable { cause: _ } => false
+        }
+    RetireDrainAuthorized { unit: _, over: _ } => false
+    RetireDrainRefused { unit: _, cause: _ } => false
+  }
+}
+
+test fn the_observe_pass_notice_never_announces_a_retirement_it_did_not_read() -> Bool {
+  let proven: List<ReplacementProven> = []
+  let text = hand_retirement_notice(unit: retiree("srv3-19"), incoming: incoming(), provisioning: [], proven: proven, read_live: false)
+  contains(text, "srv3-19")
+    && contains(text, "will not drain it")
+    && contains(text, "were not consulted")
+    && !contains(text, "now safe")
+}
+
+// ========================================================================================================
+// THE ROUTE, WITNESSED AS A ROUTE.
+//
+// Review 92516 found the gap this section closes: the claims above judge the GATE, and the gate's own
+// predicate was never the code the apply route ran -- the drain leg did its own lookup, so a leg that matched
+// every candidate to the wrong decision would have kept this file green while stopping working runners.
+// `gunbc.runner.runner_host_file_converge::runner_host_drain_leg_decided` is now the function the apply route
+// maps over, it asks the ONE lookup this module also exports (`retire_drain_leg_step`), and the claims below
+// call IT. They run over the host the committed model really owes a population move on today, srv1, whose
+// derived subject is 2 desired units, 46 declared retirees and 2 fabric members: fixtures come from
+// `runner_host_file_subject`, so a claim cannot pass by describing a host the route would never see.
+// ========================================================================================================
+
+// SRV1'S OWN SUBJECT, OR NO CLAIM HERE PASSES. A refusal to admit the subject is a failure of the claim, not
+// a vacuous pass: if the committed model ever stops admitting srv1, these witnesses have to notice.
+fn srv1_subject() -> RunnerHostFileSubject? {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectAdmitted { subject: subject } => Present { value: subject }
+    _ => Absent
+  }
+}
+
+// THE HOST'S OWN READING, AS A LIST OF THE UNITS IT SHOWS. The drain leg reads only WHICH units are on the
+// host, so the standing here is whatever the census would already have said for a unit that is present; it is
+// not what these claims are about.
+fn host_population(live: List<String>) -> RunnerSlotPopulation {
+  SlotPopulationObserved {
+    units: map(
+      live,
+      u =>
+        RunnerSlotUnitResult {
+          unit: u as NonEmptyStr,
+          standing: SlotRetiredAsDeclared,
+          reload: SlotReloadNotPending,
+          reach: ReachesLiveCgroup,
+        },
+    ),
+  }
+}
+
+
+
+
+fn drain_now_units(steps: List<RunnerHostDrainStep>) -> List<String> {
+  map(
+    filter(steps, s => match s { DrainNow { unit: _ } => true _ => false }),
+    s => match s { DrainNow { unit: u } => (u as String) _ => "" },
+  )
+}
+
+fn is_step_held_for(steps: List<RunnerHostDrainStep>, unit: NonEmptyStr) -> Bool {
+  any(steps, s => match s { DrainHeld { unit: u, cause: _ } => (u as String) == (unit as String) _ => false })
+}
+
+fn is_step_drained_for(steps: List<RunnerHostDrainStep>, unit: NonEmptyStr) -> Bool {
+  any(steps, s => match s { DrainNow { unit: u } => (u as String) == (unit as String) _ => false })
+}
+
+// THE RED THAT MATTERS, ON THE APPLY ROUTE'S OWN FUNCTION. srv1 owes 48 drain candidates: 46 declared
+// retirees plus the two fabric members that have to be masked off as runner units. The host did not answer,
+// so the live set is empty, and this converge pass read no roster and no job evidence. What the leg emits is
+// two drains -- the fabric slots, which the model reassigned and so have no CI replacement to prove -- and
+// 46 typed holds. Not one retiree is drained while the two units the host KEEPS have never registered and
+// never concluded a job, which is the srv1 of gunb-ai/gunbc#16144: width 8 committed, srv1-03..06 with no
+// install tree, live units past the width still serving builds.
+test fn the_drain_leg_drains_no_declared_retiree_before_the_kept_slots_are_proven() -> Bool {
+  match srv1_subject() {
+    Absent => false
+    Present { value: subject } =>
+      let steps = runner_host_drain_leg_decided(
+        subject: subject,
+        population: SlotPopulationUnobservable { reason: "the host read did not answer" },
+        readback: runner_retirement_readback_observe_pass(),
+      )
+      // NON-VACUOUS BOTH WAYS: the host really does owe retirees, and the leg spoke about every candidate.
+      length(subject.retired_units) > 0
+        && length(steps) == length(runner_host_drain_units(subject: subject))
+        // THE ONLY UNITS THAT DRAIN ARE THE FABRIC ONES.
+        && all(drain_now_units(steps: steps), u => any(subject.fabric_units, f => (f as String) == u))
+        // AND EVERY DECLARED RETIREE IS EXPLICITLY HELD -- not missing from the plan, which would be a
+        // silent skip, but reported with the reason the gate gave.
+        && all(subject.retired_units, u => is_step_held_for(steps: steps, unit: u))
+  }
+}
+
+// THE SAME LEG, ONE FACT CHANGED: the kept slots are on the host, registered in the org, and their floor
+// jobs concluded Success. Now every declared retiree drains, in the same order, with nothing left undecided.
+// This claim is what makes the one above a discriminator rather than a description of a leg that always
+// THE POPULATION THE ROUTE ITSELF DERIVES, as strings: the committed target plus whatever the width
+// authority says is incoming. The two claims below prove THIS set and no hand-written copy of it -- the day
+// srv1's committed width moves (gunb-ai/gunbc#16144) the set to prove moves with it, and a claim that
+// authored its own slot list would sit green against a population the route no longer sees.
+fn incoming_names_of(incoming: ReplacementIncoming) -> List<String> {
+  match incoming {
+    ReplacedBy { incoming: slots } => map(slots, u => u as String)
+    ShrunkOnly => []
+    IncomingUnresolved { cause: _ } => []
+  }
+}
+
+fn wanted_units(subject: RunnerHostFileSubject, incoming: ReplacementIncoming) -> List<String> {
+  concat(map(subject.desired_units, d => d as String), incoming_names_of(incoming: incoming))
+}
+
+// THE READBACK THAT PROVES A SET: every slot registered online in the org roster AND holding a floor job
+// that concluded Success. Registration without a job is a runner that came up and never built anything; a
+// job with no registration is a run nobody can attribute. Both, per slot, is the second phase of the
+// transition, and it is the only thing this file hands the gate as proof.
+fn readback_proving(units: List<String>) -> RunnerRetirementReadback {
+  runner_retirement_readback_of(
+    roster: Present { value: roster(entries: map(units, u => registration(u, true))) },
+    qualification_verdicts: map(units, u => collected(runner: u, concluded: true)),
+  )
+}
+
+// THE LEG AS THE APPLY ROUTE MAPS IT: one step per candidate, the host answering with `live` and the proof
+// covering `proven_units`. Written once so the positive claim and its withholding siblings differ in the
+// evidence they hand in and in nothing else.
+fn drain_leg_drains_everything(subject: RunnerHostFileSubject, live: List<String>, proven_units: List<String>) -> Bool {
+  let steps =
+    runner_host_drain_leg_decided(
+      subject: subject,
+      population: host_population(live: live),
+      readback: readback_proving(proven_units),
+    )
+  length(steps) == length(runner_host_drain_units(subject: subject))
+    && all(subject.retired_units, u => is_step_drained_for(steps: steps, unit: u))
+    && all(subject.fabric_units, u => is_step_drained_for(steps: steps, unit: u))
+    // NOTHING UNDECIDED: a candidate the gate never reached is a bug here, not a safety margin.
+    && length(filter(steps, s => match s { DrainUndecided { unit: _, cause: _ } => true _ => false })) == 0
+}
+
+fn drain_leg_holds_everything(subject: RunnerHostFileSubject, live: List<String>, proven_units: List<String>) -> Bool {
+  let steps =
+    runner_host_drain_leg_decided(
+      subject: subject,
+      population: host_population(live: live),
+      readback: readback_proving(proven_units),
+    )
+  length(steps) == length(runner_host_drain_units(subject: subject))
+    && all(subject.retired_units, u => is_step_held_for(steps: steps, unit: u))
+    // THE ONLY THINGS THAT DRAIN ARE THE FABRIC MEMBERS. A model-declared fabric member is not runner
+    // capacity a build is waiting on -- it is authorized by its standing alone -- so a claim that demanded an
+    // empty DrainNow set would be demanding the wrong thing. What must be empty is the set of RUNNERS drained.
+    && all(drain_now_units(steps: steps), u => any(subject.fabric_units, f => (f as String) == u))
+}
+
+// THE SAME LEG WHEN A SLOT THE PLAN IS BRINGING UP CAME UP AND REGISTERED BUT NEVER BUILT ANYTHING. The host
+// does not report it (that is what makes it a slot being brought up), the org roster nevertheless sees it
+// online, and it holds no floor job. This is the half of the invariant that registration alone cannot give:
+// a runner that came up and never ran a job has not shown it can take the retiree's work. It is a different
+// world from the claim below it, where nothing at all is known about the slot -- there the withhold says no
+// readback was produced, here it says the job has not concluded -- and the assertion checks the reason it was
+// given names the silent slot.
+fn drain_leg_holds_while_a_brought_up_slot_is_registered_but_silent(
+  subject: RunnerHostFileSubject,
+  wanted: List<String>,
+  silent: String,
+) -> Bool {
+  let steps =
+    runner_host_drain_leg_decided(
+      subject: subject,
+      population: host_population(live: filter(wanted, w => w != silent)),
+      readback: runner_retirement_readback_of(
+        // THE ROSTER DOES SEE IT: every slot, including the silent one, is registered and online.
+        roster: Present { value: roster(entries: map(wanted, u => registration(u, true))) },
+        qualification_verdicts: map(filter(wanted, w => w != silent), u => collected(runner: u, concluded: true)),
+      ),
+    )
+  length(steps) == length(runner_host_drain_units(subject: subject))
+    && all(subject.retired_units, u => is_step_held_for(steps: steps, unit: u))
+    && all(subject.retired_units, u => held_cause_names(steps: steps, unit: u, name: silent))
+    && all(drain_now_units(steps: steps), u => any(subject.fabric_units, f => (f as String) == u))
+}
+
+// THE REASON THE GATE GAVE, read from the step it put on the receipt. A withheld retirement has to say why in
+// a form an operator can act on, so the claims read the reason rather than only the verdict. Written as a
+// scan of the steps rather than `first(...)` plus a nested pattern: matching an optional of a sum demands an
+// arm per variant of the sum, which is a compile error waiting to happen when the sum grows.
+fn held_cause_names(steps: List<RunnerHostDrainStep>, unit: NonEmptyStr, name: String) -> Bool {
+  any(steps, s => match s {
+    DrainHeld { unit: u, cause: cause } =>
+      (u as String) == (unit as String) && contains(retire_pending_cause_wire(cause: cause), name)
+    _ => false
+  })
+}
+
+// THE SAME LEG, ONE FACT CHANGED: the population this plan keeps is on the host, registered in the org, and
+// each of its slots has a floor job that concluded Success. Now every declared retiree drains, in the same
+// order, with nothing left undecided -- which is what distinguishes a gate from a blanket refusal.
+test fn the_drain_leg_drains_the_retirees_once_the_kept_slots_have_run_a_job() -> Bool {
+  match srv1_subject() {
+    Absent => false
+    Present { value: subject } =>
+      let incoming = replacement_incoming_for_host(host: "srv1" as HostIdentity)
+      // THE CLAIM'S WORLD IS A MOVE THAT CAN BE PROVEN. If srv1's width authority ever stops resolving, this
+      // claim goes red rather than passing on a population nobody has read.
+      match incoming {
+        IncomingUnresolved { cause: _ } => false
+        _ =>
+          drain_leg_drains_everything(
+            subject: subject,
+            live: wanted_units(subject: subject, incoming: incoming),
+            proven_units: wanted_units(subject: subject, incoming: incoming),
+          )
+      }
+  }
+}
+
+// THE HOST HAS NOT BROUGHT UP ONE OF ITS OWN DESIRED SLOTS YET -- srv1-03..06 before their install trees
+// exist -- and that slot has no registration and no job of its own. Every OTHER slot in the population is
+// proven, so this is not a general "no evidence this pass" world: the one thing missing is exactly the
+// capacity a retiree's builds would be handed to. The leg holds every declared retiree and drains nothing.
+test fn the_drain_leg_holds_while_a_slot_the_host_is_bringing_up_has_never_run_a_job() -> Bool {
+  match srv1_subject() {
+    Absent => false
+    Present { value: subject } =>
+      match first(subject.desired_units) {
+        Absent => false
+        Present { value: bringing } =>
+          let incoming = replacement_incoming_for_host(host: "srv1" as HostIdentity)
+          let wanted = wanted_units(subject: subject, incoming: incoming)
+          let dropped = bringing as String
+          // THE SLOT REALLY IS IN THE POPULATION, or "one is missing" is vacuously true.
+          any(wanted, w => w == dropped)
+            && drain_leg_holds_everything(
+                 subject: subject,
+                 live: filter(wanted, w => w != dropped),
+                 proven_units: filter(wanted, w => w != dropped),
+               )
+      }
+  }
+}
+
+// A PARTIAL PROOF IS NOT A PROOF. One of the two kept slots has registered and run; the other has neither.
+// THE HOST SAYS EVERY SLOT IS UP, THE ORG ROSTER SEES EVERY ONE OF THEM, and every one but a single slot
+// holds a floor job that concluded Success. The one that has never built anything is the hole: registration
+// alone is a runner that came up, not a runner that has taken a build. The whole retirement set stays held,
+// EVERY SLOT THE HOST REPORTS IS UP, THE ORG ROSTER REGISTERS EVERY ONE OF THEM, and the one slot this plan
+// is bringing up -- absent from the host's answer, registered in the org, no floor job -- is the hole.
+// Registration without a completed job is not a slot that has taken a build, so every declared retiree stays
+// held and the reason the receipt gives names that slot.
+test fn the_drain_leg_waits_when_only_one_kept_slot_has_run_a_job() -> Bool {
+  match srv1_subject() {
+    Absent => false
+    Present { value: subject } =>
+      match first(subject.desired_units) {
+        Absent => false
+        Present { value: silent } =>
+          let incoming = replacement_incoming_for_host(host: "srv1" as HostIdentity)
+          let wanted = wanted_units(subject: subject, incoming: incoming)
+          let silent_name = silent as String
+          // THE SILENT SLOT IS REALLY ONE OF THE SLOTS THE ROUTE DERIVES, or "all but one" means nothing.
+          any(wanted, w => w == silent_name)
+            && drain_leg_holds_while_a_brought_up_slot_is_registered_but_silent(
+                 subject: subject,
+                 wanted: wanted,
+                 silent: silent_name,
+               )
+      }
+  }
+}
+
+// THE HAND-STARTED UNIT IS REPORTED, NEVER DRAINED. srv1-51 is live on the host and appears in NO derived
+// list -- not desired, not a required retiree, not fabric -- so it is capacity a human started and converge
+// has no authority over. What the route emits for it is one notice that names it, and it is not among the
+// A HAND-STARTED UNIT THE PLAN DERIVES NOTHING ABOUT IS THE ONE CASE THE OPERATOR ASKED ABOUT BY NAME
+// (srv3/srv4 19/20, srv1 07-09): working capacity, not an unknown occupant to kill. The route reports it and
+// never drains it. The kept population is read off the admitted SUBJECT rather than written out, so this
+// claim cannot sit green while proving a population the route does not derive.
+test fn the_hand_capacity_route_reports_the_unit_and_never_drains_it() -> Bool {
+  match srv1_subject() {
+    Absent => false
+    Present { value: subject } =>
+      let hand = "srv1-51"
+      let kept = map(subject.desired_units, d => d as String)
+      let candidates: List<NonEmptyStr> = runner_host_drain_units(subject: subject)
+      let hand_units: List<NonEmptyStr> = runner_host_hand_started_units(
+        subject: subject,
+        // THE HOST ANSWERS WITH BOTH THE KEPT SLOTS AND THE HAND UNIT, because that is the reading these
+        // assertions judge together: derived capacity must not be reported as hand-started, and srv1-51 is
+        // the hand-started one the plan leaves alone.
+        population: host_population(live: concat(kept, [hand])),
+      )
+      let outcomes = runner_host_hand_capacity_notices(
+        subject: subject,
+        population: host_population(live: [hand]),
+        readback: runner_retirement_readback_of(
+          roster: Present { value: roster(entries: map(kept, u => registration(u, true))) },
+          qualification_verdicts: map(kept, u => collected(runner: u, concluded: true)),
+        ),
+      )
+      length(outcomes) == 1
+        && match first(outcomes) {
+             Present { value: SlotHandCapacityHeld { unit: u, notice: notice } } =>
+               (u as String) == hand
+                 && contains(notice, hand)
+                 && contains(notice, "will not drain it")
+             _ => false
+           }
+        && !any(candidates, u => (u as String) == hand)
+        // and the report stays off the derived population: not one kept slot is called hand-started capacity
+        && length(filter(hand_units, u => any(kept, k => (k as String) == (u as String)))) == 0
+        && any(hand_units, u => (u as String) == hand)
+  }
+}
+
+// THE WIRE IS THE ONLY PLACE A DECISION BECOMES PROSE, and it says who covers the retirement. A drained unit
+// renders as an authorization that names the incoming slots, so the operator reading a converge receipt can
+// see WHICH slot was proven -- the signal bold-wren-111 asked for, since converge itself will never retire
+// the hand-started runners.
+test fn the_wire_names_the_slots_that_cover_a_retirement() -> Bool {
+  let decision = RetireDrainAuthorized {
+    unit: retiree("srv3-19"),
+    over: ["srv3-06", "srv3-07"] |> map(u => u as NonEmptyStr),
+  }
+  match decision {
+    RetireDrainAuthorized { unit: unit, over: over } =>
+      contains(pending_cause_text(pending: RegistrationPending { standing: NotRegistered { slot: retiree("srv3-06") } }), "srv3-06")
+        && contains(slot_actuation_outcome_wire(o: SlotHandCapacityHeld { unit: unit, notice: "hand capacity" }), "srv3-19")
+        && length(over) == 2
+    _ => false
+  }
+}

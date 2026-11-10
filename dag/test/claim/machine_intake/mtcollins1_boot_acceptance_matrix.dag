@@ -15,7 +15,7 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, BmcReplied, BmcReplyFault }
+import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault }
 import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_with_mc_info, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
 import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
@@ -1580,6 +1580,11 @@ test fn an_attempt_that_never_set_an_override_owes_no_clear() -> Bool {
 fn lying_bootdev_echo_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
   match bmc_boot_options_clear_reply(world: w.bmc, call: call) {
     BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+    BmcRefused { exit_code: code, stderr: err, world: after } => OperationObserved {
+      observation: ShellObserved { observation: ShellProcessExited { exit_code: code, stdout: "", stderr: err } },
+      state: with_bmc(w: w, bmc: after),
+      elapsed: second(count: 1),
+    }
     BmcReplied { stdout: _, world: after } => OperationObserved {
       observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "Set Boot Device to pxe\n", stderr: "" } },
       state: with_bmc(w: w, bmc: after),

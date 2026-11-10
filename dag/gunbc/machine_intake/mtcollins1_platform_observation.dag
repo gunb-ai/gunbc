@@ -10,6 +10,7 @@ import gunbc.machine_intake.ethernet {
   BaseboardOnboard,
   BmcDedicated,
   ConfiguredLink,
+  HostData,
   EthernetPortUnit,
   FunctionObserved,
   FunctionUnobserved,
@@ -46,8 +47,7 @@ import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_h
 import gunbc.machine_intake.subject { UnitKeyBound, UnitKeyRefused }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import extdeps.bmc.ipmi_channel { IpmiChannelNumber }
-import extdeps.network.mac { mac_address }
+import extdeps.network.mac { mac_address, mac_addresses_are_equal }
 
 // PLATFORM FACTS OBSERVED WHILE DOING SOMETHING ELSE, which is why they are recorded here rather
 // than left in a session transcript. None of these was the object of a measurement; each surfaced
@@ -225,7 +225,7 @@ data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
 
 // THE CAPTURE EACH ADDRESS IS READ OUT OF, stated by the rows that hold it.
 data mtcollins1_dedicated_bmc_lan_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
-  instrument: IpmiLanPrint { channel: 1 as IpmiChannelNumber, output_field: IpmiMacAddressField },
+  instrument: IpmiLanPrint { channel: 1, output_field: IpmiMacAddressField },
   channel: OutOfBandController {
     controller_address: mtcollins1_dedicated_bmc_address,
     credential: BootstrapFactoryCredentialUnrotated,
