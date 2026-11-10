@@ -31599,13 +31599,16 @@ mod t9_host_recursion_probes {
     /// presented, not from the fields the type declared.
     #[test]
     fn undecodable_cause_is_declared_side_only() {
-        let located = |cause: RestResponseDecodeCause| RestResponseDecodeRefusal {
-            field_path: "pulls.presented-key".to_string(),
-            coproduct: "PullRequestState".to_string(),
-            cause,
+        let located = |cause: crate::v1_interpreter::RestResponseDecodeCause| {
+            crate::v1_interpreter::RestResponseDecodeRefusal {
+                field_path: "pulls.presented-key".to_string(),
+                coproduct: "PullRequestState".to_string(),
+                cause,
+            }
         };
-        let no_contract =
-            rest_response_declared_cause(&located(RestResponseDecodeCause::NoWireContract));
+        let no_contract = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::NoWireContract,
+        ));
         assert!(
             no_contract.contains("CoproductWireContract")
                 && no_contract.contains("PullRequestState"),
@@ -31617,18 +31620,20 @@ mod t9_host_recursion_probes {
                 "declared-side cause echoed located body path: {no_contract}"
             );
         }
-        let spelling =
-            rest_response_declared_cause(&located(RestResponseDecodeCause::UnknownSpelling {
+        let spelling = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::UnknownSpelling {
                 spelling: "FAKE-SECRET-MARKER".to_string(),
-            }));
+            },
+        ));
         assert!(
             !spelling.contains("FAKE-SECRET-MARKER"),
             "cause echoed the presented spelling: {spelling}"
         );
-        let decimal =
-            rest_response_declared_cause(&located(RestResponseDecodeCause::NotAnExactDecimal {
+        let decimal = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::NotAnExactDecimal {
                 json_text: "FAKE-SECRET-MARKER".to_string(),
-            }));
+            },
+        ));
         assert!(
             !decimal.contains("FAKE-SECRET-MARKER"),
             "cause echoed the presented number: {decimal}"

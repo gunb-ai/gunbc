@@ -44,12 +44,11 @@ module test.claim.github_pull_request_decode_witness
 // and the type-directed decode work" from "this coproduct's contract row survived the demanded set".
 
 import std.types { Bool, String }
-import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestResponseObserved, RestBodyRead }
-import extdeps.github.github { UserType }
-import extdeps.github.pulls { PullRequest, PullRequestState }
+import extdeps.github.github { UserType, Bot, User, Organization }
+import extdeps.github.pulls { PullRequest, PullRequestState, Open, Closed }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay { replay_frame, fixture_for }
 import test.fixture.rest_exchange_replay_probe
@@ -63,6 +62,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // spelling no row of this module can name.
 data live_pull_request_body: String = "{\"number\":16238,\"title\":\"Take over #16143 (#15992 re-land): resolve the main conflict, heal-publish the mirror, paired claim run\",\"body\":\"Auto-opened by session-dashboard for session `eager-crane-809`.\\nPushing to `notes/16143-fix-wip` advances this PR.\\n\\n## Worker attestation\\n\\nBefore flipping this PR to ready for review, confirm each item:\\n\\n- [ ] Title describes the change (not the session id or branch).\\n- [ ] PR body summarises *what* and *why* (replace the TODO below).\\n- [ ] Tests run: name the command (e.g. `npm test`, `cargo test`) and the result.\\n- [ ] If this closes a work item, the body contains a `Closes #N` directive.\\n- [ ] No commits on this branch are surprises (no fork/cherry-pick I did not make).\\n- [ ] No secrets / credentials / large binaries staged.\\n\\n## Summary\\n\\nTODO: replace this paragraph with one or two sentences naming the change and its motivation. Reviewers read this first.\\n\\n## Test plan\\n\\n- TODO: list the commands that ran (or \\\"no tests changed; relied on CI\\\") and the outcome.\",\"state\":\"closed\",\"html_url\":\"https://github.com/gunb-ai/gunbc/pull/16238\",\"user\":{\"login\":\"gunbai-bot[bot]\",\"id\":289086189,\"type\":\"Bot\"},\"head\":{\"ref\":\"notes/16143-fix-wip\",\"sha\":\"cfcdf23a3cdee54806d367e4adccc30f9d57f13b\",\"label\":\"gunb-ai:notes/16143-fix-wip\"},\"base\":{\"ref\":\"main\",\"sha\":\"5e3151317af650787f37c4dafeeea642653194e2\",\"label\":\"gunb-ai:main\"},\"created_at\":\"2026-11-10T09:11:39Z\",\"updated_at\":\"2026-11-10T09:15:21Z\",\"merged_at\":null,\"draft\":false,\"merge_commit_sha\":\"6c90a0a2d0ac72e943c5acafddc03f56ffd37929\"}"
 
+// Coproduct arms are judged by pattern, not by equality against a name: the arm IS the fact, and a
+// match over both arms refuses if the vocabulary ever grows, which `==` would not.
+fn state_is_closed(s: PullRequestState) -> Bool {
+  match s {
+    Closed => true
+    Open => false
+  }
+}
+
+fn user_type_is_bot(t: UserType) -> Bool {
+  match t {
+    Bot => true
+    User => false
+    Organization => false
+  }
+}
+
 // The published read is over a CLOSED pull request whose author is a Bot app: two coproduct fields, each
 // spelled only by a CoproductWireContract row in a sibling _contracts module.
 type PullRequestReading
@@ -70,32 +86,42 @@ type PullRequestReading
   | PullRequestNotDecoded { detail: String }
 
 fn decoded_pull_request() -> PullRequestReading {
-  let fixtures = [
-    fixture_for(operation: "PullRequestPage", observation: RestResponseObserved {
-      status: 200,
-      body: RestBodyRead { body: live_pull_request_body }
-    })
-  ]
-  match evaluate_in_witness_frame(frame: replay_frame(fixtures: fixtures), subject: () => test.RestReplay.PullRequestPage()) {
-    WitnessReturned { value: RestAnswered { answer: o } } => PullRequestDecoded { pull: o.pull }
-    WitnessReturned { value: RestRefused { refusal: r } } => PullRequestNotDecoded { detail: "rest refused" }
-    WitnessRefused { reason: reason } => PullRequestNotDecoded { detail: reason }
-    WitnessInterrupted { reason: reason } => PullRequestNotDecoded { detail: reason }
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "PullRequestPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: live_pull_request_body } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.PullRequestPage() {
+        RestAnswered { answer } => PullRequestDecoded { pull: answer.pull }
+        RestRefused { refusal: _ } => PullRequestNotDecoded { detail: "the rest exchange refused inside the replay frame" }
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic: _, route: _, state: _ } => PullRequestNotDecoded { detail: "the witness frame refused the subject (no frame realization, or a located interpreter refusal)" }
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => PullRequestNotDecoded { detail: "the witness frame was interrupted" }
   }
 }
 
 fn decoded_message_through_the_seam() -> String {
-  let fixtures = [
-    fixture_for(operation: "Observe", observation: RestResponseObserved {
-      status: 200,
-      body: RestBodyRead { body: "{\"message\":\"replay-seam-ok\"}" }
-    })
-  ]
-  match evaluate_in_witness_frame(frame: replay_frame(fixtures: fixtures), subject: () => test.RestReplay.Observe()) {
-    WitnessReturned { value: RestAnswered { answer: o } } => o.message
-    WitnessReturned { value: RestRefused { refusal: r } } => "rest refused"
-    WitnessRefused { reason: reason } => reason
-    WitnessInterrupted { reason: reason } => reason
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "Observe",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "{\"message\":\"replay-seam-ok\"}" } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestAnswered { answer } => answer.message
+        RestRefused { refusal: _ } => "rest refused inside the replay frame"
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic: _, route: _, state: _ } => "the witness frame refused the seam subject"
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => "the witness frame was interrupted"
   }
 }
 
@@ -116,7 +142,7 @@ test fn the_coproduct_state_decodes_by_its_sibling_contracts_row() -> Bool {
   // "closed" is the wire spelling; the arm is PullRequestState.Closed. Only the CoproductWireContract row
   // pull_request_state_wire_contract says the wire word is lower-case while the arm is authored as `Closed`.
   match decoded_pull_request() {
-    PullRequestDecoded { pull: o } => o.state == PullRequestState.Closed
+    PullRequestDecoded { pull: o } => state_is_closed(s: o.state)
     PullRequestNotDecoded { detail: _ } => false
   }
 }
@@ -125,7 +151,7 @@ test fn the_user_type_coproduct_decodes_by_its_sibling_contracts_row() -> Bool {
   // The same class one type deeper: extdeps.github.github_contracts.user_type_wire_contract names how
   // "Bot" spells UserType.Bot for GitHubUser.type. The recorded author is gunbai-bot, a Bot.
   match decoded_pull_request() {
-    PullRequestDecoded { pull: o } => o.user.type == UserType.Bot
+    PullRequestDecoded { pull: o } => user_type_is_bot(t: o.user.type)
     PullRequestNotDecoded { detail: _ } => false
   }
 }
@@ -151,7 +177,7 @@ test fn the_recorded_scalar_fields_survive_the_decode() -> Bool {
 fn pull_request_decode_scoped_run_witness() -> ProcessExit {
   match decoded_pull_request() {
     PullRequestDecoded { pull: o } =>
-      if o.state == PullRequestState.Closed && o.user.type == UserType.Bot && o.number == 16238 {
+      if state_is_closed(s: o.state) && user_type_is_bot(t: o.user.type) && o.number == 16238 {
         ExitSuccess
       } else {
         exit_failure(reason: "GithubPullRequestDecodeWitnessRefused: the recorded body decoded, but not into the arms its contracts declare")
