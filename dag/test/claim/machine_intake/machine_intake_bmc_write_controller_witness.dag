@@ -76,6 +76,23 @@ fn box2_at_first_contact() -> BmcControllerEndpoint {
   first_contact_capture_controller()
 }
 
+// mtjade1 IS HELD FOR BOTH ROUTES, and only the assessment its hold names releases it: a refused
+// assessment does not, and with a holding one both routes are selected (its row admits the standing grant
+// once released).
+test fn mtjade1_is_held_until_mtcollins1_qualifies() -> Bool {
+  verdict(host: operator_host_mtjade1, target: jade(), route: ByStandingGrant, qualification: no_release()) == "held"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, qualification: no_release()) == "held"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, qualification: not_qualified()) == "held"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByStandingGrant, qualification: qualified()) == "selected"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, qualification: qualified()) == "selected"
+}
+
+// A HOLD NAMES ITS HOST. mtcollins1's holding assessment does not release a hold that waits on another host.
+test fn an_assessment_for_another_host_releases_nothing() -> Bool {
+  hold_released(until: UntilRunnerQualified { host: operator_host_srv2 }, qualification: qualified()) == false
+    && hold_released(until: UntilRunnerQualified { host: operator_host_mtcollins1 }, qualification: qualified())
+}
+
 // srv15 (box 2, formerly also named srv13) ADMITS ONLY A PER-WRITE APPROVAL (merry-fox-82, 2026-10-28), at its
 // own CURRENT controller and not at the one it had at first contact. The standing-grant route is refused by
 // its row: this is the RED that discriminates the row, since on the arrival discharge the only standing grant
