@@ -304,6 +304,40 @@ data srv4_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotC
 // ~/strata-pool/engine.log read 2026-11-08 (up to 228,921 tokens): at 10 KiB per token the largest fixed part
 // any park needed was 1,234.2 MiB, so 1,240 MiB plus 10 KiB per token lies above every one. A different build
 // from srv4's, and srv4's 800 MiB envelope does not cover it, so its own row.
+// SRV4's PARKED-CONVERSATION DISK BUDGET, AND THE FREE SPACE THAT MUST ADMIT IT (operator, 2026-11-09: "small RAM L1 +
+// larger disk", capped disk with minimal host impact). The BUDGET is a declared workflow figure, so it is an assumption
+// carrying its reason and its read obligation -- never a ServingMemoryRead, which would present a decision as an
+// observation. It is also NOT the filesystem's free space: free space is a separate reading that must admit the budget
+// (gunbc.serving.strata_parked_tier), because a tier sized to whatever the disk happens to have left is a tier that
+// shrinks when something else writes, and a save that fails for space must not be a surprise at park time. 128 GiB
+// holds roughly seventy conversations at srv4's declared snapshot cost (srv4_strata_snapshot_cost: 800 MiB plus 10 KiB
+// per token, so ~1.8 GiB at the anchor context) -- far more than the 16 GiB RAM tier's eight slots, which is the point
+// of the ladder. srv3's own rows (srv3_host_free_disk, srv3_strata_parked_budget, srv3_strata_snapshot_cost) follow
+// below: its replica runs --batch 8 and the engine refuses save/restore under parallel requests, so its rung is
+// refused today, and those rows are what its verdict reads the day the batch lifts (it has ~1.3 TB free, read 2026-11-09).
+data srv4_strata_parked_budget: ServingMemoryReading = ServingMemoryAssumed {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 128)),
+  reason: "declared cap on router-driven slot-file saves (workflow decision, 2026-11-09, under the operator's capped-disk instruction): read the bytes actually written per parked conversation on srv4 (du over slot_save_path through real turns) and revise this to what the engine really costs, not what was guessed" as NonEmptyStr
+}
+
+data srv4_host_free_disk: ServingMemoryReading = ServingMemoryRead {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 186)),
+  provenance: "read 2026-11-09 by bold-wren-111 over ssh: ~200 GB free on srv4 after the swap files were deleted (the disk was 85% full at 69 GB before); recorded as 186 GiB, the round figure at or under the reading (~200 GB = 186.3 GiB), so a budget this row admits is admitted by the host -- recording the observed GB as GiB would round UP and widen the very wall that admits the disk budget (gunbc.design_argument::fail_closed)" as NonEmptyStr
+}
+
+// SRV3's parked-conversation tier rows, as srv4's mirror: its OWN declared budget and its OWN free-space reading.
+// srv3's live --batch 8 refuses the rung today, so these two rows are what the verdict will be checked against the
+// day srv3 drops --batch; reading srv4's rows for srv3 would be the duplicated-reading defect again.
+data srv3_host_free_disk: ServingMemoryReading = ServingMemoryRead {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 1200)),
+  provenance: "df on srv3 (192.168.1.221), 2026-11-09, read by bold-wren-111 for this item: 1.3 TB free; recorded as 1200 GiB, the round figure at or under the reading, so a budget admitted by this row is admitted by the host." as NonEmptyStr,
+}
+
+data srv3_strata_parked_budget: ServingMemoryReading = ServingMemoryAssumed {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 32)),
+  reason: "srv3's OWN declared cap on router-driven slot-file saves -- NOT the same figure as srv4 (srv4 declares 128 GiB on its dedicated release; srv3 declares 32 GiB, the conservative first-declared cap on the hand-run strata-pool host, which is a test pool at /home/ubuntu/strata-pool shared with CI runners rather than a dedicated serving box, so it is declared smaller until it earns the bytes). Each host declares independently; srv3's is a distinct bet, not a copy. Declared, not read, and UNTESTED on this host: srv3 runs --batch 8 today, which refuses slot save/restore outright, so no slot file has ever been written there. The read obligation is to re-admit the rung only when srv3's pool drops --batch (server.py:4091's 501 lifts with it) and then du the slot dir under /home/ubuntu/strata-pool. NEVER free space, which must admit this instead." as NonEmptyStr,
+}
+
 data srv3_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
   fixed: mebibyte_to_byte_size(m: mebibyte(count: 1240)),
   per_token: kibibyte_to_byte_size(k: kibibyte(count: 10)),
