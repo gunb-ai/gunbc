@@ -1,0 +1,254 @@
+module gunbc.machine_intake.bmc_account_state_capture
+
+// THE CAPTURE-TO-TRANSPORT ASSEMBLER (PXE 1c, sharp-crane-14: PR B hermetic decode/assemble half).
+//
+// WHY THIS MODULE EXISTS (review 93275#1 / 93279, gunbc.design_argument::single_authority).
+// BmcSuppliedAccountStateTransport carries, for each read, a DECODED value AND the raw committed answer
+// beside it. gunbc.machine_intake.bmc_secure supplied_transport_read_bmc_account_state proves only that
+// the answer BYTES match their evidence digest; it never derives the decoded value from those bytes. Hand-
+// authoring the two independently is the fork: a caller could pair committed bytes that record a REJECTED
+// user-test with `managed_accepted: true`, and the reader would mint ObservedCredentialAccepted on
+// evidence that shows a rejection. The single authority that turns a response body into a verdict is the
+// decoder in gunbc.machine_intake.bmc_account_state_parsers. THIS module is the sanctioned builder that
+// closes the fork at the PRODUCTION side: every decoded field of the transport it returns is the OUTPUT of
+// running the corresponding capture body through that decoder (or the entry decoder upstream), so a decoded
+// field cannot disagree with the bytes it claims to describe. The wet driver (the real-effects half) builds
+// its captures from real ipmitool / Redfish responses and calls exactly this assembler; the witness builds
+// them from committed real captures. There is no path from raw capture bytes to an observation that skips a
+// decoder here.
+//
+// GENERIC, NOT PER-HOST (operator ruling D2). No srvN literal, no board string, no `host == X` branch: the
+// controller facts (the LAN channel, the managed account name, the channel-members the driver already read)
+// are INPUTS. Host-specific data is supplied by the caller as rows, never named here.
+//
+// WHAT IS DERIVED FROM BYTES vs. WHAT IS A TYPED INPUT, and why. The four reads whose whole verdict a
+// single captured body settles are derived here from those bytes: the managed user-test acceptance, the
+// Redfish service-root surface fact, and the two lockout reads (whose decoders return their OWN verdict
+// type including Unreadable / NotAvailable / NotAuthenticated arms -- passed through UNCHANGED, because
+// "the controller serves no such threshold" is an honest read result the DECODER decides from the bytes,
+// not a caller boolean). The channel-members table and the Redfish census ENTRIES are typed inputs: their
+// full decode needs richer reads than a single body (the channel-authentication-capabilities read and one
+// per-account GET each); the census is still tied to bytes -- its account NAMES are validated against the
+// set the Accounts collection body decodes to, so the read cannot silently present a stranger's account as
+// managed. This gap (an entry's `enabled` is decoded upstream by redfish_account_entry_from_body, not
+// re-derived here) is stated in both live-read frontiers' LANDED text.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Optional, Present }
+import gunbc.machine_intake.bmc_secure {
+  BmcSuppliedAccountStateTransport, BmcSuppliedResponse, BmcBreakGlassReading,
+  BreakGlassTested, BreakGlassUnmaterializable,
+  BmcRedfishAccountCensusReading, BmcRedfishCensusServed, BmcRedfishCensusUnmodeled, BmcRedfishAccountCensusEntry,
+}
+import gunbc.machine_intake.bmc_account_state_parsers {
+  ipmi_user_access_rows, IpmiUserAccessRowsRead, IpmiUserAccessRowsMalformed,
+  redfish_account_names_from_collection, AccountsCollectionRead, AccountsCollectionUnreadable,
+  redfish_account_service_lockout_from_body,
+  ipmi_lan_threshold_from_print,
+}
+import extdeps.bmc.ipmi_channel { IpmiChannelCensusMember, IpmiChannelNumber, ipmi_controller_channel_census }
+
+// THE RAW CAPTURES THE WET DRIVER WRITES AS CONTENT-ADDRESSED EVIDENCE, one per read. Each already carries
+// the EvidenceRef the wet layer committed; this assembler NEVER reads a controller and NEVER mints a
+// response or an evidence ref -- it consumes what the wet layer wrote and derives the decoded value from
+// `response`. The break-glass answer is Optional because a shared-account board (root is both published and
+// managed) takes no separate break-glass user-test: absence is carried in the TYPE (Absent), which this
+// turns into a BreakGlassUnmaterializable reading -- never a substituted reference.
+type BmcAccountStateCaptures {
+  // The LAN channel the user-access rows and the Get LAN Configuration Parameters read address.
+  channel: IpmiChannelNumber
+  // The channel members the driver read from its channel-authentication-capabilities probe: typed, because
+  // the parsers cover the user-access ROWS, not the membership table.
+  channel_members: List<IpmiChannelCensusMember>
+  // The driver's per-account GET result, one entry per account the Accounts collection lists. Its names
+  // must match the collection body exactly (checked below); `enabled` is decoded upstream by
+  // redfish_account_entry_from_body -- that upstream decode is the single authority, not re-run here.
+  redfish_census: BmcRedfishAccountCensusReading
+  managed_answer: BmcSuppliedResponse
+  census_answer: BmcSuppliedResponse
+  redfish_accounts_answer: BmcSuppliedResponse
+  redfish_surface_answer: BmcSuppliedResponse
+  account_service_answer: BmcSuppliedResponse
+  lan_config_answer: BmcSuppliedResponse
+  break_glass_answer: Optional<BmcSuppliedResponse>
+}
+
+// WHICH capture could not be decoded into the field the transport requires -- a located cause, never a
+// silently-defaulted value (gunbc.design_argument::fail_closed: no plausible output is fabricated).
+type BmcAccountStateCaptureRefusal
+  = UserAccessRowsUndecodable { detail: NonEmptyStr }
+  | AccountsCollectionUndecodableWhileServed { detail: NonEmptyStr }
+  | CensusNamesDisagreeWithCollection { detail: NonEmptyStr }
+  | ServedCensusClaimedWithoutSurface { detail: NonEmptyStr }
+
+type BmcAccountStateCaptureOutcome
+  = CapturedTransportAssembled { transport: BmcSuppliedAccountStateTransport }
+  | CapturedTransportUndecodable { cause: BmcAccountStateCaptureRefusal }
+
+// THE USER-TEST ACCEPTANCE DERIVATION -- a property OF THE BYTES, never an independent caller boolean.
+// ipmitool `user test <id>` prints a success marker ("check-password: ok" in the committed captures) or a
+// refusal naming an invalid credential; the wet lane folds the operation's exit status into the SAME body
+// it commits, so this reads the marker out of the bytes. Any refusal marker present, or the success marker
+// absent, yields NOT accepted -- there is no path from these bytes to a spurious true. Case variants are
+// listed explicitly because the language has no lowercase primitive; this is the same technique the parsers
+// use for ipmitool's case-shifting table columns.
+fn user_test_accepted_from_bytes(response: String) -> Bool {
+  !refused_by_marker(response: response) && carries_success(response: response)
+}
+
+fn refused_by_marker(response: String) -> Bool {
+  response.contains("invalid") || response.contains("Invalid")
+    || response.contains("fail") || response.contains("Fail")
+    || response.contains("wrong") || response.contains("Wrong")
+    || response.contains("incorrect") || response.contains("Incorrect")
+    || response.contains("nauthoriz") || response.contains("nAuthoriz")
+}
+
+fn carries_success(response: String) -> Bool {
+  response.contains("ok") || response.contains("OK")
+}
+
+// THE SURFACE FACT, derived from the service-root probe body. A Redfish ServiceRoot document always names
+// the service and links /redfish/v1/; a body that carries none of those is not a Redfish surface, so the
+// fact is read from the bytes rather than set by a caller.
+fn redfish_surface_served_from_bytes(response: String) -> Bool {
+  response.contains("redfish") || response.contains("Redfish")
+    || response.contains("/v1/SessionService") || response.contains("SessionService")
+    || response.contains("@odata.id")
+}
+
+// Does `target` appear exactly in `names`? Proven list recursion, the same idiom the parsers fold with.
+fn name_present(names: List<String>, target: String) -> Bool {
+  match first(names) {
+    none => false
+    Present { value: n } => if n == target { true } else { name_present(names: names.skip(n: 1), target: target) }
+  }
+}
+
+// Every census entry's name is listed by the Accounts collection body -- this is the tie that stops the
+// read presenting an account the controller's own collection does not list.
+fn every_entry_name_in_collection(entries: List<BmcRedfishAccountCensusEntry>, names: List<String>) -> Bool {
+  match first(entries) {
+    none => true
+    Present { value: e } =>
+      if name_present(names: names, target: e.name) {
+        every_entry_name_in_collection(entries: entries.skip(n: 1), names: names)
+      } else {
+        false
+      }
+  }
+}
+
+// And the converse: every account the collection lists has a decoded entry, so the census is not a
+// partial view of the collection the bytes proved exists.
+fn every_collection_name_in_entries(names: List<String>, entries: List<BmcRedfishAccountCensusEntry>) -> Bool {
+  match first(names) {
+    none => true
+    Present { value: n } =>
+      if entry_named_present(entries: entries, target: n) {
+        every_collection_name_in_entries(names: names.skip(n: 1), entries: entries)
+      } else {
+        false
+      }
+  }
+}
+
+fn entry_named_present(entries: List<BmcRedfishAccountCensusEntry>, target: String) -> Bool {
+  match first(entries) {
+    none => false
+    Present { value: e } => if e.name == target { true } else { entry_named_present(entries: entries.skip(n: 1), target: target) }
+  }
+}
+
+// THE ASSEMBLER. Raw committed captures in; a transport out whose decoded fields are produced from the
+// capture bytes through the cited decoders. Refuses with a located cause when a capture cannot be decoded
+// into a required field, never a plausible default.
+fn assemble_account_state_transport(captures: BmcAccountStateCaptures) -> BmcAccountStateCaptureOutcome
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "assembled"),
+  ]
+{
+  let surface_served = redfish_surface_served_from_bytes(response: captures.redfish_surface_answer.response)
+  match ipmi_user_access_rows(text: captures.census_answer.response, channel: captures.channel) {
+    IpmiUserAccessRowsMalformed { detail: d } =>
+      CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: d } }
+    IpmiUserAccessRowsRead { rows: rows } =>
+      match census_for(body: captures.redfish_accounts_answer.response, surface_served: surface_served, supplied: captures.redfish_census) {
+        CensusRefused { cause: c } => CapturedTransportUndecodable { cause: c }
+        CensusBuilt { reading: reading } =>
+          CapturedTransportAssembled {
+            transport: BmcSuppliedAccountStateTransport {
+              // DERIVED FROM THE BYTES via user_test_accepted_from_bytes, never a caller boolean beside them.
+              managed_accepted: user_test_accepted_from_bytes(response: captures.managed_answer.response),
+              managed_answer: captures.managed_answer,
+              // user_access comes from the rows the parser decoded; members from the driver's channel-info read.
+              census: ipmi_controller_channel_census(members: captures.channel_members, user_access: rows),
+              census_answer: captures.census_answer,
+              redfish_census: reading,
+              redfish_census_answer: captures.redfish_accounts_answer,
+              // DERIVED from the service-root probe body, not a caller boolean.
+              redfish_surface_served: surface_served,
+              redfish_surface_answer: captures.redfish_surface_answer,
+              // The decoder's OWN verdict, passed through unchanged: the AccountService lockout read, its
+              // Unreadable, or its NotAuthenticated arm is decided from the bytes by the single decoder.
+              account_service: redfish_account_service_lockout_from_body(body: captures.account_service_answer.response),
+              account_service_answer: captures.account_service_answer,
+              // Likewise: the LAN threshold verdict (Read / NotAvailable / ReadFailed) comes straight from
+              // the decoder run on the Get LAN Configuration Parameters body.
+              lan_threshold: ipmi_lan_threshold_from_print(text: captures.lan_config_answer.response, channel: captures.channel),
+              lan_threshold_answer: captures.lan_config_answer,
+              // Break-glass: Absent answer -> Unmaterializable (no substituted reference); Present -> the
+              // acceptance is derived from the same bytes the managed probe uses.
+              break_glass: break_glass_reading(answer: captures.break_glass_answer),
+            }
+          }
+      }
+  }
+}
+
+// THE REDFISH CENSUS, tied to the Accounts collection body. When Redfish is not served, the census is
+// Unmodeled (no Redfish to census) and a supplied Served census is refused as a contradiction. When served,
+// the collection body must decode (else refuse -- never fabricate), and the supplied entries' name set must
+// EXACTLY equal the names the collection body decodes to, in both directions.
+type CensusAssembly
+  = CensusBuilt { reading: BmcRedfishAccountCensusReading }
+  | CensusRefused { cause: BmcAccountStateCaptureRefusal }
+
+fn census_for(body: String, surface_served: Bool, supplied: BmcRedfishAccountCensusReading) -> CensusAssembly {
+  if !surface_served {
+    match supplied {
+      BmcRedfishCensusServed { accounts: _ } =>
+        CensusRefused { cause: ServedCensusClaimedWithoutSurface { detail: "the driver supplied a Served Redfish census but the service-root probe body is not a Redfish surface" as NonEmptyStr } }
+      _ => CensusBuilt { reading: BmcRedfishCensusUnmodeled }
+    }
+  } else {
+    match redfish_account_names_from_collection(body: body) {
+      AccountsCollectionUnreadable { detail: d } =>
+        CensusRefused { cause: AccountsCollectionUndecodableWhileServed { detail: d } }
+      AccountsCollectionRead { names: names } =>
+        match supplied {
+          BmcRedfishCensusUnmodeled =>
+            CensusRefused { cause: CensusNamesDisagreeWithCollection { detail: "Redfish is served and the collection lists accounts, but the supplied census is Unmodeled" as NonEmptyStr } }
+          BmcRedfishCensusRefused { detail: d } =>
+            CensusRefused { cause: CensusNamesDisagreeWithCollection { detail: d } }
+          BmcRedfishCensusServed { accounts: accounts } =>
+            if every_entry_name_in_collection(entries: accounts, names: names) && every_collection_name_in_entries(names: names, entries: accounts) {
+              CensusBuilt { reading: supplied }
+            } else {
+              CensusRefused { cause: CensusNamesDisagreeWithCollection { detail: "the supplied census account set does not match the Accounts collection body" as NonEmptyStr } }
+            }
+        }
+    }
+  }
+}
+
+// The break-glass reading. Absent answer: the shared-account board takes no separate break-glass user-test,
+// so the reading is Unmaterializable -- the observation's break_glass REFERENCE is filled from the goal by
+// the reader (root is both), and here we do NOT substitute or invent one. Present answer: the accepted flag
+// is derived from the bytes, exactly as the managed probe's is.
+fn break_glass_reading(answer: Optional<BmcSuppliedResponse>) -> BmcBreakGlassReading {
+  match answer {
+    Absent => BreakGlassUnmaterializable { detail: "no break-glass user-test was captured for this controller" as NonEmptyStr }
+    Present { value: a } => BreakGlassTested { accepted: user_test_accepted_from_bytes(response: a.response), answer: a }
+  }
+}
