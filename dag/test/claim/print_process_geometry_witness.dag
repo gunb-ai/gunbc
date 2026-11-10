@@ -2,6 +2,8 @@ module test.claim.print_process_geometry_witness
 import std.types {Bool}
 import std.measure {micrometer}
 import product.printed_chassis.print_preparation {placement_admitted,PlatePlacement}
+import product.printed_chassis.assembly_geometry {LayOnXY,LayOnXZ,LayOnYZ,PrintPose,print_pose,print_pose_rows,print_pose_is_proper}
+import std.euclidean_geometry {PositiveX,PositiveY,PositiveZ}
 
 test fn upright_cradle_rotation_is_refused() -> Bool {
  !placement_admitted(p:PlatePlacement {id:"M140",rx:90,ry:0,rz:0,x_um:micrometer(count: 10000),y_um:micrometer(count: 10000)})
@@ -14,4 +16,11 @@ test fn modeled_plane_preserves_packing_rotation() -> Bool {
 }
 test fn inverted_unqualified_part_is_refused() -> Bool {
  !placement_admitted(p:PlatePlacement {id:"any-part",rx:180,ry:0,rz:0,x_um:micrometer(count: 10000),y_um:micrometer(count: 10000)})
+}
+// Every declared plane derives a rotation, never a mirror; the panels' plane puts part-frame +Y up, the face the
+// review readme names (assembly_geometry print_plane_pose); and properness discriminates (a mirrored pose fails).
+test fn every_declared_plane_derives_a_proper_print_pose() -> Bool {
+ all([LayOnXY,LayOnXZ,LayOnYZ],plane=>print_pose_is_proper(p:print_pose(plane:plane)))
+  && print_pose_rows(p:print_pose(plane:LayOnXZ))==[[1,0,0],[0,0,0-1],[0,1,0]]
+  && !print_pose_is_proper(p:PrintPose {build_x:PositiveX,build_y:PositiveZ,build_z:PositiveY})
 }

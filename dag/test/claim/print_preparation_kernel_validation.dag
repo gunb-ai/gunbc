@@ -3,8 +3,9 @@ import std.measure {micrometer_count}
 import std.process {ProcessExit,exit_failure}
 import gunbc.host_state_root {host_state_tree}
 import product.printing.print_runtime {observe_cad_runtime,CadRuntimeObserved,CadRuntimeRefused}
-import product.printed_chassis.print_preparation {run_kernel,deposited_path_edge_allowance_um}
-import extdeps.languages.json.emit {serialize_json,JsonValue,json_object,json_kv,json_string,json_array}
+import product.printed_chassis.print_preparation {run_kernel,deposited_path_edge_allowance_um,print_pose_conformance_tolerance_um}
+import product.printed_chassis.assembly_geometry {LayOnXY,LayOnXZ,LayOnYZ,print_pose,print_pose_rows}
+import extdeps.languages.json.emit {serialize_json,JsonValue,json_object,json_kv,json_string,json_array,json_int}
 import product.printing.process_geometry {prototype_support_policy,support_settings}
 fn controls() -> String {join([
  "import tempfile,copy\n",
@@ -80,6 +81,53 @@ fn controls() -> String {join([
  "    assert admitted['paths']['process_observation']==retrospective['process_observation']\n",
  "    fixture(p,bad_digest=True);must_refuse(lambda:observe_archived_process(p))\n",
  "print('PASS: process observations, relative/absolute E, G92, cross-layer recovery, wipes, modal feed, arc time, unknown feed, firmware commands and admission/retrospective integration')\n",
+ "# Pose conformance reads the sliced archive itself: each control below builds one, never trusts a producer.\n",
+ "import cadquery as cq\n",
+ "def chiral():\n",
+ "    s=cq.Workplane().box(30,20,10).val()\n",
+ "    s=s.fuse(cq.Workplane().box(6,4,8).translate((9,6,9)).val())\n",
+ "    return s.fuse(cq.Workplane().cylinder(12,3).translate((-8,-4,0)).val())\n",
+ "def write_cad(d,rows):\n",
+ "    step=pathlib.Path(d)/'X.step';cq.exporters.export(chiral(),str(step),exportType='STEP')\n",
+ "    part=dict(id='X',kind='printed',step_sha256=hashlib.sha256(step.read_bytes()).hexdigest(),print_pose=rows)\n",
+ "    (pathlib.Path(d)/'assembly.json').write_text(json.dumps(dict(parts=[part])))\n",
+ "def mesh_of(shape):\n",
+ "    vs,fs=shape.tessellate(.001,.1)\n",
+ "    return [v.toTuple() for v in vs],[tuple(f) for f in fs]\n",
+ "def mirrored(mesh):\n",
+ "    vs,fs=mesh\n",
+ "    return [(-x,y,z) for x,y,z in vs],[(a,c,b) for a,b,c in fs]\n",
+ "def sliced_fixture(path,mesh,transform='1 0 0 0 1 0 0 0 1 0 0 0'):\n",
+ "    vs,fs=mesh\n",
+ "    core='http://schemas.microsoft.com/3dmanufacturing/core/2015/02';prod='http://schemas.microsoft.com/3dmanufacturing/production/2015/06'\n",
+ "    head='<model unit=\"millimeter\" xmlns=\"'+core+'\" xmlns:p=\"'+prod+'\"><resources>'\n",
+ "    obj=head+'<object id=\"1\" type=\"model\"><mesh><vertices>'+''.join('<vertex x=\"%r\" y=\"%r\" z=\"%r\"/>' % v for v in vs)+'</vertices><triangles>'+''.join('<triangle v1=\"%d\" v2=\"%d\" v3=\"%d\"/>' % f for f in fs)+'</triangles></mesh></object></resources></model>'\n",
+ "    top=head+'<object id=\"2\" type=\"model\"><components><component p:path=\"/3D/Objects/X_1.model\" objectid=\"1\"/></components></object></resources><build><item objectid=\"2\" transform=\"'+transform+'\"/></build></model>'\n",
+ "    with zipfile.ZipFile(path,'w') as z:\n",
+ "        z.writestr('3D/3dmodel.model',top);z.writestr('3D/Objects/X_1.model',obj)\n",
+ "        z.writestr('Metadata/model_settings.config','<config><object id=\"2\"><metadata key=\"name\" value=\"X\"/></object></config>')\n",
+ "def turn(degrees):\n",
+ "    c,s=math.cos(math.radians(degrees)),math.sin(math.radians(degrees))\n",
+ "    return ' '.join(map(repr,[c,s,0.,-s,c,0.,0.,0.,1.,40.,50.,6.]))\n",
+ "row=lambda r=(0,0,0):[dict(id='X',rotation_degrees=list(r))]\n",
+ "with tempfile.TemporaryDirectory() as d:\n",
+ "    project=pathlib.Path(d)/'plate.3mf'\n",
+ "    def conforms(rows,mesh,transform='1 0 0 0 1 0 0 0 1 0 0 0',plan=row()):\n",
+ "        write_cad(d,rows);sliced_fixture(project,mesh,transform)\n",
+ "        return pose_conformance(project,d,plan,pose_tolerance_um)\n",
+ "    for plane,rows in poses.items():\n",
+ "        report=conforms(rows,mesh_of(posed(chiral(),rows)))['X']\n",
+ "        assert report['pose']==rows and report['max_deviation_um']<=pose_tolerance_um,(plane,report)\n",
+ "    xz=poses['XZ'];good=mesh_of(posed(chiral(),xz))\n",
+ "    assert abs(conforms(xz,good,turn(37.5))['X']['bed_turn_degrees']-37.5)<1e-6\n",
+ "    conforms(xz,mesh_of(posed(chiral(),xz).rotate((0,0,0),(0,0,1),90)),plan=row((0,0,90)))\n",
+ "    must_refuse(lambda:conforms(xz,mesh_of(chiral())))\n",
+ "    must_refuse(lambda:conforms(xz,good,'1 0 0 0 0 1 0 -1 0 0 0 0'))\n",
+ "    must_refuse(lambda:conforms(xz,mirrored(good)))\n",
+ "    must_refuse(lambda:conforms(xz,good,'-1 0 0 0 1 0 0 0 1 0 0 0'))\n",
+ "    must_refuse(lambda:conforms(xz,good,plan=row((0,0,90))))\n",
+ "    must_refuse(lambda:pose_rows([[1,0,0],[0,1,0],[0,0,-1]]))\n",
+ "print('PASS: pose conformance in all three print planes and under a bed turn; dropped pose, tilt, mirror (mesh and transform), wrong plan turn and a mirrored pose refuse')\n",
 ],"")}
 // The readback compares a sliced archive's settings with whatever requirements it is handed; these
 // are fixture values for that comparison, not a print policy.
@@ -95,10 +143,15 @@ fn fixture_settings() -> JsonValue {
   json_kv(key:"sparse_infill_density",value:json_string(s:"20%"))
  ]))
 }
+// The three declared planes' poses, read from the authority the CAD check and the packer consume, so a
+// control cannot pass against a hand-copied matrix the production route never applies.
+fn pose_fixture() -> JsonValue {
+ json_object(members:map([LayOnXY,LayOnXZ,LayOnYZ],plane=>json_kv(key:match plane {LayOnXY=>"XY" LayOnXZ=>"XZ" LayOnYZ=>"YZ"},value:json_array(elements:map(print_pose_rows(p:print_pose(plane:plane)),r=>json_array(elements:map(r,v=>json_int(n:v))))))))
+}
 fn exercise_kernel(script:String) -> ProcessExit {
  match observe_cad_runtime(tree:host_state_tree()) {
   CadRuntimeRefused {reason:why}=>exit_failure(reason:why)
-  CadRuntimeObserved {runtime:c}=>run_kernel(cad_runtime:c,script:script,call:join(["\nrequirements=",serialize_json(v:fixture_settings()),"\nedge_allowance_um=",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),"\n",controls()],""))
+  CadRuntimeObserved {runtime:c}=>run_kernel(cad_runtime:c,script:script,call:join(["\nrequirements=",serialize_json(v:fixture_settings()),"\nedge_allowance_um=",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),"\npose_tolerance_um=",to_string(micrometer_count(m: print_pose_conformance_tolerance_um)),"\nposes=",serialize_json(v:pose_fixture()),"\n",controls()],""))
  }
 }
 
