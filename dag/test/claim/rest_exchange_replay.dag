@@ -144,6 +144,12 @@ test fn rest_transport_failure_is_persistable() -> Bool {
   }
 }
 
+// THE REFUSAL STAYS SPECIFIC WITHOUT ECHOING THE TRANSPORT. Written when a RestBodyUndecodable cause was
+// never published anywhere; heal-publish now prints it with a credential in hand (gunbc.heal_publication
+// rest_refusal_text), so the cause is rendered by the host from declared facts -- rest_body_read_refused_cause
+// -- and the transport's own body-read text is dropped. The claim's intent is untouched: the body is NOT
+// fabricated as an empty answer, and the refusal still says in whose direction the failure lies, in words
+// the host supplies rather than words the response supplied.
 test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
@@ -156,7 +162,9 @@ test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool {
     subject: fn(_scope) {
       match test.RestReplay.Observe() {
         RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
-          status == 401 && cause == "truncated response body"
+          status == 401
+            && string_contains(s: cause, pattern: "could not be read from the host")
+            && !string_contains(s: cause, pattern: "truncated response body")
         _ => false
       }
     }
@@ -435,13 +443,20 @@ test fn a_contracted_coproduct_field_decodes_to_its_arm() -> Bool {
   }
 }
 
+// THE LOCATED FIELD IS DECLARED; THE SPELLING IS NOT. The path names the declared field the decode
+// reached -- every segment of it is an authored name out of the declaration tree -- so it stays in the
+// published cause and is what a refusal is diagnosed from. The spelling the body PRESENTED does not: it
+// is response-supplied content, and this cause is now printed on a credential path. What the claim exists
+// to hold is that a misspelled member REFUSES instead of answering, and that it says which field and that
+// no arm was named -- both still asserted, one of them now negatively.
 test fn an_unknown_spelling_refuses_at_the_located_field() -> Bool {
   match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) {
     match test.RestReplay.WorkflowRunsPage() {
       RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
         status == 200
           && string_contains(s: cause, pattern: "workflow_runs[0].conclusion")
-          && string_contains(s: cause, pattern: "\"succeeded\" names no arm")
+          && string_contains(s: cause, pattern: "names no arm of the declared coproduct")
+          && !string_contains(s: cause, pattern: "succeeded")
       _ => false
     }
   }) {
