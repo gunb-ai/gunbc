@@ -206,6 +206,16 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
 // is emitted exactly when the payload names the disk, in the upstream order (name, then match). An emitted
 // `match` is the conjunction the reference describes ("Every supplied key must match"), so the keys are
 // rendered in the order the payload carries them and no key is invented here.
+//
+// WHO DECIDES THAT A `match` IS ADMISSIBLE — not here. This is a renderer over the policy it is handed, and a
+// renderer that started refusing would be a second authority over the disk question. The rule that a destructive
+// install's match must name ONE disk is applied where the disk is authorized:
+// gunbc.provisioning.install_target_disk's admit_install_target_disk refuses with
+// TargetDiskMatchDoesNotBindOneDisk when the reported fields can only build class-shaped keys, and
+// install_target_disk_direct_layout_target is the only function that turns a disk reading into a MatchedDisk
+// target — so a MatchedDisk assembled by hand from `ssd`/`size` alone is not reachable through an install payload,
+// and the red for that rule lives with the admission (install_target_disk_witness
+// a_model_without_a_serial_is_refused_because_it_names_no_single_disk), not with this renderer.
 fn autoinstall_direct_layout_entries(target: AutoinstallDirectLayoutTarget) -> List<YamlKeyValue> {
   let named = [kv(key: "name", value: yaml_string(s: "direct"))]
   match target {
