@@ -30,6 +30,14 @@ import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+// THE LANE'S OWN ROWS: what this witness has scheduled, what it has declared unscheduled and with
+// which capability, and the capability names the refusals below carry. Imported rather than
+// restated, so the roster in the lane module and the refusal in this file cannot spell one capability
+// as two strings.
+import v2.workflow.local_repo_wet_terminal {
+  local_repo_wet_schedule, local_repo_wet_unscheduled_legs, wet_unscheduled_capability_name,
+  wet_capability_root_launcher, wet_capability_user_scope_systemd_run, wet_capability_served_image,
+}
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_exact_read, FilesystemExactPathRead,
   filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
@@ -617,7 +625,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
     WetLocusRefused {
       cause: "GUNBC_WET_SERVE_BINARY is unset, so there is no image to stage into a locus",
       reason: witness_locus_reason_serve_binary_unset as String,
-      capability: "served-image-named-by-the-batch",
+      capability: wet_capability_served_image as String,
     }
   } else {
     let revision = witness_guest_tree_revision(instance: instance)
@@ -1834,7 +1842,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
       // what keeps the eleven legs honest there instead of here.
       cause: wet_not_observed_cause(
         claim: claim as NonEmptyStr,
-        capability: "root-launcher-sudo-and-systemd-user-manager" as NonEmptyStr,
+        capability: wet_capability_root_launcher,
         cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it",
       ),
     }
@@ -2135,7 +2143,7 @@ fn wet_control_unit_refusal_record(label: String, claim: String) -> Bool {
   )
   let marker = wet_not_observed(
     claim: claim as NonEmptyStr,
-    capability: "systemd-user-manager-and-systemd-run" as NonEmptyStr,
+    capability: wet_capability_user_scope_systemd_run,
   )
   record && marker
 }
@@ -5181,4 +5189,74 @@ fn exit_inbox_dir(instance_root: String) -> String {
 
 fn exit_done_dir(instance_root: String) -> String {
   spool_witness_dir(kind: SpoolAttemptExit, instance_root: instance_root, role: RoleDone)
+}
+
+
+// THE UNSCHEDULED SET IS A ROW IN THE TREE, NOT A SENTENCE IN A PR BODY. `claim_batch` skips a claim
+// that has no schedule row, silently and with no exit code to show for it -- that is how every claim
+// in this file went unrun for the whole life of the file -- so the legs this lane leaves unscheduled
+// are rows of `local_repo_wet_unscheduled_legs` in the lane module, each carrying the capability its
+// verdict waits on, and this claim is the tooth that keeps the two rosters joined. It reddens if a leg
+// is scheduled while still declared, if a declared leg names another file or disagrees with its own
+// identity, if one identity is declared twice, or if a leg carries a capability this witness never
+// refuses as. What it CANNOT see is a claim added to this file and left out of both rosters: nothing
+// in the tree enumerates the `test fn` declarations of a witness, and that is recorded as a known gap
+// rather than covered by a hand-typed count that would silently disagree with the rows.
+test fn the_claims_this_lane_does_not_schedule_are_declared_with_their_capability() -> Bool {
+  let rows_here = filter(
+    xs: local_repo_wet_schedule(),
+    predicate: row =>
+      row.identity.module_path == "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness",
+  )
+  let legs = local_repo_wet_unscheduled_legs()
+  let leg_names = map(xs: legs, f: leg => leg.function)
+  let row_names = map(xs: rows_here, f: row => row.function)
+  // (1) every declared leg names THIS file, its entry, and an identity that agrees with its own
+  //     function field -- a leg whose two spellings of the identity differ cannot be joined at all.
+  let legs_name_this_file = all(
+    xs: legs,
+    predicate: leg =>
+      leg.identity.module_path == "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness"
+      && leg.identity.function == leg.function
+      && leg.entry == "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+  )
+  // (2) the two rosters are disjoint on identity, checked from both sides so a row added for a
+  //     declared leg reddens without the reader having to follow the quantifier.
+  let leg_has_no_row = all(
+    xs: leg_names,
+    predicate: name => !any(xs: row_names, predicate: row_name => row_name == name),
+  )
+  let row_has_no_leg = all(
+    xs: row_names,
+    predicate: row_name => !any(xs: leg_names, predicate: name => name == row_name),
+  )
+  // (3) one identity is not declared twice, which would let it wait on two capabilities at once.
+  let legs_are_distinct = all(
+    xs: leg_names,
+    predicate: name => length(xs: filter(xs: leg_names, predicate: other => other == name)) == 1,
+  )
+  // (4) every leg's capability is one this witness itself refuses as, and every capability it refuses
+  //     as is waited on by some leg: the roster and the refusals name the same three facts.
+  let names = map(xs: legs, f: leg => wet_unscheduled_capability_name(capability: leg.capability))
+  // the three names the refusals in this file carry, bound once so the comparisons below read as name
+  // equality and not as a cast of the comparison
+  let refused_names = [
+    wet_capability_root_launcher as String,
+    wet_capability_user_scope_systemd_run as String,
+    wet_capability_served_image as String,
+  ]
+  let names_are_ones_this_witness_refuses_as = all(
+    xs: names,
+    predicate: n => any(xs: refused_names, predicate: refused => refused == n),
+  )
+  let each_refused_capability_is_waited_on = all(
+    xs: refused_names,
+    predicate: refused => any(xs: names, predicate: n => n == refused),
+  )
+  legs_name_this_file
+    && leg_has_no_row
+    && row_has_no_leg
+    && legs_are_distinct
+    && names_are_ones_this_witness_refuses_as
+    && each_refused_capability_is_waited_on
 }

@@ -3954,9 +3954,13 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // `systemd-run`), and the serve-binary claim, which needs a binary the operator names in the
     // environment. On a host without those, that set is unrunnable rather than false, and a lane full
     // of unrunnable-red rows tells the join nothing. Every member of it is named one by one in two
-    // carriers that do not drift: the `FNS_LAUNCH` roster of the srv2 script published in this PR's
-    // body, and the "Known gaps, NOT covered" list beside it. They run on the srv2 host, which
-    // answers `sudo -n true` with rc=0.
+    // member of it is a row of `local_repo_wet_unscheduled_legs()` below, keyed by the same identity
+    // shape the schedule uses and carrying the capability its verdict waits on -- a PR body is not a
+    // carrier (it is not versioned with the code, and nothing in the tree can resolve a reference to
+    // it), so the list lives here. The witness claim
+    // `the_claims_this_lane_does_not_schedule_are_declared_with_their_capability` joins these rows
+    // against that roster, so scheduling a leg without retiring its row reddens a claim instead of
+    // drifting. They run on the srv2 host, which answers `sudo -n true` with rc=0.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
@@ -4200,6 +4204,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
       function: "a_request_the_drain_cannot_answer_fails_the_drain_unit",
       expectation: ExpectedToHold {}
+    },
+    // THE CARRIER'S OWN TOOTH: it joins the schedule rows for that witness against the unscheduled-leg
+    // roster below, so neither list can move without reddening something. It reads typed data only --
+    // no host, no effect -- so it is scheduled with the host batch and not left with the launch legs.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_claims_this_lane_does_not_schedule_are_declared_with_their_capability" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_claims_this_lane_does_not_schedule_are_declared_with_their_capability",
+      expectation: ExpectedToHold {}
     }
   ]
 }
@@ -4250,6 +4263,133 @@ fn local_repo_wet_premise_roster() -> List<WetPremisedClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_typed_unavailable_disables_create" },
       premise: RunnerBrowserToolchainReadyForJobUser {}
     }
+  ]
+}
+
+// THE CLAIMS THIS LANE DOES NOT SCHEDULE, AS ROWS AND NOT AS PROSE. `claim_batch` skips a claim with
+// no row here, silently and with no exit code to show for it -- that is how every claim in the
+// dispatch-worker writable-sandbox witness went unrun for the whole life of that file, and it is why
+// the list of legs this lane leaves unrun cannot live in a PR body: a body is not versioned with the
+// code, nothing in the tree can resolve a reference to it, and a later reader of THIS file cannot
+// tell which claims are still unrun or what would let them run. A status belongs in a carrier that
+// can be joined against, so it is here.
+//
+// A leg row is not a verdict, not a debt disposition and not a premise row: it claims nothing about
+// the subject. It says the identity exists, this lane does not schedule it, and this is the host
+// capability its verdict waits on. Scheduling it on a host that lacks that capability fills the lane
+// with unrunnable-red rows, which tells the join nothing about the subject; leaving it unlisted is
+// the silent skip these rows exist to close. The next-rung trigger is the capability itself: a host
+// that answers it schedules the identity and declares the capability as a `WetPremisedClaim` row
+// above, which is the typed place a SCHEDULED claim records the host fact it needs before its subject
+// can be reached. These rows are joined against the schedule by the claim
+// `test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
+// the_claims_this_lane_does_not_schedule_are_declared_with_their_capability`, so a claim scheduled
+// while still declared here, or declared twice, or declared with no capability, reddens a claim
+// rather than drifting.
+
+// THE CAPABILITY A LEG WAITS ON, named by the same string the witness's own not-observed records
+// carry -- one declaration read by the roster and by the refusal, so the two cannot spell the same
+// capability apart. `root-launcher-sudo-and-systemd-user-manager` is the production route: sudo,
+// `systemd-run`, `User=` read off the instance row. `systemd-user-manager-and-systemd-run` is the
+// unprivileged user manager the unsandboxed control launches through, with no elevation.
+// `served-image-named-by-the-batch` is the binary the operator names in `GUNBC_WET_SERVE_BINARY`,
+// which no host supplies by default.
+data wet_capability_root_launcher: NonEmptyStr = "root-launcher-sudo-and-systemd-user-manager"
+data wet_capability_user_scope_systemd_run: NonEmptyStr = "systemd-user-manager-and-systemd-run"
+data wet_capability_served_image: NonEmptyStr = "served-image-named-by-the-batch"
+
+type WetUnscheduledCapability
+  = SystemManagerLaunchUnderRoot {}
+  | UserScopeSystemdRun {}
+  | OperatorNamedServeBinary {}
+
+fn wet_unscheduled_capability_name(capability: WetUnscheduledCapability) -> String {
+  match capability {
+    SystemManagerLaunchUnderRoot => wet_capability_root_launcher as String,
+    UserScopeSystemdRun => wet_capability_user_scope_systemd_run as String,
+    OperatorNamedServeBinary => wet_capability_served_image as String,
+  }
+}
+
+// ONE ROW PER UNSCHEDULED CLAIM, keyed by the identity shape the schedule uses so the two rosters join
+// on identity and not on a name written twice. `entry` and `function` are what a host that HAS the
+// capability needs in order to run the leg, carried here so the roster is runnable as it stands
+// rather than a note about one.
+type WetUnscheduledLeg {
+  identity: WitnessIdentity
+  entry: String
+  function: String
+  capability: WetUnscheduledCapability
+}
+
+fn local_repo_wet_unscheduled_legs() -> List<WetUnscheduledLeg> {
+  [
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_worker_worktree_is_writable_inside_the_same_sandbox" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_worker_worktree_is_writable_inside_the_same_sandbox",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "writes_through_the_launcher_to_bin_and_source_hooks_are_refused" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "writes_through_the_launcher_to_bin_and_source_hooks_are_refused",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "sudo_n_true_fails_inside_the_launched_unit" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "sudo_n_true_fails_inside_the_launched_unit",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_launched_unit_exit_record_names_the_expanded_invocation_and_result" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_launched_unit_exit_record_names_the_expanded_invocation_and_result",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds",
+      capability: SystemManagerLaunchUnderRoot {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_unsandboxed_control_reads_the_principals_write_access" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_unsandboxed_control_reads_the_principals_write_access",
+      capability: UserScopeSystemdRun {},
+    },
+    WetUnscheduledLeg {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_planted_serve_binary_is_the_image_the_operator_named" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_planted_serve_binary_is_the_image_the_operator_named",
+      capability: OperatorNamedServeBinary {},
+    },
   ]
 }
 
