@@ -3,6 +3,7 @@ module gunbc.os_install_emit
 import std.logic { Bool }
 import std.optional { Absent, Present }
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
@@ -19,6 +20,19 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallStoragePolicy,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
+  AutoinstallDirectLayoutTarget,
+  InstallerChoosesDisk,
+  MatchedDisk,
+  AutoinstallStorageMatchKey,
+  MatchSerial,
+  MatchModel,
+  MatchPath,
+  MatchSsd,
+  MatchSize,
+  AutoinstallMatchDiskSize,
+  LargestDisk,
+  SmallestDisk,
+  autoinstall_match_key_field,
   UbuntuAutoinstallLiveCommands,
   AutoinstallSshServer,
 }
@@ -176,16 +190,49 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
     ])
     match payload.storage_policy {
       StoragePolicyAbsent => automated
-      StoragePolicyDirectLayout => append(automated, items: [
+      StoragePolicyDirectLayout { target: target } => append(automated, items: [
         kv(key: "storage", value: yaml_mapping(entries: [
-          kv(key: "layout", value: yaml_mapping(entries: [
-            kv(key: "name", value: yaml_string(s: "direct")),
-          ])),
+          kv(key: "layout", value: yaml_mapping(entries: autoinstall_direct_layout_entries(target: target))),
         ])),
       ])
     }
   } else {
     with_ssh
+  }
+}
+
+// THE `layout` MAPPING OF THE DIRECT LAYOUT, entry by entry. `name: direct` is upstream's own spelling for
+// the layout this arm is (`storage: {layout: {name: direct, match: {...}}}`, the reference's example); `match`
+// is emitted exactly when the payload names the disk, in the upstream order (name, then match). An emitted
+// `match` is the conjunction the reference describes ("Every supplied key must match"), so the keys are
+// rendered in the order the payload carries them and no key is invented here.
+fn autoinstall_direct_layout_entries(target: AutoinstallDirectLayoutTarget) -> List<YamlKeyValue> {
+  let named = [kv(key: "name", value: yaml_string(s: "direct"))]
+  match target {
+    InstallerChoosesDisk => named
+    MatchedDisk { keys: keys } => append(named, items: [
+      kv(key: "match", value: yaml_mapping(entries: autoinstall_match_key_entries(keys: keys))),
+    ])
+  }
+}
+
+// The `match` mapping itself: each key name comes from the reference through extdeps.os.ubuntu_autoinstall
+// (autoinstall_match_key_field), never from a string written here.
+fn autoinstall_match_key_entries(keys: FreeSemigroup<AutoinstallStorageMatchKey>) -> List<YamlKeyValue> {
+  map(non_empty_to_list(keys), key =>
+    kv(key: autoinstall_match_key_field(key) as String, value: autoinstall_match_key_value(key: key)))
+}
+
+// The value of one match key, in the type upstream gives it: ssd is a YAML boolean ("ssd: true"), size is one
+// of the two words the reference spells ("largest|smallest"), the rest are strings.
+fn autoinstall_match_key_value(key: AutoinstallStorageMatchKey) -> YamlValue {
+  match key {
+    MatchSerial { serial: s } => yaml_string(s: s as String)
+    MatchModel { model: m } => yaml_string(s: m as String)
+    MatchPath { path: p } => yaml_string(s: p as String)
+    MatchSsd { ssd: b } => yaml_bool(b: b)
+    MatchSize { size: LargestDisk } => yaml_string(s: "largest")
+    MatchSize { size: SmallestDisk } => yaml_string(s: "smallest")
   }
 }
 

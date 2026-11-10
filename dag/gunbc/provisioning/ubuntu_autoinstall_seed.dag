@@ -126,6 +126,7 @@ import extdeps.os.ubuntu_autoinstall {
   NoCloudLocal,
   NoCloudNet,
   StoragePolicyDirectLayout,
+  InstallerChoosesDisk,
   UbuntuAutoinstallPayload,
   AutoinstallSshServer,
   // The H11SSL key-only user's shell is stated here, so the closed type's arm is named here.
@@ -3325,7 +3326,7 @@ type StorageProjection
 fn project_storage_policy(selection: TargetDiskSelection) -> StorageProjection {
   match selection {
     DiskSelected { provenance: provenance } => Projected {
-      policy: StoragePolicyDirectLayout,
+      policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
       device: provenance_chosen_identity(provenance: provenance),
       provenance: provenance,
     }
@@ -3481,7 +3482,7 @@ fn autoinstall_payload(seed: UbuntuAutoinstallSeed) -> Optional<UbuntuAutoinstal
             locale: seed_locale_wire(locale: seed.locale),
             keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
             ssh: openssh_server_section(intents: seed.install_packages, authorised_keys: seed.entry.authorised_keys),
-            storage_policy: StoragePolicyDirectLayout,
+            storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
           } }
         Absent => Absent
       }
@@ -3515,7 +3516,7 @@ fn autoinstall_payload(seed: UbuntuAutoinstallSeed) -> Optional<UbuntuAutoinstal
         locale: seed_locale_wire(locale: seed.locale),
         keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
         ssh: openssh_server_section(intents: seed.install_packages, authorised_keys: seed.entry.authorised_keys),
-        storage_policy: StoragePolicyDirectLayout,
+        storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
       } }
   }
 }

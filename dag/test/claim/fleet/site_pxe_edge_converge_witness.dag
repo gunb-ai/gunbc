@@ -1,16 +1,40 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
 import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
-import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { YamlValue, YamlString, YamlMapping, YamlKeyPresent, YamlKeyAbsent, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv, yaml_lookup }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render }
 import extdeps.uri { Uri, Http }
-import std.types { Bool, List, NonEmptyStr, String, Int }
+import std.types { Bool, List, NonEmptyStr, String, Int, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import gunbc.fleet.machine_target_disk_observations {
+  target_disk_reading_for,
+  site_pxe_edge_disk_identity_admission_window,
+}
+import gunbc.provisioning.install_target_disk {
+  TargetDiskReading,
+  DiskReported,
+  LsblkBlockReport,
+  TargetDiskNeverRead,
+  TargetDiskReadingStale,
+}
+import extdeps.storage.device_identification { DeviceIdentificationToken, ReportedDeviceIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
+import product.host_identity { HostIdentity }
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  UserDataOnly,
+  AutoinstallSshServer,
+  StoragePolicyDirectLayout,
+  InstallerChoosesDisk,
+}
+import std.os.types { NobleNumbat2404Lts }
+import gunbc.os_install { srv_fleet_key_only_install_account }
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64, noble_numbat_2404_3_live_server_arm64 }
@@ -156,6 +180,12 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpLegNotNeeded,
   HttpLegActivation,
   site_pxe_edge_install_requests,
+  site_pxe_edge_seed_rendering,
+  SeedRendered,
+  SeedTargetDiskWithheld,
+  site_pxe_edge_install_decision_at,
+  site_pxe_edge_refusal_target_disk_cause,
+  site_pxe_edge_seed_root_uri,
   SitePxeEdgeInstallRequest,
   SitePxeEdgeRequestAdmission,
   RequestBound,
@@ -1098,46 +1128,260 @@ fn password_user_data() -> YamlValue {
   ]))])
 }
 
-fn request(client: MacParseResult, user_data: YamlValue) -> SitePxeEdgeInstallRequest {
-  SitePxeEdgeInstallRequest { client: client, user_data: user_data, architecture: Aarch64 }
+// A REQUEST AS THIS EDGE RECEIVES ONE: a client MAC parse, the host's disk READING, the window that reading had
+// to be taken inside of, and the instant the install is authorized at. The readings are fixtures with the same
+// shape as the fleet's rows in gunbc.fleet.machine_target_disk_observations, at instants the claims control, so
+// the staleness rule is a claim about the window and not about the calendar.
+//
+// A REQUEST CARRIES NO USER-DATA DOCUMENT ANY MORE (PXE 2a). The document is what admission RENDERS from the
+// admitted disk: a request whose disk cannot be admitted has no document to serve and its host is withheld by
+// name, and no author can hand a request a document that names a disk nobody read.
+fn request_with_disk(client: MacParseResult, disk: TargetDiskReading, decided_at: EpochMs, admission_window: Milliseconds) -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest { client: client, target_disk: disk, disk_admission_window: admission_window, decided_at: decided_at, architecture: Aarch64 }
 }
 
-// An admitted request becomes a binding for the same client and architecture, and nothing is withheld or gated.
-test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
-  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: fixture_user_data()))]
-  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
-    && (match site_pxe_edge_request_bindings(admissions: admissions).first() {
-      Present { value: b } => public_nocloud_seed_client_mac(seed: b.seed) == x86_mac && b.architecture == Aarch64
-      Absent => false
-    })
+// THE WITNESS'S READING OF A DISK: what lsblk printed for srv15's NVMe, at the instant a claim needs.
+fn disk_report(host: HostIdentity, serial: String, model: String, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: host,
+    device: "nvme0n1" as NonEmptyStr,
+    identity: ReportedDeviceIdentity {
+      serial: DeviceIdentificationToken { text: serial as NonEmptyStr },
+      model: Present { value: DeviceIdentificationToken { text: model as NonEmptyStr } },
+    },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
 }
 
-// RED: a seed carrying a password is not dropped. It withholds that one host's install, naming the field.
-test fn a_refused_seed_withholds_that_host_by_name() -> Bool {
-  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: password_user_data()))]
-  length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
-    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
-    && (match site_pxe_edge_request_withheld(admissions: admissions).first() {
-      Absent => false
-      Present { value: st } => match st {
-        InstallAdmitted { mac: _ } => false
-        InstallWithheld { mac: m, refusals: rs } => m == x86_mac && length(non_empty_to_list(xs: rs)) == 1 && (match rs.head {
-          InstallSeedRefused { findings: fs } => any(non_empty_to_list(xs: fs), f => f == SeedCredentialField { document: SeedUserData, path: "autoinstall.identity.password" })
-          _ => false
-        })
+// THE INSTANT THIS MODEL AUTHORIZES INSTALLS, shared with the model's own requests so a claim about staleness is
+// measured against the same clock the fleet's rows are.
+data witness_decision_at: EpochMs = site_pxe_edge_install_decision_at
+
+// srv15's disk, as captured: artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt, "### disks".
+data witness_srv15_disk_serial: String = "25466Q801557"
+
+data witness_srv15_disk_model: String = "WD Green SN350 1TB 2G0C"
+
+data witness_srv15_disk_read_at: EpochMs = EpochMs(1793232000000)
+
+// A READING PAST THE FLEET'S WINDOW: 31 days before the decision, where the window is 30.
+data witness_stale_read_at: EpochMs = EpochMs(1791590400000)
+
+// THE TWO REQUESTS THE FLEET ACTUALLY MAKES, built from the fleet's own rows rather than re-typed here — a claim
+// that re-typed the rows would still pass after the rows changed, which is the failure this file exists to catch.
+fn srv15_request() -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest {
+    client: srv15_install_client,
+    target_disk: target_disk_reading_for(host: operator_host_srv15),
+    disk_admission_window: site_pxe_edge_disk_identity_admission_window,
+    decided_at: witness_decision_at,
+    architecture: Aarch64,
+  }
+}
+
+fn srv14_request() -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest {
+    client: srv14_install_client,
+    target_disk: target_disk_reading_for(host: operator_host_srv14),
+    disk_admission_window: site_pxe_edge_disk_identity_admission_window,
+    decided_at: witness_decision_at,
+    architecture: Aarch64,
+  }
+}
+
+// READING A RENDERED SEED THE WAY SUBIQUITY WILL: by key, not by substring. A substring assertion passes when
+// the value appears ANYWHERE in the file — the serial could be sitting in a comment and the claim would still be
+// green — so these walk the mapping the reference's own path names and return "" when a level is missing, which
+// is what makes a dropped `match:` block red rather than merely different.
+fn child(document: YamlValue, key: String) -> YamlValue {
+  match document {
+    YamlMapping { entries: entries } =>
+      match yaml_lookup(entries: entries, key: key) {
+        YamlKeyPresent { value: found } => found
+        YamlKeyAbsent => YamlMapping { entries: [] }
       }
-    })
+    _ => YamlMapping { entries: [] }
+  }
+}
+
+fn leaf_text(document: YamlValue) -> String {
+  match document {
+    YamlString { value: text } => text
+    _ => ""
+  }
+}
+
+fn scalar_at(document: YamlValue, path: List<String>) -> String {
+  match get(xs: path, index: 0) {
+    Absent => leaf_text(document: document)
+    Present { value: head } => scalar_at(document: child(document: document, key: head), path: skip(xs: path, n: 1))
+  }
+}
+
+fn key_present(container: YamlValue, key: String) -> Bool {
+  match container {
+    YamlMapping { entries: entries } =>
+      match yaml_lookup(entries: entries, key: key) {
+        YamlKeyPresent { value: _ } => true
+        YamlKeyAbsent => false
+      }
+    _ => false
+  }
+}
+
+fn has_key_at(document: YamlValue, path: List<String>) -> Bool {
+  match get(xs: path, index: 0) {
+    Absent => false
+    Present { value: head } =>
+      match get(xs: skip(xs: path, n: 1), index: 0) {
+        Absent => key_present(container: document, key: head)
+        Present { value: _ } => has_key_at(document: child(document: document, key: head), path: skip(xs: path, n: 1))
+      }
+  }
+}
+
+// RED: an admitted request that binds no client, or binds one whose MAC is not the seed directory's, or leaves
+// no menu entry for a host the operator can see on the console.
+test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
+  match site_pxe_edge_request_admission(request: srv15_request()) {
+    RequestBound { binding: binding } =>
+      binding.architecture == Aarch64
+        && site_pxe_edge_binding_mac(binding: binding) == srv15_client_mac
+        && site_pxe_edge_menu_entry_for(client_mac: srv15_client_mac) is Present
+    _ => false
+  }
 }
 
 // RED: a request whose client MAC does not parse names no host to withhold, so it closes the edge's gate.
 test fn an_unparseable_request_client_closes_the_gate() -> Bool {
-  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, user_data: fixture_user_data()))]
+  let request = request_with_disk(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
+  let admissions = [site_pxe_edge_request_admission(request: request)]
   length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
     && length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && site_pxe_edge_request_gate_causes(admissions: admissions) == [InstallRequestClientUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
+}
+
+// THE PIN, RENDERED. The seed this edge would serve srv15 carries the storage block as a direct layout whose
+// match names THIS disk by serial — the reference's `serial` key, matched against ID_SERIAL — and by model too,
+// because a wrong part carrying a serial somebody else wrote down is what the second key is for. It carries no
+// class-shaped key: `ssd: true` or `size: largest` authorize "whichever disk of this class the installer likes",
+// which is the gap the operator's 2026-11-10 review blocked. RED: drop the match block, swap the serial for the
+// reference's own `CT*` example, or let a class key through, and this is red.
+test fn the_pinned_seed_renders_the_match_block_for_the_hosts_own_disk() -> Bool {
+  match site_pxe_edge_seed_rendering(request: srv15_request()) {
+    SeedTargetDiskWithheld { host: _, cause: _ } => false
+    SeedRendered { user_data: user_data } =>
+      scalar_at(document: user_data, path: ["autoinstall", "storage", "layout", "name"]) == "direct"
+        && scalar_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "serial"]) == witness_srv15_disk_serial
+        && scalar_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "model"]) == witness_srv15_disk_model
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "ssd"])
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "size"])
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "ssd"])
+        && !has_key_at(document: user_data, path: ["autoinstall", "storage", "layout", "match", "size"])
+  }
+}
+
+// THE SERVED FILE CARRIES THE PIN TOO. The seed written under this edge's root for srv15's MAC has passed the
+// closed schema, so this is where the pin is proved to reach the client: the bytes on the seed root name the
+// disk. RED: render the document before the disk is admitted, and the serial is gone from the file.
+test fn the_seed_served_to_a_bound_client_names_the_disk_serial() -> Bool {
+  match site_pxe_edge_request_admission(request: srv15_request()) {
+    RequestBound { binding: binding } =>
+      string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: witness_srv15_disk_serial)
+        && string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: "match:")
+    _ => false
+  }
+}
+
+// AN UNPINNED LAYOUT RENDERS NO MATCH AT ALL — which is why this edge cannot authorize one. The policy that lets
+// the installer choose still renders `name: direct`: it is a legal document for a test fixture and an illegal
+// authorization for a destructive network install. The claim states both halves, because the second is the one
+// that cannot be checked by reading the render: this edge's payload path CANNOT produce that document, since the
+// only way to author its seed is to hand it an admitted carrier. RED: make InstallerChoosesDisk invent a match
+// block and the first half goes red; make the carrier hand back InstallerChoosesDisk and the claim above goes red.
+test fn an_unpinned_layout_renders_no_match_block() -> Bool {
+  let unpinned = autoinstall_user_data_document(payload: UbuntuAutoinstallPayload {
+    autoinstall_version: 1,
+    delivery: NoCloudNet { seed_url: site_pxe_edge_seed_root_uri },
+    fully_automated: true,
+    target_distribution: NobleNumbat2404Lts,
+    identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
+    locale: "en_US.UTF-8",
+    keyboard_layout: "us",
+    ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
+    storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
+  })
+  scalar_at(document: unpinned, path: ["autoinstall", "storage", "layout", "name"]) == "direct"
+    && !has_key_at(document: unpinned, path: ["autoinstall", "storage", "layout", "match"])
+}
+
+// A DISK NOBODY READ WITHHOLDS THE INSTALL, BY NAME, WITH THE CAUSE. This is srv14's real row: its 2026-10-16
+// capture ran lsblk with NAME,SIZE,MODEL and printed no SERIAL column, so there is no serial to pin to and the
+// install is withheld rather than aimed at a disk somebody guessed. The MAC is named because "host X is not
+// installing" is only actionable if the reader can find host X's PXE client, and the cause is typed because
+// "withheld" without a reason is the omission the operator's rule replaces.
+test fn a_request_whose_disk_was_never_read_is_withheld_with_a_typed_cause() -> Bool {
+  match site_pxe_edge_request_admission(request: srv14_request()) {
+    RequestWithheld { standing: InstallWithheld { mac: mac, refusals: refusals } } =>
+      mac == srv14_client_mac
+        && match get(xs: non_empty_to_list(xs: refusals), index: 0) {
+          Absent => false
+          Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+            Absent => false
+            Present { value: cause } => match cause {
+              TargetDiskNeverRead { host: h, why: _ } => h == operator_host_srv14
+              _ => false
+            }
+          }
+        }
+    _ => false
+  }
+}
+
+// THE EDGE KEEPS SERVING EVERYONE ELSE. One withheld disk is one withheld host: the gate stays open, srv15's
+// entry is still generated, srv14's is not. Refusing a destructive install on a disk nobody read must not be an
+// outage for the rest of the fleet — and the reverse failure, an install authorized because the fleet's one
+// unread disk was quietly skipped, is what the typed cause exists to make visible.
+test fn a_withheld_disk_withholds_only_its_own_host() -> Bool {
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
+    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
+    && site_pxe_edge_gate_closed(observe: SitePxeEdgeObserveOnly, post: PostActivationNotRead, http: HttpListenAbsent, probes: probe_list([]), chains: chain_list([])) == false
+    && any(site_pxe_edge_request_bindings(admissions: admissions), b => site_pxe_edge_binding_mac(binding: b) == srv15_client_mac)
+    && any(site_pxe_edge_request_withheld(admissions: admissions), s => match s {
+      InstallWithheld { mac: mac, refusals: _ } => mac == srv14_client_mac
+      _ => false
+    })
+    && !(site_pxe_edge_menu_entry_for(client_mac: srv14_client_mac) is Present)
+}
+
+// A STALE DISK REFUSES THE INSTALL, and the mirror half is what makes the claim discriminating: the same
+// identity, read inside the window, binds. A model that ignored read times would pass the first half and fail
+// the second; a model that refused everything would pass neither.
+test fn a_stale_disk_reading_refuses_the_install_and_a_fresh_one_binds() -> Bool {
+  let stale = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_stale_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
+  let fresh = request_with_disk(client: srv15_install_client, disk: disk_report(host: operator_host_srv15, serial: witness_srv15_disk_serial, model: witness_srv15_disk_model, read_at: witness_srv15_disk_read_at), decided_at: witness_decision_at, admission_window: site_pxe_edge_disk_identity_admission_window)
+  match site_pxe_edge_request_admission(request: stale) {
+    RequestWithheld { standing: InstallWithheld { mac: mac, refusals: refusals } } =>
+      mac == srv15_client_mac
+        && match get(xs: non_empty_to_list(xs: refusals), index: 0) {
+          Absent => false
+          Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+            Absent => false
+            Present { value: cause } => match cause {
+              TargetDiskReadingStale { host: _, read_at: r, decided_at: d, deadline: _ } => r == witness_stale_read_at && d == witness_decision_at
+              _ => false
+            }
+          }
+        }
+    _ => false
+  }
+    && match site_pxe_edge_request_admission(request: fresh) {
+      RequestBound { binding: _ } => true
+      _ => false
+    }
 }
 
 // THE HTTP UNIT BINDS THE ONBOARDING ADDRESS, never every interface.

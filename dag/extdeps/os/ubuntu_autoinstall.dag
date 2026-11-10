@@ -2,6 +2,7 @@ module extdeps.os.ubuntu_autoinstall
 
 import std.types { Int, NonEmptyStr, Bool, List, String }
 import std.os.types { UbuntuDistribution }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import std.optional { Optional, Present, Absent }
 import extdeps.ssh.keys { SshPublicKey }
 import extdeps.uri { Uri, Https, uri_wire }
@@ -62,9 +63,85 @@ type CloudInitUserEntry {
   shell: CloudInitUserShell
 }
 
+// THE `storage` SECTION, as the Canonical autoinstall reference spells it. Retrieved 2026-11-10 from
+// https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html#storage ;
+// the section's own words, verbatim, are what the arms below are named after:
+//   "By default, these layouts install to the largest disk in a system, but you can supply a match spec
+//   (see below) to indicate which disk to use:
+//     storage:
+//       layout:
+//         name: direct
+//         match:
+//           serial: CT*"
+// and, of the spec itself: "Every supplied key must match for the disk to be a match."
+// THE MODELED REVISION. The reference's `layout` + `match` form above is the one modeled here. Two things the
+// SAME reference documents are deliberately NOT modeled: the ordered-LIST match spec ("As of Subiquity
+// 24.08.1, match specs may be given as a list..."), because nothing here needs several candidate disks; and
+// the action-disk selection keys (`size: <bytes>` with `offset`/`gap`), which belong to a partition action's
+// `device` field and are a different upstream field from the layout's `match`. A layout's `size` match key is
+// the ENUM largest|smallest ("support for smallest added in version 20.06.1"), not a byte count, and is
+// spelled that way below for that reason.
 type AutoinstallStoragePolicy
   = StoragePolicyAbsent
-  | StoragePolicyDirectLayout
+  | StoragePolicyDirectLayout { target: AutoinstallDirectLayoutTarget }
+
+// WHICH DISK THE DIRECT LAYOUT MAY WRITE. Both arms are upstream states, not this repository's inventions:
+// the no-match default — "these layouts install to the largest disk in a system" — and the match spec.
+// The default is NAMED rather than left as an omitted field, so a payload states out loud that the installer
+// picks the disk. That is the state a destructive unattended network install must never sit in
+// (gunbc.provisioning.install_target_disk), and a fact that has no name is a fact no admission can refuse.
+type AutoinstallDirectLayoutTarget
+  = InstallerChoosesDisk
+  | MatchedDisk { keys: FreeSemigroup<AutoinstallStorageMatchKey> }
+
+// ONE KEY OF A MATCH SPEC, spelled exactly as the reference names it. The reference lists the supported keys
+// as model, vendor, path, id_path, devpath, serial, ssd, size, install-media; only the five below are
+// modeled, because they are the ones a consumer in this repository reads (gunbc.design_argument::
+// external_upstreams, "Model what you consume"). vendor, id_path, devpath and install-media are upstream-real
+// and unmodeled until something reads them.
+//
+// serial matches udev's ID_SERIAL and model matches ID_MODEL — the reference says so, and says both "support
+// glob-style matching (as implemented by fnmatch)". That globbing is why a PINNED install must carry a value
+// with no metacharacters: `serial: CT*` is upstream's own example of a match spec that selects a CLASS of
+// disks, which is the exact thing a destructive install must not authorize. The shape rule lives with the
+// seed that serves it (gunbc.provisioning.public_nocloud_seed), where the bytes are checked before they ship.
+type AutoinstallStorageMatchKey
+  = MatchSerial { serial: NonEmptyStr }
+  | MatchModel { model: NonEmptyStr }
+  | MatchPath { path: NonEmptyStr }
+  | MatchSsd { ssd: Bool }
+  | MatchSize { size: AutoinstallMatchDiskSize }
+
+// The reference's `size` key: "largest|smallest". The real upstream spellings, kept.
+type AutoinstallMatchDiskSize = LargestDisk | SmallestDisk
+
+// THE ONE MATCH KEY THAT NAMES A SINGLE DISK. From the reference's own key descriptions: serial is "the
+// device's serial number", which no two shipped devices share, while model/vendor/path/ssd/size are true of
+// every disk of a kind. A match built only from the latter keys narrows the installer's choice; it does not
+// bind the install to one disk. This predicate is the upstream fact; the refusal that uses it is the domain
+// rule, and it lives in gunbc.provisioning.install_target_disk.
+fn autoinstall_match_key_names_one_disk(key: AutoinstallStorageMatchKey) -> Bool {
+  match key {
+    MatchSerial { serial: _ } => true
+    MatchModel { model: _ } => false
+    MatchPath { path: _ } => false
+    MatchSsd { ssd: _ } => false
+    MatchSize { size: _ } => false
+  }
+}
+
+// The key NAME upstream uses for this match key, verbatim from the reference's key list. The SHAPE lives
+// here, with the thing it is the shape of; the bytes are written by the adapter (gunbc.os_install_emit),
+// which is the only writer of an autoinstall document in this repository.
+fn autoinstall_match_key_field(key: AutoinstallStorageMatchKey) -> NonEmptyStr {
+  match key {
+    MatchSerial { serial: _ } => "serial"
+    MatchModel { model: _ } => "model"
+    MatchPath { path: _ } => "path"
+    MatchSsd { ssd: _ } => "ssd"
+    MatchSize { size: _ } => "size"
+  }
+}
 
 data nocloud_datasource_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

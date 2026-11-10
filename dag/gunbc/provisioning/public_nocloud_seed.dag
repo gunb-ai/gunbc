@@ -10,6 +10,7 @@ import extdeps.libxcrypt.crypt_scheme { crypt_hash_shaped }
 import extdeps.standards.rfc_7468 { pem_text_carries_private_key_block }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import extdeps.network.mac { Eui48Address, render_mac_address }
+import extdeps.storage.device_identification { admit_device_identification_token, DeviceIdentificationAdmitted, DeviceIdentificationRefused }
 import gunbc.os_install_emit { cloud_config_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 
 // A NOCLOUD SEED IS PUBLIC (merry-fox-82, hold at 24edcaa3, option (a)). The site PXE edge serves seeds from
@@ -51,6 +52,7 @@ type PublicSeedSchema
   | SeedStringOneOf { values: List<String> }
   | SeedPublicKeyLine
   | SeedPosixName
+  | SeedDeviceIdentityToken
 
 type PublicSeedField {
   key: String
@@ -136,6 +138,16 @@ fn seed_string_backstop(document: SeedDocument, path: String, text: String) -> L
   } else { [] }
 }
 
+// A DEVICE IDENTIFICATION TOKEN, admitted by the shape its source defines (extdeps.storage.
+// device_identification): printable device-reported text, no fnmatch metacharacter, no edge padding. The
+// credential backstop still runs over it — a device is free to report anything as its model name.
+fn seed_device_identity_token(text: String) -> Bool {
+  match admit_device_identification_token(spelling: text) {
+    DeviceIdentificationAdmitted { token: _ } => true
+    DeviceIdentificationRefused { spelling: _, cause: _ } => false
+  }
+}
+
 fn seed_posix_name(text: String) -> Bool {
   match admit_posix_shell_name(spelling: text) {
     PosixShellNameAdmitted { name: _ } => true
@@ -196,6 +208,16 @@ fn seed_leaf_finding(document: SeedDocument, path: String, schema: PublicSeedSch
     }
     SeedPosixName => match value {
       YamlString { value: t } => if seed_posix_name(text: t) { seed_string_backstop(document: document, path: path, text: t) } else { not_admitted }
+      YamlNull => not_admitted
+      YamlBool { value: _ } => not_admitted
+      YamlInt { lexeme: _ } => not_admitted
+      YamlFloat { lexeme: _ } => not_admitted
+      YamlSequence { elements: _ } => not_admitted
+      YamlMapping { entries: _ } => not_admitted
+    }
+    SeedDeviceIdentityToken => match value {
+      YamlString { value: t } =>
+        if seed_device_identity_token(text: t) { seed_string_backstop(document: document, path: path, text: t) } else { not_admitted }
       YamlNull => not_admitted
       YamlBool { value: _ } => not_admitted
       YamlInt { lexeme: _ } => not_admitted
