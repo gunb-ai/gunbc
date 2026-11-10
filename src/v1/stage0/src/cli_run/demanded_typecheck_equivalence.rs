@@ -827,20 +827,9 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 service_realized,
                 "the service whose operation the demanded entry spells inside its lambda subject must be realized"
             );
-            // CHARACTERIZATION PRINT, not an assert: the demanded side currently drops ops
-            // (measured: demanded_refusals=1 MethodExistenceUndecided PullRequestPage/Observe,
-            // quick-newt BB 7f0bdda8 / 84acc567 / cef1c2f4) while the closure side refuses none.
-            // The gate that decides it -- check_service_method_call_node's service-method surface
-            // -- is fixed by the sibling service-reachability rule (silent-otter-754), NOT here.
-            // Asserting demanded-GREEN would block CI until that lands; asserting the CURRENT
-            // refusal would break the day it does. The print is the permanent discriminator:
-            // demanded_refusals must read 0 once the sibling rule is in the tree (receipt then
-            // lives in the quick-newt witness run, cited in the PR).
-            eprintln!(
-                "SERVICE_OP_SURFACE_CHARACTERIZATION demanded_refusals={} closure_refusals={} demanded_only={:?}",
-                surface.len(),
-                closure_surface.len(),
-                surface.iter().filter(|m| !closure_surface.contains(m)).collect::<Vec<_>>()
+            assert!(
+                surface.iter().all(|m| closure_surface.contains(m)),
+                "the demanded grain must refuse no method surface the full closure does not: demanded={surface:?} closure={closure_surface:?}"
             );
             assert!(
                 closure_surface.is_empty(),
@@ -902,20 +891,9 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
                 service_realized,
                 "the service whose operation the demanded entry spells directly in its body must be realized"
             );
-            // CHARACTERIZATION PRINT, not an assert: the demanded side currently drops ops
-            // (measured: demanded_refusals=1 MethodExistenceUndecided PullRequestPage/Observe,
-            // quick-newt BB 7f0bdda8 / 84acc567 / cef1c2f4) while the closure side refuses none.
-            // The gate that decides it -- check_service_method_call_node's service-method surface
-            // -- is fixed by the sibling service-reachability rule (silent-otter-754), NOT here.
-            // Asserting demanded-GREEN would block CI until that lands; asserting the CURRENT
-            // refusal would break the day it does. The print is the permanent discriminator:
-            // demanded_refusals must read 0 once the sibling rule is in the tree (receipt then
-            // lives in the quick-newt witness run, cited in the PR).
-            eprintln!(
-                "SERVICE_OP_SURFACE_CHARACTERIZATION demanded_refusals={} closure_refusals={} demanded_only={:?}",
-                surface.len(),
-                closure_surface.len(),
-                surface.iter().filter(|m| !closure_surface.contains(m)).collect::<Vec<_>>()
+            assert!(
+                surface.iter().all(|m| closure_surface.contains(m)),
+                "the demanded grain must refuse no method surface the full closure does not: demanded={surface:?} closure={closure_surface:?}"
             );
             assert!(
                 closure_surface.is_empty(),
@@ -1099,20 +1077,9 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
                 service_realized,
                 "the service whose operation decoded_pull_request spells inside its witness-frame subject must be realized"
             );
-            // CHARACTERIZATION PRINT, not an assert: the demanded side currently drops ops
-            // (measured: demanded_refusals=1 MethodExistenceUndecided PullRequestPage/Observe,
-            // quick-newt BB 7f0bdda8 / 84acc567 / cef1c2f4) while the closure side refuses none.
-            // The gate that decides it -- check_service_method_call_node's service-method surface
-            // -- is fixed by the sibling service-reachability rule (silent-otter-754), NOT here.
-            // Asserting demanded-GREEN would block CI until that lands; asserting the CURRENT
-            // refusal would break the day it does. The print is the permanent discriminator:
-            // demanded_refusals must read 0 once the sibling rule is in the tree (receipt then
-            // lives in the quick-newt witness run, cited in the PR).
-            eprintln!(
-                "SERVICE_OP_SURFACE_CHARACTERIZATION demanded_refusals={} closure_refusals={} demanded_only={:?}",
-                surface.len(),
-                closure_surface.len(),
-                surface.iter().filter(|m| !closure_surface.contains(m)).collect::<Vec<_>>()
+            assert!(
+                surface.iter().all(|m| closure_surface.contains(m)),
+                "the demanded grain must refuse no method surface the full closure does not: demanded={surface:?} closure={closure_surface:?}"
             );
             assert!(
                 closure_surface.is_empty(),
