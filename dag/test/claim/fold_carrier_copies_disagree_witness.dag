@@ -16,8 +16,9 @@ import std.process { ProcessExit }
 //     (`... || fold_accumulator_is_unapplied_generic(n: acc)`), so a call-form fold refines;
 //   - the ExprMethodCall arm (`refined_fold_acc_type`) omits it, so the identical fold written in
 //     method form does NOT refine.
-// The two are one concept, so they belong to one authority (gunbc.design_document, the
-// single-authority clause: "One concept, one authority unifies a shared interface or formal shape").
+// The two arms independently decide one refinement, which is a fork -- "a second place that
+// independently decides it is a fork" -- so the rule belongs to one authoritative definition.
+// @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed)
 //
 // THE SOURCE IS HELD IDENTICAL EXCEPT THE FOLD'S FORM. `call_form` writes the carrier fold as
 // `fold(xs, init: Empty, f: ...)`; `method_form` writes the SAME fold as `xs.fold(init: Empty, f:
