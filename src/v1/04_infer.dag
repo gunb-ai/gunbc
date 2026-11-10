@@ -3958,26 +3958,30 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
       let name = authored_name_at(source_indices: source_indices, node: peeled)
       let leaf = qualified_last_segment(name: name)
       let identity = type_reference_identity(n: peeled, source_indices: source_indices)
-      if identity != "::" && map_contains_key(visited, identity) {
-        EqualityWalk { refusal: none, step: EqualityThroughPlan { declaration: identity }, plans: [] }
+      // Key the whole walk on the DECLARING identity (the key the route table, the by-target table AND the
+      // emitted derived functions are keyed by) whenever the classifier names the declaration; fall back to the
+      // use-site identity only when it cannot (kernel scalars, extensional carriers, ambiguous leaves). Keying on
+      // the use-site identity left a QUALIFIED cross-module reference -- v2.std.diagnostic.Outcome<..> reached from
+      // host_run.dag -- carrying a bogus kernel spelling as its identity, so its arms were never expanded and a
+      // routed member (Diagnostic.correction -> Correction.Suggested { node: Node }) went UNJUDGED, admitting a
+      // derived '==' that compares a routed Node by Rust PartialEq (gunbc#16143, D19).
+      let walk_identity = match equality_argument_identity(a: n, scope: scope) {
+        Present { value: k } => k
+        Absent => identity
+      }
+      if walk_identity != "::" && map_contains_key(visited, walk_identity) {
+        EqualityWalk { refusal: none, step: EqualityThroughPlan { declaration: walk_identity }, plans: [] }
       } else {
-        let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
-        // Route key by the DECLARING identity (the key the route table holds), not the use-site key. A bound
-        // name always resolves through the classifier; an unbound operand has no route to find and keeps the
-        // structural path below (this is the generic walker, so it is not the place to hard-refuse).
-        let route_key = match equality_argument_identity(a: n, scope: scope) {
-          Present { value: k } => k
-          Absent => identity
-        }
-        match equality_route_for(identity: route_key) {
+        let visited2 = if walk_identity == "::" { visited } else { map_insert(visited, walk_identity, true) }
+        match equality_route_for(identity: walk_identity) {
           Present { value: route } => equality_route_walk(route: route, name: name, at_root: at_root)
           Absent =>
             if (peeled.connective == Arrow) {
               equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
             } else if (peeled.connective == Conj) {
-              equality_product_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: equality_declaration_is_generic(rt: peeled, peeled: peeled), name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth)
+              equality_product_walk(identity: walk_identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: equality_declaration_is_generic(rt: peeled, peeled: peeled), name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth)
             } else if (peeled.connective == Disj) {
-              equality_coproduct_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: equality_declaration_is_generic(rt: peeled, peeled: peeled), name: name, variants: peeled.children, scope: scope, visited: visited2, depth: depth)
+              equality_coproduct_walk(identity: walk_identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: equality_declaration_is_generic(rt: peeled, peeled: peeled), name: name, variants: peeled.children, scope: scope, visited: visited2, depth: depth)
             } else if is_kernel_type(name: leaf) {
               equality_walk_by_target()
             } else {
@@ -3988,7 +3992,7 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
                   } else {
                     equality_walk_refused(r: equality_refused(carrier: name, member: "open-support carrier: extensional equality is not enumerable", member_judged: true))
                   }
-                Absent => equality_leaf_walk(peeled: peeled, name: name, ident_key: identity, scope: scope, visited: visited2, depth: depth, at_root: at_root)
+                Absent => equality_leaf_walk(peeled: peeled, name: name, ident_key: walk_identity, scope: scope, visited: visited2, depth: depth, at_root: at_root)
               }
             }
         }
