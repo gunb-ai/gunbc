@@ -119,7 +119,7 @@ test fn bare_out_of_range_literal_in_a_channel_field_is_refused() -> Bool {
 // target are the same declared type). When it does, this fixture is re-pinned as the positive control for
 // the new refusal." That trigger landed as validate_cast's refinement-cast arm (src/v1/04_infer.dag), so
 // an in-range LITERAL cast `1 as IpmiChannelNumber` into the refined field now earns a blocking row of the
-// arm's class (InternalError): RED at base (the checker was silent, only the evaluator refused), GREEN at
+// arm's class (RefinementCastRefused): RED at base (the checker was silent, only the evaluator refused), GREEN at
 // head. The fix for the author is the same one applied to router_proxy_config: write the bare literal
 // `1`, which needs no cast and is admitted. The TypeMismatch wall rows above stay additive on their own
 // shapes; a value already on the carrier still casts by identity (the identity rows below).

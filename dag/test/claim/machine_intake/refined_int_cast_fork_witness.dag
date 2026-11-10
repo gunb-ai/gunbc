@@ -5,7 +5,7 @@ module test.claim.machine_intake.refined_int_cast_fork_witness
 //
 // Before the fix (PR #16224's validate_cast arm in src/v1/04_infer.dag), the checker ADMITTED a cast of
 // an Int-kernel value into a DIFFERENT range-refined Int carrier while eval_cast refused it: a located
-// runtime TypeError. The arm refuses that shape at check time as a blocking InternalError; eval_cast is
+// runtime TypeError. The arm refuses that shape at check time as a blocking RefinementCastRefused; eval_cast is
 // untouched and still refuses it, so the two authorities now agree on the shape.
 //
 // Every probe shares one header, so all counts are read as DIFFERENTIALS against a base carrying only a
