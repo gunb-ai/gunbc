@@ -29,7 +29,8 @@ import gunbc.serving.serving_reservation {
   host_reservations_for, host_memory_reserved, host_gpus_withheld_from_runner, host_cores_withheld_from_runner,
   ServingHostReservation, ReplicaReservation, cpu_reservation_covers,
   serving_api_key_is_reference, serving_api_key_source_path,
-  host_strata_is_pinned, strata_release_for, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned, StrataArtifactDigest,
+  host_strata_is_pinned, strata_release_for, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
+  StrataArtifact, StrataArtifactDigest, StrataNativeGitCommit, StrataContainerImageDigest,
 }
 
 fn butch_replicas() -> List<ReplicaReservation> {
@@ -81,18 +82,26 @@ test fn witness_butch_key_is_a_reference_not_a_literal_and_one_key_covers_both()
 }
 
 // STRATA IS PINNED BY DIGEST, NOT "latest"; AND PINNING IS KEYED, NOT BLANKET.
-test fn witness_butch_strata_is_pinned_by_digest_and_a_keyed_absence_is_not_pinned() -> Bool {
+test fn witness_butch_strata_is_pinned_by_native_commit_and_a_keyed_absence_is_not_pinned() -> Bool {
   let butch_pinned = host_strata_is_pinned(operator_host_srv14)
   let srv3_pinned = host_strata_is_pinned(operator_host_srv3)
-  // "same build and server as srv3 production": the two hosts name the SAME content digest.
+  // butch runs a NATIVE strata binary, pinned by the full git commit read off it over ssh -- a container image
+  // digest for butch would land in the other arm and make this false, so this also proves the pin is not the
+  // flex image (the earlier defect: pinning a container digest for a host that runs the native binary).
+  let butch_is_native_commit = match strata_release_for(operator_host_srv14) {
+    Present { value: StrataReleasePinned { artifact: StrataNativeGitCommit { source: _, commit: c }, read_from: _ } } => (c as String) == "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c"
+    _ => false
+  }
+  // "same build and server as srv3 production": the two hosts name the SAME native commit.
   let same_build = match strata_release_for(operator_host_srv14) {
-    Present { value: StrataReleasePinned { digest: db } } => match strata_release_for(operator_host_srv3) {
-      Present { value: StrataReleasePinned { digest: d3 } } => (db.hex as String) == (d3.hex as String)
+    Present { value: StrataReleasePinned { artifact: StrataNativeGitCommit { source: _, commit: cb }, read_from: _ } } => match strata_release_for(operator_host_srv3) {
+      Present { value: StrataReleasePinned { artifact: StrataNativeGitCommit { source: _, commit: c3 }, read_from: _ } } => (cb as String) == (c3 as String)
       _ => false
     }
     _ => false
   }
-  // discriminating: a host with no release row is NOT pinned -- the predicate is keyed, never a blanket true.
+  // discriminating: srv4's build was never read (Unpinned) -> NOT pinned; and an unmodeled host is never pinned.
+  let srv4_unread_not_pinned = host_strata_is_pinned(operator_host_srv4) == false
   let unmodeled_not_pinned = host_strata_is_pinned(operator_host_srv2) == false
-  butch_pinned && srv3_pinned && same_build && unmodeled_not_pinned
+  butch_pinned && srv3_pinned && butch_is_native_commit && same_build && srv4_unread_not_pinned && unmodeled_not_pinned
 }

@@ -31,10 +31,11 @@ import gunbc.serving.serving_reservation {
   GpuReservation, ReplicaReservation,
   ReplicaMemoryReservation, MemoryMeasured,
   ServingBind, ServingBindAddress, BindLan, BindLoopback, BindAddress,
-  StrataArtifactDigest, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
+  StrataArtifact, StrataArtifactDigest, StrataNativeGitCommit, StrataContainerImageDigest,
+  StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
   cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores, cpu_reservation_covers,
   gpu_reservation_card_count, bind_is_lan_reachable,
-  strata_digest_is_content_addressed, strata_release_is_pinned,
+  strata_digest_is_content_addressed, strata_artifact_is_immutable, strata_release_is_pinned,
   host_cores_withheld_from_runner, host_memory_reserved, host_gpus_withheld_from_runner,
   reservation_reduces_runner_width,
 }
@@ -99,15 +100,22 @@ test fn witness_a_power_cap_present_on_the_reservation_is_distinguishable_from_u
   cards_counted && capped_empty && two_cards
 }
 
-// A STRATA RELEASE TAGGED "latest" IS NOT PINNED; A CONTENT DIGEST IS. Fail closed: the only way to name a
-// byte-exact engine is a content-addressed digest; a moving tag is refused, and a digest naming the wrong
-// algorithm is refused rather than trusted.
+// WHAT NAMES A STRATA ENGINE. A CONTENT-ADDRESSED IMAGE DIGEST and a FULL NATIVE GIT COMMIT both pin an
+// engine; a moving tag, a SHORT git sha, and a wrong-algorithm digest are all refused (fail_closed). The two
+// artifact KINDS are kept distinct, so a native binary is never "pinned" by a container image digest.
 test fn witness_a_latest_tag_is_refused_where_a_content_digest_is_pinned() -> Bool {
-  let pinned = StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "sha256", hex: "1a2b3c4d5e6f" } }
+  let image_pinned = StrataReleasePinned { artifact: StrataContainerImageDigest { digest: StrataArtifactDigest { algorithm: "sha256", hex: "1a2b3c4d5e6f" } }, read_from: "witness synthetic image" }
+  let native_pinned = StrataReleasePinned { artifact: StrataNativeGitCommit { source: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" }, read_from: "witness synthetic native build" }
+  let short_commit = StrataReleasePinned { artifact: StrataNativeGitCommit { source: "strata-main", commit: "8c5fafc" }, read_from: "witness synthetic short sha" }
   let latest = StrataReleaseUnpinned { reference: "strata:latest" }
   let nightly = StrataReleaseUnpinned { reference: "strata:nightly" }
-  let wrong_algo = StrataReleasePinned { digest: StrataArtifactDigest { algorithm: "md5", hex: "deadbeef" } }
-  strata_release_is_pinned(pinned) && !strata_release_is_pinned(latest) && !strata_release_is_pinned(nightly) && !strata_release_is_pinned(wrong_algo)
+  let wrong_algo = StrataReleasePinned { artifact: StrataContainerImageDigest { digest: StrataArtifactDigest { algorithm: "md5", hex: "deadbeef" } }, read_from: "witness synthetic wrong algo" }
+  strata_release_is_pinned(image_pinned)
+    && strata_release_is_pinned(native_pinned)
+    && !strata_release_is_pinned(short_commit)
+    && !strata_release_is_pinned(latest)
+    && !strata_release_is_pinned(nightly)
+    && !strata_release_is_pinned(wrong_algo)
 }
 
 // AN ENGINE BINDS THE LAN. A replica bound to the LAN is reachable by the router; one bound to loopback is
