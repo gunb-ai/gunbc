@@ -100,7 +100,7 @@ fn fallback_path() -> GitPath {
   GitPath {
     first: GitTreeEntryName {
       first: GitTreeEntryNameOctetAfterSlash {
-        value: 120 as GitTreeEntryNameAfterSlashValue,
+        value: 120,
       },
       rest: [],
     },
