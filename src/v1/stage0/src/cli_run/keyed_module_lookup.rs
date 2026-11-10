@@ -183,6 +183,7 @@ mod tests {
 
     fn keyed_rows(roots: &[String], qn: &str) -> Vec<String> {
         keyed_decl_facts(roots, &[qn.to_string()])
+            .unwrap_or_else(|refusal| panic!("keyed read refused for {qn}: {refusal:?}"))
             .into_iter()
             .map(|f| f.rel_path)
             .collect()
@@ -346,7 +347,11 @@ mod tests {
                 .collect();
             let want: Vec<&crate::coproduct_reflection::DeclFactRaw> =
                 idxs.iter().map(|&i| &census[i]).collect();
-            let got = keyed_decl_facts(&roots, &names);
+            // `expect` here means something: a file of the REAL pool that did not parse would be
+            // the silent miss this read now refuses, so the differential also asserts the pool is
+            // readable end to end, not merely that the two reads agree on what they read.
+            let got = keyed_decl_facts(&roots, &names)
+                .unwrap_or_else(|refusal| panic!("keyed read refused for {module}: {refusal:?}"));
             assert_eq!(got.len(), want.len(), "row count for {module}");
             for (g, w) in got.iter().zip(want) {
                 assert_eq!(
@@ -391,7 +396,8 @@ mod tests {
         let rows = keyed_decl_facts(
             &roots,
             &["gunbc.source_layout.layout_tree_directory".to_string()],
-        );
+        )
+        .unwrap_or_else(|refusal| panic!("keyed read refused: {refusal:?}"));
         let keyed = vm_kib("VmHWM:");
         eprintln!(
             "RSS base_hwm_kib={base} after_keyed_hwm_kib={keyed} fact={fact:?} rows={}",
@@ -403,6 +409,68 @@ mod tests {
         assert!(
             keyed - base < (full - base) / 10,
             "keyed read grew like the pool"
+        );
+    }
+    /// The fixture's module and its one item. Two lowercase segments so the read DERIVES a storage
+    /// path for the module and goes and reads the file: a key whose module spells nothing never
+    /// opens the unreadable file, and a test built on one proves nothing about the fold's handling
+    /// of a file it actually read.
+    const PROBE_QUALIFIED: &str = "keyed_probe_root.probe.probe_authority";
+    const PROBE_PARSES: &str =
+        "module keyed_probe_root.probe\n\nfn probe_authority() -> Bool { true }\n";
+    /// Same module head, so the custom-root census indexes it and the key locates it — and then a
+    /// stray `)` opens an item the grammar has no shape for. This is the file the read used to
+    /// contribute nothing for.
+    const PROBE_UNREADABLE: &str =
+        "module keyed_probe_root.probe\n\nfn probe_authority() -> Bool { true }\n) stray\n";
+
+    /// THE TYPED SHAPE of the refusal — what a caller consumes. The interpreter-level pair
+    /// (`coproduct_reflection`'s `keyed_decl_facts_unreadable_file_tests`) is the half that can also
+    /// be RUN at the revision before the refusal, because it stands at an unchanged signature; this
+    /// one asserts the fields, which only exist here.
+    #[test]
+    fn the_refusal_names_the_file_the_module_and_the_parse_own_words() {
+        let root = fixture_root("unreadable-typed", &[("probe.dag", PROBE_UNREADABLE)]);
+        let refusal = keyed_decl_facts(&[root], &[PROBE_QUALIFIED.to_string()])
+            .expect_err("a derived file that does not parse must REFUSE, not answer no rows");
+        match refusal {
+            crate::coproduct_reflection::DeclFactsKeyedRefusal::FileUnreadable {
+                file,
+                module,
+                cause,
+            } => {
+                assert!(
+                    file.ends_with("probe.dag"),
+                    "the refusal must name the file the key derives; got {file}"
+                );
+                assert_eq!(
+                    module, "keyed_probe_root.probe",
+                    "the refusal must name the module the key spelled that file from"
+                );
+                assert!(
+                    cause.contains("probe.dag"),
+                    "the refusal must carry the parse's own words for that file; got {cause}"
+                );
+            }
+        }
+    }
+
+    /// The typed positive control: the well-formed sibling of the very same fixture answers its
+    /// row. Together with the refusal above it says the read refuses unreadable files, and ONLY
+    /// unreadable files — a read that refused everything would pass the first test and fail this one.
+    #[test]
+    fn a_readable_derived_file_still_answers_its_row() {
+        let root = fixture_root("readable-typed", &[("probe.dag", PROBE_PARSES)]);
+        let rows = keyed_decl_facts(&[root], &[PROBE_QUALIFIED.to_string()])
+            .expect("a derived file that parses must answer, not refuse");
+        assert_eq!(
+            rows.len(),
+            1,
+            "the module's one named item must answer the key that names it"
+        );
+        assert_eq!(
+            rows[0].qualified_name, PROBE_QUALIFIED,
+            "the row is the one the key asked for"
         );
     }
 }

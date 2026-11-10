@@ -11,7 +11,7 @@ import gunbc.auth.request_api_key { request_api_key_read }
 import gunbc.host_state_root { host_state_tree }
 import gunbc.runner.runner_revision_request_context { revision_request_context }
 import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
-import gunbc.fabric.fabric_writer_roster { fabric_served_writer_roster }
+import gunbc.fabric.fabric_writer_roster { fabric_served_writer_roster, ServedWriterRosterListed, ServedWriterRosterUnread }
 import gunbc.durable_handoff_rest { host_request_outcome_response, OutcomeUnknown, OutcomeUnauthenticated }
 
 // Native submission/readback only. Durable acceptance is not execution authority:
@@ -45,6 +45,11 @@ fn runner_revision_job_request_handle(method: String, path: String, body: String
     Err { value: _ } => { return host_request_outcome_response(request_id: "", outcome: OutcomeUnauthenticated { detail: "API key not admitted" }, result: JsonNull) }
     Ok { value: value } => value
   }
-  revision_job_request_respond(context: context, permitted_users: fabric_served_writer_roster(),
+  // An unread roster is not an empty one: refuse with its cause rather than admit no writer silently.
+  let permitted_users = match fabric_served_writer_roster() {
+    ServedWriterRosterUnread { detail: d } => { return host_request_outcome_response(request_id: "", outcome: OutcomeUnknown { detail: concat("writer roster unread: ", d) }, result: JsonNull) }
+    ServedWriterRosterListed { logins: logins } => logins
+  }
+  revision_job_request_respond(context: context, permitted_users: permitted_users,
     verified: verified, method: method, path: path, body: body)
 }

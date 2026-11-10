@@ -33,7 +33,6 @@ import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirect
 import gunbc.owned_directory {OwnedDirectoryTarget}
 import gunbc.durable_cas_file_store {SlotStore,file_slot_store,listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused,slot_observe,slot_commit,admit_cas_attempt_for_derived_payload,ExpectSlotAbsent,DefaultAccessCreateOnly,DerivedPayloadAdmitted,DerivedPayloadKeyNotSlotAddressable,CasCommitted,CasPreconditionFailed,CasStoreRefused,CasObservedReadable,CasObservedUnreadable,CasReadablePresent,CasReadableAbsent, slot_store_absent_detail }
 import gunbc.fleet.print_request {field}
-import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version}
 import gunbc.fleet.printer_project_delivery {
   NamedByAttempt,
@@ -180,7 +179,7 @@ fn printer_start_claim_legacy_entry(name:String) -> Bool { (string_contains(s:na
 fn printer_start_claims(tree:HostStateTree) -> PrinterStartClaimsReading {
   match printer_starts_legacy_scan(tree:tree,owns:n=>printer_start_claim_legacy_entry(name:n)) {
     PrinterStartsUnreadable {detail:d}=>PrinterStartClaimsUnready {detail:d}
-    PrinterStartsLegacyEntries {names:n}=>PrinterStartClaimsUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
+    PrinterStartsLegacyEntries {names:n}=>PrinterStartClaimsUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); the flat layout is retired, so these entries must be removed by hand"],"")}
     PrinterStartsClean=>match listed_slot_store(member:printer_start_claim_slots.member as String,root:printer_start_claim_path(tree:tree)) {
       SlotStoreAbsent {member:m,root:r}=>PrinterStartClaimsUnready {detail:slot_store_absent_detail(member:m,root:r)}
       SlotStoreRefused {detail:d}=>PrinterStartClaimsUnready {detail:d}
@@ -281,10 +280,10 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
 
 // The one boundary that uploads and starts a printer job. A caller cannot
 // bypass the live readiness check, durable claim, payload binding or grant recheck.
-fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,ams_tray:BambuAmsTray) -> ProcessExit {
+fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,ams_tray:BambuAmsTray) -> ProcessExit {
 
  let host=os.Hostname.ReadShort()
- if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
+ if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session mismatch")}
  let claim_key=attempt_claim_key(attempt:request.attempt as String)
  let live_text=match report_using_session(session:session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; nothing uploaded or started") ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; nothing uploaded or started")}
  if !Filesystem.Write(path:concat(start_claim_evidence_prefix(claims:claims,key:claim_key),".before-start.json"),content:live_text).success || !report_allows_start(text:live_text) {return exit_failure(reason:"Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started")}

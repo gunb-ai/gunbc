@@ -564,19 +564,16 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     standing: RequirementUnestablished { decided_by: "approval_store_receipt_mac_key_secret_ref is not yet minted, and a verifier holding the current single key could also mint receipts, so a verify-only half must exist first" },
   },
   affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing"),
-    tail: [
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
-      decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
-    ],
+    head: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
+    tail: [],
   },
-  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the printer hold release and for the bed-clear approval, which both read that route at the same trust.",
+  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the bed-clear approval, which reads that route. (The printer hold release that also read it was deleted on 2026-11-09.)",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "b79423bb29e6b7a2804dc0bd0d3db629eb5688f4",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing") }],
+        tail: [],
       },
       account: "The printer job runs as the plain CI runner and cannot read the operator-only approval store, so the printer hold release reads the decision through the broker's unauthenticated loopback status route, the same route and trust as the converge's bed-clear approval. The MAC-receipted store route exists but its key is unminted.",
     },
@@ -586,12 +583,12 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     home: ExistingHome { model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
     preserve: [
       PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+        holder: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
         control: Absent,
-        statement: "a hold releases only on an approved decision over this exact hold and generation; Denied, Expired, Pending and mismatched intent refuse",
+        statement: "a print starts only on an approved decision over this exact attempt; Denied, Expired, Pending and mismatched intent refuse",
       },
     ],
-    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for both the printer hold and bed-clear consumers"),
+    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for the bed-clear consumer"),
   },
 }
 
@@ -1430,7 +1427,6 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
         decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
         decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
         decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-        decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
         decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
       ],
     },
@@ -1443,11 +1439,10 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
       decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
       decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
       decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
       decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
     ],
   },
-  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at seven sites: three per-module rows and four inline literals. Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all seven change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
+  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at six sites: three per-module rows and three inline literals (a seventh, the printer hold release, was deleted on 2026-11-09). Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all six change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "8d22701ad6ca9edf3e98ad5562efcd04031f4f36",
@@ -1756,7 +1751,63 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
+// A produced fn whose item body is a Branch or Match with a closure in tail position cannot reach
+// the emitter, so the #16177/#16180 item-return move/Box::new boundary is unobservable for that
+// form. Three independent upstream refusals block the shape; the emitter fixture becomes writable
+// as soon as any one admits it. All sightings at origin/main b882c902; gunbc digests are per-dispatch
+// (the build path is embedded in the binary; the run-tree reader append is not part of the build).
+data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern = IntegrationConcern {
+  identity: "branch_match_arm_closure_declared_return_not_admitted",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_no_candidate_return_reason"),
+    requirement: "a function whose declared return is a function type admits a body whose branches are closures of that return type: fn f(p: Int, c: Bool) -> fn(Int) -> Int { if c { fn(q) { p } } else { fn(r) { r } } } (and its match twin) should parse, infer, and inhabit the declared fn(Int) -> Int, reaching the emitter so the returned closure can be checked for the item-return move/Box::new that #16177 (arrow body) and #16180 (let tail) restored. Three independent refusals block the shape before the emitter (one per blocker Sighting below). TRIGGER: the emitter's branch/match tail-closure position becomes testable — a red-then-green fixture becomes writable — as soon as ANY ONE of the three admits the shape; none of them need be fixed together.",
+    standing: RequirementUnestablished { decided_by: "a semantic-owner ruling on v2.std.inhabitance (does a Branch/Match body whose arms are each a closure of the declared return inhabit it?) and on v2.compiler.infer (is the declared return meant to reach Branch/Match arm positions as an expected type, or is the arm-vs-arm gather join the sole route?); not ruled a defect here — the manager's position is that it is not to be judged blind" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_no_candidate_return_reason"),
+    tail: [
+      decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_settled_arm_open_type"),
+      decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_branch_arm_sibling"),
+      decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr"),
+    ],
+  },
+  question: "Should a Branch then/else arm, or a Match arm body, that is a closure of the enclosing function's declared return type parse, infer, and inhabit that return — so a closure in an if/match tail position reaches the emitter? Today every authored spelling is refused before the emitter: typed arm parameters do not parse (the v2 fn-literal grammar admits no typed params); a return-annotated arm closure is refused as not inhabiting the declared fn(Int) -> Int; and unannotated arm closures are settled open because the declared return never reaches the arm as an expected type. #16177 and #16180 fixed the identical dropped item-return position at the EMITTER for the arrow-body and let-tail forms; the branch/match form is blocked two stages upstream, so no fixture can be written for it here.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "b882c902cded8a1bd08d07e0cf0257d8edf2fc32",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr") },
+        tail: [
+          CitesArtifact { label: "typed-parameter arm closures of every spelling — fn(q: Int) -> Int { p } (https://app.buildbuddy.io/invocation/7eedbf78-a79f-44d6-9f53-9f3308bd9906), fn(q: Int): Int { p } (f94fdd6c-c364-4676-a2c5-103d587b9da1), fn(q: Int) { p } (5e2e6bd7-139b-4185-abd5-28ec63e4929d) — each refused ^parse_g0_tokens_remain on both the Branch and Match specimens, checked via function_value_body_route.dag fvb_emit_verdict_of on the run tree at b882c902; the fn-literal grammar admits an optional untyped parameter list and an optional `->` return type only, so an arm closure's parameter type cannot be authored", sha256: Sha256Digest { hex: "9cd601c2ffa139dffe0bd251842c51cdf21e824055129e7f18103ae772cca902" as Sha256DigestHex } },
+          CitesArtifact { label: "same check, the fn(q: Int): Int { p } spelling, refused ^parse_g0_tokens_remain", sha256: Sha256Digest { hex: "bfc91314aa720b0f759f7775b6215a5c9e67bdb708f12a812cd582d08f31c7dd" as Sha256DigestHex } },
+          CitesArtifact { label: "same check, the fn(q: Int) { p } spelling, refused ^parse_g0_tokens_remain", sha256: Sha256Digest { hex: "1fc7978d3e9d01a5e7d9e718b4e9004d684e473c6f8b9ada8c9dda5efd09d6b3" as Sha256DigestHex } },
+        ],
+      },
+      account: "BLOCKER (i) grammar: the v2 fn-literal (v2.extdeps.languages.dag :: dag_grammar_fn_literal_expr) has no typed parameters, so the arm closure's parameter cannot be annotated to give it a closed type. This is the boundary for any attempt to author a groundable arm closure by annotation.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: "b882c902cded8a1bd08d07e0cf0257d8edf2fc32",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_no_candidate_return_reason") },
+          tail: [CitesArtifact { label: "the ONLY grammar-admitted annotation — return-annotated arm closures fn(q) -> Int { p } / fn(r) -> Int { r } — refused ^arrow_body_does_not_inhabit_declared_return on both the Branch and the Match specimen (item declared return IS fn(Int) -> Int and each arm IS such a closure), no emitted text, rustc N/A; checked via fvb_emit_verdict_of on the run tree; https://app.buildbuddy.io/invocation/a3960825-0d25-41d3-8b9c-049eb96fc6eb", sha256: Sha256Digest { hex: "86ffe3a31f0b39e96aa24d49c82a9e75dac1eba692c66c00deddd851c5cde436" as Sha256DigestHex } }],
+        },
+        account: "BLOCKER (ii) typing — MOST LIKE A REAL DEFECT: with the return type annotated, the arm closures do reach typing, yet inhabitance refuses the Branch/Match body as not inhabiting the declared fn(Int) -> Int even though each arm IS a closure of exactly that type. Whether this is a genuine typing gap or by design is the open question; if it is a gap, fixing it alone makes the shape (and the emitter fixture) writable.",
+      },
+      ConcernSighting {
+        revision: "b882c902cded8a1bd08d07e0cf0257d8edf2fc32",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_settled_arm_open_type") },
+          tail: [CitesArtifact { label: "unannotated arm closures fn(q) { p } / fn(r) { r } (then captures p, else captures nothing) refused ^infer_grounding_not_derived on both the Branch and the Match specimen, no emitted text; each arm settles open (the gather hand-up 'NO ARM DECLARES A TYPE HERE: THE ENCLOSING JOIN MAY' closes types only by arm-vs-arm join, and the two arms are independent open closure types, so the declared return never reaches an arm as an expected type); checked via fvb_emit_verdict_of on the run tree at b882c902; https://app.buildbuddy.io/invocation/c90f09d7-3a2f-409e-b522-77ea84a1d9a2", sha256: Sha256Digest { hex: "33411e297f5befda246203de051e6e6757f7bfb41c3fbe8eb8c6fd126db50012" as Sha256DigestHex } }],
+        },
+        account: "BLOCKER (iii) inference: an unannotated arm closure never receives the enclosing function's declared return as an expected type, so it settles open and refuses at inference. The same refusal was first observed at 4bfa629e7ff (off main's lineage); this sighting reconfirms it on real main at b882c902. Lineage: after appending the branch specimen, function_value_body_route.dag's blob at b882c902 is 61ef52ba, byte-identical to the 4bfa629e run's post-append blob — the claim file is the same at both commits, so the two sightings differ only in the compiler beneath them, and both give the same reason.",
+      },
+    ],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
