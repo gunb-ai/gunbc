@@ -810,6 +810,34 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
   disposition: Open,
 }
 
+
+data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: IntegrationConcern = IntegrationConcern {
+  identity: "grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of"),
+    requirement: "Hand-written Rust added inside the generated stage0 mirror must carry a checkable receipt -- a deleted scaffold path, a before/after seed census, or a deferral naming a lane and a tracking row (ctrl review policy). #16156 added about 345 lines of hand-written witness Rust at src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (the declaration-grain tests: inactive grain equals #16069, unreached stays unseen, reachable errors still refuse, out-of-set reads refuse typed, alias-body and provider-row reachability, the corpus witness). This row is the deferral: the witnesses are owed a landing -- rewritten as generated .dag test sources under the corpus, or admitted as a standing hand-written exception with a file-level receipt -- and the lane that decides and executes it is follow-up node adhoc-0eedbb6e-a35, the same node named by gunbc.design_ruling::run_realizes_only_demanded_declarations for enrolling the by-hand demanded_scope controls.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "run_realizes_only_demanded_declarations") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of"),
+    tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded")],
+  },
+  question: "Where do the hand-written grain witnesses end up? They test the declaration-grain realization from the host side and today live as hand-written Rust beside generated code in the stage0 mirror. The deferral names lane node adhoc-0eedbb6e-a35 and this tracking row: at enrollment the node either moves the witnesses into generated .dag test sources or records them as a standing hand-written exception with a receipt comment at the file, so no hand-written block in the mirror remains unaccounted.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "5a0a692fa9b",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded") }],
+      },
+      account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
 data run_unreached_function_bodies_typechecked: IntegrationConcern = IntegrationConcern {
   identity: "run_unreached_function_bodies_typechecked",
   kind: SuspectedCapabilityGap {
