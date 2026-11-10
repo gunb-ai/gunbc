@@ -817,8 +817,30 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
             };
             let realized_bare = realization.realized.contains_key("RestReplay");
             let realized_dotted = realization.realized.contains_key("test.RestReplay");
+            // CENSUS SHAPE at the witness graph: the census is computed identically in both scopes
+            // (@21984, from graph.modules) -- so if it carries the service under the dotted key WITH
+            // the operation children, the demanded-scope refusal is the projection never consulting
+            // it; if the entry or its children are absent, the census is the broken link.
+            let census = infer::build_symbol_index_census(graph.modules.clone(), si.clone());
+            let census_keys: Vec<String> = census
+                .services
+                .keys()
+                .filter(|k| k.contains("RestReplay"))
+                .cloned()
+                .collect();
+            let census_ops: Vec<String> = census
+                .services
+                .get("test.RestReplay")
+                .map(|e| {
+                    e.item
+                        .children
+                        .iter()
+                        .map(|c| authored_name_at(si.clone(), c.clone()))
+                        .collect()
+                })
+                .unwrap_or_default();
             eprintln!(
-                "SERVICE_OP_GRAIN_WITNESS entry=decoded_pull_request service_realized={} realized_bare={} realized_dotted={} demanded_refusals={} closure_refusals={} seed_bare_refusals={} seed_dotted_refusals={} surface={:?}",
+                "SERVICE_OP_GRAIN_WITNESS entry=decoded_pull_request service_realized={} realized_bare={} realized_dotted={} demanded_refusals={} closure_refusals={} seed_bare_refusals={} seed_dotted_refusals={} census_keys={:?} census_ops={:?} surface={:?}",
                 service_realized,
                 realized_bare,
                 realized_dotted,
@@ -826,6 +848,8 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
                 closure_surface.len(),
                 count_surface(&with_bare),
                 count_surface(&with_dotted),
+                census_keys,
+                census_ops,
                 surface
             );
             assert!(
