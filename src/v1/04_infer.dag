@@ -9440,6 +9440,30 @@ fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
   (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
 }
 
+// ONE AUTHORITY FOR THE FOLD-CARRIER REFINEMENT. A fold's accumulator, when under-resolved OR an
+// unapplied generic expansion, is refined from the STEP FUNCTION'S RETURN: the step's return names
+// the element type the unapplied carrier dropped, so the next fold that reads a field of the element
+// reads it on the element rather than on the container. BOTH fold forms now reach THIS definition --
+// the ExprCall arm (`refined_call_fold_acc_type`) and the ExprMethodCall arm (`refined_fold_acc_type`)
+// -- because the refinement is ONE decision with ONE authoritative definition: the method arm
+// independently decided it, and "a second place that independently decides it is a fork." The two
+// arms in fact DISAGREED -- the method arm omitted the generic test -- leaving a method-form fold over
+// a generic carrier unrefined and the next fold refusing "no field 'v' on type 'FreeMonoid'" (the harm
+// named in gunbc.recurring_failure_mode.unapplied_generic_accumulator_types_element_as_container).
+// @ref(gunbc.design_argument::single_authority)
+fn refine_fold_acc_from_step_return(fold_acc_type: Node?, args: List<Node>, scope: InferScope) -> Node? {
+  match fold_acc_type {
+    Present { value: acc } =>
+      if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
+        match args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+          Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+          Absent => fold_acc_type
+        }
+      } else { fold_acc_type }
+    Absent => none
+  }
+}
+
 fn method_name_is(opt: String?, expected: String) -> Bool {
   if opt == none { false } else { opt.value == expected }
 }
@@ -11067,16 +11091,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: ta } => arg_value(n: ta)
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
-        let refined_call_fold_acc_type: Node? = match call_fold_acc_type {
-          Present { value: acc } =>
-            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
-              match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-                Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-                Absent => call_fold_acc_type
-              }
-            } else { call_fold_acc_type }
-          Absent => none
-        }
+        let refined_call_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: call_fold_acc_type, args: typed_args, scope: scope)
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
           KnownMethodResolution { semantics: none, result_type: none, diagnostics: [], rest_operation: false }
         } else {
@@ -11487,16 +11502,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_emissions = infer_emissions_concat_all(chunks: map(mc_arg_infer_results, air => air.emissions))
-      let refined_fold_acc_type: Node? = match fold_acc_type {
-        Present { value: acc } =>
-          if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) {
-            match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-              Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
-              Absent => fold_acc_type
-            }
-          } else { fold_acc_type }
-        Absent => none
-      }
+      let refined_fold_acc_type: Node? = refine_fold_acc_from_step_return(fold_acc_type: fold_acc_type, args: typed_mc_args, scope: scope)
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
