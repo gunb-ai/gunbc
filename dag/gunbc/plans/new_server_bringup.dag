@@ -1,0 +1,123 @@
+module gunbc.plans.new_server_bringup
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+
+fn new_server_bringup_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Goal:** one reusable machine lifecycle that accepts an observed machine, decides how to install it, installs it safely, admits it, converges its roles and makes verified runner capacity available, with no machine-specific code. Two machines are its first witnesses. srv15 (bobo) is the first PXE install. srv14 (butch) shows that an already-installed machine joins runner capacity without special procedures. The bar: adding the next machine is boring. It extends the modeled fleet, not the codebase's collection of special cases."),
+      p(text: "**Lanes:** smart-crane-730 owns the install path (PXE 0, 1, 2b, 2c, 3) and dispatches child lanes for PXE 2a, B3a and B4a. cool-lark-40 owns butch (B1, B2, B3b, B3d, B4b). vivid-koi-387 owns machine naming (gunbc.plans.fleet_machine_naming, gunbc#16252); this plan uses the identities operator_host_srv14 and operator_host_srv15 until that program replaces them."),
+      p(text: "**Status vocabulary:** a PR's state is one of not started, open, merged, converged (its live run applied) and verified (its acceptance readback recorded). These are separate accomplishments, and a later one never stands in for an earlier one. The pinned review page is a projection of this carrier, not a second authority."),
+      p(text: "**Read at:** gunbc main `00cacc14979`; butch and srv4's edge read live 2026-11-10. Plan reviewed by the operator 2026-11-10 (REQUEST_CHANGES); this revision applies that review."),
+    ]),
+
+    h2(text: "1. Operator decisions (2026-11-10)"),
+    ul(items: [
+      li(text: "PXE is the default installation path for every eligible physical machine. BMC virtual media remains a fallback that needs an explicit, evidenced reason."),
+      li(text: "An install is one-shot. An install request is never a standing authorization to erase a disk."),
+      li(text: "Runner capacity is a completion condition. A machine counts as capacity only after its runner services are healthy, its registrations and labels are observed, its resource admission resolves, and a real CI job has run on it."),
+      li(text: "butch is CI only, with no interactive sessions. Its two Strata engines are priced against its capacity before the CI width is derived. It serves 2x2 at 35 W per A2: GPUs 0+1 on port 18081 with CPUs 0-39, GPUs 2+3 on 18082 with CPUs 40-79, bound to the LAN. The Strata release is pinned by artifact digest, superseding the earlier \"latest is fine\"."),
+      li(text: "bobo stops at CI and access for now. Its GPUs are modeled when the operator installs them."),
+      li(text: "One fleet access policy, with explicit access relationships per principal: the operator, the host administrator, orchestration (node-orch), gunbc-runner (the runner listener everywhere, as on mtcollins1) and ghrunner (CI execution). Keys come from the one roster, gunbc.fleet.fleet_ssh_access fleet_authorized_keys, and one roster does not mean every key reaches every account."),
+      li(text: "srv1-srv4 move to gunbc-runner one host at a time, keeping working capacity and a rollback, and sequenced with the rename program's host flips."),
+      li(text: "The board BR80S6102300049 has one current identity: srv13 is retired. Its 2026-10-07 observations keep their original provenance and are linked to the one machine, not rewritten as srv15 captures."),
+      li(text: "A run-scoped service account that can read only bmc-srv15-admin may be created through gcp_iam_converge."),
+    ]),
+
+    h2(text: "2. Findings that shaped the plan"),
+    ul(items: [
+      li(text: "Nothing had ever been installed over PXE. butch was installed 2026-10-30 over its BMC's USB virtual media (installer block device Linux File-Stor_Gadget, ds=nocloud from /cdrom)."),
+      li(text: "The edge could not serve an install. Ubuntu's signed network GRUB loads only $prefix/grub.cfg. The edge served each install as grub.cfg-01-<mac> and made grub.cfg exit. srv15 reached GRUB three times on 2026-10-29/30 and left each time (artifacts/pxe/srv15-pxe-attempt-2026-10-30)."),
+      li(text: "The edge converge only wrote desired files. Withdrawing a binding from the model left its served files on disk, so a withdrawal proved nothing about the edge."),
+      li(text: "The edge held a wiping install binding for butch, an installed host. The installer uses StoragePolicyDirectLayout, which does not pin a target disk."),
+      li(text: "The edge witness file had not compiled since 2026-10-30 (#15291), so all 68 of its witnesses were red outside the required gate."),
+      li(text: "Every BMC boot or intake route is one host's leaf. gunbc.srv3.srv3_boot_once_cd is srv3-only, CD-only, has an expired source-declared grant and no workflow. The mtcollins1 boot and its run-scoped federation are MegaRAC/IPMI-only. gunbc.machine_intake.arrival_subject is mtjade1-only."),
+      li(text: "srv15 is not a managed host. Its rotated credential has been in custody since 2026-10-29, but none of the read-only admission evidence exists."),
+      li(text: "fleet_enrollment derives hosts from its population, but downstream consumers have not generalized. gunbc.runner.runner_capacity_plan takes srv3_width and srv4_width and returns exactly those two plans, and gunbc.runner.runner_capacity_realize is a scaffold whose runner-add can return RunnerCapacityApplyScaffold instead of provisioning a runner."),
+      li(text: "OwnedOsDelivery has no network-install arm, and the assimilation program selects install phases for virtual-media delivery only."),
+    ]),
+
+    h2(text: "3. The lifecycle contract"),
+    ol(items: [
+      li(text: "**Observed.** Board identity, boot NIC, controller access and capabilities, storage inventory. Observations come from capability-specific producers (Redfish/OpenBMC, MegaRAC/IPMI, BMC-less) feeding one identity-binding admission."),
+      li(text: "**Install method decided.** PXE where the site's capabilities permit it; otherwise an evidenced refusal that names the missing capability, and only then a justified fallback."),
+      li(text: "**One-shot install authorization,** bound to the physical identity, the boot NIC, the current target-disk identity (read before actuation and pinned in the installer's storage section), the image and the attempt. It refuses if any of them no longer matches."),
+      li(text: "**Stage, boot once, install.** The edge serves exactly the admitted binding. The override is Once and UEFI and is read back before the reset. The binding is withdrawn by the same workflow once the install is observed, so a second destructive boot cannot happen even if no later PR lands."),
+      li(text: "**Verify the installed system.** Disk identity, installer receipt (ds=nocloud-net from the edge), OS boot and SSH reachability with the fleet key."),
+      li(text: "**Admit, converge, register.** Managed-host admission, fleet convergence, runner registration, then verified runnable slots against measured available resources."),
+    ]),
+
+    h2(text: "4. PR sequence"),
+    h3(text: "Install path (smart-crane-730)"),
+    ol(items: [
+      li(text: "**P0: this plan.** Owner smart-crane-730. Depends on nothing. Obligations: the plan lens witnesses pass with the carrier registered. State: open."),
+      li(text: "**PXE 0: the edge serves installs, and withdrawal is real.** Owner smart-crane-730. gunbc#16254. Depends on nothing. Changes: the entry grub.cfg loads grub/install/<mac>.cfg from GRUB's net_default_mac and otherwise exits, with every producer, reader and witness of the path changed together; butch's binding is withdrawn; the converge owns the install surface (grub/install/, legacy grub.cfg-01-*, seed/), removes every file no admitted binding renders, and refuses an apply while a stale file survives; the edge witness file compiles again. Witness obligations: the entry configuration loads the rendered path; a withdrawn install and the legacy per-MAC files are stale; a surviving stale file refuses the apply; srv15 binds once and srv14 binds nothing. Live: fleet-converge site_pxe_edge_converge on srv4, then read back that only grub/install/9c:6b:00:e7:ca:63.cfg and srv15's seed remain. State: open; the prune revision is under test."),
+      li(text: "**PXE 1: generic controller intake and srv15's admission.** Owner smart-crane-730. Depends on nothing. One controller and capability abstraction, shared with PXE 2, so that intake works before full managed-host admission and only destructive operations need the completed identity and authorization joins. A host-generic OpenBMC arrival producer replaces gunbc.machine_intake.arrival_subject's mtjade1-only row. srv15 rows go in as data keyed by the machine, not as named per-host declarations: intake subject, access observation, BmcSecured standing by the desired-state route, onboarding plan, managed-host admission. srv13 is retired with its observations' provenance kept. Witness obligations: srv15 is admitted from its captures; it is absent without the account census; a second identity on serial BR80S6102300049 refuses; mtjade1 is still admitted through the generic route. State: in progress."),
+      li(text: "**PXE 1 steps.** (a) srv13 retired: identity, board, hostname and write-controller rows deleted; the 2026-10-07 captures replay at the controller endpoint their network observation names (192.168.1.247), and the integration concern closes as integrated. gunbc#16252's P2 rebases on it. State: witnesses running. (b) The arrival admit fold over host-keyed rows: each row carries its host, producer and standing grant; managed membership, not a name, is the executor confusion; the jade-specific effect arms are generic. gunbc#16252's R4 consumes it. State: witnesses queued. (c) The arrival door's read-only live intake (Manager, account census, IPMI channel census), which refuses every run today for every unit. (d) srv15's arrival row and managed-host admission from (c)'s reads. Decided 2026-11-10 (escalation msg_8c72a730, option A), then widened by the operator in smart-crane-730's session: 'you should have total & permanent access to srvc13 and 15 during the course of this program'. srv13 and srv15 are one board, so the grant row is srv15's alone, quoting those words. It lands with srv15 arrival row in (d), and its effect arms are added only as gates consume them. (c) runs as child lane adhoc-1106650c-8f6."),
+      li(text: "**PXE 2a: target disk pinned by identity.** Owner: child lane adhoc-5b0b0b8f-1a5. Depends on nothing. extdeps.os.ubuntu_autoinstall models the autoinstall storage layout's disk match (cited, versioned), and an unpinned layout is not admitted for a destructive network install. A typed disk-identity carrier comes from an observation with its read time, and each install request carries its host's observed disk identity as data keyed by the machine. Witness obligations: a pinned layout renders the match; a request without a disk identity is withheld with a typed cause; a stale observation refuses. State: not started."),
+      li(text: "**PXE 2b: one boot-once over a managed host's controller.** Owner smart-crane-730. Depends on PXE 1. The srv3 boot-once leaf is deleted (srv3_boot_once_cd, srv3_os_install_actuate_workflow, srv3_bmc_credential_resolve, and their consumers). A boot-once over the bound controller replaces it: target Pxe or Cd, Once, UEFI, read back before the reset. The run-scoped boot federation is derived from rows instead of being mtcollins1-only. Witness obligations: a host that is not managed refuses; Legacy mode refuses; the readback precedes the reset. State: not started."),
+      li(text: "**PXE 2c: the one-shot network install workflow.** Owner smart-crane-730. Depends on PXE 0, 2a and 2b. The install authorization of section 3 is enforced. The target disk's identity is read in the same run and must match the pinned seed. The edge binding is staged and withdrawn by the same workflow. The fleet-converge mode managed_host_network_install runs on srv4. OwnedOsDelivery gains its network-install arm, and the assimilation program selects phases by delivery. Out of repo: gcp_iam_converge for srv15's run-scoped account, workflow regeneration, one approval-broker grant per run. Witness obligations: no edge binding means no PATCH; a disk-identity mismatch refuses; a repeat dispatch after a completed install refuses. Live negative witness: boot butch (installed, unbound) once over PXE and observe that no installer starts, including after a repeated converge. State: not started."),
+      li(text: "**PXE 3: srv15 installed.** Owner smart-crane-730. Depends on PXE 2c. The live install, the independent installation receipt (edge log, installer log, disk identity, SSH with the fleet key), and the network-install provenance recorded only after that succeeds. srv15 then joins B1-B3. State: not started."),
+    ]),
+    h3(text: "Capacity and access"),
+    ol(items: [
+      li(text: "**B1: butch inventory and enrollment.** Owner cool-lark-40. Depends on nothing; it runs in parallel with the install path. Four A2 assets with serials, slots and device readings; the catalog's 40-60 W product range kept distinct from the driver's 35-60 W settable range; the host row, endpoints .205 and .250, fan row and enrollment intent; the derived RunnerHostSpec. State: in progress."),
+      li(text: "**B2: the access template.** Owner cool-lark-40. Depends on B1. Explicit principal-to-account relationships, ssh targets derived from the host administrator and the LAN endpoint, the key roster extended, ghrunner and gunbc-runner created by the converge. State: not started."),
+      li(text: "**B3a: generic runner capacity.** Owner: child lane adhoc-aa9a1fcf-161. Depends on nothing. runner_capacity_plan becomes a fold over the eligible enrolled population. runner_capacity_realize is completed, or an existing fleet-converge path is shown to perform every operation it scaffolds and the scaffold is deleted; a planner-only completion does not count. Capacity is an observed standing per host: services healthy, registrations and labels in the org roster, resource admission resolved, a real CI job executed. Also in scope: the fleet completion census fold of section 5, and PerHostReplaceBudgetState keyed by host. State: not started."),
+      li(text: "**B3b: butch joins capacity.** Owner cool-lark-40. Depends on B1, B2 and B3a. butch runs healthy runners through the B3a fold and executes a real CI job. State: not started."),
+      li(text: "**B3c: srv15 joins capacity.** Depends on B3b and PXE 3. State: not started."),
+      li(text: "**B3d: srv1-srv4 onto gunbc-runner.** Owner cool-lark-40. Depends on B2 and B3a, and on gunbc#16252's identity flips. One host at a time with rollback, CI green after each. State: not started."),
+      li(text: "**B4a: the generic serving model.** Owner: child lane adhoc-5a8a79d2-d6a. Depends on nothing. Per-replica grants and parked verdicts, N replicas per host; CPU, memory and GPU reservations priced before the CI width, with CPU affinity distinguished from exclusive reservation, consumed for every serving host; port and bind address on the replica; the router taking a host-keyed list, with an unread replica out of service rather than refusing the router; Strata pinned by digest. State: not started."),
+      li(text: "**B4b: serving on butch.** Owner cool-lark-40. Depends on B1, B3b and B4a. butch's two engines deployed and routed; capacity reconciled after deploy to show serving does not oversubscribe the runner pool. State: not started."),
+    ]),
+    h3(text: "Dependency graph"),
+    ul(items: [
+      li(text: "Can start now: PXE 0, PXE 1, PXE 2a, B1, B3a, B4a."),
+      li(text: "PXE 2b after PXE 1. PXE 2c after PXE 0, 2a and 2b. PXE 3 after PXE 2c."),
+      li(text: "B2 after B1. B3b after B1, B2 and B3a. B3c after B3b and PXE 3. B3d after B2 and B3a, plus gunbc#16252's flips. B4b after B1, B3b and B4a."),
+    ]),
+
+    h2(text: "5. Fleet completion census"),
+    p(text: "Every physical machine is listed with its standing, so an uninstalled host, a disabled runner or an unresolved capacity admission stays visible until its outcome is established: srv1, srv2, srv3, srv4 (runner hosts, moving to gunbc-runner), srv14 (installed, joining), srv15 (installing), mtcollins1 (RAM-image runner host; eligibility to be established), mtjade1 (arrival intake; eligibility to be established), host-6ce85c (serving; excluded from CI unless decided), and the Spark units srv9-srv12 (BMC-less; eligibility to be established). The census is a fold over the enrolled and identified population, not a hand list, and lands with B3."),
+
+    h2(text: "6. Acceptance"),
+    p(text: "Done means a recorded live run or readback per item. Merged PRs, green witnesses or a row saying a host is enrolled are not enough."),
+    ul(items: [
+      li(text: "**srv15 installed by workflow.** A managed_host_network_install run on main boots srv15 over PXE. The edge-log receipt shows grub/install/9c:6b:00:e7:ca:63.cfg, the kernel and initrd, the ISO and its seed. srv15 answers SSH as ubuntu with the fleet key, and its installer log reads ds=nocloud-net from srv4 on the pinned disk. Its binding is withdrawn by that run. A second dispatch refuses before any BMC write, and so does a dispatch for a host with no binding. An installed, unbound client (butch) booted over PXE starts no installer."),
+      li(text: "**Leaves deleted.** The srv3 boot-once, the mtjade1-only arrival row, the mtcollins1-only boot account and srv13 are gone, with the historical observations' provenance kept."),
+      li(text: "**butch and srv15 in the fleet.** fleet-converge plan and apply run green with each as subject; fleet_health_check passes with their fan rows; authorized_keys equals the roster's relationships for each principal; host keys are enrolled; the BMC fan converge works for each."),
+      li(text: "**Runner capacity.** butch's and srv15's runners appear in the org runner roster with their labels, are healthy, and have each run a real CI job. Width is derived after serving reservations. srv1-srv4 run as gunbc-runner with CI green after each host's cutover. The fleet completion census has no machine without a standing."),
+      li(text: "**butch GPUs and serving.** Four A2 device readings are recorded; after a reboot each UUID reads back a 35 W cap (MET 2026-11-10, artifacts/fleet/butch-serving-2026-11-10: controlled reboot, 3 units active, 4 GPUs at 35.00 W, 4/4 through the router); a request through srv1's OpenResty reaches both engines (18081, 18082); the router rows carry butch with a recorded throughput reading; the post-deploy capacity reconciliation shows no oversubscription."),
+    ]),
+
+    h2(text: "7. Decided: no required CI for the PXE witnesses"),
+    p(text: "The operator ruled on 2026-11-10 that the PXE witnesses do not join required CI now. Nothing on the required path evaluates a witness (the declared drop gunbc.rung_drop v1_required_lanes_withdrawn), and the job roster and budgets stay closed to growth (gunbc.design_ruling job_roster_closed_to_growth, ci_job_budgets_closed_to_growth). Each lane runs the witnesses it touches with claim_batch and records the result in its PR."),
+
+    h2(text: "8. Out-of-repo actions"),
+    ul(items: [
+      li(text: "Reserve 192.168.1.205 for butch on the router (operator)."),
+      li(text: "fleet-converge site_pxe_edge_converge on srv4 after PXE 0, then the readback."),
+      li(text: "gcp_iam_converge for srv15's run-scoped boot account after PXE 2 (approved 2026-11-10)."),
+      li(text: "One approval-broker grant per boot run."),
+    ]),
+
+    h2(text: "9. Risks"),
+    ul(items: [
+      li(text: "An install binding wipes the disk of any client that reaches it. PXE 0 makes withdrawal remove the files. PXE 2 binds each install to a disk identity read in the same run, and withdraws the binding in the same workflow."),
+      li(text: "srv13 and srv15 have two credential histories for one controller (2026-10-07 forced rotation, 2026-10-29 in-band rotation). The route pins secret version v1 and refuses if the managed probe fails."),
+      li(text: "A Redfish boot override that is not Once and UEFI, or not read back, is not trusted. Legacy is a silent no-op on arm64."),
+      li(text: "Migrating gunbc-runner and renaming the same host in one window doubles the rollback surface. Each host needs a rollback witness over both changes and a separately verified management path before it is drained."),
+    ]),
+  ]
+}
+
+data new_server_bringup_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "new-server-bringup",
+  title: "New server bring-up: one machine lifecycle, PXE-first, to verified runner capacity",
+  body: new_server_bringup_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "srv15 was installed over PXE by managed_host_network_install under a one-shot authorization and its binding withdrawn by that run; butch and srv15 are enrolled runner hosts with healthy runners that have each run a real CI job; srv1-srv4 run as gunbc-runner; runner_capacity_plan is a fold over the eligible population and runner_capacity_realize is no scaffold; the fleet completion census leaves no machine without a standing; butch serves both Strata engines through the router; and the srv3/mtcollins1/mtjade1 boot and intake leaves are deleted in favor of host-generic routes.") },
+}
