@@ -650,7 +650,7 @@ fn cecf_mode_target_node() -> Optional<Node> {
   match cecf_check(src: cecf_mode_call_source) {
     Accepted { value: t, diagnostics: _ } => match cecf_cast_node(t: t) {
       Absent => optional_absent()
-      Present { value: cast } => cast_target_optional(operand_index: 1, node: cast)
+      Present { value: cast } => cast_target_optional(n: cast)
     }
     Rejected { diagnostics: _ } => optional_absent()
   }
