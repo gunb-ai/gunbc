@@ -11,9 +11,7 @@
 // the plan, not by a test.
 
 module test.claim.tailscale_machine_name_converge_witness
-import std.algebra { string_contains }
 import std.optional { Absent, Present }
-import v2.std.text { string_join }
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.exec.command { argv_words }
 import extdeps.sudo.elevation { argv_command_is_sudo_elevated, sudo_elevate_argv, sudo_elevate_command }
@@ -376,10 +374,7 @@ test fn the_leg_words_are_host_free_and_the_route_comes_from_the_reach_model() -
         SshTargetResolved { target: other } =>
           ssh_target_destination(target: one) != ssh_target_destination(target: other)
             && one.principal == executor_bootstrap_principal.login
-            && !string_contains(
-                 s: string_join(fields: argv_words(command: tailscale_status_json_command()), separator: " "),
-                 pattern: "srv"
-               )
+            && argv_words(command: tailscale_status_json_command()) == ["tailscale", "status", "--json"]
         _ => false
       }
     _ => false

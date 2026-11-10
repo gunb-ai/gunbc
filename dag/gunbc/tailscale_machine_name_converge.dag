@@ -418,7 +418,7 @@ type TailscaleMachineNameRunRefusal
   | SetRefused { detail: String }
   | SetFailed { exit_code: Int, detail: String }
   | ReadBackContradicts { requested: NonEmptyStr, reported: NonEmptyStr, set_stderr: String }
-  | ReadBackRefused { cause: TailscaleMachineNamePlanRefusal }
+  | ReadBackUnreadable { cause: TailscaleMachineNamePlanRefusal }
 
 type TailscaleMachineNameOutcome
   = NameAlreadyCurrent { host: HostIdentity, name: NonEmptyStr }
@@ -442,7 +442,7 @@ fn tailscale_machine_name_run_refusal_wire(cause: TailscaleMachineNameRunRefusal
         ],
         ""
       )
-    ReadBackRefused { cause: cause } =>
+    ReadBackUnreadable { cause: cause } =>
       join(["refused after the write: the read-back status read is unusable: ",
         tailscale_machine_name_plan_refusal_wire(cause: cause),
         " -- the name WAS requested, and its state on the tailnet is now unknown to this run"], "")
@@ -524,7 +524,7 @@ fn converge_tailscale_machine_name(
                   },
                 }
               ReadBackRefused { cause: cause } =>
-                RunRefused { host: host, cause: ReadBackRefused { cause: cause } }
+                RunRefused { host: host, cause: ReadBackUnreadable { cause: cause } }
             }
         }
       }
