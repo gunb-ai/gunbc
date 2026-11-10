@@ -819,3 +819,68 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
         .join()
         .unwrap();
 }
+
+// ---------------------------------------------------------------------------------------------
+// THE LOADED-INDEX KEYED-READ ARM (the srv1 class). The ingress host evaluates a fixed inventory
+// of `gunbc.http_ingress` folds BY NAME -- the names exist only in host source, so before the
+// runtime-reader registry no demanded edge could name them, and the demanded grain #16156
+// introduced realized none: the srv1 lab serve unit crash-looped refusing
+// `http_ingress_handler_identity` ("no declaration named ... in this execution's loaded index")
+// while the same unit served at main 4aad92f8. The reader's key set is now DECLARED ONCE in .dag
+// (data http_ingress_host_read_folds); this arm's invariant: for the serve entry, the row, its
+// reader fold, and every fold the row lists are in `realized`. RED at the crash-loop head
+// 6bc72654; GREEN once the registry (runtime_key_readers, loaded_index_keyed_call) seeds them.
+
+#[test]
+fn serve_entry_realizes_the_host_declared_key_row() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, _intern, si, modules, _graph) =
+                graph_from("dag/gunbc/roadmap/roadmap_ingress.dag");
+            let demand = grain_demand(&modules, &["roadmap_ingress"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let declared: Vec<&str> = vec![
+                "http_ingress_host_read_folds",
+                "http_ingress_host_read_folds_reader",
+                "http_ingress_arguments",
+                "http_ingress_announcement",
+                "http_ingress_body_limit_bytes",
+                "http_ingress_budget_refused",
+                "http_ingress_cpu_limit_ms",
+                "http_ingress_fact_plan",
+                "http_ingress_frame",
+                "http_ingress_handler_error",
+                "http_ingress_handler_identity",
+                "http_ingress_head_limit_bytes",
+                "http_ingress_listener_refusal",
+                "http_ingress_not_a_response",
+                "http_ingress_outgoing",
+                "http_ingress_pre_evaluation_routes",
+                "http_ingress_read_refused",
+                "http_ingress_read_timeout_ms",
+                "http_ingress_wall_limit_ms",
+                "http_ingress_wire_head",
+            ];
+            let missing: Vec<&str> = declared
+                .iter()
+                .copied()
+                .filter(|n| !realization.realized.contains_key(*n))
+                .collect();
+            eprintln!(
+                "LOADED_INDEX_KEYED_CALL entry=roadmap_ingress missing={:?} total={}",
+                missing,
+                declared.len()
+            );
+            assert!(
+                missing.is_empty(),
+                "the host's declared key row (gunbc.http_ingress http_ingress_host_read_folds), its reader fold, and every fold the row lists must be realized for the serve entry: missing {missing:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
