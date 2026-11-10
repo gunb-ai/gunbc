@@ -104,3 +104,7 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - UNOWNED: the 398-line sweep list is a FLOOR (the sweep hit a 38-min timeout while emitting; ask quick-newt-573 for the tail). The list is form-blind, so triage before budgeting.
 - NOT CLEARED: HttpStatus / Milliseconds casts were never observed red, because the files carrying them do not load.
 - RISK for #16224: if the ARM-REFINE pre-empts assignment conformance on the same field, fierce-lark's 2 TypeMismatch rows drop to 0. The identity pin a_value_already_on_the_carrier_casts_by_identity must stay ADMITTED.
+
+## tidy-otter-373 handoff (2026-11-10, #16212 merged as 06959167)
+- Concern row branch_match_arm_closure_declared_return_not_admitted stays OPEN. Blocker (i): typed arm parameters do not parse (grammar). Blocker (iii): a wholly unannotated arm closure `fn(q) { p }` still settles open. Both UNOWNED.
+- TRIGGER SATISFIED, UNOWNED: a return-annotated arm closure now reaches the emitter, so the fixture for the emitter's branch/match tail-closure position (move / Box::new) is writable. This may be the emitter third boundary already on this ledger; check before dispatching.
