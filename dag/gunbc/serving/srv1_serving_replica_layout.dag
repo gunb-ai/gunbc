@@ -4,7 +4,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_and_then, bash_build_or_else,
   bash_build_seq_from_stmts, bash_build_function_def, bash_build_exit, bash_build_test_bracket,
   bash_build_brace_group_from_stmts, bash_build_with_redir_stdout_append_file,
-  bash_build_with_redir_stdout_to_stderr, bash_build_with_redir_from_file,
+  bash_build_with_redir_stdout_to_stderr, bash_build_with_redir_stderr_to_stdout,
+  bash_build_with_redir_from_file,
   bash_build_word_bare, bash_build_word_var_bare, bash_build_word_concat_from_nodes,
   bash_build_assign,
   bash_build_word_double_quoted, bash_build_word_cmdsubst,
@@ -1172,10 +1173,25 @@ fn srv1_bash_bare(text: String) -> Node {
 // `$D/<suffix>`, the way the installed artifact writes it: a bare expansion and the path
 // under it, joined by the word-concat production, with no quotes anywhere. Not
 // bash_build_word_var: that one is double-quoted, and `>> $D/events.log` is not.
+// INERT TEXT, NOT A QUOTED LITERAL. A `lit` word is text handed to the shell already quoted --
+// the serializer spells it `'text'`, which is right for a word that must arrive as ONE argv
+// entry and wrong for text that must read exactly as written. Both uses here are the second:
+// the suffix after `$D` must read `$D/events.log`, not `$D'/events.log'`, and the run of three
+// spaces between `-nodes` and `-days` is the installed artifact's own spacing, which a quoted
+// literal would freeze into a single argument. `quoted_text` is the lane's kind for inert text:
+// emitted verbatim, and the builder refuses it when it carries a character bash would expand
+// (`$`, backquote, double quote, backslash, bang) -- gunbc.design_argument::fail_closed.
+fn srv1_bash_inert(text: String) -> Node {
+  match bash_build_quoted_text(text: text) {
+    Present { value: n } => n
+    Absent => srv1_bash_poison_node()
+  }
+}
+
 fn srv1_bash_d_suffix(suffix: String) -> Node {
   match bash_build_word_var_bare(name: "D") {
     Present { value: d } =>
-      bash_build_word_concat_from_nodes(parts: [d, bash_build_word_lit(text: concat("/", suffix))])
+      bash_build_word_concat_from_nodes(parts: [d, srv1_bash_inert(text: concat("/", suffix))])
     Absent => srv1_bash_poison_node()
   }
 }
@@ -1234,7 +1250,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
             srv1_bash_bare(text: "echo"),
             srv1_bash_quoted(parts: [
               event_stamp,
-              bash_build_word_lit(text: " "),
+              srv1_bash_inert(text: " "),
               srv1_bash_unwrap(built: bash_build_word_positional_all(which: "*"))
             ])
           ]),
@@ -1260,7 +1276,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
     // The space run before `-days` is a line-continuation remnant from the operator's
     // script and it is in the bytes the host carries. It is carried here by the one word
     // that holds it, not by a join that would have to lie about being a single space.
-    bash_build_word_lit(text: "-nodes   -days"),
+    srv1_bash_inert(text: "-nodes   -days"),
     srv1_bash_bare(text: days),
     srv1_bash_bare(text: "-subj"),
     srv1_bash_bare(text: concat("/CN=", shape.tls_subject_common_name as String)),
@@ -1274,7 +1290,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
       left: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.key_path)]),
       right: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.cert_path)])
     ),
-    right: bash_build_with_redir_stdout_to_stderr(
+    right: bash_build_with_redir_stderr_to_stdout(
       inner: bash_build_with_redir_stdout_append_file(
         inner: mint_tls,
         path: srv1_bash_d_suffix(suffix: "events.log")
@@ -1285,12 +1301,12 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
   let start_event = bash_build_command_from_word_nodes(words: [
     srv1_bash_bare(text: "ev"),
     srv1_bash_quoted(parts: [
-      bash_build_word_lit(text: concat(
+      srv1_bash_inert(text: concat(
         concat(concat(concat(concat("START srv1 gpu", to_string(replica.index)), " "), gpu_uuid), " (driver "),
         ""
       )),
       driver_probe,
-      bash_build_word_lit(text: concat(
+      srv1_bash_inert(text: concat(
         concat(concat(concat(concat(", TP", to_string(config.tensor_parallel_size)), ", cache ram-disk, L1 "), l1_gib), "G, L2 "),
         concat(l2_gib, "G, disk-first, TLS)")
       ))
@@ -1302,7 +1318,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
     right: bash_build_brace_group_from_stmts(stmts: [
       bash_build_command_from_word_nodes(words: [
         srv1_bash_bare(text: "ev"),
-        srv1_bash_quoted(parts: [bash_build_word_lit(text: concat("FATAL rendered engine argv file missing: ", args_path))])
+        srv1_bash_quoted(parts: [srv1_bash_inert(text: concat("FATAL rendered engine argv file missing: ", args_path))])
       ]),
       bash_build_exit(code: "3")
     ])
@@ -1315,7 +1331,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
     ]),
     path: srv1_bash_bare(text: args_path)
   )
-  let serve = bash_build_with_redir_stdout_to_stderr(
+  let serve = bash_build_with_redir_stderr_to_stdout(
     inner: bash_build_with_redir_stdout_append_file(
       inner: bash_build_command_from_word_nodes(words: [
         srv1_bash_bare(text: "exec"),

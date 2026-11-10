@@ -748,9 +748,16 @@ fn bash_fold_serialize_andor_operand(stmt: Node, group_binding: Symbol) -> Outco
   }
 }
 
+// ONLY THE RIGHT OPERAND CAN RE-ASSOCIATE. The Bash Reference Manual's "Lists of Commands"
+// puts `&&` and `||` at ONE precedence level, left-associative: `a && b || c` reads back as
+// `or_else(and_then(a, b), c)` and `a || b && c` as `and_then(or_else(a, b), c)`. So the left
+// operand of either operator re-reads as itself and never needs parentheses, while a right
+// operand that is itself an and/or re-reads as the PARENT's operator and does. Grouping the
+// left operand too -- what this did -- emitted `( [ -s a ] && [ -s b ] ) || openssl ...` for
+// the container command's TLS guard, where the installed artifact carries no parentheses.
 fn bash_fold_serialize_andor_pair(left: Node, right: Node, op: String, group_binding: Symbol) -> Outcome<String> {
   bind_outcome(
-    o: bash_fold_serialize_andor_operand(stmt: left, group_binding: group_binding),
+    o: bash_fold_serialize_node(stmt: left),
     f: fn(left_spelling) {
       bind_outcome(
         o: bash_fold_serialize_andor_operand(stmt: right, group_binding: group_binding),

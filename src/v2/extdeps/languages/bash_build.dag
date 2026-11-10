@@ -580,11 +580,24 @@ fn bash_build_command_with_words(words: List<Node>) -> Node {
   bash_build_command(words: bash_build_command_words_from_nodes(words: words))
 }
 
+// THE BRACKETS ARE INERT TEXT, NOT QUOTED LITERALS. `[` and `]` are the test command's own
+// spelling, and bash reads them UNQUOTED: `[ -s $D/tls.key ]`. Carried as `lit` words the
+// serializer quoted them and the render came out `'[' -s $D'/tls.key' ']'` -- a spelling that
+// happens to still run, but not the one any script is written in and not the bytes the
+// installed launcher holds. Inert text is what they are: emitted verbatim, and refused by the
+// builder if they ever carry a character bash would expand.
+fn bash_build_test_bracket_bracket(text: String) -> Node {
+  match bash_build_quoted_text(text: text) {
+    Present { value: n } => n
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_bracket_bracket, value: text)
+  }
+}
+
 fn bash_build_test_bracket(words: List<Node>) -> Node {
   bash_build_command_with_words(
     words: concat(
-      [bash_build_word_lit(text: "[")],
-      concat(words, [bash_build_word_lit(text: "]")])
+      [bash_build_test_bracket_bracket(text: "[")],
+      concat(words, [bash_build_test_bracket_bracket(text: "]")])
     )
   )
 }
