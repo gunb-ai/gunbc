@@ -8756,6 +8756,62 @@ pub fn run_regen_round_cost(
     // re-exec'd image takes the carried value. The liveness model supervises that child, so it is
     // loaded first.
     let liveness_model = SupervisedSubjectModel::load(source_roots)?;
+
+    // THE SCOPE IS DECIDED BEFORE THE TREE IS TOUCHED (gunbc.plans.read_set_convergence P2). It is
+    // asked of a child (`emission_scope_in_child`; the index dies there), or, in the re-exec'd image of
+    // the same round, read from the receipt that child wrote. A scope that selects no committed mirror
+    // is a SUCCESSFUL ROUND THAT DOES NO WORK: it returns here, before the base-mirror bootstrap, any
+    // journal or any install, so there is nothing to restore and no candidate is fabricated. The
+    // generation's own NoAffectedMirrors receipt describes the same state; reaching it from inside
+    // the convergence loop would read as a failed first generation.
+    let scope = if !affected_scope {
+        RegenEmissionScope::WholePopulation
+    } else if handoff_in.is_some() {
+        carried_emission_scope(&workspace)?
+    } else {
+        emission_scope_in_child(&workspace, source_roots, &liveness_model)?
+    };
+    if let RegenEmissionScope::Affected { .. } = &scope {
+        let committed = committed_generated_basenames(&stage0_src)?;
+        if scope_selection(&scope, &committed)?.is_empty() {
+            let base_mirror_commit = if base_mirror {
+                std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
+                    .ok()
+                    .map(|c| c.trim().to_string())
+                    .filter(|c| !c.is_empty())
+            } else {
+                None
+            };
+            let rendered = format!(
+                "regen-round-cost: producer=claim_executor --regen-round-cost host={host}\n\
+                 regen-round-cost: scope={} selected=0 of committed={}\n\
+                 regen-round-cost: NoAffectedMirrors -- the change reaches no committed mirror; \
+                 nothing was emitted, installed or rebuilt, and the tree is untouched\n{}",
+                scope.line(),
+                committed.len(),
+                base_mirror_commit
+                    .as_ref()
+                    .map(|c| format!(
+                        "regen-round-cost: base_mirror_commit={c} (not seeded: no work)\n"
+                    ))
+                    .unwrap_or_default()
+            );
+            let receipt_path = workspace.join(receipt_rel);
+            if let Some(parent) = receipt_path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("create {}: {e}", parent.display()))?;
+            }
+            fs::write(&receipt_path, &rendered)
+                .map_err(|e| format!("write {}: {e}", receipt_path.display()))?;
+            return Ok(RegenRoundCostOutcome {
+                rendered,
+                receipt_path,
+                round_failures: Vec::new(),
+                base_mirror_commit,
+            });
+        }
+    }
+
     let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
         .as_ref()
         .and_then(|carried| carried.round_subject.clone());
@@ -8968,11 +9024,7 @@ pub fn run_regen_round_cost(
 
     // The surface roles are NOT computed here. They are corpus-derived generation work
     // (`ConvergenceSurfaceRoles`), carried by generation 0's receipt and bound once it is read.
-    let scope = if affected_scope {
-        emission_scope_in_child(&workspace, source_roots, &liveness_model)?
-    } else {
-        RegenEmissionScope::WholePopulation
-    };
+    // `scope` was decided above, before the tree was touched.
     // GENERATION-STATE LIFETIME ISOLATION (`v2.workflow.regen_convergence_transaction`
     // `regen_admit_generation_begin`): at most one generation's state is resident at a time. Every
     // generation, THIS FIRST ONE INCLUDED, runs as its own rebuilt-seed child, and process exit is
