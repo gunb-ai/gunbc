@@ -33,6 +33,7 @@ import gunbc.host.host_layout { gunbc_managed_compile_pool_slice }
 import product.host_identity { HostIdentity }
 import std.types { NonEmptyStr, String }
 import gunbc.fleet.fleet_intent { fleet_intent_execution_surface }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import extdeps.toolchain.types { ToolchainCapability }
 
 // THE DOCKER PREREQ ROW IS RETIRED, NOT RE-POINTED. `runner_host_docker_provision_script` was deleted by
