@@ -19,13 +19,11 @@ import extdeps.languages.yaml.types { YamlValue }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
 import extdeps.storage.device_identification {
-  DeviceIdentificationToken,
   DeviceIdentificationRefusal,
   DeviceIdentificationRefused,
   DeviceIdentificationEmpty,
   DeviceIdentificationCharacterOutsideTheRepertoire,
   DeviceIdentificationEdgeWhitespace,
-  ReportedDeviceIdentity,
   reported_device_identity_serial,
   reported_device_identity_model,
   device_identification_token_text,
@@ -77,21 +75,21 @@ import gunbc.provisioning.install_target_disk {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE RUN'S DECISION INSTANT: 2026-11-10T00:00:00Z, the instant the site's install requests are authorized at.
-data decided: EpochMs = EpochMs(1794268800000)
+data decided: EpochMs = 1794268800000
 
 // THE FLEET'S STANDING WINDOW: thirty days, the value
 // gunbc.fleet.machine_target_disk_observations site_pxe_edge_disk_identity_admission_window carries. Claims about
 // staleness use it rather than a private number so a change to the fleet's rule shows up here.
-data window: Milliseconds = Milliseconds(2592000000)
+data window: Milliseconds = 2592000000
 
 // THE SAME INSTANT, MOVED BY WHAT THE CLAIM NEEDS. Stated as instants and not as arithmetic on a brand, because
 // the claims are about where a reading sits relative to the window and a reader should be able to see that in
 // the number: the window is 2,592,000,000 ms (30 days) before `decided`.
-data one_ms_after_decision: EpochMs = EpochMs(1794268800001)
+data one_ms_after_decision: EpochMs = 1794268800001
 
-data exactly_the_window_ago: EpochMs = EpochMs(1791676800000)
+data exactly_the_window_ago: EpochMs = 1791676800000
 
-data one_ms_past_the_window: EpochMs = EpochMs(1791676799999)
+data one_ms_past_the_window: EpochMs = 1791676799999
 
 // WHAT LSBL PRINTED FOR srv15's NVMe, in artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt. The
 // witness states the identity the same way the capture does, so the claims below are about the carrier's rules
@@ -105,12 +103,10 @@ fn reading(serial: String, model: Optional<String>, source: DiskIdentitySource, 
   DiskReported {
     host: operator_host_srv15,
     device: "nvme0n1" as NonEmptyStr,
-    identity: ReportedDeviceIdentity {
-      serial: DeviceIdentificationToken { text: serial as NonEmptyStr },
-      model: match model {
-        Absent => Absent
-        Present { value: m } => Present { value: DeviceIdentificationToken { text: m as NonEmptyStr } }
-      },
+    reported_serial: serial as NonEmptyStr,
+    reported_model: match model {
+      Absent => Absent
+      Present { value: m } => Present { value: m as NonEmptyStr }
     },
     source: source,
     captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
@@ -312,7 +308,7 @@ test fn a_reading_older_than_the_window_refuses_the_install() -> Bool {
     && match withheld_cause(reading: too_old) {
       Absent => false
       Present { value: cause } => match cause {
-        TargetDiskReadingStale { host: _, read_at: r, decided_at: d, deadline: dl } => r == one_ms_past_the_window && d == decided && dl == exactly_the_window_ago
+        TargetDiskReadingStale { host: _, read_at: r, decided_at: d, deadline: dl } => r == one_ms_past_the_window && d == decided && dl == 1794268799999
         _ => false
       }
     }

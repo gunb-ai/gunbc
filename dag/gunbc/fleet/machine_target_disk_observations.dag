@@ -29,7 +29,6 @@ import std.list { first_where }
 import std.optional { Optional, Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
-import extdeps.storage.device_identification { DeviceIdentificationToken, ReportedDeviceIdentity }
 import gunbc.provisioning.install_target_disk {
   TargetDiskReading,
   DiskIdentitySource,
@@ -43,7 +42,7 @@ import gunbc.provisioning.install_target_disk {
 
 // THE INSTANT THE srv15 lsblk READING IS TAKEN TO HAVE BEEN TAKEN. The capture's own header is
 // "srv15-inband-recovery-2026-10-29"; the date at 00:00Z is the earliest instant that header supports.
-data srv15_lsblk_capture_instant: EpochMs = EpochMs(1793232000000)
+data srv15_lsblk_capture_instant: EpochMs = 1793232000000
 
 // THE FLEET'S DISK READINGS. Two hosts, two rows, one type.
 //
@@ -78,10 +77,12 @@ data machine_target_disk_observations: List<TargetDiskReading> = [
   DiskReported {
     host: operator_host_srv15,
     device: "nvme0n1" as NonEmptyStr,
-    identity: ReportedDeviceIdentity {
-      serial: DeviceIdentificationToken { text: "25466Q801557" as NonEmptyStr },
-      model: Present { value: DeviceIdentificationToken { text: "WD Green SN350 1TB 2G0C" as NonEmptyStr } },
-    },
+    // The strings lsblk printed, in its SERIAL and MODEL columns, and nothing has checked them yet — that is
+    // admit_install_target_disk's job at the moment an install is authorized. A row that carried an already
+    // checked token would make the check somebody's silent assumption, and the capture is evidence, not a
+    // permission.
+    reported_serial: "25466Q801557" as NonEmptyStr,
+    reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
     source: LsblkBlockReport,
     captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
     read_at: srv15_lsblk_capture_instant,
@@ -110,4 +111,4 @@ fn target_disk_reading_for(host: HostIdentity) -> TargetDiskReading {
 // touching the model — PXE 2c reads the disk in the same run as the boot and can pass a window of minutes, and
 // then a reading this old would be refused. Measured against the instant above, srv15's row sits at twelve days,
 // inside the window; a reading from before 2026-10-11T00:00Z is outside it.
-data site_pxe_edge_disk_identity_admission_window: Milliseconds = Milliseconds(2592000000)
+data site_pxe_edge_disk_identity_admission_window: Milliseconds = 2592000000

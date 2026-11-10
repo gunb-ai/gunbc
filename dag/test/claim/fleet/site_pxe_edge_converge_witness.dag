@@ -22,7 +22,6 @@ import gunbc.provisioning.install_target_disk {
   TargetDiskNeverRead,
   TargetDiskReadingStale,
 }
-import extdeps.storage.device_identification { DeviceIdentificationToken, ReportedDeviceIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
 import product.host_identity { HostIdentity }
 import extdeps.os.ubuntu_autoinstall {
@@ -1145,10 +1144,8 @@ fn disk_report(host: HostIdentity, serial: String, model: String, read_at: Epoch
   DiskReported {
     host: host,
     device: "nvme0n1" as NonEmptyStr,
-    identity: ReportedDeviceIdentity {
-      serial: DeviceIdentificationToken { text: serial as NonEmptyStr },
-      model: Present { value: DeviceIdentificationToken { text: model as NonEmptyStr } },
-    },
+    reported_serial: serial as NonEmptyStr,
+    reported_model: Present { value: model as NonEmptyStr },
     source: LsblkBlockReport,
     captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
     read_at: read_at,
@@ -1164,10 +1161,10 @@ data witness_srv15_disk_serial: String = "25466Q801557"
 
 data witness_srv15_disk_model: String = "WD Green SN350 1TB 2G0C"
 
-data witness_srv15_disk_read_at: EpochMs = EpochMs(1793232000000)
+data witness_srv15_disk_read_at: EpochMs = 1793232000000
 
 // A READING PAST THE FLEET'S WINDOW: 31 days before the decision, where the window is 30.
-data witness_stale_read_at: EpochMs = EpochMs(1791590400000)
+data witness_stale_read_at: EpochMs = 1791590400000
 
 // THE TWO REQUESTS THE FLEET ACTUALLY MAKES, built from the fleet's own rows rather than re-typed here — a claim
 // that re-typed the rows would still pass after the rows changed, which is the failure this file exists to catch.

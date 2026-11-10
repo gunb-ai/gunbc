@@ -64,6 +64,18 @@ fn device_identification_is_space(c: Char) -> Bool {
   device_identification_char_in(alphabet: device_identification_space_chars, c: c)
 }
 
+// IS THIS CHARACTER ONE THESE FIELDS CAN CARRY? The alphabet plus the space: a model name is words
+// ("WD Green SN350 1TB 2G0C" is what lsblk printed for srv15's NVMe), so the space is in the repertoire —
+// it is only kept away from either EDGE, which is the check above. Test the alphabet alone and every real
+// model name is refused, which is how a rule meant to keep wildcards out ends up keeping disks out.
+fn device_identification_char_admissible(c: Char) -> Bool {
+  if device_identification_char_in(alphabet: device_identification_chars, c: c) {
+    true
+  } else {
+    device_identification_is_space(c: c)
+  }
+}
+
 // A TOKEN IS A CARRIER, NOT A STRING THAT HAPPENS TO PASS. `DeviceIdentificationToken` is minted only by
 // admit_device_identification_token below, so a consumer that takes it has taken a value that cannot be a
 // glob, cannot be padded, and cannot steer the document it is rendered into.
@@ -91,7 +103,7 @@ fn admit_device_identification_token(spelling: String) -> DeviceIdentificationAd
       } else if device_identification_last_is_space(rest: rest) {
         DeviceIdentificationRefused { spelling: spelling, cause: DeviceIdentificationEdgeWhitespace }
       } else if for_all(xs: unicode_scalar_unfold(s: spelling), predicate: fn(c) {
-        device_identification_char_in(alphabet: device_identification_chars, c: c)
+        device_identification_char_admissible(c: c)
       }) {
         DeviceIdentificationAdmitted { token: DeviceIdentificationToken { text: spelling as NonEmptyStr } }
       } else {

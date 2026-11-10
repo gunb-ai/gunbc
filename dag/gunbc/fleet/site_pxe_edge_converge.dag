@@ -519,7 +519,7 @@ data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
 // instant below is this model run's authorization, and the witnesses' staleness claims are stated against it:
 // a reading older than the window before this instant is refused, so an authorization never rests on a disk
 // someone looked at some unquoted time ago.
-data site_pxe_edge_install_decision_at: EpochMs = EpochMs(1794268800000)
+data site_pxe_edge_install_decision_at: EpochMs = 1794268800000
 
 data srv14_install_client: MacParseResult = parse_mac_address(text: srv14_host_nic_mac as String)
 

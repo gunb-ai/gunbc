@@ -38,7 +38,6 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.storage.device_identification {
   ReportedDeviceIdentity,
-  ReportedDeviceIdentityAdmission,
   ReportedDeviceIdentityAdmitted,
   ReportedDeviceIdentityRefused,
   DeviceIdentificationRefusal,
@@ -98,7 +97,15 @@ type TargetDiskReading
   = DiskReported {
       host: HostIdentity,
       device: NonEmptyStr,
-      identity: ReportedDeviceIdentity,
+      // WHAT THE READER PRINTED, which is not yet an identity. The serial and model are the strings the tool
+      // emitted, because a reading is data someone recorded and an identity is something the admission below
+      // decided. Had this field been the admitted token, a capture with a padded or wildcarded serial could not
+      // have been written down at all — and "the tool printed something we cannot use" is a state the model has
+      // to be able to name, because it is the state the operator is told about. It is also why a reading can be
+      // authored outside this module while a carrier cannot: the reading is the evidence, the carrier is the
+      // authorization.
+      reported_serial: NonEmptyStr,
+      reported_model: Optional<NonEmptyStr>,
       source: DiskIdentitySource,
       captured_in: NonEmptyStr,
       read_at: EpochMs,
@@ -193,11 +200,18 @@ fn admit_install_target_disk(
     }
     DiskReported {
       device: device,
-      identity: identity,
+      reported_serial: reported_serial,
+      reported_model: reported_model,
       source: source,
       captured_in: _,
       read_at: read_at,
-    } => match identity_shape_admission(identity: identity) {
+    } => match admit_reported_device_identity(
+      serial: reported_serial as String,
+      model: match reported_model {
+        Absent => Absent
+        Present { value: text } => Present { value: text as String }
+      },
+    ) {
       ReportedDeviceIdentityRefused { cause: cause } => InstallTargetDiskWithheld {
         host: host,
         cause: TargetDiskIdentityUnusable { host: host, source: source, cause: cause },
@@ -229,19 +243,6 @@ fn admit_install_target_disk(
         }
     }
   }
-}
-
-// The identity is admitted by ITS shape, at admission time rather than at whatever moment a row was
-// written: a row cannot carry an already-checked token without the check being someone else's assumption,
-// and the shape rule belongs to the field's owner (extdeps.storage.device_identification).
-fn identity_shape_admission(identity: ReportedDeviceIdentity) -> ReportedDeviceIdentityAdmission {
-  admit_reported_device_identity(
-    serial: device_identification_token_text(token: identity.serial) as String,
-    model: match identity.model {
-      Absent => Absent
-      Present { value: token } => Present { value: device_identification_token_text(token: token) as String }
-    },
-  )
 }
 
 // THE PIN, AND ONLY THE PIN. The match keys are built FROM the carrier and nothing else: serial first
