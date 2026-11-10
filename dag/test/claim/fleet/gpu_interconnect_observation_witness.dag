@@ -31,7 +31,7 @@ import gunbc.fleet.gpu_interconnect_observation {
   srv1_gpu_pair_topology_readings, srv1_gpu_peer_access_readings, srv1_collective_transport_readings, CollectiveTransportReading,
   srv1_collective_transport_readings_unloaded_2026_11_09,
   srv1_nccl_arm_default, srv1_nccl_arm_p2p_disabled,
-  srv1_collective_read_obligation,
+  srv1_collective_read_obligation, srv1_collective_read_executed_2026_11_09,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -209,8 +209,8 @@ test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
     && disabled_arm.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
     && default_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
     && !disabled_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
-    && string_contains(s: srv1_collective_read_obligation as String, pattern: "lil-flash-next")
-    && string_contains(s: srv1_collective_read_obligation as String, pattern: "re-run")
+    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "lil-flash-next")
+    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "re-run")
 }
 
 // THE TWO RUNS NAME THEIR ARMS WITH THE SAME VALUES. This is the control that caught a real defect in the rows
@@ -269,9 +269,9 @@ test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
     && arms_within(list: unloaded, at_bytes: byte_size(64 * 1024 * 1024), numerator: 8, denominator: 10)
     // the obligation now names the run it was executed in, the confounder that had to be removed, and the
     // fact that it was the re-run the earlier pair asked for
-    && string_contains(s: srv1_collective_read_obligation as String, pattern: "lil-flash-next")
-    && string_contains(s: srv1_collective_read_obligation as String, pattern: "re-run")
-    && string_contains(s: srv1_collective_read_obligation as String, pattern: "EXECUTED")
+    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "lil-flash-next")
+    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "re-run")
+    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "EXECUTED")
 }
 
 // A NEGATIVE FOR THE NEGATIVE: if the unloaded rows were filled from the loaded ones, or if either arm had
@@ -289,6 +289,29 @@ test fn the_unloaded_rows_are_not_the_loaded_rows_relabelled() -> Bool {
       (c.env_arm as String) != (d.env_arm as String)
       && message_bytes_count(c) == message_bytes_count(d)
       && microsecond_count(m: elapsed_of(c: c)) * 4 >= microsecond_count(m: elapsed_of(c: d))))
+}
+
+// AN OPEN TASK AND ITS COMPLETION RECORD DO NOT SHARE A ROW. The unloaded re-run discharged one obligation, and
+// the tempting edit was to overwrite the obligation string with the record of the run: same name, opposite
+// meaning, no type change. Anything reading the row by its name would get a closed task where an open one was
+// promised -- the meaning fork DESIGN's single-authority rule forbids ("holding a name constant may not silently
+// change obligations", review 92817). The record got its own row and the obligation keeps only what is STILL
+// owed. This claim is what makes the split stick: no completion word in the obligation, the three open controls
+// named there, and the run window plus the rows it summarises carried by the record.
+test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
+  let obligation = srv1_collective_read_obligation as String
+  let record = srv1_collective_read_executed_2026_11_09 as String
+  !string_contains(s: obligation, pattern: "EXECUTED")
+    && !string_contains(s: obligation, pattern: "DONE")
+    && !string_contains(s: obligation, pattern: "COMPLETED")
+    && string_contains(s: obligation, pattern: "STILL OWED")
+    && string_contains(s: obligation, pattern: "reverse the arm order")
+    && string_contains(s: obligation, pattern: "NCCL_DEBUG_SUBSYS=TRANSPORT")
+    && string_contains(s: obligation, pattern: "TP=2")
+    && string_contains(s: obligation, pattern: "srv1_collective_read_executed_2026_11_09")
+    && string_contains(s: record, pattern: "EXECUTED 2026-11-09T22:40:35Z")
+    && string_contains(s: record, pattern: "22:39:48Z..22:47:37Z")
+    && string_contains(s: record, pattern: "srv1_collective_transport_readings_unloaded_2026_11_09")
 }
 
 // AN EXPLANATION IS NEVER A PREMISE. Both srv1 rows -- the one about what missing peer access accounts for,

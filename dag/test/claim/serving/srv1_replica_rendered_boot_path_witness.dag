@@ -46,7 +46,8 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_runs_executed_2026_11_09, srv1_boot_path_ready_deadline,
   srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
   srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
-  srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag,
+  srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
+  srv1_serving_replica_specs,
   srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
   srv1_replica_helper_bash_emit_dissolution,
@@ -538,6 +539,21 @@ fn marker_text(condition: DissolutionCondition) -> String {
     BoundDissolution { trigger: _ } => ""
     UnboundDissolution { description: d } => d as String
   }
+}
+
+// The unit rows no longer carry a GPU UUID (#16167 moved the pin onto the profile's card row), so both renders
+// that print a UUID read it through srv1_replica_gpu_uuid_text. This says the render cannot lose the pin
+// silently: every unit's card UUID appears in the launcher, the two cards differ, and the fail-closed token a
+// UUID-less profile would print appears in NO rendered artifact.
+test fn the_rendered_boot_path_pins_the_card_from_the_profile_row() -> Bool {
+  let launcher = srv1_render_replica_launcher()
+  let units = srv1_serving_replica_specs
+  length(units) == 2
+    && all(units, r => string_contains(s: launcher, pattern: srv1_replica_gpu_uuid_text(replica: r)))
+    && any(units, a => any(units, b => srv1_replica_gpu_uuid_text(replica: a) != srv1_replica_gpu_uuid_text(replica: b)))
+    && !string_contains(s: launcher, pattern: "NO_CARD_UUID_IN_PROFILE")
+    && !string_contains(s: srv1_render_replica_engine_args(), pattern: "NO_CARD_UUID_IN_PROFILE")
+    && !string_contains(s: srv1_render_replica_helper(), pattern: "NO_CARD_UUID_IN_PROFILE")
 }
 
 test fn every_hand_composed_script_carries_its_own_marker() -> Bool {

@@ -151,8 +151,8 @@ data srv1_serving_shared_pool_key: NonEmptyStr = "/home/briansrls/lil/pool_key"
 
 data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# srv1: one TP=1 Qwen3.8-Flash-Next replica per GPU (2026-11-08: two RTX PRO 6000s; 2xTP1 measured 679 vs TP2 298 tok/s\n# aggregate at 8 warm 150k sessions on srv1 -- no GPU P2P across Altra root complexes, so TP2 runs on NCCL via host memory).\n# Same container recipe as srv1_lil_serve.sh (lil-serve qwen38-flash-next / rtx-pro-6000-pcie, LMCache ram-disk, TLS, API key),\n# one instance per GPU, each with its own port, LMCache disk tier and serve/state dir; the TLS cert and pool key are shared so\n# the router verifies both the same way. Disk-first KV (2026-11-08, operator): small 12 GiB RAM tier L1, 125 GB NVMe tier L2 each;\n# RAM per replica ~ L1 12 + PLE table 26.8 (pinned host, outside the cgroup) + ~6 process. No automatic restart.\n# usage: srv1_lil_serve_gpu.sh 0|1     (EXTRA=\"...\" passes extra lil/vLLM options after \"--\")\nset -eu\nIDX=$\{1:?usage: $0 0|1}\ncase $IDX in\n  0) GPU=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3; NAME=lil-flash-next;   PORT=18000; KV=kv;      SERVE=serve ;;        # Max-Q, 0001:01:00.0\n  1) GPU=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750; NAME=lil-flash-next-1; PORT=18001; KV=kv-gpu1; SERVE=serve-gpu1 ;;   # Workstation (300 W cap), 0004:01:00.0\n  *) echo \"GPU index must be 0 or 1\" >&2; exit 2 ;;\nesac\nEXTRA=$\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9\nB=$HOME/lil; mkdir -p $B/hf $B/$KV $B/$SERVE $B/jit; umask 077\n[ -s $B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d \"/+=\" > $B/pool_key\n# one TLS identity for both replicas (the router pins it via upstream_ca.pem)\nfor f in tls.key tls.crt; do [ -s $B/$SERVE/$f ] || { sudo -n cp -p $B/serve/$f $B/$SERVE/$f; }; done\numask 022\ndocker rm -f $NAME >/dev/null 2>&1 || true\nfor i in $(seq 1 150); do docker container inspect $NAME >/dev/null 2>&1 || break; docker rm -f $NAME >/dev/null 2>&1 || true; sleep 2; done\ndocker run -d --name $NAME --restart no --device nvidia.com/gpu=$GPU --cgroup-parent=srv1-inference.slice --memory=32g --memory-swap=32g \\\n  --shm-size 16g -p $PORT:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v $B/hf:/root/.cache/huggingface -v $B/$KV:/cache/kv -v $B/jit:/cache/jit -v $B/$SERVE:/root/serve -v $B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash $IMG -lc \"\nD=/root/serve; ev(){ echo \\\"\\$(date -u +%FT%TZ) \\$*\\\" >> \\$D/events.log; }\n[ -s \\$D/tls.key ] && [ -s \\$D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj /CN=pool-card -keyout \\$D/tls.key -out \\$D/tls.crt >> \\$D/events.log 2>&1\nev \\\"START srv1 gpu$IDX $GPU (driver \\$(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\\\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=12 --env LMCACHE_L2_GB=125 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 $EXTRA --ssl-keyfile \\$D/tls.key --ssl-certfile \\$D/tls.crt --api-key \\\"\\$(cat /root/.pool_key)\\\" --max-model-len 229376 >> \\$D/serve.log 2>&1\"\necho \"started $NAME on GPU $IDX ($GPU) port $PORT\"; docker ps --filter name=^/$NAME\\$ --format \"{.Status}\"\n",
-  reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route." as NonEmptyStr,
-  dissolves_to: decl_ref(module_path: "extdeps.docker.cli RESTORE PATH ONLY since 2026-11-09T21:44:07Z: no systemd path reaches this file any more -- the installed helper now points LAUNCH= at /usr/local/sbin/lil-replica-launch, which renders docker from these rows. The sha above was computed with sha256sum ON srv1 (not relayed). This script still puts the pool bearer key in the engine argv and accepts an unbound EXTRA, which is precisely what the switch removed; it is kept so the window has a rollback target.", decl_name: "docker_run_foreground_argv"),
+  reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route." STATUS ON THIS ROW: RESTORE PATH ONLY since 2026-11-09T21:44:07Z: no systemd path reaches this file any more -- the installed helper now points LAUNCH= at /usr/local/sbin/lil-replica-launch, which renders docker from these rows. The sha above was computed with sha256sum ON srv1 (not relayed). This script still puts the pool bearer key in the engine argv and accepts an unbound EXTRA, which is precisely what the switch removed; it is kept so the window has a rollback target. as NonEmptyStr,
+  dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
 // The counted bash-emit scaffold marker for the retained launcher (the hand-shell gate). This is the
@@ -833,6 +833,18 @@ fn srv1_replica_device_words(replica: Srv1ServingReplicaSpec) -> List<NonEmptySt
   }
 }
 
+// The same pin AS TEXT, for the two renders that print it (the container's START event and the launcher's
+// started line). The profile row remains the only owner -- #16167 removed the UUID field from the unit, so a
+// render that spelled `spec.gpu_uuid` would be a second copy even if it compiled. A unit whose profile carries
+// no card UUID renders the fail-closed token below, which docker rejects at boot rather than letting the
+// container float across both cards; the witness asserts that token appears in NO rendered artifact.
+fn srv1_replica_gpu_uuid_text(replica: Srv1ServingReplicaSpec) -> String {
+  match srv1_replica_gpu_uuid(replica: replica) {
+    Present { value: u } => u as String
+    Absent => "NO_CARD_UUID_IN_PROFILE"
+  }
+}
+
 // The hardware pin, read from the profile's card row -- the ONLY place a unit's UUID is obtained.
 fn srv1_replica_gpu_uuid(replica: Srv1ServingReplicaSpec) -> Optional<NonEmptyStr> {
   replica_gpu_uuid(p: replica.profile)
@@ -1150,7 +1162,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
                 concat(
                   concat(
                     concat(concat("ev \"START srv1 gpu", to_string(replica.index)), " "),
-                    replica.gpu_uuid as String
+                    srv1_replica_gpu_uuid_text(replica: replica)
                   ),
                   " (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP"
                 ),
@@ -1380,7 +1392,7 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
                       ),
                       " ("
                     ),
-                    r.gpu_uuid as String
+                    srv1_replica_gpu_uuid_text(replica: r)
                   ),
                   concat(concat(") publishing host port ", to_string(r.host_port)), " to container port ")
                 ),
