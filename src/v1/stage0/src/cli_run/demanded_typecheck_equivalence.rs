@@ -410,9 +410,9 @@ fn tier1_replay(
             for h in hits {
                 let inf = h
                     .inferred
-                    .as_ref()
+                    .as_deref()
                     .map(|i| match i {
-                        crate::v1_std_core::InferredNode::Resolved { node } => {
+                        crate::v1_std_core::InferredNode::Resolved { node, .. } => {
                             format!("{}#{}c", node.name, node.children.len())
                         }
                         other => format!("{other:?}"),
@@ -425,7 +425,7 @@ fn tier1_replay(
                     si.clone(),
                 );
                 eprintln!(
-                    "TIER1_REPLAY tag={tag} node={} conn={:?} children={} auth={} inferred={inf} replay={}",
+                    "TIER1_REPLAY tag={tag} node={node} conn={conn:?} children={children} auth={auth} inferred={inf} replay={replay}",
                     tag = tag,
                     node = h.name,
                     conn = h.connective,
