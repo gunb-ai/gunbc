@@ -2168,7 +2168,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'microvm_runner_group_ensure'
-        timeout-minutes: 70
+        timeout-minutes: 53
       - name: Upload the microVM runner group ensure receipt
         id: microvm_runner_group_ensure_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -5338,6 +5338,7 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_READ_SET_OUT: gunbc-read-set.txt
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
       - name: emit and build //gunbc/instruments:v2-native-cli
         id: emit_build_v2_native_cli
@@ -5366,6 +5367,7 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_READ_SET_OUT: gunbc-read-set.txt
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
     env:
       MALLOC_ARENA_MAX: "2"
