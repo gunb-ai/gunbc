@@ -41,6 +41,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_function_def,
   bash_build_word_array_expansion,
   bash_build_word_bare,
+  bash_build_word_cmdsubst,
   bash_build_word_lit,
   bash_build_word_double_quoted,
   bash_build_word_param_error,
@@ -581,6 +582,49 @@ fn quoted_message_statement() -> Node {
 
 test fn double_quoted_word_serializes_installed_shape() -> Bool {
   emits(stmt: quoted_message_statement(), golden: quoted_message_golden)
+}
+
+// The other half of a double-quoted word: the expansions bash KEEPS inside it.
+// Bash manual, node "Double Quotes" lists '$' and '`' among the characters that
+// do NOT lose their special meaning between double quotes, and node "Command
+// Substitution" gives $(command) as one of the two substitution forms. The
+// installed ev body is exactly
+//   ev(){ echo "$(date -u +%FT%TZ) $*" >> $D/events.log; }
+// so ONE double-quoted word has to carry a command substitution, inert text and
+// the positional-all expansion as its parts, with nothing inserted between them
+// -- the separator belongs to a command's word list, never to a quoted word's
+// parts. This is the shape the srv1 container command needs and the reason the
+// quoted word is modeled as parts rather than as one wrapped literal.
+data ev_echo_argument_golden: String = "echo \"$(date -u +%FT%TZ) $*\"\n"
+
+fn ev_echo_argument_word() -> Optional<Node> {
+  // bash_build_word_cmdsubst is TOTAL: it wraps a body that was already checked
+  // by its own builder, so there is no refusal to inspect here. The checked
+  // constructors whose input can actually be bad -- the inert text, the
+  // positional-all selector and the quoted word itself -- are the ones matched.
+  match bash_build_quoted_text(text: " ") {
+    Absent => Absent
+    Present { value: space } =>
+      match bash_build_word_positional_all(which: "*") {
+        Absent => Absent
+        Present { value: every_positional } =>
+          bash_build_word_double_quoted(parts: [
+            bash_build_word_cmdsubst(
+              body: command([word("date"), word("-u"), word("+%FT%TZ")])
+            ),
+            space,
+            every_positional
+          ])
+      }
+  }
+}
+
+test fn double_quoted_word_carries_a_command_substitution() -> Bool {
+  match ev_echo_argument_word() {
+    Absent => false
+    Present { value: quoted_argument } =>
+      emits(stmt: command([word("echo"), quoted_argument]), golden: ev_echo_argument_golden)
+  }
 }
 
 // RED: '$' is not inert between double quotes — it expands.

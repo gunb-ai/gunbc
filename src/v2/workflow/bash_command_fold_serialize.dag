@@ -532,10 +532,11 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
               Present { value: parts } =>
                 bind_outcome(
                   o: bash_fold_serialize_word_parts_concatenated(parts: parts),
-                  f: fn(parts_spelling) {
-                    bash_fold_serialize_emit_from_node(
-                      emitted: bash_word_double_quoted_emitted,
-                      target: bash_word_double_quoted_target_model(parts: parts_spelling)
+                  f: fn(_) {
+                    bash_fold_serialize_leaf_node(
+                      emitted: word,
+                      production_binding: ^bash_production_fold_double_quoted_word,
+                      rule_name: ^bash_production_fold_double_quoted_word
                     )
                   }
                 )
