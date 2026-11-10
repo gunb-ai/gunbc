@@ -3997,7 +3997,17 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
       // same :4126 fail-closed family instead: '==' is refused rather than admitted on a name resolving to nothing
       // (condition 2 of the A1 ruling, applied to qualified names). A BARE name the classifier cannot name (kernel
       // scalar, extensional carrier, ambiguous leaf) still falls back to the use-site identity below.
-      if (match ea { Absent => name != leaf, Present { value: _ } => false }) {
+      // EXCEPTION -- a reference the code's OWN native-realization authority already judges realizes natively has
+      // no members to judge, so ByTarget is CORRECT and refusing it is a false positive. Use the SAME predicate
+      // equality_leaf_walk uses to ByTarget (:4049) -- never a second has-== test (DESIGN 6b) -- so this gate and
+      // the leaf walk agree by construction. numeric_realization_identity_note documents std.nat.Nat realizes
+      // natively; its builtin '.length()' result is spelled qualified 'std.nat.Nat' yet is produced OUTSIDE
+      // qualify_borrowed_type_names, so the symbol index and bare classifier both miss it and (A) alone would
+      // refuse it, blocking the whole corpus precompute (gunbc#16143, NOTE-2 on the corpus route). The raw-'=='-
+      // over-Node class this guard exists to catch (string_template, readiness_fold_state, the per_target receipts)
+      // is corpus-declared and realizes_natively answers false for, so it stays refused.
+      let realizes_natively_here = provenance_realizes_natively(p: type_reference_provenance(n: peeled))
+      if (match ea { Absent => name != leaf, Present { value: _ } => false }) && !realizes_natively_here {
         equality_walk_refused(r: equality_refused(carrier: name, member: "a qualified cross-module reference that resolves to no declaration: its members cannot be judged, so '==' is refused rather than admitted on the use-site key", member_judged: false))
       } else if walk_identity != "::" && map_contains_key(visited, walk_identity) {
         EqualityWalk { refusal: none, step: EqualityThroughPlan { declaration: walk_identity }, plans: [] }
