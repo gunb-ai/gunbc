@@ -35,7 +35,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_2026_11_09, srv1_collective_read_measurement_duration, srv1_collective_read_window_duration }
-import extdeps.units.iso8601_calendar { Iso8601CivilDate, Iso8601UtcInstant, iso8601_utc_instant_seconds_between }
+import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, iso8601_utc_instant_seconds_between }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
@@ -1740,11 +1740,12 @@ type Srv1BootPathRun {
   // How the run was driven, in prose: what was stopped, removed or killed. A note, never a verdict, and never
   // the thing a witness branches on -- that is `kind`.
   note: NonEmptyStr,
-  // THE INSTANTS ARE THE PARTS, NOT TEXT: the calendar's own instant type, so a value like `2026-11-9T22:1:8Z`
-  // cannot be written into a receipt at all. A `NonEmptyStr` instant accepted it and only complained -- by
-  // answering nothing -- when a consumer asked for a span.
-  trigger_at: Iso8601UtcInstant,
-  ready_at: Iso8601UtcInstant,
+  // THE INSTANTS ARE BUILT BY THE CALENDAR'S CHECKED CONSTRUCTOR, and the receipt holds its Optional. A
+  // `NonEmptyStr` instant accepted `2026-11-9T22:1:8Z` and only complained -- by answering nothing -- when a
+  // consumer asked for a span; typed parts alone would let `hour: 99` sit in a row and come back as a plausible
+  // duration. So the range is decided at construction and each consumer cases on Absent.
+  trigger_at: Iso8601UtcInstant?,
+  ready_at: Iso8601UtcInstant?,
   container_created: Second,
   // Time from the stop/kill to the first 200 from /health is NOT a field: it is the difference of this
   // row's own two instants (srv1_boot_path_run_ready_duration below). A row that types it beside the
@@ -1760,8 +1761,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 1,
     kind: ColdStart,
     note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
-    trigger_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 21, minute: 51, second: 38 },
-    ready_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 21, minute: 59, second: 21 },
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 51, second: 38),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 59, second: 21),
     container_created: second(46),
     restarts_observed: 0,
     verdict: "ready inside the 10-minute deadline; engine argv carries no --api-key (count 0) and the engine's environment carries VLLM_API_KEY (count 1); router upstream srv1-vllm-1 served six /v1/chat/completions probes at 200 with zero new 502s" as NonEmptyStr,
@@ -1770,8 +1771,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 1,
     kind: Crash,
     note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
-    trigger_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 11, second: 1 },
-    ready_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 19, second: 33 },
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 1),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 19, second: 33),
     container_created: second(39),
     restarts_observed: 1,
     verdict: "systemd did restart it, but NOT within the 30 s the brief set as the bar: the unit's own RestartSec=30 makes 30 s the FLOOR, and the measured replacement container appeared 39 s after the kill (22:11:39Z, written by the rendered launcher's own START event). Engine ready 512 s. Auth held: 401 without the key, 200 with it. No --api-key in .Config.Cmd; VLLM_API_KEY present in the engine environment." as NonEmptyStr,
@@ -1780,8 +1781,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 0,
     kind: ColdStart,
     note: "systemctl stop, container removed, systemctl start on the rendered path (NOT a host reboot)" as NonEmptyStr,
-    trigger_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 24, second: 35 },
-    ready_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 31, second: 38 },
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 24, second: 35),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 31, second: 38),
     container_created: second(46),
     restarts_observed: 0,
     verdict: "ready inside the deadline; `ps` on the host shows zero processes carrying --api-key once both replicas are on this path (previously the engine's own argv named the key)" as NonEmptyStr,
@@ -1790,8 +1791,8 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 0,
     kind: Crash,
     note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
-    trigger_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 32, second: 21 },
-    ready_at: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 39, second: 23 },
+    trigger_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 32, second: 21),
+    ready_at: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 39, second: 23),
     container_created: second(38),
     restarts_observed: 1,
     verdict: "replacement container 38 s after the kill (again above the 30 s bar, which the unit's RestartSec=30 sets); engine ready 422 s; auth held (401 without key, 200 with); no --api-key in .Config.Cmd" as NonEmptyStr,
@@ -1832,7 +1833,7 @@ fn srv1_boot_path_crash_restart_floor_seconds() -> Nat { second_count(srv1_repli
 // cost is a difference, and the phase and upstream breakdowns must ADD UP to that difference. In prose those
 // numbers could drift apart silently; here a witness can check the arithmetic.
 type Srv1RouterWindowCount {
-  snapshot_from: Iso8601UtcInstant,
+  snapshot_from: Iso8601UtcInstant?,
   status_502_before: Nat,
   status_502_after: Nat,
   status_200_before: Nat,
@@ -1854,7 +1855,7 @@ type Srv1RouterWindowCount {
 }
 
 data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = Srv1RouterWindowCount {
-  snapshot_from: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 20, minute: 38, second: 24 },
+  snapshot_from: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 20, minute: 38, second: 24),
   status_502_before: 13,
   status_502_after: 64,
   status_200_before: 27150,
@@ -1878,8 +1879,8 @@ data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = S
 // claim cannot be made about this row by accident, and the downtime is a duration, not a number in prose.
 type Srv1BootPathIncident {
   replica_index: Nat,
-  down_from: Iso8601UtcInstant,
-  down_to: Iso8601UtcInstant,
+  down_from: Iso8601UtcInstant?,
+  down_to: Iso8601UtcInstant?,
   failed_starts: Nat,
   container_exit_status: Nat,
   unit_outcome: NonEmptyStr,
@@ -1890,8 +1891,8 @@ type Srv1BootPathIncident {
 
 data srv1_boot_path_incident_2026_11_09: Srv1BootPathIncident = Srv1BootPathIncident {
   replica_index: 1,
-  down_from: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 21, minute: 4, second: 54 },
-  down_to: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 21, minute: 17, second: 30 },
+  down_from: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 4, second: 54),
+  down_to: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 21, minute: 17, second: 30),
   failed_starts: 4,
   container_exit_status: 2,
   unit_outcome: "lil-replica@1 exhausted its restart burst (Start request repeated too quickly after 5 attempts; StartLimitBurst=3 inside StartLimitIntervalSec=3600) and the unit entered failed" as NonEmptyStr,

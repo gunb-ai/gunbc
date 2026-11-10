@@ -57,9 +57,8 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_replica_helper_bash_emit_dissolution,
 }
 import extdeps.units.iso8601_calendar {
-  Iso8601CivilDate,
   Iso8601UtcInstant,
-  iso8601_utc_instant_parts_are_in_range,
+  iso8601_utc_instant,
   iso8601_utc_instant_seconds_between,
   iso8601_utc_instant_text,
 }
@@ -541,8 +540,8 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
       Absent => false
       Present { value: d } => second_count(d) == 756
     }
-    && iso8601_utc_instant_text(i: srv1_boot_path_incident_2026_11_09.down_from) == "2026-11-09T21:04:54Z"
-    && iso8601_utc_instant_text(i: srv1_boot_path_incident_2026_11_09.down_to) == "2026-11-09T21:17:30Z"
+    && host_text_matches(instant: srv1_boot_path_incident_2026_11_09.down_from, host_text: "2026-11-09T21:04:54Z")
+    && host_text_matches(instant: srv1_boot_path_incident_2026_11_09.down_to, host_text: "2026-11-09T21:17:30Z")
     && srv1_boot_path_incident_2026_11_09.container_exit_status == 2
     && srv1_boot_path_incident_2026_11_09.failed_starts == 4
     && srv1_router_window_count_balances(record: srv1_boot_path_window_router_counting_2026_11_09)
@@ -663,18 +662,35 @@ test fn every_hand_composed_script_carries_its_own_marker() -> Bool {
 // module reads its NCCL spans through. That dependency earned its keep: replica 1's crash row had been
 // transcribed with the kill 7 s late (the host recorded 22:11:01Z, epoch 1794262261; the row said 22:11:08Z),
 // and the hand-typed ready duration agreed with the WRONG instant. With the duration derived, the row can only
-// say what the instants say -- and the instants are now the calendar's parts, so the malformed-instant class of
-// error (`2026-11-9T…`, a missing leading zero) is not a value that can be written into a receipt at all. The
-// red controls here are the two errors that remain: a pair in the wrong order, which must answer Absent, and the
-// 7-second slip this window actually made, which must produce 505 -- a different duration -- so the claim over
-// 512 goes red instead of agreeing with the mistyped instant.
+// say what the instants say -- and the instants arrive through the calendar's checked constructor, so a malformed
+// instant (`2026-11-9T…`, a missing leading zero) or an out-of-range clock face (`hour: 99`, `minute: 61`) is not
+// a value a receipt can hold: the constructor answers Absent where the instant is made. The red controls here are
+// the errors that remain possible: a pair in the wrong order, which must answer Absent, and the 7-second slip
+// this window actually made, which must produce 505 -- a different duration -- so the claim over 512 goes red
+// instead of agreeing with the mistyped instant.
+// A receipt's instants arrive through the calendar's checked constructor, so a comparison with a host read cases
+// on the Optional: an absent instant fails the comparison rather than becoming a string that looks like a date.
+fn host_text_matches(instant: Iso8601UtcInstant?, host_text: String) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: v } => iso8601_utc_instant_text(i: v) == host_text
+  }
+}
+
+fn is_instant_present(instant: Iso8601UtcInstant?) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
 test fn the_ready_duration_is_the_instants_and_not_a_third_copy() -> Bool {
   let runs = srv1_boot_path_runs_executed_2026_11_09
   let r1_crash = filter(runs, r => srv1_boot_path_run_is_crash(r) && r.replica_index == 1)
   length(r1_crash) == 1
     // the parts render back to the exact text the host printed, which is what ties the typed instant to the read
-    && all(r1_crash, r => iso8601_utc_instant_text(i: r.trigger_at) == "2026-11-09T22:11:01Z"
-      && iso8601_utc_instant_text(i: r.ready_at) == "2026-11-09T22:19:33Z"
+    && all(r1_crash, r => host_text_matches(instant: r.trigger_at, host_text: "2026-11-09T22:11:01Z")
+      && host_text_matches(instant: r.ready_at, host_text: "2026-11-09T22:19:33Z")
       && match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(e) == 512 })
     // RED control: the same pair the other way round refuses.
     && all(r1_crash, r => match iso8601_utc_instant_seconds_between(earlier: r.ready_at, later: r.trigger_at) {
@@ -685,23 +701,34 @@ test fn the_ready_duration_is_the_instants_and_not_a_third_copy() -> Bool {
     // duration stored beside the instants would have been true of the wrong pair and this claim would not have
     // noticed, which is how the drift got past a review round.
     && all(r1_crash, r => match iso8601_utc_instant_seconds_between(
-      earlier: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 11, second: 8 },
+      earlier: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 8),
       later: r.ready_at,
     ) {
       Absent => false
       Present { value: e } => second_count(e) == 505
     })
-    // RED control: an out-of-range clock face is constructible (`hour: 99`), so the span refuses it rather than
-    // returning a count; the receipt's own parts are in range, which is what the green durations rest on.
-    && all(r1_crash, r => match iso8601_utc_instant_seconds_between(
-      earlier: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 99, minute: 11, second: 1 },
-      later: r.ready_at,
-    ) {
+    // RED controls: the range is decided by the CONSTRUCTOR, not by whichever consumer noticed. Each part
+    // outside what its name claims answers Absent where the instant is made, so a receipt cannot hold one and no
+    // reader downstream has to be clever about it.
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 99, minute: 11, second: 1) {
       Absent => true
       Present { value: _ } => false
-    })
-    && all(srv1_boot_path_runs_executed_2026_11_09, r =>
-      iso8601_utc_instant_parts_are_in_range(i: r.trigger_at) && iso8601_utc_instant_parts_are_in_range(i: r.ready_at))
+    }
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 11, second: 61) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 0, day: 9, hour: 22, minute: 11, second: 1) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // the in-range side builds the instant the host printed, which ties the parts back to the reading
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 19, second: 33) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2026-11-09T22:19:33Z"
+    }
+    // and every recorded instant is the Present side, which is what the green durations rest on
+    && all(srv1_boot_path_runs_executed_2026_11_09, r => is_instant_present(instant: r.trigger_at) && is_instant_present(instant: r.ready_at))
 }
 
 // THE BARS THEMSELVES ARE NOT FREE NUMBERS. The crash floor must be the CONTRACT's restart delay, so a unit

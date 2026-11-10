@@ -27,7 +27,7 @@ module gunbc.fleet.gpu_interconnect_observation
 // loaded machine forces is carried as `srv1_collective_read_obligation`.
 
 import std.nat { Nat }
-import extdeps.units.iso8601_calendar { Iso8601CivilDate, Iso8601UtcInstant, iso8601_utc_instant_seconds_between }
+import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, iso8601_utc_instant_seconds_between }
 import std.measure { Second, measure_count, second }
 import std.types { Bool, List, NonEmptyStr }
 import std.algebra { string_concat_join }
@@ -603,13 +603,15 @@ data srv1_collective_read_obligation: NonEmptyStr = "The controls on the srv1 co
 // log that back them. It is a separate row from the obligation so an open task cannot read as closed while
 // keeping its name, and it carries no verdict field: what the run SHOWS is arithmetic over the reading rows.
 type Srv1CollectiveReadRun {
-  // THE INSTANTS ARE THE PARTS, NOT TEXT. A stored `NonEmptyStr` instant accepts `2026-11-9T22:3:4Z` until a
-  // consumer asks for a span and gets an absent answer; over the calendar's instant type the parts are typed and
-  // the span is a subtraction, so a bad instant cannot sit in a record unnoticed.
-  window_start: Iso8601UtcInstant,
-  window_end: Iso8601UtcInstant,
-  measurement_start: Iso8601UtcInstant,
-  measurement_end: Iso8601UtcInstant,
+  // THE INSTANTS ARE BUILT BY THE CALENDAR'S CHECKED CONSTRUCTOR. A stored `NonEmptyStr` instant accepted
+  // `2026-11-9T22:3:4Z` until a consumer asked for a span and got an absent answer; and a record of typed parts
+  // would still let `hour: 99` sit in a row and come out as a plausible count. Over `iso8601_utc_instant`, the
+  // range is decided where the instant is made and the field holds that Optional, so every consumer here faces
+  // the Absent case instead of inheriting a number that looks fine.
+  window_start: Iso8601UtcInstant?,
+  window_end: Iso8601UtcInstant?,
+  measurement_start: Iso8601UtcInstant?,
+  measurement_end: Iso8601UtcInstant?,
   units_stopped: List<NonEmptyStr>,
   containers_removed: List<NonEmptyStr>,
   instrument_sha256: NonEmptyStr,
@@ -622,10 +624,10 @@ type Srv1CollectiveReadRun {
 }
 
 data srv1_collective_read_executed_2026_11_09: Srv1CollectiveReadRun = Srv1CollectiveReadRun {
-  window_start: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 39, second: 48 },
-  window_end: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 47, second: 37 },
-  measurement_start: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 40, second: 35 },
-  measurement_end: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 40, second: 51 },
+  window_start: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 39, second: 48),
+  window_end: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 47, second: 37),
+  measurement_start: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 40, second: 35),
+  measurement_end: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 40, second: 51),
   units_stopped: ["lil-replica@0" as NonEmptyStr, "lil-replica@1" as NonEmptyStr],
   containers_removed: ["lil-flash-next" as NonEmptyStr, "lil-flash-next-1" as NonEmptyStr],
   instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
