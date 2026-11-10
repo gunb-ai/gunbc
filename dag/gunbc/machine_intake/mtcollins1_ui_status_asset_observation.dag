@@ -439,6 +439,8 @@ data megarac_ui_probes: List<MegaRacUiProbe> = [
   MegaRacUiProbe { name: "lmedia_object" as NonEmptyStr, octets: ui_octets_of("lmedia:{") },
   MegaRacUiProbe { name: "lmedia_object_quoted" as NonEmptyStr, octets: ui_octets_of("\"lmedia\":{") },
   MegaRacUiProbe { name: "local_storage_res" as NonEmptyStr, octets: ui_octets_of("\"res_\"") },
+  MegaRacUiProbe { name: "cd_error" as NonEmptyStr, octets: ui_octets_of("cd_error") },
+  MegaRacUiProbe { name: "error_code" as NonEmptyStr, octets: ui_octets_of("error_code") },
 ]
 
 data megarac_ui_data_main_name_octets: List<Int> = ui_octets_of("data-main")
@@ -563,7 +565,7 @@ type MegaRacUiCatalogMember
 
 data megarac_ui_catalog_open_text: String = "lmedia:\{"
 
-data megarac_ui_catalog_member_keys: List<String> = ["halted", "status_0", "status_1", "status_16"]
+data megarac_ui_catalog_member_keys: List<String> = ["halted", "status_0", "status_1", "status_2", "status_3", "status_4", "status_5", "status_6", "status_7", "status_8", "status_9", "status_10", "status_11", "status_12", "status_13", "status_14", "status_15", "status_16", "status_17", "status_100"]
 
 fn ui_first_piece(text: String, delimiter: String) -> String {
   match split(s: text, delimiter: delimiter) |> get(0) {

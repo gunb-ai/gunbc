@@ -262,6 +262,14 @@ data duct_print_plate: SightingEvidence = CitesArtifact {
   sha256: Sha256Digest { hex: "7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb" as Sha256DigestHex },
 }
 
+// The main revision the r07 tray panel P3 was sliced against on the corrected print-pose route (#16213).
+data tray_panel_p3_source_revision: CommitSha = "9d2484ae1cea7a10b750d8d97ff5d78a3e964cf5"
+
+data tray_panel_p3_r07_plate: SightingEvidence = CitesArtifact {
+  label: "r07 tray panel P3 laid flat in its declared print pose and sliced on srv1 by the pinned OrcaSlicer under the a1-mini-petg-functional-v1 process, 2026-11-10 (probe plate, not retained)",
+  sha256: Sha256Digest { hex: "b87659e31f4cd57922eae6729eaae6a11068d9e70f599219f1df1fce060cf4f2" as Sha256DigestHex },
+}
+
 data support_restriction_scope: IntegrationConcern = IntegrationConcern {
   identity: "support_restriction_scope",
   kind: SuspectedCapabilityGap {
@@ -290,7 +298,20 @@ data support_restriction_scope: IntegrationConcern = IntegrationConcern {
       },
       account: "Printed shoulder-down under the bed-only automatic support policy, the duct's generated support reached the seat face the blower rests on, which sets the model-derived head clearance. The readback's support record is motion centerlines, not a contact surface, so it shows where support was laid, not what it left on the face. The earlier failure-mode row cited is a related lesson about support meeting functional geometry, not the same concern.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: tray_panel_p3_source_revision,
+        evidence: FreeSemigroup {
+          head: tray_panel_p3_r07_plate,
+          tail: [
+            CitesDeclaration { declaration: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "plate_bottom_y") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "lap_ridge_profiles") },
+          ],
+        },
+        account: "Laid flat as declared, the r07 panel needed support under its whole plate, because the rail foot projected below the plate's underside, and under its two receiver-lap pockets, whose flat ceilings overhang the bed whichever half of a flat half-lap carries the tongue. Whole-part support_free refused it correctly. The repair was geometry, not a finer restriction: the plate now lies in the foot's bearing plane, and the laps are 45-degree ridges in grooves with a land on the bed between grooves; the same probe then sliced with no support. This sighting therefore needed no region-scoped restriction; it does not decide the duct's seat-face question above.",
+      },
+    ],
   },
   disposition: Open,
 }
@@ -775,7 +796,7 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
     requirement: "a gunbc run pays memory and wall time for the part of its entry's closure that evaluation reaches, not for every module the import closure names, while every refusal that typechecking the closure raises today still fires where it fires today",
-    standing: RequirementUnestablished { decided_by: "a design that names which typecheck obligations an unreached module still owes (its own refusals, its importers' bindings) and shows they can be discharged without typechecking its bodies; until then the requirement is a memory and wall-time observation, not an established obligation" },
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") } },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
@@ -791,9 +812,82 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
       },
       account: "Bisect of the private projection-drift regression (2026-11-05) and two isolated srv1 runs (qn-roster-peak40: roster cgroup peak 35.88 GiB; qn-auditpacket-peak40: audit_packet_witness VmHWM 26.84 GiB) put roughly 13-16 GiB of each private lane in pre-entry typecheck and the rest in one whole-pool burst plus per-witness evaluation. The same floor shows up as wall time on small entries: a read-only runner_host_file_observe on srv3 (run 42037046961) spent its whole 15-minute step typechecking v2.compiler modules its entry's closure names and timed out before reading a drop-in. Recorded so a lane blocked on it can cite a named cause rather than an assertion; no fix is designed.",
     },
+    tail: [ConcernSighting {
+      revision: "35812db9f22",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_profile_diagnostic") }],
+      },
+      account: "Public-corpus measurement of this floor at the fleet_converge_plan_wet acceptance entry, before the declaration-grain cut landed on this branch: compile.reconcile 11 minutes, whole run 931 s, peak RSS 16.5 GiB, with 3318 closure modules realized in full while only 796 of them held a demanded function body and the demanded declarations were 4915 of 49699 (about 10 percent). After the cut (the same entry, same machine): reconcile 9 minutes, run 776 s, peak RSS 11.0 GiB, zero realization gaps. The wall dropped less than the realized fraction because the per-module frame -- context assembly, parent merging, provider settlement over the dense closure -- is still paid for all 3318 modules; that residue is what stays open under this concern now that bodies and declarations are demanded.",
+    }, ConcernSighting {
+      revision: "61b01423d11",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded") }],
+      },
+      account: "Per-phase profile of the 9-minute residue (a temporary instrumented run: atomic timers around the census build, the realization pass, the first-pass per-module fold and the per-module machinery inside it; counters reverted, never committed). The first-pass realize_module fold is about 450 s of the roughly 540 s reconcile, and inside it build_module_context alone is 308 s -- paid by all 3324 modules, 2309 of which carry ZERO realized declarations. The census is 11.6 s and the realization pass 3.6 s: corpus-proportional but not the floor. Cutting the empty-realization modules' frame (context, analysis, audit over no inputs; the type env still builds so their own import diagnostics keep firing) took the same entry to reconcile 4 minutes, whole run about 6 minutes, peak RSS 9.7 GiB, zero realization gaps. What still stays open under this concern: the per-module frame of the 1015 modules that DO carry realized declarations, and the census plus realization passes.",
+    }],
+  },
+  disposition: Open,
+}
+
+
+data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: IntegrationConcern = IntegrationConcern {
+  identity: "grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of"),
+    requirement: "Hand-written Rust added inside the generated stage0 mirror must carry a checkable receipt -- a deleted scaffold path, a before/after seed census, or a deferral naming a lane and a tracking row (ctrl review policy). #16156 added about 345 lines of hand-written witness Rust at src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (the declaration-grain tests: inactive grain equals #16069, unreached stays unseen, reachable errors still refuse, out-of-set reads refuse typed, alias-body and provider-row reachability, the corpus witness). This row is the deferral: the witnesses are owed a landing -- rewritten as generated .dag test sources under the corpus, or admitted as a standing hand-written exception with a file-level receipt -- and the lane that decides and executes it is follow-up node adhoc-0eedbb6e-a35, the same node named by gunbc.design_ruling::run_realizes_only_demanded_declarations for enrolling the by-hand demanded_scope controls.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "run_realizes_only_demanded_declarations") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of"),
+    tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded")],
+  },
+  question: "Where do the hand-written grain witnesses end up? They test the declaration-grain realization from the host side and today live as hand-written Rust beside generated code in the stage0 mirror. The deferral names lane node adhoc-0eedbb6e-a35 and this tracking row: at enrollment the node either moves the witnesses into generated .dag test sources or records them as a standing hand-written exception with a receipt comment at the file, so no hand-written block in the mirror remains unaccounted.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "5a0a692fa9b",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_module_demanded") }],
+      },
+      account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
+    },
     tail: [],
   },
   disposition: Open,
+}
+data run_unreached_function_bodies_typechecked: IntegrationConcern = IntegrationConcern {
+  identity: "run_unreached_function_bodies_typechecked",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped"),
+    requirement: "a gunbc run typechecks the function bodies its requested functions can reach, not every body of every module the import closure names, while every refusal for reachable code and every non-function declaration check still fires",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired_scoped"),
+    tail: [decl_ref(module_path: "v1.compiler.compile", decl_name: "run_settle_compile_options")],
+  },
+  question: "Is the typecheck of function bodies no requested function reaches owed by a gunbc run? Split from run_closure_typecheck_exceeds_eval_demand, which keeps the signature and type-environment cost.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired") },
+        tail: [],
+      },
+      account: "The body-typecheck half of the pre-entry cost recorded under run_closure_typecheck_exceeds_eval_demand.",
+    },
+    tail: [],
+  },
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "71a247184d78679d9d526b4674713ba077270118" as CommitSha,
+    superseded: [],
+    replacement: FreeSemigroup { head: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped"), tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "reconcile_scoped")] },
+    executions: FreeSemigroup { head: RetainedExecutionResult { control: decl_ref(module_path: "test.fixture.demanded_scope.scoped_pair", decl_name: "broken_entry"), run: "gunbc run --entry dag/test/fixture/demanded_scope/scoped_pair.dag --function broken_entry vs clean_entry", conclusion: "a reachable type error refuses; an unreached one (unreached_broken) runs; declared as gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked" }, tail: [RetainedExecutionResult { control: decl_ref(module_path: "gunbc.fleet.fleet_converge_plan_cli", decl_name: "fleet_converge_plan_wet"), run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_operator_cli_entry, pre-change binary vs scoped", conclusion: "resolve_entry_graph_inclusive 1,528,505 -> 780,254 ms; reconcile 21 min -> 9 min; max_rss 16.9 -> 15.8 GiB; still not inside the 15-minute plan budget (signature/type-env cost remains in run_closure_typecheck_exceeds_eval_demand)" }] },
+  } },
 }
 
 data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationConcern {
@@ -1923,12 +2017,45 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
         },
         account: "BLOCKER (iii) inference: an unannotated arm closure never receives the enclosing function's declared return as an expected type, so it settles open and refuses at inference. The same refusal was first observed at 4bfa629e7ff (off main's lineage); this sighting reconfirms it on real main at b882c902. Lineage: after appending the branch specimen, function_value_body_route.dag's blob at b882c902 is 61ef52ba, byte-identical to the 4bfa629e run's post-append blob — the claim file is the same at both commits, so the two sightings differ only in the compiler beneath them, and both give the same reason.",
       },
+      ConcernSighting {
+        revision: "c316604f06104fcdd9c61884f09a002b07930e66",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_branch_arm_callback_frame") },
+          tail: [
+            CitesArtifact { label: "pair run of v2.test.claim.compiler.branch_arm_closure_inhabits (claim file blob fd78e33255171bcffd7139820f67401fbc27b33b, held constant across legs): 4/4 green at c316604f0610 (https://app.buildbuddy.io/invocation/c26c0e93-4aa3-482d-bb46-de3772394c7d) against 0/4 at 8732750e2d69 with only that claim file overlaid (https://app.buildbuddy.io/invocation/fdf76b2b-25f1-44fe-93c4-c1a939836516) — the two return-annotated specimens (if-arms, match-arms) move refused -> admitted by the infer change alone; the two negative controls (an arm closure returning Bool where Int is required; a closure in one arm and an Int literal in the other) stay refused", sha256: Sha256Digest { hex: "ea18d82f17117bbd530c08099725f4afb009b097426c98bf88501203c10efa1b" as Sha256DigestHex } },
+          ],
+        },
+        account: "BLOCKER (ii) typing — RULED A DEFECT AND FIXED at c316604f0610 (PR #16212). Chain re-derivation put the earliest unjustified boundary in inference, not in inhabitance: the Branch arm child frame and the Match arm body-edge frame never supplied callback-frame instances from the frame's declared_position_expected arrow, so the arm closure's unannotated parameter binder stayed uninstantiated, the arm's own type was never held, and the refusal surfaced one stage later as inhabitance_no_candidate_return_reason / arrow_body_does_not_inhabit_declared_return. The fix (infer_branch_arm_callback_frame) supplies the SAME instances an application argument already gets from infer_callback_formal_frame, at both arm positions — no second mechanism. The other two blockers stand: blocker (i) (typed arm parameters do not parse) is a grammar gap, and blocker (iii) (a wholly unannotated arm closure settles open) is untouched by this change, which is why the requirement as stated is not yet met and this row stays Open. TRIGGER SATISFIED for the emitter: with a return-annotated arm closure the shape now reaches the emitter, so the branch/match tail-closure move/Box::new fixture becomes writable — that fixture is not part of this lane. CORRECTION (#16212; corrected in this PR #16249): #16212 recorded the fatal-reason probe as a CitesArtifact whose sha256 held the 40-hex git blob id 8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8 — a git blob id, not a 64-hex sha256, sitting in a Sha256DigestHex field, which made this whole register fail to load (0/13 on dag/test/claim/integration_concern_witness.dag). That blob is a run-tree probe object (the probe fns were appended in the run tree), not present in the repository, so no sha256 can be recomputed and none is invented here. SightingEvidence offers no variant for run-tree evidence without a digest, so the invalid CitesArtifact is removed and its observation is carried, verbatim, as prose (fatal-reason probe on both negative-control specimens, probe fns appended in the run tree, blob 8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8, identical on both legs: at 8732750e2d69 infer rejects them with arrow_body_does_not_inhabit_declared_return — the boundary this sighting cited, https://app.buildbuddy.io/invocation/f56a789e-fa04-4c81-8cc4-f4d3b6a8e885; at c316604f0610 with infer_arms_declare_conflicting_types, https://app.buildbuddy.io/invocation/ff0f73a1-c61e-4a8e-80ce-4d491bbc1d8f — the refusal moved from this boundary to the arm-vs-arm join; it did not disappear). The old sighting's meaning is unchanged; only the un-loadable digest field was corrected.",
+      },
+      ConcernSighting {
+        revision: "e5b13917fa9637ddb12bd5c0eb276b6370d265cd",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.test.claim.body_lowering.function_value_body_route", decl_name: "a_branch_body_with_closure_arms_emits_move_closures_at_its_arms") },
+          tail: [
+            CitesArtifact { label: "the claim module as committed at this revision: sha256 over the bytes of `git show e5b13917fa9637ddb12bd5c0eb276b6370d265cd:src/v2/test/claim/body_lowering/function_value_body_route.dag`. claim_batch --hermetic on that revision (quick-newt-573, https://app.buildbuddy.io/invocation/3c882dd0-6da0-4491-9f8c-e64e255c9800): 0 load or parse diagnostics on the file; a_branch_body_with_closure_arms_emits_move_closures_at_its_arms and a_branch_body_at_an_int_return_emits_both_arm_delimiters both return false against their goldens; a_match_body_with_closure_arms_refuses_for_want_of_production_match_tokens passes on its refusal; all 8 pre-existing claims in the module pass", sha256: Sha256Digest { hex: "a89bf4fd1e23e61c55dbd9752f3decefa46a536eb72fc6f4af682ec91210b9f4" as Sha256DigestHex } },
+            CitesArtifact { label: "the emitter's own text at that revision, read through the module's fvb_emit_branch_int_verdict -- the same fvb_emit_verdict_of route the blocker sightings above used -- digested over the emitted line with the value channel's trailing newlines trimmed: `fn fvb_branch_int(k: i32) -> i32 { if true { 1 else 2 } }`. rustc 1.93.0 (--edition 2021 --crate-type lib --emit=metadata) refuses it with a PARSE error, expected one of `.`, `;`, `?`, `}`, or an operator, found keyword `else`: the Rust target emitted UNPARSEABLE Rust at every value-position conditional. Text https://app.buildbuddy.io/invocation/afb17ff2-2844-4bf3-8788-c55a5b5b6dd7, rustc https://app.buildbuddy.io/invocation/0c91b020-c449-4f29-8244-6c2d2d639660; the same shape was read at main 00cacc14979ccf17215ca1677b1b6808b4bb7fd5 before this lane opened, so it predates this lane, and an Int-returning branch shows it is not about closures at all", sha256: Sha256Digest { hex: "4d751832841fc0182f1d170f7d877f129ee5ae50cf887cd07a3aa9333e84a14a" as Sha256DigestHex } },
+            CitesArtifact { label: "the same reading, the closure-arm line: `fn fvb_branch_tail(k: i32) -> impl Fn(i32) -> i32 { if true { |q| { q } else |r| { r } } }` -- the same PARSE refusal. With the braces repaired by hand rustc 1.93.0 still refuses the CAPTURING spelling, E0308 if and else have incompatible types: each arm is its own closure type and only a NON-capturing arm coerces to `fn(i32) -> i32` (the P1/P6/P8/P12 readings in PR #16240), so threading the position cannot by itself make a capturing two-arm item return legal Rust", sha256: Sha256Digest { hex: "b2968f4a3dd7d8c6a300d5249a8b67c586fde918fc5ea4702142441f81753f6f" as Sha256DigestHex } },
+          ],
+        },
+        account: "THE TRIGGER IS SATISFIED AND THE EMITTER'S BRANCH/MATCH TAIL-CLOSURE BOUNDARY IS RED AT MAIN. With blocker (ii) fixed at c316604f0610 a return-annotated arm closure reaches the emitter, and the emitter drops the item-return position there: v2.compiler.target_serialize project_arrow_body_from_inferred_facts carried arms for the arrow body (#16177) and the let tail (#16180) only, so an item body that IS an if fell to that function's value fallback, whose arms are projected by v2.std.compilers.target_model target_value_expr_project_body_subexpression -- and that call hands target_project_branch_bool_if_else the tail position Absent, so an arm closure receives neither the capture conversion nor the boxing the target's FunctionTypeRealizationRow declares for the position. The reading turned up a SECOND cause at the same site, older and independent of closures: TargetConditionalShape carried test delimiters and a closing token but none for the ARMS, so the Rust row folded the then-arm brace and the `else` keyword into one lexeme and conditional_delimited_tokens never closed the then-arm or opened the else-arm. One fixture, red twice over: the arm position, and every emitted conditional.",
+      },
+      ConcernSighting {
+        revision: "9f9de5338edb40bf5e037a34936e2d5980d4b9aa",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.target_serialize", decl_name: "project_arrow_body_from_inferred_facts") },
+          tail: [
+            CitesArtifact { label: "the same claim module, its bytes unchanged since the sighting above (the digest is the same value here): claim_batch --hermetic at this revision, https://app.buildbuddy.io/invocation/804e793e-e4ef-4578-80b2-2f0b6b78520d -- v2.test.claim.body_lowering.function_value_body_route 11/11 PASS, including both branch claims against their goldens, and v2.test.claim.self_host.closure_emission 17/17 PASS, including both production-match-token pins", sha256: Sha256Digest { hex: "a89bf4fd1e23e61c55dbd9752f3decefa46a536eb72fc6f4af682ec91210b9f4" as Sha256DigestHex } },
+            CitesArtifact { label: "the emitter's text at this revision, same wrappers, digested over the emitted line with the value channel's trailing newlines trimmed: `fn fvb_branch_tail(k: i32) -> impl Fn(i32) -> i32 { if true { move |q| { q } } else  { move |r| { r } } }` -- rustc 1.93.0 rc 0, warnings only. The Int control, `fn fvb_branch_int(k: i32) -> i32 { if true { 1 } else  { 2 } }` (digest 41b9ecba805831718fbc434b9e3f4ff3c51c32186e1bac3d7b47092e6967d085), is likewise rc 0; https://app.buildbuddy.io/invocation/321752d6-3080-401c-ae8b-12a2e9b25f4b. Both arms now carry the position's move token and both arm braces come from the shape, so the text rustc refused at main is accepted here -- the referee's verdict on both causes at once", sha256: Sha256Digest { hex: "526ac399ca003fea3af94aeee3833c30a4f5679eed6d0912522dbf0a6b9c1780" as Sha256DigestHex } },
+          ],
+        },
+        account: "GREEN AT THE HEAD, for the shape the referee admits, and fixed by threading rather than by a second mechanism: tail_return of type Optional<FunctionTypePosition> now reaches arm bodies through target_project_branch_bool_if_else and target_project_match (and, on the match side, target_value_expr_match_project_arms and target_value_expr_match_arm_slot_from_arm_edge); both item-body routes pass Present(FunctionTypeAtItemReturn) -- the new arms in v2.compiler.target_serialize project_arrow_body_from_inferred_facts, and v2.std.compilers.target_model target_project_arrow_body_by_kind -- and every arm body dispatches through one new helper, target_project_branch_match_arm_body, into target_project_realized_closure, the projector the let route already uses. TargetConditionalShape gained then_close_token and else_open_token, with Absent carried as its own atom so a projection bundle that lost a field still refuses at decode; the Rust row fills them with its own brace rows and c, dag, swift and typescript carry Absent. ONE REGRESSION, caught by the controls and fixed at this revision: the base-vs-head claim shards over emit, body_lowering and self_host (601 rows in common) flipped exactly one row, v2.test.claim.self_host.closure_emission a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds, and that module's own helpers run at both shas (https://app.buildbuddy.io/invocation/ed9c1c89-c298-439f-8aa1-2419a7433137, https://app.buildbuddy.io/invocation/da41a3e3-f5e4-4c9f-9a8c-fecbf83bdac2) showed the arm still refused but with transform_shape_invalid in place of branch_else_less_as_value -- the new arms claimed EVERY Branch body, while target_project_branch_bool_if_else opens with target_value_expr_branch_bool_gate, which admits only a bool-LITERAL test, whereas the value fallback they displaced gates nothing on the test at all. The head asks each authority's gate (target_value_expr_branch_bool_gate, target_value_expr_match_gate) before claiming the position and leaves a shape either one refuses to the fallback that answered it. The self-host control the wire change required: the emitted crate at base 4a4f790d8da4 against head 277e7ff4e10c, 271 files each, 4 differing and 267 byte-identical, every differing hunk the emitted form of this change, no currently-green conditional changed (https://app.buildbuddy.io/invocation/07b2cacf-cc8a-498b-a382-d8bcac2b2a97, https://app.buildbuddy.io/invocation/cd341531-9fe5-4d3a-8b8c-f7be15d97edb). THE ROW STAYS OPEN, and what is left is named rather than hidden. (a) The CAPTURING two-arm item return is emitted well-formed at this head and rustc still refuses it (E0308, cited above); the next item is WHICH REALIZATION IS SELECTED at an item return whose arms cannot share one type -- rust_function_type_realization_rows gives FunctionTypeAtItemReturn the impl spelling whose value opens with ^rust_token_kw_move and boxes nothing while FunctionTypeAtFnBoundReturn gets ^rust_fn_type_boxed_trait_object with Box::new, and that row's own comment states that the selection (gunbc.rust_function_type_selection) runs offline, that at a function item's return neither candidate dominates, and that the stated policy prefers impl. (b) DEFERRAL: Rust's production lex rules carry no match or fat-arrow token -- they live only in rust_staging_match_additional_lex_rules -- so the match leg stays pinned as a refusal, and wiring those tokens is the item that will flip the closure_emission match pins. (c) DEFERRAL: a branch or match inside a RETURNED CLOSURE'S BODY still refuses upstream at arrow_body_does_not_inhabit_declared_return, read identically before and after this change, which is a closure-body arm inhabitance question of its own. (d) Blockers (i) grammar and (iii) open-settling arms stand untouched by this lane.",
+      },
     ],
   },
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

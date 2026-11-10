@@ -4,6 +4,7 @@ import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.json.emit {
   JsonValue,
+  JsonString,
   json_string,
   json_int,
   json_object,
@@ -17,6 +18,9 @@ import extdeps.languages.json.parse {
   json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState,
@@ -64,6 +68,17 @@ data submission_schema: NonEmptyStr = "roadmap-submission/v1" as NonEmptyStr
 data submission_capture_schema: NonEmptyStr = "roadmap-submission-capture/v2" as NonEmptyStr
 
 data submission_capture_schema_v3: NonEmptyStr = "roadmap-submission-capture/v3" as NonEmptyStr
+
+// A FOREIGN, CLOSED SCHEMA, NOT THIS AUTHORITY'S NEXT VERSION. The srv1 lab build (5592b17b /
+// 4e63be8e) wrote captures tagged "roadmap-submission-capture/v4": v3's members plus an optional
+// `handin` string. That build is gone and its corpus is closed -- no new record will ever carry
+// this tag from that lineage. This authority's own encoder writes ONLY v2 and v3; the next bump it
+// mints is v5, NOT v4. This symbol is named `lab_build_v4` rather than `v4` precisely so the native
+// naming surface never emits "roadmap-submission-capture/v4": a v4 on the wire can only be the
+// foreign corpus, never a future native record, so it can never be silently misread by this arm
+// (the 2026-11-10 review's collision). If a native writer is ever tempted to mint v4, that is the
+// forbidden path -- bump to v5 instead.
+data submission_capture_schema_lab_build_v4: NonEmptyStr = "roadmap-submission-capture/v4" as NonEmptyStr
 
 // THREE READINGS OF "HOW THE TASK ENDED", NOT ONE. `ready` declares a candidate: capture it and
 // judge it. `blocked` and `needs-context` declare that no candidate exists and why -- they end the
@@ -298,7 +313,33 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
   match publication_receipt_member(doc: doc, key: "schema") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
     ReceiptMemberRead { value: schema } =>
-      if schema == (submission_capture_schema_v3 as String) {
+      if schema == (submission_capture_schema_lab_build_v4 as String) {
+        match publication_receipt_member(doc: doc, key: "scm_root_locator") {
+          ReceiptMemberUnreadable { reason: _ } =>
+            CaptureNotDecodable {
+              reason: "capture record scm_root_locator member is absent, duplicated or not a string",
+            }
+          ReceiptMemberRead { value: locator } =>
+            // THE FOREIGN v4 (lab build 5592b17b/4e63be8e): v3's members plus an optional `handin`
+            // string. No consumer reads handin on this authority (the continuation classifies a
+            // capture by its submission and root binding, not its hand-in prose), so it is NOT
+            // modelled on SubmissionCapture: it is validated (a non-string handin is refused,
+            // fail-closed) and then dropped by the tail. This arm is reachable only by the closed
+            // foreign corpus -- this authority never writes v4 (see the constant's reservation).
+            match json_object_unique_member(v: doc, key: "handin") {
+              JsonMemberAbsent =>
+                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
+              JsonMemberFound { value: JsonString { value: _ } } =>
+                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
+              JsonMemberFound { value: _ } =>
+                CaptureNotDecodable { reason: "capture record handin member is not a string" }
+              JsonMemberDuplicated { count: _ } =>
+                CaptureNotDecodable { reason: "capture record handin member is duplicated" }
+              JsonMemberNotAnObject =>
+                CaptureNotDecodable { reason: "capture record is not a JSON object" }
+            }
+        }
+      } else if schema == (submission_capture_schema_v3 as String) {
         match publication_receipt_member(doc: doc, key: "scm_root_locator") {
           ReceiptMemberUnreadable { reason: _ } =>
             CaptureNotDecodable {
@@ -312,17 +353,19 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
       } else {
         CaptureNotDecodable {
           reason: join([
-            "capture schema is ", schema, ", not ", submission_capture_schema_v3 as String,
-            " (or the ", submission_capture_schema as String, " a historical capture carries)",
+            "capture schema is ", schema, ", not ", submission_capture_schema_lab_build_v4 as String, ", ",
+            submission_capture_schema_v3 as String, " (or the ", submission_capture_schema as String,
+            " a historical capture carries)",
           ], ""),
         }
       }
   }
 }
 
-// THE MEMBER TAIL, SHARED BY BOTH SCHEMAS. The binding arrived as a parameter because the schema
-// dispatch already decided it; everything from head_sha down is the carrier both versions carry
-// unchanged.
+// THE MEMBER TAIL, SHARED BY ALL SCHEMAS. The binding arrived as a parameter because the schema
+// dispatch already decided it; everything from head_sha down is the carrier all versions carry
+// unchanged. v4's extra `handin` member is validated at the schema arm and dropped here -- it has
+// no consumer on this authority, so it is not carried onto SubmissionCapture.
 fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -> SubmissionCaptureDecode {
   match publication_receipt_member(doc: doc, key: "head_sha") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
