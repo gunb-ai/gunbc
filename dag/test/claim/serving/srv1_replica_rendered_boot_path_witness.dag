@@ -42,12 +42,10 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_retained_gpu_launcher_host_path, srv1_replica_helper,
   srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
   srv1_tls_identity_source_dir, srv1_tls_key_file_name, srv1_tls_cert_file_name,
-  Srv1BootPathRun, Srv1BootPathRunKind, srv1_boot_path_runs_executed_2026_11_09,
-  srv1_boot_path_ready_deadline, srv1_boot_path_ready_deadline_seconds,
-  srv1_boot_path_crash_restart_floor_seconds, srv1_boot_path_run_is_cold_start,
-  srv1_boot_path_run_is_crash, srv1_boot_path_run_claims_reboot,
-  srv1_replica_unit_contract, srv1_installed_boot_path_artifacts_2026_11_09,
-  srv1_render_replica_helper_sha256, srv1_boot_path_incident_2026_11_09,
+  srv1_boot_path_runs_executed_2026_11_09, srv1_boot_path_ready_deadline,
+  srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
+  srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
+  srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract,
 }
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
