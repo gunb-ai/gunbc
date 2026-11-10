@@ -30,6 +30,7 @@ import gunbc.fleet.gpu_interconnect_observation {
   srv1_interconnect_explanations, interconnect_explanations_on,
   srv1_gpu_pair_topology_readings, srv1_gpu_peer_access_readings, srv1_collective_transport_readings, CollectiveTransportReading,
   srv1_collective_transport_readings_unloaded_2026_11_09,
+  srv1_nccl_arm_default, srv1_nccl_arm_p2p_disabled,
   srv1_collective_read_obligation,
 }
 
@@ -152,8 +153,8 @@ fn arm_rows_in(list: List<CollectiveTransportReading>, arm: NonEmptyStr) -> List
 // a vacuous control is born.
 fn arms_within(list: List<CollectiveTransportReading>, at_bytes: ByteSize, numerator: Nat, denominator: Nat) -> Bool {
   list.any(a => list.any(b =>
-    (a.env_arm as String) == ("default" as NonEmptyStr)
-      && (b.env_arm as String) == ("NCCL_P2P_DISABLE=1" as NonEmptyStr)
+    (a.env_arm as String) == (srv1_nccl_arm_default as String)
+      && (b.env_arm as String) == (srv1_nccl_arm_p2p_disabled as String)
       && message_bytes_count(a) == byte_size_count(at_bytes)
       && message_bytes_count(b) == byte_size_count(at_bytes)
       && bandwidth_count(b: bus_bw_of(c: a)) * denominator >= bandwidth_count(b: bus_bw_of(c: b)) * numerator
@@ -192,8 +193,8 @@ fn bus_bw_of(c: CollectiveTransportReading) -> Bandwidth {
 }
 
 test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
-  let default_arm = arm_rows(arm: "default" as NonEmptyStr)
-  let disabled_arm = arm_rows(arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr)
+  let default_arm = arm_rows(arm: srv1_nccl_arm_default)
+  let disabled_arm = arm_rows(arm: srv1_nccl_arm_p2p_disabled)
   gpu_pair_interconnect_readings_complete(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01)
     && !gpu_pair_interconnect_readings_complete(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_05)
     && srv1_collective_transport_readings.length() == 8
@@ -212,6 +213,29 @@ test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
     && string_contains(s: srv1_collective_read_obligation as String, pattern: "re-run")
 }
 
+// THE TWO RUNS NAME THEIR ARMS WITH THE SAME VALUES. This is the control that caught a real defect in the rows
+// I added: the 2026-11-08 pair names the disabled arm "NCCL_P2P_DISABLE=1" and my unloaded rows wrote
+// "p2pdisabled", so arm_rows_in over the NEW rows returned an EMPTY list and the "no penalty" assertions were
+// about nothing -- a negative control that selects nothing is the same mistake as a self-confirming oracle, and
+// it survived my own reading of the test because one conjunct counted rows and only that one went red. The
+// labels are two values in the module now; this claim refuses any other spelling in either run, so a third run
+// cannot drift out of the comparison, and it pins four rows per arm per run.
+test fn the_two_runs_name_their_arms_with_the_same_labels() -> Bool {
+  let loaded = srv1_collective_transport_readings
+  let unloaded = srv1_collective_transport_readings_unloaded_2026_11_09
+  loaded.length() == 8
+    && unloaded.length() == 8
+    && all(loaded, c => (c.env_arm as String) == (srv1_nccl_arm_default as String)
+      || (c.env_arm as String) == (srv1_nccl_arm_p2p_disabled as String))
+    && all(unloaded, c => (c.env_arm as String) == (srv1_nccl_arm_default as String)
+      || (c.env_arm as String) == (srv1_nccl_arm_p2p_disabled as String))
+    && all(loaded, c => any(unloaded, d => (d.env_arm as String) == (c.env_arm as String)))
+    && all(unloaded, c => any(loaded, d => (d.env_arm as String) == (c.env_arm as String)))
+    && length(arm_rows_in(list: unloaded, arm: srv1_nccl_arm_p2p_disabled)) == 4
+    && length(arm_rows_in(list: unloaded, arm: srv1_nccl_arm_default)) == 4
+    && length(arm_rows(arm: srv1_nccl_arm_p2p_disabled)) == 4
+}
+
 // THE CONTROL THE 2026-11-08 PAIR COULD NOT RUN, RUN AT LAST. Same instrument (sha 702a2bce..), same four
 // sizes, same arm order, and NOTHING serving on the host: both lil-replica units stopped and their containers
 // removed for the interval. The test is not that the numbers are close to the loaded ones -- they are not
@@ -222,8 +246,8 @@ test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
 // assertions above stay exactly as they were: they describe the loaded run, and they remain first-hand.
 test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
   let unloaded = srv1_collective_transport_readings_unloaded_2026_11_09
-  let unloaded_default = arm_rows_in(list: unloaded, arm: "default" as NonEmptyStr)
-  let unloaded_disabled = arm_rows_in(list: unloaded, arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr)
+  let unloaded_default = arm_rows_in(list: unloaded, arm: srv1_nccl_arm_default)
+  let unloaded_disabled = arm_rows_in(list: unloaded, arm: srv1_nccl_arm_p2p_disabled)
   unloaded.length() == 8
     && unloaded_default.length() == 4
     && unloaded_disabled.length() == 4
