@@ -81,8 +81,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag: a literal at an argument whose formal
 // is `LrjNi = Int where lrj_p` with `fn lrj_p(n: Int) -> Bool { true }` is admitted, and records exactly one
 // obligation, which the refinement discharge answers with the evaluator). The header carries NO cast, so the
-// probe declaration is the only `<cast-target>` edge in the tree.
-data cecf_header: String = "module cecf\nimport std.types { Bool, Int, String }\nfn cecf_in_range(x: Int) -> Bool { true }\nfn cecf_above_low(x: Int) -> Bool { true }\ntype Port = Int where cecf_in_range\ntype Mode = Int where cecf_above_low\nfn cecf_chan(x: Port) -> Port { x }\n"
+// probe declaration is the only `<cast-target>` edge in the tree. The module is named `p` and imports nothing
+// because that is what the route admits: v2.test.claim.type_param_binder_frame's `tpb_assemble` ingests the
+// one source string and admits it under ResolutionSubject { name: ^p } with `imports: Empty`, so a probe
+// naming itself otherwise, or importing a corpus module, refuses `resolve_module_not_found` before any
+// checker verdict exists -- read at 4ff6415d, where all four probes died that way. Int and Bool need no
+// import, as src/v2/test/claim/body_cast_node.dag's probe sources already show.
+data cecf_header: String = "module p\n\nfn cecf_in_range(x: Int) -> Bool { true }\n\nfn cecf_above_low(x: Int) -> Bool { true }\n\ntype Port = Int where cecf_in_range\n\ntype Mode = Int where cecf_above_low\n\nfn cecf_chan(x: Port) -> Port { x }\n\n"
 
 // CLASS PROBE 1 -- the in-range literal cast into a range-refined Int carrier: #16224's shape, where the
 // operand's own type is the Int kernel, neither the target refinement nor the carrier of a refinement.
