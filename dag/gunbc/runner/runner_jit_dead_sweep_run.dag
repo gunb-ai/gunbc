@@ -119,7 +119,7 @@ fn jit_dead_sweep_report_lines(host: HostIdentity, sweep: JitDeadSweep) -> List<
 }
 
 fn jit_dead_sweep_all_deregistered(outcomes: List<JitDeregistration>) -> Bool {
-  fold(outcomes, init: true, f: (acc, o) => acc && jit_dead_sweep_deregistered(o: o))
+  fold(outcomes, init: true, f: (acc, o) => acc && jit_dead_sweep_deregistered(outcome: o))
 }
 
 fn jit_dead_sweep_deregistered(outcome: JitDeregistration) -> Bool {
