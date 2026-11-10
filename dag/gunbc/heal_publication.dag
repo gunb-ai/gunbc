@@ -239,11 +239,15 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
 // only the HTTP status is kept (compare gunbc.github_effect_perform publisher_refusal_text, which keeps
 // Google's). A credential refused before dispatch sent no request and holds no body, so it keeps its
 // access-refusal reason (extdeps.transports.rest rest_credential_refusal_cause). An UNDECODABLE BODY keeps
-// its cause, because the host mints that cause from the DECLARED type only
-// (src/v1/stage0/src/v1_interpreter.rs rest_response_declared_cause: cause kind, coproduct, encoding,
-// naming, count) and never from what the body presented: the 2026-11-10 heal-publish outage printed
-// 'status 200 undecodable' for two days of runs while the interpreter knew the body had failed at
-// NoWireContract on `PullRequestState`. A withheld cause is not a safe refusal, it is an un diagnosable one.
+// its cause, because EVERY place that mints that cause renders it from declared facts only:
+// rest_response_declared_cause (cause kind, the located DECLARED field, coproduct, encoding, naming,
+// count),
+// rest_body_read_refused_cause and rest_body_not_json_cause (fixed text; the transport io text and the
+// serde_json message are dropped), and rest_body_null_members_cause (a count; the member names are
+// withheld) -- all in src/v1/stage0/src/v1_interpreter.rs, each with a marker planted in the exact value
+// it refuses to publish. The 2026-11-10 heal-publish outage printed 'status 200 undecodable' for two
+// days of runs while the interpreter knew the body had failed at NoWireContract on PullRequestState.
+// A withheld cause is not a safe refusal, it is an undiagnosable one.
 fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
     RestStatusRefused { status, body: _ } => concat("status ", to_string(status as Int))
