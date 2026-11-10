@@ -1596,6 +1596,12 @@ fn caller_side_recv_rt_decides_the_service_op_leaf() {
                     for c in n.children.iter() {
                         walk(c, si, depth + 1, rows);
                     }
+                    if let Some(b) = &n.body {
+                        walk(b, si, depth + 1, rows);
+                    }
+                    if let Some(ta) = &n.type_annotation {
+                        walk(ta, si, depth + 1, rows);
+                    }
                 }
                 for tm in pass.graph.modules.iter() {
                     if !crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone())
@@ -1661,6 +1667,12 @@ fn caller_side_recv_rt_decides_the_service_op_leaf() {
                             }
                             for c in n.children.iter() {
                                 stack.push(c.clone());
+                            }
+                            if let Some(b) = &n.body {
+                                stack.push(b.clone());
+                            }
+                            if let Some(ta) = &n.type_annotation {
+                                stack.push(ta.clone());
                             }
                         }
                     }
