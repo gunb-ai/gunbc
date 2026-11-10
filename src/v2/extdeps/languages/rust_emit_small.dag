@@ -67,8 +67,9 @@ fn rust_emit_small_serialization_target(
   }
 }
 
-// BoundToken bypasses lex lookup; only the four conditional FixedToken classes
-// need rules. Both delimiting disciplines still share exactly the same lex.
+// BoundToken bypasses lex lookup; only the conditional FixedToken classes need
+// rules (kw_if, lbrace, kw_else, unwired_else, rbrace). Both delimiting
+// disciplines still share exactly the same lex.
 fn rust_emit_small_conditional_target() -> TargetModel {
   rust_emit_small_serialization_target(
     lex: ModeledLexRules {
