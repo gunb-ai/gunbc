@@ -159,6 +159,35 @@ fn sample_receipt_other_executed_day(node: String) -> RoadmapAcceptanceReceipt {
   }
 }
 // ── THE RETIREMENT FOLD: ANY STANDING, HONEST, FINAL ─────────────────────────────────────────────
+// THE SAME ACCEPTANCE UNDER REWRITTEN CRITERIA. One criteria line moves, which is what the
+// operation key is actually made of: roadmap_acceptance_operation_identity takes the receipt's
+// CRITERIA digest, so this is the only honest way to ask whether a second acceptance of a node is a
+// different operation. Deliberately NOT sample_receipt_on, which moves only the calendar day and so
+// keeps the key — a retried acceptance is the same operation however the day moved.
+fn witness_ticket_rewritten() -> TicketFields {
+  TicketFields {
+    headline: "Acceptance evidence witness", brief: "b", displaced_cost: "d", current_state: "c",
+    first_slice: "f", red_control: "r — the criteria the operator rewrote", out_of_scope: "o", handback: "h",
+    updates: [TicketUpdate { on: "2026-11-03", note: "n" }],
+    authored_on: "2026-11-03", last_verified_on: "",
+  }
+}
+
+fn sample_receipt_other_criteria(node: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: roadmap_criteria_digest(t: witness_ticket_rewritten()),
+    red_control: RedControlExecuted {
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
+      witness_fn: "witness_executes" as NonEmptyStr,
+      executed_on: "2026-11-03",
+    },
+    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-03" as NonEmptyStr,
+  }
+}
+
 fn opr_principal() -> EventPrincipalAuthenticated {
   EventPrincipalAuthenticated { ref: PrincipalRef {
     authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-opr" as NonEmptyStr,
@@ -215,9 +244,25 @@ test fn a_retried_acceptance_is_the_same_operation_and_the_same_command_because_
           operation: "op-retry-head-moved" as NonEmptyStr, expected: none },
         receipt: sample_receipt_on(node: node, day: "2026-11-07"), evidence: earned(fact_set()) },
         recorded_at: "2026-11-04T08:00:04Z")))
-  && claim("two different receipts on one node are two operations, so a node is not accepted once in its whole life",
+  && claim("the key is the receipt's CRITERIA digest: an acceptance under rewritten criteria is a different operation",
     key != roadmap_acceptance_operation_identity(node: node,
+      choice: BuildAcceptCommand { receipt: sample_receipt_other_criteria(node: node), evidence: earned(fact_set()) }))
+}
+
+// THE OTHER HALF OF THAT KEY, so the law is stated in both directions. The key is the criteria the
+// operator was shown, not the calendar and not how often the same acceptance was asked for: the same
+// criteria replayed on a later day is the SAME operation, which is what lets a half-finished
+// migration be finished by replaying it instead of duplicating an event or colliding on the key.
+test fn the_operation_key_is_the_criteria_and_not_the_calendar() -> Bool {
+  let node = "node-retry-key-is-criteria"
+  let key = roadmap_acceptance_operation_identity(
+    node: node, choice: BuildAcceptCommand { receipt: sample_receipt(node), evidence: earned(fact_set()) })
+  claim("the same criteria on a later day is the SAME operation, so a replay finishes it rather than duplicating it",
+    key == roadmap_acceptance_operation_identity(node: node,
       choice: BuildAcceptCommand { receipt: sample_receipt_on(node: node, day: "2026-11-06"), evidence: earned(fact_set()) }))
+  && claim("and the red control's own day is not the key either: same criteria, control executed later, same operation",
+    key == roadmap_acceptance_operation_identity(node: node,
+      choice: BuildAcceptCommand { receipt: sample_receipt_other_executed_day(node: node), evidence: earned(fact_set()) }))
 }
 
 test fn a_retired_node_is_retired_once_because_its_key_is_the_reason_not_the_call() -> Bool {

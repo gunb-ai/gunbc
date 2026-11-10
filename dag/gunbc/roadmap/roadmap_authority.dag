@@ -518,7 +518,7 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
 // witness_deleted_history_event_refuses (a removed record with no withdrawal refuses). The other
 // operator reds named in red_control — prefix law on non-empty observed prior, empty-prior bypass
 // discriminant, digest-omitted field mutation, wrong prior digest, revocation while live, duplicate
-// revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed
+// revocations, exact revocation admit, criteria rewrite, and the typed
 // load/projection refusal chain — are separate test fns in the same entry, discovered by the floor,
 // not re-executed by this contract. The live git-observed integrity witness
 // (test.claim.roadmap.roadmap_receipt_continuity_live_witness) goes with the authority-level
