@@ -16,7 +16,7 @@ import gunbc.live_deploy.spec {
   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, ApprovalBrokerFrontDoor, AttemptUnitDrainPathUnit,
   deployment_fabric_storage_door_socket, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
-  deployment_tailnet_door_unit_name, deployment_fabric_storage_unit_name,
+  deployment_tailnet_door_unit_name,
   deployment_agent_door_unit_name, deployment_attempt_unit_drain_path_unit_name, deployment_attempt_unit_drain_service_unit_path,
   deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_credential_recovery_timer_unit_name,
   deployment_retired_belt_timer_unit_name, deployment_retired_belt_timer_unit_path,
@@ -119,8 +119,16 @@ fn deploy_retract_artifact_plan(art: DeploymentArtifactStep, spec: DeploymentSpe
       RetractPlanReady { legs: retract_unit_teardown(units: [deployment_tailnet_door_unit_name(names: spec.names)], head: art.path, rest: []) }
     ComposeOwned { kind: AgentDoorServeUnit } =>
       RetractPlanReady { legs: retract_unit_teardown(units: [deployment_agent_door_unit_name(names: spec.names)], head: art.path, rest: []) }
+    // REFUSED, not performed: the endpoint's unit is the host's own since the operator's ruling of
+    // 2026-11-10 (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10), so a retract
+    // that names it would be removing a file the deployment never installed. The disposition above
+    // (gunbc.live_deploy.spec owned_artifact_teardown_disposition) already says TeardownRefuses; this is the
+    // leg-level expression of the same refusal.
     ComposeOwned { kind: FabricStorageServeUnit } =>
-      RetractPlanReady { legs: retract_unit_teardown(units: [deployment_fabric_storage_unit_name(names: spec.names)], head: art.path, rest: []) }
+      RetractPlanRefused {
+        step: "fabric-storage-unit",
+        reason: join(["live-deploy retract refused: the fabric DB endpoint's unit is not deployment state; the host keeps its own (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10). instance=", spec.instance_id as String], ""),
+      }
     ComposeOwned { kind: SystemdUnit } =>
       RetractPlanReady { legs: retract_unit_teardown(units: [spec.service.unit_name], head: art.path, rest: []) }
     UpsertOwned { kind: BeltEventPathUnit } =>

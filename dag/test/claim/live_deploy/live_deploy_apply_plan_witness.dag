@@ -26,7 +26,7 @@ import gunbc.live_deploy.apply_legs {
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, deployment_fabric_storage_unit_name, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
@@ -863,11 +863,45 @@ test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
   }
 }
 
-// THE FABRIC STORAGE UNIT IS RESTARTED BY THE APPLY (was the_fold_restarts_the_journal_store_before_the_gate_reads_the_journal):
-// the journal store the health gate reads is the unit this leg names.
-test fn the_production_apply_restarts_the_fabric_storage_unit() -> Bool {
+// WHAT THE APPLY DOES OF THE FABRIC DB ENDPOINT, since the operator's ruling of 2026-11-10
+// (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10): it routes to the endpoint's
+// door socket and touches nothing of the endpoint's own unit. The claim here before asserted a
+// "fabric-storage-restart" leg naming that unit (successor of the_fold_restarts_the_journal_store_before_the_
+// gate_reads_the_journal). The check is over EVERY leg's argv rather than over the absence of one step name:
+// a leg that staged, enabled, reloaded or restarted the unit would name it, and no leg may name it.
+test fn no_apply_leg_touches_the_fabric_storage_unit() -> Bool {
+  let words = all_leg_words(legs: full_legs(spec: deployment_spec_srv1()))
+  !any(words, w => w.contains("gunbc-roadmap-fabric-storage.service"))
+}
+
+fn all_leg_words(legs: List<DeployApplyLeg>) -> List<String> {
+  match legs {
+    Empty => []
+    Cons { head: h, tail: rest } => concat(leg_argv_words(leg: h), all_leg_words(legs: rest))
+  }
+}
+
+fn fabric_storage_unit_step(spec: DeploymentSpec) -> DeploymentArtifactStep {
+  DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: "/etc/systemd/system/gunbc-roadmap-fabric-storage.service" as NonEmptyStr }
+}
+
+// A SPEC STILL NAMING THE FABRIC DB UNIT REFUSES THE PLAN (the FleetConvergeTimerUnit precedent above). No
+// spec the model emits carries that member any more, so one that does came from an older emitter or was
+// hand-authored; running it would stage and restart a file the deployment no longer installs, and refusing
+// names the ruling that retired the member so the operator can see why the plan died.
+test fn a_fabric_storage_unit_step_refuses_the_plan() -> Bool {
   let spec = deployment_spec_srv1()
-  has_word(words: words_at(legs: full_legs(spec: spec), step: "fabric-storage-restart"), w: deployment_fabric_storage_unit_name(names: spec.names) as String)
+  match deploy_apply_step_plan(
+    step: ArtifactStep { step: fabric_storage_unit_step(spec: spec) },
+    effects: [],
+    spec: spec,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    source_root: "/src",
+    oidc_now: Absent,
+  ) {
+    ApplyPlanRefused { step: s, reason: r } => s == "fabric-storage-unit" && r.contains("t6_fabric_storage_excluded_from_live_deploy_2026_11_10")
+    ApplyPlanReady { legs: _ } => false
+  }
 }
 
 // THE BROKER LIFECYCLE RESTARTS THE BROKER AND NOT THE SIDECAR (the conjunct of
