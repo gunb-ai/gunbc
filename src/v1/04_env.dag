@@ -1015,9 +1015,27 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
         node_with_children(n: n, children: qualified_children)
       } else {
         let qname = concat(mp, ".", name)
+        // A QUALIFIED corpus reference must carry its DECLARATION's identity, not a kernel span. The
+        // rewrite above has already excluded kernel/container leaves, so `qname` names a corpus
+        // declaration; stamping ident_span: kernel_span(name: qname) made declaration_provenance_of
+        // report KernelMinted for a corpus type, minting the bogus '<kernel:...>' type_reference_identity
+        // and (via the equality walk's provenance_realizes_natively early return) hiding a qualified
+        // reference's arms -- so a routed member (Diagnostic.correction -> Correction.Suggested { node })
+        // went UNJUDGED and the emitter compared a routed Node by raw Rust '==' (gunbc#16143, D19/D21).
+        // Consult the resolver's own qualified-name authority (symbol_index_lookup, keyed
+        // module_path + '.' + name) -- the same one v1.compiler.emit_rust's type_reference_provenance_in_env
+        // uses -- and give the reference the declaration's real span so its provenance is the declaration's.
+        // v1.std.core's declaration_provenance_of cannot do this itself: it sits below the index (import
+        // cycle), which is exactly why this mint, not the downstream classifier, is the earliest correctable
+        // link. If the index cannot name the qualified path, keep the reference's own span rather than
+        // fabricating a kernel fact.
+        let qualified_ident_span = match symbol_index_lookup(index: env.symbol_index, qualified_name: qname) {
+          Present { value: d } => d.ident_span
+          Absent => n.ident_span
+        }
         Node {
           ident: Absent,
-          occurrence_identity: OccurrenceSynthetic, name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
+          occurrence_identity: OccurrenceSynthetic, name: qname, span: n.span, ident_span: qualified_ident_span,
           children: qualified_children, connective: n.connective, params: n.params,
           inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
           body: n.body, transport: n.transport, properties: n.properties,
