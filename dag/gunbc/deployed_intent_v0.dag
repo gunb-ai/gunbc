@@ -58,3 +58,21 @@ data gunbc_srv2_deployed_intent_v0_persisted: DeployedIntentV0 = deployed_intent
   target_host: srv2_host,
   row: gunbc_srv2_host_identity_observation_fixture_row,
 )
+
+// THE COMMITTED BASELINES AS ONE ROSTER, keyed by the opaque handle. The rows stay per-machine — a
+// baseline is a fact observed on one machine at one instant, and generalizing it would invent a base
+// no one read — but NOTHING selects a baseline by naming a machine: every consumer looks a host's base
+// up by its HostIdentity, which is what lets a new host join by gaining a row instead of a code path
+// (gunbc.design_argument::root_generalization). A host with no row here has no baseline, and the
+// three-way consumer refuses rather than inventing one.
+data gunbc_deployed_intent_v0_persisted_rows: List<DeployedIntentV0> = [
+  gunbc_srv1_deployed_intent_v0_persisted,
+  gunbc_srv2_deployed_intent_v0_persisted,
+]
+
+fn deployed_intent_v0_persisted_for_slot(fleet_slot: HostIdentity) -> DeployedIntentV0? {
+  match filter(gunbc_deployed_intent_v0_persisted_rows, d => d.fleet_slot == fleet_slot).first() {
+    Present { value: d } => Present { value: d }
+    Absent => none
+  }
+}

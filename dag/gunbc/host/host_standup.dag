@@ -234,7 +234,7 @@ data host_standup_spine: List<HostStandupStep> = [
         decl_ref(module_path: "gunbc.host.host_identity_adopt", decl_name: "host_identity_adopt_srv1_live"),
         decl_ref(module_path: "gunbc.host.host_identity_knob", decl_name: "three_way_leaf"),
         decl_ref(module_path: "gunbc.host.host_identity_converge", decl_name: "host_identity_apply_gated"),
-        decl_ref(module_path: "gunbc.host.host_identity_assimilation", decl_name: "host_identity_assimilate_srv1_wet"),
+        decl_ref(module_path: "gunbc.host.host_hostname_converge", decl_name: "hostname_converge_apply_step"),
         decl_ref(module_path: "gunbc.host.host_identity_assimilation", decl_name: "host_identity_converge_from_base"),
         decl_ref(module_path: "gunbc.host.host_identity_converge", decl_name: "host_identity_plan_from_verdict"),
         decl_ref(module_path: "gunbc.deployed_intent_v0", decl_name: "deployed_intent_v0_adopt_observed_base"),

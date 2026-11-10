@@ -217,25 +217,3 @@ fn host_identity_adopt_wet(
       )
   }
 }
-
-fn host_identity_adopt_srv1_wet() -> ProcessExit {
-  let probed_at = host_identity_observed_probed_at()
-  match host_identity_adopt_srv1_live(probed_at: probed_at) {
-    Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)
-    Absent =>
-      exit_failure(
-        reason: "host_identity_adopt: FAIL hostname read did not converge to a typed observation"
-      )
-  }
-}
-
-fn host_identity_adopt_srv2_wet() -> ProcessExit {
-  let probed_at = host_identity_observed_probed_at()
-  match host_identity_adopt_srv2_live(probed_at: probed_at) {
-    Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)
-    Absent =>
-      exit_failure(
-        reason: "host_identity_adopt: FAIL hostname read did not converge to a typed observation"
-      )
-  }
-}

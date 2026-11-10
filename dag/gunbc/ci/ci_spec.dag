@@ -51,6 +51,7 @@ import gunbc.spark.credential_workflow {
 }
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
+import gunbc.host.host_hostname_converge { hostname_converge_receipt_path }
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
@@ -922,6 +923,36 @@ data gunbc_ci_host_credential_custody_converge_target: GunbcRunStepTarget = Gunb
   function: "host_credential_custody_converge_ci_wet",
 }
 
+// THE PEER-RUN HOSTNAME CONVERGE MODE'S ENTRIES — one per step, plus the dispatch gate. None of them
+// takes an argument: the emitted step carries the target selector, the executing peer and the direction
+// by environment, and each entry resolves the pair for itself through `resolve_host_selector`. That is
+// what keeps a target from being hand-spelled into a step, and why the three steps cannot share one
+// reading of the machine's state (gunbc.host.host_hostname_converge).
+data gunbc_ci_hostname_converge_dispatch_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+  function: "fleet_converge_hostname_converge_dispatch_admission_wet",
+}
+
+data gunbc_ci_hostname_converge_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+  function: "fleet_converge_hostname_converge_plan_wet",
+}
+
+data gunbc_ci_hostname_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+  function: "fleet_converge_hostname_converge_apply_wet",
+}
+
+data gunbc_ci_hostname_converge_read_back_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+  function: "fleet_converge_hostname_converge_read_back_wet",
+}
+
+data gunbc_ci_hostname_converge_readopt_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_cli.dag",
+  function: "fleet_converge_hostname_converge_readopt_wet",
+}
+
 // THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER, the
 // step hands that label over by environment, and the subject is derived from the label through the
 // modeled assignment. There is no input of any kind through which a caller could name a subject,
@@ -1436,7 +1467,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target,
     gunbc_ci_arrival_admit_target,
-    gunbc_ci_arrival_converge_target
+    gunbc_ci_arrival_converge_target,
+    gunbc_ci_hostname_converge_dispatch_admission_target,
+    gunbc_ci_hostname_converge_plan_target,
+    gunbc_ci_hostname_converge_apply_target,
+    gunbc_ci_hostname_converge_read_back_target,
+    gunbc_ci_hostname_converge_readopt_target
   ]
 }
 
@@ -3066,6 +3102,56 @@ fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
     function: gunbc_ci_host_reset_dispatch_admission_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_hostname_converge_dispatch_admission_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_hostname_converge_dispatch_admission_target.entry,
+    function: gunbc_ci_hostname_converge_dispatch_admission_target.function,
+    claim_run: false,
+    receipt_rel: hostname_converge_receipt_path as String
+  )
+}
+
+fn gunbc_ci_hostname_converge_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_hostname_converge_plan_target.entry,
+    function: gunbc_ci_hostname_converge_plan_target.function,
+    claim_run: false,
+    receipt_rel: hostname_converge_receipt_path as String
+  )
+}
+
+fn gunbc_ci_hostname_converge_apply_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_hostname_converge_apply_target.entry,
+    function: gunbc_ci_hostname_converge_apply_target.function,
+    claim_run: false,
+    receipt_rel: hostname_converge_receipt_path as String
+  )
+}
+
+fn gunbc_ci_hostname_converge_read_back_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_hostname_converge_read_back_target.entry,
+    function: gunbc_ci_hostname_converge_read_back_target.function,
+    claim_run: false,
+    receipt_rel: hostname_converge_receipt_path as String
+  )
+}
+
+fn gunbc_ci_hostname_converge_readopt_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_hostname_converge_readopt_target.entry,
+    function: gunbc_ci_hostname_converge_readopt_target.function,
+    claim_run: false,
+    receipt_rel: hostname_converge_receipt_path as String
   )
 }
 

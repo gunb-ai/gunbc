@@ -64,7 +64,37 @@ import gunbc.ci.ci_runner_placement {
   host_deployment_refusal_text,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import std.types { FilePath }
+import std.types { FilePath, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import gunbc.host.host_hostname_converge {
+  HostnameConvergeAdoptStep,
+  HostnameConvergeApplyStep,
+  HostnameConvergeDispatchAdmission,
+  HostnameConvergePlanStep,
+  HostnameConvergeReadBackStep,
+  HostnameConvergeRequest,
+  HostnameConvergeResolution,
+  hostname_converge_adopt_line,
+  hostname_converge_apply_line,
+  hostname_converge_dispatch_admission,
+  hostname_converge_dispatch_admission_line,
+  hostname_converge_plan_line,
+  hostname_converge_read_back_line,
+  hostname_converge_read_back_step,
+  hostname_converge_readopt_step,
+  hostname_converge_receipt_path,
+  hostname_converge_apply_step,
+  hostname_converge_plan_step,
+  hostname_converge_refusal_line,
+  hostname_converge_resolve,
+  hostname_converge_attempt_env_name,
+  hostname_converge_direction_env_name,
+  hostname_converge_mode,
+  hostname_converge_peer_env_name,
+  hostname_converge_readopt_env_name,
+  hostname_converge_target_env_name,
+}
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — gunbc.design_argument::single_authority's stale-citation class, in a carrier the cut itself falsified.
@@ -958,5 +988,198 @@ fn converge_cli_provider_guest_receipt(host: String, intent: HostEnrollmentInten
       verdict: VerdictAbsent,
       reason: Present { value: KnobFrontier { reason: join(["gunbc converge: provider guest ", host, " is adopted and microVM-capable; its runner converge is not modeled yet"], "") } },
     }
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE PEER-RUN HOSTNAME CONVERGE MODE — its three steps and its typed re-adopt, as entries.
+//
+// ONE ENTRY PER STEP, each reading its inputs from the environment the emitted step carries (the target
+// selector, the executing peer, the direction) and each RESOLVING THE PAIR ITSELF. They share no
+// resolved request across process boundaries: a step that inherited the plan step's live read would be
+// certifying the earlier step's reading rather than the machine's state, and the whole point of the
+// third step is that it is a second, independent reading (gunbc.design_argument::witness_one_interface).
+//
+// NOTHING HERE ACTS UNLESS THE DISPATCH CONFIRMED IT. The apply entry refuses unless the confirmation
+// the step carries says `converge`, on top of the step's own `if:` gate — two independent locks, because
+// the one thing this mode can do to a machine is rename it, and the first wet use is a scheduled window
+// on one host rather than whatever dispatch happens to fire (gunbc.design_argument::fail_closed).
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+data hostname_converge_confirm_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_CONFIRM"
+data hostname_converge_mode_env_name: NonEmptyStr = "MODE"
+
+fn hostname_converge_env_value(name: NonEmptyStr) -> String {
+  match shell.Env.Get(name: name).value {
+    Absent => ""
+    Present { value: raw } => raw
+  }
+}
+
+// THE PAIR IS RESOLVED FROM THE ENVIRONMENT, per step. A target or peer the dispatch did not name, a
+// peer that IS the target, a host with no committed baseline or no bound compute host, and a route the
+// fleet's own reach model declines all arrive as a typed cause the step refuses with — never as a
+// default, a fallback route, or a name guessed from the executor's own hostname.
+fn hostname_converge_resolution_from_env() -> HostnameConvergeResolution {
+  hostname_converge_resolve(
+    target_selector: hostname_converge_env_value(name: hostname_converge_target_env_name),
+    peer_selector: hostname_converge_env_value(name: hostname_converge_peer_env_name),
+    direction_raw: hostname_converge_env_value(name: hostname_converge_direction_env_name),
+    attempt_raw: hostname_converge_env_value(name: hostname_converge_attempt_env_name),
+  )
+}
+
+fn hostname_converge_receipt_write(text: String) -> Bool {
+  let _w = Filesystem.Write(path: hostname_converge_receipt_path as String, content: text)
+  true
+}
+
+// A REPORTED OUTCOME IS WRITTEN AND PASSED. The receipt is what the upload step publishes whether the
+// job passed or failed, so the refused run is the one somebody can still read.
+fn hostname_converge_report_exit(line: String) -> ProcessExit {
+  let _w = hostname_converge_receipt_write(text: line)
+  ExitSuccess
+}
+
+fn hostname_converge_refusal_exit(line: String, step: String) -> ProcessExit {
+  let _w = hostname_converge_receipt_write(text: line)
+  exit_failure(
+    reason: join(
+      [
+        "peer-run hostname converge ", step, " refused: ", line,
+        " (receipt at ", hostname_converge_receipt_path as String, ")",
+        "",
+      ],
+      "",
+    ),
+  )
+}
+
+// THE DISPATCH ADMISSION ENTRY, RUN IN THE BUILD JOB. The converge job's runs-on is resolved before any
+// of its steps exist, so a gate inside that job is unreachable in exactly the state it would diagnose;
+// `build` carries generic labels, is always schedulable, and every host-scoped job needs it. It refuses
+// with a cause rather than declining quietly, so an operator never reads a skipped gate as a pass.
+fn fleet_converge_hostname_converge_dispatch_admission_wet() -> ProcessExit {
+  let admission = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_env_value(name: hostname_converge_mode_env_name),
+    peer_raw: hostname_converge_env_value(name: hostname_converge_peer_env_name),
+  )
+  let line = hostname_converge_dispatch_admission_line(admission: admission)
+  match admission {
+    DispatchNotThisMode { mode: _ } => hostname_converge_report_exit(line: line)
+    DispatchAdmitted { mode: _, peer: _ } => hostname_converge_report_exit(line: line)
+    DispatchPeerUnnamed { mode: _, variable: _ } =>
+      hostname_converge_refusal_exit(line: line, step: "dispatch admission")
+  }
+}
+
+// STEP ONE — THE DRY PLAN. Every fold it can reach is a report, so every fold exits 0: the plan step's
+// job is to say what the state means, including that it is a conflict naming both the baseline and the
+// desired name. Where a conflict turns the job red is the step that would have acted. The one failure
+// here is a live name nobody could read — a plan folded over a state no one read is not a plan.
+fn fleet_converge_hostname_converge_plan_wet() -> ProcessExit {
+  match hostname_converge_resolution_from_env() {
+    Refused { cause: c } =>
+      hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "plan")
+    Resolved { request: request } => hostname_converge_plan_exit(request: request)
+  }
+}
+
+fn hostname_converge_plan_exit(request: HostnameConvergeRequest) -> ProcessExit {
+  let step = hostname_converge_plan_step(request: request)
+  let line = hostname_converge_plan_line(request: request, step: step)
+  match step {
+    PlanRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "plan")
+    Planned { plan: _, live: _, stamp: _ } => hostname_converge_report_exit(line: line)
+  }
+}
+
+// STEP TWO — THE WET APPLY, behind the dispatch's own confirmation. The confirmation is checked here as
+// well as in the emitted `if:`, so the entry is safe to invoke by hand; an unconfirmed dispatch that
+// reaches this code refuses without touching a machine.
+fn fleet_converge_hostname_converge_apply_wet() -> ProcessExit {
+  if hostname_converge_env_value(name: hostname_converge_confirm_env_name) != "converge" {
+    return hostname_converge_refusal_exit(
+      line:
+        join(
+          [
+            "hostname_converge refused: the apply step requires the dispatch confirmation `converge` and this",
+            " dispatch did not carry it, so no hostnamectl write was attempted on any host",
+            "",
+          ],
+          "",
+        ),
+      step: "apply",
+    )
+  }
+  match hostname_converge_resolution_from_env() {
+    Refused { cause: c } =>
+      hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "apply")
+    Resolved { request: request } => hostname_converge_apply_exit(request: request)
+  }
+}
+
+fn hostname_converge_apply_exit(request: HostnameConvergeRequest) -> ProcessExit {
+  let step = hostname_converge_apply_step(request: request)
+  let line = hostname_converge_apply_line(result: step)
+  match step {
+    Applied { settle: _, live_before: _, converged: converged } =>
+      if converged {
+        hostname_converge_report_exit(line: line)
+      } else {
+        hostname_converge_refusal_exit(line: line, step: "apply")
+      }
+    NotApplied { plan: _, live_before: _, reason: _ } => hostname_converge_refusal_exit(line: line, step: "apply")
+    ApplyRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "apply")
+  }
+}
+
+// STEP THREE — THE INDEPENDENT READ-BACK. It reads the live name for itself and compares it with the
+// name the direction was to settle on. It fails when the name cannot be read at all, and — only where an
+// apply was confirmed for this dispatch — when the name did not land: a mode that claims to converge
+// must not go green having not. Without a confirmed apply a mismatch is the stated plan outcome (a
+// baseline the operator has not re-adopted yet), so it is reported rather than dressed up as a failure.
+fn fleet_converge_hostname_converge_read_back_wet() -> ProcessExit {
+  let actuation_confirmed = hostname_converge_env_value(name: hostname_converge_confirm_env_name) == "converge"
+  match hostname_converge_resolution_from_env() {
+    Refused { cause: c } =>
+      hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "read-back")
+    Resolved { request: request } => hostname_converge_read_back_exit(request: request, actuation_confirmed: actuation_confirmed)
+  }
+}
+
+fn hostname_converge_read_back_exit(request: HostnameConvergeRequest, actuation_confirmed: Bool) -> ProcessExit {
+  let step = hostname_converge_read_back_step(request: request)
+  let line = hostname_converge_read_back_line(result: step)
+  match step {
+    ReadBack { observed: _, settle: _, matches_settle: matches_settle } =>
+      if matches_settle || !actuation_confirmed {
+        hostname_converge_report_exit(line: line)
+      } else {
+        hostname_converge_refusal_exit(line: line, step: "read-back")
+      }
+    ReadBackRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "read-back")
+  }
+}
+
+// THE TYPED RE-ADOPT, behind its own dispatch input. It admits on one state only — the live name already
+// IS the desired name — and what it emits is the DeployedIntentV0 the operator COMMITS; it has no path to
+// the committed row, which is what "must not silently overwrite the baseline" buys in code. A refusal is
+// red, so a run can never be read as having re-adopted when it did not.
+fn fleet_converge_hostname_converge_readopt_wet() -> ProcessExit {
+  match hostname_converge_resolution_from_env() {
+    Refused { cause: c } =>
+      hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "re-adopt")
+    Resolved { request: request } => hostname_converge_readopt_exit(request: request)
+  }
+}
+
+fn hostname_converge_readopt_exit(request: HostnameConvergeRequest) -> ProcessExit {
+  let step = hostname_converge_readopt_step(request: request)
+  let line = hostname_converge_adopt_line(result: step)
+  match step {
+    Adopted { previous_base: _, adopted: _, candidate: _ } => hostname_converge_report_exit(line: line)
+    AdoptRefused { live: _, base: _, desired: _, reason: _ } => hostname_converge_refusal_exit(line: line, step: "re-adopt")
+    AdoptReadRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "re-adopt")
   }
 }

@@ -281,6 +281,23 @@ import gunbc.spark.credential_workflow { spark_administrator_credential_roster_h
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
+import gunbc.host.host_hostname_converge {
+  hostname_converge_attempt_env_name,
+  hostname_converge_confirm_default,
+  hostname_converge_confirm_env_name,
+  hostname_converge_confirm_options,
+  hostname_converge_direction_env_name,
+  hostname_converge_direction_options,
+  hostname_converge_mode,
+  hostname_converge_mode_env_name,
+  hostname_converge_peer_env_name,
+  hostname_converge_peer_options,
+  hostname_converge_readopt_default,
+  hostname_converge_readopt_env_name,
+  hostname_converge_readopt_options,
+  hostname_converge_receipt_path,
+  hostname_converge_target_env_name,
+}
 import gunbc.host.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -378,6 +395,7 @@ type FleetConvergeWorkflowMode
   | Srv1RootMutation(Srv1RootMutationMode)
   | RlmLaunchDeploymentReceipt
   | HostResetReturn
+  | HostnameConverge
   | RunnerHostFileObserve
   | HostMemoryObserve
   | MicrovmSlotReserve
@@ -471,6 +489,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SparkGrantsObserve => "spark_grants_observe"
     RlmLaunchDeploymentReceipt => "rlm_launch_deployment_receipt"
     HostResetReturn => "host_reset_return"
+    HostnameConverge => hostname_converge_mode
     RunnerHostFileObserve => "runner_host_file_observe"
     HostMemoryObserve => "host_memory_observe"
     MicrovmSlotReserve => "microvm_slot_reserve"
@@ -557,7 +576,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -596,6 +615,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmSlotStart => SixteenBinaryPack
     RlmLaunchDeploymentReceipt => SixteenBinaryPack
     HostResetReturn => SixteenBinaryPack
+    HostnameConverge => SixteenBinaryPack
     RunnerHostFileObserve => SixteenBinaryPack
     HostMemoryObserve => SixteenBinaryPack
     RunnerHostFileConverge => SixteenBinaryPack
@@ -725,6 +745,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MicrovmSlotStart => none
     RlmLaunchDeploymentReceipt => none
     HostResetReturn => none
+    HostnameConverge => none
     RunnerHostFileObserve => none
     HostMemoryObserve => none
     RunnerHostFileConverge => none
@@ -950,6 +971,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MicrovmSlotStart => FleetSshKeyNotConsumed
     RlmLaunchDeploymentReceipt => FleetSshKeyConsumed
     HostResetReturn => FleetSshKeyConsumed
+    HostnameConverge => FleetSshKeyConsumed
     RunnerHostFileObserve => FleetSshKeyConsumed
     HostMemoryObserve => FleetSshKeyNotConsumed
     RunnerHostFileConverge => FleetSshKeyConsumed
@@ -1534,6 +1556,7 @@ fn fleet_converge_build_job_own_steps() -> List<Step> {
     ci_cache_cargo_step(),
     ci_release_build_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     fleet_converge_reset_observer_dispatch_admission_step(),
+    fleet_converge_hostname_converge_dispatch_admission_step(),
     ci_release_bins_pack_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     ci_release_bins_upload_step(),
   ]
@@ -2092,6 +2115,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkGrantsObserve => ExecutorDomain
     RlmLaunchDeploymentReceipt => ExecutorDomain
     HostResetReturn => ExecutorDomain
+    HostnameConverge => ExecutorDomain
     RunnerHostFileObserve => ExecutorDomain
     HostMemoryObserve => OwnRunConfined
     MicrovmSlotReserve => ExecutorDomain
@@ -6481,6 +6505,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MicrovmSlotStart => fleet_converge_shared_job_id
     RlmLaunchDeploymentReceipt => "rlm-launch-deployment-receipt" as NonEmptyStr
     HostResetReturn => "host-reset-return" as NonEmptyStr
+    HostnameConverge => "hostname-converge" as NonEmptyStr
     RunnerHostFileObserve => fleet_converge_shared_job_id
     HostMemoryObserve => fleet_converge_shared_job_id
     RunnerHostFileConverge => fleet_converge_shared_job_id
@@ -6591,6 +6616,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostnameConverge), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DashboardDeploy)), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalBrokerDarkInstall)), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalNtfyRetire)), needs: [fleet_converge_release_bins_job_id as String] },
@@ -6653,6 +6679,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_job(),
     fleet_converge_mtcollins1_boot_job(),
     fleet_converge_host_reset_return_job(),
+    fleet_converge_hostname_converge_job(),
     fleet_converge_dashboard_deploy_job(),
     fleet_converge_approval_broker_dark_install_job(),
     fleet_converge_approval_ntfy_retire_job(),
@@ -7660,6 +7687,40 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
     default: none,
     type: InputChoice { options: fleet_converge_reset_observer_options },
   },
+  // THE FOUR INPUTS OF THE PEER-RUN HOSTNAME CONVERGE MODE. `host` (the row above) is the TARGET whose
+  // Linux hostname converges; `hostname_converge_peer` is the host the job RUNS ON. They are separate
+  // inputs because they are separate machines by design: the target's own fleet-converge job is pinned
+  // to the target's runner label, which is the label the rename window renames. The options are derived
+  // from the hostname allocation rather than typed out, and a dispatch that names the target as its own
+  // peer is refused by the entry -- the closed choice keeps a typo from becoming a free-text host.
+  DispatchInput {
+    name: "hostname_converge_peer",
+    description: Present { value: "hostname_converge only: the EXECUTING PEER that runs the converge over fleet SSH. Options are gunbc.host.host_hostname_converge hostname_converge_peer_options (the allocated fleet hosts); it must not be the target, and an empty value is refused by the build job's dispatch gate rather than queued to a label no runner carries" },
+    required: false,
+    default: none,
+    type: InputChoice { options: hostname_converge_peer_options() },
+  },
+  DispatchInput {
+    name: "hostname_converge_direction",
+    description: Present { value: "hostname_converge only: forward converges the target's Linux hostname to its canonical allocation name; rollback puts the committed baseline name back -- the rename window's rollback, and the only previous name this mode may write. The pair is typed, never a free-text hostname" },
+    required: false,
+    default: Present { value: "forward" },
+    type: InputChoice { options: hostname_converge_direction_options },
+  },
+  DispatchInput {
+    name: "hostname_converge_confirm",
+    description: Present { value: "hostname_converge only: plan (the default) folds the live name and reads it back without writing; converge unlocks the apply step that runs hostnamectl set-hostname on the target. Two locks guard the write -- this choice and the entry's own check of it" },
+    required: false,
+    default: Present { value: hostname_converge_confirm_default },
+    type: InputChoice { options: hostname_converge_confirm_options },
+  },
+  DispatchInput {
+    name: "hostname_converge_readopt",
+    description: Present { value: "hostname_converge only: adopt unlocks the typed baseline re-adopt, which admits ONLY where the live name already is the desired name, and emits the DeployedIntentV0 for the operator to commit -- it never rewrites the committed baseline itself. refuse (the default) leaves the gate closed" },
+    required: false,
+    default: Present { value: hostname_converge_readopt_default },
+    type: InputChoice { options: hostname_converge_readopt_options },
+  },
   DispatchInput {
     name: "credential",
     description: Present { value: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names" },
@@ -8462,5 +8523,256 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
     }
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_job_id, cause: cause)
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE PEER-RUN HOSTNAME CONVERGE JOB (gunbc.plans.fleet_machine_authority P8a).
+//
+// WHY IT IS A JOB OF ITS OWN, AND WHY ITS runs-on IS NOT THE TARGET'S LABEL. Every other host-scoped
+// job in this workflow is pinned to `github.event.inputs.host` — the machine it converges. That pin is
+// correct right up until the mode renames the machine: a job whose only route to a runner is the label
+// of the host it is renaming cannot survive the rename it performs, and during the window the label it
+// asks for is exactly the label being retired. So this job is scheduled on the PEER, and reaches the
+// target over the fleet's own SSH edge. `host` stays the TARGET (it is what the mutation concurrency
+// group keys on, so renames of one host serialize against each other); `hostname_converge_peer` is the
+// executor. They are separate inputs because they are separate machines.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+data fleet_converge_hostname_converge_step_if: String = fleet_converge_mode_step_if(mode: HostnameConverge)
+
+// THE APPLY STEP IS GATED TWICE: on the mode, and on the dispatch having chosen `converge`. A dispatch
+// that picks the mode without saying the word folds the plan and reads the name back and never writes —
+// which is what makes a dry run against a real host the safe thing it looks like. The entry checks the
+// same environment again, so the lock is not only in the emitted YAML.
+data fleet_converge_hostname_converge_apply_step_if: String = join(
+  [fleet_converge_mode_step_if(mode: HostnameConverge), " && github.event.inputs.hostname_converge_confirm == 'converge'"],
+  "",
+)
+
+// THE RE-ADOPT STEP HAS ITS OWN GATE, separate from actuation, because writing a hostname and moving
+// the committed baseline are different authorities over different data.
+data fleet_converge_hostname_converge_readopt_step_if: String = join(
+  [fleet_converge_mode_step_if(mode: HostnameConverge), " && github.event.inputs.hostname_converge_readopt == 'adopt'"],
+  "",
+)
+
+// THE PEER LABEL, built the same closed way the observer label is: a format-injected JSON array so a
+// dispatch cannot break out of the label set, and the value comes from the dispatch rather than from
+// `hostname -s` on whatever box the job landed on.
+data fleet_converge_hostname_converge_peer_runner_expression_body: String =
+  "fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.hostname_converge_peer))"
+
+data fleet_converge_hostname_converge_peer_runner_expression: String = join(
+  ["${{ ", fleet_converge_hostname_converge_peer_runner_expression_body, " }}"],
+  "",
+)
+
+fn fleet_converge_hostname_converge_runner_spec() -> RunnerSpec {
+  RunsOnExpression { expression: fleet_converge_hostname_converge_peer_runner_expression }
+}
+
+fn fleet_converge_hostname_converge_job() -> Job {
+  Job {
+    id: "hostname-converge",
+    name: Present { value: "Fleet Converge · Hostname Converge (from peer)" },
+    runs_on: fleet_converge_hostname_converge_runner_spec(),
+    environment: Present {
+      value: EnvironmentRef {
+        name: fleet_converge_fleet_ssh_environment,
+        url: none,
+      },
+    },
+    steps: concat(
+      fleet_converge_event_sha_consumer_prelude_steps(),
+      [
+        ci_release_bins_download_step(
+          implicit_inputs: ci_release_bins_unpack_verify_implicit_inputs_step()
+        ),
+        fleet_converge_hostname_converge_plan_step(),
+        fleet_converge_hostname_converge_apply_step(),
+        fleet_converge_hostname_converge_read_back_step(),
+        fleet_converge_hostname_converge_readopt_step(),
+        fleet_converge_hostname_converge_receipt_upload_step(),
+      ],
+    ),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostnameConverge)),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
+    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+// THE ENVIRONMENT EVERY STEP OF THIS JOB CARRIES. The target selector, the executing peer and the
+// direction arrive from the dispatch; the entry reads them and resolves the pair itself. No step here
+// spells a hostname, and none of them asks the executor which machine it is.
+fn fleet_converge_hostname_converge_step_env() -> StepEnv {
+  StepEnv {
+    values: [
+      kv(
+        key: hostname_converge_target_env_name,
+        value: StepEnvValueString { value: StepEnvValueContext { expression: "github.event.inputs.host", name: none } },
+      ),
+      kv(
+        key: hostname_converge_peer_env_name,
+        value: StepEnvValueString {
+          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_peer", name: none },
+        },
+      ),
+      kv(
+        key: hostname_converge_direction_env_name,
+        value: StepEnvValueString {
+          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_direction", name: none },
+        },
+      ),
+      kv(
+        key: hostname_converge_confirm_env_name,
+        value: StepEnvValueString {
+          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_confirm", name: none },
+        },
+      ),
+      kv(
+        key: hostname_converge_readopt_env_name,
+        value: StepEnvValueString {
+          value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_readopt", name: none },
+        },
+      ),
+      kv(
+        key: hostname_converge_attempt_env_name,
+        value: StepEnvValueString { value: StepEnvValueContext { expression: "github.run_id", name: none } },
+      ),
+    ],
+  }
+}
+
+// STEP ONE — THE DRY PLAN. Always runs with the mode; exits 0 whatever the fold says, because the plan
+// step's job is to SAY what the state means. A baseline conflict is a stated outcome here, not a
+// failure; the step that would have acted is where a refusal turns red.
+fn fleet_converge_hostname_converge_plan_step() -> Step {
+  RunStep {
+    name: Present { value: "Converge hostname on the target from the peer (dry plan)" },
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
+    continue_on_error: none,
+    command: Present { value: gunbc_ci_hostname_converge_plan_invoke() },
+    uses: none,
+    with: none,
+    id: none,
+    working_directory: none,
+    shell: Present { value: Bash },
+    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
+  }
+}
+
+// STEP TWO — THE WET APPLY, behind the dispatch confirmation.
+fn fleet_converge_hostname_converge_apply_step() -> Step {
+  RunStep {
+    name: Present { value: "Converge hostname on the target from the peer (wet apply, confirmed dispatch only)" },
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    if_condition: Present { value: fleet_converge_hostname_converge_apply_step_if },
+    continue_on_error: none,
+    command: Present { value: gunbc_ci_hostname_converge_apply_invoke() },
+    uses: none,
+    with: none,
+    id: none,
+    working_directory: none,
+    shell: Present { value: Bash },
+    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
+  }
+}
+
+// STEP THREE — THE INDEPENDENT READ-BACK. It runs whether or not the apply was unlocked, because what
+// it reports is the machine's answer and not the apply's: a step that only ran after a write would
+// certify the write instead of the host.
+fn fleet_converge_hostname_converge_read_back_step() -> Step {
+  RunStep {
+    name: Present { value: "Read the target's hostname back over a fresh fleet SSH call" },
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
+    continue_on_error: none,
+    command: Present { value: gunbc_ci_hostname_converge_read_back_invoke() },
+    uses: none,
+    with: none,
+    id: none,
+    working_directory: none,
+    shell: Present { value: Bash },
+    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
+  }
+}
+
+// THE TYPED RE-ADOPT, behind its own gate. It admits only where the live name already is the desired
+// name, and what it emits is the DeployedIntentV0 the operator commits — the committed baseline is never
+// rewritten by a run.
+fn fleet_converge_hostname_converge_readopt_step() -> Step {
+  RunStep {
+    name: Present { value: "Re-adopt the committed hostname baseline (typed step, own dispatch gate)" },
+    env: Present { value: fleet_converge_hostname_converge_step_env() },
+    if_condition: Present { value: fleet_converge_hostname_converge_readopt_step_if },
+    continue_on_error: none,
+    command: Present { value: gunbc_ci_hostname_converge_readopt_invoke() },
+    uses: none,
+    with: none,
+    id: none,
+    working_directory: none,
+    shell: Present { value: Bash },
+    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
+  }
+}
+
+fn fleet_converge_hostname_converge_receipt_upload_step() -> Step {
+  ci_upload_artifact_always_step_with_retention(
+    name: "fleet-converge-hostname-converge-receipt",
+    path: hostname_converge_receipt_path,
+    retention_days: fleet_converge_receipt_retention_days,
+    if_condition: Present {
+      value: join(
+        [
+          "always() && ",
+          fleet_converge_dispatch_mode_is(mode: HostnameConverge),
+          " && github.event.inputs.host != ''",
+        ],
+        "",
+      )
+    },
+  )
+}
+
+// THE DISPATCH GATE, RUN IN THE BUILD JOB. Same reason the reset observer's gate is there and not here:
+// this job's runs-on is resolved before any of its steps exist, so a gate inside it is unreachable in
+// exactly the state it would diagnose. `build` carries generic labels, is always schedulable, and every
+// host-scoped job needs it — the check costs nothing on every other mode and refuses with a cause on
+// this one.
+fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
+  RunStep {
+    name: Present { value: "Hostname-converge dispatch admission: refuse an unnamed executing peer before anything is scheduled" },
+    env: Present {
+      value: StepEnv {
+        values: [
+          kv(
+            key: hostname_converge_mode_env_name,
+            value: StepEnvValueString { value: StepEnvValueContext { expression: "github.event.inputs.mode", name: none } },
+          ),
+          kv(
+            key: hostname_converge_peer_env_name,
+            value: StepEnvValueString {
+              value: StepEnvValueContext { expression: "github.event.inputs.hostname_converge_peer", name: none },
+            },
+          ),
+        ],
+      },
+    },
+    if_condition: Present { value: fleet_converge_dispatch_event_if },
+    continue_on_error: none,
+    command: Present { value: gunbc_ci_hostname_converge_dispatch_admission_invoke() },
+    uses: none,
+    with: none,
+    id: none,
+    working_directory: none,
+    shell: Present { value: Bash },
+    timeout_minutes: Present { value: fleet_converge_host_action_timeout_minutes },
   }
 }

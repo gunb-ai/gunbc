@@ -1,0 +1,955 @@
+module gunbc.host.host_hostname_converge
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.disposition { Disposition }
+import std.realization_reconcile { reconciliation_converged }
+import std.content_hash { content_hash_atom }
+import extdeps.dns.domain_name { DnsLabel }
+import product.host_identity { HostIdentity }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.hostname_allocation {
+  gunbc_fleet_hostname_allocations,
+  resolve_host_selector,
+  HostSelectorAmbiguous,
+  HostSelectorResolved,
+  HostSelectorUnknown,
+  HostSelectorResolution,
+}
+import gunbc.deployed_intent_v0 {
+  DeployedIntentV0,
+  deployed_intent_observed_short_hostname,
+  deployed_intent_v0_adopt_observed_base,
+  deployed_intent_v0_persisted_for_slot,
+}
+import gunbc.deployed_intent_v1 { DeployedIntentV1, deployed_intent_v1_from_fleet_slot }
+import gunbc.fleet.fleet_intent { ComputeHost }
+import gunbc.fleet.fleet_converge_apply { fleet_compute_host_for_identity }
+import gunbc.ci.ci_deploy_access { DeployAccess }
+import gunbc.host.host_identity_access { host_identity_operator_principal_name }
+import gunbc.host.host_identity_converge {
+  HostIdentityPlan,
+  host_identity_apply_gated,
+  host_identity_observation_live,
+  host_identity_plan_from_verdict,
+}
+import gunbc.host.host_identity_knob { host_identity_patch_from_intents }
+import gunbc.host.host_identity_observation { HostIdentityObservation }
+import gunbc.host.host_effect {
+  FleetSsh,
+  HostEffectTransport,
+  HostOs,
+  NodeControlPlane,
+}
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  SshTargetResolution,
+  SshTargetRefused,
+  SshTargetResolved,
+  fleet_ssh_target_at_standard_port,
+}
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_ssh_locus {
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  prepare_fleet_ssh_agent_context,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_principal, grounded_principal_privileged_commands }
+
+// ONE HOST-GENERIC MODE THAT SETS AND READS BACK A HOST'S LINUX HOSTNAME, RUN FROM A PEER.
+data gunbc_host_hostname_converge_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "Peer-run hostname converge (gunbc.plans.fleet_machine_authority P8a). ONE host-generic mode for every machine, keyed end to end by the HostIdentity the selectors resolve to (gunbc.design_argument::root_generalization): no per-host target, no per-host branch, no per-host entry. It runs ON A PEER because the target's own fleet-converge job is pinned to the target's runner label, which the rename window renames out from under it — a job that must survive a rename cannot live on the machine being renamed. It reaches the target through the fleet's OWN reach model (fleet_probe_endpoint_for for the endpoint, the operator principal whose sudoers grant covers hostnamectl for the login, prepare_fleet_ssh_agent_context for the credential and the host-key anchor); no caller supplies a route. The plan fold is the SAME three-way fold the closed loop uses (host_identity_patch_from_intents through host_identity_plan_from_verdict), so the peer mode and the in-place loop cannot disagree about what a state means; what this module adds on top is a direction, a conflict that NAMES both sides, and a typed re-adopt step. It is not a second converge engine and does not own the base."
+}
+
+// THE MODE NAME IS HELD BY THE SUBJECT, not by the emitter, so the emitter consumes the mode instead
+// of naming it (gunbc.design_argument::single_authority). gunbc.fleet.fleet_converge_workflow wires
+// this string; no arm spells the mode name independently.
+data hostname_converge_mode: NonEmptyStr = "hostname_converge"
+
+// THE INPUTS ARE ENVIRONMENT INPUTS OF THE PEER JOB, named once here so the emitted step and the
+// entry cannot drift apart (single authority). The executing peer is read from the dispatch, NEVER
+// from the executor's own `hostname -s`: a runner reused across machines would otherwise report
+// whichever box it happens to sit on rather than the box it was dispatched to run on.
+data hostname_converge_target_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_TARGET"
+data hostname_converge_peer_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_PEER"
+data hostname_converge_direction_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_DIRECTION"
+data hostname_converge_readopt_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_READOPT"
+data hostname_converge_attempt_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_ATTEMPT"
+
+// THE DIRECTION IS TYPED, not a name a dispatch may carry: the rename window's rollback is "put the
+// previous name back", and the only previous name this code may write is the committed baseline. A
+// free-string rollback target would let a dispatch name ANY hostname — the exact failure the
+// opaque-handle regime retires (gunbc.design_argument::fail_closed).
+type HostnameConvergeDirection
+  = Forward
+  | Rollback
+
+fn hostname_converge_direction_wire(direction: HostnameConvergeDirection) -> NonEmptyStr {
+  match direction {
+    Forward => "forward" as NonEmptyStr
+    Rollback => "rollback" as NonEmptyStr
+  }
+}
+
+fn hostname_converge_direction_of(raw: String) -> HostnameConvergeDirection? {
+  if raw == "forward" {
+    Present { value: Forward }
+  } else {
+    if raw == "rollback" {
+      Present { value: Rollback }
+    } else {
+      none
+    }
+  }
+}
+
+// WHICH SIDE THE FOLD GUARDS ON. Forward guards on the committed baseline and settles on the canonical
+// name; rollback swaps them — it guards on the canonical name (the name the window put there) and
+// settles back on the baseline (the name that was there before). One fold read two ways, which is why
+// the rollback is the same code and not a second path that could drift from the first.
+type HostnameConvergePair {
+  guard: NonEmptyStr
+  settle: NonEmptyStr
+}
+
+fn hostname_converge_pair(
+  direction: HostnameConvergeDirection,
+  base: NonEmptyStr,
+  desired: NonEmptyStr,
+) -> HostnameConvergePair {
+  match direction {
+    Forward => HostnameConvergePair { guard: base, settle: desired }
+    Rollback => HostnameConvergePair { guard: desired, settle: base }
+  }
+}
+
+// THE PLAN, typed, with the conflict carrying BOTH names. It drives the real fold
+// (host_identity_patch_from_intents through host_identity_plan_from_verdict); it only refines the
+// conflict arm, which structurally carries no names, into a refusal an operator can act on — the
+// witness's third case is unreadable without them, and a refusal that does not name what it refused is
+// a dead end rather than an instruction (gunbc.design_argument::fail_closed).
+type HostnameConvergePlan
+  = ApplyPlan { guard: NonEmptyStr, settle: NonEmptyStr }
+  | NoopPlan { live: NonEmptyStr }
+  | ConflictPlan { live: NonEmptyStr, base: NonEmptyStr, desired: NonEmptyStr }
+
+fn hostname_converge_plan(
+  direction: HostnameConvergeDirection,
+  base: NonEmptyStr,
+  desired: NonEmptyStr,
+  live: NonEmptyStr,
+) -> HostnameConvergePlan {
+  let pair = hostname_converge_pair(direction: direction, base: base, desired: desired)
+  let verdict = host_identity_patch_from_intents(
+    base_hostname: pair.guard as String,
+    observed_hostname: live as String,
+    desired_hostname: pair.settle as String,
+  )
+  match host_identity_plan_from_verdict(
+    verdict: verdict,
+    base: pair.guard as DnsLabel,
+    desired: pair.settle as DnsLabel,
+  ) {
+    ApplyPlan { base: b, desired: d } => ApplyPlan { guard: b as NonEmptyStr, settle: d as NonEmptyStr }
+    NoopPlan => NoopPlan { live: live }
+    ConflictPlan { verdict: _ } => ConflictPlan { live: live, base: base, desired: desired }
+  }
+}
+
+fn hostname_converge_plan_is_apply(plan: HostnameConvergePlan) -> Bool {
+  match plan {
+    ApplyPlan { guard: _, settle: _ } => true
+    NoopPlan { live: _ } => false
+    ConflictPlan { live: _, base: _, desired: _ } => false
+  }
+}
+
+fn hostname_converge_plan_is_noop(plan: HostnameConvergePlan) -> Bool {
+  match plan {
+    ApplyPlan { guard: _, settle: _ } => false
+    NoopPlan { live: _ } => true
+    ConflictPlan { live: _, base: _, desired: _ } => false
+  }
+}
+
+fn hostname_converge_plan_is_conflict(plan: HostnameConvergePlan) -> Bool {
+  match plan {
+    ApplyPlan { guard: _, settle: _ } => false
+    NoopPlan { live: _ } => false
+    ConflictPlan { live: _, base: _, desired: _ } => true
+  }
+}
+
+fn hostname_converge_plan_wire(plan: HostnameConvergePlan) -> NonEmptyStr {
+  match plan {
+    ApplyPlan { guard: _, settle: _ } => "apply" as NonEmptyStr
+    NoopPlan { live: _ } => "noop" as NonEmptyStr
+    ConflictPlan { live: _, base: _, desired: _ } => "conflict" as NonEmptyStr
+  }
+}
+
+// THE PLAN IS STAMPED so the apply step can name the plan it acted on. The apply step refolds from a
+// fresh live read and acts only on what THAT fold says; the stamp ties the two steps' records together
+// in the log, so a name that moved between the steps shows up as two different stamps rather than a
+// silent agreement.
+fn hostname_converge_plan_stamp(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  plan: HostnameConvergePlan,
+) -> NonEmptyStr {
+  sha256_hex_digest(
+    input: join([hostname_converge_plan_fold_text(target: target, peer: peer, direction: direction, plan: plan)], ""),
+  )
+}
+
+fn hostname_converge_plan_fold_text(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  plan: HostnameConvergePlan,
+) -> String {
+  join(
+    [
+      "hostname_converge target=", target as String,
+      " peer=", peer as String,
+      " direction=", hostname_converge_direction_wire(direction: direction) as String,
+      " plan=", hostname_converge_plan_wire(plan: plan) as String,
+      " ", hostname_converge_plan_detail(plan: plan),
+    ],
+    "",
+  )
+}
+
+fn hostname_converge_plan_detail(plan: HostnameConvergePlan) -> String {
+  match plan {
+    ApplyPlan { guard: g, settle: s } => join(["live=", g as String, " settles=", s as String], "")
+    NoopPlan { live: l } => join(["live=", l as String, " is already the settled name", ""], "")
+    ConflictPlan { live: l, base: b, desired: d } =>
+      join(
+        [
+          "live=", l as String,
+          " matches neither base=", b as String,
+          " nor desired=", d as String,
+          "; the typed re-adopt step is the only thing that may move the baseline, and only once the live name",
+          " is the desired name",
+        ],
+        "",
+      )
+  }
+}
+
+// EVERY REFUSAL IS TYPED AND CARRIES THE STATE THAT CAUSED IT, and resolution refuses BEFORE any
+// effect: a target and a peer that are the same machine, a selector that resolves to nothing or to
+// several hosts, a host with no committed baseline, a target with no bound compute host, a route the
+// fleet's own reach model declines. The mode never guesses a route and never applies against an
+// unresolved pair (gunbc.design_argument::fail_closed).
+type HostnameConvergeRefusalCause
+  = TargetSelectorUnknown { selector: String }
+  | TargetSelectorAmbiguous { selector: String, candidates: List<DnsLabel> }
+  | PeerSelectorUnknown { selector: String }
+  | PeerSelectorAmbiguous { selector: String, candidates: List<DnsLabel> }
+  | DirectionUnknown { raw: String }
+  | PeerIsTarget { host: NonEmptyStr }
+  | TargetHostUnbound { host: NonEmptyStr }
+  | NoCommittedBaseline { host: NonEmptyStr }
+  | DesiredNameUnreadable { host: NonEmptyStr }
+  | SshAgentContextRefused { reason: String }
+  | SshRouteRefused { host: NonEmptyStr, endpoint: String }
+  | LiveNameUnreadable { host: NonEmptyStr }
+
+type HostnameConvergeRequest {
+  target: HostIdentity
+  peer: HostIdentity
+  direction: HostnameConvergeDirection
+  base: DeployedIntentV0
+  desired: DeployedIntentV1
+  access: DeployAccess
+  control_plane: NodeControlPlane
+  transport: HostEffectTransport
+}
+
+type HostnameConvergeResolution
+  = Resolved { request: HostnameConvergeRequest }
+  | Refused { cause: HostnameConvergeRefusalCause }
+
+fn hostname_converge_refusal_wire(cause: HostnameConvergeRefusalCause) -> NonEmptyStr {
+  match cause {
+    TargetSelectorUnknown { selector: _ } => "target-selector-unknown" as NonEmptyStr
+    TargetSelectorAmbiguous { selector: _, candidates: _ } => "target-selector-ambiguous" as NonEmptyStr
+    PeerSelectorUnknown { selector: _ } => "peer-selector-unknown" as NonEmptyStr
+    PeerSelectorAmbiguous { selector: _, candidates: _ } => "peer-selector-ambiguous" as NonEmptyStr
+    DirectionUnknown { raw: _ } => "direction-unknown" as NonEmptyStr
+    PeerIsTarget { host: _ } => "peer-is-target" as NonEmptyStr
+    TargetHostUnbound { host: _ } => "target-host-unbound" as NonEmptyStr
+    NoCommittedBaseline { host: _ } => "no-committed-baseline" as NonEmptyStr
+    DesiredNameUnreadable { host: _ } => "desired-name-unreadable" as NonEmptyStr
+    SshAgentContextRefused { reason: _ } => "ssh-agent-context-refused" as NonEmptyStr
+    SshRouteRefused { host: _, endpoint: _ } => "ssh-route-refused" as NonEmptyStr
+    LiveNameUnreadable { host: _ } => "live-name-unreadable" as NonEmptyStr
+  }
+}
+
+fn hostname_converge_refusal_reason(cause: HostnameConvergeRefusalCause) -> String {
+  match cause {
+    TargetSelectorUnknown { selector: s } =>
+      join(["no fleet host answers the target selector `", s, "`", ""], "")
+    TargetSelectorAmbiguous { selector: s, candidates: c } =>
+      join(
+        [
+          "the target selector `", s, "` answers ", hostname_converge_candidate_count_text(candidates: c),
+          " fleet hostnames, so no host is picked",
+          "",
+        ],
+        "",
+      )
+    PeerSelectorUnknown { selector: s } =>
+      join(["no fleet host answers the executing-peer selector `", s, "`", ""], "")
+    PeerSelectorAmbiguous { selector: s, candidates: c } =>
+      join(
+        [
+          "the executing-peer selector `", s, "` answers ", hostname_converge_candidate_count_text(candidates: c),
+          " fleet hostnames, so no peer is picked",
+          "",
+        ],
+        "",
+      )
+    DirectionUnknown { raw: r } =>
+      join(["`", r, "` is not a direction; the mode is run forward or rolled back, never named freely", ""], "")
+    PeerIsTarget { host: h } =>
+      join(
+        [
+          "the executing peer is the target `", h, "` itself: this mode exists because the target's own",
+          " fleet-converge job is pinned to the runner label the rename window renames, so a run on the",
+          " target cannot be the run that renames it",
+          "",
+        ],
+        "",
+      )
+    TargetHostUnbound { host: h } =>
+      join(["the target `", h, "` has no bound fleet compute host, so it has no control-plane cell to converge", ""], "")
+    NoCommittedBaseline { host: h } =>
+      join(
+        [
+          "the target `", h, "` has no committed DeployedIntentV0 baseline row, so the three-way merge has no",
+          " base; the mode refuses rather than adopting a live read as the base on its own",
+          "",
+        ],
+        "",
+      )
+    DesiredNameUnreadable { host: h } =>
+      join(["the canonical hostname of the target `", h, "` is not readable from the hostname allocation, so there is no name to converge to", ""], "")
+    SshAgentContextRefused { reason: r } =>
+      join(["the fleet ssh credential and host-key anchor could not be prepared on the peer: ", r, ""], "")
+    SshRouteRefused { host: h, endpoint: e } =>
+      join(["the fleet reach model has no ssh target for the target `", h, "` at the endpoint it probes (`", e, "`)", ""], "")
+    LiveNameUnreadable { host: h } =>
+      join(["the live hostname of the target `", h, "` did not answer, so no state can be folded", ""], "")
+  }
+}
+
+fn hostname_converge_candidate_count_text(candidates: List<DnsLabel>) -> String {
+  if candidates.length() == 1 {
+    "one"
+  } else {
+    if candidates.length() == 2 {
+      "two"
+    } else {
+      join([candidates.length() as String, ""], "")
+    }
+  }
+}
+
+// RESOLVE THE PAIR, then derive everything else from the two resolved identities. A refused selector is
+// named before anything is opened; the peer/target collision is refused before a route is opened; the
+// route is opened only for a host that has BOTH a committed baseline and a readable canonical name.
+fn hostname_converge_resolve(
+  target_selector: String,
+  peer_selector: String,
+  direction_raw: String,
+  attempt_raw: String,
+) -> HostnameConvergeResolution {
+  match hostname_converge_direction_of(raw: direction_raw) {
+    Absent => Refused { cause: DirectionUnknown { raw: direction_raw } }
+    Present { value: direction } =>
+      match resolve_host_selector(selector: target_selector) {
+        HostSelectorUnknown { selector: s } => Refused { cause: TargetSelectorUnknown { selector: s } }
+        HostSelectorAmbiguous { selector: s, candidates: c } =>
+          Refused { cause: TargetSelectorAmbiguous { selector: s, candidates: c } }
+        HostSelectorResolved { host: target } =>
+          match resolve_host_selector(selector: peer_selector) {
+            HostSelectorUnknown { selector: s } => Refused { cause: PeerSelectorUnknown { selector: s } }
+            HostSelectorAmbiguous { selector: s, candidates: c } =>
+              Refused { cause: PeerSelectorAmbiguous { selector: s, candidates: c } }
+            HostSelectorResolved { host: peer } =>
+              hostname_converge_resolve_pair(
+                target: target,
+                peer: peer,
+                direction: direction,
+                attempt_raw: attempt_raw,
+              )
+          }
+      }
+  }
+}
+
+fn hostname_converge_resolve_pair(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  attempt_raw: String,
+) -> HostnameConvergeResolution {
+  if target == peer {
+    Refused { cause: PeerIsTarget { host: target as NonEmptyStr } }
+  } else {
+    match fleet_compute_host_for_identity(identity: target) {
+      Absent => Refused { cause: TargetHostUnbound { host: target as NonEmptyStr } }
+      Present { value: host } => hostname_converge_bind(
+        target: target,
+        peer: peer,
+        direction: direction,
+        host: host,
+        attempt_raw: attempt_raw,
+      )
+    }
+  }
+}
+
+fn hostname_converge_bind(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  host: ComputeHost,
+  attempt_raw: String,
+) -> HostnameConvergeResolution {
+  match deployed_intent_v0_persisted_for_slot(fleet_slot: target) {
+    Absent => Refused { cause: NoCommittedBaseline { host: target as NonEmptyStr } }
+    Present { value: base } =>
+      match deployed_intent_v1_from_fleet_slot(fleet_slot: target, target_host: host) {
+        Absent => Refused { cause: DesiredNameUnreadable { host: target as NonEmptyStr } }
+        Present { value: desired } =>
+          hostname_converge_open_route(
+            target: target,
+            peer: peer,
+            direction: direction,
+            base: base,
+            desired: desired,
+            host: host,
+            attempt_raw: attempt_raw,
+          )
+      }
+  }
+}
+
+// THE ROUTE IS DERIVED, NOT SUPPLIED. The endpoint is the one the fleet probes for this host; the login
+// is the operator principal whose sudoers grant covers `/usr/bin/hostnamectl set-hostname` (the fleet
+// probe principal deliberately carries no sudo, so it cannot be the principal that sets a name); the
+// credential and the host-key anchor come from the fleet's own agent preparation. Nothing here takes a
+// target string from a caller.
+fn hostname_converge_open_route(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  base: DeployedIntentV0,
+  desired: DeployedIntentV1,
+  host: ComputeHost,
+  attempt_raw: String,
+) -> HostnameConvergeResolution {
+  match prepare_fleet_ssh_agent_context(attempt_raw: attempt_raw) {
+    FleetSshContextRefused { cause: c } => Refused { cause: SshAgentContextRefused { reason: c } }
+    FleetSshContextReady { context: context, receipt: _ } =>
+      hostname_converge_bind_transport(
+        target: target,
+        peer: peer,
+        direction: direction,
+        base: base,
+        desired: desired,
+        host: host,
+        context: context,
+      )
+  }
+}
+
+fn hostname_converge_bind_transport(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  base: DeployedIntentV0,
+  desired: DeployedIntentV1,
+  host: ComputeHost,
+  context: FleetSshExecutionContext,
+) -> HostnameConvergeResolution {
+  let endpoint = fleet_probe_endpoint_for(host: target as String)
+  match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: host_identity_operator_principal_name()) {
+    SshTargetRefused { endpoint: _, refusal: _ } =>
+      Refused { cause: SshRouteRefused { host: target as NonEmptyStr, endpoint: endpoint } }
+    SshTargetResolved { target: ssh_target } =>
+      Resolved {
+        request: hostname_converge_request(
+          target: target,
+          peer: peer,
+          direction: direction,
+          base: base,
+          desired: desired,
+          host: host,
+          transport: FleetSsh { target: ssh_target, context: context },
+        ),
+      }
+  }
+}
+
+// ONE ACCESS CELL DERIVES the principal, its privileged-command grants, the control-plane cell and the
+// transport, so the plan step, the apply step and the read-back cannot each assemble them differently.
+fn hostname_converge_request(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  base: DeployedIntentV0,
+  desired: DeployedIntentV1,
+  host: ComputeHost,
+  transport: HostEffectTransport,
+) -> HostnameConvergeRequest {
+  let principal = fleet_posix_operator_principal()
+  HostnameConvergeRequest {
+    target: target,
+    peer: peer,
+    direction: direction,
+    base: base,
+    desired: desired,
+    access: DeployAccess {
+      principal: principal,
+      host: host,
+      transport: transport,
+      privileged_commands: grounded_principal_privileged_commands(p: principal),
+    },
+    control_plane: HostOs { node: host },
+    transport: transport,
+  }
+}
+
+// THE LIVE NAME, read on demand. Each step calls this itself: the read-back is not the apply's return
+// value and the apply's fold is not the plan step's fold, because a peer that read the name once and
+// passed it along would be certifying its own write rather than the machine's state
+// (gunbc.design_argument::witness_one_interface).
+type HostnameConvergeLive
+  = Live { name: NonEmptyStr }
+  | LiveRefused { cause: HostnameConvergeRefusalCause }
+
+fn hostname_converge_live(request: HostnameConvergeRequest) -> HostnameConvergeLive {
+  match host_identity_observation_live(
+    target: request.control_plane,
+    transport: request.transport,
+    probed_at: clock_now_probed_at_or_unknown(),
+  ) {
+    Absent => LiveRefused { cause: LiveNameUnreadable { host: request.target as NonEmptyStr } }
+    Present { value: obs } => Live { name: obs.short_hostname as NonEmptyStr }
+  }
+}
+
+fn hostname_converge_base_name(request: HostnameConvergeRequest) -> NonEmptyStr {
+  deployed_intent_observed_short_hostname(d: request.base) as NonEmptyStr
+}
+
+fn hostname_converge_desired_name(request: HostnameConvergeRequest) -> NonEmptyStr {
+  request.desired.desired_hostname_short as NonEmptyStr
+}
+
+fn hostname_converge_fold(request: HostnameConvergeRequest, live: NonEmptyStr) -> HostnameConvergePlan {
+  hostname_converge_plan(
+    direction: request.direction,
+    base: hostname_converge_base_name(request: request),
+    desired: hostname_converge_desired_name(request: request),
+    live: live,
+  )
+}
+
+// STEP ONE: THE DRY PLAN. It reads the live name and folds it; it never acts.
+type HostnameConvergePlanStep
+  = Planned { plan: HostnameConvergePlan, live: NonEmptyStr, stamp: NonEmptyStr }
+  | PlanRefused { cause: HostnameConvergeRefusalCause }
+
+fn hostname_converge_plan_step(request: HostnameConvergeRequest) -> HostnameConvergePlanStep {
+  match hostname_converge_live(request: request) {
+    LiveRefused { cause: c } => PlanRefused { cause: c }
+    Live { name: live } =>
+      match hostname_converge_fold(request: request, live: live) {
+        p =>
+          Planned {
+            plan: p,
+            live: live,
+            stamp: hostname_converge_plan_stamp(
+              target: request.target,
+              peer: request.peer,
+              direction: request.direction,
+              plan: p,
+            ),
+          }
+      }
+  }
+}
+
+// STEP TWO: THE WET APPLY. It refolds from ITS OWN live read and only then reaches for the effect, so
+// the fold that authorizes a write is the fold over the state at write time. The apply is still gated
+// twice more: `host_identity_apply_gated` refuses unless the plan is the Apply arm and the privilege
+// verdict permits it, and the CAS inside the effect acts only while the live name still equals the
+// guard the script was built under.
+type HostnameConvergeApplyStep
+  = Applied { settle: NonEmptyStr, live_before: NonEmptyStr, converged: Bool }
+  | NotApplied { plan: HostnameConvergePlan, live_before: NonEmptyStr, reason: String }
+  | ApplyRefused { cause: HostnameConvergeRefusalCause }
+
+fn hostname_converge_apply_step(request: HostnameConvergeRequest) -> HostnameConvergeApplyStep {
+  match hostname_converge_live(request: request) {
+    LiveRefused { cause: c } => ApplyRefused { cause: c }
+    Live { name: live_before } =>
+      match hostname_converge_fold(request: request, live: live_before) {
+        p => hostname_converge_apply_folded(request: request, plan: p, live_before: live_before)
+      }
+  }
+}
+
+fn hostname_converge_apply_folded(
+  request: HostnameConvergeRequest,
+  plan: HostnameConvergePlan,
+  live_before: NonEmptyStr,
+) -> HostnameConvergeApplyStep {
+  if !hostname_converge_plan_is_apply(plan: plan) {
+    NotApplied {
+      plan: plan,
+      live_before: live_before,
+      reason: "the fold did not admit an apply, so no hostnamectl write was attempted",
+    }
+  } else {
+    match hostname_converge_identity_plan(plan: plan) {
+      Absent =>
+        NotApplied {
+          plan: plan,
+          live_before: live_before,
+          reason: "the admitted fold produced no effect cell, so nothing was attempted",
+        }
+      Present { value: identity_plan } =>
+        match host_identity_apply_gated(
+          access: request.access,
+          target: request.control_plane,
+          plan: identity_plan,
+          transport: request.transport,
+          fixture_actor: none,
+        ) {
+          Absent =>
+            NotApplied {
+              plan: plan,
+              live_before: live_before,
+              reason: "the gated apply refused the effect before running it",
+            }
+          Present { value: reconciliation } =>
+            Applied {
+              settle: hostname_converge_settle_of(plan: plan),
+              live_before: live_before,
+              converged: reconciliation_converged(r: reconciliation),
+            }
+        }
+    }
+  }
+}
+
+// THE EFFECT CELL IS BUILT BY THE SHARED FOLD, not here: handing `host_identity_plan_from_verdict` a
+// state whose live name equals its guard yields the Apply arm by construction, so the peer mode builds
+// exactly the `SetHostnameCas` cell the in-place loop builds and cannot invent an effect of its own.
+fn hostname_converge_identity_plan(plan: HostnameConvergePlan) -> HostIdentityPlan? {
+  match plan {
+    ApplyPlan { guard: g, settle: s } =>
+      Present {
+        value: host_identity_plan_from_verdict(
+          verdict: host_identity_patch_from_intents(
+            base_hostname: g as String,
+            observed_hostname: g as String,
+            desired_hostname: s as String,
+          ),
+          base: g as DnsLabel,
+          desired: s as DnsLabel,
+        ),
+      }
+    NoopPlan { live: _ } => none
+    ConflictPlan { live: _, base: _, desired: _ } => none
+  }
+}
+
+// STEP THREE: THE INDEPENDENT READ-BACK. A fresh `hostname -s` over the transport, compared against
+// the name the direction was supposed to settle on. It takes NO plan from the apply step: the settle a
+// direction intends is derived from the same two committed names, so the read-back can be run on its
+// own — including after an apply that never ran — and still say what the machine actually answers
+// (gunbc.design_argument::witness_one_interface).
+type HostnameConvergeReadBackStep
+  = ReadBack { observed: NonEmptyStr, settle: NonEmptyStr, matches_settle: Bool }
+  | ReadBackRefused { cause: HostnameConvergeRefusalCause }
+
+fn hostname_converge_settle_for_direction(request: HostnameConvergeRequest) -> NonEmptyStr {
+  match request.direction {
+    Forward => hostname_converge_desired_name(request: request)
+    Rollback => hostname_converge_base_name(request: request)
+  }
+}
+
+fn hostname_converge_read_back_step(request: HostnameConvergeRequest) -> HostnameConvergeReadBackStep {
+  match hostname_converge_live(request: request) {
+    LiveRefused { cause: c } => ReadBackRefused { cause: c }
+    Live { name: observed } =>
+      ReadBack {
+        observed: observed,
+        settle: hostname_converge_settle_for_direction(request: request),
+        matches_settle: observed == hostname_converge_settle_for_direction(request: request),
+      }
+  }
+}
+
+fn hostname_converge_settle_of(plan: HostnameConvergePlan) -> NonEmptyStr {
+  match plan {
+    ApplyPlan { guard: _, settle: s } => s
+    NoopPlan { live: l } => l
+    ConflictPlan { live: _, base: _, desired: _ } => "none" as NonEmptyStr
+  }
+}
+
+// THE PEER LABEL IS ADMISSION-GATED BEFORE THE JOB IS SCHEDULED. The peer input is meaningful for one
+// mode only, so it is `required: false`, and its value is interpolated into the job's runs-on — the
+// same shape review 61950 found for the reset observer, where a dispatch that omitted it asked for a
+// label set ending in an empty string, which no runner carries: the job queued to the backstop with no
+// diagnostic. The gate therefore runs in a job that is always schedulable and refuses with a cause
+// rather than declining quietly.
+type HostnameConvergeDispatchAdmission
+  = DispatchNotThisMode { mode: String }
+  | DispatchAdmitted { mode: String, peer: String }
+  | DispatchPeerUnnamed { mode: String, variable: String }
+
+fn hostname_converge_dispatch_admission(mode_raw: String, peer_raw: String) -> HostnameConvergeDispatchAdmission {
+  if mode_raw != (hostname_converge_mode as String) {
+    DispatchNotThisMode { mode: mode_raw }
+  } else {
+    if peer_raw == "" {
+      DispatchPeerUnnamed { mode: mode_raw, variable: hostname_converge_peer_env_name as String }
+    } else {
+      DispatchAdmitted { mode: mode_raw, peer: peer_raw }
+    }
+  }
+}
+
+fn hostname_converge_dispatch_admission_line(admission: HostnameConvergeDispatchAdmission) -> String {
+  match admission {
+    DispatchNotThisMode { mode: m } => join(["hostname_converge dispatch admission: mode `", m, "` is not this mode; nothing to gate\n"], "")
+    DispatchAdmitted { mode: m, peer: p } =>
+      join(["hostname_converge dispatch admission: mode `", m, "` names executing peer `", p, "`\n"], "")
+    DispatchPeerUnnamed { mode: m, variable: v } =>
+      join(
+        [
+          "hostname_converge dispatch admission refused: mode `", m, "` was dispatched without naming its executing peer (`",
+          v, "` is empty). The peer label is interpolated into this job's runs-on, so an unnamed peer asks",
+          " for a label no runner carries and the job would queue to the backstop with no diagnostic; name a",
+          " fleet host that is not the target\n",
+        ],
+        "",
+      )
+  }
+}
+
+// THE RECEIPT THIS MODE WRITES. A relative path under the checkout, like the reset-return attempt
+// receipt beside it: the step uploads it whether the step passed or failed, because the refused run is
+// the one somebody needs to read.
+data hostname_converge_receipt_path: NonEmptyStr = "target/host-hostname-converge.txt"
+
+// THE RE-ADOPT IS EXPLICIT AND TYPED, and it is the only thing in this mode allowed to move the
+// baseline. It admits on exactly one state: the live name ALREADY IS the desired name, which is what a
+// rename window looks like when the name was set by an earlier pass (or by hand) while the committed
+// baseline is still the pre-rename value. On every other state it refuses, naming what it found —
+// adopting a baseline the operator has not confirmed would fold an unverified name into the base the
+// three-way merge trusts (gunbc.design_argument::fail_closed).
+//
+// The admitted outcome CARRIES THE DeployedIntentV0 the operator commits as the new row; it does not
+// rewrite the committed row in place, so a re-adopt lands as a reviewed change like every other fact.
+// That is what "must not silently overwrite the baseline" means in code: this function has no path to
+// the committed data, only to a candidate the operator reviews.
+type HostnameConvergeAdoptStep
+  = Adopted { previous_base: NonEmptyStr, adopted: NonEmptyStr, candidate: DeployedIntentV0 }
+  | AdoptRefused { live: NonEmptyStr, base: NonEmptyStr, desired: NonEmptyStr, reason: String }
+  | AdoptReadRefused { cause: HostnameConvergeRefusalCause }
+
+fn hostname_converge_readopt_step(request: HostnameConvergeRequest) -> HostnameConvergeAdoptStep {
+  match hostname_converge_live(request: request) {
+    LiveRefused { cause: c } => AdoptReadRefused { cause: c }
+    Live { name: live } =>
+      hostname_converge_readopt_judged(request: request, live: live)
+  }
+}
+
+// THE JUDGEMENT ITSELF, over the three names and nothing else — no transport, no request, no clock. It
+// is what a witness can drive case by case (gunbc.design_argument::witness_one_interface), and it is the
+// single place that decides whether a baseline may move.
+type HostnameConvergeAdoptJudgement
+  = Admits { previous_base: NonEmptyStr, adopted: NonEmptyStr }
+  | Declines { live: NonEmptyStr, base: NonEmptyStr, desired: NonEmptyStr, reason: String }
+
+fn hostname_converge_readopt_judge(
+  base: NonEmptyStr,
+  desired: NonEmptyStr,
+  live: NonEmptyStr,
+) -> HostnameConvergeAdoptJudgement {
+  if live == desired {
+    Admits { previous_base: base, adopted: live }
+  } else {
+    Declines {
+      live: live,
+      base: base,
+      desired: desired,
+      reason:
+        "the live name is not the desired name, so it is not a confirmed target state and cannot become the baseline",
+    }
+  }
+}
+
+fn hostname_converge_readopt_judged(request: HostnameConvergeRequest, live: NonEmptyStr) -> HostnameConvergeAdoptStep {
+  let base = hostname_converge_base_name(request: request)
+  let desired = hostname_converge_desired_name(request: request)
+  match hostname_converge_readopt_judge(base: base, desired: desired, live: live) {
+    Admits { previous_base: p, adopted: a } =>
+      Adopted {
+        previous_base: p,
+        adopted: a,
+        candidate: deployed_intent_v0_adopt_observed_base(
+          fleet_slot: request.target,
+          target_host: request.desired.target_host,
+          observation: HostIdentityObservation { short_hostname: a as String, probed_at: clock_now_probed_at_or_unknown() },
+        ),
+      }
+    Declines { live: l, base: b, desired: d, reason: r } =>
+      AdoptRefused { live: l, base: b, desired: d, reason: r }
+  }
+}
+
+// THE WIRE LINES THE STEPS PRINT — one line per fact, so a log is a record an operator reads and a
+// control asserts on. The plan stamp is what ties the apply's record back to the plan it acted on.
+fn hostname_converge_plan_line(request: HostnameConvergeRequest, step: HostnameConvergePlanStep) -> String {
+  match step {
+    Planned { plan: plan, live: live, stamp: stamp } =>
+      join(
+        [
+          "hostname_converge plan target=", request.target as String,
+          " peer=", request.peer as String,
+          " direction=", hostname_converge_direction_wire(direction: request.direction) as String,
+          " kind=", hostname_converge_plan_wire(plan: plan) as String,
+          " live=", live as String,
+          " ", hostname_converge_plan_detail(plan: plan),
+          " stamp=", stamp as String,
+          "\n",
+        ],
+        "",
+      )
+    PlanRefused { cause: c } => hostname_converge_refusal_line(cause: c)
+  }
+}
+
+fn hostname_converge_refusal_line(cause: HostnameConvergeRefusalCause) -> String {
+  join(
+    [
+      "hostname_converge refused cause=", hostname_converge_refusal_wire(cause: cause) as String,
+      " reason=", hostname_converge_refusal_reason(cause: cause),
+      "\n",
+    ],
+    "",
+  )
+}
+
+fn hostname_converge_apply_line(result: HostnameConvergeApplyStep) -> String {
+  match result {
+    Applied { settle: s, live_before: before, converged: converged } =>
+      join(
+        [
+          "hostname_converge applied settle=", s as String,
+          " was=", before as String,
+          " converged=", if converged { "true" } else { "false" },
+          "\n",
+        ],
+        "",
+      )
+    NotApplied { plan: plan, live_before: before, reason: r } =>
+      join(
+        [
+          "hostname_converge not-applied kind=", hostname_converge_plan_wire(plan: plan) as String,
+          " was=", before as String,
+          " reason=", r,
+          "\n",
+        ],
+        "",
+      )
+    ApplyRefused { cause: c } => hostname_converge_refusal_line(cause: c)
+  }
+}
+
+fn hostname_converge_read_back_line(result: HostnameConvergeReadBackStep) -> String {
+  match result {
+    ReadBack { observed: o, settle: s, matches_settle: m } =>
+      join(
+        [
+          "hostname_converge read-back observed=", o as String,
+          " settle=", s as String,
+          " matches=", if m { "true" } else { "false" },
+          "\n",
+        ],
+        "",
+      )
+    ReadBackRefused { cause: c } => hostname_converge_refusal_line(cause: c)
+  }
+}
+
+fn hostname_converge_adopt_line(result: HostnameConvergeAdoptStep) -> String {
+  match result {
+    Adopted { previous_base: p, adopted: a, candidate: _ } =>
+      join(
+        [
+          "hostname_converge re-adopt admitted previous_base=", p as String,
+          " adopted=", a as String,
+          " — the committed baseline is NOT rewritten by this run; commit the candidate row as the new",
+          " DeployedIntentV0 for this host",
+          "\n",
+        ],
+        "",
+      )
+    AdoptRefused { live: l, base: b, desired: d, reason: r } =>
+      join(
+        [
+          "hostname_converge re-adopt refused live=", l as String,
+          " base=", b as String,
+          " desired=", d as String,
+          " reason=", r,
+          "\n",
+        ],
+        "",
+      )
+    AdoptReadRefused { cause: c } => hostname_converge_refusal_line(cause: c)
+  }
+}
+
+// THE CHOICES THE DISPATCH OFFERS, all three derived from the authorities rather than typed out: the
+// peers are the hosts the hostname allocation knows, the direction is the two arms of the typed
+// direction, and the actuation gate and the re-adopt gate are closed choices. No option list names a
+// machine, so a host joins by gaining an allocation row instead of a workflow edit
+// (gunbc.design_argument::root_generalization).
+fn hostname_converge_peer_options() -> List<String> {
+  map(gunbc_fleet_hostname_allocations, a => a.fleet_slot as String)
+}
+
+data hostname_converge_direction_options: List<String> = [
+  hostname_converge_direction_wire(direction: Forward) as String,
+  hostname_converge_direction_wire(direction: Rollback) as String,
+]
+
+// THE ACTUATION GATE IS A CLOSED CHOICE, and `plan` is the default: a dispatch that does not say
+// `converge` plans and reads back without writing. That is what makes a dry run against a real host the
+// safe thing it looks like, and what makes the first wet use a decision somebody typed rather than a
+// side effect of choosing a mode (gunbc.design_argument::fail_closed).
+data hostname_converge_confirm_options: List<String> = ["plan" as String, "converge" as String]
+data hostname_converge_confirm_default: String = "plan"
+
+// THE RE-ADOPT GATE IS ITS OWN CLOSED CHOICE, separate from actuation: re-adopting a baseline and
+// writing a hostname are different authorities over different data, and one dispatch should not be able
+// to reach both by meaning one of them.
+data hostname_converge_readopt_options: List<String> = ["refuse" as String, "adopt" as String]
+data hostname_converge_readopt_default: String = "refuse"

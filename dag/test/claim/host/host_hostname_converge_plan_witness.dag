@@ -1,0 +1,202 @@
+module test.claim.host.host_hostname_converge_plan_witness
+
+// THE PLAN FOLD OF THE PEER-RUN HOSTNAME CONVERGE MODE, driven case by case
+// (gunbc.plans.fleet_machine_authority P8a acceptance). Each arm below calls the fold the mode calls —
+// `hostname_converge_plan`, which is `host_identity_patch_from_intents` through
+// `host_identity_plan_from_verdict` with the direction's guard/settle pair — so what is proven here is
+// the emitter's own decision path, not a parallel reading of it
+// (gunbc.design_argument::witness_one_interface).
+//
+// THE FOUR CASES ARE THE STATES THE BASELINE BLOCKER PRODUCES. The committed baselines are pre-2026-07
+// names while the live names were corrected in 2026-07, so a rename reaches the fold with live, base and
+// desired in every combination, and the mode must answer each one differently: a no-op is not an apply,
+// an apply is not a conflict, and a conflict that does not name the baseline and the desired name is a
+// dead end rather than an instruction. The fourth case is the typed re-adopt, which is the ONLY thing
+// allowed to move the baseline and only once the live name already is the desired name
+// (gunbc.design_argument::fail_closed).
+//
+// The fold is pure and its inputs are three names plus a direction, so no substrate is touched and no
+// host is contacted: a fold over a name does not need a machine.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import gunbc.host.host_hostname_converge {
+  ApplyPlan,
+  ConflictPlan,
+  Forward,
+  HostnameConvergeAdoptJudgement,
+  HostnameConvergePair,
+  HostnameConvergePlan,
+  NoopPlan,
+  Rollback,
+  Admits,
+  Declines,
+  hostname_converge_direction_of,
+  hostname_converge_direction_wire,
+  hostname_converge_pair,
+  hostname_converge_plan,
+  hostname_converge_plan_is_apply,
+  hostname_converge_plan_is_conflict,
+  hostname_converge_plan_is_noop,
+  hostname_converge_readopt_judge,
+}
+
+data stale_base: NonEmptyStr = "altrad8ud-1l2t-1"
+data desired_name: NonEmptyStr = "fox"
+data other_name: NonEmptyStr = "someone-elses-box"
+
+// CASE ONE — the live name already IS the desired name: Noop. This is the state a rename window reaches
+// after the name has been set, and the mode must not write again.
+test fn live_equal_desired_is_noop() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: desired_name) {
+    NoopPlan { live: l } => l == desired_name && hostname_converge_plan_is_noop(plan: NoopPlan { live: l })
+    _ => false
+  }
+}
+
+// CASE TWO — the live name IS the committed baseline and the desired name differs: Apply, and the effect
+// it authorizes guards on the baseline and settles on the desired name. This is the ordinary convergence
+// the three-way merge exists for.
+test fn live_equal_base_is_apply_naming_both_sides() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: stale_base) {
+    ApplyPlan { guard: g, settle: s } =>
+      g == stale_base && s == desired_name && hostname_converge_plan_is_apply(plan: ApplyPlan { guard: g, settle: s })
+    _ => false
+  }
+}
+
+// CASE THREE — the live name matches NEITHER: refuse, and name both sides. A refusal that does not say
+// which name is the stale baseline and which is the target leaves the operator guessing, and guessing at
+// a hostname is how a box gets renamed to the wrong thing.
+test fn live_matching_neither_refuses_naming_base_and_desired() -> Bool {
+  match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name) {
+    ConflictPlan { live: l, base: b, desired: d } =>
+      l == other_name
+        && b == stale_base
+        && d == desired_name
+        && hostname_converge_plan_is_conflict(plan: ConflictPlan { live: l, base: b, desired: d })
+    _ => false
+  }
+}
+
+// The conflict must not be reachable through the Apply or Noop arms — the three states are disjoint, and
+// a fold that could land two ways on one state is a fold nobody can act on.
+test fn the_three_states_are_disjoint() -> Bool {
+  let noop = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: desired_name)
+  let apply = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: stale_base)
+  let conflict = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name)
+  hostname_converge_plan_is_noop(plan: noop)
+    && hostname_converge_plan_is_apply(plan: apply)
+    && hostname_converge_plan_is_conflict(plan: conflict)
+}
+
+// CASE FOUR — THE RE-ADOPT THEN ADMITS. With the stale baseline still committed and the live name already
+// the desired name, the fold says Noop and nothing can be written; the typed re-adopt is what unmutes the
+// machine, and it admits on exactly that state. What it admits against is the stale baseline it names, so
+// the operator sees what is being replaced.
+test fn readopt_admits_once_live_is_the_desired_name() -> Bool {
+  match hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: desired_name) {
+    Admits { previous_base: p, adopted: a } => p == stale_base && a == desired_name
+    Declines { live: _, base: _, desired: _, reason: _ } => false
+  }
+}
+
+// AND IT ADMITS RATHER THAN OVERWRITES: the judgement carries the previous base forward instead of
+// dropping it, so the run reports the fact it is proposing to replace. A step that silently rewrote the
+// baseline would leave no trace of what the three-way merge had been comparing against.
+test fn readopt_names_the_baseline_it_replaces() -> Bool {
+  match hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: desired_name) {
+    Admits { previous_base: p, adopted: _ } => p != desired_name && p == stale_base
+    Declines { live: _, base: _, desired: _, reason: _ } => false
+  }
+}
+
+// THE RE-ADOPT REFUSES ON ANY OTHER STATE. A live name that is neither the baseline nor the desired name
+// is an unconfirmed state — it might be a hand edit, a half-finished rename, or someone else's box — and
+// promoting it to the committed baseline would make the merge trust a name nobody authorized. Refusal is
+// the whole answer here.
+test fn readopt_refuses_an_unconfirmed_live_name() -> Bool {
+  match hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: other_name) {
+    Declines { live: l, base: b, desired: d, reason: _ } =>
+      l == other_name && b == stale_base && d == desired_name
+    Admits { previous_base: _, adopted: _ } => false
+  }
+}
+
+// The baseline it refuses to adopt stays the baseline: refusal does not mutate, so a later fold over the
+// same three names still sees the pre-2026-07 base. (The admitted candidate is a value the operator
+// commits; nothing in this module has a path to the committed row.)
+test fn a_refused_readopt_leaves_the_fold_unchanged() -> Bool {
+  let before = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name)
+  let _judge = hostname_converge_readopt_judge(base: stale_base, desired: desired_name, live: other_name)
+  let after = hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name)
+  match pair_of(before: before, after: after) {
+    BothConflict { base: b, desired: d, live: l } => b == stale_base && d == desired_name && l == other_name
+    NotBoth => false
+  }
+}
+
+type PairCheck = BothConflict { base: NonEmptyStr, desired: NonEmptyStr, live: NonEmptyStr } | NotBoth
+
+fn pair_of(before: HostnameConvergePlan, after: HostnameConvergePlan) -> PairCheck {
+  match before {
+    ConflictPlan { live: l1, base: b, desired: d } =>
+      match after {
+        ConflictPlan { live: l2, base: _, desired: _ } =>
+          if l1 == l2 {
+            BothConflict { base: b, desired: d, live: l1 }
+          } else {
+            NotBoth
+          }
+        _ => NotBoth
+      }
+    _ => NotBoth
+  }
+}
+
+// THE ROLLBACK IS THE SAME FOLD READ THE OTHER WAY. Where a forward converge guards on the baseline and
+// settles on the canonical name, the rollback guards on the canonical name (the name the window put
+// there) and settles back on the baseline (the name that was there before). If the rollback were a second
+// path it could drift from the forward path and the window's exit would mean something different from its
+// entry; being the same fold, it cannot.
+test fn rollback_swaps_guard_and_settle() -> Bool {
+  match hostname_converge_pair(direction: Rollback, base: stale_base, desired: desired_name) {
+    HostnameConvergePair { guard: g, settle: s } => g == desired_name && s == stale_base
+  }
+}
+
+test fn rollback_applies_where_the_window_already_set_the_name() -> Bool {
+  match hostname_converge_plan(direction: Rollback, base: stale_base, desired: desired_name, live: desired_name) {
+    ApplyPlan { guard: g, settle: s } => g == desired_name && s == stale_base
+    _ => false
+  }
+}
+
+test fn rollback_is_noop_back_at_the_previous_name() -> Bool {
+  match hostname_converge_plan(direction: Rollback, base: stale_base, desired: desired_name, live: stale_base) {
+    NoopPlan { live: l } => l == stale_base
+    _ => false
+  }
+}
+
+// THE DIRECTION IS A CLOSED CHOICE. Anything else resolves to nothing, so a dispatch cannot name an
+// arbitrary host to roll back TO — the only previous name this mode can write is the committed baseline.
+test fn direction_is_a_closed_choice() -> Bool {
+  let forward_resolves = match hostname_converge_direction_of(raw: "forward") {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let rollback_resolves = match hostname_converge_direction_of(raw: "rollback") {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let free_text_refused = match hostname_converge_direction_of(raw: "fox") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  hostname_converge_direction_wire(direction: Forward) == "forward"
+    && hostname_converge_direction_wire(direction: Rollback) == "rollback"
+    && forward_resolves
+    && rollback_resolves
+    && free_text_refused
+}

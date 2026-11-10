@@ -1,0 +1,216 @@
+module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
+
+// AN INHABITANCE CONTROL OVER THE REAL EMITTER (gunbc.plans.fleet_machine_authority P8a acceptance).
+// Everything asserted here reads the workflow the emitter actually produces — `fleet_converge_jobs()`,
+// `fleet_converge_dispatch_input_rows()`, `fleet_converge_workflow_mode_wire()` — because the claim this
+// mode exists to earn is "the fleet-converge workflow gained a peer-run hostname converge mode". A test
+// over a hand-written Job would prove the shape of a Job, which is a tautology; the only way a mode can
+// be absent from the thing that runs is for it to be missing from the thing that emits
+// (gunbc.design_argument::witness_one_interface).
+//
+// THE PEER RUNS-ON IS THE CLAIM WITH TEETH. Every other host-scoped job in this workflow is pinned to
+// `github.event.inputs.host` — the machine it converges. That pin is fatal for a rename: the job that
+// renames a host cannot depend on a runner label the rename retires. So this job must be scheduled on the
+// PEER, and a witness that let `host` into its runs-on would have passed the very bug the mode exists to
+// avoid.
+
+import std.types { Bool, List, String }
+import std.optional { Absent, Present }
+import extdeps.github.actions { DispatchInputType, InputChoice, Job, RunsOnExpression, SelfHosted, Step, RunStep }
+import gunbc.fleet.fleet_converge_workflow {
+  HostnameConverge,
+  fleet_converge_dispatch_input_rows,
+  fleet_converge_jobs,
+  fleet_converge_hostname_converge_apply_step,
+  fleet_converge_hostname_converge_job,
+  fleet_converge_hostname_converge_plan_step,
+  fleet_converge_hostname_converge_read_back_step,
+  fleet_converge_hostname_converge_readopt_step,
+  fleet_converge_job_needs,
+  fleet_converge_mode_job_id,
+  fleet_converge_workflow_mode_wire,
+  fleet_converge_workflow_modes,
+}
+import gunbc.host.host_hostname_converge {
+  hostname_converge_confirm_options,
+  hostname_converge_direction_options,
+  hostname_converge_mode,
+  hostname_converge_readopt_options,
+}
+
+data hostname_converge_job_id: String = "hostname-converge"
+
+fn emitted_jobs() -> List<Job> {
+  fleet_converge_jobs()
+}
+
+fn job_with_id(id: String) -> Job? {
+  match filter(emitted_jobs(), j => j.id == id).first() {
+    Present { value: j } => Present { value: j }
+    Absent => none
+  }
+}
+
+fn step_names(job: Job) -> List<String> {
+  map(job.steps, s => step_name_text(step: s))
+}
+
+fn step_named(job: Job, name: String) -> Step? {
+  match filter(job.steps, s => step_name_text(step: s) == name).first() {
+    Present { value: s } => Present { value: s }
+    Absent => none
+  }
+}
+
+fn step_name_text(step: Step) -> String {
+  match step {
+    RunStep { name: Present { value: n }, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    _ => ""
+  }
+}
+
+fn step_if_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: c }, continue_on_error: _, timeout_minutes: _ } => c
+    _ => ""
+  }
+}
+
+fn runs_on_text(job: Job) -> String {
+  match job.runs_on {
+    RunsOnExpression { expression: e } => e
+    SelfHosted { labels: ls } => join(ls, ",")
+    HostedRunner { label: l } => l as String
+  }
+}
+
+fn dispatch_input_options(name: String) -> List<String> {
+  match filter(fleet_converge_dispatch_input_rows(), r => r.name == name).first() {
+    Absent => []
+    Present { value: r } =>
+      match r.type {
+        InputChoice { options: o } => o
+        _ => []
+      }
+  }
+}
+
+fn dispatch_input_default(name: String) -> String {
+  match filter(fleet_converge_dispatch_input_rows(), r => r.name == name).first() {
+    Absent => ""
+    Present { value: r } =>
+      match r.default {
+        Present { value: d } => d
+        Absent => ""
+      }
+  }
+}
+
+// THE MODE EXISTS IN THE ROSTER AND WIRES TO THE SUBJECT'S OWN STRING. The wire is held by
+// gunbc.host.host_hostname_converge, so a mode that drifted from the module that owns it is caught here
+// rather than in a dispatch that silently selects nothing.
+test fn the_mode_is_rostered_and_wires_to_the_subject_string() -> Bool {
+  any(fleet_converge_workflow_modes(), m => fleet_converge_workflow_mode_wire(mode: m) == hostname_converge_mode)
+}
+
+test fn the_mode_names_a_job_of_its_own() -> Bool {
+  fleet_converge_mode_job_id(mode: HostnameConverge) == hostname_converge_job_id
+}
+
+// THE EMITTED WORKFLOW GAINED THE JOB, and the job is scheduled on the PEER rather than on the target.
+test fn the_emitter_produces_the_peer_run_job() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } => runs_on_text(job: job) != ""
+  }
+}
+
+test fn the_job_runs_on_the_executing_peer_not_on_the_target() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.hostname_converge_peer")
+        && !string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.host)")
+  }
+}
+
+// THE JOB IS PINNED TO A LABEL EXPRESSION, not a static label list: a static list would name a machine in
+// the workflow, which is what this program retires.
+test fn the_peer_pin_is_an_expression_over_the_dispatch() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      match job.runs_on {
+        RunsOnExpression { expression: e } => string_contains(s: e, pattern: "fromJSON(format(")
+        _ => false
+      }
+  }
+}
+
+// THE FOUR STEPS ARE THERE, IN ORDER, AND THE WRITE IS BEHIND A CHOICE THE DISPATCH HAS TO MAKE.
+test fn the_job_carries_plan_apply_read_back_and_adopt() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      any(step_names(job: job), n => string_contains(s: n, pattern: "dry plan"))
+        && any(step_names(job: job), n => string_contains(s: n, pattern: "wet apply"))
+        && any(step_names(job: job), n => string_contains(s: n, pattern: "Read the target"))
+        && any(step_names(job: job), n => string_contains(s: n, pattern: "Re-adopt the committed hostname baseline"))
+  }
+}
+
+test fn the_plan_and_read_back_steps_run_with_the_mode_and_the_apply_does_not() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+        Absent => false
+        Present { value: plan } =>
+          step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
+            && string_contains(s: step_if_text(step: plan), pattern: hostname_converge_mode as String)
+            && !string_contains(s: step_if_text(step: plan), pattern: "converge ==")
+      }
+  }
+}
+
+// THE APPLY IS DOUBLY GATED: the mode, and the dispatch having chosen `converge`. A mode selection alone
+// must not be enough to rename a machine.
+test fn the_apply_step_is_locked_behind_the_confirm_choice() -> Bool {
+  match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
+    Absent => false
+    Present { value: apply } =>
+      string_contains(s: step_if_text(step: apply), pattern: "github.event.inputs.hostname_converge_confirm == 'converge'")
+        && string_contains(s: step_if_text(step: apply), pattern: hostname_converge_mode as String)
+  }
+}
+
+// THE RE-ADOPT HAS ITS OWN GATE, separate from actuation: moving the committed baseline is a different
+// authority from writing a hostname, and one dispatch must not reach both by meaning one of them.
+test fn the_readopt_step_is_locked_behind_its_own_choice() -> Bool {
+  match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
+    Absent => false
+    Present { value: readopt } =>
+      string_contains(s: step_if_text(step: readopt), pattern: "github.event.inputs.hostname_converge_readopt == 'adopt'")
+        && !string_contains(s: step_if_text(step: readopt), pattern: "confirm ==")
+  }
+}
+
+// THE DISPATCH INPUTS ARE CLOSED CHOICES DERIVED FROM THE AUTHORITIES. A peer that could be typed freely
+// is a target being hand-spelled through the back door, and the two gates default to the safe arm.
+test fn the_dispatch_inputs_are_closed_and_default_safe() -> Bool {
+  any(dispatch_input_options(name: "hostname_converge_peer"), o => o == "srv2")
+    && dispatch_input_options(name: "hostname_converge_direction") == hostname_converge_direction_options
+    && dispatch_input_options(name: "hostname_converge_confirm") == hostname_converge_confirm_options
+    && dispatch_input_options(name: "hostname_converge_readopt") == hostname_converge_readopt_options
+    && dispatch_input_default(name: "hostname_converge_confirm") == "plan"
+    && dispatch_input_default(name: "hostname_converge_readopt") == "refuse"
+}
+
+// THE JOB WAITS ON THE RELEASE BINS, which is what lets it run on a peer that has no checkout of its own
+// to build from.
+test fn the_job_needs_the_release_bins_job() -> Bool {
+  any(
+    fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostnameConverge)),
+    n => n == "release-bins",
+  )
+}
