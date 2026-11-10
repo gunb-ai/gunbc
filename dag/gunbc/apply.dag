@@ -8,7 +8,6 @@ import gunbc.runner.runner_capacity_plan {
   RunnerCapacityPlan,
   PlanReady,
   PlanRefused,
-  parse_positive_width,
   runner_capacity_plan,
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
