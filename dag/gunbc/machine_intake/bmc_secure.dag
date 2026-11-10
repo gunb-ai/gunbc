@@ -3301,7 +3301,6 @@ type BmcSuppliedAccountStateTransport {
   managed_answer: BmcSuppliedResponse
   census: IpmiControllerChannelCensus
   census_answer: BmcSuppliedResponse
-  users_answer: BmcSuppliedResponse
   redfish_census: BmcRedfishAccountCensusReading
   redfish_census_answer: BmcSuppliedResponse
   redfish_surface_served: Bool
@@ -3321,6 +3320,11 @@ type BmcSuppliedAccountStateTransport {
 type BmcSuppliedReadRefusal
   = ResponseNotCommitted { read: NonEmptyStr }
   | PublishedRetirementPolicyUngrounded { detail: NonEmptyStr }
+  // The credential-policy row IS grounded but the derivation itself refused: the cause is the
+  // derivation's own typed refusal, carried through untouched. Collapsing it into
+  // PublishedRetirementPolicyUngrounded would hand the operator a plausible but wrong diagnosis
+  // (fail_closed: every path fails with a typed, LOCATED diagnostic).
+  | PublishedRetirementDerivationRefused { cause: SharedStoreRetirementRefusal }
 
 type BmcSuppliedAccountStateReadOutcome
   = SuppliedTransportRefused { cause: BmcSuppliedReadRefusal }
@@ -3393,20 +3397,17 @@ fn supplied_published_derivation(
   published_account: NonEmptyStr,
   served: List<CredentialSurface>,
   generation_is_published_password: Bool,
-) -> SharedStoreRetirement? {
+) -> SharedStoreRetirementOutcome? {
   match policy {
     none => none
     Present { value: p } =>
-      match derive_shared_store_retirement(
+      Present { value: derive_shared_store_retirement(
         policy: p,
         published_account: published_account,
         managed_account: managed_account,
         served: served,
         generation_is_published_password: generation_is_published_password,
-      ) {
-        SharedStoreRetirementDerived { derivation: d } => Present { value: d }
-        SharedStoreRetirementRefused { cause: _ } => none
-      }
+      ) }
   }
 }
 
@@ -3451,12 +3452,14 @@ fn supplied_transport_read_bmc_account_state(
     generation_is_published_password: published_generation_is_password,
   ) {
     none => SuppliedTransportRefused { cause: PublishedRetirementPolicyUngrounded { detail: "no grounded credential-policy row for this board/firmware: the published retirement cannot be derived and the published credential is never probed" as NonEmptyStr } }
-    Present { value: derivation } =>
+    Present { value: SharedStoreRetirementRefused { cause: cause } } =>
+      SuppliedTransportRefused { cause: PublishedRetirementDerivationRefused { cause: cause } }
+    Present { value: SharedStoreRetirementDerived { derivation: derivation } } =>
       // ONE gate proves every response is backed by an evidence readback whose digest corresponds to
       // its bytes; past it the refs are taken directly. (Per-answer re-checks below this gate could
       // never fire and were removed -- a refusal arm that cannot be reached is decoration, not safety.)
       match supplied_first_uncommitted(answers: [
-        transport.managed_answer, transport.census_answer, transport.users_answer,
+        transport.managed_answer, transport.census_answer,
         transport.redfish_census_answer, transport.redfish_surface_answer,
         transport.account_service_answer, transport.lan_threshold_answer,
       ]) {

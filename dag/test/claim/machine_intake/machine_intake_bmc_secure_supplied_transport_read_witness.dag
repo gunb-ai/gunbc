@@ -157,7 +157,6 @@ fn faithful_transport() -> BmcSuppliedAccountStateTransport {
     managed_answer: committed("ipmi-user-test-managed", "check-password: ok"),
     census: census(),
     census_answer: committed("ipmi-get-user-access", "Channel 1 user 1: root CALLIN CALLBACK PRIV_CHANNEL"),
-    users_answer: committed("ipmi-user-list", "ID Name Enabled\n 1 root yes"),
     redfish_census: redfish_census_value(),
     redfish_census_answer: committed("redfish-accounts", "{\"Members\":[{\"Username\":\"root\"}]}"),
     redfish_surface_served: true,
@@ -178,12 +177,13 @@ fn policy_row() -> BmcCredentialPolicyKey? {
 data served_surfaces: List<CredentialSurface> = [RedfishBasicOrSession]
 
 // THE ONE AUTHORIZED CALLER of the supplied-transport reader (the reader is admit_callers-gated to this declaration).
-fn supplied_transport_read_of(transport: BmcSuppliedAccountStateTransport, policy: BmcCredentialPolicyKey?) -> BmcSuppliedAccountStateReadOutcome
+fn supplied_transport_read_of(transport: BmcSuppliedAccountStateTransport, policy: BmcCredentialPolicyKey?, served: List<CredentialSurface>) -> BmcSuppliedAccountStateReadOutcome
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "the_supplied_transport_read_mints_the_dry_observation"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "an_uncommitted_response_refuses"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "an_ungrounded_policy_refuses_without_a_published_probe"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "the_supplied_transport_read_never_sets_a_controller_clock"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "a_derivation_refusal_keeps_its_own_cause_not_the_missing_policy_diagnosis"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "a_break_glass_answer_must_be_committed"),
   ]
 {
@@ -193,7 +193,7 @@ fn supplied_transport_read_of(transport: BmcSuppliedAccountStateTransport, polic
     managed: root_ref(), managed_user: root_user, published_user: root_user,
     published_account: "root", published_account_kind: PublishedAccountRetired,
     policy: policy, published_generation_is_password: false,
-    served_surfaces: served_surfaces,
+    served_surfaces: served,
     attempt: "attempt-1" as AttemptIdentity,
     read_at_millis: 1730000000000,
   )
@@ -235,7 +235,7 @@ fn break_glass_is_typed_absence(obs: BmcAccountStateObservation) -> Bool {
 // bmc_lockout_surface_from_redfish + bmc_lockout_surface_from_ipmi_lan in the reader's own mint, so a
 // mint at all proves both adapters ran.)
 test fn the_supplied_transport_read_mints_the_dry_observation() -> Bool {
-  match minted(supplied_transport_read_of(transport: faithful_transport(), policy: policy_row())) {
+  match minted(supplied_transport_read_of(transport: faithful_transport(), policy: policy_row(), served: served_surfaces)) {
     Absent => false
     Present { value: obs } =>
       managed_is_accepted(obs: obs)
@@ -257,14 +257,14 @@ test fn an_uncommitted_response_refuses() -> Bool {
   let t = faithful_transport()
   let broken = BmcSuppliedAccountStateTransport {
     managed_accepted: t.managed_accepted, managed_answer: t.managed_answer, census: t.census,
-    census_answer: t.census_answer, users_answer: uncommitted("ipmi-user-list", "ID Name\n 1 root"),
+    census_answer: uncommitted("ipmi-channel-getaccess", "1 root false false false ADMINISTRATOR"),
     redfish_census: t.redfish_census, redfish_census_answer: t.redfish_census_answer,
     redfish_surface_served: t.redfish_surface_served, redfish_surface_answer: t.redfish_surface_answer,
     account_service: t.account_service, account_service_answer: t.account_service_answer,
     lan_threshold: t.lan_threshold, lan_threshold_answer: t.lan_threshold_answer,
     break_glass: t.break_glass,
   }
-  match supplied_transport_read_of(transport: broken, policy: policy_row()) {
+  match supplied_transport_read_of(transport: broken, policy: policy_row(), served: served_surfaces) {
     SuppliedTransportRefused { cause: ResponseNotCommitted { read: _ } } => true
     _ => false
   }
@@ -273,15 +273,27 @@ test fn an_uncommitted_response_refuses() -> Bool {
 // RED. No credential-policy row: the published retirement cannot be derived and the reader REFUSES --
 // it never probes the published credential to find out. The lockout-budget floor.
 test fn an_ungrounded_policy_refuses_without_a_published_probe() -> Bool {
-  match supplied_transport_read_of(transport: faithful_transport(), policy: none) {
+  match supplied_transport_read_of(transport: faithful_transport(), policy: none, served: served_surfaces) {
     SuppliedTransportRefused { cause: PublishedRetirementPolicyUngrounded { detail: _ } } => true
+    _ => false
+  }
+}
+
+// THE CAUSE IS CARRIED, NOT REPLACED. The policy row IS grounded here; what refuses is the
+// derivation itself (no served surface was read). The refusal must say RetirementServedSurfacesUnknown,
+// NOT the wrong diagnosis "no grounded credential-policy row". A change that collapses the two arms --
+// or maps every derivation refusal to the ungrounded cause -- turns this red.
+test fn a_derivation_refusal_keeps_its_own_cause_not_the_missing_policy_diagnosis() -> Bool {
+  match supplied_transport_read_of(transport: faithful_transport(), policy: policy_row(), served: []) {
+    SuppliedTransportRefused { cause: PublishedRetirementDerivationRefused { cause: RetirementServedSurfacesUnknown } } => true
+    SuppliedTransportRefused { cause: PublishedRetirementPolicyUngrounded { detail: _ } } => false
     _ => false
   }
 }
 
 // RED. Every instant is the observer's; the minted observation never carries a controller clock.
 test fn the_supplied_transport_read_never_sets_a_controller_clock() -> Bool {
-  match minted(supplied_transport_read_of(transport: faithful_transport(), policy: policy_row())) {
+  match minted(supplied_transport_read_of(transport: faithful_transport(), policy: policy_row(), served: served_surfaces)) {
     Absent => false
     Present { value: obs } => carries_no_controller_clock(obs)
   }
@@ -293,14 +305,14 @@ test fn a_break_glass_answer_must_be_committed() -> Bool {
   let t = faithful_transport()
   let broken = BmcSuppliedAccountStateTransport {
     managed_accepted: t.managed_accepted, managed_answer: t.managed_answer, census: t.census,
-    census_answer: t.census_answer, users_answer: t.users_answer,
+    census_answer: t.census_answer,
     redfish_census: t.redfish_census, redfish_census_answer: t.redfish_census_answer,
     redfish_surface_served: t.redfish_surface_served, redfish_surface_answer: t.redfish_surface_answer,
     account_service: t.account_service, account_service_answer: t.account_service_answer,
     lan_threshold: t.lan_threshold, lan_threshold_answer: t.lan_threshold_answer,
     break_glass: BreakGlassPresent { reference: root_ref(), accepted: true, answer: uncommitted("ipmi-user-test-break-glass", "check-password: ok") },
   }
-  match supplied_transport_read_of(transport: broken, policy: policy_row()) {
+  match supplied_transport_read_of(transport: broken, policy: policy_row(), served: served_surfaces) {
     SuppliedTransportRefused { cause: ResponseNotCommitted { read: _ } } => true
     _ => false
   }
