@@ -5926,6 +5926,7 @@ fn partition_move_explained_by_this_change(
             let mut args = affected_set_model_args(
                 ctx,
                 &population.edited_modules,
+                &population.edited_modules,
                 &population.unlocatable,
                 &edges,
                 &compared,
@@ -6028,6 +6029,133 @@ fn partition_move_explanation_child(
         PARTITION_MOVE_EXPLANATION_RECEIPT_REL,
         liveness,
     )
+}
+
+/// THE SCOPED ROUND'S EMISSION SCOPE, COMPUTED IN A CHILD (gunbc.plans.read_set_convergence P2). The scope
+/// needs the whole-pool edge index (`regen_module_edges`) and the model's process-shared index, and an
+/// orchestrator that built them in-process kept them resident into generation 0: on heal for
+/// gunbc#16198 the orchestrator held 13.5 GB when the first generation began, and the slot thrashed
+/// (MemoryStallRefusedPageThrash). So the scope is one more question asked through `answer_in_child`:
+/// the child computes it with the index resident in ITS process, writes this receipt and exits, and
+/// the generations read the receipt (`--regen-emission-scope-carried`) instead of recomputing it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(tag = "answer", deny_unknown_fields)]
+pub enum EmissionScopeReceipt {
+    #[serde(rename = "whole_population")]
+    WholePopulation { schema: String },
+    #[serde(rename = "affected")]
+    Affected {
+        schema: String,
+        members: Vec<String>,
+    },
+    #[serde(rename = "unlocatable")]
+    Unlocatable {
+        schema: String,
+        paths: Vec<String>,
+        reason: String,
+    },
+    #[serde(rename = "refused")]
+    Refused { schema: String, reason: String },
+}
+
+const EMISSION_SCOPE_SCHEMA: &str = "gunbc.regen_emission_scope.v1";
+pub const EMISSION_SCOPE_RECEIPT_REL: &str = "target/stage0-regen-emission-scope.json";
+
+impl ChildAnswer for EmissionScopeReceipt {
+    const SCHEMA: &'static str = EMISSION_SCOPE_SCHEMA;
+    const SUBJECT: &'static str = "emission scope";
+    fn schema(&self) -> &str {
+        match self {
+            Self::WholePopulation { schema }
+            | Self::Affected { schema, .. }
+            | Self::Unlocatable { schema, .. }
+            | Self::Refused { schema, .. } => schema,
+        }
+    }
+}
+
+fn emission_scope_from_receipt(
+    receipt: EmissionScopeReceipt,
+) -> Result<RegenEmissionScope, String> {
+    match receipt {
+        EmissionScopeReceipt::WholePopulation { .. } => Ok(RegenEmissionScope::WholePopulation),
+        EmissionScopeReceipt::Affected { members, .. } => {
+            Ok(RegenEmissionScope::Affected { members })
+        }
+        EmissionScopeReceipt::Unlocatable { paths, reason, .. } => {
+            Ok(RegenEmissionScope::Unlocatable { paths, reason })
+        }
+        EmissionScopeReceipt::Refused { reason, .. } => Err(reason),
+    }
+}
+
+/// The child's entry (`claim_executor --regen-emission-scope`): compute the scope with the index
+/// resident in THIS process, write the answer (a refusal included), and exit.
+pub fn run_emission_scope_answer(
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<EmissionScopeReceipt, String> {
+    let workspace = workspace_root();
+    let schema = EMISSION_SCOPE_SCHEMA.to_string();
+    let receipt = match regen_emission_scope_for_diff(&workspace, source_roots) {
+        Ok(RegenEmissionScope::WholePopulation) => EmissionScopeReceipt::WholePopulation { schema },
+        Ok(RegenEmissionScope::Affected { members }) => {
+            EmissionScopeReceipt::Affected { schema, members }
+        }
+        Ok(RegenEmissionScope::Unlocatable { paths, reason }) => {
+            EmissionScopeReceipt::Unlocatable {
+                schema,
+                paths,
+                reason,
+            }
+        }
+        Err(reason) => EmissionScopeReceipt::Refused { schema, reason },
+    };
+    write_child_answer(&workspace, receipt_rel, &receipt)?;
+    Ok(receipt)
+}
+
+/// The orchestrator's side: one `answer_in_child` call. The receipt stays on disk for the
+/// generations to read.
+fn emission_scope_in_child(
+    workspace: &Path,
+    source_roots: &[String],
+    liveness: &SupervisedSubjectModel,
+) -> Result<RegenEmissionScope, String> {
+    let mut mode = vec!["--regen-emission-scope".to_string()];
+    for root in source_roots {
+        mode.push("--source-root".to_string());
+        mode.push(root.clone());
+    }
+    let receipt: EmissionScopeReceipt =
+        answer_in_child(workspace, &mode, EMISSION_SCOPE_RECEIPT_REL, liveness)?;
+    emission_scope_from_receipt(receipt)
+}
+
+/// A generation's side (`--regen-emission-scope-carried`): read the scope the orchestrator's child
+/// wrote, never recompute it. An absent, unparseable or other-schema receipt refuses.
+pub fn carried_emission_scope(workspace: &Path) -> Result<RegenEmissionScope, String> {
+    let path = workspace.join(EMISSION_SCOPE_RECEIPT_REL);
+    let text = fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "refusal: the carried emission scope {} is unreadable: {e}",
+            path.display()
+        )
+    })?;
+    let receipt: EmissionScopeReceipt = serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "refusal: the carried emission scope {} does not parse: {e}",
+            path.display()
+        )
+    })?;
+    if receipt.schema() != EMISSION_SCOPE_SCHEMA {
+        return Err(format!(
+            "refusal: the carried emission scope names schema {} where {EMISSION_SCOPE_SCHEMA} \
+             is required",
+            receipt.schema()
+        ));
+    }
+    emission_scope_from_receipt(receipt)
 }
 
 /// ONE TYPED ANSWER HANDED ACROSS A PROCESS BOUNDARY by a child of this image. The answer's type is
@@ -6525,7 +6653,7 @@ fn run_built_seed_regen(
     }
     let mut argv: Vec<String> = vec!["--required-regen".to_string()];
     if affected_scope {
-        argv.push("--regen-affected-scope".to_string());
+        argv.push("--regen-emission-scope-carried".to_string());
     }
     argv.push("--regen-candidate-dir".to_string());
     argv.push(candidate_dir_rel.to_string());
@@ -8629,6 +8757,7 @@ pub fn run_regen_round_cost(
     // re-exec'd image takes the carried value. The liveness model supervises that child, so it is
     // loaded first.
     let liveness_model = SupervisedSubjectModel::load(source_roots)?;
+
     let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
         .as_ref()
         .and_then(|carried| carried.round_subject.clone());
@@ -8656,6 +8785,71 @@ pub fn run_regen_round_cost(
                 checkpoint_subject_child(&workspace, &liveness_model)
             })?;
             restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        }
+    }
+
+    // THE SCOPE IS DECIDED AFTER RECOVERY AND BEFORE THE ROUND WRITES ANYTHING (gunbc.plans.read_set_convergence
+    // P2). It reads the mirror roster on disk (`committed_generated_basenames`), so it must read the
+    // RECOVERED tree: an interrupted earlier round can have restored a base mirror that HEAD deleted,
+    // and a scope computed over that leftover would treat the deleted mirror as an existing one and
+    // could select nothing where the clean tree selects the whole population. It is asked of a child
+    // (`emission_scope_in_child`; the index dies there), or, in the re-exec'd image of the same round
+    // (which skips recovery by design and carries its parent's tree), read from the receipt that child
+    // wrote. Computing it writes nothing to the tree. A scope that selects no committed mirror is a
+    // successful round that does no work (below). The generation's own NoAffectedMirrors receipt
+    // describes the same state; reaching it from inside the convergence loop would read as a failed
+    // first generation.
+    let scope = if !affected_scope {
+        RegenEmissionScope::WholePopulation
+    } else if handoff_in.is_some() {
+        carried_emission_scope(&workspace)?
+    } else {
+        emission_scope_in_child(&workspace, source_roots, &liveness_model)?
+    };
+
+    // THE ZERO-WORK ROUND IS ADMITTED ONLY AFTER RECOVERY. A scope that selects no committed mirror is
+    // a successful round that does no work -- but an interrupted earlier round may have left a journal
+    // and base-mirror bytes in the tree (the scope's worktree check reads `.dag` edits only), so the
+    // journal above is restored first and the success describes a clean tree. It still returns before
+    // the base-mirror bootstrap, any new journal or install, so no candidate is fabricated.
+    if let RegenEmissionScope::Affected { .. } = &scope {
+        let committed = committed_generated_basenames(&stage0_src)?;
+        if scope_selection(&scope, &committed)?.is_empty() {
+            let base_mirror_commit = if base_mirror {
+                std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
+                    .ok()
+                    .map(|c| c.trim().to_string())
+                    .filter(|c| !c.is_empty())
+            } else {
+                None
+            };
+            let rendered = format!(
+                "regen-round-cost: producer=claim_executor --regen-round-cost host={host}\n\
+                 regen-round-cost: scope={} selected=0 of committed={}\n\
+                 regen-round-cost: NoAffectedMirrors -- the change reaches no committed mirror; \
+                 nothing was emitted, installed or rebuilt, and the tree is untouched\n{}",
+                scope.line(),
+                committed.len(),
+                base_mirror_commit
+                    .as_ref()
+                    .map(|c| format!(
+                        "regen-round-cost: base_mirror_commit={c} (not seeded: no work)\n"
+                    ))
+                    .unwrap_or_default()
+            );
+            let receipt_path = workspace.join(receipt_rel);
+            if let Some(parent) = receipt_path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("create {}: {e}", parent.display()))?;
+            }
+            fs::write(&receipt_path, &rendered)
+                .map_err(|e| format!("write {}: {e}", receipt_path.display()))?;
+            return Ok(RegenRoundCostOutcome {
+                rendered,
+                receipt_path,
+                round_failures: Vec::new(),
+                base_mirror_commit,
+            });
         }
     }
 
@@ -8841,11 +9035,7 @@ pub fn run_regen_round_cost(
 
     // The surface roles are NOT computed here. They are corpus-derived generation work
     // (`ConvergenceSurfaceRoles`), carried by generation 0's receipt and bound once it is read.
-    let scope = if affected_scope {
-        regen_emission_scope_for_diff(&workspace, source_roots)?
-    } else {
-        RegenEmissionScope::WholePopulation
-    };
+    // `scope` was decided above, before the tree was touched.
     // GENERATION-STATE LIFETIME ISOLATION (`v2.workflow.regen_convergence_transaction`
     // `regen_admit_generation_begin`): at most one generation's state is resident at a time. Every
     // generation, THIS FIRST ONE INCLUDED, runs as its own rebuilt-seed child, and process exit is
@@ -11404,10 +11594,24 @@ pub struct EditedPopulation {
     pub edited_modules: Vec<String>,
     pub unlocatable: Vec<String>,
     pub non_dag_paths: Vec<String>,
+    /// The `.dag` files this change ADDS or DELETES: a change to the module population, which the
+    /// model answers with the whole mirror population (`regen_affected_set_over_change`).
+    pub population_changes: Vec<String>,
 }
 
 pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedPopulation {
     let departed = super::parse_unified_diff_departed_paths(diff_text);
+    let added: BTreeSet<String> = super::parse_unified_diff_added_paths(diff_text)
+        .into_iter()
+        .collect();
+    let population_changes: Vec<String> = departed
+        .iter()
+        .chain(added.iter())
+        .filter(|p| p.ends_with(".dag"))
+        .cloned()
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect();
     let mut paths: BTreeSet<String> = super::parse_unified_diff_changed_new_lines(diff_text)
         .keys()
         .cloned()
@@ -11422,10 +11626,19 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
             non_dag_paths.push(path);
             continue;
         }
+        // A DEPARTED MODULE IS NAMED BY ITS PATH. The layout fixes where module `a.b.c` is stored
+        // (`gunbc.source_layout`), so a deleted file's module name is known without the file; its
+        // importers still name it, so the reverse closure reaches every mirror that read it. Only a
+        // departed path outside the layout stays unlocatable (gunbc.plans.read_set_convergence P2).
         if departed.contains(&path) {
-            unlocatable.push(format!(
-                "{path} (departed: no module line remains in the tree)"
-            ));
+            match super::native_lane_runner::dag_module_name_from_path(&path) {
+                Some(module) => {
+                    edited_modules.insert(module);
+                }
+                None => unlocatable.push(format!(
+                    "{path} (departed, and outside the source layout: no module name derivable)"
+                )),
+            }
             continue;
         }
         match fs::read_to_string(workspace.join(&path)) {
@@ -11442,6 +11655,7 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
         edited_modules: edited_modules.into_iter().collect(),
         unlocatable,
         non_dag_paths,
+        population_changes,
     }
 }
 
@@ -11710,15 +11924,23 @@ fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
 
 /// The arguments `gunbc.regen_affected_set regen_affected_set` is asked with, one construction for
 /// the bound's own run and for the partition-move decision that consumes the typed bound.
+/// `walk_roots` bounds the subgraph handed to the model, and must name every set the model walks
+/// from: the change's own `edited` always, and for a diverged change the base delta's modules too
+/// (`regen_affected_set_over_diverged_change` walks them separately). A subgraph bounded by
+/// `edited` alone would hand the base-delta walk no edges -- for a plan-only change, none at all --
+/// so a base change to a module the emitter imports would select nothing (side-chat review of
+/// #16239 at 916dd47). The model's walk from `edited` over the wider subgraph reaches the same set,
+/// because every edge into that set is still present.
 fn affected_set_model_args(
     ctx: &crate::v1_interpreter::InterpContext,
+    walk_roots: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
     compared: &[(String, String)],
 ) -> Vec<(Option<String>, crate::v1_interpreter::Value)> {
     use crate::v1_interpreter::{str_value, Value};
-    let reached = regen_reverse_closure_host(edited, edges);
+    let reached = regen_reverse_closure_host(walk_roots, edges);
     let edge_values: Vec<Value> = edges
         .iter()
         .filter(|(_, to)| reached.contains(to))
@@ -11767,6 +11989,9 @@ fn affected_set_model_args(
 /// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
 pub fn render_affected_set_bound(
     source_roots: &[String],
+    base_delta: &BaseDelta<'_>,
+    non_module_paths: &[String],
+    population_changes: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
@@ -11780,11 +12005,56 @@ pub fn render_affected_set_bound(
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
 
-    let args = affected_set_model_args(&ctx, edited, unlocatable, edges, compared);
+    // The bound over a whole change takes the model's shared arguments plus the change's other paths
+    // (`regen_affected_set_over_change`); the partition-move explanation reads the shared ones alone.
+    let walk_roots: Vec<String> = edited
+        .iter()
+        .chain(base_delta.modules.iter())
+        .cloned()
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect();
+    let mut args = affected_set_model_args(&ctx, &walk_roots, edited, unlocatable, edges, compared);
+    args.push((
+        Some("non_module_paths".to_string()),
+        Value::List(Rc::new(
+            non_module_paths
+                .iter()
+                .map(str_value)
+                .collect::<Vec<Value>>()
+                .into(),
+        )),
+    ));
+    args.push((
+        Some("population_changes".to_string()),
+        Value::List(Rc::new(
+            population_changes
+                .iter()
+                .map(str_value)
+                .collect::<Vec<Value>>()
+                .into(),
+        )),
+    ));
+    for (name, items) in [
+        ("base_delta_paths", base_delta.paths),
+        ("base_delta_modules", base_delta.modules),
+    ] {
+        args.push((
+            Some(name.to_string()),
+            Value::List(Rc::new(
+                items.iter().map(str_value).collect::<Vec<Value>>().into(),
+            )),
+        ));
+    }
     let bound = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, "regen_affected_set", &args, false)
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_over_diverged_change",
+            &args,
+            false,
+        )
     })
-    .map_err(|e| format!("refusal: regen_affected_set did not answer: {e}"))?;
+    .map_err(|e| format!("refusal: regen_affected_set_over_diverged_change did not answer: {e}"))?;
     let bound_arg = vec![(Some("bound".to_string()), bound)];
     let line = match v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
@@ -11867,15 +12137,72 @@ pub fn render_affected_set_bound(
 
 /// The bound for an edited population against the live tree: edges and compared rows from the
 /// tree, verdict from the model.
+/// The bound over a whole change. `non_dag_paths` are the change's other paths: an edited committed
+/// MIRROR is heal's own product, so it is translated to its module and re-adjudicated (its own mirror is
+/// selected); every remaining path goes to the model, which decides whether it is a seed source that
+/// makes the answer the whole population (`gunbc.regen_affected_set` `regen_affected_set_over_change`).
 pub fn affected_set_bound_for(
     workspace: &Path,
     source_roots: &[String],
     edited: &[String],
     unlocatable: &[String],
+    non_dag_paths: &[String],
+    population_changes: &[String],
+    base_delta: &[String],
 ) -> Result<AffectedSetBound, String> {
     let (edges, modules) = regen_module_edges(workspace)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
-    render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
+    let mut edited_modules: BTreeSet<String> = edited.iter().cloned().collect();
+    let mut non_module_paths = Vec::new();
+    for path in non_dag_paths {
+        let mirror_module = compared
+            .iter()
+            .find(|(_, basename)| path == &format!("src/v1/stage0/src/{basename}"))
+            .map(|(module, _)| module.clone());
+        match mirror_module {
+            Some(module) => {
+                edited_modules.insert(module);
+            }
+            None => non_module_paths.push(path.clone()),
+        }
+    }
+    let edited: Vec<String> = edited_modules.into_iter().collect();
+    // The base delta is translated by the same mirror join: a committed mirror the base changed
+    // names its module (the model asks whether that module is a generator); every other path stays
+    // a path (the model asks whether it is a seed build input).
+    let mut base_delta_modules = BTreeSet::new();
+    let mut base_delta_paths = Vec::new();
+    for path in base_delta {
+        match compared
+            .iter()
+            .find(|(_, basename)| path == &format!("src/v1/stage0/src/{basename}"))
+        {
+            Some((module, _)) => {
+                base_delta_modules.insert(module.clone());
+            }
+            None => base_delta_paths.push(path.clone()),
+        }
+    }
+    let base_delta_modules: Vec<String> = base_delta_modules.into_iter().collect();
+    render_affected_set_bound(
+        source_roots,
+        &BaseDelta {
+            paths: &base_delta_paths,
+            modules: &base_delta_modules,
+        },
+        &non_module_paths,
+        population_changes,
+        &edited,
+        unlocatable,
+        &edges,
+        &compared,
+    )
+}
+
+/// What the base changed since the merge-base, as the mirror join split it.
+pub struct BaseDelta<'a> {
+    pub paths: &'a [String],
+    pub modules: &'a [String],
 }
 
 /// The model's own answer for one scope, over one committed roster.
@@ -12006,6 +12333,103 @@ fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String>
         })
 }
 
+/// THE CHANGE A SCOPED ROUND OBSERVES (gunbc.plans.read_set_convergence P2; operator decision 2026-11-10:
+/// edits from the merge-base plus the generator delta). Inside heal the round bootstraps its seed from one
+/// exact base commit (`HEAL_BASE_MIRROR_COMMIT`), while HEAD's committed mirrors were emitted by the seed
+/// at the merge-base `M = merge-base(base, HEAD)`. So two observations, kept apart:
+/// - `diff_text`, `M..HEAD`: the change this pull request made. The earlier two-dot `base..HEAD` folded
+///   every commit the base gained since the branch point into "the change" and answered the whole
+///   population for nearly every pull request (measured on #16236);
+/// - `base_delta`, the paths `M..base` changed: what the generator may have gained. The model
+///   (`regen_affected_set_over_diverged_change`) decides which of them change emission.
+/// Outside heal (no base commit bound) the observation is the floor's own diff range and the base delta
+/// is empty, as before. The report (`--regen-affected-set`) and the round read this one function, so a
+/// dry run answers what the round will scope.
+struct ScopedRoundChange {
+    diff_text: String,
+    base_delta: Vec<String>,
+}
+
+fn scoped_round_change(workspace: &Path) -> Result<ScopedRoundChange, String> {
+    let bound = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
+    match bound.as_deref().map(str::trim) {
+        Some(commit) if !commit.is_empty() => exact_base_change(workspace, commit),
+        _ => Ok(ScopedRoundChange {
+            diff_text: super::required_floor_runner::floor_git_diff_range()?,
+            base_delta: Vec::new(),
+        }),
+    }
+}
+
+fn scoped_round_git(workspace: &Path, args: &[&str]) -> Result<String, String> {
+    let shown = args.join(" ");
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("refusal: git {shown} could not run: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "refusal: git {shown} failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout).map_err(|e| format!("refusal: git {shown} is not UTF-8: {e}"))
+}
+
+/// The two observations for one well-formed 40-hex base commit. A merge-base that cannot be named
+/// (unrelated or truncated history) refuses: neither observation can be stated without it, and the
+/// round does not widen in its place.
+fn exact_base_change(workspace: &Path, base: &str) -> Result<ScopedRoundChange, String> {
+    if base.len() != 40 || !base.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!(
+            "refusal: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base} is not a 40-hex commit id, so the \
+             scoped round cannot name the exact base it diffs against"
+        ));
+    }
+    let merge_base = scoped_round_git(workspace, &["merge-base", base, "HEAD"])?
+        .trim()
+        .to_string();
+    if merge_base.len() != 40 {
+        return Err(format!(
+            "refusal: git merge-base {base} HEAD named no single commit ({merge_base:?}), so the \
+             scoped round cannot separate this change from the base's"
+        ));
+    }
+    let diff_text = scoped_round_git(
+        workspace,
+        &[
+            "diff",
+            "-U0",
+            "--no-renames",
+            "--no-color",
+            &merge_base,
+            "HEAD",
+        ],
+    )?;
+    let base_delta = scoped_round_git(
+        workspace,
+        &[
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "--no-color",
+            &merge_base,
+            base,
+        ],
+    )?
+    .lines()
+    .map(str::trim)
+    .filter(|line| !line.is_empty())
+    .map(str::to_string)
+    .collect();
+    Ok(ScopedRoundChange {
+        diff_text,
+        base_delta,
+    })
+}
+
 /// THE BOUND AS A SCOPE, derived from the same edited population `run_regen_affected_set`
 /// reports — one producer of the selection, read by the report and by the round.
 ///
@@ -12023,13 +12447,16 @@ pub fn regen_emission_scope_for_diff(
     // refuses before the diff is read rather than being scoped by an observation blind to it.
     // `v2.workflow.regen_scope_worktree` owns the predicate and the refusal text.
     regen_scope_worktree_admitted(source_roots)?;
-    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
-    let population = edited_population_from_diff(workspace, &diff_text);
+    let change = scoped_round_change(workspace)?;
+    let population = edited_population_from_diff(workspace, &change.diff_text);
     let bound = affected_set_bound_for(
         workspace,
         source_roots,
         &population.edited_modules,
         &population.unlocatable,
+        &population.non_dag_paths,
+        &population.population_changes,
+        &change.base_delta,
     )?;
     let scope = match bound.arm.as_str() {
         "AffectedMirrors" => RegenEmissionScope::Affected {
@@ -12081,13 +12508,16 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
     let workspace = workspace_root();
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
-    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
-    let population = edited_population_from_diff(&workspace, &diff_text);
+    let change = scoped_round_change(&workspace)?;
+    let population = edited_population_from_diff(&workspace, &change.diff_text);
     let bound = affected_set_bound_for(
         &workspace,
         source_roots,
         &population.edited_modules,
         &population.unlocatable,
+        &population.non_dag_paths,
+        &population.population_changes,
+        &change.base_delta,
     )?;
     let mut rendered = format!(
         "regen-affected-set: producer={REGEN_AFFECTED_SET_PRODUCER} host={} tree={tree} tree_dirty={tree_dirty}\n",
@@ -12285,8 +12715,99 @@ mod regen_affected_set_tests {
         .collect()
     }
 
-    /// The edit reader on a synthetic diff: an existing module is named, a departed `.dag` and an
-    /// added `.dag` that is not in the tree are unlocatable, and a `.rs` is only counted.
+    /// THE SCOPED ROUND SEPARATES THIS CHANGE FROM THE BASE'S. Diverged histories: HEAD edited one
+    /// module; the base, after HEAD's branch point, added a module and edited a seed source. The PR's
+    /// edit is the change (merge-base..HEAD) and the base's commits are not; they arrive as the base
+    /// delta, where the model decides which change the generator. A merge commit that brings the base
+    /// in moves the merge-base, and the delta empties.
+    #[test]
+    fn exact_base_change_separates_the_change_from_the_base_delta_on_diverged_histories() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-exact-base-diff-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("dag/std")).expect("fixture dir");
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("dag/std/a.dag"), "module std.a\n").expect("write");
+        std::fs::write(dir.join("src/v1/stage0/src/cli_run.rs"), "// seed\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "root"]);
+        git(&["checkout", "-q", "-b", "head"]);
+        std::fs::write(dir.join("dag/std/a.dag"), "module std.a\n// head edit\n").expect("write");
+        git(&["commit", "-qam", "head edit"]);
+        git(&["checkout", "-q", "main"]);
+        std::fs::write(
+            dir.join("dag/std/added_on_base.dag"),
+            "module std.added_on_base\n",
+        )
+        .expect("write");
+        std::fs::write(dir.join("src/v1/stage0/src/cli_run.rs"), "// seed v2\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "base adds a module and edits the seed"]);
+        let base = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "-q", "head"]);
+
+        let change = exact_base_change(&dir, &base).expect("change");
+        let population = edited_population_from_diff(&dir, &change.diff_text);
+        assert_eq!(population.edited_modules, vec!["std.a".to_string()]);
+        assert!(
+            population.population_changes.is_empty() && population.non_dag_paths.is_empty(),
+            "the base's commits are not this change: {:?} {:?}",
+            population.population_changes,
+            population.non_dag_paths
+        );
+        let mut delta = change.base_delta.clone();
+        delta.sort();
+        assert_eq!(
+            delta,
+            vec![
+                "dag/std/added_on_base.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string()
+            ],
+            "the base's commits arrive as the base delta"
+        );
+
+        // Bringing the base in moves the merge-base: the delta empties and the change is HEAD's own.
+        git(&["merge", "-q", "--no-edit", &base]);
+        let merged = exact_base_change(&dir, &base).expect("change after merge");
+        assert!(merged.base_delta.is_empty(), "{:?}", merged.base_delta);
+        assert_eq!(
+            edited_population_from_diff(&dir, &merged.diff_text).edited_modules,
+            vec!["std.a".to_string()]
+        );
+
+        // A base with no common history refuses rather than widening.
+        git(&["checkout", "-q", "--orphan", "stranger"]);
+        git(&["commit", "-qm", "stranger"]);
+        let stranger = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "-q", "head"]);
+        assert!(exact_base_change(&dir, &stranger).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The edit reader on a synthetic diff: an existing module is named by its module line, a
+    /// departed `.dag` under the layout is named by its PATH (`std.gone`), a departed `.dag`
+    /// outside the layout and an added `.dag` that is not in the tree are unlocatable, and a `.rs`
+    /// is only counted.
     #[test]
     fn edited_population_classifies_named_departed_and_missing_paths() {
         let diff = "\
@@ -12302,6 +12823,12 @@ deleted file mode 100644
 +++ /dev/null
 @@ -1,1 +0,0 @@
 -module std.gone
+diff --git a/fixtures/stray/gone.dag b/fixtures/stray/gone.dag
+deleted file mode 100644
+--- a/fixtures/stray/gone.dag
++++ /dev/null
+@@ -1,1 +0,0 @@
+-module stray.gone
 diff --git a/dag/std/never_written.dag b/dag/std/never_written.dag
 new file mode 100644
 --- /dev/null
@@ -12316,18 +12843,31 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
 +// y
 ";
         let population = edited_population_from_diff(&workspace_root(), diff);
-        assert_eq!(population.edited_modules, vec![s("std.content_hash")]);
+        assert_eq!(
+            population.edited_modules,
+            vec![s("std.content_hash"), s("std.gone")]
+        );
         assert_eq!(
             population.unlocatable.len(),
             2,
             "{:?}",
             population.unlocatable
         );
-        assert!(population.unlocatable[0].starts_with("dag/std/gone.dag (departed"));
-        assert!(population.unlocatable[1].starts_with("dag/std/never_written.dag (unreadable"));
+        assert!(population.unlocatable[0].starts_with("dag/std/never_written.dag (unreadable"));
+        assert!(population.unlocatable[1]
+            .starts_with("fixtures/stray/gone.dag (departed, and outside the source layout"));
         assert_eq!(
             population.non_dag_paths,
             vec![s("src/v1/stage0/src/v1_rt.rs")]
+        );
+        // Every added or deleted `.dag` is a population change, under the layout or not.
+        assert_eq!(
+            population.population_changes,
+            vec![
+                s("dag/std/gone.dag"),
+                s("dag/std/never_written.dag"),
+                s("fixtures/stray/gone.dag")
+            ]
         );
     }
 }

@@ -21104,6 +21104,22 @@ fn rest_observation_from_value(
     }
 }
 
+/// Renders a `Uri` record back to its canonical `scheme://locator` string, for a refusal
+/// message that must name the bound target. `rest_uri_value` split the scheme into the
+/// `UriScheme` variant and stripped it from the locator, so the two halves are recombined here
+/// rather than read off either alone. A `Uri` that is not the expected record falls back to the
+/// ordinary value rendering rather than dropping the evidence entirely.
+fn rest_uri_render(ctx: &InterpContext, uri: &Value) -> String {
+    let scheme = match record_field(ctx, uri, "scheme") {
+        Some(Value::Variant { variant_name, .. }) => ctx.resolve(variant_name).to_lowercase(),
+        _ => return format!("{uri}"),
+    };
+    match record_field(ctx, uri, "locator") {
+        Some(Value::Str(ref locator)) => format!("{scheme}://{locator}"),
+        _ => format!("{uri}"),
+    }
+}
+
 fn rest_exchange_selection(
     invocation: Value,
     ctx: &InterpContext,
@@ -21160,10 +21176,25 @@ fn rest_exchange_selection(
                 rest_observation_from_value(observation, ctx)?,
             ))
         }
-        "RestReplayExchangeAbsent" => Err(InterpError::TypeError {
-            msg: "missing exact REST replay fixture for bound invocation; real transport refused"
-                .to_string(),
-        }),
+        "RestReplayExchangeAbsent" => {
+            // This variant carries the host-computed bound invocation. A bare TypeError that
+            // dropped it left the zero-fixture op-route probe refusing with no evidence of
+            // WHICH invocation went unbound — the second field-default-scope blind spot after
+            // #16196 read a declaring-site default in its own module's scope: the value the
+            // route bound was unobservable at the refusal. Surface its `target` so a refusal
+            // witness can read the bound value (the second PR removes #16185's explicit Jwt
+            // fields once this executed reading shows the default binds).
+            let bound_target = ctx
+                .field(&fields, "invocation")
+                .and_then(|invocation| record_field(ctx, invocation, "target"))
+                .map(|target| rest_uri_render(ctx, &target))
+                .unwrap_or_else(|| "<unbound target>".to_string());
+            Err(InterpError::TypeError {
+                msg: format!(
+                    "missing exact REST replay fixture for bound invocation {bound_target}; real transport refused"
+                ),
+            })
+        }
         "RestReplayExchangeAmbiguous" => {
             let count = match ctx.field(&fields, "count") {
                 Some(Value::Int(count)) => *count,
