@@ -201,14 +201,13 @@ data drift_watch_capability_refusal_reason: String = "REFUSED gunbc.drift_watch_
 
 data drift_watch_no_job_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: this repository's RepositoryCiProfile carries no ProjectionDrift row, so there is no scheduled drift watch to emit. The absence is the repository's data, not this emitter's default."
 
-data drift_watch_no_cron_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: the repository's ProjectionDrift row declares no cadence, so no schedule trigger is emitted; a checkout-driven drift check comes from gunbc.ci.repository_projection_drift_workflow instead."
+data drift_watch_no_cron_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: the repository's ProjectionDrift row declares no cadence, so no schedule trigger is emitted. A drift check with no cadence has no scheduled trigger to render."
 
 // THE DRIFT EMITTER, REFUSING BEFORE IT RENDERS. Presence is read by matching, not by asking a Bool of
 // an Optional: the no-row case and the row-without-cadence case are branches of the same match, so the
 // fabricated fallbacks this module used to carry for each (a "no-drift-watch-declared" row, a midnight
 // cron) no longer exist to be rendered. A repository with no drift watch gets a refusal naming its row; a
-// repository whose drift check is checkout-driven gets no file from this emitter at all and takes its check
-// from gunbc.ci.repository_projection_drift_workflow, which adds no schedule trigger.
+// repository whose drift check is checkout-driven gets no file from this emitter at all.
 fn expected_drift_watch_workflow_yml() -> DriftWatchWorkflowGenerationOutcome {
   drift_watch_workflow_yml_for(profile: gunbc_repository_ci_profile())
 }

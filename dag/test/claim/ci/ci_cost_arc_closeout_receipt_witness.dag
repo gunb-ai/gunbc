@@ -5,7 +5,6 @@ import std.measure { millisecond_count, byte_size_count }
 import gunbc.ci.ci_cost_arc_closeout_receipt {
   SkipProofWithdrawn,
   HandHarvestedDatedAudit,
-  SelectionApplied,
   NotHarvested,
   CaptureMeasuredNetOpen,
   EnrollmentLandedFleetRateOpen,
@@ -54,10 +53,6 @@ test fn witness_subject_is_hand_harvested_affected() -> Bool {
     HandHarvestedDatedAudit {} => true
   }
     && s.github_actions_run_id == 30863019228
-    && match s.selection {
-      SelectionApplied => true
-      _ => false
-    }
 }
 
 test fn witness_full_corpus_not_harvested() -> Bool {

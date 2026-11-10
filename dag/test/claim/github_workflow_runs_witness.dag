@@ -1,5 +1,29 @@
 module test.claim.github_workflow_runs_witness
 
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.workflow_runs {
+  WorkflowRun,
+  WorkflowRunList,
+  Queued,
+  InProgress,
+  Completed,
+  Waiting,
+  Requested,
+  Pending,
+  Success,
+  Failure,
+  Cancelled,
+  Neutral,
+  Skipped,
+  TimedOut,
+  ActionRequired,
+  StartupFailure,
+  workflow_run_status_wire_label,
+  parse_workflow_run_status,
+  workflow_run_conclusion_wire_label,
+  parse_workflow_run_conclusion,
+}
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -19,6 +43,10 @@ data sample_run: WorkflowRun = WorkflowRun { display_title: none,
   workflow_id: 987
   run_number: 42
   run_attempt: 1
+  path: none
+  head_branch: none
+  actor: none
+  triggering_actor: none
   html_url: "https://github.com/owner/repo/actions/runs/12345678"
   created_at: "2026-06-23T10:00:00Z"
   updated_at: "2026-06-23T10:15:00Z"
