@@ -11,14 +11,19 @@ use crate::helpers::compile_dag;
 // either way, so it cannot tell the two states apart -- THIS test is the discriminator: it reads
 // the EMITTED BYTES for a REST exchange and refuses while either arm splices a body-derived input.
 //
-// FAKE SECRET IN EVERY BODY-DERIVED INPUT. The two body-derived inputs the arms could echo are the
-// runtime io error (body read refused) and the serde_json message (decode refused). A credential
-// carried in either reaches the published cause only if the emitted code splices the runtime
-// `error` binding into it, so the guarantee is asserted on the emitted bytes: the emitted
-// RestBodyUndecodable arms must carry the single declared-side authority's phrases as CONSTANT
-// literals and must not splice any runtime error. The probe's request credential is planted with
-// FAKE-SECRET-MARKER (mirroring the interpreter's t7 credential probe) so the same sentinel is in
-// every body-derived input on this exchange.
+// FAKE SECRET IN EVERY BODY-DERIVED INPUT, and WHY THE ASSERTION IS THE CODE SHAPE. The two
+// body-derived inputs the arms could echo are the runtime io error (body read refused) and the
+// serde_json message (decode refused); both reach the cause through the SAME vector -- the emitted
+// code splicing the runtime `error` binding into it (`cause: error.to_string()` /
+// `format!("...", error)`). A credential carried by the body therefore reaches the published cause
+// if and only if the emitted cause splices a runtime value. So the guarantee is asserted as the
+// absence of that splice: each emitted RestBodyUndecodable arm's cause must be a CONSTANT literal
+// carrying the single declared-side authority's phrase, never a runtime expression. The probe's
+// request credential is planted with FAKE-SECRET-MARKER (mirroring the interpreter's t7 credential
+// probe) so the credential is present in every body-derived input on this exchange; it is a runtime
+// call-argument, so it is not asserted literally against the emitted source (a fixed-shape cause
+// never contains it at either ref -- asserting so would be vacuous). The splice-forbidding below is
+// the enforceable form of the same barrier, and it is exactly what fires RED at main.
 //
 // RED at main (the arms emitted the leaking expressions), GREEN at head (they route through
 // v1.compiler.rest_cause_text).
@@ -32,8 +37,6 @@ use crate::helpers::compile_dag;
 // owned by the single authority v1.compiler.rest_cause_text, whose interpreter-side fold-in (the fork)
 // is tracked at dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag (NEXT RUNG,
 // dispatched by silent-bee-845) as PR-2; that row is the lane that owns this witness's subject text.
-
-const FAKE_SECRET_MARKER: &str = "FAKE-SECRET-MARKER";
 
 fn rest_exchange_probe() -> &'static str {
     "module fixture.rest_emitted_leak_probe\n\
@@ -112,7 +115,9 @@ fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_er
     );
 
     // NO BODY-DERIVED TEXT REACHES THE CAUSE. Every RestBodyUndecodable arm must splice nothing from
-    // the runtime error binding; the planted sentinel could ride out only through such a splice.
+    // the runtime error binding -- the only vector a body-derived credential could use to reach the
+    // cause. At main these fire (the arms emitted `cause: error.to_string()` and
+    // `format!("...", error)`); at head they hold (the cause is a constant declared-side literal).
     for (idx, line) in emitted.lines().enumerate() {
         if line.contains("RestBodyUndecodable") {
             assert!(
@@ -123,18 +128,6 @@ fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_er
                 !line.contains("format!("),
                 "emitted RestBodyUndecodable formats body-derived text at line {idx}: {line}"
             );
-            assert!(
-                !line.contains(FAKE_SECRET_MARKER),
-                "the planted FAKE secret reached an emitted RestBodyUndecodable cause at line {idx}: {line}"
-            );
         }
     }
-
-    // And the planted sentinel must not appear on ANY emitted RestBodyUndecodable cause path at all.
-    assert!(
-        !emitted
-            .lines()
-            .any(|l| l.contains("RestBodyUndecodable") && l.contains(FAKE_SECRET_MARKER)),
-        "the planted FAKE secret reached the emitted RestBodyUndecodable published cause"
-    );
 }
