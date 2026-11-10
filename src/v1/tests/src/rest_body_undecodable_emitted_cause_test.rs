@@ -113,6 +113,7 @@ fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_er
 
     let mut saw_read = false;
     let mut saw_decode = false;
+    let mut offenders: Vec<String> = Vec::new();
     for (idx, line) in emitted.lines().enumerate() {
         if !(line.contains("RestBodyUndecodable") && line.contains("status: status as i64")) {
             continue;
@@ -140,11 +141,9 @@ fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_er
             && inner.map_or(false, |b| {
                 b.starts_with(DECODE_CAUSE_PREFIX) && b.ends_with(')')
             });
-        assert!(
-            is_read || is_decode,
-            "emitted RestBodyUndecodable cause is not a declared-side constant literal (a runtime \
-             splice or unforeseen form) at line {idx}: {line}"
-        );
+        if !(is_read || is_decode) {
+            offenders.push(format!("emitted line {idx}: {line}"));
+        }
         if is_read {
             saw_read = true;
         }
@@ -152,6 +151,16 @@ fn emitted_rest_body_undecodable_cause_carries_declared_text_not_body_derived_er
             saw_decode = true;
         }
     }
+
+    // Collect every offending construction before failing, so a single RED run names BOTH leaky arms
+    // (the body-read `error.to_string()` and the decode `format!(..)`) rather than stopping at the first.
+    assert!(
+        offenders.is_empty(),
+        "found {} emitted RestBodyUndecodable construction(s) whose cause is not a declared-side \
+         constant literal (a runtime splice or unforeseen form):\n{}",
+        offenders.len(),
+        offenders.join("\n")
+    );
 
     // Both declared-side arms must be present, so the test cannot pass vacuously if an arm disappears
     // or is rewritten to an unlisted form. At main both constructions splice `error`, so the per-arm
