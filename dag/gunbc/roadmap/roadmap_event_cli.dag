@@ -155,8 +155,9 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 // command line, naming how many of the three arrived (roadmap_acceptance_pr_evidence_from_args); an
 // absence dated on or after the cutoff is refused at the route
 // (gunbc.roadmap.roadmap_issue_command issue_command_acceptance_evidence_law). Witnessed by
-// a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_before_the_cutoff,
-// in test.claim.roadmap.roadmap_acceptance_evidence_witness.
+// half_a_pull_request_is_refused_where_the_arguments_are_read and
+// the_absence_of_a_pull_request_is_admitted_only_before_the_cutoff, in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness.
 fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url: String, merged_at: String, head_sha: String, author: String) -> ProcessExit {
   match roadmap_acceptance_line_of(text: receipt_line) {
     Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: the receipt line is refused: it must be an acceptance line spelled exactly as the operator law spells one, naming the live receipt, its red control, and its handback" }
@@ -235,9 +236,10 @@ fn roadmap_acceptance_receipt_digest_text(receipt: RoadmapAcceptanceReceipt) -> 
 // reason the principal gave — an identity the CLI can recompute, so a retried retirement meets its own
 // operation receipt and answers the first recording (EventAlreadyPresent) instead of appending a second
 // event or colliding; a DIFFERENT retirement of the same node is a different key, and the admission law
-// refuses it outright, because a node already retired has no change left to name (witness:
-// a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_first_answers_it, in
-// test.claim.roadmap.roadmap_acceptance_evidence_witness).
+// refuses it outright, because a node already retired has no change left to name. Witnessed by
+// a_retired_node_is_retired_once_because_its_key_is_the_reason_not_the_call, in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness, with the replay and the outright refusal
+// themselves exercised by `issue_command_acceptance_wet` in test.manual.issue_command_wet.
 fn roadmap_retirement_operation_identity(node: String, reason: String) -> String {
   join([node, "-retirement-", content_hash_atom(value: reason as NonEmptyStr).digest as String], "")
 }

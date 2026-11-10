@@ -22,6 +22,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_event_chain, roadmap_event_admitted_after,
   EventPrincipal, AttemptResultOutcome, RoadmapResultBinding, roadmap_result_returned_event,
   RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
+  RoadmapEventKind, ResultReturned, Retired,
 }
 import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
@@ -357,9 +358,11 @@ fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> Strin
 // on — the migration resuming after an interruption, where the head is now the event the first attempt
 // committed — is the SAME command and must answer with the first attempt's committed outcome. Binding the
 // key to the parent made that retry a fresh command and refused it `operation-conflict`, so a half-finished
-// migration could not be finished by replaying it (witness:
-// a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first_recording, in
-// test.claim.roadmap.roadmap_acceptance_evidence_witness). What a used key
+// migration could not be finished by replaying it. Witnessed by `issue_command_acceptance_wet`, in
+// test.manual.issue_command_wet, which commits an acceptance, lets an unrelated act move the head, and
+// requires the FIRST event's own id back from the replay; the pairing of that replay with
+// a_retried_acceptance_is_the_same_operation_though_it_is_not_the_same_command, in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness, is what pins it. What a used key
 // still cannot do is carry another payload: that comparison is the one below, and it refuses.
 fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {
   a.node == b.node && a.author == b.author && a.kind == b.kind
@@ -382,7 +385,17 @@ fn roadmap_event_append_after_no_operation_receipt(
     EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
     EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
       else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
-        EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+        // THE REFUSAL NAMES WHAT WAS REFUSED. One sentence for every kind the log will not admit would
+        // tell an operator migrating a retirement that a RESULT was refused (gunbc.design_argument::
+        // fail_closed: a failure arm refuses, and what it says is part of refusing).
+        match event.kind {
+          ResultReturned { attempt: _, claim: _, outcome: _ } =>
+            EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+          Retired { reason: _ } =>
+            EventAppendRefused { id: env.id, step: "not-admitted", reason: "the node is already terminal on this log, so a second retirement names no change; what the plan shows is the first retirement's reason" }
+          _ =>
+            EventAppendRefused { id: env.id, step: "not-admitted", reason: "this event kind is not admitted after what the node's history already holds" }
+        }
       } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
         EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
       } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: expected_commit) }

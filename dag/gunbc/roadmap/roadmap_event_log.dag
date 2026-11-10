@@ -1698,10 +1698,10 @@ fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: Roadmap
     // NodeRetired and the fold never leaves it (roadmap_standing_step_acc answers nothing after a
     // terminal standing). Admitting another Retired would let a later writer quietly rewrite the reason
     // the plan shows for a node that cannot move — a second fact with no effect is a silent edit of the
-    // first, so this refuses (witness: a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_
-    // _first_answers_it, in test.claim.roadmap.roadmap_acceptance_evidence_witness)
-    // first_answers_it; the operation identity in gunbc.roadmap.roadmap_event_cli makes the *same*
-    // command a replay rather than a second attempt).
+    // first, so this refuses — exercised by `issue_command_acceptance_wet` in
+    // test.manual.issue_command_wet, which replays the first retirement (answered by its own recording,
+    // because the operation identity in gunbc.roadmap.roadmap_event_cli makes the *same* command a replay
+    // rather than a second attempt) and then names a different reason, which is refused).
     Retired { reason: _ } => match roadmap_node_standing(envs: envs) {
       NodeRetired { by: _, reason: _ } => false
       _ => true
@@ -1797,9 +1797,11 @@ fn roadmap_issue_history_newest_first(envs: List<RoadmapEventEnvelope>) -> List<
 // accepting principal and day — and for a revocation its disposition, its reason, its revoker and its
 // day too. Comparing node and criteria digest alone would certify a migrated acceptance whose
 // red-control witness, handback artifact, accepting principal or day had been swapped: the standing
-// still folds the same way, and the receipt is no longer the one the operator wrote (witness:
-// a_migrated_event_with_swapped_evidence_disagrees_with_the_manifest, in
-// test.claim.roadmap.roadmap_acceptance_evidence_witness).
+// still folds the same way, and the receipt is no longer the one the operator wrote. Witnessed facet by
+// facet — agreement, swapped evidence refusing on both sides, the multiset count, a lost acceptance with
+// its closedness, a closedness the manifest never accepted, a manifest that does not replay, and the
+// retired roster — by the seven `a_migration_verifier_*` claims in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness.
 fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
   match e {
     AcceptanceRecorded { receipt } =>
@@ -1849,10 +1851,13 @@ fn roadmap_acceptance_migration_problems(
   let replay_problems = match replay_acceptance_history(events: wanted) {
     Present { value: state } => {
       let expected_closed = map(state.live, r => r.node as String)
+      // `filter` is the two-argument list method; the sentence is a `map` over what it keeps. Written as
+      // one three-argument call it compiles and silently returns the bare node ids, so a runbook operator
+      // would read "node-multiset" with no sentence around it.
       concat(
-        filter(expected_closed, n => !any(closed_nodes, cn => cn == n),
+        map(filter(expected_closed, n => !any(closed_nodes, cn => cn == n)),
           n => join(["the manifest leaves ", n, " closed on a live receipt; the log does not say so", ""], "")),
-        filter(closed_nodes, cn => !any(expected_closed, n => n == cn),
+        map(filter(closed_nodes, cn => !any(expected_closed, n => n == cn)),
           cn => join(["the log calls ", cn, " closed on a live receipt the exported manifest never accepted", ""], "")))
     }
     // The manifest IS the evidence. An acceptance history that cannot be put in order — a revocation or

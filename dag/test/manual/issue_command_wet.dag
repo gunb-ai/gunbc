@@ -1,12 +1,15 @@
 module test.manual.issue_command_wet
 
-import std.types { String, NonEmptyStr, FilePath, Bool }
+import std.types { String, NonEmptyStr, FilePath, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, roadmap_event_envelope, roadmap_issue_comments, roadmap_event_heads, roadmap_node_standing, roadmap_node_standing_key }
+import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, roadmap_event_envelope, roadmap_issue_comments, roadmap_event_heads, roadmap_node_standing, roadmap_node_standing_key, AcceptanceRecordedEvent, Retired, AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest }
 import gunbc.roadmap.roadmap_event_carrier { carrier_snapshot_close_failures, RoadmapEventAppend, roadmap_event_carrier_layout, roadmap_events_read, EventsRead, EventAppended, EventAlreadyPresent, EventAppendRefused }
-import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, CreateComment, issue_command_event, issue_command_apply }
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, CreateComment, AcceptNode, RetireNode, issue_command_apply }
+import gunbc.roadmap.roadmap_event_cli { roadmap_retirement_operation_identity }
+import gunbc.roadmap.roadmap_model { RoadmapAcceptanceReceipt, roadmap_criteria_digest }
+import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedControlExecuted, HandbackDelivered }
 
 // Local throwaway Git remote only. Drives the command -> conditional carrier -> fold -> readback.
 fn issue_command_wet(repo: String, mode: String = "sequential", git_program: String = "/usr/bin/git") -> ProcessExit {
@@ -49,5 +52,105 @@ fn issue_wet_outcome(result: RoadmapEventAppend) -> String {
     EventAppended { id } => concat("appended ", id as String)
     EventAlreadyPresent { id } => concat("already ", id as String)
     EventAppendRefused { id: _, step, reason } => concat(step, concat(": ", reason))
+  }
+}
+
+// THE ACCEPTANCE AND RETIREMENT HALF of the same driver: the three properties only the CARRIER can answer,
+// exercised over the real append route against a real throwaway Git remote. Like `test.manual.snapshot_census_wet`
+// this file will not fabricate the repo its caller must supply — `repo` must be a directory under
+// /tmp/gunbc-issue-command- that is a Git working tree with an `origin` remote, because the carrier's
+// snapshot step is `git -C <repo> ls-remote origin roadmap-events`:
+//
+//   mkdir -p /tmp/gunbc-issue-command-acc
+//   git -C /tmp/gunbc-issue-command-acc init -q
+//   git -C /tmp/gunbc-issue-command-acc -c user.email=driver@gunbc -c user.name=driver commit -q --allow-empty -m root
+//   git init -q --bare /tmp/gunbc-issue-command-acc-origin.git
+//   git -C /tmp/gunbc-issue-command-acc remote add origin /tmp/gunbc-issue-command-acc-origin.git
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/test/manual/issue_command_wet.dag \
+//     --function issue_command_acceptance_wet --arg repo=/tmp/gunbc-issue-command-acc
+//
+// It drives `issue_command_apply` directly rather than `roadmap_acceptance_record_cli`, because the CLI
+// first resolves a repo root to a dashboard instance (gunbc.roadmap.roadmap_dashboard_instance) and a
+// throwaway fixture is not one; everything below the resolution is the same route. What it asserts, each
+// step named in the refusal so an interrupted run says where it stopped:
+//   ONE ACCEPTANCE ANSWERS ITS RETRY — an acceptance appends; an unrelated act moves the chain head; the
+//     identical command replayed answers `already-present` with the FIRST event's own id, never a conflict
+//     and never a second copy, and the node reads back ONE acceptance. The replay names the parent it
+//     expected BEFORE the head moved, so command identity could not decide this; the operation receipt does
+//     (review 92815 finding 2 — the property the pure claims cannot reach).
+//   ONE RETIREMENT ANSWERS ITS REPLAY, AND A SECOND REFUSES — the same retirement replayed answers
+//     `already-present`, while a retirement of the same node naming a DIFFERENT reason refuses at the
+//     standing law, and the node still reads back exactly ONE retirement: a refusal wrote nothing.
+//   THE PULL-REQUEST DOOR IS ON THE ROUTE, NOT ONLY ON THE COMMAND LINE — an acceptance whose receipt is
+//     dated on or after the cutoff and names no pull request refuses at the route, and the node it named
+//     reads back with NO events at all.
+fn issue_command_acceptance_wet(repo: String, git_program: String = "/usr/bin/git") -> ProcessExit {
+  if !starts_with(s: repo, prefix: "/tmp/gunbc-issue-command-") { exit_failure(reason: "temporary fixture required") }
+  else {
+    let layout = roadmap_event_carrier_layout(repo_root: repo as FilePath, instance_root: concat(repo, "/instance") as FilePath, git_program: git_program, directory_program: "/usr/bin/install")
+    let author = EventPrincipalAuthenticated { ref: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "fixture-owner" } }
+    let accepted_node = "node-acceptance-retry-driver" as NonEmptyStr as RoadmapNodeId
+    let retired_node = "node-retirement-driver" as NonEmptyStr as RoadmapNodeId
+    let refused_node = "node-cutoff-absence-driver" as NonEmptyStr as RoadmapNodeId
+    let acceptance = AcceptNode {
+      subject: IssueCommandSubject { node: accepted_node, author: author, operation: "op-acceptance-driver" as NonEmptyStr, expected: none },
+      receipt: issue_wet_receipt(node: "node-acceptance-retry-driver", day: "2026-11-04"),
+      evidence: EarnedByPullRequest { pr_url: "https://github.com/gunb-ai/gunbc/pull/16189" as NonEmptyStr, merged_at: "2026-11-04T07:56:00Z" as NonEmptyStr, head_sha: "42abd2f5eae8a474de24170df83b5c25e9032d61" as NonEmptyStr },
+    }
+    let created = issue_command_apply(layout: layout, command: acceptance, recorded_at: "2026-11-04T08:00:00Z")
+    let first_id = match created.result { EventAppended { id } => id as String  EventAlreadyPresent { id: _ } => ""  EventAppendRefused { id: _, step: _, reason: _ } => "" }
+    let moved = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject { node: accepted_node, author: author, operation: "op-move-the-head" as NonEmptyStr, expected: none }, body: "an unrelated act that moves the chain head before the retry" }, recorded_at: "2026-11-04T08:00:01Z")
+    // THE REPLAY NAMES THE PARENT IT EXPECTED BEFORE THE HEAD MOVED: same operation, same fact, stale guess.
+    let retry = issue_command_apply(layout: layout,
+      command: AcceptNode {
+        subject: IssueCommandSubject { node: accepted_node, author: author, operation: "op-acceptance-driver" as NonEmptyStr, expected: Present { value: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr } },
+        receipt: issue_wet_receipt(node: "node-acceptance-retry-driver", day: "2026-11-04"),
+        evidence: EarnedByPullRequest { pr_url: "https://github.com/gunb-ai/gunbc/pull/16189" as NonEmptyStr, merged_at: "2026-11-04T07:56:00Z" as NonEmptyStr, head_sha: "42abd2f5eae8a474de24170df83b5c25e9032d61" as NonEmptyStr },
+      }, recorded_at: "2026-11-04T08:00:02Z")
+    let retry_id = match retry.result { EventAlreadyPresent { id } => id as String  EventAppended { id: _ } => ""  EventAppendRefused { id: _, step: _, reason: _ } => "" }
+    let accepted_read = roadmap_events_read(layout: layout, node: accepted_node)
+    let first_retire = issue_command_apply(layout: layout, command: issue_wet_retirement(node: "node-retirement-driver", reason: "the row was deleted as an authored row; its work moved", author: author), recorded_at: "2026-11-04T08:00:03Z")
+    let replayed_retire = issue_command_apply(layout: layout, command: issue_wet_retirement(node: "node-retirement-driver", reason: "the row was deleted as an authored row; its work moved", author: author), recorded_at: "2026-11-04T08:00:04Z")
+    let second_retire = issue_command_apply(layout: layout, command: issue_wet_retirement(node: "node-retirement-driver", reason: "a second retirement naming a different reason", author: author), recorded_at: "2026-11-04T08:00:05Z")
+    let retired_read = roadmap_events_read(layout: layout, node: retired_node)
+    let door = issue_command_apply(layout: layout,
+      command: AcceptNode {
+        subject: IssueCommandSubject { node: refused_node, author: author, operation: "op-cutoff-absence-driver" as NonEmptyStr, expected: none },
+        receipt: issue_wet_receipt(node: "node-cutoff-absence-driver", day: "2026-11-04"),
+        evidence: NoPullRequest,
+      }, recorded_at: "2026-11-04T08:00:06Z")
+    let door_read = roadmap_events_read(layout: layout, node: refused_node)
+    let passed = match created.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+      && match moved.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+      && match retry.result { EventAlreadyPresent { id } => id == first_id  EventAppended { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+      && match accepted_read.result { EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind { AcceptanceRecordedEvent { receipt: _, evidence: _ } => true  Retired { reason: _ } => false  _ => false })) == 1  EventsReadRefused { node: _, step: _, reason: _ } => false }
+      && match first_retire.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+      && match replayed_retire.result { EventAlreadyPresent { id: _ } => true  EventAppended { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+      && match second_retire.result { EventAppendRefused { id: _, step, reason: _ } => step == "not-admitted"  EventAppended { id: _ } => false  EventAlreadyPresent { id: _ } => false }
+      && match retired_read.result { EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind { Retired { reason: _ } => true  _ => false })) == 1  EventsReadRefused { node: _, step: _, reason: _ } => false }
+      && match door.result { EventAppendRefused { id: _, step, reason: _ } => step == "receipt"  EventAppended { id: _ } => false  EventAlreadyPresent { id: _ } => false }
+      && match door_read.result { EventsRead { node: _, envelopes } => count(envelopes) == 0  EventsReadRefused { node: _, step: _, reason: _ } => false }
+      && count(carrier_snapshot_close_failures(closes: [created.close, moved.close, retry.close, accepted_read.close, first_retire.close, replayed_retire.close, second_retire.close, retired_read.close, door.close, door_read.close])) == 0
+    if passed { ExitSuccess } else { exit_failure(reason: join(["acceptance/retry/retirement/door control failed", issue_wet_outcome(result: created.result), issue_wet_outcome(result: moved.result), issue_wet_outcome(result: retry.result), issue_wet_outcome(result: first_retire.result), issue_wet_outcome(result: replayed_retire.result), issue_wet_outcome(result: second_retire.result), issue_wet_outcome(result: door.result)], "\n")) }
+  }
+}
+
+// A receipt the driver can name: the digest is the canonical fold of a ticket, the red control and handback
+// are the legs the acceptance law reads, and nothing here has to be true of the real world.
+fn issue_wet_receipt(node: String, day: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr,
+    criteria_digest: roadmap_criteria_digest(t: TicketFields { headline: "Acceptance driver", brief: "b", displaced_cost: "d", current_state: "c", first_slice: "f", red_control: "r", out_of_scope: "o", handback: "h", updates: [TicketUpdate { on: "2026-11-04", note: "n" }], authored_on: "2026-11-04", last_verified_on: "" }),
+    red_control: RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_acceptance_evidence_witness" as NonEmptyStr, witness_fn: "a_migration_verifier_agrees_when_the_log_holds_what_the_manifest_names" as NonEmptyStr, executed_on: day as NonEmptyStr },
+    handback: HandbackDelivered { first_artifact: concat("sha256:", node) as NonEmptyStr, further_artifacts: [] as List<NonEmptyStr> },
+    accepted_by: "operator" as NonEmptyStr,
+    accepted_on: day as NonEmptyStr,
+  }
+}
+
+fn issue_wet_retirement(node: String, reason: String, author: EventPrincipalAuthenticated) -> RetireNode {
+  RetireNode {
+    subject: IssueCommandSubject { node: node as NonEmptyStr as RoadmapNodeId, author: author, operation: roadmap_retirement_operation_identity(node: node, reason: reason) as NonEmptyStr, expected: none },
+    reason: reason as NonEmptyStr,
   }
 }
