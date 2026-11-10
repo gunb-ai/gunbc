@@ -94,7 +94,7 @@ fn emits(stmt: Node, golden: String) -> Bool {
 // container command's logger is this shape; '(){' with no space and '; }' to
 // close are the bytes installed on the host.
 
-data ev_logger_function_golden: String = "ev(){ echo up; }\n"
+data ev_logger_function_golden: String = "ev(){ echo up; }"
 
 fn ev_logger_function_statement() -> Node {
   match bash_build_function_def(
@@ -135,8 +135,8 @@ test fn function_definition_refuses_an_empty_body() -> Bool {
 // "'true' 2>&1"); what was missing was the named builders. RED: the two
 // duplications are different bytes, so a caller cannot get one for the other.
 
-data merge_stderr_golden: String = "make build 2>&1\n"
-data merge_stdout_golden: String = "echo nope >&2\n"
+data merge_stderr_golden: String = "make build 2>&1"
+data merge_stdout_golden: String = "echo nope >&2"
 
 test fn merge_stderr_to_stdout_serializes() -> Bool {
   emits(
@@ -186,7 +186,7 @@ test fn the_two_descriptor_merges_are_not_the_same_bytes() -> Bool {
 // [| pattern] command-list ;;]… esac. The roster arms are the block spelling,
 // the default arm the inline one.
 
-data roster_case_golden: String = "case $IDX in\n  0)\n    docker rm -f r0\n    ;;\n  *) echo bad >&2; exit 2 ;;\nesac\n"
+data roster_case_golden: String = "case $IDX in\n  0)\n    docker rm -f r0\n    ;;\n  *) echo bad >&2; exit 2 ;;\nesac"
 
 fn roster_case_statement() -> Node {
   match bash_build_case_clause_block(
@@ -326,8 +326,8 @@ fn list_contains_lex_rule_from(
 // every member, each one a separate word. Load-bearing: an emitted exec without
 // the quoted expansion re-splits the engine arguments.
 
-data array_assign_golden: String = "ENGINE_ARGS=('a' 'b')\n"
-data array_expansion_golden: String = "exec \"$\{ENGINE_ARGS[@]}\" 2>&1\n"
+data array_assign_golden: String = "ENGINE_ARGS=('a' 'b')"
+data array_expansion_golden: String = "exec \"$\{ENGINE_ARGS[@]}\" 2>&1"
 
 fn array_assign_statement() -> Node {
   match bash_build_array_assign(
@@ -380,7 +380,7 @@ test fn array_assign_refuses_no_elements() -> Bool {
 // Bash manual, node "Comments": a word beginning with '#' is ignored to the end
 // of the line. The '#!' interpreter line is the same shape to the shell.
 
-data comment_golden: String = "# lil-replica: rendered boot path\n"
+data comment_golden: String = "# lil-replica: rendered boot path"
 
 test fn comment_serializes() -> Bool {
   match bash_build_comment(text: "# lil-replica: rendered boot path") {
@@ -410,7 +410,7 @@ test fn comment_refuses_an_embedded_newline() -> Bool {
 // Bash manual, node "Looping Constructs": for name [ [in [words …] ; ] do
 // commands; done.
 
-data for_golden: String = "for i in 1 2 do echo up; done\n"
+data for_golden: String = "for i in 1 2 do echo up; done"
 
 fn for_statement() -> Node {
   match bash_build_for(
@@ -444,7 +444,7 @@ test fn for_refuses_a_loop_variable_that_is_not_a_name() -> Bool {
 // '{ echo "…" >&2; exit 3; }'; the rows existed, the serializer arm and the
 // builder did not.
 
-data brace_group_golden: String = "{ echo no; exit 3; }\n"
+data brace_group_golden: String = "{ echo no; exit 3; }"
 
 test fn brace_group_serializes() -> Bool {
   emits(
@@ -462,8 +462,8 @@ test fn brace_group_serializes() -> Bool {
 // Bash manual, node "Shell Parameters": ${parameter:?word} aborts with word when
 // the parameter is unset or null; $* is the positional parameters as one word.
 
-data param_error_golden: String = "IDX=$\{1:?usage: replica index required}\n"
-data positional_all_golden: String = "ev $*\n"
+data param_error_golden: String = "IDX=$\{1:?usage: replica index required}"
+data positional_all_golden: String = "ev $*"
 
 fn param_error_statement() -> Node {
   match bash_build_word_param_error(
@@ -507,7 +507,7 @@ test fn param_error_refuses_a_non_numeric_index() -> Bool {
 test fn bare_word_serializes_unquoted() -> Bool {
   match bash_build_word_bare(text: "mapfile") {
     Present { value: n } =>
-      emits(stmt: command([n]), golden: "mapfile\n")
+      emits(stmt: command([n]), golden: "mapfile")
     Absent => false
   }
 }
@@ -562,7 +562,7 @@ test fn bare_word_accepts_the_shapes_the_boot_path_needs() -> Bool {
 // lane models the quoted word as its parts and checks the inert text against
 // exactly that set — an expansion can never hide inside a literal.
 
-data quoted_message_golden: String = "ev \"START srv1 gpu3\" 2>&1\n"
+data quoted_message_golden: String = "ev \"START srv1 gpu3\" 2>&1"
 
 fn quoted_message_statement() -> Node {
   match bash_build_quoted_text(text: "START srv1 gpu3") {

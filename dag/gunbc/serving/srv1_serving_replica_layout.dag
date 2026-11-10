@@ -1254,7 +1254,7 @@ data srv1_bash_emit_capability_gaps: List<BashEmitCapabilityGap> = [
     what_would_close_it: "a case node kind, production and builder in the bash lane" as NonEmptyStr,
   },
   BashEmitCapabilityGap {
-    construct: "array assignment and ${ARRAY[@]} expansion (the launcher builds engine args, then execs them as separate words)" as NonEmptyStr,
+    construct: "array assignment and $\{ARRAY[@]} expansion (the launcher builds engine args, then execs them as separate words)" as NonEmptyStr,
     missing_from: "v2.extdeps.languages.bash_build and v2.extdeps.languages.bash: neither mentions arrays at all (no array token class, no expansion builder)" as NonEmptyStr,
     used_by: "srv1_replica_launcher_lines" as NonEmptyStr,
     verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
