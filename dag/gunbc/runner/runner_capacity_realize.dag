@@ -176,9 +176,9 @@ fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerC
                 reason: concat(
                   concat(
                     concat("preconditions met (disk sufficient) but ", to_string(adds)),
-                    " RunnerSlotAdd actions require the converge path: runner_host_file_converge_ci_wet",
+                    " RunnerSlotAdd actions: the executing transport is runner_host_file_converge_ci_wet (see integration concern runner_capacity_realize_apply_has_no_executing_route)",
                   ),
-                  " performs file convergence and slot activation over FleetSsh; invoke it after this plan",
+                  "; this seam preflights and receipts, it does not actuate",
                 ),
               },
             }
