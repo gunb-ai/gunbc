@@ -16,6 +16,12 @@ import std.content_hash { lower_hex_64 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pci.identity { PciAddress }
 import extdeps.storage.types { PcieLink, Gen4, Gen5, pcie_generation_wire }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  Iso8601UtcInstant,
+  iso8601_utc_instant_seconds_between,
+  iso8601_utc_instant_text,
+}
 import product.host_identity { HostIdentity }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -308,8 +314,8 @@ test fn the_unloaded_rows_are_not_the_loaded_rows_relabelled() -> Bool {
 // meaning, no type change. Anything reading the row by its name would get a closed task where an open one was
 // promised -- the meaning fork DESIGN's single-authority rule forbids ("holding a name constant may not silently
 // change obligations", review 92817). The record got its own row and the obligation keeps only what is STILL
-// owed. This claim is what makes the split stick: no completion word in the obligation, the three open controls
-// named there, and the run window plus the rows it summarises carried by the record.
+// owed. This claim is what makes the split stick: the pointer row carries no status and no count at all, the
+// row list is the only place open/closed is decided, and the record carries the run's instants and digests.
 test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
   let obligation = srv1_collective_read_obligation as String
   let follow_ups = srv1_collective_read_follow_ups_2026_11_09
@@ -317,23 +323,33 @@ test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
   !string_contains(s: obligation, pattern: "EXECUTED")
     && !string_contains(s: obligation, pattern: "DONE")
     && !string_contains(s: obligation, pattern: "COMPLETED")
-    // THE OPEN WORK IS THREE ROWS, NOT CLAUSES IN A SENTENCE. Each control gets its own row with what it
-    // settles, how it is run and what it costs; the count is asserted because a row that quietly folded two
-    // controls together would still read as "open" while losing one of them. The pointer row keeps the old name
-    // and points at the list, so every reference to the obligation still means one thing.
-    && follow_ups.length() == 3
-    && follow_ups.all(f => f.open && f.control as String != "" && f.what_it_settles as String != "" && f.how_to_run as String != "" && f.cost as String != "")
+    // THE ROW LIST DECIDES OPEN/CLOSED, AND NOTHING ELSE DOES. Four controls are tracked: three open, one
+    // closed. The counts are asserted because a control folded silently into another row would still read as one
+    // open item while losing one of them, and because a control DELETED rather than closed would leave the lane's
+    // history short by one -- which is what happened while the closed item lived in a sentence beside the list.
+    && follow_ups.length() == 4
+    && filter(follow_ups, f => f.open).length() == 3
+    && filter(follow_ups, f => !f.open).length() == 1
+    && follow_ups.all(f => f.control as String != "" && f.what_it_settles as String != "" && f.how_to_run as String != "" && f.cost as String != "")
     && any(follow_ups, f => string_contains(s: f.control as String, pattern: "topolog"))
     && any(follow_ups, f => string_contains(s: f.control as String, pattern: "REVERSE"))
     && any(follow_ups, f => string_contains(s: f.how_to_run as String, pattern: "TRANSPORT"))
-    // RED control: the pointer row must not read as finished work -- it closes one named item and says the
-    // other three are open. Flipping any follow-up's `open` to false would leave the count honest but the
-    // pointer row's "three controls remain" false, which is exactly the disagreement this claim catches.
-    && string_contains(s: obligation, pattern: "OPEN: three controls remain")
+    && any(follow_ups, f => !f.open && string_contains(s: f.control as String, pattern: "NEITHER serving replica"))
+    // RED controls: the pointer row carries a NAME only. A count ("three"), a status word ("OPEN", "CLOSED",
+    // "remain") or a figure in it makes a second source for a fact the rows already decide -- the fork the split
+    // was meant to remove. Flipping any row's `open` flag leaves every line here true; rewriting the pointer
+    // sentence to restate the state is what turns them red.
     && string_contains(s: obligation, pattern: "srv1_collective_read_follow_ups_2026_11_09")
-    && record.measurement_start_utc as String == "2026-11-09T22:40:35Z"
-    && record.window_start_utc as String == "2026-11-09T22:39:48Z"
-    && record.window_end_utc as String == "2026-11-09T22:47:37Z"
+    && !string_contains(s: obligation, pattern: "OPEN")
+    && !string_contains(s: obligation, pattern: "CLOSED")
+    && !string_contains(s: obligation, pattern: "three")
+    && !string_contains(s: obligation, pattern: "remain")
+    && !any(follow_ups, f => string_contains(s: f.control as String, pattern: "256 KiB"))
+    // The record's instants are the calendar's parts, and they render back to exactly the text the host printed:
+    // a part typed one second out is caught here, not when a consumer asks for a span.
+    && iso8601_utc_instant_text(i: record.measurement_start) == "2026-11-09T22:40:35Z"
+    && iso8601_utc_instant_text(i: record.window_start) == "2026-11-09T22:39:48Z"
+    && iso8601_utc_instant_text(i: record.window_end) == "2026-11-09T22:47:37Z"
     // the record points at its evidence by digest and path, not by naming a list of rows in prose
     && record.instrument_sha256 as String == "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc"
     && string_contains(s: record.results_log_path as String, pattern: "jh_nccl_results_20261109T224035Z")
@@ -349,9 +365,11 @@ test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
 // THE RECORD'S SPANS ARE COMPUTED, NOT REPEATED. The window and the measurement inside it are differences of
 // the record's own instants, read through the shared ISO 8601 calendar (extdeps.units.iso8601_calendar) -- the
 // same route srv1_serving_replica_layout's router-window row reads them through, so 469 s and 16 s exist in
-// exactly one place. The green control re-measures the same pair the record names; the red controls are what a
-// transcription error looks like -- an instant 7 s off, a pair typed in the wrong order, a year or a leading
-// zero wrong -- and each must answer by refusing, not by producing a number.
+// exactly one place. The green control re-measures the same pair the record names. The red controls are the two
+// transcription errors a typed instant still allows: a pair in the wrong order must refuse, and an instant a few
+// seconds off must produce a DIFFERENT number, not the recorded one. The error a text field allowed -- a value
+// like `2026-11-9T22:3:4Z` sitting in a record until something parsed it -- is no longer writable: the parts are
+// an Int year, month, day, hour, minute, second.
 test fn the_record_spans_are_computed_from_its_instants() -> Bool {
   let run = srv1_collective_read_executed_2026_11_09
   match srv1_collective_read_window_duration(run: run) {
@@ -371,17 +389,25 @@ test fn the_record_spans_are_computed_from_its_instants() -> Bool {
           Present { value: m } => second_count(m) < second_count(w)
         }
     }
-    && match srv1_window_seconds_between(earlier: "2026-11-09T22:47:37Z" as NonEmptyStr, later: "2026-11-09T22:39:48Z" as NonEmptyStr) {
+    // RED control: the same pair the other way round refuses, instead of yielding a negative or an absolute count.
+    && match iso8601_utc_instant_seconds_between(earlier: run.window_end, later: run.window_start) {
       Absent => true
       Present { value: _ } => false
     }
-    && match srv1_window_seconds_between(earlier: "2026-11-09T22:39:41Z" as NonEmptyStr, later: "2026-11-09T22:47:37Z" as NonEmptyStr) {
+    // RED control: a window end typed 7 s late -- the drift this lane actually hit once on another record. It
+    // reads as 476 s, so the claim over 469 goes red. A span stored beside the instants would have agreed with
+    // whichever of the two someone transcribed, which is how the 7 s survived a review round.
+    && match iso8601_utc_instant_seconds_between(
+      earlier: run.window_start,
+      later: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 47, second: 44 },
+    ) {
       Absent => false
       Present { value: w } => second_count(w) == 476
     }
-    && match srv1_window_seconds_between(earlier: "2026/11/09 22:39:48" as NonEmptyStr, later: "2026-11-09T22:47:37Z" as NonEmptyStr) {
-      Absent => true
-      Present { value: _ } => false
+    // an instant against itself is zero seconds, not an absent answer
+    && match iso8601_utc_instant_seconds_between(earlier: run.window_start, later: run.window_start) {
+      Absent => false
+      Present { value: w } => second_count(w) == 0
     }
 }
 

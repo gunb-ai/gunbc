@@ -26,8 +26,8 @@ module gunbc.fleet.gpu_interconnect_observation
 // `Srv1ReadingWarrant` for a reading not yet taken; every row of this module is read today, and the re-run the
 // loaded machine forces is carried as `srv1_collective_read_obligation`.
 
-import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, nat_sub }
-import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
+import std.nat { Nat }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, Iso8601UtcInstant, iso8601_utc_instant_seconds_between }
 import std.measure { Second, measure_count, second }
 import std.types { Bool, List, NonEmptyStr }
 import std.algebra { string_concat_join }
@@ -545,17 +545,12 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
   },
 ]
 
-// ONE OBLIGATION LEFT ON THIS READING, and it is not a missing cell: the arms differ by about 2x at 256 KiB
-// and above while naming the same transport, on a machine whose GPUs were serving. Re-running both arms with
-// neither lil-flash-next replica loaded settles whether the delta is NCCL's SHM path or the load.
-// WHAT THE OBLIGATION OWED, AND WHAT IT STILL OWES. The row keeps its obligation meaning: a reader who
-// reaches it by name gets an open task, never a finished one. The run that discharged the unloaded re-run
-// lives in srv1_collective_read_executed_2026_11_09 below, under a name that says it is a record.
-// ONE OPEN TASK PER ROW. What is still owed after the 2026-11-09 unloaded re-run is three DIFFERENT reads, each
-// with its own cost and its own discriminating power. As one prose string they could be tracked only as a block:
-// one could be done while the row still read as wholly open, a witness could only grep it, and nothing recorded
-// how expensive each answer is. Each row says the control, what it would settle, how it is run, and whether it is
-// still open. The row keeps its old name as a pointer, so the references to it elsewhere still mean one thing.
+// ONE TASK PER ROW. Each control this reading lane owes -- or owed -- is a row: what it is, what it would
+// settle, how it is run, what it costs, and whether it is still open. Tracked as one prose string instead, a
+// control could be finished while the string still read as wholly open, a witness could only grep the sentence,
+// and nothing recorded how expensive each answer is. The discharged control stays in the list with open: false
+// rather than being deleted or described in a sentence elsewhere: the list is then the whole history of the
+// lane, and the count of open work is a fold over it, never a number written twice.
 type Srv1CollectiveReadFollowUp {
   control: NonEmptyStr,
   what_it_settles: NonEmptyStr,
@@ -579,6 +574,16 @@ data srv1_collective_read_follow_ups_2026_11_09: List<Srv1CollectiveReadFollowUp
     cost: "about one minute of an unloaded window" as NonEmptyStr,
     open: true,
   },
+  // CLOSED, kept in the list: this is the control the 2026-11-09 unloaded re-run discharged. Deleting it would
+  // leave no record of what that window bought; describing it in the pointer row instead would put the same fact
+  // in two places.
+  Srv1CollectiveReadFollowUp {
+    control: "whether the two arms separate at all when NEITHER serving replica is loaded" as NonEmptyStr,
+    what_it_settles: "the disagreement between the 2026-11-08 runs, where the arms differed at the larger sizes, and the 2026-11-09 unloaded re-run, where they did not -- see the witness claim over the two runs" as NonEmptyStr,
+    how_to_run: "the same instrument, both arms, with lil-replica@0 and lil-replica@1 stopped" as NonEmptyStr,
+    cost: "a window of roughly fifteen minutes with both replicas down -- taken 2026-11-09T22:39Z, recorded in srv1_collective_read_executed_2026_11_09" as NonEmptyStr,
+    open: false,
+  },
   Srv1CollectiveReadFollowUp {
     control: "a read that NAMES the transport NCCL selected" as NonEmptyStr,
     what_it_settles: "which path actually carried the bytes -- both runs print only via SHM/direct and isAllDirectP2p 0, which says what was not available, not what was used" as NonEmptyStr,
@@ -588,20 +593,23 @@ data srv1_collective_read_follow_ups_2026_11_09: List<Srv1CollectiveReadFollowUp
   },
 ]
 
-// A pointer, not a paragraph: the open work is the three rows above, and the closed item (the arm separation,
-// which did not survive an unloaded host) is decided arithmetically in the witness over the two runs, not quoted
-// here as a figure that could go stale against the reading rows.
-data srv1_collective_read_obligation: NonEmptyStr = "OPEN: three controls remain (srv1_collective_read_follow_ups_2026_11_09): the cross-topology read, the reversed arm order, and a transport-named read. CLOSED by the 2026-11-09 unloaded re-run: the separation between the arms at 256 KiB and above, which did not survive an unloaded host." as NonEmptyStr
+// A NAME, not a summary. The controls are the rows above and each carries its own `open` flag; anything that
+// wants to know how many are open or what was closed reads the list. A row that restated the count or the status
+// here would be a second source for one fact, held in sync by a check -- which is exactly what the model is for.
+data srv1_collective_read_obligation: NonEmptyStr = "The controls on the srv1 collective-transport lane are the rows of srv1_collective_read_follow_ups_2026_11_09, each carrying its own open flag; this row exists only so the task has one addressable name." as NonEmptyStr
 
 // THE RUN RECORD, with the identity that makes it checkable as FIELDS: which units had to be stopped, which
 // containers were removed, when the window was open, when the numbers were actually taken, the instrument and the
 // log that back them. It is a separate row from the obligation so an open task cannot read as closed while
 // keeping its name, and it carries no verdict field: what the run SHOWS is arithmetic over the reading rows.
 type Srv1CollectiveReadRun {
-  window_start_utc: NonEmptyStr,
-  window_end_utc: NonEmptyStr,
-  measurement_start_utc: NonEmptyStr,
-  measurement_end_utc: NonEmptyStr,
+  // THE INSTANTS ARE THE PARTS, NOT TEXT. A stored `NonEmptyStr` instant accepts `2026-11-9T22:3:4Z` until a
+  // consumer asks for a span and gets an absent answer; over the calendar's instant type the parts are typed and
+  // the span is a subtraction, so a bad instant cannot sit in a record unnoticed.
+  window_start: Iso8601UtcInstant,
+  window_end: Iso8601UtcInstant,
+  measurement_start: Iso8601UtcInstant,
+  measurement_end: Iso8601UtcInstant,
   units_stopped: List<NonEmptyStr>,
   containers_removed: List<NonEmptyStr>,
   instrument_sha256: NonEmptyStr,
@@ -614,10 +622,10 @@ type Srv1CollectiveReadRun {
 }
 
 data srv1_collective_read_executed_2026_11_09: Srv1CollectiveReadRun = Srv1CollectiveReadRun {
-  window_start_utc: "2026-11-09T22:39:48Z" as NonEmptyStr,
-  window_end_utc: "2026-11-09T22:47:37Z" as NonEmptyStr,
-  measurement_start_utc: "2026-11-09T22:40:35Z" as NonEmptyStr,
-  measurement_end_utc: "2026-11-09T22:40:51Z" as NonEmptyStr,
+  window_start: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 39, second: 48 },
+  window_end: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 47, second: 37 },
+  measurement_start: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 40, second: 35 },
+  measurement_end: Iso8601UtcInstant { date: Iso8601CivilDate { year: 2026, month: 11, day: 9 }, hour: 22, minute: 40, second: 51 },
   units_stopped: ["lil-replica@0" as NonEmptyStr, "lil-replica@1" as NonEmptyStr],
   containers_removed: ["lil-flash-next" as NonEmptyStr, "lil-flash-next-1" as NonEmptyStr],
   instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
@@ -625,36 +633,22 @@ data srv1_collective_read_executed_2026_11_09: Srv1CollectiveReadRun = Srv1Colle
   results_log_sha256: "8788e3353eb939847982a51053aefd9f6aa1c32b2705417cdc078e720238b6e1" as NonEmptyStr,
 }
 
-// THE INSTANTS ARE THE FACT; A DURATION IS COMPUTED FROM THEM. The instants in the record are transcriptions of
-// what the host printed, in the canonical UTC second form; a duration is the difference of two of them read
-// through the shared ISO 8601 calendar, not a third number typed out beside them. A pair that does not parse,
-// or that comes out reversed (a clock step, a mistyped field), answers Absent -- it never falls back to the
-// number someone remembered. This is not ceremony: making the two dependent caught a real 7 s drift between a
-// kill instant and a ready duration elsewhere in this window, where both had been written by hand.
-fn srv1_window_seconds_between(earlier: NonEmptyStr, later: NonEmptyStr) -> Second? {
-  match iso8601_utc_epoch_seconds(text: earlier as String) {
-    Absent => none
-    Present { value: from } =>
-      match iso8601_utc_epoch_seconds(text: later as String) {
-        Absent => none
-        Present { value: until } =>
-          match nat_sub(measure_count(until), measure_count(from)) {
-            NatDifference { value: d } => Present { value: second(count: d) }
-            NatSubtrahendExceedsMinuend => none
-          }
-      }
-  }
-}
+// THE INSTANTS ARE THE FACT; A DURATION IS COMPUTED FROM THEM. The span of a collective read is the difference
+// of two instants in extdeps.units.iso8601_calendar's own arithmetic -- there is no second subtraction of a
+// date-time anywhere in this lane, and no duration stored beside the pair it comes from. A reversed pair answers
+// Absent; it never falls back to a number someone remembered. This is not ceremony: making the two dependent
+// caught a real 7 s drift between a kill instant and a ready duration elsewhere in this window, where both had
+// been written by hand.
 
 // The spans of a collective read, derived from its own record. The router-window row in
 // gunbc.serving.srv1_serving_replica_layout reads these instead of typing the same two durations out again, so
 // correcting an instant here moves the number there, or turns it red if the instants stop naming a span.
 fn srv1_collective_read_window_duration(run: Srv1CollectiveReadRun) -> Second? {
-  srv1_window_seconds_between(earlier: run.window_start_utc, later: run.window_end_utc)
+  iso8601_utc_instant_seconds_between(earlier: run.window_start, later: run.window_end)
 }
 
 fn srv1_collective_read_measurement_duration(run: Srv1CollectiveReadRun) -> Second? {
-  srv1_window_seconds_between(earlier: run.measurement_start_utc, later: run.measurement_end_utc)
+  iso8601_utc_instant_seconds_between(earlier: run.measurement_start, later: run.measurement_end)
 }
 
 // The two arms of every srv1 collective read, named ONCE. Both the 2026-11-08 loaded sweep and the
