@@ -365,9 +365,8 @@ fn tier1_replay(
         if depth > 12 || hits.len() > 200 {
             return;
         }
-        if n.name == "rest_replay"
-            || n.name == "test.RestReplay"
-            || n.name == "RestReplay"
+        if n.name.contains("RestReplay")
+            || n.name.contains("rest_replay")
             || n.name == "PullRequestPage"
         {
             hits.push(n.clone());
@@ -400,11 +399,15 @@ fn tier1_replay(
             continue;
         }
         for item in tm.items.iter() {
-            if authored_name_at(si.clone(), item.clone())
-                != "test.claim.github_pull_request_decode_witness.decoded_pull_request"
+            // authored_name_at returns the BARE name for claim-module fns (the GRAIN_PROBE line
+            // at 58e3f601: "decoded_pull_request|ModuleItemFunction|tn|c0") -- compare the LAST
+            // SEGMENT; a dotted composite silently skips every item.
+            if qualified_last_segment(authored_name_at(si.clone(), item.clone()))
+                != "decoded_pull_request"
             {
                 continue;
             }
+            items_walked += 1;
             let mut hits = Vec::new();
             walk(item, 0, &mut hits);
             for h in hits {
@@ -437,8 +440,9 @@ fn tier1_replay(
         }
     }
     eprintln!(
-        "TIER1_REPLAY tag={tag} census_registry_keys={reg_keys:?}",
+        "TIER1_REPLAY tag={tag} items_walked={items_walked} census_registry_keys={reg_keys:?}",
         tag = tag,
+        items_walked = items_walked,
         reg_keys = reg_keys
     );
 }
