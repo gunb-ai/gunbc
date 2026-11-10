@@ -137,3 +137,9 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - OUTAGE CLOSED, live: heal-publish 42844365342 decoded PR #16250 (PullRequestNotOpen comes only from PublishPrObserved). No #16156 revert. A full PullRequestOpenCheckPassed publish is not yet observed (next: a live candidate on #16122).
 - (E) detail: realization_wire_contract_read_row recognises rows by the leaf 'CoproductWireContract' plus field-init names, so an aliased or renamed row would reproduce the outage; the audit edge is the backstop, and name-resolved matching is the next rung.
 - MEASURED, do not re-derive: the scoped gunbc run route has NO REST-replay realization at any commit (BB 3d8b1298), so scoped entries cannot RED/GREEN reader-seeded gaps. Only the demanded grain (realization_of/OnlyDeclarations, cli_run/demand_acquire.rs) shows RED; claim_batch is green everywhere.
+
+## Emitter third boundary (valiant-carp-593; #16240 495211eb)
+- DONE: the branch leg; TargetConditionalShape gains arm delimiters (Rust no longer prints `if c { a else b }`).
+- UNOWNED (on concern row branch_match_arm_closure_declared_return_not_admitted): (1) production Rust match token wiring (flips the closure_emission match pins); (2) function-type realization SELECTION at an item return with capturing arms (boxed vs impl; E0308); (3) a branch/match inside a returned closure BODY refuses upstream.
+- UNOWNED, small: rust_emit_small_conditional_target lacks a ^rust_token_kw_else lexeme, so production_rust_conditional_declares_a_close can never pass; emit/conditional_delimiting also refuses to load at main (dag/std/determinism.dag:6 unresolved DeclarationRef).
+- ENV: ctrl worktrees are dangling (.git -> /home/briansrls/ctrl/.git/worktrees/<id>, which does not exist). Seen by tidy-otter, fierce-lark and valiant-carp.
