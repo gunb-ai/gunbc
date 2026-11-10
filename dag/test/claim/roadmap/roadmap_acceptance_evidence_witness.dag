@@ -60,7 +60,11 @@ import gunbc.principal_projection { PrincipalRef }
 // module deliberately does not import the close route (gunbc.roadmap.roadmap_operator_acceptance) — its
 // claims are about what the log admits and how it folds, and the close route's own claims live in
 // test.claim.roadmap.roadmap_operator_close_retire_witness beside the reader they assert on.
-type witness_pr_facts { url: NonEmptyStr, merged_at: NonEmptyStr, head: NonEmptyStr }
+type witness_pr_facts {
+  url: NonEmptyStr
+  merged_at: NonEmptyStr
+  head: NonEmptyStr
+}
 
 fn fact_set() -> witness_pr_facts {
   witness_pr_facts {
