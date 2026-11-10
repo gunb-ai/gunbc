@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, path_segment_is_safe }
-import std.nat { Nat, Zero, Succ }
+import std.nat { Nat, Zero, Succ, nat_to_decimal_string }
 import std.algebra { trim }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
@@ -1077,7 +1077,7 @@ fn partitioned_spool_base_dir(kind: PartitionedSpoolKind, instance_root: String)
 }
 
 fn partitioned_spool_uid_dir(store: PartitionedSpoolStore) -> String {
-  join([partitioned_spool_base_dir(kind: store.kind, instance_root: store.instance_root), "/", to_string(value: store.uid)], "")
+  join([partitioned_spool_base_dir(kind: store.kind, instance_root: store.instance_root), "/", nat_to_decimal_string(value: store.uid)], "")
 }
 
 // THE TERMINAL DIRECTORY: where the seat's exit record is planted and read back, always under this store's uid.
