@@ -646,6 +646,34 @@ pub struct BlockInferState {
     pub typed_stmts: Rc<Vec<Rc<Node>>>,
 }
 
+pub fn block_bare_value_refusal_message() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "a bare value statement precedes another statement in the same block, so its value would be silently dropped; bind it with `let` or delete it: statement_precedes_without_binding".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn stmt_is_bare_value(stmt: Rc<Node>) -> bool {
+    match (*stmt.expr_data.clone()).clone() {
+        ExprData::NoExprData => false,
+        ExprData::ExprLet => false,
+        ExprData::ExprReturn => false,
+        ExprData::ExprCall { .. } => false,
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => false,
+        ExprData::ExprIf => false,
+        ExprData::ExprMatch => false,
+        ExprData::ExprForEach => false,
+        ExprData::ExprBlock => false,
+        ExprData::ExprError { .. } => false,
+        _ => true,
+    }
+}
+
 pub fn infer_block_stmts(
     mut __tco_loop_remaining: Rc<Vec<Rc<Node>>>,
     mut __tco_loop_remaining_count: i64,
@@ -687,7 +715,23 @@ pub fn infer_block_stmts(
                     } else {
                         std::option::Option::None
                     };
-                    let stmt_result = infer_expr(stmt.clone(), scope.clone(), stmt_expected);
+                    let stmt_result = if (!is_last.clone() && stmt_is_bare_value(stmt.clone())) {
+                        Rc::new(InferResult {
+                            typed: semantic_expr_error_node(
+                                block_bare_value_refusal_message(),
+                                stmt.span.clone(),
+                            ),
+                            emissions: infer_emissions_of_diagnostics(Rc::new(vec![
+                                inference_error(
+                                    block_bare_value_refusal_message(),
+                                    stmt.span.clone(),
+                                    scope.module_name.clone(),
+                                ),
+                            ])),
+                        })
+                    } else {
+                        infer_expr(stmt.clone(), scope.clone(), stmt_expected)
+                    };
                     let stmt_typed = stmt_result.typed.clone();
                     let stmt_emissions = stmt_result.emissions.clone();
                     let stmt_rt = crate::v1_compiler_infer_types::resolved_type(stmt_typed.clone());
