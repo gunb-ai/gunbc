@@ -1,6 +1,7 @@
 module gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import product.host_identity { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.optional { Present, Absent }
 import std.measure { finite_byte_size_count, FiniteByteSize }
@@ -53,7 +54,10 @@ import gunbc.fabric.fci1_bounded_execution_context {
 }
 import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name }
 import gunbc.instruments.fabric_ci_calibration_actuator { fabric_ci_calibration_argv, fabric_ci_env_required }
-import gunbc.instruments.fabric_control_plane_live_probe { fci1_assert_checkpoint_token }
+import gunbc.instruments.fabric_control_plane_live_probe {
+  fci1_assert_checkpoint_token, cp_probe_subject, cp_probe_subject_refusal,
+  CpProbeSubjectSelected, CpProbeSubjectNoFabricExecutionSlot, CpProbeSubjectHostMachineryUnavailable,
+}
 // The canonical store's coordinates are the allocation store's own declarations, never a second spelling.
 import gunbc.fabric.fabric_allocation_store { fabric_allocation_namespace_path, fabric_allocation_store_path, fabric_allocation_store_slots }
 import gunbc.host_state_root { host_state_tree }
@@ -542,14 +546,40 @@ fn fci1_bounded_controls_on_srv3(gunbc_bin: String, checkout_root: String, verdi
   }
 }
 
+// NO LEG RUNS UNTIL THE ROSTER HAS ANSWERED. These legs run `id -u`, then `hostname`, then systemd units
+// on the host -- so the subject question is asked first, in the model, against
+// gunbc.runner.runner_slot_allocation::fabric_execution_slot_identities through
+// gunbc.instruments.fabric_control_plane_live_probe::cp_probe_subject. The hostname check below is
+// DERIVED from the selected member rather than compared to a host literal, so it cannot keep passing for
+// a slot the fleet has returned to GitHub Actions: under
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09) srv3 carries no fabric execution
+// member, and the instrument now refuses with that cause rather than running the legs and failing on a
+// cell that does not exist.
 fn fci1_bounded_controls_on_host(gunbc_bin: String, checkout_root: String, verdict_path: String) -> ProcessExit {
+  let subject = cp_probe_subject()
+  match subject {
+    CpProbeSubjectNoFabricExecutionSlot { cause: _ } => fci1_refused(reason: cp_probe_subject_refusal(subject: subject))
+    CpProbeSubjectHostMachineryUnavailable { cause: _ } => fci1_refused(reason: cp_probe_subject_refusal(subject: subject))
+    CpProbeSubjectSelected { slot } => fci1_bounded_controls_legs(
+      gunbc_bin: gunbc_bin,
+      checkout_root: checkout_root,
+      verdict_path: verdict_path,
+      slot_host: slot.host,
+    )
+  }
+}
+
+fn fci1_bounded_controls_legs(gunbc_bin: String, checkout_root: String, verdict_path: String, slot_host: HostIdentity) -> ProcessExit {
   let uid = fci1_run_words(words: id_uid_argv())
   if uid.exit_code != 0 || trim(s: uid.stdout) != "0" {
-    fci1_refused(reason: "ControlRefused: must run as root on srv3")
+    fci1_refused(reason: "ControlRefused: must run as root")
   } else {
     let host = fci1_run_command(command: hostname_short_read_command())
-    if host.exit_code != 0 || trim(s: host.stdout) != "srv3" {
-      fci1_refused(reason: "ControlRefused: host is not srv3")
+    if host.exit_code != 0 || trim(s: host.stdout) != slot_host as String {
+      fci1_refused(reason: join([
+        "ControlRefused: the fabric execution member is committed on ", slot_host as String,
+        " and this host is ", trim(s: host.stdout),
+      ], ""))
     } else {
       fci1_bounded_controls_on_srv3(gunbc_bin: gunbc_bin, checkout_root: checkout_root, verdict_path: verdict_path)
     }

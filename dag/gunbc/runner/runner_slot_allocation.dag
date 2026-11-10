@@ -76,10 +76,11 @@ fn gunbc_runner_slot_offer_envelope() -> ResourceEnvelope {
 // (memory.peak of a fresh per-attempt cgroup) and never a larger request: no arm here or downstream
 // raises the ceiling on a failed fit.
 //
-// THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason fabric_first_slot_index gives:
-// an index at the width moves when the width moves. It need not sit inside 1..width: the slot is a
-// committed member by identity (host_committed_identities_at), and the fleet range beneath it is
-// 1..(width - 1). 13 is the index the live unit, cell slice and allocation-store key already carry.
+// THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason the deleted srv3/srv4
+// `fabric_first_slot_index` note gave: an index at the width moves when the width moves. It need not sit
+// inside 1..width: the slot is a committed member by identity (host_committed_identities_at), and the
+// fleet range beneath it is 1..(width - 1). 13 is the index the live unit, cell slice and allocation-store
+// key already carry.
 data gunbc_microvm_shakedown_slot_memory_max: ByteSize = byte_size(30064771072)
 
 data gunbc_microvm_shakedown_slot_index: Nat = 13
@@ -1762,52 +1763,52 @@ type RunnerSlotMembership
 // count-as-authority one level below the enumeration where it was just removed. Two measured
 // consequences: the fabric slot MOVED with the width (srv3 at width 7 would have made srv3-07 the
 // fabric slot and handed srv3-06 back to Actions, silently relabelling a slot that may be running),
-// and it answered SlotServesComputeFabric for identities that are not slots at all -- executed:
+// and it answered SlotServesComputeFabric for identities that are not slots at all -- executed
+// against that version, before either number meant anything it now would:
 // runner_slot_purpose(srv1, 6) and (srv3, 99) both returned fabric, though srv1 is five wide and
-// neither index is a committed member.
+// neither index is a committed member. Both subjects are named as history: srv3 carries no fabric
+// member at all since the 2026-11-09 ruling below, and srv1's members are 13 and 14.
 //
-// So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. srv3-06
-// stays srv3-06 when the width moves, and if the width ever falls below 6 the slot leaves the
-// committed population and says so, rather than the fabric role sliding onto srv3-05.
-data fabric_first_slot_index: Nat = 6
-
-fn srv3_fabric_first_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_first_slot_index }
-}
-
-// THE SECOND MEMBER ON EACH EXECUTION HOST, AUTHORED AS AN IDENTITY FOR THE SAME REASON THE FIRST
-// WAS. Index 7 sits beside 6 rather than at the top of the committed width, because an index near
-// the width is an index that MOVES when the width moves: the width is a derived three-axis minimum
-// and it has already changed once under this module (the 2026-08-22 DIMM upgrade), so pinning a
-// member to "the top two" would re-create the sliding-role defect in a slower form.
-data fabric_second_slot_index: Nat = 7
-
-fn srv3_fabric_second_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_second_slot_index }
-}
-
-fn srv4_fabric_first_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_first_slot_index }
-}
-
-fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_second_slot_index }
-}
-
-// srv3 AND srv4 CARRY TWO FABRIC EXECUTION SLOTS EACH AND srv1 DELIBERATELY DOES NOT (operator,
-// 2026-08-21, widened 2026-09-18). The canary population was one slot on one host, which made
-// placement a selection with a single admissible candidate -- a front standing as a winner, not a
-// placement. Two hosts is the smallest population in which a failure domain can be chosen.
+// So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. A fabric
+// member stays the same identity when the width moves, and if the width ever falls below its index
+// the slot leaves the committed population and says so, rather than the fabric role sliding onto the
+// slot below it.
 //
-// WHY srv1 STAYS OUT, RE-DERIVED RATHER THAN INHERITED, because the 2026-08-21 reason no longer
-// describes the tree: that ruling excluded srv1 because the control plane was taking a temporary
-// srv1 slice, and `gunbc.fabric.fabric_control_plane_charge` `fabric_control_plane_placement` is
-// ControlPlaneUnplaced -- the control plane is on no host at all. The constraint that survives is a
+// srv3 AND srv4 NO LONGER CARRY FABRIC EXECUTION SLOTS. They did -- srv3-06/07 and srv4-06/07, by the
+// operator decisions of 2026-08-21 and 2026-09-18 -- and the identities, the two index literals that
+// minted them, and the notes that recorded those decisions are DELETED here by gunbc.design_ruling::
+// srv3_srv4_fabric_slots_serve_ci (operator, 2026-11-09: "hand srv3's and srv4's fabric slots to CI in
+// runner_slot_allocation, so 18 CI runners on each", answered "A is fine"). The two decisions
+// SUPERSEDED by it are not restated in this file any more; the ruling row carries their provenance and
+// the live read that falsified them (masked, no install tree under /opt/actions-runner, no fabric cell
+// and no fabric slice on either host). What is kept from the deleted notes is the reason the members
+// were authored as identities at all, above: it describes a mechanism this module still uses for the
+// members srv1 carries.
+//
+// WHAT THE FLEET STANDS IN AFTER THE DELETION, STATED RATHER THAN LEFT TO BE INFERRED FROM A SHORTER
+// LIST. Fabric execution is NOT an empty role: srv1-13 (the bounded microVM shakedown, placed on srv1 by
+// the operator on 2026-09-21 -- the host with the KVM grant, the Firecracker install and the built guest
+// image) and srv1-14 (the revision job) remain execution members, so the role still has members and every
+// consumer that folds over them still has something to fold over. What IS now true, and was not before,
+// is that they are all on ONE HOST.
+//
+// WHY THE POPULATION IS NOW ONE HOST, RE-DERIVED RATHER THAN INHERITED. The 2026-08-21 ruling excluded
+// srv1 because the control plane was taking a temporary srv1 slice, and
+// `gunbc.fabric.fabric_control_plane_charge` `fabric_control_plane_placement` is
+// ControlPlaneUnplaced -- the control plane is on no host at all. The constraint that survived was a
 // RELATION between two placements, neither of which is pinned: the control plane must not share a
 // host with the capacity it schedules. Filling every host with execution slots would settle that
-// relation by omission, so srv1 is held free as the host the control plane can still land on. If
-// the control plane is later pinned elsewhere, srv1 becomes admissible and this note is the reason
-// to revisit rather than a standing prohibition.
+// relation by omission, so srv1 was held free as the host the control plane can still land on and the
+// execution members went to srv3 and srv4 instead; the 2026-09-18 note deleted above added the second
+// member per host as "the smallest population in which a failure domain can be chosen". The 2026-11-09
+// ruling ends that arrangement: srv1 keeps the two members the operator placed on it by name, srv3 and
+// srv4 carry none, no failure domain can be chosen inside fabric execution (an execution cell has exactly
+// one place to be), and the control-plane relation is no longer protected by this list at all. This
+// module does not pretend otherwise and does not restore either property by quietly re-placing a member:
+// whether the control plane may share srv1 with the entire execution population, whether fabric execution
+// needs a second host, and where the control plane is pinned are operator decisions this module cannot
+// make from its own facts. The list below changes only when such a decision is recorded as a
+// gunbc.design_ruling row naming the member.
 //
 // srv2 IS ABSENT AND THAT IS A REFUSAL IT AUTHORED, NOT AN OMISSION HERE. Its committed width is
 // zero because host_runner_memory_envelope_resolution answers RunnerMemoryEnvelopeUnestablished for
@@ -1840,21 +1841,23 @@ fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
 // plane is placed by host convergence, never appears in a SupplierOffer, and must not need a Grant to
 // start. Overloading one variant across both would erase exactly that distinction, which is why
 // the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
-// srv1 NOW CARRIES EXACTLY ONE FABRIC MEMBER, THE microVM SHAKEDOWN SLOT, AND THE PARAGRAPH ABOVE
-// STILL GOVERNS THE OTHERS. The 2026-09-21 operator decision places the bounded microVM shakedown on
-// srv1 (the host with the KVM grant, the Firecracker install and the built guest image), which
-// makes srv1-13 a fabric execution member: the fleet-converge spine creates its cell and its slice
-// from this list, and the slot controller's attempt is derived from a reservation on that cell.
-// The control-plane relation the paragraph above preserves is not settled by omission here -- one
-// slot does not fill the host -- but a second srv1 member should re-read that paragraph first.
+// srv1 NOW CARRIES THE ENTIRE EXECUTION POPULATION, AND THE PARAGRAPH ABOVE STILL GOVERNS THE
+// CONTROL-PLANE SLICE. The 2026-09-21 operator decision places the bounded microVM shakedown on srv1 and
+// the revision job slot is srv1-14, so both remaining members -- srv1-13 and srv1-14 -- are on the host
+// that also holds the fabric's slice capacity and, if it is ever pinned, its control plane. The fleet-
+// converge spine creates their cells and slices from this list, and the slot controller's attempt is
+// derived from a reservation on each cell. Nothing here re-derives the width: srv1's committed width comes
+// from gunbc_runner_committed_width like every other host's, and these two indices are members of it.
+// AND THEY ARE THE SAME TWO SLOTS THE MICROVM STANDING PRICES, NOT A THIRD FAMILY. srv1-13 is the bounded
+// microVM shakedown slot and srv1-14 the revision job slot -- the same identities the microVM realization
+// standing weighs for memory. "Fabric execution member" is a ROLE those two slots also hold, which is what
+// makes them the fleet's execution population; it is not a third kind of slot, and nothing here should be
+// read as re-labelling srv1's microVM slots as fabric-only. When that standing gates a charge it is
+// talking about these same identities, and the two readings must not be allowed to drift apart.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
   [
     srv1_microvm_shakedown_slot(),
     srv1_revision_job_slot(),
-    srv3_fabric_first_slot(),
-    srv3_fabric_second_slot(),
-    srv4_fabric_first_slot(),
-    srv4_fabric_second_slot(),
   ]
 }
 
