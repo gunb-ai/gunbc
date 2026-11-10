@@ -51,7 +51,12 @@ test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_the_r9700s_are_un
       HostContainsComponent { host: _, component: k } => (k as String) == (a.identity as String)
       _ => false
     }).length() <= 1)
-    && gpu_board_assets.length() == 10
+    // No board OUTSIDE the ten named identities is in inventory (fail-closed change detector): a new card
+    // added to gpu_board_assets without naming it here reds, rather than a magic count silently changing.
+    && gpu_board_assets.all(a => a.identity == gpu_board_01 || a.identity == gpu_board_02
+      || a.identity == gpu_board_03 || a.identity == gpu_board_04 || a.identity == gpu_board_05
+      || a.identity == gpu_board_06 || a.identity == gpu_board_07 || a.identity == gpu_board_08
+      || a.identity == gpu_board_09 || a.identity == gpu_board_10)
 }
 
 // EVERY CARD IN INVENTORY BINDS A BOARD ROW THAT EXISTS, and the R9700 board row is admitted.
