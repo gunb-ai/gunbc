@@ -267,16 +267,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "namespace-cut-replacement-plan",
-    primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration },
-      DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "lookup_symbol_index_atom_identity", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the integration/namespace-cut cutover merges to main and the import concept / import-name-universe authorities named in this plan are deleted per its terminal receipt; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "dag-scm-design",
     primary_work: DeclarationRef { module_path: "gunbc.roster_registry", decl_name: "GroupMembership", field: WholeDeclaration },
     additional_works: [

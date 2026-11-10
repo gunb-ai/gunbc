@@ -539,7 +539,7 @@ fn dag_prepared_lex() -> PreparedLexRules {
 // THE INGEST'S ALLOCATOR SCOPE, computed once per ingest from the source-ref list the ingest reads
 // (v2.compiler.source_authority source_ref_list_digest_build, at path grain). Every projected
 // occurrence this ingest allocates states its cause in this scope, which is what separates a
-// same-graph lowering member from a projector insertion (v2.workflow.legacy_binding_delta).
+// same-graph lowering member from a projector insertion.
 fn program_assembly_ingest_scope(ingest: SourceRootIngest) -> SourceRefListDigestBuild {
   source_ref_list_digest_build(refs: fold_list(
     xs: ingest,

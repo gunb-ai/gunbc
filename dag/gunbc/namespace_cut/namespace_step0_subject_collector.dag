@@ -10,10 +10,10 @@ import std.decl_ref { decl_ref }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
 
 // THE SUBJECT VECTOR AND THE TREE IT WAS READ FROM GET ONE PRODUCER, WHICH IS THIS MODULE'S WHOLE
-// CONTENT. v2.workflow.namespace_step0_strip_producer strips and compiles the (path, content) vector it
-// is HANDED, and says so: "that the handed vector is the whole of the tree the receipt names is the
-// caller's obligation ... nothing here can check it." Its next-rung trigger is exactly this
-// capability. Until it exists, a receipt naming the frozen manifest over a hand-supplied vector is
+// CONTENT. The step-0 strip producer (deleted with the namespace-XL program, 2026-11-10) stripped and
+// compiled the (path, content) vector it was HANDED, and said so: "that the handed vector is the whole
+// of the tree the receipt names is the caller's obligation ... nothing here can check it." This
+// module is that capability, and its surviving consumer is gunbc.host.host_boot_attempt_admission. Until it exists, a receipt naming the frozen manifest over a hand-supplied vector is
 // a lie the retired v1 classifier could not catch, because it checked the tree
 // PIN and never that the vector IS that tree.
 //

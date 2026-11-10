@@ -212,9 +212,9 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // CLAIMED THERE WAS. It said every red-stated row is restored by the v2 body-lowering repair. That
 // is the gunbc.design_argument::guarantee_ladder (no silent regression) grain mismatch stated in DESIGN's own words -- a plural loss under a
 // singular trigger -- and it contradicted the carriers that cite THIS MODULE as the instrument to
-// re-run: gunbc.compiler_frontend_program_status StageXL0Denominator and
-// gunbc.namespace_cut.namespace_cut_stage both say body-lowering is NOT XL-0's trigger precisely because the
-// cross-module class would still be missing after it lands.
+// re-run (the XL-0 stage carriers, deleted with the namespace-XL program on 2026-11-10), which both
+// said body-lowering was NOT XL-0's trigger precisely because the cross-module class would still be
+// missing after it lands.
 //
 // THE LOSSES BELOW ARE THREE CAPABILITIES, NOT ONE, AND NOTHING THAT RESTORES ONE RESTORES ANOTHER:
 //

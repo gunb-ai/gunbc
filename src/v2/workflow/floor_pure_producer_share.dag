@@ -818,12 +818,6 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // one-module fixture runs under the per-claim budget (gunbc.recurring_failure_mode
 // shared_precondition_re_derived_once_per_claim_frame).
 //
-// THE xl2 MEMBERS (v2.test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
-// declined as BundleOfDisjointProjections on floor run 37194676016: each reads its own rehearsal
-// run, a front end plus resolves that exceeds a new-witness budget, and the rehearsal itself is the
-// claims' subject, so supplying its output would leave them asserting nothing. Un-bundled into one
-// producer per run; the shared `xl2_cut_run` is demanded by four claims and is not debt.
-//
 // THE BUNDLE-DISPOSITION MEMBERS (the fold_operand_structure, body_type_annotation_refusal,
 // infer_fold_member_instance, field_projection_stages and value_base_projection claims named
 // beside this note's floor runs) read one field each of the bundles fos_outcomes,
@@ -909,15 +903,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl2_rehearsal_census",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "xl2_residual_control_resolves_before_the_cut_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "xl2_nested_reference_is_residual_after_the_strip_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -2215,12 +2200,6 @@ type CarriedInputWarmRow {
 
 data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
   PreparedEffectInput {
-    acquisition: "v2.test.claim.declaring_identity_spelling.production_ingest.xl3_fixture_reads",
-    checkout_input: "src/v2/test/fixture/declaring_identity_spelling/ (+ dag/test/probe/declaring_identity_spelling_unresolvable_probe.dag)",
-    ground: "The NAMESPACE-XL-3 fixture corpus: eight committed .dag files read through filesystem_read into one list of read witnesses; each census is STILL a single-file ingest over its own witness (the census semantics are per file), the acquisition only performs the reads once. Content fixed by the commit the run prepared. Demanded by every claim of v2.test.claim.declaring_identity_spelling.production_ingest through xl3_fixture_censuses.",
-    measurement: "The floor's own refusal on gunbc#11461 run 35074340220 is the absent arm: fifteen claims of that file COMPLETED-OVER-COST-REQUIREMENT at 130k-430k eval steps against the new-witness budget, each re-deriving its own parse-and-normalize. The present arm is the same run shape with these rows enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger; the acquisition's own arm is the effect-dispatch count for this carrier - eight reads at preparation with the row enrolled, eight per consuming claim without it."
-  },
-  PreparedEffectInput {
     acquisition: "v2.test.claim.reference_derived_graph_fixture.fixture_ingest",
     checkout_input: "dag/test/fixture/reference_derived_graph/",
     ground: "The NAMESPACE-XL-4 fixture corpus: eleven committed .dag modules under the checkout root, read through filesystem_read into one SourceRootIngest so the reference-derived graph claims measure the SAME files the instrument gunbc.instruments.reference_derived_graph reads (one fixture authority - review 65417 on gunbc#11202). Their content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same ingest every claim would have read for itself. Demanded by v2.test.claim.reference_derived_graph_call_arg_tree and reference_derived_graph_production_ingest through xl4_fixture_trees.",
@@ -2235,12 +2214,6 @@ data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
 ]
 
 data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
-  CarriedInputWarmRow {
-    producer: "v2.test.claim.declaring_identity_spelling.production_ingest.xl3_fixture_censuses",
-    carried_input: "v2.test.claim.declaring_identity_spelling.production_ingest.xl3_fixture_reads",
-    dependence: ImplicitAcquisition,
-    measurement: "The per-fixture parse-normalize-census of the carried reads, computed once and served to every claim of the file as a field read. Present-vs-absent as its input row (gunbc#11461 run 35074340220 absent; the enrolled run present), normalised on claims in no consumer module of any enrolled key. ImplicitAcquisition: xl3_fixture_censuses is nullary and calls xl3_fixture_reads inside itself."
-  },
   CarriedInputWarmRow {
     producer: "v2.test.claim.reference_derived_graph_fixture.xl4_fixture_trees",
     carried_input: "v2.test.claim.reference_derived_graph_fixture.fixture_ingest",

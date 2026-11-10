@@ -618,9 +618,8 @@ fn xl0r_carries_a_field_projection(root: Node) -> Bool {
 // identity-unrepresentable. v2.compiler.repair_input_origin_roster's own frontier row
 // (repair_input_declared_binding_frontier_dissolve_on) says this spelling-derived identity becomes
 // a second authority the moment the roster produces on the production route -- which is now. So
-// these rows are MEASUREMENTS of a producer that answers, not a delivery of XL-0's denominator:
-// XL-0 stays NOT-DERIVABLE, citing exactly that missing observation (gunbc.compiler_frontend_program_status
-// ResolverBoundDeclaringIdentity), and the second row below reds when the roster's `declaring` is
+// these rows are MEASUREMENTS of a producer that answers, not a delivery of an exact declaring
+// identity from the resolver's binding, and the second row below reds when the roster's `declaring` is
 // derived from the resolver's binding rather than from spelling -- at which point it is re-stated
 // to assert the exact identity.
 fn xl0r_roster() -> RepairInputOriginRoster {

@@ -1337,6 +1337,430 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
   },
 
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.act0_startability_names_only_chain_stages" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.every_stage_startability_agrees_with_its_prerequisite_standings" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_empty_set" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_activation_receipt_fold_is_keyed_on_receipt_identity" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_baseline_milestone_follows_the_capture_capability" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_deletion_milestones_are_wired_to_their_stage_subjects" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_delivery_receipt_fold_is_keyed_on_kind_and_is_not_an_activation_receipt" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_stage_roster_entries_are_distinct" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_base_occurrence_projected_twice_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_base_occurrence_with_no_provenance_source_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_projected_occurrence_with_no_provenance_entry_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_projection_with_no_insertions_is_also_total" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_provenance_accounting_for_both_denominators_is_total" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_provenance_naming_an_occurrence_outside_either_denominator_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_ref_bearing_the_wrong_subject_address_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_reference_that_is_carried_forward_and_also_causes_an_insertion_is_not_a_fork" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.a_row_less_observation_over_a_genuinely_empty_expected_population_is_admitted" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.an_insertion_naming_a_dropped_occurrence_does_not_cover_it" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.lbd_insertion_row_is_derived_from_the_projected_node_holds" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.lbd_minted_node_is_not_an_insertion_holds" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.lbd_synthetic_node_refuses_with_its_cause_lost_holds" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.the_delta_computes_over_a_total_provenance" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.the_delta_refuses_rather_than_comparing_over_an_incomplete_provenance" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.two_row_less_observations_over_nonempty_expected_populations_refuse_before_any_law_runs" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_delta_witness.two_sources_claiming_one_target_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_field_name_cannot_impersonate_the_whole_declaration_arm" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_compiler_artifact_digest_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_declaration_index_digest_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_occurrence_transport_digest_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_resolution_policy_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_resolver_declaration_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_resolver_field_also_moves_the_content_address" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_resolver_field_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_resolver_module_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_semantic_source_digest_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.a_moved_source_set_digest_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.an_identical_subject_is_applicable_to_itself" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.an_observation_answering_exactly_the_expected_occurrences_is_complete" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.an_observation_answering_for_a_non_subject_occurrence_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.an_observation_answering_twice_for_one_occurrence_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.an_observation_missing_one_expected_occurrence_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.an_observation_whose_every_row_is_refused_is_still_complete" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.every_identity_input_moves_the_content_address" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_observation_witness.the_content_address_is_stable_for_an_unchanged_subject" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.a_carried_forward_node_declared_as_an_insertion_refuses_as_malformed_input" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.a_created_node_that_never_stated_its_cause_refuses_carrying_its_scope_and_authored_span" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.a_created_node_with_a_cause_emits_an_insertion_addressed_across_both_subjects" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.a_decision_about_a_non_base_occurrence_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.a_declared_drop_and_an_undeclared_omission_are_different_refusals" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.a_dropped_occurrence_refuses_at_the_emitter_rather_than_downstream" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.a_total_set_of_carry_decisions_emits_one_entry_per_occurrence" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.an_insertion_claiming_a_carried_target_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.an_occurrence_decided_twice_refuses_as_a_fork" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.an_occurrence_with_no_carry_decision_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.each_emitted_entry_addresses_its_own_side_of_the_projection" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.one_node_declared_an_insertion_three_times_reports_one_offender" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.three_claims_on_one_target_report_one_offending_occurrence" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.three_decisions_about_one_non_base_occurrence_report_one_offender" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.legacy_binding_projection_witness.two_carry_decisions_claiming_one_target_refuse_at_the_producer" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_stale_citation_witness.a_refusal_with_no_reason_still_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_stale_citation_witness.correct_citation_is_present" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_stale_citation_witness.genuine_absence_in_a_scanned_file_stays_absent" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_stale_citation_witness.observed_verdicts_do_not_refuse" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_stale_citation_witness.refusal_classification_names_no_display_word" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_stale_citation_witness.stale_citation_refuses_and_names_both_paths" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_stale_citation_witness.unread_file_refuses_with_a_distinct_reason" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_subject_observation_witness.a_dag_probe_over_authored_empty_facts_is_absent_and_pools_split_both_ways" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_subject_observation_witness.a_host_probe_refuses_rather_than_answering_from_the_declaration_route" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_subject_observation_witness.every_probe_render_is_distinct_across_the_roster" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_subject_observation_witness.resolution_maps_to_observation_without_collapsing_ambiguity" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.namespace_cut_subject_observation_witness.the_host_join_answers_present_absent_and_two_distinct_refusals" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_census_naming_a_foreign_population_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_census_on_an_unentered_subject_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_census_with_two_rows_for_one_bucket_makes_the_differential_undefined" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_coherent_entered_receipt_is_admitted" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_coherent_unentered_receipt_is_admitted" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_compile_over_a_population_the_strip_did_not_produce_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_different_compiler_executable_refuses_at_the_executable_field" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_differential_whose_movements_do_not_conserve_its_population_is_refused" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_file_that_is_not_a_module_is_excluded_and_named" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_foreign_contract_identity_refuses_at_the_identity_field" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_foreign_tree_refuses_at_the_tree_field" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_green_post_strip_compile_stays_entered_without_judging_import_dependence" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_module_is_admitted_to_the_subject" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_module_with_a_malformed_import_statement_refuses_the_run" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_module_with_a_malformed_path_refuses_the_run_rather_than_leaving_the_subject" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_pair_standing_that_claims_more_than_its_arms_observed_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_partition_refusal_is_not_repaired_by_a_later_member" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_partition_that_does_not_exhaust_the_collected_population_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_post_strip_observation_of_a_foreign_population_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.a_uniquely_keyed_census_pair_computes_its_differential" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.an_entered_frontier_that_removed_nothing_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.an_entered_frontier_with_the_pre_strip_prefix_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.an_entered_subject_whose_compile_instrument_failed_is_still_entered" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.an_entry_whose_compile_never_ran_may_not_claim_the_compile_transition" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.an_excluded_projection_that_does_not_cover_its_entries_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.an_unentered_frontier_with_the_entered_prefix_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.an_unentered_subject_carrying_an_observed_pair_refuses" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.import_dependence_is_unjudged_because_the_contract_says_no_producer_inhabits_it" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.the_binding_provenance_contract_carries_the_frozen_roster_and_laws" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.the_conservation_identity_is_not_vacuous_on_a_moving_pair" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.the_differential_names_the_whole_census_as_its_domain" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.the_four_occurrence_movements_are_reported_separately" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.namespace_step0_canary_v2_witness.the_same_class_and_subject_at_two_severities_are_two_buckets" as NonEmptyStr,
+    deleted_in: "the namespace-XL migration program bankruptcy (operator decision 2026-11-10): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

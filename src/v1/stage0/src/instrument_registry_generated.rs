@@ -343,15 +343,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "native-xl2-rehearsal".to_string(),
-            },
-            TargetProducer::NativeClaimProgram {
-                entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "value-position-block-nests".to_string(),
             },
             TargetProducer::NativeClaimProgram {

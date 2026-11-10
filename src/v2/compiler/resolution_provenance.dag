@@ -295,8 +295,7 @@ fn answer_target_optional(answer: ResolutionProvenance) -> Optional<QualifiedNam
 
 // DISSOLVE-ON, AT CAPABILITY GRAIN: when every consumer of ResolutionProvenance -- the dependency
 // derivation in this module, v2.compiler.repair_input_origin_roster (whose own frontier row,
-// repair_input_declared_binding_frontier_dissolve_on, names the same capability) and
-// v2.compiler.declaring_identity_spelling_census -- derives the declaring path of a mention from the
+// repair_input_declared_binding_frontier_dissolve_on, names the same capability) -- derives the declaring path of a mention from the
 // RESOLVED TREE the production resolver emits (v2.std.qualified_name declaration_reference_path_optional
 // over v2.compiler.resolve output) rather than from resolve_reference_provenance re-running the
 // lookup, this module is DELETED together with this row. What makes it deletable is already true:

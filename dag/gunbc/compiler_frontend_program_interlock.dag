@@ -12,23 +12,20 @@ import std.types { NonEmptyStr, List }
 // authorities, and the two copies diverge on the first amendment. So both plans
 // cite this module and neither owns the relation; their prose RENDERS it.
 
-// THE RULING'S SHAPE, stated because the obvious reading of the question is the
-// wrong one. The question asked was "does the namespace cut block v2 self-host,
-// or the reverse" -- a total order over two programs. The ruling is that the
-// program grain is TOO COARSE and neither blocks the other whole. The relation
-// is a braid between MILESTONES: self-host's proof envelope blocks the first
-// namespace semantic wave, and namespace completion blocks self-host's
-// irreversible retirement step. A reader who collapses this back to a program
-// order gets a different plan whichever direction they collapse it in.
+// THE BRAID IS DISSOLVED (operator decision 2026-11-10, carried by the change that retires the
+// namespace-XL migration program). The 2026-08-26 ruling braided two programs at MILESTONE grain:
+// self-host's proof envelope gated the first namespace semantic wave, and namespace completion
+// gated self-host's irreversible retirement step. The namespace half was the XL staged cut (waves,
+// ACT-0, atomic cutover), and that program is withdrawn whole: its stage chain, subject roster,
+// baseline captures and rehearsal are deleted, and imports are already the terminal name mechanism
+// (gunbc.design_ruling::imports_are_the_terminal_name_mechanism). The namespace milestones go with
+// it, so what remains is the self-host chain alone. Name-binding correctness is not withdrawn: it
+// is carried by the resolver and its refusal tests, not by a milestone here.
 type ProgramMilestone
   = SelfHostWholeCorpusPopulationDerived
   | SelfHostCargoPhaseEnrolled
   | SelfHostRatchetObservationEnrolled
   | SelfHostRatchetGateEnrolled
-  | NamespaceWaveAdmissionEnrolled
-  | NamespaceBaselineObservationComplete
-  | NamespaceFirstSemanticWave
-  | NamespaceFixForwardComplete
   | SelfHostCorpusEmitsCleanly
   | SelfHostEmittedContractsHeld
   | SelfHostEmitterProducesEveryRetainedArtifact
@@ -36,29 +33,12 @@ type ProgramMilestone
   | SelfHostNativeRouteRequiredLane
   | SelfHostSeedRetirement
 
-// NamespaceFirstSemanticWave WAS "Step 1, deletion of the import-name universe", AND THAT LABEL
-// NAMED THE CUTOVER'S WORK, NOT A WAVE. The import-name universe is a ROOT AUTHORITY: deleting it
-// changes what live resolution and closure answer, which is the atomic transition
-// gunbc.design_argument::single_authority requires to land in one motion. A milestone whose label schedules a root deletion
-// "first" invites exactly the leaves-upward migration the doctrine forbids, and
-// gunbc.namespace_cut.namespace_cut_subject_roster was assigning five root authorities to the waves on the
-// strength of it.
-//
-// The wave is redefined at the grain a wave can actually hold: an EXACT CORPUS REWRITE performed
-// WHILE THE LEGACY SEMANTIC ROOT STILL EXISTS -- occurrences respelled, import declarations
-// rewritten, resolution answering identically at every step. The roots move at
-// NamespaceFixForwardComplete. What changed is the milestone's SUBJECT, not its position: the
-// prerequisite edges below are untouched.
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
   match m {
     SelfHostWholeCorpusPopulationDerived => "self-host S2: the exact whole-corpus population re-derived" as NonEmptyStr
     SelfHostCargoPhaseEnrolled => "self-host S3: required cargo-executing CI phase, enrolled with a discriminating red" as NonEmptyStr
     SelfHostRatchetObservationEnrolled => "self-host S4a: the ratchet enrolled as an OBSERVATION -- taken and persisted, never merge-blocking" as NonEmptyStr
     SelfHostRatchetGateEnrolled => "self-host S4b: a merge-blocking NATIVE gate over the two retained compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli) -- the compiler refusing on the route, never a census (gunbc.design_ruling::self_host_scope_is_the_compiler_closures)" as NonEmptyStr
-    NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over subject-membership and occurrence-binding deltas, with closure delta carried as blast radius rather than as a third wall" as NonEmptyStr
-    NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
-    NamespaceFirstSemanticWave => "namespace: first semantic wave -- the first exact corpus-rewrite wave landed while the legacy semantic root still exists" as NonEmptyStr
-    NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
     SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the two retained compiler closures (v2.compiler.source_root_eval, v2.cli.compile_cli) plus declared seed-retained rows emit Rust that cargo builds with zero blocking diagnostics (gunbc.design_ruling::self_host_scope_is_the_compiler_closures; was the whole v2 corpus)" as NonEmptyStr
     SelfHostEmittedContractsHeld => "self-host: every rostered emitted module holds its own .dag contract when driven on a discriminating corpus -- the seed is a regression oracle, never the specification (gunbc.design_argument::self_hosting); a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
     SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
@@ -96,25 +76,8 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // through a milestone's own definition. It is written so that only a returned verdict over a real
 // candidate can discharge it.
 
-// AN EIGHTH FINDING, AND IT IS NEITHER A FUSION NOR AN OMISSION -- IT IS A LABEL ASSERTING A
-// GUARANTEE THE MECHANISM CANNOT PROVIDE (nimble-moth-416, 2026-08-26, relayed through
-// warm-hawk-909). NamespaceWaveAdmissionEnrolled read as a wall over THREE deltas: closure,
-// subject membership, and occurrence binding. Closure cannot be one. Closure is a pure function of
-// membership, so "the closure moved and no membership moved" is UNAUTHORABLE -- there is no input
-// that produces it -- and an arm for it would be permanently green by construction. DESIGN section
-// 4b names that state a decoration and calls it worse than absent, because it is cited as coverage.
-// So the label now names TWO walls and carries closure delta as BLAST RADIUS: a real and useful
-// quantity, reported to size what a change reaches, and never a refusal.
-//
-// THE LABEL IS PART OF THE CONSTRUCTION, WHICH IS WHY THIS IS RECORDED WITH THE SEVEN ABOVE. The
-// exhaustive match makes an unstated prerequisite unwritable; it says nothing about whether the
-// label describes a mechanism that can exist. A milestone whose label overclaims is satisfiable
-// only by something weaker than it reads, which is the trigger-sufficiency failure -- a condition
-// naming less than the capability it stands for -- arriving through the name rather than through
-// the edge.
-
 // WHY THE S2 CENSUS IS ITS OWN VARIANT RATHER THAN A WORD INSIDE ANOTHER ONE.
-// The ruling gates the first namespace wave on S2 + S3 + S4. An earlier revision
+// The 2026-08-26 ruling's gate named S2 + S3 + S4. An earlier revision
 // carried S3 and S4 in a single composite variant and left S2 implicit in the
 // phrase "proof envelope" -- which is a real gap and not a naming preference:
 // the closed variant makes an omitted MILESTONE fail to compile, but it cannot
@@ -139,8 +102,8 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // two facts with two prerequisite sets are two elements (review 56376,
 // 2026-08-26).
 //
-// PREREQUISITES ARE DIRECT EDGES, not the transitive closure. S2 is not
-// repeated on NamespaceFirstSemanticWave because S4 already carries it; one
+// PREREQUISITES ARE DIRECT EDGES, not the transitive closure. A milestone
+// downstream of S4b does not restate what S4b already carries; one
 // edge per fact, and the closure is derived rather than restated (
 // gunbc.design_argument::minimize_redundancy). Restating it would mean a later correction to S4's
 // prerequisites could leave a stale duplicate standing here, which is the
@@ -169,24 +132,6 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // therefore not to state its prerequisites -- the match already forces that --
 // but to ask whether the variant carries TWO facts that would state DIFFERENT
 // prerequisites if separated. If it does, it is two variants.
-//
-// A FOURTH INSTANCE, found by running that obligation as a CENSUS over every
-// variant rather than repairing the site a review reported (loyal-lark-254,
-// 2026-08-26: a review reports one instance because it found one instance,
-// which is a property of the reviewer's attention and never a census).
-// NamespaceTerminalEndState fused Steps 1-5 into one "terminal end state".
-// The namespace plan marks Step 5, the grammar and parse deletion, as LAST --
-// and gives the reason: deleting the grammar first makes every unrepaired
-// module unparseable at once, converting a fix-forward program into a flag
-// day. So the fused variant ERASED ITS OWN ORDERING CONSTRAINT, and the one
-// it erased is the constraint that keeps the program survivable. Split into
-// Steps 2-4 and the grammar deletion that must follow them, with seed
-// retirement now downstream of the grammar rather than of a composite.
-//
-// FOUR INSTANCES, AND THE LAST WAS FOUND ONLY BY CENSUS. The first three were
-// each reported by someone who had run into them. That is the difference
-// between a repair and a wall: repairing reported sites converges on the
-// attention of reviewers, and enumerating the shape converges on the corpus.
 //
 // A FIFTH FINDING OF A DIFFERENT SHAPE, AND IT BOUNDS WHAT THIS CONSTRUCTION
 // CAN DO (snappy-dove-250, 2026-08-26). The four above were FUSIONS. This one
@@ -262,40 +207,19 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // validation: the unstated-prerequisite state is unwritable rather than checked.
 // THE NATIVE FLOOR MILESTONE, AND THE EDGE IT REVERSES (2026-09-12, fierce-lark-661 ruling on
 // the operator's strategic ruling of the same day: the program ends in deleting v1, with the
-// native route as the required floor). SelfHostSeedRetirement used to require
-// NamespaceGrammarRetired, while the adopted order runs the namespace cutover (XL-6) and grammar
-// deletion (XL-7) AFTER v1 is deleted, so that nobody teaches a seed being deleted import-free
-// source, and the cutover is validated once, natively. Carried together, those two orders are a
-// cycle. The edge now runs the other way: the fix-forward cutover depends on seed retirement
-// (which itself requires the native floor), grammar retirement follows the cutover, and seed
-// retirement no longer waits on the grammar. Direct edges only; the native floor reaches the
-// cutover through seed retirement, so it is not restated there. The native-route milestone
+// native route as the required floor). SelfHostSeedRetirement used to require a namespace
+// grammar-retirement milestone; that edge was reversed on 2026-09-12 and the namespace
+// milestones are now gone (the grammar one on 2026-11-08, the rest with the namespace-XL
+// program on 2026-11-10), so seed retirement waits on self-host facts alone. The native-route milestone
 // is NOT a re-pointed SelfHostRatchetGateEnrolled. That gate is the compile-phase regression gate
 // against the persisted frontier (gunbc.self_host_compile_phase_live_gate, merged in #9857, with its
 // enrolment parked by the operator), and native admission answers a different question. Re-pointing
 // it would be a meaning fork, so both milestones stand.
-// THE WAVE-ADMISSION EDGE IS VOIDED BY OPERATOR RULING 2026-09-19.
-// NamespaceFirstSemanticWave was gated on NamespaceWaveAdmissionEnrolled: the 2026-08-26 ruling
-// made the plan's disclosed "no CI mechanism" gap a blocker and named the wall as the gate. The
-// 2026-09-19 ruling DELETED the wall -- its transition-admission bookkeeping refused 100% of
-// merge_group runs on a clean floor (run 35461710214; gunbc.rung_drop
-// namespace_wave_admission_wall_removed) -- so the edge named a gate that does not exist, and
-// gating the wave on a deleted phase would be the trigger-sufficiency failure this file exists
-// to prevent, arriving through an edge rather than a label. The milestone VARIANT stays: the
-// program fact it names returns if a replacement wall is enrolled, which is exactly the drop
-// row's restoration trigger. What the wave now waits on is the remaining pair, and the ACT-0
-// release gate still reads the milestone's standing -- which reads the drop row, so the waves
-// cannot be released while the drop stands.
 // TWO CENSUS EDGES DELETED (operator ruling 2026-10-30, gunbc.design_ruling
 // bad_process_is_worse_than_no_process; V2-GOV-001 Part A). SelfHostRatchetGateEnrolled no longer
-// waits on SelfHostWholeCorpusPopulationDerived, and NamespaceFirstSemanticWave no longer waits on
-// NamespaceBaselineObservationComplete. Both were whole-population observations, and a missing
-// inventory is not grounds to block. The milestone variants and their historical receipts stay. The
-// baseline's oracle job is not dropped: at the wave grain each wave is a row-driven rewrite proven per
-// shard by bounded REDs and controls; at XL6 the acceptance adds, per deleted import root, a bounded
-// differential over the sites that root answered (declaration identity before equals after), cited by
-// grep with its unknowns stated, because a reference can silently rebind to a same-spelled declaration
-// once the roots go (concrete risk recorded by tidy-ant-251, 2026-10-31).
+// waits on SelfHostWholeCorpusPopulationDerived (a second edge, from the namespace wave to the
+// namespace baseline, went with those milestones on 2026-11-10). It was a whole-population
+// observation, and a missing inventory is not grounds to block.
 // THE 2026-11-08 SCOPE RESET (gunbc.design_ruling::imports_are_the_terminal_name_mechanism,
 // gunbc.design_ruling::self_host_scope_is_the_compiler_closures). Imports stay, so the grammar-
 // retirement milestone (Step 5 / XL-7) is DELETED rather than kept as a withdrawn row: no program
@@ -312,10 +236,6 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     SelfHostCargoPhaseEnrolled => []
     SelfHostRatchetObservationEnrolled => []
     SelfHostRatchetGateEnrolled => [SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
-    NamespaceWaveAdmissionEnrolled => []
-    NamespaceBaselineObservationComplete => []
-    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled]
-    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
     SelfHostEmittedContractsHeld => [SelfHostCorpusEmitsCleanly]
     SelfHostEmitterProducesEveryRetainedArtifact => []
@@ -324,77 +244,5 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     SelfHostSeedRetirement => [SelfHostNativeRouteRequiredLane, SelfHostEmittedContractsHeld, SelfHostEmitterProducesEveryRetainedArtifact, SelfHostSuccessorPromotionAdmitted]
   }
 }
-
-// THE EXECUTABLE CONSEQUENCE THE RULING ATTACHED TO THE NAMESPACE PLAN'S
-// DISCLOSED GAP. That plan recorded "no CI mechanism exists" as a named gap. The
-// ruling converts it from a disclosure into a BLOCKER: no namespace change that
-// can alter which modules enter a subject, or what an occurrence denotes, may
-// merge before the wave-admission wall exists. Preparatory work is explicitly
-// unaffected -- measurement, port-locus, instruments, lexical de-forking that
-// preserves the exact set, typed carriers, dry-run projections. Step 1 is not.
-//
-// SUPERSEDED IN PART, 2026-09-19 (operator ruling): the wall itself is DELETED --
-// its transition-admission bookkeeping refused every merge_group run on a clean
-// floor (run 35461710214) -- and the blocker it carried is declared as the drop
-// gunbc.rung_drop namespace_wave_admission_wall_removed rather than enforced by a
-// phase. The blocker STANDS as a program fact: ACT-0's release gate still reads
-// the milestone, and the milestone now reads the drop row, so the waves stay
-// unreleased until a wall with a debt-collection design that never charges
-// bystanders exists and runs at landing time.
-type NamespaceChangeClass
-  = PreparatoryNoSemanticMotion
-  | AltersSubjectMembershipOrBinding
-
-
-// THE ADMISSION PREDICATE, recorded because the two spellings differ by one word
-// and the weaker one is the intuitive one. The wall admits when
-// UNADJUDICATED delta is empty, NOT when delta is empty: expected cut motion may
-// occur, unevaluated or unexplained motion may not. A wall demanding zero delta
-// would refuse the cut itself and would be repaired by weakening it.
-type NamespaceDeltaDisposition
-  = SameDeclarationIdentityRebind
-  | UnusedSubjectMembershipRemoved
-  | ExplicitlyEvaluatedZeroDelta
-  | TargetChanged
-  | NewAmbiguity
-  | NewUnresolvedness
-  | NewPoolCoincidenceResolution
-  | AuthoredReferenceResolution
-  | UnexplainedSubjectMotion
-  | NotEvaluated
-
-// NO BOOL PROJECTION OVER THIS COPRODUCT, DELIBERATELY. An earlier revision
-// carried delta_disposition_auto_admitted, a nine-into-two partition deciding
-// which dispositions the wall auto-admits. It is deleted for a reason that does
-// not depend on the predicate-dissolution question it was reviewed under
-// (review 56367): IT HAD NO CONSUMER. The wave-admission wall that will classify
-// deltas does not exist yet, and gunbc.design_argument::how_to_work names a new artifact with no
-// final consumer as experimental residue. A partition nobody computes over is a
-// guess about what the consumer will want.
-//
-// The partition the operator ruled is therefore recorded HERE, where it cannot
-// be mistaken for an executing mechanism: the wall AUTO-ADMITS a same-declaration
-// -identity rebind, a removal of genuinely unused subject membership, an
-// explicitly evaluated zero delta, and an authored-reference resolution. Every
-// other disposition -- a changed target, new ambiguity, new unresolvedness, new
-// pool-coincidence resolution, unexplained subject motion, and NotEvaluated --
-// REFUSES unless an exact operator-authored transition admission names it.
-//
-// AuthoredReferenceResolution WAS SPLIT OUT OF NewPoolCoincidenceResolution on
-// 2026-08-27, by operator ruling relayed through swift-badger-524, after the
-// wall refused gunbc#9485 -- a one-line import repair that made three dangling
-// names resolve. `0 -> 1` was one symbol over two states with opposite owners
-// and opposite repairs: the target grew a name this module was already reaching
-// for (the coincidence, cause in another module), versus this module's own
-// author writing the import that resolves a name it was already spelling (the
-// repair the wall exists to want). The wall was refusing the second while
-// naming it the first. The discriminator is the module's own source, and the
-// membership arm already consulted it -- the same change's membership edge was
-// auto-admitted as ExplicitlyEvaluatedZeroDelta, "reached by a name this module
-// authors", while its bindings were refused.
-//
-// When the wall is built it matches on NamespaceDeltaDisposition directly. If a
-// shared projection is wanted at that point, it belongs beside the wall that
-// computes it, with the consumer that makes it load-bearing.
 
 data interlock_ruling_date: NonEmptyStr = "2026-08-26" as NonEmptyStr

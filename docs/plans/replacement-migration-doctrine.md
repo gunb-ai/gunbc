@@ -90,4 +90,4 @@ retained discriminating evidence = exact declared population
 retired consumers and evidence  = exact declared population, each receipted
 ```
 
-Ordinary refinement remains valid when one authority survives terminal architecture and no consumer needs both representations. Judge authority reduction, not diff size. Historical counterexamples #8080/#8115/#8244 and successful root removals #8146/#8182 are preserved in the pinned receipt; their old counters are not current progress. First cut programs: [floor](floor-cut-replacement-plan.md) and [namespace](namespace-cut-replacement-plan.md).
+Ordinary refinement remains valid when one authority survives terminal architecture and no consumer needs both representations. Judge authority reduction, not diff size. Historical counterexamples #8080/#8115/#8244 and successful root removals #8146/#8182 are preserved in the pinned receipt; their old counters are not current progress. First cut programs: [floor](floor-cut-replacement-plan.md) and [namespace](https://github.com/gunb-ai/gunbc/blob/fd458f74e474d5bd048fdd928fe6bdb31a81a64b/docs/plans/namespace-cut-replacement-plan.md) (withdrawn 2026-11-10; pinned).

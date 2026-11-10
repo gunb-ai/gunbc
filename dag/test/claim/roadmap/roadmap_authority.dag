@@ -754,10 +754,10 @@ test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
   }) && count(authored_merged_prs()) == 0
 }
 
-// The namespace cut as the v2 worksheet staged it (2026-09-30): XL-4 closure after the kernel, the
-// declaration-identity switch-over (XL-6's construction) absorbing canonical binding and the
-// bound-only consumers, the import-list decision after it, the rival-mechanism deletion after the
-// switch-over, the waves and seed retirement, and the grammar deletion last.
+// The namespace binding chain: reference-derived closure after the kernel, the declaration-identity
+// switch-over absorbing canonical binding and the bound-only consumers, the import-list decision
+// after it, and the rival-mechanism deletion after the switch-over and seed retirement. The
+// namespace-XL waves left with that program on 2026-11-10.
 test fn witness_namespace_chain_is_explicit() -> Bool {
   edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
     && edge_exists(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel")
@@ -766,7 +766,6 @@ test fn witness_namespace_chain_is_explicit() -> Bool {
     && edge_exists(child: "namespace-v2-import-completion", parent: "declaration-identity-switchover")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover")
-    && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-semantic-waves")
     && edge_exists(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete")
     && !id_exists(id: "namespace-canonical-binding")
     && !id_exists(id: "namespace-bound-only-consumers")

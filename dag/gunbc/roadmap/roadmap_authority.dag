@@ -998,16 +998,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
       line: ticket(t: updated(t: fields(
           headline: "Derive each file's dependencies from what its names resolve to",
-          boundary: "XL-4 of gunbc.namespace_cut.namespace_cut_stage. For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
+          boundary: "For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
           displaced_cost: "Hand-written dependency statements can disagree with what files actually reference, and hundreds were patched by hand to keep them in step.",
-          first_slice: "Replace one typed-unavailable row in the six-arm witness's admission seam with a production observation from the ordinary compile route (XL-4 producer #11461/#12186/#12048), starting with clause (e).",
+          first_slice: "Replace one typed-unavailable row in the six-arm witness's admission seam with a production observation from the ordinary compile route (producer #11461/#12186/#12048), starting with clause (e).",
           red_control: "The six-arm witness (dag/test/claim/namespace_reference_derived_closure_acceptance.dag) stays red until all six clauses come from production observations. A pool perturbation that changes an answer while the file set stays the same is caught.",
           out_of_scope: "Bounding the producer's memory; ambiguity discharge; any wave.",
-          handback: "The witness green on production, its expect-red enrolment retired, and the ReferenceGraphDigest over one base ready for ACT-0."
+          handback: "The witness green on production and its expect-red enrolment retired."
         ), on: "2026-09-30", note: "Not yet centered: witness is expected-red on production seams; next step is an XL-4 producer, not a bounded fix.")),
       dispatch: dispatchable(),
       execution: bound(contract: namespace_reference_derived_closure_execution_contract()),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "XL-4: dependencies derived from resolved references is the evidence ACT-0 activates on."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Dependencies derived from resolved references are what make a file's closure independent of which unrelated files are loaded."),
     ),
     roadmap_node(
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
@@ -1024,7 +1024,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The real list, the settled groups, and proof that no tie-breaking rule was introduced."
       ), on: "2026-09-30", note: "Not yet centered: needs XL-4 production first.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "Settling genuinely-many cases from real compiles is what lets XL-6 refuse ambiguity instead of guessing."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Settling genuinely-many cases from real compiles is what lets resolution refuse ambiguity instead of guessing."),
     ),
     roadmap_node(
       identity: "rn_154WYEVN9KBKQ6FVGPSQR4Y2H2",
@@ -1041,7 +1041,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The chosen repair, its transition population named, and the flip control enrolled."
         ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before XL-6 can say what a name sees."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before resolution can say what a name sees."),
     ),
     roadmap_node(
       identity: "rn_HPYW6X0NEMYVNAKZJFA6TQPK0Q",
@@ -1058,7 +1058,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       ), on: "2026-09-30", note: "Not yet centered: after seed retirement per interlock.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "XL-6: every rival way of deciding a name is deleted in one motion."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Every rival way of deciding a name is deleted in one motion."),
     ),
 
     roadmap_node(
@@ -1716,7 +1716,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The deletion plus everything re-run afterwards."
       ), on: "2026-09-30", note: "Stands for SelfHostSeedRetirement on the graph."), on: "2026-09-30", note: "Not yet centered: S6.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "v1-deletion-program", contribution: "The last seed deletion is the milestone namespace XL-6 waits on."),
+      parent: in_project(project: "v1-deletion-program", contribution: "The seed mirror that counts none/one/many for itself is one of the rival mechanisms, so it leaves with the seed."),
     ),
     roadmap_node(
       identity: "rn_NTQJM3ECTNN49NG2SSR9TNX2RX",
@@ -2377,11 +2377,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
-          boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover). Import-grammar deletion (XL-7) is withdrawn: imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the stages that still have open work. The stage chain itself stays in the module.",
-          approach: "XL-2 and XL-3 wait on frontend prerequisites (UsesClauseCarrier, ResolverBoundDeclaringIdentity; LoweringOccurrenceProjection is delivered, gunbc#13828; ServiceModuleLowering is delivered, gunbc#13833, 7c9319cbaf). The declaration-identity switch-over is the XL-6 construction, built in shadow now. XL-6 follows the semantic-wave progression (XL-5); it is not gated by seed retirement (2026-11-08: the namespace fix-forward no longer waits on it).",
-          red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
+          boundary: "Every name is decided one canonical way: by declaration, explicit import, or qualified path (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the binding capabilities that still have open work. The staged namespace-XL migration program (stage chain, subject roster, baseline capture, rehearsal, waves, atomic cutover) was withdrawn on 2026-11-10 and its machinery deleted; this project is the binding semantics, not that program.",
+          approach: "Each capability lands on its own row and is proven by the resolver refusing on the route (exact, ambiguous and unbound outcomes; import and qualified-path binding; cross-tree admission). The declaration-identity switch-over makes every consumer read the declaration resolve chose; the rival mechanisms are deleted after it.",
+          red_control: "A name answered two ways by two code paths is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
-          handback: "XL-6 delivered: every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
+          handback: "Every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler must decide every name one way. Otherwise each proof it carries is about a program that may mean something other than what was written."),
     ),
@@ -2738,7 +2738,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
           boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
-          approach: "Order: frontend first (the native seven, then the whole corpus), then generations (a second build made by the built CLI), then the native route made required and admitted (D10), then the seed retired. The namespace cutover (XL-6/XL-7) comes after seed retirement. gunbc.compiler_frontend_program_interlock owns this order, and this node does not restate it.",
+          approach: "Order: frontend first (the native seven, then the whole corpus), then generations (a second build made by the built CLI), then the native route made required and admitted (D10), then the seed retired. gunbc.compiler_frontend_program_interlock owns this order, and this node does not restate it.",
           red_control: "Seed retirement stays unreachable while any SelfHostSeedRetirement prerequisite in gunbc.compiler_frontend_program_status reads OUTSTANDING. A v2 task whose membership walk does not reach this node refuses as unrooted.",
           displaced_cost: "v2 work is spread over about 12 disconnected roadmap components, and the page's focus filter hid most of them. So nobody can tell whether a v2 PR moves the compiler closer to running.",
           handback: "SelfHostSeedRetirement reads CLEAR in gunbc.compiler_frontend_program_status, and every member project's handback is met."
@@ -3049,17 +3049,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_JNQNQAP6N7Y65GV8VJ1ZX1008P",
       id: "xl2-body-lowering",
       owner: "self-host",
-      carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
-      line: ticket(t: updated(t: updated(t: updated(t: fields(
+      carriers: carrier(path: "src/v2/compiler/body_lowering_fold.dag"),
+      line: ticket(t: updated(t: updated(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
-          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering is PrerequisiteDelivered (gunbc#13833, merge 7c9319cbaf, measured_at 4ff78bc650). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Outstanding: UsesClauseCarrier.",
-          displaced_cost: "A fn with a uses clause still refuses its module at lowering, so those references stay outside the XL-2 residual.",
-          first_slice: "UsesClauseCarrier: a fn declaring a uses clause reaches the census instead of refusing its module at lowering.",
-          red_control: "A uses-clause fn refused at lowering keeps UsesClauseCarrier OUTSTANDING.",
-          out_of_scope: "The rehearsal itself. Service-member carriers are delivered; do not redesign them.",
-          handback: "The remaining outstanding arms PrerequisiteDelivered, with evidence rows."
-        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "Service-member carriers landed on gunbc#13833; the standing stays Outstanding until the merge SHA exists."), on: "2026-10-13", note: "ServiceModuleLowering flipped to PrerequisiteDelivered citing merge 7c9319cbaf.")),
-      parent: in_project(project: "v2-frontend", contribution: "The remaining XL-2 lowering gap (uses-clause carrier) keeps those modules' references out of the census namespace XL-2 needs."),
+          boundary: "Service modules lower (gunbc#13833, merge 7c9319cbaf) and every lowered node keeps its occurrence (gunbc#13828, cdbaa92531d). Outstanding: a fn with a uses clause refuses its module at lowering (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional).",
+          displaced_cost: "A fn with a uses clause still refuses its whole module at lowering, so nothing downstream of lowering sees that module.",
+          first_slice: "A fn declaring a uses clause lowers to a carrier instead of refusing its module.",
+          red_control: "A uses-clause fn that still refuses at lowering keeps this row open.",
+          out_of_scope: "Service-member carriers are delivered; do not redesign them.",
+          handback: "A uses-clause fn lowers, with a discriminating control."
+        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "Service-member carriers landed on gunbc#13833; the standing stays Outstanding until the merge SHA exists."), on: "2026-10-13", note: "ServiceModuleLowering flipped to PrerequisiteDelivered citing merge 7c9319cbaf."), on: "2026-11-10", note: "Restated without the namespace-XL prerequisite list it used to be tracked through (gunbc.compiler_frontend_program_status Xl2Prerequisite), which left with the XL program; the uses-clause lowering gap is a frontend capability in its own right.")),
+      parent: in_project(project: "v2-frontend", contribution: "The remaining lowering gap (the uses-clause carrier) keeps whole modules from reaching anything past lowering."),
     ),
     roadmap_node(
       identity: "rn_BNEYWCR707T5D0BRH8G6VZKGY5",
@@ -3155,13 +3155,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           out_of_scope: "Demand identity (demand-m1b).",
           handback: "The survey receipt and #12790 merged."
         ), on: "2026-09-30", note: "Not yet centered: waiting on the srv1 collision survey.")),
-      parent: in_project(project: "v2-frontend", contribution: "Allocated occurrence identities make every census row locate to one source occurrence, which XL-2 and the demand engine both key on."),
+      parent: in_project(project: "v2-frontend", contribution: "Allocated occurrence identities make every row locate to one source occurrence, which the demand engine keys on."),
     ),
     roadmap_node(
       identity: "rn_1ZM59ZX3RGYJX81YEJ6Z22Z2QG",
       id: "declaration-identity-switchover",
       owner: "namespace",
-      carriers: carrier(path: "dag/gunbc/namespace_cut/namespace_cut_stage.dag"),
+      carriers: carrier(path: "src/v2/compiler/resolve.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Every name reference carries its declaration",
           boundary: "Resolve records a declaration identity on every reference (v1 Node.declaration #12612; recursive types #12635; type parameters #12690; census #12592). All consumers read that identity and not the leaf name (#12506, #12766), under one declared-scope definition (gunbc.recurring_failure_mode name_canonicalisation_depends_on_the_co_compiled_graph). Absorbs namespace-canonical-binding and namespace-bound-only-consumers. Built in shadow now; its root cut is XL-6.",
@@ -3171,7 +3171,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           out_of_scope: "Deleting the old lookup (namespace-legacy-choice-retirement).",
           handback: "The census at zero leaf-matching consumers."
         ), on: "2026-09-30", note: "Not yet centered: quiet-hawk-702 lane in flight.")),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "XL-6's construction: every reference carries its declaration, with one definition of 'in scope'."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Every reference carries its declaration, with one definition of 'in scope'."),
     ),
     roadmap_node(
       identity: "rn_ERV25EYAMEVV1G6JQ8XAXWDHAS",
@@ -3188,22 +3188,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "Compiler-generated references no longer depend on source import visibility; every formerly ambient name has one ruled home or an explicit open decision; the generator and binding diff run over the whole repository; the generated cutover has landed; the ratchet is active; the stopgap tiers are deleted; and no v1-only namespace authority was introduced."
         ), on: "2026-10-16", note: "N2 first slice landed by gunbc#14209: lowering writes the list head as the marked declaration reference to std.algebra.FreeMonoid, the spelled-spine reader is deleted, and resolve answers every compiler-generated declaration reference by declaring path (indexed, provider refused, or the typed resolve_reason_generated_reference_declaration_absent); caller admission no longer reads a list introduction as a call. Receipt, //gunbc/instruments:v2-native-census against base fdd6370d09: generated FreeMonoid rows 142,068 to 0 (44,953 roots, 6,118 modules) whole tree and 2,571 to 0 native-seven; no module inferred at base stops inferring; 1,069 whole-tree modules move from resolve to infer, where infer_grounding_not_derived heads 1,317 roots (the A4 frontier, not ranked until resolve clears). Native-seven first stop unchanged: chars unbound in std.content_hash, so N3 continues with chars. NEXT OBLIGATION, N2b: a compiler-generated declaration reference induces acquisition of its declaration provider. Module acquisition reads the parse tree, where a list literal requests nothing, so a closure acquired without std.algebra refuses the head as generated_reference_declaration_absent (fail closed). The repair is one general generated-reference dependency route, the effect T? already has for std.optional (v2.compiler.module_acquisition acquisition_sugar_member_texts) -- never an authored import of std.algebra and never an ambient built-in."), on: "2026-10-17", note: "N3 HOME RULINGS (operator, 2026-10-17). These settle homes; each wave moves its own names in its own PR through the one generator and the v2-to-v2 binding diff. H1: std.types List, Map and Set are the sole language-facing declaration homes. std.algebra owns their structures, templates, operations and laws, and is not a second source-level type home. The kernel type table and fallback rosters stop supplying them, and same-spelled aliases elsewhere are deleted. The ruling settles homes, not representation: the current algebra-carrier aliases stay separately revisable without changing these identities. H2: dag/std/host_text.dag, module std.host_text, type HostText is the single home of the opaque host-text carrier, the operations whose semantics require it, and their target realization bindings. It is never another String: structural text stays v2.std.text String = FreeMonoid<Char>. v2.std.node stops being host text's semantic home. Only host-carrier operations move there; structural equality, split, join, replace and folds stay with structural text. Signatures use dag-layer types such as List<Char>, because dag/ may not import src/v2. Any seed bridge names std.host_text.HostText as its authority and carries a deletion trigger. H3: none is syntax for optional absence, lowered to a compiler-generated reference to std.optional Absent that carries its identity (the N2 mechanism) and needs no import. T comes from the expected Optional<T> or constraint solving, and with no type information inference stays underived or refuses; it never defaults to Optional<Unit>, a free variable or a host null. Authored Absent stays an ordinary reference. The general null spelling is removed, but JSON, SQL, wire and missing-field nulls stay their own modeled values, and the migration census separates them from optional absence first. H4: std.host_text chars(text: HostText) -> List<Char>, defined as the Unicode scalar values of the host text in source order, not bytes, graphemes, UTF-16 code units or lossy decoding. It is a pure declared operation whose host realization binds by declaration identity; missing realization is a typed refusal at realization. Wave 1 imports std.host_text { chars } at genuine host-to-structural crossings, and deletes a chars call whose input is already structural. Any inverse crossing is a separate declared operation. Sequence: the H2/H4 authority PR (HostText, chars and its realization binding, the structural-result and Unicode-scalar controls, no corpus sweep), then Wave 1 chars, then native-seven rerun, then H3 and the type-name waves as separate migrations."), on: "2026-10-18", note: "KERNEL-TYPE LAYER RULE (operator, 2026-10-18), recorded with the Float cut so Float is not the precedent: every supported language-facing type has ONE canonical semantic declaration in its dag-tree domain module; compiler recognition, literal elaboration, semantic denotation and target realization refer to that declaration by identity; compiler-side projections (v2.std.<t>) construct or read its representation and never redeclare it; authored names receive no ambient privilege from kernel registration; a specialized node or primitive row is added only when a consumer needs it. Homes: H5 Float in std.float, opaque, meaning std.kernel_type_denotation binary64, Rust row keyed on the declaration, no node or roster spelling yet, float literals still refused. Int survives as std.integer Int, with the value carrier separated from its algebraic structure (no blind choice of either current body). Bool moves to dag std.logic, merged with Classical into one carrier (keeping the #12583 single-Bool result), node in v2.std.logic. Char goes to std.unicode.scalar, with its dependencies restructured and no bespoke Rust char row while arbitrary ints can reach it. Json: no kernel std.json; the value model stays extdeps.languages.json.emit JsonValue; the subject marker is a format marker to rename; std.types Json is a separate opaque migration. Symbol to std.symbol with projection v2.std.symbol; Unit to std.unit with v2.std.unit; the HostText node to v2.std.host_text; Bytes to std.bytes; Secret to std.secret. List/Map/Set keep their H1 homes, representation revisable. Order: Float now; then Int and Symbol; then Unit and the HostText node; Bool and Char coordinated; then Bytes and Secret; JSON separate. Drift prevention extends the existing witnesses (identity completeness, import honesty, meaning versus realization, migration completeness through the generator and binding diff) rather than adding another roster. Wave 1 and the N7 measurement are not paused for this."), on: "2026-11-08", note: "SCOPE RESET (gunbc.design_ruling::n7_requires_only_its_own_closure and imports_are_the_terminal_name_mechanism, operator 2026-11-08): this node is the whole-repository program and gates nothing in native-seven, whose edge to it is deleted; native-seven passing resolve is no longer part of this handback. Imports stay as the binding mechanism; import-grammar deletion (namespace-import-deletion, XL-7) is withdrawn and its node deleted. Acceptance criteria naming the retired census and binding diff are superseded by per-wave evidence: the touched modules resolve natively, with a discriminating control.")),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "The cutover that makes v2's declared namespace the only one: no built-ins, v1 only sequences, strict first."),
-    ),
-    roadmap_node(
-      identity: "rn_7XP9Y56FDB4RNEBYGJEQ71H2RY",
-      id: "namespace-semantic-waves",
-      owner: "namespace",
-      carriers: carrier(path: "dag/gunbc/namespace_cut/namespace_cut_stage.dag"),
-      line: ticket(t: updated(t: updated(t: fields(
-          headline: "Release the namespace rewrite waves under a wall that works",
-          boundary: "ACT-0 collects the four activation receipts over base B. XL-5 lands the occurrence and import rewrites. Release needs act0_release_milestones CLEAR.",
-          displaced_cost: "Without waves, XL-6 is a flag day.",
-          first_slice: "A wave-admission wall design that never charges bystanders, which is the drop's restoration trigger.",
-          red_control: "A wave with an UnexplainedSubjectMotion or NotEvaluated delta refuses.",
-          out_of_scope: "The cutover.",
-          handback: "The receipts held, and the waves landed."
-        ), on: "2026-09-30", note: "Not yet centered: blocked: the wave-admission wall was deleted (drop namespace_wave_admission_wall_removed)."), on: "2026-10-15", note: "Unblocked without restoring the deleted wall: each wave's admission is a v2-to-v2 binding diff run on the wave's own PR (no bystanders charged), plus a full-tree v2 resolve; the only admitted rebinding is an ambient occurrence moving to its ruled home. Waves follow v2-namespace-cutover's rulings and home table; owner adhoc-aeee5bef-3b4 under Manager 1, generator gunbc#14017.")),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "ACT-0 and XL-5: the exact rewrite waves that move the corpus onto derived names while the old root still stands."),
     ),
     roadmap_node(
       identity: "rn_3TSBT7J8RJ82D478ES4K56B45V",
@@ -3890,7 +3874,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_P4WR8PZ5D6W4TMR1RZ7G87416F",
       id: "namespace-reference-derived-producer-bounded",
       owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md"),
+      carriers: carrier(path: "src/v2/lens/module_graph.dag"),
       line: ticket(t: fields(
         headline: "Give the reference-derived graph producer a bounded realization",
         boundary: "Rewrite the producer so it retains only what its consumers demand. The demand was measured and it is a NAME TABLE, not a syntax population: every lookup the edge fold makes of the index discards the Node, the one genuine Node demand is an equality discriminant in index construction that a per-key digest supplies, and trees is read at one site for the importer's own root.",
@@ -4456,7 +4440,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ",
       id: "self-host-service-family-on-literal-terminal",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/namespace-cut-replacement-plan.md"),
+      carriers: carrier(path: "src/v2/extdeps/languages/dag.dag"),
       line: ticket(t: updated(t: updated(t: updated(t: updated(t: fields(
         headline: "Admit the service declaration family without taxing every identifier",
         boundary: "The G0 service family parses through a grammar terminal that matches one exact word, so the marker words stay ordinary identifiers everywhere else. The parse-door refusals the family needs - missing name, missing brace, volatile, exit-without-arrow, mock-without-expression - keep their separate meanings rather than collapsing into one refusal later in the pipeline.",
@@ -4589,23 +4573,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
     roadmap_node(
-      identity: "rn_DRN7QV1SE98SC0CRJEWZKM96VF",
-      id: "namespace-relocation-batch-grain",
-      owner: "namespace",
-      carriers: carrier(path: "docs/plans/namespace-resolution-design.md"),
-      line: ticket(t: fields(
-        headline: "Admit one declaration relocation, not one file per consumer",
-        boundary: "The namespace wall admits a binding transition at the enclosing-declaration grain, so moving one declaration's home costs one admission file per consuming declaration. Add an exact relocation subject -- from and to declaration references -- whose derived delta population must equal the observed one in both directions, and keep the per-consumer reporting.",
-        displaced_cost: "Moving seven selection rows to their new home authored forty near-identical admission files. The cost falls on the author of any correct relocation, so the wall prices the move rather than the mistake.",
-        first_slice: "Derive the expected binding-delta population for an exact from/to pair from the base graph, and require observed and derived to match both ways.",
-        red_control: "A batch that admits a transition outside its declared relocation reds, as does a relocation whose derived population is incomplete.",
-        out_of_scope: "A module-wide wildcard, a permissive predicate, or aliases left behind at the old home -- each lowers the wall instead of moving its grain.",
-        handback: "Return the relocation subject, its derivation, the both-ways equality and the collapsed file count for a real relocation."
-      )),
-      dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "Name resolution is unique on the chain only when imports bind and producers are bounded; this row closes one of those gaps."),
-    ),
-    roadmap_node(
       identity: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF",
       id: "compiler-identity-invariant-under-corpus-commit",
       owner: "v1-performance",
@@ -4731,7 +4698,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-restart-tailscale"),
     edge(child: "v2-target-realization-gate", parent: "shared-check-lets-and-matches"),
     edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-semantic-waves"),
     edge(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete"),
     edge(child: "namespace-v2-import-completion", parent: "declaration-identity-switchover"),
     edge(child: "v2-emitter-native-bootstrap", parent: "second-generation"),
@@ -4748,7 +4714,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "native-seven", parent: "declaration-provider-outcomes"),
     edge(child: "cross-module-declarations", parent: "declaration-identity-switchover"),
     edge(child: "declaration-identity-switchover", parent: "namespace-binding-kernel"),
-    edge(child: "namespace-semantic-waves", parent: "namespace-reference-derived-closure"),
     edge(child: "second-generation", parent: "v2-emitter-native-crate-partition"),
     edge(child: "second-generation", parent: "native-seven"),
     edge(child: "native-production-admission", parent: "native-frontier-required-lane"),
