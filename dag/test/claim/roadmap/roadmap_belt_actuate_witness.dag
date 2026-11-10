@@ -18,7 +18,7 @@ import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
-  attempt_process_for_node, BeltAttemptPanesObserved, BeltAttemptPanesRefused,
+  attempt_process_for_node, BeltAttemptPanesObserved, BeltAttemptPanesRefused, belt_prior_worker_unit_ended_by_seat_ledger,
     belt_seat_discharge_pass_outcome_from, belt_tick_receipt_json_value, belt_tick_receipt_identity_text,
     belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout,
     belt_covered_claims_all_passed,
@@ -3447,35 +3447,17 @@ test fn a_tick_past_the_retry_bound_or_with_an_unreadable_ledger_spawns_nothing(
     })
 }
 
-// CLAIM R-1 (#15822 row 4, stale slot reconciliation). When the pane system is REFUSED (tmux
-// unavailable after a reboot) but the systemd unit is confirmed ABSENT, the worker is ABSENT --
-// not merely unobserved. This is how the seat ledger reconciles a stale slot: the belt must too.
-// The continuation then reads worker_terminal = true via belt_attempt_unrecoverable(
-// ProviderEventsRefused, WorkerProcessAbsent), and the node dispatches instead of refusing with
-// "continuation-already-running." A node key that has never been dispatched has no unit on srv1.
-test fn a_refused_pane_check_with_a_confirmed_absent_unit_reads_the_worker_absent() -> Bool {
+// CLAIM R-1 (#15822 row 4, disjoint populations; review 38602 / finding 1). A REFUSED pane listing
+// says NOTHING about the pane population, so it must yield WorkerProcessUnobserved -- never
+// WorkerProcessAbsent. Panes and units cover disjoint attempts; concluding absence from a refusal
+// would read a live vendor worker (whose pane the failed check simply could not see) as gone and
+// launch a duplicate beside it. This locks the refusal arm against the widen the review caught.
+test fn a_refused_pane_listing_reads_the_worker_unobserved_never_absent() -> Bool {
   match attempt_process_for_node(
     instance: srv1_live_dashboard_instance(),
     panes: BeltAttemptPanesRefused { reason: "tmux server unavailable: connection refused" },
     node_id: "legacy-stale-reconcile-test",
     attempt_key: "0000000000000000",
-  ) {
-    WorkerProcessAbsent => true
-    WorkerProcessUnobserved { reason: _ } => false
-    WorkerProcessRunning { command: _ } => false
-    WorkerProcessExited { exit_code: _, last_command: _ } => false
-    WorkerProcessSignaled { signal: _, last_command: _ } => false
-  }
-}
-
-// CLAIM R-2 (stale slot, unit name invalid). When the unit name is invalid the check cannot
-// proceed, and the worker stays unobserved with the pane refusal reason -- fail-closed.
-test fn a_refused_pane_check_with_an_invalid_unit_name_stays_unobserved() -> Bool {
-  match attempt_process_for_node(
-    instance: srv1_live_dashboard_instance(),
-    panes: BeltAttemptPanesRefused { reason: "tmux server unavailable" },
-    node_id: "",
-    attempt_key: "k",
   ) {
     WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "tmux server unavailable")
     WorkerProcessAbsent => false
@@ -3483,4 +3465,17 @@ test fn a_refused_pane_check_with_an_invalid_unit_name_stays_unobserved() -> Boo
     WorkerProcessExited { exit_code: _, last_command: _ } => false
     WorkerProcessSignaled { signal: _, last_command: _ } => false
   }
+}
+
+// CLAIM R-2 (the reboot reconciliation asks the unit channel ONLY about a unit-backed attempt;
+// review 38602 / finding 1). An attempt with no placement record was never committed to a unit -- it
+// is a vendor pane attempt (or unstarted). The seat-ledger reboot reconciliation must answer false
+// for it without ever consulting the unit, so a live vendor worker behind a transient pane refusal is
+// never read as ended and double-dispatched. A made-up node/attempt key has no placement record.
+test fn the_seat_ledger_reboot_reconciliation_never_judges_a_non_unit_backed_attempt() -> Bool {
+  belt_prior_worker_unit_ended_by_seat_ledger(
+    instance: srv1_live_dashboard_instance(),
+    node_id: "no-such-legacy-node",
+    attempt_key: "0000000000000000",
+  ) == false
 }
