@@ -43,7 +43,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, NotAModuleItem, ParsedModuleItemKind, declaration_provenance_of,
+import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, NotAModuleItem, ParsedModuleItemKind, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -70,7 +70,7 @@ import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, 
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
+  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch, RefinementCastRefused,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOnInadmissibleType, EqualityOptionalityMismatch, EqualityInstantiationBlindGenericSite, CollectionKeyReachesEqualityRoute,
   TypeArgumentArityMismatch,
@@ -8998,7 +8998,7 @@ fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclaratio
   }
 }
 
-fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading) -> ErrorNode? {
+fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading, int_refinement_cast_domain: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
@@ -9006,7 +9006,28 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         Present { value: d } => grounded_cast_verdict(source: d, target: target_reading)
         Absent => GroundedCastNotDecided
       }
-      if source_name == target_name { none }
+      // IDENTITY IS THE SAME DECLARATION, NEVER THE SAME LEAF NAME (gunbc.design_argument::closed_grounded_substrate:
+      // "Type compatibility keys on the exact declaration a position resolves to, never its leaf name"). A value
+      // already on the target's carrier is admitted by the evaluator's cast_identity_result; the checker must agree
+      // on exactly that population. Keying on authored names (the pre-fix `source_name == target_name`) admitted
+      // `x_a as b.Port` when a.Port and b.Port share a leaf name but are DIFFERENT declarations -- the checker then
+      // stayed silent while the evaluator's non-name identity admit refused it, the fork this claim closes. So: when
+      // BOTH sides resolve to a named declaration, identity is declaration_ref_eq; when a side is a kernel target or
+      // an unresolvable source (a literal, a bare Int) there is no declaration to compare and the authored name is
+      // the only key, which is what the kernel/table domains already judge on.
+      let target_declaration = match target_reading {
+        TypeReferenceNamesDeclaration { declaration: t } => Present { value: t }
+        _ => none
+      }
+      let is_identity_cast = match source_declaration {
+        Present { value: sd } =>
+          match target_declaration {
+            Present { value: td } => declaration_ref_eq(a: sd, b: td)
+            Absent => source_name == target_name
+          }
+        Absent => source_name == target_name
+      }
+      if is_identity_cast { none }
       else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
       else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
         let cause = match grounded {
@@ -9019,6 +9040,29 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
+        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+      }
+      else if int_refinement_cast_domain {
+        // The checker must not admit a cast the v1 evaluator's eval_cast refuses -- that gap is exactly class
+        // gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses. This arm fires only in the
+        // domain where the two provably disagree. The domain (`int_refinement_cast_domain`, computed at the call
+        // site where type_env is in scope) is two kernel facts:
+        //   * target_is_int_refined -- the target is a numeric int-predicate refinement (Int/Nat where range|gt_zero);
+        //   * source_int_kernel -- the source's base kernel is Int/Nat, i.e. it arrives on the runtime Int carrier
+        //     that makes eval_cast take its `Value::Int => refused` arm (a String/Float source is OUT of the domain:
+        //     eval_cast walks the target kernel for those and may ADMIT them, so refusing them here would open the
+        //     OPPOSITE fork -- they stay on the eval-decided path).
+        // IDENTITY (a value already on the target's carrier, e.g. `f() as T` whose return is T) is NOT excluded here
+        // by a leaf-name string: it was admitted above by `is_identity_cast`, which keys on the resolved DeclarationRef
+        // the evaluator's cast_identity_result keys on -- so an identity cast never reaches this arm, and a same-leaf-
+        // name different-declaration source (a.Port as b.Port) DOES reach it and is refused, closing the fork on both
+        // directions rather than only the leaf-name-equal one.
+        // Everything left in the domain is a non-literal or cross-refinement `as T` into a refined Int carrier that
+        // eval_cast refuses with "cannot cast Int to <Name>" while the checker was silent; refusing it at check time
+        // (no implicit route that needs a proof, DESIGN 4) turns the run-time latent outage into a located refusal.
+        // A bare literal written directly in the refined position needs no cast and is judged by the refinement wall;
+        // a value already on another carrier crosses only through a checked constructor.
+        let diag = RefinementCastRefused { source: source_name, target: target_name, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
       else {
@@ -12166,7 +12210,29 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let source_reading = cast_source_host_text_reading(source_inferred: inner_typed.inferred, scope: scope)
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading)
+      let target_resolved = match lookup_type_for(env: scope.type_env, node: target_type) {
+        Present { value: r } => r
+        Absent => target_type
+      }
+      let target_is_int_refined = (type_where_refinement_predicates_transitive(ty: target_resolved, type_env: scope.type_env)
+        |> filter(pred => where_refinement_is_int_literal_predicate(pred_name: field_init_node_name_at(n: pred, source_indices: si)))
+        |> count) > 0
+      let source_int_kernel = match inner_typed.inferred {
+        Present { value: Resolved { node: snode } } =>
+          let sresolved = match lookup_type_for(env: scope.type_env, node: snode) {
+            Present { value: r } => r
+            Absent => snode
+          }
+          let sbase_name = authored_name_at(source_indices: si, node: peel_where_refinement_base(ty: sresolved, type_env: scope.type_env))
+          sbase_name == "Int" || sbase_name == "Nat"
+        _ => false
+      }
+      // The domain is only the two kernel facts the checker cannot judge inside validate_cast (they need type_env).
+      // IDENTITY IS NOT TESTED HERE: it is decided once, declaration-keyed, inside validate_cast (see the
+      // is_identity_cast computation), so a source already on the target carrier is admitted and a same-leaf-name
+      // different-declaration source is refused -- both by the SAME key the evaluator uses, not a leaf-name string.
+      let int_refinement_cast_domain = target_is_int_refined && source_int_kernel
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading, int_refinement_cast_domain: int_refinement_cast_domain)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
@@ -16760,12 +16826,112 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
       }
     }
   }
-  if reader == "" { [] } else {
-    match rhs {
-      Absent => []
-      Present { value: r } => fold(realization_read_names(n: r, source_indices: source_indices), init: [], f: (acc, nm) =>
-        list_push(acc: acc, item: RealizationEdge { reader: reader, name: nm, span: item.span }))
+  concat(realization_wire_contract_row_edges(item: item, source_indices: source_indices),
+    if reader == "" { [] } else {
+      match rhs {
+        Absent => []
+        Present { value: r } => fold(realization_read_names(n: r, source_indices: source_indices), init: [], f: (acc, nm) =>
+          list_push(acc: acc, item: RealizationEdge { reader: reader, name: nm, span: item.span }))
+      }
+    })
+}
+
+// THE ROWS THE RESPONSE DECODE READS BY KEY, AND THE KEY IT READS. A JSON body decodes into a declared
+// type only through rows the declaring type does NOT spell: the interpreter's
+// build_coproduct_wire_contract_index (src/v1/stage0/src/v1_interpreter.rs) selects a coproduct's wire
+// spelling by matching EACH `CoproductWireContract` row's own `coproduct` DeclarationRef against the
+// coproduct's (module path, authored name), and resolve_module_encoding finds a module's default by the
+// data item named `wire_contract`, following an alias chain. Nothing in the declaring type's row names
+// either row: the contract lives in a sibling `_contracts` module that the type's module merely IMPORTS,
+// and an import is not a use. So the key is in no inventory -- neither spelled, nor a reader family's
+// declared edge, nor re-derivable from the typed form -- which is exactly the case
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag recorded as "no such read is
+// known". It is known now: with these rows excluded the index comes up empty, decode_nullary_coproduct
+// answers NoWireContract (v1_interpreter.rs), and the heal publisher's github.Pulls.Get printed
+// 'status 200 undecodable' for every PR it read. The class enters the way every other reading check
+// does: the CATEGORY the reader keys over is seeded, because no declaration can name it, and the key read
+// each row performs -- its own `coproduct` DeclarationRef -- is a declared edge, so growth follows it and
+// the boundary audit polices it. The category is the reader's own key set, not a list of names this file
+// wants: every data row whose declared type is `CoproductWireContract`, and every data row the reader can
+// find under the name `wire_contract`.
+fn realization_wire_contract_read_row(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if item.module_item_kind != ModuleItemDataValue {
+    false
+  } else if item.name == "wire_contract" {
+    true
+  } else {
+    match item.type_annotation {
+      Present { value: ta } =>
+        realization_last_segment(
+          name: authored_name_at(source_indices: source_indices, node: ta),
+          pos: 0,
+          length: string_length(s: authored_name_at(source_indices: source_indices, node: ta)))
+          == "CoproductWireContract"
+        && match item.body {
+             Present { value: body } =>
+               realization_record_field_value(record: body, field_name: "coproduct", source_indices: source_indices) != none
+               && realization_record_field_value(record: body, field_name: "encoding", source_indices: source_indices) != none
+             Absent => false
+           }
+      Absent => false
     }
+  }
+}
+
+// The rows of that category, by the closure's own authored names: seeds of the demanded set, because the
+// only thing that could name them is a reader that holds its key in another module's row.
+fn realization_wire_contract_read_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  fold(modules, init: [], f: (acc, m) =>
+    fold(module_items(n: m.module), init: acc, f: (a, item) =>
+      if !realization_wire_contract_read_row(item: item, source_indices: source_indices) { a }
+      else { list_push(acc: a, item: authored_name_at(source_indices: source_indices, node: item)) }))
+}
+
+// THE KEY READ THE ROW PERFORMS. A contract row IS a lookup key the interpreter holds: its `coproduct`
+// DeclarationRef designates the coproduct whose wire spelling it declares. The row names that
+// declaration by no lexeme of its own that the type reader walks, so the edge is declared here, named the
+// way the reader matches it (the DeclarationRef's `decl_name`, the segment it compares): a row whose key
+// designates a declaration this run did not realize then refuses at check time under reader
+// `wire_contract_index`, instead of leaving the run to answer 'no such coproduct' at the first body that
+// reaches it. A module's `wire_contract` default row carries no `coproduct` field and owes nothing: what
+// it decodes is decided by which module asks.
+fn realization_wire_contract_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  if !realization_wire_contract_read_row(item: item, source_indices: source_indices) { [] }
+  else {
+    match realization_wire_contract_row_target(item: item, source_indices: source_indices) {
+      Absent => []
+      Present { value: target } => list_push([], RealizationEdge { reader: "wire_contract_index", name: target, span: item.span })
+    }
+  }
+}
+
+// The coproduct a contract row designates: the `decl_name` of its body's `coproduct` DeclarationRef, read
+// the way the emitter reads the same field (v1.compiler.emit_rust coproduct_decl_ref_decl_name, whose
+// field_value_by_name / record_string_field idiom is reproduced here because 05_emit_rust sits downstream
+// of this file and its helpers cannot be imported upstream).
+fn realization_wire_contract_row_target(item: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match item.body {
+    Present { value: body } => match realization_record_field_value(record: body, field_name: "coproduct", source_indices: source_indices) {
+      Present { value: decl_ref_node } => realization_record_string_field(record: decl_ref_node, field_name: "decl_name", source_indices: source_indices)
+      Absent => none
+    }
+    Absent => none
+  }
+}
+
+// One field-init of a record body, by the name the parser recorded for it (the emitter's field_value_by_name).
+fn realization_record_field_value(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field_name) |> first {
+    Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+    Absent => none
+  }
+}
+
+// A record field that must be a string literal, read as the emitter reads it (record_string_field).
+fn realization_record_string_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match realization_record_field_value(record: record, field_name: field_name, source_indices: source_indices) {
+    Present { value: n } => expr_literal_string_optional(expr: n)
+    Absent => none
   }
 }
 
@@ -16856,7 +17022,8 @@ fn realization_names(modules: List<ResolvedModule>, seeds: List<String>, source_
   let declaration_index = fold(items, init: empty_map(), f: (idx, item) =>
     let nm = authored_name_at(source_indices: source_indices, node: item)
     map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item)))
-  let seeded = fold(seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let demand_seeds = concat(seeds, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+  let seeded = fold(demand_seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let first = fold(map_keys(seeded), init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, nm) =>
     fold(match map_get(declaration_index, nm) { Present { value: l } => l  Absent => [] }, init: w, f: (a, item) =>
       demand_wave_add(w: a, item: item, source_indices: source_indices)))

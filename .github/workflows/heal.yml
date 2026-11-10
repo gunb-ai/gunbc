@@ -110,7 +110,7 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
       - name: Converge the stage0 mirrors to the seed's own fixed point
-        run: target/release/claim_executor --regen-round-cost --base-mirror --source-root dag --source-root src/v2
+        run: target/release/claim_executor --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2
         env:
           HEAL_BASE_MIRROR_COMMIT: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
       - name: Refuse stage0/writer overlap, regenerate the seed-build artifacts, produce the sealed repair candidate

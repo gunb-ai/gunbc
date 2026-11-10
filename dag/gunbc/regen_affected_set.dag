@@ -386,6 +386,55 @@ fn regen_affected_set_over_change(
   }
 }
 
+// THE BOUND OVER A CHANGE WHOSE BASE HAS MOVED ON (gunbc.plans.read_set_convergence P2, operator decision
+// 2026-11-10: edits from the merge-base plus the generator delta). Heal's round emits HEAD's population
+// with a seed built from the BASE commit, while HEAD's committed mirrors were emitted by the seed at the
+// merge-base. Two observations, two questions:
+// - the change HEAD made (merge-base..HEAD) is bounded by regen_affected_set_over_change, as before;
+//   main's other commits are not this change, and folding them in answered WholePopulation for nearly
+//   every pull request;
+// - what the base changed since the merge-base (merge-base..base) matters only where it changed the
+//   GENERATOR: a seed build input (`base_delta_paths`, read by regen_seed_source_edits) or the mirror of a
+//   module the generator is built from (`base_delta_modules`). The generator is every generation-role
+//   module (regen_generation_role_modules, bootstrap sources included) AND what they import: a shared
+//   `std` module the emitter calls is compiled into the seed beside it, so the delta's modules are
+//   walked to their reverse closure first, the same walk the change's own bound takes, and the delta
+//   is a generator change when that closure reaches a generation-role module. Either can change any
+//   mirror the seed emits, so the answer is the whole population. A base change to any other module's
+//   mirror or `.dag` is not on HEAD and does not change what the seed emits for HEAD.
+// An unlocatable edit still refuses first.
+fn regen_affected_set_over_diverged_change(
+  base_delta_paths: List<String>,
+  base_delta_modules: List<String>,
+  non_module_paths: List<String>,
+  population_changes: List<String>,
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> AffectedSetBound {
+  let seed = regen_seed_source_edits(paths: base_delta_paths)
+  let generators = regen_generation_role_modules(
+    modules: regen_reverse_closure(edited: base_delta_modules, edges: edges, modules: modules)
+  )
+  if count(unlocatable) == 0 && count(seed) > 0 {
+    WholePopulation { edited: edited, generation_inputs: seed }
+  } else if count(unlocatable) == 0 && count(generators) > 0 {
+    WholePopulation { edited: edited, generation_inputs: generators }
+  } else {
+    regen_affected_set_over_change(
+      non_module_paths: non_module_paths,
+      population_changes: population_changes,
+      edited: edited,
+      unlocatable: unlocatable,
+      edges: edges,
+      compared: compared,
+      modules: modules
+    )
+  }
+}
+
 fn regen_affected_set_bound_line(bound: AffectedSetBound) -> String {
   match bound {
     AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } =>

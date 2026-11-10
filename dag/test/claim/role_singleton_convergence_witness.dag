@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all, census_exit, CensusVerdict }
 import gunbc.live_deploy.role_singleton_convergence {
-  BrokerUnitMember, FabricUnitMember, StoreMarkerMember,
+  BrokerUnitMember, StoreMarkerMember,
   RoleSingletonSighting, SightedDeploymentMember, SightedBroker,
   HostRoleSingletonReading, HostRoleSingletonsRead, HostRoleSingletonsUnobservable,
   RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonStaleSpec,
@@ -56,7 +56,6 @@ fn decide(desired: ProdRoleRealization, readings: List<HostRoleSingletonReading>
 fn complete_on(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
   [
     SightedBroker { host: host as NonEmptyStr },
-    SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: FabricUnitMember },
     SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: StoreMarkerMember },
   ]
 }
@@ -74,7 +73,6 @@ test fn the_same_deployment_on_two_hosts_refuses() -> Bool {
 test fn a_holder_with_its_units_and_no_marker_noops() -> Bool {
   let units = [
     SightedBroker { host: "srv1" as NonEmptyStr },
-    SightedDeploymentMember { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, member: FabricUnitMember },
   ]
   match decide(desired: prod_role_actuated_realization(), readings: [
     read_on(host: "srv1", sightings: units),
@@ -127,7 +125,6 @@ fn complete_srv1_empty_peers_source() -> RoleSingletonReadingSource {
           host: host,
           sightings: [
             SightedBroker { host: host },
-            SightedDeploymentMember { host: host, deployment: holder.instance.deployment, member: FabricUnitMember },
           ],
         }
       } else {
@@ -146,7 +143,6 @@ fn srv2_unobservable_peers_source() -> RoleSingletonReadingSource {
           host: host,
           sightings: [
             SightedBroker { host: host },
-            SightedDeploymentMember { host: host, deployment: holder.instance.deployment, member: FabricUnitMember },
           ],
         }
       } else if (host as String) == (srv2 as String) {

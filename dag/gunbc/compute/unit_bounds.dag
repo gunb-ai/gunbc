@@ -20,8 +20,8 @@ import extdeps.systemd.systemd_run {
 import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
-  modeled_system_slice_memory_max,
 }
+import gunbc.live_deploy.spec { modeled_system_slice_memory_max }
 import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.runner.runner_unit { runner_unit_prefix }
 
@@ -155,8 +155,11 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // in a declared slot cgroup, not because the user manager is missing.
 // ExemptSystemUnit skips only when a cgroup path segment is a recognized slice
 // AND that slice's live memory.max is finite (live_modeled_slice_standing), carrying
-// the local bound. recognized_system_slice is a name census: sessions.slice plus
-// units whose declared memory_max is positive (modeled_system_slice_memory_max).
+// the local bound. recognized_system_slice is a name census: sessions.slice, or a unit the single
+// lookup gunbc.live_deploy.spec modeled_system_slice_memory_max resolves to a positive declared
+// memory_max. recognized DELEGATES to that lookup (matching Present/Absent) rather than re-writing the
+// positive-cap predicate, so "which system slices are capped, and by how much" is written in exactly one
+// place.
 // Those declared magnitudes are not the skip bound; skip vs UncappedSystemSlice
 // is only the live memory.max. Unreadable, unbounded, or zero live memory.max
 // refuses UncappedSystemSlice.

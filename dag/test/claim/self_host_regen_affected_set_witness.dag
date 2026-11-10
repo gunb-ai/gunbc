@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import gunbc.regen_affected_set {
   DependencyEdge, MirrorRow, BootstrapEdge, AffectedSetBound, AffectedMirrors, WholePopulation, EditedSetUnlocatable,
   regen_affected_set, regen_reverse_closure, regen_affected_set_members, regen_affected_set_bound_line,
-  regen_affected_set_over_change
+  regen_affected_set_over_change, regen_affected_set_over_diverged_change
 }
 
 // WHAT THIS WITNESS COVERS: the bound's three arms and the reverse walk, on a fixture graph
@@ -156,5 +156,67 @@ test fn w_RED_an_added_or_deleted_module_answers_whole_population() -> Bool {
   is_whole_with(
     bound: regen_affected_set_over_change(non_module_paths: [], population_changes: ["dag/std/orphan.dag"], edited: ["std.orphan"], unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules),
     inputs: ["dag/std/orphan.dag"]
+  )
+}
+
+// ═══ A BASE THAT HAS MOVED ON (gunbc.plans.read_set_convergence P2, operator decision 2026-11-10) ═══
+
+fn diverged_bound(base_delta_paths: List<String>, base_delta_modules: List<String>, edited: List<String>) -> AffectedSetBound {
+  regen_affected_set_over_diverged_change(base_delta_paths: base_delta_paths, base_delta_modules: base_delta_modules, non_module_paths: [], population_changes: [], edited: edited, unlocatable: [], edges: fixture_edges, compared: fixture_compared, modules: fixture_modules)
+}
+
+// THE DISCRIMINATING RED for the generator delta: the base changed the emitter's mirror since the merge-base,
+// so the seed the round builds emits differently from the one that emitted HEAD's mirrors -- the whole
+// population, even though HEAD's own edit selects one mirror.
+test fn w_RED_a_base_generator_mirror_change_answers_whole_population() -> Bool {
+  is_whole_with(bound: diverged_bound(base_delta_paths: [], base_delta_modules: ["v1.compiler.emit_rust"], edited: ["gunbc.d"]), inputs: ["v1.compiler.emit_rust"])
+}
+
+// The same for a hand-maintained seed source the base changed.
+test fn w_RED_a_base_seed_source_change_answers_whole_population() -> Bool {
+  is_whole_with(bound: diverged_bound(base_delta_paths: ["src/v1/stage0/src/cli_run.rs", "docs/notes.md"], base_delta_modules: [], edited: ["gunbc.d"]), inputs: ["src/v1/stage0/src/cli_run.rs"])
+}
+
+// THE GENERATOR IS ALSO WHAT IT IMPORTS: the base changed the mirror of std.a, which the emitter imports,
+// so the seed is compiled from a different std.a and emits differently -- whole population, naming the
+// generation-role module the walk reached.
+test fn w_RED_a_base_change_to_a_module_the_emitter_imports_answers_whole_population() -> Bool {
+  is_whole_with(bound: diverged_bound(base_delta_paths: [], base_delta_modules: ["std.a"], edited: ["gunbc.d"]), inputs: ["v1.compiler.emit_rust"])
+}
+
+// THE REVIEWED SPECIMEN (side-chat review of #16239 at 3b1fc29): v1.compiler.infer_types imports
+// std.coercion (src/v1/04_types.dag) and the seed calls its mirror's select_arithmetic_carrier during
+// inference. A base that changed only std_coercion.rs, under a plan-only HEAD, must not select zero
+// mirrors. The live tree's edge is the fixture edge here; the real-tree control runs the dry run
+// (claim_executor --regen-affected-set) over a real history.
+test fn w_RED_a_base_change_to_std_coercion_under_a_plan_only_head_answers_whole_population() -> Bool {
+  is_whole_with(
+    bound: regen_affected_set_over_diverged_change(
+      base_delta_paths: [],
+      base_delta_modules: ["std.coercion"],
+      non_module_paths: [],
+      population_changes: [],
+      edited: ["gunbc.plans.read_set_convergence"],
+      unlocatable: [],
+      edges: [DependencyEdge { from: "v1.compiler.infer_types", to: "std.coercion" }],
+      compared: [
+        MirrorRow { module: "std.coercion", basename: "std_coercion.rs" },
+        MirrorRow { module: "v1.compiler.infer_types", basename: "v1_compiler_infer_types.rs" },
+        MirrorRow { module: "gunbc.plans.read_set_convergence", basename: "gunbc_plans_read_set_convergence.rs" }
+      ],
+      modules: ["std.coercion", "v1.compiler.infer_types", "gunbc.plans.read_set_convergence"]
+    ),
+    inputs: ["v1.compiler.infer_types"]
+  )
+}
+
+// POSITIVE CONTROL: the base's other commits -- mirrors of modules no generator reaches (gunbc.c is an
+// importer of the emitter's import, not an import of the emitter; std.x is imported only by gunbc.d), a
+// `.dag` HEAD does not carry, a seed-build artifact heal wrote -- are not this change, and HEAD's own
+// bound is unchanged.
+test fn a_base_change_outside_the_generator_keeps_the_change_bound() -> Bool {
+  same_members(
+    a: mirrors_of(bound: diverged_bound(base_delta_paths: ["dag/std/x.dag", "src/v1/stage0/src/instrument_registry_generated.rs"], base_delta_modules: ["gunbc.c", "std.x"], edited: ["gunbc.d"])),
+    b: ["gunbc_d.rs"]
   )
 }

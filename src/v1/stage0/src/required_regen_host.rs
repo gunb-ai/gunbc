@@ -5926,6 +5926,7 @@ fn partition_move_explained_by_this_change(
             let mut args = affected_set_model_args(
                 ctx,
                 &population.edited_modules,
+                &population.edited_modules,
                 &population.unlocatable,
                 &edges,
                 &compared,
@@ -8756,6 +8757,16 @@ pub fn run_regen_round_cost(
     // re-exec'd image takes the carried value. The liveness model supervises that child, so it is
     // loaded first.
     let liveness_model = SupervisedSubjectModel::load(source_roots)?;
+
+    // A SCOPED ROUND BOOTSTRAPS ONLY FROM A BASE THAT SPEAKS ITS PROTOCOL (side-chat review of #16236 at
+    // e9a1516). Round 1 builds the seed from the base commit's crate and re-execs into it; that image
+    // reads the scope this image decided (`carried_emission_scope`), which a base older than P2a cannot
+    // do. A pull-request run's base is main and carries it, but a manual dispatch names any base, so
+    // the owning image refuses here, before recovery, bootstrap or re-exec.
+    if affected_scope && base_mirror && handoff_in.is_none() {
+        let base = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
+        scoped_round_base_admission(&workspace, base.as_deref(), SCOPED_ROUND_PROTOCOL_FLOOR)?;
+    }
 
     let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
         .as_ref()
@@ -11923,15 +11934,23 @@ fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
 
 /// The arguments `gunbc.regen_affected_set regen_affected_set` is asked with, one construction for
 /// the bound's own run and for the partition-move decision that consumes the typed bound.
+/// `walk_roots` bounds the subgraph handed to the model, and must name every set the model walks
+/// from: the change's own `edited` always, and for a diverged change the base delta's modules too
+/// (`regen_affected_set_over_diverged_change` walks them separately). A subgraph bounded by
+/// `edited` alone would hand the base-delta walk no edges -- for a plan-only change, none at all --
+/// so a base change to a module the emitter imports would select nothing (side-chat review of
+/// #16239 at 916dd47). The model's walk from `edited` over the wider subgraph reaches the same set,
+/// because every edge into that set is still present.
 fn affected_set_model_args(
     ctx: &crate::v1_interpreter::InterpContext,
+    walk_roots: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
     compared: &[(String, String)],
 ) -> Vec<(Option<String>, crate::v1_interpreter::Value)> {
     use crate::v1_interpreter::{str_value, Value};
-    let reached = regen_reverse_closure_host(edited, edges);
+    let reached = regen_reverse_closure_host(walk_roots, edges);
     let edge_values: Vec<Value> = edges
         .iter()
         .filter(|(_, to)| reached.contains(to))
@@ -11980,6 +11999,7 @@ fn affected_set_model_args(
 /// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
 pub fn render_affected_set_bound(
     source_roots: &[String],
+    base_delta: &BaseDelta<'_>,
     non_module_paths: &[String],
     population_changes: &[String],
     edited: &[String],
@@ -11997,7 +12017,14 @@ pub fn render_affected_set_bound(
 
     // The bound over a whole change takes the model's shared arguments plus the change's other paths
     // (`regen_affected_set_over_change`); the partition-move explanation reads the shared ones alone.
-    let mut args = affected_set_model_args(&ctx, edited, unlocatable, edges, compared);
+    let walk_roots: Vec<String> = edited
+        .iter()
+        .chain(base_delta.modules.iter())
+        .cloned()
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect();
+    let mut args = affected_set_model_args(&ctx, &walk_roots, edited, unlocatable, edges, compared);
     args.push((
         Some("non_module_paths".to_string()),
         Value::List(Rc::new(
@@ -12018,15 +12045,26 @@ pub fn render_affected_set_bound(
                 .into(),
         )),
     ));
+    for (name, items) in [
+        ("base_delta_paths", base_delta.paths),
+        ("base_delta_modules", base_delta.modules),
+    ] {
+        args.push((
+            Some(name.to_string()),
+            Value::List(Rc::new(
+                items.iter().map(str_value).collect::<Vec<Value>>().into(),
+            )),
+        ));
+    }
     let bound = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
             &ctx,
-            "regen_affected_set_over_change",
+            "regen_affected_set_over_diverged_change",
             &args,
             false,
         )
     })
-    .map_err(|e| format!("refusal: regen_affected_set_over_change did not answer: {e}"))?;
+    .map_err(|e| format!("refusal: regen_affected_set_over_diverged_change did not answer: {e}"))?;
     let bound_arg = vec![(Some("bound".to_string()), bound)];
     let line = match v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
@@ -12120,6 +12158,7 @@ pub fn affected_set_bound_for(
     unlocatable: &[String],
     non_dag_paths: &[String],
     population_changes: &[String],
+    base_delta: &[String],
 ) -> Result<AffectedSetBound, String> {
     let (edges, modules) = regen_module_edges(workspace)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
@@ -12138,8 +12177,29 @@ pub fn affected_set_bound_for(
         }
     }
     let edited: Vec<String> = edited_modules.into_iter().collect();
+    // The base delta is translated by the same mirror join: a committed mirror the base changed
+    // names its module (the model asks whether that module is a generator); every other path stays
+    // a path (the model asks whether it is a seed build input).
+    let mut base_delta_modules = BTreeSet::new();
+    let mut base_delta_paths = Vec::new();
+    for path in base_delta {
+        match compared
+            .iter()
+            .find(|(_, basename)| path == &format!("src/v1/stage0/src/{basename}"))
+        {
+            Some((module, _)) => {
+                base_delta_modules.insert(module.clone());
+            }
+            None => base_delta_paths.push(path.clone()),
+        }
+    }
+    let base_delta_modules: Vec<String> = base_delta_modules.into_iter().collect();
     render_affected_set_bound(
         source_roots,
+        &BaseDelta {
+            paths: &base_delta_paths,
+            modules: &base_delta_modules,
+        },
         &non_module_paths,
         population_changes,
         &edited,
@@ -12147,6 +12207,12 @@ pub fn affected_set_bound_for(
         &edges,
         &compared,
     )
+}
+
+/// What the base changed since the merge-base, as the mirror join split it.
+pub struct BaseDelta<'a> {
+    pub paths: &'a [String],
+    pub modules: &'a [String],
 }
 
 /// The model's own answer for one scope, over one committed roster.
@@ -12277,46 +12343,152 @@ fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String>
         })
 }
 
-/// THE CHANGE A SCOPED ROUND OBSERVES (gunbc.plans.read_set_convergence P2). Inside heal the round
-/// bootstraps from one exact base commit (`HEAL_BASE_MIRROR_COMMIT`), so the change it scopes must be the
-/// exact difference between that commit and HEAD -- a two-dot `git diff <base> HEAD`, never the CI
-/// policy's merge-base form. When the base branch has moved on since the pull request diverged, a
-/// merge-base diff omits the base-only changes, and a module the base added (with its committed mirror)
-/// would be invisible to the scope while the round bootstraps from a mirror that carries it. Outside
-/// heal (no base commit bound) the observation is the floor's own diff range, as before. The report
-/// (`--regen-affected-set`) and the round read this one function, so a dry run answers what the round
-/// will scope.
-fn scoped_round_change_diff(workspace: &Path) -> Result<String, String> {
+/// THE CHANGE A SCOPED ROUND OBSERVES (gunbc.plans.read_set_convergence P2; operator decision 2026-11-10:
+/// edits from the merge-base plus the generator delta). Inside heal the round bootstraps its seed from one
+/// exact base commit (`HEAL_BASE_MIRROR_COMMIT`), while HEAD's committed mirrors were emitted by the seed
+/// at the merge-base `M = merge-base(base, HEAD)`. So two observations, kept apart:
+/// - `diff_text`, `M..HEAD`: the change this pull request made. The earlier two-dot `base..HEAD` folded
+///   every commit the base gained since the branch point into "the change" and answered the whole
+///   population for nearly every pull request (measured on #16236);
+/// - `base_delta`, the paths `M..base` changed: what the generator may have gained. The model
+///   (`regen_affected_set_over_diverged_change`) decides which of them change emission.
+/// Outside heal (no base commit bound) the observation is the floor's own diff range and the base delta
+/// is empty, as before. The report (`--regen-affected-set`) and the round read this one function, so a
+/// dry run answers what the round will scope.
+struct ScopedRoundChange {
+    diff_text: String,
+    base_delta: Vec<String>,
+}
+
+fn scoped_round_change(workspace: &Path) -> Result<ScopedRoundChange, String> {
     let bound = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
     match bound.as_deref().map(str::trim) {
-        Some(commit) if !commit.is_empty() => exact_base_change_diff(workspace, commit),
-        _ => super::required_floor_runner::floor_git_diff_range(),
+        Some(commit) if !commit.is_empty() => exact_base_change(workspace, commit),
+        _ => Ok(ScopedRoundChange {
+            diff_text: super::required_floor_runner::floor_git_diff_range()?,
+            base_delta: Vec::new(),
+        }),
     }
 }
 
-/// `git diff -U0 <base> HEAD`, two-dot, for one well-formed 40-hex base commit.
-fn exact_base_change_diff(workspace: &Path, base: &str) -> Result<String, String> {
-    let base = base.to_string();
+fn scoped_round_git(workspace: &Path, args: &[&str]) -> Result<String, String> {
+    let shown = args.join(" ");
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("refusal: git {shown} could not run: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "refusal: git {shown} failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout).map_err(|e| format!("refusal: git {shown} is not UTF-8: {e}"))
+}
+
+/// THE OLDEST COMMIT WHOSE SEED SPEAKS THE SCOPED-ROUND PROTOCOL: the P2a landing (#16198), which added
+/// the carried scope a re-exec'd base image reads. A later change to that protocol moves this floor in
+/// the same change.
+const SCOPED_ROUND_PROTOCOL_FLOOR: &str = "b5a924921eaa8b564a7d3e511b3514c09c9b83c9";
+
+/// THE BASE A SCOPED BASE-MIRROR ROUND OWNS MUST BE NAMED (side-chat review of #16236 at 02e160d): an
+/// unset, empty or blank `HEAL_BASE_MIRROR_COMMIT` refuses here, before recovery and before the
+/// zero-work return, instead of letting the scope fall back to the floor's diff and answer
+/// `NoAffectedMirrors` for a round whose base was never established. A named base must then carry
+/// the protocol.
+fn scoped_round_base_admission(
+    workspace: &Path,
+    base: Option<&str>,
+    floor: &str,
+) -> Result<(), String> {
+    match base.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(base) => scoped_round_base_carries_protocol(workspace, base, floor),
+        None => Err(format!(
+            "refusal: a scoped base-mirror round (--base-mirror --regen-affected-scope) needs \
+             {REGEN_ROUND_COST_BASE_MIRROR_ENV} to name its base commit, and it is unset or blank"
+        )),
+    }
+}
+
+/// Refuses unless `floor` is an ancestor of (or equal to) `base`. A base that cannot be resolved, or an
+/// ancestry git cannot decide, refuses too: the protocol is not established, and the round does not
+/// guess.
+fn scoped_round_base_carries_protocol(
+    workspace: &Path,
+    base: &str,
+    floor: &str,
+) -> Result<(), String> {
+    let status = Command::new("git")
+        .args(["merge-base", "--is-ancestor", floor, base])
+        .current_dir(workspace)
+        .status()
+        .map_err(|e| format!("refusal: git merge-base --is-ancestor could not run: {e}"))?;
+    match status.code() {
+        Some(0) => Ok(()),
+        Some(1) => Err(format!(
+            "refusal: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base} predates the scoped-round protocol \
+             (it does not contain {floor}), so the seed it bootstraps could not read the carried scope; \
+             dispatch with a newer base or without --regen-affected-scope"
+        )),
+        _ => Err(format!(
+            "refusal: whether {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base} contains the scoped-round \
+             protocol ({floor}) could not be established ({status})"
+        )),
+    }
+}
+
+/// The two observations for one well-formed 40-hex base commit. A merge-base that cannot be named
+/// (unrelated or truncated history) refuses: neither observation can be stated without it, and the
+/// round does not widen in its place.
+fn exact_base_change(workspace: &Path, base: &str) -> Result<ScopedRoundChange, String> {
     if base.len() != 40 || !base.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(format!(
             "refusal: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base} is not a 40-hex commit id, so the \
              scoped round cannot name the exact base it diffs against"
         ));
     }
-    let output = Command::new("git")
-        .args(["diff", "-U0", "--no-renames", "--no-color", &base, "HEAD"])
-        .current_dir(workspace)
-        .output()
-        .map_err(|e| format!("refusal: git diff {base} HEAD could not run: {e}"))?;
-    if !output.status.success() {
+    let merge_base = scoped_round_git(workspace, &["merge-base", base, "HEAD"])?
+        .trim()
+        .to_string();
+    if merge_base.len() != 40 {
         return Err(format!(
-            "refusal: git diff {base} HEAD failed ({}): {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
+            "refusal: git merge-base {base} HEAD named no single commit ({merge_base:?}), so the \
+             scoped round cannot separate this change from the base's"
         ));
     }
-    String::from_utf8(output.stdout)
-        .map_err(|e| format!("refusal: git diff {base} HEAD is not UTF-8: {e}"))
+    let diff_text = scoped_round_git(
+        workspace,
+        &[
+            "diff",
+            "-U0",
+            "--no-renames",
+            "--no-color",
+            &merge_base,
+            "HEAD",
+        ],
+    )?;
+    let base_delta = scoped_round_git(
+        workspace,
+        &[
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "--no-color",
+            &merge_base,
+            base,
+        ],
+    )?
+    .lines()
+    .map(str::trim)
+    .filter(|line| !line.is_empty())
+    .map(str::to_string)
+    .collect();
+    Ok(ScopedRoundChange {
+        diff_text,
+        base_delta,
+    })
 }
 
 /// THE BOUND AS A SCOPE, derived from the same edited population `run_regen_affected_set`
@@ -12336,8 +12508,8 @@ pub fn regen_emission_scope_for_diff(
     // refuses before the diff is read rather than being scoped by an observation blind to it.
     // `v2.workflow.regen_scope_worktree` owns the predicate and the refusal text.
     regen_scope_worktree_admitted(source_roots)?;
-    let diff_text = scoped_round_change_diff(workspace)?;
-    let population = edited_population_from_diff(workspace, &diff_text);
+    let change = scoped_round_change(workspace)?;
+    let population = edited_population_from_diff(workspace, &change.diff_text);
     let bound = affected_set_bound_for(
         workspace,
         source_roots,
@@ -12345,6 +12517,7 @@ pub fn regen_emission_scope_for_diff(
         &population.unlocatable,
         &population.non_dag_paths,
         &population.population_changes,
+        &change.base_delta,
     )?;
     let scope = match bound.arm.as_str() {
         "AffectedMirrors" => RegenEmissionScope::Affected {
@@ -12396,8 +12569,8 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
     let workspace = workspace_root();
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
-    let diff_text = scoped_round_change_diff(&workspace)?;
-    let population = edited_population_from_diff(&workspace, &diff_text);
+    let change = scoped_round_change(&workspace)?;
+    let population = edited_population_from_diff(&workspace, &change.diff_text);
     let bound = affected_set_bound_for(
         &workspace,
         source_roots,
@@ -12405,6 +12578,7 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
         &population.unlocatable,
         &population.non_dag_paths,
         &population.population_changes,
+        &change.base_delta,
     )?;
     let mut rendered = format!(
         "regen-affected-set: producer={REGEN_AFFECTED_SET_PRODUCER} host={} tree={tree} tree_dirty={tree_dirty}\n",
@@ -12602,11 +12776,13 @@ mod regen_affected_set_tests {
         .collect()
     }
 
-    /// THE SCOPED ROUND DIFFS AGAINST THE EXACT BASE IT BOOTSTRAPS FROM. Diverged histories: the base
-    /// commit added a module (and its mirror) after HEAD's branch point. A merge-base diff would omit
-    /// it; the two-dot diff names it (as a path HEAD lacks), so the scope's population-change arm sees it.
+    /// THE SCOPED ROUND SEPARATES THIS CHANGE FROM THE BASE'S. Diverged histories: HEAD edited one
+    /// module; the base, after HEAD's branch point, added a module and edited a seed source. The PR's
+    /// edit is the change (merge-base..HEAD) and the base's commits are not; they arrive as the base
+    /// delta, where the model decides which change the generator. A merge commit that brings the base
+    /// in moves the merge-base, and the delta empties.
     #[test]
-    fn exact_base_change_diff_includes_base_only_changes_on_diverged_histories() {
+    fn exact_base_change_separates_the_change_from_the_base_delta_on_diverged_histories() {
         let dir = std::env::temp_dir().join(format!(
             "gunbc-exact-base-diff-{}-{}",
             std::process::id(),
@@ -12616,6 +12792,7 @@ mod regen_affected_set_tests {
                 .unwrap_or(0)
         ));
         std::fs::create_dir_all(dir.join("dag/std")).expect("fixture dir");
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
         let git = |args: &[&str]| {
             let out = Command::new("git")
                 .args(["-c", "user.email=t@t", "-c", "user.name=t"])
@@ -12632,6 +12809,7 @@ mod regen_affected_set_tests {
         };
         git(&["init", "-q", "-b", "main"]);
         std::fs::write(dir.join("dag/std/a.dag"), "module std.a\n").expect("write");
+        std::fs::write(dir.join("src/v1/stage0/src/cli_run.rs"), "// seed\n").expect("write");
         git(&["add", "-A"]);
         git(&["commit", "-qm", "root"]);
         git(&["checkout", "-q", "-b", "head"]);
@@ -12643,24 +12821,63 @@ mod regen_affected_set_tests {
             "module std.added_on_base\n",
         )
         .expect("write");
+        std::fs::write(dir.join("src/v1/stage0/src/cli_run.rs"), "// seed v2\n").expect("write");
         git(&["add", "-A"]);
-        git(&["commit", "-qm", "base adds a module"]);
+        git(&["commit", "-qm", "base adds a module and edits the seed"]);
         let base = git(&["rev-parse", "HEAD"]);
         git(&["checkout", "-q", "head"]);
-        let diff = exact_base_change_diff(&dir, &base).expect("diff");
-        let population = edited_population_from_diff(&dir, &diff);
+
+        let change = exact_base_change(&dir, &base).expect("change");
+        let population = edited_population_from_diff(&dir, &change.diff_text);
+        assert_eq!(population.edited_modules, vec!["std.a".to_string()]);
         assert!(
-            population
-                .population_changes
-                .contains(&"dag/std/added_on_base.dag".to_string()),
-            "the base-only module must be a population change: {:?}",
-            population.population_changes
+            population.population_changes.is_empty() && population.non_dag_paths.is_empty(),
+            "the base's commits are not this change: {:?} {:?}",
+            population.population_changes,
+            population.non_dag_paths
         );
-        let three_dot = git(&["diff", "--name-only", &format!("{base}...HEAD")]);
-        assert!(
-            !three_dot.contains("added_on_base"),
-            "control: the merge-base diff omits it ({three_dot})"
+        let mut delta = change.base_delta.clone();
+        delta.sort();
+        assert_eq!(
+            delta,
+            vec![
+                "dag/std/added_on_base.dag".to_string(),
+                "src/v1/stage0/src/cli_run.rs".to_string()
+            ],
+            "the base's commits arrive as the base delta"
         );
+
+        // Bringing the base in moves the merge-base: the delta empties and the change is HEAD's own.
+        git(&["merge", "-q", "--no-edit", &base]);
+        let merged = exact_base_change(&dir, &base).expect("change after merge");
+        assert!(merged.base_delta.is_empty(), "{:?}", merged.base_delta);
+        assert_eq!(
+            edited_population_from_diff(&dir, &merged.diff_text).edited_modules,
+            vec!["std.a".to_string()]
+        );
+
+        // THE PROTOCOL FLOOR: a base that contains the floor commit is admitted, a base that predates
+        // it refuses, and an unresolvable floor refuses rather than admitting.
+        let root = git(&["rev-list", "--max-parents=0", "HEAD"]);
+        assert!(scoped_round_base_carries_protocol(&dir, &base, &root).is_ok());
+        assert!(scoped_round_base_carries_protocol(&dir, &root, &base).is_err());
+        assert!(scoped_round_base_carries_protocol(&dir, &base, &"0".repeat(40)).is_err());
+        // An absent, empty or blank base refuses at admission; a named one goes to the ancestry check.
+        for absent in [None, Some(""), Some("   ")] {
+            assert!(
+                scoped_round_base_admission(&dir, absent, &root).is_err(),
+                "{absent:?}"
+            );
+        }
+        assert!(scoped_round_base_admission(&dir, Some(base.as_str()), &root).is_ok());
+        assert!(scoped_round_base_admission(&dir, Some(root.as_str()), &base).is_err());
+
+        // A base with no common history refuses rather than widening.
+        git(&["checkout", "-q", "--orphan", "stranger"]);
+        git(&["commit", "-qm", "stranger"]);
+        let stranger = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "-q", "head"]);
+        assert!(exact_base_change(&dir, &stranger).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -395,10 +395,11 @@ use crate::v1_std_core::CompilerDiagnostic::{
     EqualityOptionalityMismatch, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
     KernelMintShapeMismatch, MethodExistenceFrontierAdmitted, MethodExistenceUndecided,
     MethodNotFound, MissingField, OptionalCastNotEliminated, ReceiverTypeUnestablished,
-    ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
-    SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
-    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
-    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
+    RefinementCastRefused, ServiceConfigReferenceJudgmentDeferred,
+    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
+    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
+    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -421,7 +422,7 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 use crate::v1_std_core::ParsedModuleItemKind::{
-    ModuleItemFunction, ModuleItemTypeDeclaration, NotAModuleItem,
+    ModuleItemDataValue, ModuleItemFunction, ModuleItemTypeDeclaration, NotAModuleItem,
 };
 use crate::v1_std_core::ServiceConfigField::{
     SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
@@ -14123,16 +14124,31 @@ pub fn validate_cast(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
     source_reading: Rc<HostTextSourceReading>,
+    int_refinement_cast_domain: bool,
 ) -> Option<Rc<ErrorNode>> {
     match source_inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: src_node, .. }) => {
             let source_name =
                 crate::v1_std_core::authored_name_at(source_indices, src_node.clone());
             let grounded = match source_declaration.clone() {
-                Some(d) => grounded_cast_verdict(d.clone(), target_reading),
+                Some(d) => grounded_cast_verdict(d.clone(), target_reading.clone()),
                 std::option::Option::None => Rc::new(GroundedCastVerdict::GroundedCastNotDecided),
             };
-            if (source_name.clone() == target_name.clone()) {
+            let target_declaration = match (*target_reading.clone()).clone() {
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: t,
+                    ..
+                } => Some(t.clone()),
+                _ => std::option::Option::None,
+            };
+            let is_identity_cast = match source_declaration.clone() {
+                Some(sd) => match target_declaration.clone() {
+                    Some(td) => crate::std_decl_ref::declaration_ref_eq(sd.clone(), td.clone()),
+                    std::option::Option::None => (source_name.clone() == target_name.clone()),
+                },
+                std::option::Option::None => (source_name.clone() == target_name.clone()),
+            };
+            if is_identity_cast.clone() {
                 std::option::Option::None
             } else {
                 if match (*grounded.clone()).clone() {
@@ -14188,45 +14204,59 @@ pub fn validate_cast(
                                     span: span.clone(),
                                 });
                                 Some(crate::v1_std_core::make_error_node(
-                                    diag,
+                                    diag.clone(),
                                     module_name.clone(),
                                 ))
                             }
                         } else {
-                            match (*source_reading.clone()).clone() {
-                                HostTextSourceReading::HostTextRouteAbsentNominal => {
-                                    nominal_cast_refusal(
-                                        source_name.clone(),
-                                        target_name.clone(),
-                                        span.clone(),
+                            if int_refinement_cast_domain.clone() {
+                                {
+                                    let diag = Rc::new(CompilerDiagnostic::RefinementCastRefused {
+                                        source: source_name.clone(),
+                                        target: target_name.clone(),
+                                        span: span.clone(),
+                                    });
+                                    Some(crate::v1_std_core::make_error_node(
+                                        diag.clone(),
                                         module_name.clone(),
-                                    )
+                                    ))
                                 }
-                                HostTextSourceReading::HostTextRouteAbsentKernel {
-                                    kernel: NonTextKernel::NonTextKernelBool,
-                                    ..
-                                } => nominal_cast_refusal(
-                                    source_name.clone(),
-                                    target_name.clone(),
-                                    span.clone(),
-                                    module_name.clone(),
-                                ),
-                                HostTextSourceReading::HostTextRouteAbsentKernel {
-                                    kernel: _,
-                                    ..
-                                } => validate_cast_in_table_domain(
-                                    source_name.clone(),
-                                    target_name.clone(),
-                                    span.clone(),
-                                    module_name.clone(),
-                                ),
-                                HostTextSourceReading::HostTextSourceAdmissible => {
-                                    validate_cast_in_table_domain(
+                            } else {
+                                match (*source_reading.clone()).clone() {
+                                    HostTextSourceReading::HostTextRouteAbsentNominal => {
+                                        nominal_cast_refusal(
+                                            source_name.clone(),
+                                            target_name.clone(),
+                                            span.clone(),
+                                            module_name.clone(),
+                                        )
+                                    }
+                                    HostTextSourceReading::HostTextRouteAbsentKernel {
+                                        kernel: NonTextKernel::NonTextKernelBool,
+                                        ..
+                                    } => nominal_cast_refusal(
                                         source_name.clone(),
                                         target_name.clone(),
                                         span.clone(),
                                         module_name.clone(),
-                                    )
+                                    ),
+                                    HostTextSourceReading::HostTextRouteAbsentKernel {
+                                        kernel: _,
+                                        ..
+                                    } => validate_cast_in_table_domain(
+                                        source_name.clone(),
+                                        target_name.clone(),
+                                        span.clone(),
+                                        module_name.clone(),
+                                    ),
+                                    HostTextSourceReading::HostTextSourceAdmissible => {
+                                        validate_cast_in_table_domain(
+                                            source_name.clone(),
+                                            target_name.clone(),
+                                            span.clone(),
+                                            module_name.clone(),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -20218,6 +20248,52 @@ if type_node_is_established(cpt.clone(), scope.type_env.source_indices.clone()) 
             let target_name = crate::v1_std_core::authored_name_at(si.clone(), target_type.clone());
             let source_reading =
                 cast_source_host_text_reading(inner_typed.inferred.clone(), scope.clone());
+            let target_resolved = match crate::v1_compiler_infer_env::lookup_type_for(
+                scope.type_env.clone(),
+                target_type.clone(),
+            ) {
+                Some(r) => r.clone(),
+                std::option::Option::None => target_type.clone(),
+            };
+            let target_is_int_refined = ((Rc::new({
+                let mut __result = Vec::new();
+                for pred in type_where_refinement_predicates_transitive(
+                    target_resolved,
+                    scope.type_env.clone(),
+                )
+                .iter()
+                .cloned()
+                {
+                    if where_refinement_is_int_literal_predicate(
+                        crate::v1_std_core::field_init_node_name_at(pred.clone(), si.clone()),
+                    ) {
+                        __result.push(pred);
+                    }
+                }
+                __result
+            })
+            .len() as i64)
+                > 0);
+            let source_int_kernel = match inner_typed.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: snode, .. }) => {
+                    let sresolved = match crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        snode.clone(),
+                    ) {
+                        Some(r) => r.clone(),
+                        std::option::Option::None => snode.clone(),
+                    };
+                    let sbase_name = crate::v1_std_core::authored_name_at(
+                        si.clone(),
+                        peel_where_refinement_base(sresolved, scope.type_env.clone()),
+                    );
+                    ((sbase_name.clone() == "Int".to_string())
+                        || (sbase_name.clone() == "Nat".to_string()))
+                }
+                _ => false,
+            };
+            let int_refinement_cast_domain =
+                (target_is_int_refined.clone() && source_int_kernel.clone());
             let cast_diag = validate_cast(
                 inner_typed.inferred.clone(),
                 cast_source_declaration(inner_typed.clone(), scope.clone()),
@@ -20231,6 +20307,7 @@ if type_node_is_established(cpt.clone(), scope.type_env.source_indices.clone()) 
                 si.clone(),
                 scope.module_name.clone(),
                 source_reading.clone(),
+                int_refinement_cast_domain,
             );
             let cast_diags = match cast_diag.clone() {
                 Some(d) => Rc::new(vec![d.clone()]),
@@ -29207,29 +29284,178 @@ pub fn realization_row_edges(
                 }
             }
         };
-        if (reader.clone() == "".to_string()) {
-            Rc::new(vec![])
+        v1_rt::concat(
+            realization_wire_contract_row_edges(item.clone(), source_indices.clone()),
+            if (reader.clone() == "".to_string()) {
+                Rc::new(vec![])
+            } else {
+                match rhs.clone() {
+                    std::option::Option::None => Rc::new(vec![]),
+                    Some(r) => realization_read_names(r.clone(), source_indices.clone())
+                        .iter()
+                        .cloned()
+                        .fold(
+                            Rc::new(vec![]),
+                            |acc: Rc<Vec<Rc<RealizationEdge>>>, nm: String| {
+                                v1_rt::rc_list_push(
+                                    acc,
+                                    Rc::new(RealizationEdge {
+                                        reader: reader.clone(),
+                                        name: nm.clone(),
+                                        span: item.span.clone(),
+                                    }),
+                                )
+                            },
+                        ),
+                }
+            },
+        )
+    }
+}
+
+pub fn realization_wire_contract_read_row(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (item.module_item_kind.clone() != ParsedModuleItemKind::ModuleItemDataValue) {
+        false
+    } else {
+        if (item.name.clone() == "wire_contract".to_string()) {
+            true
         } else {
-            match rhs.clone() {
-                std::option::Option::None => Rc::new(vec![]),
-                Some(r) => realization_read_names(r.clone(), source_indices.clone())
-                    .iter()
-                    .cloned()
-                    .fold(
-                        Rc::new(vec![]),
-                        |acc: Rc<Vec<Rc<RealizationEdge>>>, nm: String| {
-                            v1_rt::rc_list_push(
-                                acc,
-                                Rc::new(RealizationEdge {
-                                    reader: reader.clone(),
-                                    name: nm.clone(),
-                                    span: item.span.clone(),
-                                }),
-                            )
-                        },
-                    ),
+            match item.type_annotation.clone() {
+                Some(ta) => {
+                    ((realization_last_segment(
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), ta.clone()),
+                        0,
+                        v1_rt::string_length(&crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            ta.clone(),
+                        )),
+                    ) == "CoproductWireContract".to_string())
+                        && match item.body.clone() {
+                            Some(body) => {
+                                ((realization_record_field_value(
+                                    body.clone(),
+                                    "coproduct".to_string(),
+                                    source_indices.clone(),
+                                ) != std::option::Option::None)
+                                    && (realization_record_field_value(
+                                        body.clone(),
+                                        "encoding".to_string(),
+                                        source_indices.clone(),
+                                    ) != std::option::Option::None))
+                            }
+                            std::option::Option::None => false,
+                        })
+                }
+                std::option::Option::None => false,
             }
         }
+    }
+}
+
+pub fn realization_wire_contract_read_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    modules.iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<String>>, m: Rc<ResolvedModule>| {
+            crate::v1_std_core::module_items(m.module.clone())
+                .iter()
+                .cloned()
+                .fold(acc, |a: Rc<Vec<String>>, item: Rc<Node>| {
+                    if !realization_wire_contract_read_row(item.clone(), source_indices.clone()) {
+                        a
+                    } else {
+                        v1_rt::rc_list_push(
+                            a,
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                item.clone(),
+                            ),
+                        )
+                    }
+                })
+        },
+    )
+}
+
+pub fn realization_wire_contract_row_edges(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<RealizationEdge>>> {
+    if !realization_wire_contract_read_row(item.clone(), source_indices.clone()) {
+        Rc::new(vec![])
+    } else {
+        match realization_wire_contract_row_target(item.clone(), source_indices.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(target) => v1_rt::rc_list_push(
+                Rc::new(vec![]),
+                Rc::new(RealizationEdge {
+                    reader: "wire_contract_index".to_string(),
+                    name: target.clone(),
+                    span: item.span.clone(),
+                }),
+            ),
+        }
+    }
+}
+
+pub fn realization_wire_contract_row_target(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match item.body.clone() {
+        Some(body) => match realization_record_field_value(
+            body.clone(),
+            "coproduct".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(decl_ref_node) => realization_record_string_field(
+                decl_ref_node.clone(),
+                "decl_name".to_string(),
+                source_indices.clone(),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn realization_record_field_value(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for fi in record.children.clone().iter().cloned() {
+            if (crate::v1_std_core::field_init_node_name_at(fi.clone(), source_indices.clone())
+                == field_name.clone())
+            {
+                __result.push(fi);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(fi) => Some(crate::v1_std_core::field_init_node_value(fi.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn realization_record_string_field(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match realization_record_field_value(record, field_name, source_indices) {
+        Some(n) => crate::v1_std_core::expr_literal_string_optional(n.clone()),
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -29530,7 +29756,11 @@ pub fn realization_names(
                 )
             },
         );
-        let seeded = seeds.iter().cloned().fold(
+        let demand_seeds = v1_rt::concat(
+            seeds.clone(),
+            realization_wire_contract_read_names(modules.clone(), source_indices.clone()),
+        );
+        let seeded = demand_seeds.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)

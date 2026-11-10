@@ -21273,7 +21273,11 @@ fn decide_rest_exchange(
             status,
             body: RestBodyObservationHost::ReadRefused(cause),
         } => {
-            return refused(rest_body_undecodable_value(ctx, status, cause));
+            return refused(rest_body_undecodable_value(
+                ctx,
+                status,
+                rest_body_read_refused_cause(&cause),
+            ));
         }
         RestExchangeObservationHost::Response {
             status,
@@ -21289,7 +21293,7 @@ fn decide_rest_exchange(
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
-                let cause = format!("JSON body did not decode: {}", error);
+                let cause = rest_body_not_json_cause(&error.to_string());
                 return refused(rest_body_undecodable_value(ctx, status, cause));
             }
         };
@@ -21299,16 +21303,13 @@ fn decide_rest_exchange(
                 return refused(rest_body_undecodable_value(
                     ctx,
                     status,
-                    format!("body did not inhabit the declared output: {}", refusal),
+                    rest_response_declared_cause(&refusal),
                 ));
             }
         }
     };
     if let Some(missing) = rest_payload_null_fields(&mapped, op_node, ctx) {
-        let cause = format!(
-            "HTTP {} body did not inhabit the declared output (null at {})",
-            status, missing
-        );
+        let cause = rest_body_null_members_cause(&missing);
         return refused(rest_body_undecodable_value(ctx, status, cause));
     }
     rest_answered_value(ctx, mapped)
@@ -22143,6 +22144,75 @@ pub enum RestResponseDecodeCause {
     /// A field declared `std.decimal` `ExactDecimal` was answered by a JSON value that is not a
     /// finite decimal number whose digits fit the record's Int units.
     NotAnExactDecimal { json_text: String },
+}
+
+/// THE DECLARED-SIDE CAUSE TEXT, safe to publish on a credential path. The `Display` below can carry a
+/// value the RESPONSE put there — `spelling`, `json_text`, the wire spelling of an ambiguous arm — and this
+/// string leaves the interpreter inside refusal text that the publish path may echo, which is why
+/// `rest_refusal_text` published only 'status 200 undecodable' and the 2026-11-10 heal-publish outage
+/// (every `github.Pulls.Get` refused at `NoWireContract`) was undiagnosable from CI. This rendering keeps
+/// what is DECLARED — the cause kind, the coproduct's name, the encoding and naming policy, the row count
+/// — and drops what the body supplied. The overall shape, `... at <located field> (<coproduct>)`, is
+/// pinned by claims this module does not own (`an_unknown_spelling_refuses_at_the_located_field` and
+/// `a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match` in
+/// `dag/test/claim/rest_exchange_replay.dag`), so it is not free to drift. The located `field_path` is
+/// KEPT, for the mirror-image reason:
+/// every part of it is an authored name out of the DECLARATION, never a key out of the body —
+/// `decode_json_by_declared_field` seeds it from `authored_name_at` of the declared field, a list descent
+/// appends the position, and the coproduct arm appends a DECLARED member's authored name. That is also
+/// what `the_text_true_under_a_declared_bool_refuses_at_decode` in
+/// `dag/test/claim/rest_exchange_replay.dag` pins: the located field has to be readable in the cause.
+/// THE OTHER THREE `RestBodyUndecodable` CAUSES, RENDERED FROM DECLARED FACTS ONLY.
+///
+/// `rest_refusal_text` (gunbc.heal_publication) publishes this cause on a credential path, so the
+/// invariant has to hold for EVERY place that mints the refusal, not only for the type-directed decode:
+/// each renderer below takes the host- or body-derived text it refuses to publish, and the accompanying
+/// test plants a marker in that exact value. Dropping the text costs diagnosis, so the loss is stated
+/// rather than hidden: a body-read failure keeps only the status (the transport's own io text echoed
+/// request material into a token-bearing path), a non-JSON body keeps only that it was not JSON (a
+/// `serde_json` message carries offsets and sometimes the offending token), and uninhabited declared
+/// members keep only how many there were. `rest_payload_null_fields` reports its names out of the mapped
+/// record, and that record is NOT reliably declared-side: `decode_json_by_declared_field` falls through to
+/// `json_to_value` for a field whose type never resolved, which puts the keys the body PRESENTED into the
+/// record it returns. So the names are withheld and the count published -- unlike `field_path` above,
+/// every segment of which is an authored name out of the declaration tree.
+fn rest_body_read_refused_cause(io_error: &str) -> String {
+    // The parameter is the text being dropped; it stays visible so the test can plant a marker in the
+    // exact value this renderer refuses to publish.
+    let _ = io_error;
+    "the response body could not be read from the host".to_string()
+}
+
+fn rest_body_not_json_cause(parse_error: &str) -> String {
+    let _ = parse_error;
+    "the body is not JSON, as the operation's declared response format requires".to_string()
+}
+
+fn rest_body_null_members_cause(missing: &str) -> String {
+    format!(
+        "body did not inhabit the declared output: {} declared members were left uninhabited, their names withheld on a credential path",
+        missing.split(',').filter(|name| !name.is_empty()).count()
+    )
+}
+
+fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
+    let declared = match &refusal.cause {
+        RestResponseDecodeCause::DeclarationUnresolved => "the coproduct's declaration identity is unresolved".to_string(),
+        RestResponseDecodeCause::NoWireContract => "no CoproductWireContract row is realized for this coproduct and its module declares no wire_contract, so its wire spelling is undeclared".to_string(),
+        RestResponseDecodeCause::ModuleWireContractUnresolved { .. } => "the declaring module's wire_contract does not resolve to an encoding".to_string(),
+        RestResponseDecodeCause::AmbiguousWireContract { count } => format!("{} CoproductWireContract rows name this coproduct", count),
+        RestResponseDecodeCause::UnsupportedEncoding { encoding } => format!("the contract's encoding {} is not a nullary JSON string encoding", encoding),
+        RestResponseDecodeCause::UnsupportedNaming { naming } => format!("the contract's naming policy {} has no realization here", naming),
+        RestResponseDecodeCause::NotAString { json_kind } => format!("the member is a {} where a string was declared", json_kind),
+        RestResponseDecodeCause::UnknownSpelling { .. } => "the presented string names no arm of the declared coproduct".to_string(),
+        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { .. } => "a renamed member is spelled by its authored name, which is not its declared wire key".to_string(),
+        RestResponseDecodeCause::AmbiguousWireSpelling { .. } => "both the declared wire key and the authored name of one renamed member are present".to_string(),
+        RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
+    };
+    format!(
+        "body did not inhabit the declared output: {} at {} ({})",
+        declared, refusal.field_path, refusal.coproduct
+    )
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -31560,5 +31630,104 @@ mod t9_host_recursion_probes {
             value = closure(&body, Env::with_binding(&Env::empty(), f, value));
         }
         drop(value);
+    }
+
+    /// THE UNDECODABLE CAUSE IS DECLARED-SIDE ONLY (heal-publish outage, 2026-11-10). The publish path
+    /// prints `rest_response_declared_cause` on a credential path (gunbc.heal_publication
+    /// rest_refusal_text), so nothing the RESPONSE presented may appear in it: the cause kind, the
+    /// coproduct, the located field and the declared encoding/naming/count are kept -- the path is an
+    /// authored name out of the declaration tree, never a key out of the body -- and the strings the body
+    /// presented are dropped. Every variant of `RestResponseDecodeCause` that
+    /// carries a response-supplied payload is planted here -- `UnknownSpelling`, `NotAnExactDecimal`,
+    /// `ModuleWireContractUnresolved`, `AuthoredNameIsNotTheWireKey` and `AmbiguousWireSpelling` -- so an
+    /// arm edited later to interpolate its payload turns red instead of publishing it.
+    #[test]
+    fn undecodable_cause_is_declared_side_only() {
+        let located = |cause: crate::v1_interpreter::RestResponseDecodeCause| {
+            crate::v1_interpreter::RestResponseDecodeRefusal {
+                field_path: "pulls.head.sha".to_string(),
+                coproduct: "PullRequestState".to_string(),
+                cause,
+            }
+        };
+        let no_contract = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::NoWireContract,
+        ));
+        assert!(
+            no_contract.contains("CoproductWireContract")
+                && no_contract.contains("PullRequestState"),
+            "the cause lost what the publisher needs to diagnose: {no_contract}"
+        );
+        assert!(
+            no_contract.contains("pulls.head.sha"),
+            "the cause lost the located declared field, which is what a refusal is diagnosed from: {no_contract}"
+        );
+        let spelling = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::UnknownSpelling {
+                spelling: "FAKE-SECRET-MARKER".to_string(),
+            },
+        ));
+        assert!(
+            !spelling.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the presented spelling: {spelling}"
+        );
+        let decimal = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: "FAKE-SECRET-MARKER".to_string(),
+            },
+        ));
+        assert!(
+            !decimal.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the presented number: {decimal}"
+        );
+        let module_contract = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::ModuleWireContractUnresolved {
+                cause: "FAKE-SECRET-MARKER".to_string(),
+            },
+        ));
+        assert!(
+            !module_contract.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the module's own unresolved text: {module_contract}"
+        );
+        let authored_key = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
+                authored: "FAKE-SECRET-MARKER".to_string(),
+                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+            },
+        ));
+        assert!(
+            !authored_key.contains("FAKE-SECRET-MARKER"),
+            "cause echoed an authored or wire spelling: {authored_key}"
+        );
+        let both_spellings = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::AmbiguousWireSpelling {
+                authored: "FAKE-SECRET-MARKER".to_string(),
+                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+            },
+        ));
+        assert!(
+            !both_spellings.contains("FAKE-SECRET-MARKER"),
+            "cause echoed both spellings of one member: {both_spellings}"
+        );
+        let read_refused = crate::v1_interpreter::rest_body_read_refused_cause(
+            "io error: FAKE-SECRET-MARKER while reading a body sent with FAKE-SECRET-MARKER",
+        );
+        assert!(
+            !read_refused.contains("FAKE-SECRET-MARKER"),
+            "a body-read cause echoed the transport's own text: {read_refused}"
+        );
+        let not_json = crate::v1_interpreter::rest_body_not_json_cause(
+            "expected value at line 1 column 1: FAKE-SECRET-MARKER",
+        );
+        assert!(
+            !not_json.contains("FAKE-SECRET-MARKER"),
+            "a non-JSON cause echoed the parse error: {not_json}"
+        );
+        let null_members =
+            crate::v1_interpreter::rest_body_null_members_cause("FAKE-SECRET-MARKER,head");
+        assert!(
+            !null_members.contains("FAKE-SECRET-MARKER") && null_members.contains("2"),
+            "an uninhabited-member cause echoed a member name, or lost the count: {null_members}"
+        );
     }
 }
