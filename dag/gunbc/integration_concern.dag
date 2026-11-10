@@ -1694,6 +1694,55 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
   disposition: Open,
 }
 
+
+// THE srv1 MICROVM SLOTS' CHARGE IS RELEASED BY A READING THE LANE NEVER WRITES (filed by
+// still-otter-622, 2026-11-09, under the operator decision
+// gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization). The standing
+// gunbc.runner.runner_slot_allocation::MicrovmSlotRealization now decides whether an authored microVM
+// slot's memory is charged against its host's runner envelope. srv1-13 and srv1-14 carry
+// MicrovmSlotNotRealized rows read on 2026-11-09 (no controller, no slot instance, only the network
+// ruleset active), which frees ~60-68 GiB and takes srv1 from a committed width of 4 to 8. Every arm of
+// that standing is written BY HAND: the lane's install route
+// (gunbc.live_deploy.apply microvm_controller_install_wet) reads back the tree receipt, the VMM receipt
+// and whether systemd loads the slot template -- a positive read of realization, which is exactly what
+// MicrovmSlotRealized means -- and then throws it away. So the charge returns only if someone edits a
+// row, and the invalidation each row names is an event nothing performs on the row. That is the gap this
+// concern records; the rows' invalidated_by is the carrier that keeps it from being forgotten.
+data microvm_lane_install_writes_no_slot_realization: IntegrationConcern = IntegrationConcern {
+  identity: "microvm_lane_install_writes_no_slot_realization",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization"),
+    requirement: "when the microVM lane installs its controller on a host and starts a slot, the realization rows for that host's authored microVM slots read MicrovmSlotRealized, so their memory charge returns by derivation in the same release that puts the controller on the host -- and when a slot is torn down its row returns to MicrovmSlotRealizationUnobserved rather than standing stale",
+    standing: RequirementUnestablished { decided_by: "the operator's 2026-11-09 decision (gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization) is that the charge follows realization; no route in the model writes the MicrovmSlotRealized arm, so the return half of that decision is owed to the microVM lane" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "microvm_controller_install_wet"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "microvm_slot_realization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_shakedown_slot_realization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_revision_job_slot_realization"),
+    ],
+  },
+  question: "Who flips srv1-13 and srv1-14 from MicrovmSlotNotRealized to MicrovmSlotRealized when the lane goes live: the install route's own readback (which already sees the tree receipt, the VMM receipt and systemd loading the template, so it holds exactly the reading the arm means), a host converge that re-reads the host afterwards, or a hand edit of the rows? If the install readback is the writer, where do the rows live -- gunbc.runner.runner_slot_allocation keeps the fold that consumes them, and gunbc.runner.runner_microvm_slot_unit owns the receipt store whose Unready/Refused arms cannot tell an uninstalled host from an unreadable one?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "e5c2a417867ace582fed545ce9ddefd8f5eeca6d",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "authored_microvm_slots_charge_over") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_receipt_store") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_receipt_history") },
+        ],
+      },
+      account: "srv1 reads no microVM controller and no slot instance, yet until this change its two authored microVM slots were charged 52 GiB and 46 GiB against the host's runner envelope on AUTHORSHIP ALONE, holding the derived committed width at 4. Reading them as MicrovmSlotNotRealized takes srv1 to 8 committed. The RELEASE direction is what the model can justify today; the RETURN direction is not mechanical. The wet homes that could carry it refuse the question rather than answering it: microvm_receipt_store reports MicrovmReceiptStoreUnready and microvm_receipt_history MicrovmReceiptHistoryRefused for an absent store directory and an unreadable one in the SAME arm, so conditioning the width on them would report an uninstalled host as unobserved and keep charging it -- correct as a fail-closed answer for a width, useless for a lane that wants its charge back when it goes live. Only gunbc.live_deploy.apply microvm_controller_install_wet reads realization positively, and it reads it to decide whether ITS OWN install succeeded.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 // CONVERGE RETIRES A WORKING SLOT BEFORE ITS REPLACEMENT HAS RUN A JOB. Surfaced by
 // gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09), which moved srv3-06/07 and
 // srv4-06/07 from fabric execution to GitHub Actions: the live hosts then carry CI slots 01-05 and
@@ -1874,12 +1923,23 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
         },
         account: "BLOCKER (iii) inference: an unannotated arm closure never receives the enclosing function's declared return as an expected type, so it settles open and refuses at inference. The same refusal was first observed at 4bfa629e7ff (off main's lineage); this sighting reconfirms it on real main at b882c902. Lineage: after appending the branch specimen, function_value_body_route.dag's blob at b882c902 is 61ef52ba, byte-identical to the 4bfa629e run's post-append blob — the claim file is the same at both commits, so the two sightings differ only in the compiler beneath them, and both give the same reason.",
       },
+      ConcernSighting {
+        revision: "c316604f06104fcdd9c61884f09a002b07930e66",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_branch_arm_callback_frame") },
+          tail: [
+            CitesArtifact { label: "pair run of v2.test.claim.compiler.branch_arm_closure_inhabits (claim file blob fd78e33255171bcffd7139820f67401fbc27b33b, held constant across legs): 4/4 green at c316604f0610 (https://app.buildbuddy.io/invocation/c26c0e93-4aa3-482d-bb46-de3772394c7d) against 0/4 at 8732750e2d69 with only that claim file overlaid (https://app.buildbuddy.io/invocation/fdf76b2b-25f1-44fe-93c4-c1a939836516) — the two return-annotated specimens (if-arms, match-arms) move refused -> admitted by the infer change alone; the two negative controls (an arm closure returning Bool where Int is required; a closure in one arm and an Int literal in the other) stay refused", sha256: Sha256Digest { hex: "ea18d82f17117bbd530c08099725f4afb009b097426c98bf88501203c10efa1b" as Sha256DigestHex } },
+            CitesArtifact { label: "fatal-reason probe on both negative-control specimens (probe fns appended in the run tree, blob 8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8, identical on both legs): at 8732750e2d69 infer rejects them with arrow_body_does_not_inhabit_declared_return — the boundary this sighting cited (https://app.buildbuddy.io/invocation/f56a789e-fa04-4c81-8cc4-f4d3b6a8e885); at c316604f0610 with infer_arms_declare_conflicting_types (https://app.buildbuddy.io/invocation/ff0f73a1-c61e-4a8e-80ce-4d491bbc1d8f). The refusal moved from this boundary to the arm-vs-arm join; it did not disappear", sha256: Sha256Digest { hex: "8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8" as Sha256DigestHex } },
+          ],
+        },
+        account: "BLOCKER (ii) typing — RULED A DEFECT AND FIXED at c316604f0610 (PR #16212). Chain re-derivation put the earliest unjustified boundary in inference, not in inhabitance: the Branch arm child frame and the Match arm body-edge frame never supplied callback-frame instances from the frame's declared_position_expected arrow, so the arm closure's unannotated parameter binder stayed uninstantiated, the arm's own type was never held, and the refusal surfaced one stage later as inhabitance_no_candidate_return_reason / arrow_body_does_not_inhabit_declared_return. The fix (infer_branch_arm_callback_frame) supplies the SAME instances an application argument already gets from infer_callback_formal_frame, at both arm positions — no second mechanism. The other two blockers stand: blocker (i) (typed arm parameters do not parse) is a grammar gap, and blocker (iii) (a wholly unannotated arm closure settles open) is untouched by this change, which is why the requirement as stated is not yet met and this row stays Open. TRIGGER SATISFIED for the emitter: with a return-annotated arm closure the shape now reaches the emitter, so the branch/match tail-closure move/Box::new fixture becomes writable — that fixture is not part of this lane.",
+      },
     ],
   },
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

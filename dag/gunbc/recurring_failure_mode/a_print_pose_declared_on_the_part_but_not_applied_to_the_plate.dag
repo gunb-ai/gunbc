@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.a_print_pose_declared_on_the_part_but_not_applied_to_the_plate
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+// A POSE THE MODEL DECLARES AND THE PRINTER NEVER RECEIVES. Each printed part declares the face that goes
+// down (assembly_geometry PrintPlane). The CAD check honoured it for the STL it exported, but the plate
+// packer built the plate from the unrotated STEP, and the plate plan's own guard only checked the EXTRA
+// rotations it adds, so every part on the printer route was sliced in its raw model frame while every check
+// along the way stayed green. The tray panel P3, declared flat, was sliced standing on its 174 mm edge.
+data a_print_pose_declared_on_the_part_but_not_applied_to_the_plate: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_print_pose_declared_on_the_part_but_not_applied_to_the_plate" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "The pose a part is printed in is decided twice outside this repository's model: by the packer that writes the plate and by the slicer that may turn it again before it writes the archive the printer runs. The model can make the intended pose one derived fact, but what the slicer wrote is an observation, so the strongest honest guarantee is a refusal over the sliced archive itself on the route every print takes, which the readback now performs." as NonEmptyStr } },
+
+  receipts: [
+    "**a print pose declared on the part but not applied to the plate** (the part's declared print plane reached the CAD check's STL and not the plate the printer slices).",
+
+    "INVALID STATE: a sliced plate whose parts sit in a pose their model does not declare, admitted as a prepared print with every check green.",
+
+    "HOW IT HID: two representations of one part left the CAD check, an oriented STL and an unoriented STEP, and the packer read the STEP. The plate plan's guard (process_geometry preserves_print_plane) checks only the rotations the plan adds, which were zero, so it read as preserving a pose nobody had applied. The readback compared bounds against the bed, not against the declared pose.",
+
+    "SPECIMEN (printer-01 request altra-r07-p3-1, run 42699153256, 2026-11-09). The r07 tray panel P3 declares LayOnXZ, flat with part-frame +Y up. The sliced archive stood it on its 174 mm edge, and the readback refused it only because the edge pose needed support under the r07 board posts and a seam lap tongue while P3 is support-free. Without that unrelated refusal the plate would have been offered for an operator's approval in a pose the model never chose.",
+
+    "FOUND BELOW THE LADDER: nothing refused the wrong pose as a wrong pose; the refusal that stopped it was about support, so a part with no overhangs in the raw frame would have printed silently in the wrong orientation.",
+
+    "THE REPAIR, AND WHY IT IS NOT A SWITCH TO THE STL: the pose is one derived fact (assembly_geometry print_pose from the declared plane), the CAD check, the packer and the readback all apply it through one kernel helper, and the readback reads the sliced archive itself (print_preparation_kernel pose_conformance): the slicer's transform may turn a part only about the vertical, and the part's mesh must sit on its CAD solid in that pose. preparation_identity checked_readback_slots refuses a readback that lacks the record, so an unconforming plate names no prepared slot. Reading the oriented STL instead would have hidden the missing transform behind a second representation.",
+
+    "THE DISCRIMINATOR: give the packer a part whose declared plane is not XY and plan no extra rotation. If the archive the slicer writes holds that part in its raw model frame and nothing refuses, the class is present.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "product.printed_chassis.assembly_geometry", decl_name: "print_pose"),
+    decl_ref(module_path: "product.printed_chassis.review_realization", decl_name: "print_pose_kernel_source"),
+    decl_ref(module_path: "product.printed_chassis.print_preparation_kernel", decl_name: "source"),
+    decl_ref(module_path: "product.printed_chassis.preparation_identity", decl_name: "checked_readback_slots"),
+    decl_ref(module_path: "product.printing.process_geometry", decl_name: "preserves_print_plane"),
+  ],
+}
