@@ -82,3 +82,7 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - Path 3: the type layer's parameter_default_emissions still types an omitted default in the call site's scope (silent). It needs its own claim.
 - The four claim cells are not enrolled in any lane (path 1's limit).
 - dag/test/claim/github_workflow_runs_witness.dag: 0/27, refused at load (LiveTreeDisposition, SubstrateInputsOnly, WorkflowRunStatus/Conclusion arm imports).
+
+## eval_cast class (lane adhoc-e72164c8-96a)
+- LIVE: router_proxy_config_witness 1/9 at main (cannot cast Int to Port, invocation 3d6e6fb0). The production 503 as HttpStatus / 2000 as Milliseconds are masked. The EpochSecs cast is a latent outage on the operator-dispatched RLM launch-receipt job.
+- UNOWNED: commit_writer_admission_witness 0/13, refused at LOAD (expected Product(PositiveInt), got Primitive(Int), at 8 sites). Pre-existing, outside the cast class.
