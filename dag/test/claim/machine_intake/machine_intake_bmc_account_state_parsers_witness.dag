@@ -8,13 +8,34 @@ module test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witnes
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import gunbc.machine_intake.bmc_account_state_parsers { ipmi_lan_threshold_from_print }
+import std.algebra { list_at_optional }
+import gunbc.machine_intake.bmc_account_state_parsers {
+  AccountEntryRead,
+  AccountEntryUnreadable,
+  AccountsCollectionRead,
+  AccountsCollectionUnreadable,
+  IpmiUserAccessRowsMalformed,
+  IpmiUserAccessRowsRead,
+  ipmi_lan_threshold_from_print,
+  ipmi_user_access_rows,
+  redfish_account_entry_from_body,
+  redfish_account_names_from_collection,
+  redfish_account_service_lockout_from_body,
+}
+import extdeps.bmc.redfish {
+  RedfishAccountServiceLockoutPropertiesNotAuthenticated,
+  RedfishAccountServiceLockoutPropertiesRead,
+  RedfishAccountServiceLockoutPropertiesUnreadable,
+}
 import extdeps.bmc.ipmi_channel {
   IpmiChannelNumber,
   IpmiLanBadPasswordThresholdNotAvailable,
   IpmiLanBadPasswordThresholdRead,
   IpmiLanBadPasswordThresholdReadFailed,
   IpmiLanBadPasswordThresholdVerdict,
+  IpmiPrivilegeAdministrator,
+  IpmiPrivilegeNoAccess,
+  IpmiPrivilegeOem,
 }
 
 // THE COMMITTED H11SSL (ALTRAD8UD-class Supermicro) `ipmitool lan print 1` CAPTURE, its lockout lines copied
@@ -74,5 +95,141 @@ test fn a_malformed_threshold_is_read_failed_never_a_default() -> Bool {
   match verdict {
     IpmiLanBadPasswordThresholdReadFailed { channel: _, detail: _ } => true
     _ => false
+  }
+}
+
+// The committed `ipmitool user list 1` / Get User Access table from the mtjade1 read-only probe
+// (artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/user_list_1.txt), verbatim:
+// fifteen id slots, the two named administrators, a named OEM slot, and the unnamed NO ACCESS slots.
+// ALL FIFTEEN ROWS DECODE: ids, privileges and channel, nameless slots included. Every row the capture
+// prints becomes exactly one carrier row -- a dropped or defaulted row (a missing slot quietly turned
+// into No Access that was really OEM) turns this red.
+test fn the_committed_getaccess_table_decodes_every_row() -> Bool {
+  let getaccess_capture = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      true       ADMINISTRATOR\n2   operator           false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+  match ipmi_user_access_rows(text: getaccess_capture, channel: 1) {
+    IpmiUserAccessRowsRead { rows: rows } =>
+      rows.length() == 15
+        && (match list_at_optional(xs: rows, index: 0) {
+             Present { value: r } => r.user == 1 && r.channel == 1 && r.privilege == IpmiPrivilegeAdministrator
+             Absent => false
+           })
+        && (match list_at_optional(xs: rows, index: 1) {
+             Present { value: r } => r.user == 2 && r.privilege == IpmiPrivilegeAdministrator
+             Absent => false
+           })
+        && (match list_at_optional(xs: rows, index: 2) {
+             Present { value: r } => r.user == 3 && r.privilege == IpmiPrivilegeNoAccess
+             Absent => false
+           })
+        && (match list_at_optional(xs: rows, index: 3) {
+             Present { value: r } => r.user == 4 && r.privilege == IpmiPrivilegeOem
+             Absent => false
+           })
+        && (match list_at_optional(xs: rows, index: 14) {
+             Present { value: r } => r.user == 15 && r.privilege == IpmiPrivilegeNoAccess
+             Absent => false
+           })
+    IpmiUserAccessRowsMalformed { detail: _ } => false
+  }
+}
+
+// AN UNKNOWN PRIVILEGE WORD REFUSES with the offending line, never a silently defaulted row. The
+// same bytes through a parser that fell back to No Access on an unrecognized word would pass -- that
+// is the failure this red pins.
+test fn a_malformed_privilege_word_refuses_never_a_defaulted_row() -> Bool {
+  let bad = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      false      SUPERVISOR\n"
+  match ipmi_user_access_rows(text: bad, channel: 1) {
+    IpmiUserAccessRowsMalformed { detail: detail } => detail == "1   admin            false   false      false      SUPERVISOR"
+    IpmiUserAccessRowsRead { rows: _ } => false
+  }
+}
+
+// A FLAG COLUMN OF GARBAGE REFUSES TOO: the carrier does not model the Callin / Link Auth / IPMI Msg
+// cells, but their shape is validated, so a shifted or corrupted row cannot masquerade as a row.
+test fn a_flag_column_of_garbage_refuses_though_the_carrier_drops_the_flags() -> Bool {
+  let bad = "1   admin            false   maybe      true       ADMINISTRATOR"
+  match ipmi_user_access_rows(text: bad, channel: 1) {
+    IpmiUserAccessRowsMalformed { detail: detail } => detail == bad
+    IpmiUserAccessRowsRead { rows: _ } => false
+  }
+}
+
+// ==================== REDFISH PARSER WITNESSES ====================
+
+// The COMMITTED srv13 first-contact Accounts collection
+// (artifacts/bmc/srv13-first-contact-2026-10-07/Accounts.json, OpenBMC 3.22.00), verbatim. One
+// member (root); the count agrees with the array.
+test fn the_committed_srv13_accounts_collection_decodes_its_members() -> Bool {
+  let body = "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts\",\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":1}"
+  match redfish_account_names_from_collection(body: body) {
+    AccountsCollectionRead { names: names } =>
+      names.length() == 1 && (match list_at_optional(xs: names, index: 0) {
+        Present { value: n } => n == "root"
+        Absent => false
+      })
+    AccountsCollectionUnreadable { detail: _ } => false
+  }
+}
+
+// A controller that CONTRADICTS ITSELF -- Members@odata.count 2 over a one-member array -- is
+// Unreadable. A parser that trusted the count, or counted silently and moved on, would mint a census
+// from bytes the controller does not stand behind: that is the red this pins.
+test fn a_collection_whose_count_contradicts_its_members_is_unreadable() -> Bool {
+  let body = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":2}"
+  match redfish_account_names_from_collection(body: body) {
+    AccountsCollectionUnreadable { detail: _ } => true
+    AccountsCollectionRead { names: _ } => false
+  }
+}
+
+// ONE ManagerAccount body (the OpenBMC 3.22.00 bmcweb shape: UserName + Enabled -- no committed
+// member capture exists in artifacts/, so the bytes are the documented bmcweb 3.22.00 shape; the
+// first wet run commits the real one). The managed flag is derived from the BODY's UserName, not
+// the URL the body was fetched from.
+test fn the_manager_account_body_decodes_name_enabled_and_identity() -> Bool {
+  let body = "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"UserName\":\"root\",\"Enabled\":true}"
+  match redfish_account_entry_from_body(body: body, managed_name: "root") {
+    AccountEntryRead { entry: e } => e.name == "root" && e.enabled && e.is_managed_account
+    AccountEntryUnreadable { detail: _ } => false
+  }
+}
+
+// NO Enabled, NO ANSWER: the carrier models enabled, so a body without it refuses. Defaulting it to
+// true (the property's typical value) would mint a census that says an unproved account is live --
+// the exact fabrication this red pins.
+test fn a_manager_account_without_enabled_is_unreadable_never_defaulted() -> Bool {
+  let body = "{\"UserName\":\"root\"}"
+  match redfish_account_entry_from_body(body: body, managed_name: "root") {
+    AccountEntryUnreadable { detail: _ } => true
+    AccountEntryRead { entry: _ } => false
+  }
+}
+
+// THE ACCOUNTSERVICE LOCKOUT DOCUMENT (bmcweb 3.22.00 shape; no committed AccountService capture
+// exists in artifacts/ yet -- the first wet run commits one, and that run is what discharges
+// redfish_account_service_lockout_live_read_frontier). Required threshold decoded; the optional
+// window properties decoded alongside. Built ONLY through the cited sole constructor.
+test fn the_openbmc_account_service_body_decodes_the_lockout_props() -> Bool {
+  let body = "{\"AccountLockoutThreshold\":3,\"AccountLockoutDuration\":600,\"AccountLockoutCounterResetAfter\":600,\"AccountLockoutCounterResetEnabled\":true}"
+  match redfish_account_service_lockout_from_body(body: body) {
+    RedfishAccountServiceLockoutPropertiesRead { served: served } =>
+      served.account_lockout_threshold == 3
+        && (match served.account_lockout_duration { Present { value: d } => d == 600 Absent => false })
+        && (match served.account_lockout_counter_reset_after { Present { value: a } => a == 600 Absent => false })
+        && (match served.account_lockout_counter_reset_enabled { Present { value: e } => e Absent => false })
+    RedfishAccountServiceLockoutPropertiesUnreadable { detail: _ } => false
+    RedfishAccountServiceLockoutPropertiesNotAuthenticated { http_status: _, detail: _ } => false
+  }
+}
+
+// NO THRESHOLD IS NOT ZERO: an AccountService body without AccountLockoutThreshold refuses -- never
+// a zero that would read as "never locks" and open the budget gate wide (extdeps.bmc.redfish says
+// the same of absent thresholds; this pins it at the parse boundary).
+test fn an_account_service_without_a_threshold_is_unreadable_never_zero() -> Bool {
+  let body = "{\"AccountLockoutDuration\":600}"
+  match redfish_account_service_lockout_from_body(body: body) {
+    RedfishAccountServiceLockoutPropertiesUnreadable { detail: _ } => true
+    RedfishAccountServiceLockoutPropertiesRead { served: _ } => false
+    RedfishAccountServiceLockoutPropertiesNotAuthenticated { http_status: _, detail: _ } => false
   }
 }
