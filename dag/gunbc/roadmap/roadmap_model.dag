@@ -387,7 +387,8 @@ type RoadmapAcceptanceEvent
 // read it, and the event log's own kinds are named AcceptanceRecorded / AcceptanceRevoked too — two
 // constructors with the same names in two modules. These accessors are the bridge: a module that only
 // needs to move a receipt between the line and the event imports these, not the constructors, so one
-// name means one thing wherever it is written (gunbc.design_argument::one_meaning_per_name).
+// name means one thing wherever it is written, and one name over two materially
+// different contracts is the meaning fork (gunbc.design_argument::single_authority).
 type RoadmapAcceptanceRevocationFacts {
   receipt: RoadmapAcceptanceReceipt
   disposition: AcceptanceRevocationDisposition
