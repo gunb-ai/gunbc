@@ -2165,7 +2165,64 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
+// PXE 2a (gunbc#16275, session proud-crab-189). The install's target disk is bound by observed serial in two
+// places, and the change that added the second one is the change that records it
+// (gunbc.design_argument::root_generalization: the answer belongs where the pattern was introduced).
+data pxe_2a_base_revision: CommitSha = "ae3f13cead619854afadb36d449c44ba27b5d1fd"
+
+data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConcern = IntegrationConcern {
+  identity: "install_target_disk_binds_a_disk_beside_the_seed_selector",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),
+      second: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+    tail: [
+      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_match_binds_one_disk"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "TargetDiskSelector"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "BoundDiskEvidence"),
+    ],
+  },
+  question: "Is 'the disk this install may erase is the one with this observed serial' one decision or two? select_target_disk matches a TargetDiskSelector over a probe's whole population and mints sealed DiskSelectionProvenance with matched/observed counts; admit_install_target_disk admits ONE reported reading against a clock and a freshness window and renders upstream's storage.layout.match keys. The second cannot be fed the first honestly (a one-element population would claim discrimination nobody enumerated) and the first has no instant in its type, so neither can absorb the other today. What unifies them is the observation both want: a host's disk identity, read once, admitted once.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: pxe_2a_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "DiskSelectionProvenance") },
+        ],
+      },
+      account: "Raised by the 2026-11-10 review of gunbc#16275 against the PR that added gunbc.provisioning.install_target_disk. Read both modules in full: the seed's selection answers WHICH OF THE REPORTED POPULATION does a rule pick, is sealed to select_target_disk by DiskSelectionProvenance's admit_callers wall, and is consumed by bind_ubuntu_autoinstall_seed; the carrier answers MAY THIS INSTALL BE ACTUATED given this reading and this instant, is consumed by gunbc.fleet.site_pxe_edge_converge's install payload and gunbc.os_install_emit. The overlap is real — both turn an observed serial into a binding — and the difference is not cosmetic: a one-element call to select_target_disk would mint provenance claiming matched 1 of observed 1 over a population nobody enumerated, and that selection carries no read time, so the operator's requirement (refuse when the identity is no longer current) cannot be stated in it. Recorded rather than silently kept apart: the shared root is the disk observation, and PXE 2c is the first consumer that will hold both halves in one run.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "where does an admitted disk observation live, so that a population selection and a freshness-bound authorization are two readings of one record rather than two records? Candidates are gunbc.provisioning.install_target_disk's carrier, the seed's sealed DiskSelectionProvenance, or a third module beside extdeps.storage.device_identification — undecided until a run holds both.",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+        control: Absent,
+        statement: "a unification keeps what the carrier's admission refuses today: a reading never taken, a reader that reported no disk, an identity whose text is a glob, a match that names no single disk, a reading from after the decision, and a reading older than the caller's window — each still with its typed cause, and the site still withholding per host with the other hosts served",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),
+        control: Absent,
+        statement: "a unification keeps the seed's discriminating-power evidence (matched and observed counts over the population the probe reported) rather than loosening it to a serial string someone typed",
+      },
+    ],
+    next: climbs_when(capability: "PXE 2c lands — the workflow that reads the target disk identity in the SAME run as the boot, so one run holds both the host's enumerated disk population and a freshness-bound authorization for the disk it boots. At that revision: feed select_target_disk its population from admitted TargetDiskReading rows, or mint the seed's DiskSelectionProvenance from an InstallTargetDisk, and delete whichever of the two bindings stops being the authority. A third spelling of 'the disk is the one with this serial' before then is a defect, not a convenience."),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

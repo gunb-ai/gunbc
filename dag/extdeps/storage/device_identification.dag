@@ -83,6 +83,12 @@ type DeviceIdentificationToken sole_constructor { text: NonEmptyStr }
 
 type DeviceIdentificationRefusal
   = DeviceIdentificationEmpty
+  // NEITHER HALF WAS REPORTED — a different fact from DeviceIdentificationEmpty. Empty is a field the reader
+  // claims to report whose value is nothing; this is a capture whose columns did not contain either field,
+  // which is what the 2026-10-16 srv14 capture would produce if it asked for a SERIAL it never printed.
+  // Collapsing the two loses the operator's distinction between "the disk has no serial to read" and "nobody
+  // read for one".
+  | DeviceIdentificationNothingReported
   | DeviceIdentificationCharacterOutsideTheRepertoire
   | DeviceIdentificationEdgeWhitespace
 
@@ -120,12 +126,17 @@ fn device_identification_last_is_space(rest: FreeMonoid<Char>) -> Bool {
 }
 
 // THE PAIR THE INSTALLER'S MATCH SPEC IS BUILT FROM. A reading hands the shape above the text its tool
-// printed; this is the serial (and the model, when the reading reported one) that
-// gunbc.provisioning.install_target_disk admits before a destructive install is authorized. The model is
-// optional because a capture may report only the serial — the 2026-10-16 srv14 capture ran lsblk with no
-// SERIAL column at all — which is a real state of the tool, not a hole in this type.
+// printed; this is the serial and the model that gunbc.provisioning.install_target_disk admits before a
+// destructive install is authorized. EITHER half may be absent, because a capture really can report one and
+// not the other: the 2026-10-16 srv14 capture ran `lsblk --output=NAME,SIZE,MODEL,TRAN,TYPE` and so reported
+// models and no serials at all. THIS SHAPE CARRIES NO POLICY ABOUT WHICH COMBINATIONS ARE ENOUGH to pin an
+// erasure to one disk — that is the consumer's rule
+// (gunbc.provisioning.install_target_disk install_target_disk_match_binds_one_disk, which is upstream's
+// semantics, not a taste: a match key binds one device only when it names the device, so a model-only pair
+// narrows a class and authorizes nothing). An all-absent pair is still refused below, because a record that
+// reports neither field is not a record of an identity.
 type ReportedDeviceIdentity sole_constructor {
-  serial: DeviceIdentificationToken
+  serial: Optional<DeviceIdentificationToken>
   model: Optional<DeviceIdentificationToken>
 }
 
@@ -133,7 +144,7 @@ type ReportedDeviceIdentityAdmission
   = ReportedDeviceIdentityAdmitted { identity: ReportedDeviceIdentity }
   | ReportedDeviceIdentityRefused { cause: DeviceIdentificationRefusal }
 
-fn reported_device_identity_serial(identity: ReportedDeviceIdentity) -> DeviceIdentificationToken {
+fn reported_device_identity_serial(identity: ReportedDeviceIdentity) -> Optional<DeviceIdentificationToken> {
   identity.serial
 }
 
@@ -141,20 +152,38 @@ fn reported_device_identity_model(identity: ReportedDeviceIdentity) -> Optional<
   identity.model
 }
 
-// BOTH HALVES OR NEITHER. A half-admitted identity is the state where one field was checked and the other
-// was not, which is the state that ships a pin whose model half can steer the document; so the second
-// refusal is carried with the first cause rather than being flattened into it.
-fn admit_reported_device_identity(serial: String, model: Optional<String>) -> ReportedDeviceIdentityAdmission {
-  match admit_device_identification_token(spelling: serial) {
-    DeviceIdentificationRefused { spelling: _, cause: cause } => ReportedDeviceIdentityRefused { cause: cause }
-    DeviceIdentificationAdmitted { token: serial_token } => match model {
-      Absent => ReportedDeviceIdentityAdmitted {
-        identity: ReportedDeviceIdentity { serial: serial_token, model: Absent },
+// BOTH HALVES OR THE ONE THE CAPTURE ACTUALLY REPORTED. A half-admitted identity is the state where one field
+// was checked and the other was not, which is the state that ships a pin whose unchecked half can steer the
+// document; so every reported half goes through the same admitter, and the first refusal is carried rather
+// than being flattened into the rest. Neither half reported is refused with its own cause: nothing was read.
+fn admit_reported_device_identity(
+  serial: Optional<String>,
+  model: Optional<String>,
+) -> ReportedDeviceIdentityAdmission {
+  match serial {
+    Present { value: serial_text } => match admit_device_identification_token(spelling: serial_text) {
+      DeviceIdentificationRefused { spelling: _, cause: cause } => ReportedDeviceIdentityRefused { cause: cause }
+      DeviceIdentificationAdmitted { token: serial_token } => match model {
+        Absent => ReportedDeviceIdentityAdmitted {
+          identity: ReportedDeviceIdentity { serial: Present { value: serial_token }, model: Absent },
+        }
+        Present { value: model_text } => match admit_device_identification_token(spelling: model_text) {
+          DeviceIdentificationRefused { spelling: _, cause: cause } => ReportedDeviceIdentityRefused { cause: cause }
+          DeviceIdentificationAdmitted { token: model_token } => ReportedDeviceIdentityAdmitted {
+            identity: ReportedDeviceIdentity {
+              serial: Present { value: serial_token },
+              model: Present { value: model_token },
+            },
+          }
+        }
       }
+    }
+    Absent => match model {
+      Absent => ReportedDeviceIdentityRefused { cause: DeviceIdentificationNothingReported }
       Present { value: model_text } => match admit_device_identification_token(spelling: model_text) {
         DeviceIdentificationRefused { spelling: _, cause: cause } => ReportedDeviceIdentityRefused { cause: cause }
         DeviceIdentificationAdmitted { token: model_token } => ReportedDeviceIdentityAdmitted {
-          identity: ReportedDeviceIdentity { serial: serial_token, model: Present { value: model_token } },
+          identity: ReportedDeviceIdentity { serial: Absent, model: Present { value: model_token } },
         }
       }
     }

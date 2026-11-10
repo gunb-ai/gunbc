@@ -22,6 +22,7 @@ import gunbc.provisioning.install_target_disk {
   LsblkBlockReport,
   TargetDiskNeverRead,
   TargetDiskReadingStale,
+  TargetDiskMatchDoesNotBindOneDisk,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
 import product.host_identity { HostIdentity }
@@ -1145,7 +1146,7 @@ fn disk_report(host: HostIdentity, serial: String, model: String, read_at: Epoch
   DiskReported {
     host: host,
     device: "nvme0n1" as NonEmptyStr,
-    reported_serial: serial as NonEmptyStr,
+    reported_serial: Present { value: serial as NonEmptyStr },
     reported_model: Present { value: model as NonEmptyStr },
     source: LsblkBlockReport,
     captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
@@ -1327,15 +1328,49 @@ fn withheld_names_host(client: MacParseResult, standing: SitePxeEdgeInstallStand
   }
 }
 
-// A DISK NOBODY READ WITHHOLDS THE INSTALL, BY NAME, WITH THE CAUSE. The reading is srv14's real row: its
-// 2026-10-16 capture ran lsblk with NAME,SIZE,MODEL and printed no SERIAL column, so there is no serial to pin
-// to and the install is withheld rather than aimed at a disk somebody guessed. The request is the one this edge
-// would receive if srv14 asked again — its install is withdrawn from the fleet's list for a different reason, that
-// the host is installed and re-serving it would wipe it — and the MAC is named because "host X is not installing"
-// is only actionable if the reader can find host X's PXE client. The cause is typed because "withheld" without a
-// reason is the omission the operator's rule replaces.
-test fn a_request_whose_disk_was_never_read_is_withheld_with_a_typed_cause() -> Bool {
+// A DISK WHOSE READING CANNOT NAME ONE DISK WITHHOLDS THE INSTALL, BY NAME, WITH THE CAUSE. The reading is
+// srv14's real row: its 2026-10-16 capture ran `lsblk --output=NAME,SIZE,MODEL,TRAN,TYPE` and printed
+// `nvme0n1 476.9G SAMSUNG MZVPV512HDGL-000H1` — a model, no serial. Upstream matches a `match` key as a test
+// every candidate disk must pass, and a model is a CLASS test: it narrows the field to every disk of that model
+// and leaves the installer picking which one to erase. So this row is refused by the rule that requires the
+// match to name ONE disk, not by a special case for a host whose capture was configured differently. The request
+// is the one this edge would receive if srv14 asked again (its install is withdrawn from the fleet's list for a
+// different reason, that the host is installed and re-serving it would wipe it), and the MAC is named because
+// "host X is not installing" is only actionable if the reader can find host X's PXE client.
+test fn a_reading_that_names_no_single_disk_is_withheld_with_a_typed_cause() -> Bool {
   match site_pxe_edge_request_admission(request: srv14_request()) {
+    RequestWithheld { standing: standing } =>
+      withheld_names_host(client: srv14_install_client, standing: standing)
+        && match get(xs: refusals_of(st: standing), index: 0) {
+          Absent => false
+          Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
+            Absent => false
+            Present { value: cause } => match cause {
+              TargetDiskMatchDoesNotBindOneDisk { host: h, source: _, reported: _ } => h == operator_host_srv14
+              _ => false
+            }
+          }
+        }
+    _ => false
+  }
+}
+
+// THE SAME GATE, THE OTHER CAUSE: a machine nobody has read at all. This is not srv14's state (its disk WAS
+// read, and the claim above says what the reading could not do), so the reading is handed in rather than read
+// from the table — which is also how PXE 2c will feed it. The point of the pair is that the two refusals are
+// different facts: "go read it" versus "what you read is not enough", and a model that collapsed them would
+// send the operator to the wrong command.
+test fn a_disk_nobody_read_is_withheld_with_a_typed_cause() -> Bool {
+  let never_read = request_with_disk(
+    client: srv14_install_client,
+    disk: NotRead {
+      host: operator_host_srv14,
+      why: "no capture has read this machine's storage" as NonEmptyStr,
+    },
+    decided_at: witness_decision_at,
+    admission_window: site_pxe_edge_disk_identity_admission_window,
+  )
+  match site_pxe_edge_request_admission(request: never_read) {
     RequestWithheld { standing: standing } =>
       withheld_names_host(client: srv14_install_client, standing: standing)
         && match get(xs: refusals_of(st: standing), index: 0) {

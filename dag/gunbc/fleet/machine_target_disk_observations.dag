@@ -44,6 +44,11 @@ import gunbc.provisioning.install_target_disk {
 // "srv15-inband-recovery-2026-10-29"; the date at 00:00Z is the earliest instant that header supports.
 data srv15_lsblk_capture_instant: EpochMs = 1793232000000
 
+// THE INSTANT THE srv14 lsblk READING IS TAKEN TO HAVE BEEN TAKEN, same convention: its artifact directory is
+// named altrad8ud-1l2t-6-inband-recovery-2026-10-16, and the date at 00:00Z is the earliest instant that name
+// supports.
+data srv14_lsblk_capture_instant: EpochMs = 1792108800000
+
 // THE FLEET'S DISK READINGS. Two hosts, two rows, one type.
 //
 // srv15 — `artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt`, section "### disks", printed by
@@ -60,19 +65,14 @@ data srv15_lsblk_capture_instant: EpochMs = 1793232000000
 // srv14 — `artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt`, section "### disks":
 //     sda      29.3G Cruzer Blade
 //     nvme0n1 476.9G SAMSUNG MZVPV512HDGL-000H1
-// The same tool ran, but this capture asked lsblk for NAME,SIZE,MODEL and never printed a serial. The model is
-// there and the serial is not, and it is the serial that names one disk. So the row is NotRead: not "the disk is
-// absent", not "the read failed" — nobody has read this machine's disk serial. That is the truth the seed
-// renderer needs, because the alternative to recording it is a seed that pins srv14's install to a serial
-// somebody typed.
-//
-// Redfish is NOT a row here, and that is a finding rather than an omission: both boards answer
-// /redfish/v1/Systems/system/Storage with `"Members": [], "Members@odata.count": 0`
-// (artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system_Storage.json), so the BMC reports no
-// drives at all on this fleet. A Redfish row would have to say NoDiskReported for every machine, and a table
-// whose rows all say the same unhelpful thing is noise that hides the one reading that exists. The source type
-// keeps RedfishStorageDrive so a capture that DOES report drives has a home, and the refusal a NoDiskReported
-// produces names which reader spoke.
+// The same tool ran, but this capture asked lsblk for NAME,SIZE,MODEL and never printed a serial. So srv14 HAS
+// been read, and what was read is a model with no serial — which is neither "never read" nor enough. Upstream
+// treats a match key as a test every candidate disk must pass, and a model is a CLASS test: every disk of that
+// model passes it, so a model-only match narrows the field and leaves the installer choosing.
+// admit_install_target_disk withholds this row with TargetDiskMatchDoesNotBindOneDisk, which carries the
+// reported pair so the operator is told WHICH field was missing rather than being told the identity was bad.
+// The serial is Absent because the tool had no SERIAL column, not because the disk has no serial — the
+// difference is what tells the operator to go re-run lsblk with SERIAL.
 data machine_target_disk_observations: List<TargetDiskReading> = [
   DiskReported {
     host: operator_host_srv15,
@@ -81,17 +81,30 @@ data machine_target_disk_observations: List<TargetDiskReading> = [
     // admit_install_target_disk's job at the moment an install is authorized. A row that carried an already
     // checked token would make the check somebody's silent assumption, and the capture is evidence, not a
     // permission.
-    reported_serial: "25466Q801557" as NonEmptyStr,
+    reported_serial: Present { value: "25466Q801557" as NonEmptyStr },
     reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
     source: LsblkBlockReport,
     captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
     read_at: srv15_lsblk_capture_instant,
   },
-  NotRead {
+  DiskReported {
     host: operator_host_srv14,
-    why: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt ran lsblk with NAME,SIZE,MODEL and printed no SERIAL column" as NonEmptyStr,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Absent,
+    reported_model: Present { value: "SAMSUNG MZVPV512HDGL-000H1" as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt" as NonEmptyStr,
+    read_at: srv14_lsblk_capture_instant,
   },
 ]
+
+// Redfish is NOT a row here, and that is a finding rather than an omission: both boards answer
+// /redfish/v1/Systems/system/Storage with `"Members": [], "Members@odata.count": 0`
+// (artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system_Storage.json), so the BMC reports no
+// drives at all on this fleet. A Redfish row would have to say NoDiskReported for every machine, and a table
+// whose rows all say the same unhelpful thing is noise that hides the one reading that exists. The source type
+// keeps RedfishStorageDrive so a capture that DOES report drives has a home, and the refusal a NoDiskReported
+// produces names which reader spoke.
 
 // THE ROW FOR A MACHINE, and the honest answer when the fleet has none. A machine with no row is a machine whose
 // storage nobody has read — which is the SAME state srv14's row records, so a new machine without a capture is

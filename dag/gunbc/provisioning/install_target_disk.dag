@@ -22,13 +22,43 @@ module gunbc.provisioning.install_target_disk
 //   * The refusal causes: no identity at all (withheld) and an identity older than the admission window
 //     (refused), each carrying what it read and when, per gunbc.design_argument::fail_closed.
 //
-// WHAT IT DELIBERATELY IS NOT. It is not the disk SELECTOR for the seeded ISO route — that route has its own
-// selection with its own provenance in gunbc.provisioning.ubuntu_autoinstall_seed (TargetDiskSelector,
-// BoundDiskEvidence), and this module does not reach into it. It is not the workflow: the run that boots a
-// client reads the disk identity in the same run as the boot and calls admit_install_target_disk with its
-// own clock (that workflow is PXE 2c, gunbc.fleet.site_pxe_edge_converge's install route); this module is
-// the carrier and the admission it consumes. And it is not a per-host thing: the readings are DATA ROWS
-// keyed by the machine (gunbc.fleet.machine_target_disk_observations), never per-host declarations
+// WHY THIS IS NOT THE SEED'S DISK SELECTION — AND WHAT UNIFIES THEM. Answered here, at the change that
+// introduces the second spelling, because gunbc.design_argument::single_authority makes a second place that
+// independently decides one meaning a fork, and gunbc.design_argument::root_generalization makes silence the
+// reject. gunbc.provisioning.ubuntu_autoinstall_seed already binds a disk by serial: TargetDiskSelector
+// (ByObservedSerial | ByCatalogIdentity) matched over a probe's WHOLE population, minted only by
+// select_target_disk, sealed to that route by DiskSelectionProvenance's admit_callers wall, carrying
+// BoundDiskEvidence whose matched/observed counts are the proof that the rule picked exactly one disk out of
+// the bay. That decision reads: WHICH DISK DOES THIS RULE PICK OUT OF THE SET THE PROBE REPORTED — zero, one
+// or many, answered once from a population, with no clock in its type. The decision here is a different
+// question, not a second copy of the same one: MAY THIS MACHINE'S INSTALL BE ACTUATED AT ALL, given the disk
+// that reader reported and the instant the edge is about to serve it. Three consequences:
+//   1. There is no population at this decision. The edge holds ONE row per machine — the disk that host's
+//      reader reported — never the bay's device set. Feeding select_target_disk a one-element list would
+//      mint provenance reading matched: 1 of observed: 1, asserting discriminating power over a population
+//      nobody enumerated (gunbc.design_argument::epistemic_humility: assert as deduced only what is deduced).
+//      It cannot be fed honestly, which is why it is not reused.
+//   2. It has no time. That selection carries no read instant and no freshness bound, so the operator's
+//      actual requirement — refuse when the identity is no longer current — has no arm to live in. Staleness
+//      is this module's whole content, and it is absent there.
+//   3. Its output is upstream's vocabulary. The PXE payload renders Subiquity's own storage.layout.match keys
+//      (extdeps.os.ubuntu_autoinstall, cite-maintained); that selection produces the NoCloud seed's internal
+//      binding evidence, not upstream match keys.
+// THEY SHARE A ROOT — an identity-bearing disk observation admitted before an erasure — so the answer
+// root_generalization asks for is the named follow-up rather than a defence: recorded as the SuspectedFork row
+// `install_target_disk_binds_a_disk_beside_the_seed_selector` in gunbc.integration_concern, whose trigger is
+// PXE 2c — the workflow that reads the disk identity in the same run as the boot, the first consumer to hold
+// BOTH a host's enumerated disk population and a freshness-bound authorization. At that revision the question
+// is decided once: either select_target_disk takes its population from admitted TargetDiskReading rows, or
+// this carrier's serial becomes the evidence a DiskSelectionProvenance is minted from. Until then neither
+// module may grow the other's question, and a third spelling of "the disk is the one with this serial" is a
+// defect rather than a convenience.
+//
+// IT IS ALSO NOT THE WORKFLOW. The run that boots a client reads the disk identity in the same run as the
+// boot and calls admit_install_target_disk with its own clock (that workflow is PXE 2c,
+// gunbc.fleet.site_pxe_edge_converge's install route); this module is the carrier and the admission it
+// consumes. And it is not a per-host thing: the readings are DATA ROWS keyed by the machine
+// (gunbc.fleet.machine_target_disk_observations), never per-host declarations
 // (operator ruling D2, gunbc.plans.fleet_machine_naming, gunbc#16252).
 
 import std.types { Int, NonEmptyStr, Bool, String, EpochMs, Milliseconds }
@@ -44,6 +74,12 @@ import extdeps.storage.device_identification {
   DeviceIdentificationToken,
   admit_reported_device_identity,
   device_identification_token_text,
+  // Named, not left to the bare-reference channel: a call to an unimported name resolves by proximity and
+  // detonates later at the effect join as "no established callee identity" (gunbc.recurring_failure_mode
+  // bare_name_resolved_by_proximity_standing_in_for_resolution), which is why the accessors below are imported
+  // even though the carrier also reads the fields directly.
+  reported_device_identity_serial,
+  reported_device_identity_model,
 }
 import extdeps.os.ubuntu_autoinstall {
   AutoinstallStorageMatchKey,
@@ -87,9 +123,10 @@ fn disk_identity_source_text(source: DiskIdentitySource) -> NonEmptyStr {
 //     whole question.
 //   * NoDiskReported — the reader ran and named no data-carrying disk. Real here, not a placeholder: the
 //     Redfish Storage collection on both of this fleet's boards answers with zero members.
-//   * NotRead — nobody has read this machine's storage. Also real: srv14's 2026-10-16 capture ran
-//     `lsblk --output=NAME,SIZE,MODEL` with no SERIAL column, so the serial that would pin its install has
-//     never been read.
+//   * NotRead — nobody has read this machine's storage. This is what a machine with no row in
+//     gunbc.fleet.machine_target_disk_observations reads as; it is not what srv14 is, because srv14 WAS read
+//     (2026-10-16) and reported models without serials — that state is a DiskReported whose `reported_serial`
+//     is Absent, and it is refused below for the reason upstream gives, not for lack of a row.
 // `read_at` is on the reported answer only, because that is the only one that observed an instant; a
 // fabricated timestamp on the others is exactly what gunbc.design_argument::fail_closed names as the
 // witness-greening failure.
@@ -104,7 +141,13 @@ type TargetDiskReading
       // to be able to name, because it is the state the operator is told about. It is also why a reading can be
       // authored outside this module while a carrier cannot: the reading is the evidence, the carrier is the
       // authorization.
-      reported_serial: NonEmptyStr,
+      //
+      // EITHER half may be Absent, because that is what the tools report: the 2026-10-16 srv14 capture ran
+      // `lsblk --output=NAME,SIZE,MODEL,TRAN,TYPE` and printed a model for every disk and a serial for none.
+      // Whether what was reported is ENOUGH to pin an erasure is decided by the one-disk rule below, which is
+      // upstream's semantics rather than a preference — a model name is shared across every disk of that
+      // model, so a model-only reading narrows a class and authorizes nothing.
+      reported_serial: Optional<NonEmptyStr>,
       reported_model: Optional<NonEmptyStr>,
       source: DiskIdentitySource,
       captured_in: NonEmptyStr,
@@ -135,6 +178,11 @@ type InstallTargetDisk sole_constructor {
   host: HostIdentity
   device: NonEmptyStr
   identity: ReportedDeviceIdentity
+  // THE PIN THIS CARRIER WAS ADMITTED WITH, built by admit_install_target_disk from the identity above and
+  // from nothing else. It is stored rather than re-derived at render time so that the authorization and the
+  // match it authorizes cannot drift apart: a carrier that got this far had a key naming ONE disk, which is
+  // why the rendering path has no "what if the keys are only class-shaped" arm to get wrong.
+  layout_match: FreeSemigroup<AutoinstallStorageMatchKey>
   source: DiskIdentitySource
   read_at: EpochMs
   admitted_at: EpochMs
@@ -159,12 +207,73 @@ type InstallTargetDiskWithheldCause
       report: NonEmptyStr,
     }
   | TargetDiskIdentityUnusable { host: HostIdentity, source: DiskIdentitySource, cause: DeviceIdentificationRefusal }
+  // THE ONE-DISK RULE, APPLIED. The reading reported something, and every key it can be turned into names a
+  // CLASS of disks rather than one disk — a model alone, or nothing at all. Upstream's own words are the
+  // reason this is a refusal and not a warning: "Every supplied key must match for the disk to be a match",
+  // so keys that every disk of a model satisfies leave the installer choosing, which is the state this
+  // module exists to make unreachable. It carries what was reported so the operator can see the field that
+  // was not enough, rather than being told the identity was bad.
+  | TargetDiskMatchDoesNotBindOneDisk {
+      host: HostIdentity,
+      source: DiskIdentitySource,
+      reported: ReportedDeviceIdentity,
+    }
   | TargetDiskReadingFromTheFuture { host: HostIdentity, read_at: EpochMs, decided_at: EpochMs }
-  | TargetDiskReadingStale { host: HostIdentity, read_at: EpochMs, decided_at: EpochMs, deadline: Int }
+  | TargetDiskReadingStale {
+      host: HostIdentity,
+      read_at: EpochMs,
+      decided_at: EpochMs,
+      // The instant the reading stopped being current: read_at + window. EpochMs rather than Int because it
+      // is an instant, and an instant reported as a bare number is a field a consumer cannot tell from a
+      // duration (gunbc.design_argument::minimize_redundancy: one meaning, one name).
+      deadline: EpochMs,
+    }
 
 type InstallTargetDiskAdmission
   = InstallTargetDiskAdmitted { target: InstallTargetDisk }
   | InstallTargetDiskWithheld { host: HostIdentity, cause: InstallTargetDiskWithheldCause }
+
+// WHAT THE REPORTED IDENTITY CAN PUT IN A MATCH SPEC, IF ANYTHING. Serial first (the reference's ID_SERIAL
+// key), then the model when the reading reported one (ID_MODEL) — upstream ANDs the keys it is given, so the
+// model narrows what the serial already picked, and neither is a second authorization. Absent when the reading
+// reported no field this spec can use: there is no key to build, and inventing one (`ssd: true`, a size) would
+// be a constraint the reading never reported, which upstream would still honour — "Every supplied key must
+// match for the disk to be a match" — erasing on a condition nobody observed.
+//
+// This is the ONE spelling of "identity in, match keys out" in the module: the admission builds the keys here,
+// checks them with install_target_disk_match_binds_one_disk below, and stores the result on the carrier, so
+// the rule that authorizes a disk and the keys that pin it cannot be stated twice and drift.
+fn install_target_disk_identity_match_keys(
+  identity: ReportedDeviceIdentity,
+) -> Optional<FreeSemigroup<AutoinstallStorageMatchKey>> {
+  let model_key = match reported_device_identity_model(identity: identity) {
+    Absent => Absent
+    Present { value: token } => Present {
+      value: MatchModel { model: device_identification_token_text(token: token) },
+    }
+  }
+  match reported_device_identity_serial(identity: identity) {
+    Present { value: serial_token } => match model_key {
+      Absent => Present {
+        value: non_empty_singleton(
+          item: MatchSerial { serial: device_identification_token_text(token: serial_token) },
+        ),
+      }
+      Present { value: key } => Present {
+        value: non_empty_append(
+          left: non_empty_singleton(
+            item: MatchSerial { serial: device_identification_token_text(token: serial_token) },
+          ),
+          right: non_empty_singleton(item: key),
+        ),
+      }
+    }
+    Absent => match model_key {
+      Absent => Absent
+      Present { value: key } => Present { value: non_empty_singleton(item: key) }
+    }
+  }
+}
 
 // THE ONE ADMISSION. `window` is the age the caller will still accept — the request's admission window, not
 // a constant here, because how stale an identity may be is the actuator's policy and not this model's; the
@@ -176,10 +285,14 @@ type InstallTargetDiskAdmission
 //   2. The reported identity is not a usable token (extdeps.storage.device_identification): withheld. This
 //      is where a serial that is really a glob — `CT*`, the reference's own example of matching a CLASS of
 //      disks — is refused, so no install is authorized against a wildcard.
-//   3. A reading from after the decision instant is not a reading of the current state: withheld. A clock
+//   3. The keys those fields can build name no single disk: withheld (install_target_disk_match_binds_one_disk
+//      below, which reads extdeps.os.ubuntu_autoinstall's upstream fact). This is where a capture that
+//      reported a model and no serial is refused — the 2026-10-16 srv14 capture — instead of authorizing an
+//      install against every disk of that model.
+//   4. A reading from after the decision instant is not a reading of the current state: withheld. A clock
 //      that runs behind its machine is a real failure mode, and a negative age must not silently count as
 //      fresh.
-//   4. A reading older than the window is refused: the identity is no longer the CURRENT one, which is what
+//   5. A reading older than the window is refused: the identity is no longer the CURRENT one, which is what
 //      the binding is for.
 fn admit_install_target_disk(
   reading: TargetDiskReading,
@@ -206,7 +319,10 @@ fn admit_install_target_disk(
       captured_in: _,
       read_at: read_at,
     } => match admit_reported_device_identity(
-      serial: reported_serial as String,
+      serial: match reported_serial {
+        Absent => Absent
+        Present { value: text } => Present { value: text as String }
+      },
       model: match reported_model {
         Absent => Absent
         Present { value: text } => Present { value: text as String }
@@ -217,49 +333,63 @@ fn admit_install_target_disk(
         cause: TargetDiskIdentityUnusable { host: host, source: source, cause: cause },
       }
       ReportedDeviceIdentityAdmitted { identity: admitted_identity } =>
-        if decided_at < read_at {
-          InstallTargetDiskWithheld {
+        match install_target_disk_identity_match_keys(identity: admitted_identity) {
+          // Nothing these fields can build, or nothing that names one disk. Both are the same failure in
+          // upstream's terms: the match spec would leave the installer choosing, which is the gap this module
+          // was added to close.
+          Absent => InstallTargetDiskWithheld {
             host: host,
-            cause: TargetDiskReadingFromTheFuture { host: host, read_at: read_at, decided_at: decided_at },
-          }
-        } else if decided_at > read_at + window {
-          InstallTargetDiskWithheld {
-            host: host,
-            cause: TargetDiskReadingStale {
-              host: host, read_at: read_at, decided_at: decided_at, deadline: read_at + window,
+            cause: TargetDiskMatchDoesNotBindOneDisk {
+              host: host, source: source, reported: admitted_identity,
             },
           }
-        } else {
-          InstallTargetDiskAdmitted {
-            target: InstallTargetDisk {
+          Present { value: keys } => if install_target_disk_match_binds_one_disk(keys: keys) {
+            if decided_at < read_at {
+              InstallTargetDiskWithheld {
+                host: host,
+                cause: TargetDiskReadingFromTheFuture { host: host, read_at: read_at, decided_at: decided_at },
+              }
+            } else if decided_at > read_at + window {
+              InstallTargetDiskWithheld {
+                host: host,
+                cause: TargetDiskReadingStale {
+                  host: host, read_at: read_at, decided_at: decided_at, deadline: read_at + window,
+                },
+              }
+            } else {
+              InstallTargetDiskAdmitted {
+                target: InstallTargetDisk {
+                  host: host,
+                  device: device,
+                  identity: admitted_identity,
+                  layout_match: keys,
+                  source: source,
+                  read_at: read_at,
+                  admitted_at: decided_at,
+                },
+              }
+            }
+          } else {
+            InstallTargetDiskWithheld {
               host: host,
-              device: device,
-              identity: admitted_identity,
-              source: source,
-              read_at: read_at,
-              admitted_at: decided_at,
-            },
+              cause: TargetDiskMatchDoesNotBindOneDisk {
+                host: host, source: source, reported: admitted_identity,
+              },
+            }
           }
         }
     }
   }
 }
 
-// THE PIN, AND ONLY THE PIN. The match keys are built FROM the carrier and nothing else: serial first
-// (the key the reference says is the device's serial number, ID_SERIAL), then model when the reading
-// reported one (ID_MODEL). Nothing here can emit `ssd` or `size`, because those keys name a class of disks —
+// THE PIN THE CARRIER WAS ADMITTED WITH. Read off the carrier rather than rebuilt: the keys were produced by
+// admit_install_target_disk from the reading's identity, and the authorization and the match it authorizes are
+// therefore the same object. Nothing here can emit `ssd` or `size`, because those keys name a class of disks —
 // "the largest SSD" is a selector, not an authorization — and nothing here can emit a serial the reading did
 // not report. A caller that wants a pinned layout must produce an InstallTargetDisk, which has exactly one
 // route.
 fn install_target_disk_layout_match(disk: InstallTargetDisk) -> FreeSemigroup<AutoinstallStorageMatchKey> {
-  let by_serial = non_empty_singleton(item: MatchSerial { serial: device_identification_token_text(token: disk.identity.serial) })
-  match disk.identity.model {
-    Absent => by_serial
-    Present { value: token } => non_empty_append(
-      left: by_serial,
-      right: non_empty_singleton(item: MatchModel { model: device_identification_token_text(token: token) }),
-    )
-  }
+  disk.layout_match
 }
 
 // THE POLICY THIS CARRIER AUTHORIZES. The match a payload's direct layout may carry, built from the reading and
@@ -271,11 +401,14 @@ fn install_target_disk_direct_layout_target(disk: InstallTargetDisk) -> Autoinst
   MatchedDisk { keys: install_target_disk_layout_match(disk: disk) }
 }
 
-// THE DOMAIN RULE THE UPSTREAM FACT MAKES POSSIBLE. A match spec whose keys are all class-shaped — ssd, size,
-// model, path — narrows the installer's choice without binding the install to one disk. A destructive
-// network install is admitted only against a match that names one disk, which is what the serial is for
-// (extdeps.os.ubuntu_autoinstall autoinstall_match_key_names_one_disk carries the upstream fact; this
-// carries the rule).
+// THE DOMAIN RULE THE UPSTREAM FACT MAKES POSSIBLE, AND WHAT IT IS APPLIED TO. A match spec whose keys are all
+// class-shaped — ssd, size, model, path — narrows the installer's choice without binding the install to one
+// disk, so admit_install_target_disk refuses to mint a carrier from one (step 3 of its checks): this is the
+// rule that stops `os_install_emit` ever rendering a `match` that leaves the installer picking the disk, which
+// is the defect the operator's 2026-11-10 review named. It reads extdeps.os.ubuntu_autoinstall's
+// autoinstall_match_key_names_one_disk (the upstream fact: the serial is the only key that names a device) and
+// it is applied to the keys the identity can actually build — so an empty key list binds nothing, exactly as
+// upstream would honour it: a match spec with no keys matches every disk in the machine.
 fn install_target_disk_match_binds_one_disk(keys: FreeSemigroup<AutoinstallStorageMatchKey>) -> Bool {
   match list_find_first(xs: non_empty_to_list(keys), predicate: fn(key) {
     autoinstall_match_key_names_one_disk(key: key)

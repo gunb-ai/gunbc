@@ -1059,8 +1059,8 @@ type SitePxeEdgeInstallRequest {
 // WHAT RENDERING ONE REQUEST'S SEED DID (PXE 2a). The seed's user-data is not an input to a request, it is the
 // OUTPUT of authorizing that request against the disk reading it carries: admitted, the document is rendered with
 // the reading's serial as the layout's match; withheld, the cause is named by type — never read, not reported by
-// that reader, an identity no tool could have produced, a reading from after the decision, or a reading older
-// than the window. A host whose install is withheld renders no seed and no menu entry, and its PXE client falls
+// that reader, an identity no tool could have produced, a reading whose keys name no single disk, a reading from
+// after the decision, or a reading older than the window. A host whose install is withheld renders no seed and no menu entry, and its PXE client falls
 // through to its next boot device.
 type SitePxeEdgeSeedRendering
   = SeedRendered { user_data: YamlValue }
@@ -1205,8 +1205,9 @@ type SitePxeEdgeInstallRefusal
   | InstallSeedRefused { findings: FreeSemigroup<PublicSeedFinding> }
   // PXE 2a: the host's disk reading did not admit, so its seed was never rendered and it is withheld by name.
   // `cause` says which state the reading was in — never read, not reported by that reader, an identity no tool
-  // could have produced, a reading from after the decision, or older than the window — which is what lets an
-  // operator go re-read the disk instead of guessing at a silent omission.
+  // could have produced, a reading whose reported fields can only name a class of disks, a reading from after the
+  // decision, or older than the window — which is what lets an operator go re-read the disk (or read the field
+  // that was missing) instead of guessing at a silent omission.
   | InstallDiskIdentityWithheld { host: HostIdentity, cause: InstallTargetDiskWithheldCause }
 
 // WHAT THE DISK RULE HAD TO SAY, when the disk rule is what withheld the install. A reader holding a withheld
