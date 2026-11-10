@@ -102,6 +102,24 @@ fn mbp_find_match(n: Node) -> Optional<Node> {
   }
 }
 
+// THE FIRST ARM BODY under the declaration's match node: the target of the first edge labelled
+// core_edge_label(marker: MatchArmBodyEdge). The re-land types these bodies; the rows that used to assert
+// infer_match_arm_body_type_underived now read this node's resolved type. Same edge-marker the arm is built
+// from (mbt_arm below).
+fn mbp_arm_body(n: Node) -> Optional<Node> {
+  fold(n.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if e.label == core_edge_label(marker: MatchArmBodyEdge) {
+          optional_present(value: e.target)
+        } else {
+          mbp_arm_body(n: e.target)
+        }
+    }
+  })
+}
+
 fn mbp_find_atom(n: Node, id: Symbol) -> Optional<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: s } } => if s == id { optional_present(value: n) } else { optional_absent() }
@@ -473,6 +491,12 @@ type MbtDeclReading {
   binder_base_fact: Symbol
   match_fact: Symbol
   arm_body_underived_at_binder_projection: Bool
+  // The first arm body's resolved TYPE NAME (mbp_type_name), read the same way binder_base_fact reads the
+  // binder base: facts.lookup(body) -> inferred_facts_resolved_type -> mbp_type_name. ^mbp_subject_absent /
+  // ^mbp_no_facts / ^mbp_underived where the route stops. The re-land (#15992 re-land) now TYPES the
+  // constructor arm bodies, so a row that used to assert infer_match_arm_body_type_underived instead
+  // asserts this name.
+  arm_body_type: Symbol
 }
 
 type MbtProgramReading {
@@ -523,7 +547,7 @@ fn mbp_reasons_within(d: Diagnostics, declaration: Node) -> List<Symbol> {
 }
 
 fn mbp_unread_declaration(fact: Symbol) -> MbtDeclReading {
-  MbtDeclReading { reasons_within: Empty, binder_base_fact: fact, match_fact: fact, arm_body_underived_at_binder_projection: false }
+  MbtDeclReading { reasons_within: Empty, binder_base_fact: fact, match_fact: fact, arm_body_underived_at_binder_projection: false, arm_body_type: ^mbp_subject_absent }
 }
 
 fn mbp_declaration_reading(inferred: ObligatedInferredTree, d: Diagnostics, root: Node, name: Symbol) -> MbtDeclReading {
@@ -537,7 +561,8 @@ fn mbp_declaration_reading(inferred: ObligatedInferredTree, d: Diagnostics, root
         d: d,
         reason: ^infer_match_arm_body_type_underived,
         at: mbp_binder_projection(n: declaration)
-      )
+      ),
+      arm_body_type: mbp_fact_in(inferred: inferred, subject: mbp_arm_body(n: declaration))
     }
   }
 }
