@@ -1699,6 +1699,7 @@ fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: Roadmap
     // terminal standing). Admitting another Retired would let a later writer quietly rewrite the reason
     // the plan shows for a node that cannot move — a second fact with no effect is a silent edit of the
     // first, so this refuses (witness: a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_
+    // _first_answers_it, in test.claim.roadmap.roadmap_acceptance_evidence_witness)
     // first_answers_it; the operation identity in gunbc.roadmap.roadmap_event_cli makes the *same*
     // command a replay rather than a second attempt).
     Retired { reason: _ } => match roadmap_node_standing(envs: envs) {
@@ -1797,7 +1798,8 @@ fn roadmap_issue_history_newest_first(envs: List<RoadmapEventEnvelope>) -> List<
 // day too. Comparing node and criteria digest alone would certify a migrated acceptance whose
 // red-control witness, handback artifact, accepting principal or day had been swapped: the standing
 // still folds the same way, and the receipt is no longer the one the operator wrote (witness:
-// a_migrated_event_with_swapped_evidence_disagrees_with_the_manifest).
+// a_migrated_event_with_swapped_evidence_disagrees_with_the_manifest, in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness).
 fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
   match e {
     AcceptanceRecorded { receipt } =>

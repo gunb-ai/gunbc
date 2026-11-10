@@ -358,7 +358,8 @@ fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> Strin
 // committed — is the SAME command and must answer with the first attempt's committed outcome. Binding the
 // key to the parent made that retry a fresh command and refused it `operation-conflict`, so a half-finished
 // migration could not be finished by replaying it (witness:
-// a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first_recording). What a used key
+// a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first_recording, in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness). What a used key
 // still cannot do is carry another payload: that comparison is the one below, and it refuses.
 fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {
   a.node == b.node && a.author == b.author && a.kind == b.kind

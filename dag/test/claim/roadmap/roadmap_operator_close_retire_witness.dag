@@ -28,105 +28,245 @@ module test.claim.roadmap.roadmap_operator_close_retire_witness
 // Everything wet lives under the run's temp dirs; the only durable effect is an event append
 // through the modeled route (gunbc.roadmap.roadmap_issue_command issue_command_apply).
 
-import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, EpochMs, Email }
-import std.nat { Nat }
-import std.integer { nat_to_int }
-import std.optional { Present, Absent, Optional }
-import std.algebra { empty_map, map_insert, string_contains, string_compare_canonical, Less }
+import std.types {
+  String,
+  Bool,
+  Int,
+  NonEmptyStr,
+  List,
+  EpochSecs,
+  Email
+}
+
+import std.integer {
+  nat_to_int
+}
+import std.optional {
+  Present,
+  Absent
+}
+import std.algebra {
+  empty_map,
+  map_insert,
+  string_contains
+}
 import extdeps.shell
-import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown }
-import extdeps.ietf.http_semantics { HttpMethod, POST }
-import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, text_plain_utf8 }
-import extdeps.uri_path { PathParamBinding }
-import extdeps.uri { Uri, Https }
-import extdeps.clock { epoch_secs_of_millis }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate
+}
+import extdeps.github.pulls {
+  PullRequestViewClosed,
+  PullRequestViewMerged
+}
+import extdeps.ietf.http_semantics {
+  POST
+}
+import extdeps.http.server {
+  ServeHttpRequest,
+  RequestSecurityContext
+}
+import extdeps.uri_path {
+  PathParamBinding
+}
+import extdeps.uri {
+  Uri,
+  Https
+}
+
 import test.claim.fabric.fabric_storage_fixture {
-  fabric_wet_store, FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
-  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready,
+  fabric_wet_store,
+  FabricWetStoreReady,
+  FabricWetStoreUnready,
+  fabric_fixture_instance,
+  fabric_wet_scenario,
+  FabricWetScenarioReady,
+  FabricWetScenarioUnready
 }
 import extdeps.shell
 import gunbc.roadmap.roadmap_event_carrier {
-  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, CarrierClosed,
-  roadmap_event_append, roadmap_events_read_synced, EventAlreadyPresent, EventsRead, EventsReadRefused,
+  RoadmapEventCarrierLayout,
+  roadmap_event_carrier_layout_for_instance,
+  CarrierClosed
 }
-import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, AcceptNode, IssueCommandSubject, issue_command_apply }
+import gunbc.roadmap.roadmap_issue_command {
+  RetireNode,
+  AcceptNode,
+  IssueCommandSubject,
+  issue_command_apply
+}
 import gunbc.roadmap.roadmap_event_cli {
-  AcceptanceCommandChoice, BuildAcceptCommand, BuildRevokeCommand, roadmap_acceptance_operation_identity,
-  roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args,
+  BuildAcceptCommand,
+  BuildRevokeCommand,
+  roadmap_acceptance_operation_identity
 }
 import gunbc.roadmap.roadmap_model {
-  RoadmapAcceptanceRevocationFacts, AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier,
-  AcceptanceNodeRemainsSuperseded,
+  RoadmapAcceptanceRevocationFacts,
+  AcceptanceNodeReopensActiveFrontier
 }
-import gunbc.fabric.fabric_event_log { EventAppended, EventAppendRefused }
-import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, fabric_storage_slots }
-import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.fabric.fabric_event_log {
+  EventAppended,
+  EventAppendRefused
+}
+import gunbc.fabric.fabric_storage_file_store {
+  fabric_storage_slots
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv2_preview_dashboard_instance
+}
 import gunbc.auth.request_authentication {
-  RequestAuthenticationEvidence, RequestAccessPath, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, IngressUnattested,
+  RequestAuthenticationEvidence,
+  RequestAccessPath,
+  AuthAbsent,
+  GoogleOidcSession,
+  AccessPathLocalDev
 }
 import gunbc.auth.session {
-  AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken,
-  SessionProfile,
+  AuthenticatedSession,
+  AuthMethodGoogleOidc,
+  SessionClientTrackerWeb,
+  CsrfToken,
+  SessionProfile
 }
-import gunbc.principal_projection { PrincipalRef }
+import gunbc.principal_projection {
+  PrincipalRef
+}
 import gunbc.roadmap.roadmap_authority {
-  RoadmapAuthorityProjection, RoadmapAuthorityProjected, unmet_parents_in, roadmap_node_id_set,
+  RoadmapAuthorityProjection,
+  RoadmapAuthorityProjected,
+  unmet_parents_in,
+  roadmap_node_id_set
 }
 import gunbc.roadmap.roadmap_model {
-  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, RoadmapAcceptanceReceipt, AcceptanceRecorded,
-  AcceptanceRevoked, RoadmapAcceptanceEvent, Dispatchable, PrsMerged, TicketLine, section_group,
-  roadmap_criteria_digest, roadmap_acceptance_line_of_receipt,
+  RoadmapNode,
+  RoadmapNodeId,
+  RoadmapEdge,
+  RoadmapAcceptanceReceipt,
+  AcceptanceRecorded,
+  AcceptanceRevoked,
+  section_group,
+  roadmap_criteria_digest,
+  roadmap_acceptance_line_of_receipt
 }
-import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, HandbackDelivered }
-import gunbc.roadmap.roadmap_execution_contract { gunbc_claims_execution_contract }
-import test.claim.roadmap.roadmap_task_record_witness { sample_task, sample_ticket }
+import gunbc.roadmap.roadmap_document {
+  RoadmapDocument,
+  RoadmapSection
+}
+import gunbc.roadmap.roadmap_status {
+  RedControlExecuted,
+  HandbackDelivered
+}
+
+import test.claim.roadmap.roadmap_task_record_witness {
+  sample_task,
+  sample_ticket
+}
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
-  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused,
-  load_roadmap_acceptance_event_history_from_carrier_text,
+  RoadmapAcceptanceEventHistoryLoad,
+  RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+  load_roadmap_acceptance_event_history_from_carrier_text
 }
 import gunbc.roadmap.roadmap_node_terminality {
-  BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageRetired, LineageTerminalUnreadable,
-  belt_node_lineage_terminal_read,
+  LineageOpen,
+  LineageTerminal,
+  LineageRetired,
+  LineageTerminalUnreadable,
+  belt_node_lineage_terminal_read
 }
 import gunbc.roadmap.roadmap_operator_acceptance {
-  RoadmapAcceptanceTailOk, RoadmapAcceptanceTailBad,
-  OperatorPrReadback, PrRoster, PrReadbackUnavailable, OperatorPrRow,
-  OperatorCloseInputs, CloseWritten, CloseAlreadyRecorded, CloseRefused, OperatorClosePrFacts,
-  CloseUnknownNode, CloseAlreadyClosed, ClosePrNotForNode, CloseEvidenceMissing, ClosePrUnreadable,
-  ClosePrNotFound, ClosePrNotMerged, CloseHistoryUnreadable, CloseInvalidHistory, CloseCapacityFull,
-  CloseStaleHead, CloseChainWriteRefused,
-  roadmap_operator_acceptance_parse_tail, roadmap_operator_acceptance_receipt_line,
-  roadmap_operator_acceptance_history_load,
-  roadmap_operator_close, roadmap_operator_close_history, roadmap_operator_node_closed,
-  AcceptanceFound, AcceptanceAbsent, roadmap_operator_date_from_epoch_secs, roadmap_operator_render_civil_date,
+  RoadmapAcceptanceTailOk,
+  RoadmapAcceptanceTailBad,
+  OperatorPrReadback,
+  PrRoster,
+  PrReadbackUnavailable,
+  OperatorPrRow,
+  OperatorCloseInputs,
+  CloseWritten,
+  CloseAlreadyRecorded,
+  CloseRefused,
+  OperatorClosePrFacts,
+  CloseUnknownNode,
+  CloseAlreadyClosed,
+  ClosePrNotForNode,
+  ClosePrUnreadable,
+  ClosePrNotFound,
+  ClosePrNotMerged,
+  CloseHistoryUnreadable,
+  CloseInvalidHistory,
+  roadmap_operator_acceptance_parse_tail,
+  roadmap_operator_acceptance_receipt_line,
+  roadmap_operator_close,
+  roadmap_operator_close_history,
+  roadmap_operator_node_closed,
+  AcceptanceFound,
+  AcceptanceAbsent,
+  roadmap_operator_date_from_epoch_secs,
+  roadmap_operator_render_civil_date
 }
 import gunbc.roadmap.roadmap_event_log {
-  roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_migration_problems,
-  AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
-  RoadmapEvent, RoadmapNodeStanding,
-  Claimed, HandedBack, Retired, NodeRetired, NodeReadyForReview, NodeOpen,
-  roadmap_event_envelope, roadmap_issue_state, EventPrincipalAuthenticated,
-  NodeStandingRow, roadmap_assignment_empty, StandingsObserved,
+  AcceptancePrEvidence,
+  EarnedByPullRequest,
+  RoadmapEvent,
+  RoadmapNodeStanding,
+  Claimed,
+  HandedBack,
+  Retired,
+  NodeRetired,
+  NodeReadyForReview,
+  NodeOpen,
+  roadmap_event_envelope,
+  roadmap_issue_state,
+  EventPrincipalAuthenticated,
+  NodeStandingRow,
+  roadmap_assignment_empty,
+  StandingsObserved
 }
 import gunbc.roadmap.roadmap_readiness {
-  NodeReadiness, NotReady, GapDependencies,
-  readiness_text, readiness_text_with_retired, readiness_reason_text_with_retired,
+  NodeReadiness,
+  NotReady,
+  GapDependencies,
+  readiness_text,
+  readiness_text_with_retired,
+  readiness_reason_text_with_retired
 }
-import gunbc.roadmap.roadmap_presentation { work_row_view, RoundsUnobserved, LaunchRowContext, NoActiveWork, SchedulingNotReady }
-import gunbc.roadmap.roadmap_belt { ManualReady }
-import gunbc.roadmap.roadmap_launch_admission { launch_graph_of_document, LaunchNodeRetired }
-import gunbc.roadmap.roadmap_belt_actuate { belt_node_launch_refusal }
-import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_doc }
-import gunbc.roadmap.roadmap_provider_events { ProviderCompleted }
+import gunbc.roadmap.roadmap_presentation {
+  work_row_view,
+  RoundsUnobserved,
+  LaunchRowContext,
+  NoActiveWork,
+  SchedulingNotReady
+}
+import gunbc.roadmap.roadmap_belt {
+  ManualReady
+}
+import gunbc.roadmap.roadmap_launch_admission {
+  launch_graph_of_document,
+  LaunchNodeRetired
+}
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_node_launch_refusal
+}
+import test.claim.roadmap.roadmap_launch_admission_fixture {
+  launch_fixture_standing_clear,
+  launch_fixture_doc
+}
+import gunbc.roadmap.roadmap_provider_events {
+  ProviderCompleted
+}
 import gunbc.roadmap.roadmap_workflow_stage {
-  WorkflowSegment, SubmissionWorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment,
-  WorkflowSegmentComplete, WorkflowSegmentPending,
+  WorkflowSegment,
+  SubmissionWorkflowSegment,
+  VerificationWorkflowSegment,
+  ReviewWorkflowSegment,
+  WorkflowSegmentComplete,
+  WorkflowSegmentPending
 }
-import gunbc.roadmap.roadmap_belt_obligation { belt_attempt_outstanding }
+import gunbc.roadmap.roadmap_belt_obligation {
+  belt_attempt_outstanding
+}
 import gunbc.roadmap.roadmap_serve {
-  serve_issue_close_response_over, serve_issue_retire_response_over,
+  serve_issue_close_response_over,
+  serve_issue_retire_response_over
 }
 
 // ── FIXTURES ─────────────────────────────────────────────────────────────────────────────────────
@@ -566,17 +706,17 @@ test fn a_duplicate_acceptance_of_one_node_refuses_the_whole_load_located() -> B
         subject: IssueCommandSubject { node: node, author: opr_principal(),
           operation: "op-duplicate-one" as NonEmptyStr, expected: none },
         receipt: receipt, evidence: earned(facts) },
-      recorded_at: 1793692800)
-    let e1 = match first { EventAppended { id: _ } => claim("the first acceptance appended", true)
+      recorded_at: "2026-11-04T08:00:00Z")
+    let e1 = match first { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the first acceptance appended", true)
       _ => claim("the first acceptance was refused", false) }
     let second = issue_command_apply(layout: layout,
       command: AcceptNode {
         subject: IssueCommandSubject { node: node, author: opr_principal(),
           operation: "op-duplicate-two" as NonEmptyStr, expected: none },
         receipt: receipt, evidence: earned(facts) },
-      recorded_at: 1793692801)
-    let e2 = match second { EventAppended { id: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
-      EventAppendRefused { step: _, reason: _ } => claim("the writer itself refused the duplicate at the chain", true) }
+      recorded_at: "2026-11-04T08:00:01Z")
+    let e2 = match second { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
+      CarrierClosed { result: EventAppendRefused { step: _, reason: _ }, close: _ } => claim("the writer itself refused the duplicate at the chain", true) }
     match roadmap_operator_close_history(layout: layout) {
       RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => e1 && e2 && claim("the replay refuses the duplicate, located: " + d, count(d) > 0)
       RoadmapAcceptanceEventHistoryLoaded { events: evs } => e1 && e2 && claim("the log never holds two acceptances of one node",
@@ -941,272 +1081,4 @@ test fn an_acceptance_and_its_revocation_are_two_operations_and_a_retry_is_one()
     && claim("an acceptance and the revocation of that receipt are distinct operations", accept_id != revoke_id)
     && claim("a receipt is never shared across nodes by an identity", accept_id != other_node_id)
     && claim("the identity names the node it acts on", string_contains(s: accept_id, pattern: "node-operation"))
-}
-
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-// THE MIGRATION RESUMES, AND THE VERIFIER PRESERVES FACTS (review 92815, findings 1 and 2).
-// The runbook migrates the operator's recorded acceptances and retirements command by command, and an
-// interrupted run is resumed by replaying its commands. Two properties make that true, and each is
-// witnessed by executing the real thing — the real append route over a real temp carrier, and the real
-// comparison over constructed lists — rather than by comparing identity strings to each other:
-//   ONE OPERATION, ONE OUTCOME, EVEN WHEN THE WORLD MOVED. A retry of a committed acceptance must be
-// answered by the first recording even when the chain head has moved since (the first attempt's own
-// event is now the head). Keying the operation on the caller's parent guess made that retry a NEW
-// command, refused `operation-conflict`, and left a half-finished migration unfinished.
-//   THE RETIRED NODE IS RETIRED ONCE. The retirement carries a stable operation key too (the node, the
-//   word "retirement", the digest of the reason), so replaying it answers the first recording while any
-//   OTHER retirement of the same node is refused by the admission law — a retired node has no change
-//   left to name.
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-test fn a_retry_of_a_committed_acceptance_after_the_head_moved_answers_the_first_recording() -> Bool {
-  wet(fn_with: fn(instance) {
-    let layout = close_layout(instance)
-    let node = "node-retry-head-moved" as NonEmptyStr as RoadmapNodeId
-    let facts = fact_set()
-    let command = AcceptNode {
-      subject: IssueCommandSubject { node: node, author: opr_principal(),
-        operation: "op-retry-head-moved" as NonEmptyStr, expected: none },
-      receipt: sample_receipt("node-retry-head-moved"), evidence: earned(facts) }
-    let first = issue_command_apply(layout: layout, command: command, recorded_at: 1793692800)
-    let e1 = match first {
-      EventAppended { id } => claim("the acceptance appended", (id as String) != "")
-      _ => claim("the first acceptance was refused", false) }
-    let first_id = match first { EventAppended { id } => Present { value: (id as String) }  _ => Absent }
-    // THE HEAD MOVES. Another act of the same operator on the same node lands after the acceptance, so
-    // the head a retry would read is no longer the head the first append recorded against.
-    let intervening = issue_command_apply(layout: layout,
-      command: RetireNode { subject: IssueCommandSubject { node: node, author: opr_principal(),
-        operation: "op-intervening-after-close" as NonEmptyStr, expected: none },
-        reason: "an act after the close, before the retry" as NonEmptyStr },
-      recorded_at: 1793692801)
-    let e2 = match intervening {
-      EventAppended { id: _ } => claim("an event landed after the acceptance, so the head moved", true)
-      _ => claim("the intervening event did not land, so the retry would prove nothing", false) }
-    // THE INTERRUPTED MIGRATION REPLAYS ITS COMMAND, operation and all.
-    let retry = issue_command_apply(layout: layout, command: command, recorded_at: 1793692802)
-    let e3 = match first_id {
-      Present { value: wanted } => match retry {
-        EventAlreadyPresent { id } => claim("the retry answered the FIRST recording rather than conflicting", (id as String) == wanted)
-        EventAppended { id: _ } => claim("the retry appended a SECOND event for one operation", false)
-        EventAppendRefused { step, reason } => claim(join([
-          "the retry was refused at '", step, "' ('", reason,
-          "') — an interrupted migration could not be finished by replaying it", ""], ""), false)
-      }
-      Absent => claim("the first acceptance never appended, so the retry proves nothing", false)
-    }
-    // And the log holds the acceptance ONCE: the retry wrote nothing.
-    let read = roadmap_events_read_synced(layout: layout, node: node)
-    let acceptances = match read {
-      EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind {
-        AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
-        _ => false }))
-      EventsReadRefused { node: _, step: _, reason: _ } => 0 - 1
-    }
-    e1 && e2 && e3 && claim("the log holds one acceptance for the operation after the retry", acceptances == 1)
-  })
-}
-
-// The retirement's key is its fact, so the retry is recognised and a DIFFERENT retirement is not.
-test fn a_second_retirement_of_a_retired_node_refuses_and_a_retry_of_the_first_answers_it() -> Bool {
-  wet(fn_with: fn(instance) {
-    let layout = close_layout(instance)
-    let node = "node-retirement-identity" as NonEmptyStr as RoadmapNodeId
-    let first = roadmap_event_append(layout: layout,
-      event: retirement_event(node: node, reason: "the row was deleted as an authored row; its work moved"),
-      operation: roadmap_retirement_operation_identity(node: "node-retirement-identity", reason: "the row was deleted as an authored row; its work moved"))
-    let e1 = match first {
-      EventAppended { id: _ } => claim("the retirement appended", true)
-      _ => claim("the first retirement was refused", false) }
-    let replayed = roadmap_event_append(layout: layout,
-      event: retirement_event(node: node, reason: "the row was deleted as an authored row; its work moved"),
-      operation: roadmap_retirement_operation_identity(node: "node-retirement-identity", reason: "the row was deleted as an authored row; its work moved"))
-    let e2 = match replayed {
-      EventAlreadyPresent { id: _ } => claim("the replayed retirement answered the first recording", true)
-      EventAppended { id: _ } => claim("the replayed retirement appended a second retirement", false)
-      EventAppendRefused { step, reason } => claim(join([
-        "the replayed retirement was refused at '", step, "' ('", reason, "')", ""], ""), false)
-    }
-    let other = roadmap_event_append(layout: layout,
-      event: retirement_event(node: node, reason: "a second retirement naming a different reason"),
-      operation: roadmap_retirement_operation_identity(node: "node-retirement-identity", reason: "a second retirement naming a different reason"))
-    let e3 = match other {
-      EventAppendRefused { id: _, step, reason } => claim(join([
-        "a DIFFERENT retirement of a retired node refuses, located at '", step, "' ('", reason, "')", ""], ""),
-        count(step) > 0 && count(reason) > 0)
-      EventAppended { id: _ } => claim("a second retirement of a retired node was admitted", false)
-      EventAlreadyPresent { id: _ } => claim("a second retirement answered an operation that never recorded it", false)
-    }
-    let read = roadmap_events_read_synced(layout: layout, node: node)
-    let retirements = match read {
-      EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind {
-        Retired { reason: _ } => true
-        _ => false }))
-      EventsReadRefused { node: _, step: _, reason: _ } => 0 - 1
-    }
-    e1 && e2 && e3 && claim("the log holds exactly one retirement for the node", retirements == 1)
-  })
-}
-
-// The same receipt with ONE piece of evidence changed: the day its red control ran. The standing folds
-// identically either way — which is exactly why the migration verifier must compare the whole fact and
-// not the two fields that happen to decide a standing.
-fn sample_receipt_other_executed_day(node: String) -> RoadmapAcceptanceReceipt {
-  RoadmapAcceptanceReceipt {
-    node: node as NonEmptyStr as RoadmapNodeId,
-    criteria_digest: roadmap_criteria_digest(t: sample_ticket()),
-    red_control: RedControlExecuted {
-      witness_module: "test/claim/roadmap/roadmap_operator_close_retire_witness" as NonEmptyStr,
-      witness_fn: "witness_executes" as NonEmptyStr,
-      executed_on: "2026-11-06",
-    },
-    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
-    accepted_by: "briansrls" as NonEmptyStr,
-    accepted_on: "2026-11-03" as NonEmptyStr,
-  }
-}
-
-// DISCRIMINATING (finding 1): THE VERIFIER PRESERVES THE EXPORTED FACTS, NOT THEIR NAMES. Every
-// refusal of the migration gate is witnessed directly, over constructed lists, with the exact number of
-// problems it must report and the text that must name the fact:
-//   AGREEMENT reports nothing; SWAPPED EVIDENCE reports two problems (the manifest's fact is missing and
-//   the log holds a fact the manifest never named) even though the standing folds the same; A FACT HELD
-//   TWICE in the manifest against once in the log reports its counts (`any` membership cannot see that);
-//   A CLOSED NODE THE MANIFEST NEVER ACCEPTED refuses as loudly as a lost one; A MANIFEST THAT DOES NOT
-//   REPLAY refuses instead of becoming an empty expectation; and a RETIRED node the log does not hold
-//   refuses. Each case differs from a passing one in exactly one thing.
-test fn a_migrated_event_with_swapped_evidence_disagrees_with_the_manifest() -> Bool {
-  let accepted = [AcceptanceRecorded { receipt: sample_receipt("node-multiset") }] as List<RoadmapAcceptanceEvent>
-  let swapped = [AcceptanceRecorded { receipt: sample_receipt_other_executed_day("node-multiset") }] as List<RoadmapAcceptanceEvent>
-  let revoked = [AcceptanceRevoked {
-    exact_prior_receipt: sample_receipt("node-multiset"),
-    disposition: AcceptanceNodeRemainsSuperseded,
-    reason: "the floor cut retired this work's subject" as NonEmptyStr,
-    revoked_by: "briansrls" as NonEmptyStr,
-    revoked_on: "2026-09-13" as NonEmptyStr,
-  }] as List<RoadmapAcceptanceEvent>
-  let node = "node-multiset"
-  let agrees = roadmap_acceptance_migration_problems(wanted: accepted, held: accepted, closed_nodes: [node], not_retired: [] as List<String>)
-  let evidence_swapped = roadmap_acceptance_migration_problems(wanted: accepted, held: swapped, closed_nodes: [node], not_retired: [] as List<String>)
-  let held_once = roadmap_acceptance_migration_problems(wanted: concat(accepted, accepted), held: accepted, closed_nodes: [node], not_retired: [] as List<String>)
-  let lost = roadmap_acceptance_migration_problems(wanted: accepted, held: [] as List<RoadmapAcceptanceEvent>, closed_nodes: [] as List<String>, not_retired: [] as List<String>)
-  let invented_closed = roadmap_acceptance_migration_problems(wanted: accepted, held: accepted, closed_nodes: [node, "node-the-manifest-never-accepted"], not_retired: [] as List<String>)
-  let unorderable = roadmap_acceptance_migration_problems(wanted: revoked, held: revoked, closed_nodes: [] as List<String>, not_retired: [] as List<String>)
-  let roster_gap = roadmap_acceptance_migration_problems(wanted: accepted, held: accepted, closed_nodes: [node], not_retired: ["node-never-retired"])
-  let c1 = claim("agreement between the manifest and the log reports no problem at all", count(agrees) == 0)
-  let c2 = claim("swapped evidence refuses on both sides of the difference", count(evidence_swapped) == 2
-    && any(evidence_swapped, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
-    && any(evidence_swapped, pr => string_contains(s: pr, pattern: "expected 0, the log holds 1")))
-  let c3 = claim("a fact the manifest names twice against one copy in the log reports its counts",
-    count(held_once) >= 1 && any(held_once, pr => string_contains(s: pr, pattern: "expected 2, the log holds 1")))
-  let c4 = claim("an acceptance the log lost refuses as a missing fact and an unmet closedness",
-    count(lost) == 2 && any(lost, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
-    && any(lost, pr => string_contains(s: pr, pattern: "node-multiset"))
-    && any(lost, pr => string_contains(s: pr, pattern: "the log does not say so")))
-  let c5 = claim("a node the log calls closed that the manifest never accepted refuses",
-    count(invented_closed) == 1 && any(invented_closed, pr => string_contains(s: pr, pattern: "node-the-manifest-never-accepted")))
-  let c6 = claim("a manifest that does not replay REFUSES rather than certifying an empty expectation",
-    count(unorderable) == 1 && any(unorderable, pr => string_contains(s: pr, pattern: "does not replay")))
-  let c7 = claim("a node the runbook claims retired that the log does not hold retired refuses",
-    count(roster_gap) == 1 && any(roster_gap, pr => string_contains(s: pr, pattern: "node-never-retired")))
-  c1 && c2 && c3 && c4 && c5 && c6 && c7
-}
-
-// A retirement event for the operation-identity witness: one node, one author, one reason at a time.
-fn retirement_event(node: RoadmapNodeId, reason: String) -> RoadmapEvent {
-  RoadmapEvent { node: node, author: opr_principal(), parent: none,
-    kind: Retired { reason: reason as NonEmptyStr }, recorded_at: "2026-11-09T08:00:00Z" }
-}
-
-// The operator's receipt on a chosen acceptance day. The day is what the pull-request evidence law turns
-// on, so the witness — and the migration — need a receipt dated on either side of it.
-fn sample_receipt_on(node: String, day: String) -> RoadmapAcceptanceReceipt {
-  RoadmapAcceptanceReceipt {
-    node: node as NonEmptyStr as RoadmapNodeId,
-    criteria_digest: roadmap_criteria_digest(t: sample_ticket()),
-    red_control: RedControlExecuted {
-      witness_module: "test/claim/roadmap/roadmap_operator_close_retire_witness" as NonEmptyStr,
-      witness_fn: "witness_executes" as NonEmptyStr,
-      executed_on: "2026-11-03",
-    },
-    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
-    accepted_by: "briansrls" as NonEmptyStr,
-    accepted_on: day as NonEmptyStr,
-  }
-}
-
-// An acceptance command carrying EXACTLY the pull-request evidence named. The evidence is the TYPED fact
-// (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence), so this builder can only be handed a whole one —
-// half a pull request is not a command this file can even write, which is what finding 1 asked for.
-fn acceptance_command_with_evidence(node: String, day: String, evidence: AcceptancePrEvidence) -> IssueCommand {
-  AcceptNode {
-    subject: IssueCommandSubject {
-      node: node as NonEmptyStr as RoadmapNodeId, author: opr_principal(),
-      operation: "op-evidence-law" as NonEmptyStr, expected: none },
-    receipt: sample_receipt_on(node: node, day: day),
-    evidence: evidence,
-  }
-}
-
-// DISCRIMINATING (finding 1, the honesty half): AN ACCEPTANCE WITHOUT ITS PULL REQUEST IS THE
-// MIGRATION'S, AND ONLY ITS. The 18 acceptances the operator recorded before this log became the
-// authority name no pull request — the hand-committed seed holds no such field — so the log must be able
-// to hold that absence rather than invent a value to fill a field. The evidence is one typed fact, so the
-// cases are the variants and the door, each differing from its neighbour in exactly one thing:
-//   NO pull request (the typed absence), an acceptance day BEFORE the cutoff → admitted (the migration's case);
-//   NO pull request, an acceptance day ON OR AFTER it                        → refused, saying why;
-//   a whole pull request, any day                                             → admitted;
-//   HALF a pull request                                                       → CANNOT EXIST: refused where
-//     the command line's raw arguments are read (roadmap_acceptance_pr_evidence_from_args), naming how
-//     many of the three arrived, and unconstructible at every boundary past it.
-// The refusals write nothing. The first case is what makes the runbook's migration commands executable
-// at all; the second is what stops the same door being used tomorrow.
-test fn a_partial_pull_request_evidence_refuses_and_an_absence_is_admitted_only_before_the_cutoff() -> Bool {
-  wet(fn_with: fn(instance) {
-    let layout = close_layout(instance)
-    let facts = fact_set()
-    let before = "2026-07-29"
-    let after = "2026-11-03"
-    let straddle = claim("the witness's two days straddle the pull-request evidence cutoff",
-      string_compare_canonical(a: before, b: roadmap_acceptance_pr_evidence_cutoff()) == Less
-        && string_compare_canonical(a: after, b: roadmap_acceptance_pr_evidence_cutoff()) != Less)
-    // THE UNTYPED EDGE REFUSES HALF A FACT, where the command line's arguments are still three strings.
-    let half_refused = match roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: "", sha: "") {
-      Absent => claim("half a pull request — its url alone — is refused where the arguments arrive", true)
-      Present { value: _ } => claim("half a pull request was converted instead of refused", false) }
-    let shape_refused = match roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", at: " ", sha: "abc123def456") {
-      Absent => claim("a pull request whose merge time is not spelled is refused too", true)
-      Present { value: _ } => claim("a wrong-shaped pull request was converted into evidence", false) }
-    let none_converts = match roadmap_acceptance_pr_evidence_from_args(url: "", at: "", sha: "") {
-      Present { value: NoPullRequest } => claim("no pull request at all becomes the typed absence, not a refusal", true)
-      _ => claim("the absence of a pull request did not convert to the typed absence", false) }
-    let all_three_convert = match roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: facts.merged_at as String, sha: facts.head as String) {
-      Present { value: EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } } =>
-        claim("all three arguments become the one typed fact", true)
-      _ => claim("a complete pull request did not convert to the typed fact", false) }
-    let admitted = issue_command_apply(layout: layout, recorded_at: 1793692800,
-      command: acceptance_command_with_evidence(node: "node-evidence-absent-old", day: before, evidence: NoPullRequest))
-    let c_admitted = match admitted {
-      EventAppended { id: _ } => claim("an acceptance recorded before the cutoff is admitted without a pull request", true)
-      EventAppendRefused { step, reason } => claim(join(["the migration's own case was refused at '", step, "' ('", reason, "')"], ""), false)
-      _ => claim("the migration's own case did not append", false) }
-    let refused_after = issue_command_apply(layout: layout, recorded_at: 1793692801,
-      command: acceptance_command_with_evidence(node: "node-evidence-absent-new", day: after, evidence: NoPullRequest))
-    let c_refused_after = match refused_after {
-      EventAppendRefused { id: _, step, reason } => claim(join([
-        "an acceptance with no pull request refuses on or after the cutoff, located at '", step, "' ('", reason, "')"], ""),
-        step == "receipt" && string_contains(s: reason, pattern: "pull request"))
-      _ => claim("an acceptance with no pull request was admitted on or after the cutoff", false) }
-    let read = roadmap_events_read_synced(layout: layout, node: "node-evidence-absent-new" as NonEmptyStr as RoadmapNodeId)
-    let wrote_nothing = match read {
-      EventsRead { node: _, envelopes } => count(envelopes) == 0
-      EventsReadRefused { node: _, step: _, reason: _ } => false
-    }
-    let full_still_works = issue_command_apply(layout: layout, recorded_at: 1793692803,
-      command: acceptance_command_with_evidence(node: "node-evidence-full", day: after, evidence: earned(facts)))
-    let c_full = match full_still_works {
-      EventAppended { id: _ } => claim("a live acceptance naming its pull request is admitted on any day", true)
-      _ => claim("a live acceptance with full evidence was refused", false) }
-    straddle && half_refused && shape_refused && none_converts && all_three_convert
-      && c_admitted && c_refused_after && claim("a refusal wrote nothing to the log", wrote_nothing) && c_full
-  })
 }
