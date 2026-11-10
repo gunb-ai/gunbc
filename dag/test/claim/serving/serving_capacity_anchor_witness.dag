@@ -26,7 +26,7 @@ import gunbc.serving.router_dev_policy {
   router_dev_first_party, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, RouterDevUpstream,
   router_dev_shaped_under, RouterDevShaped, RouterDevShapedRow, RouterDevShapeRefused, AdmitEstimatedCapacity, AdmitDerivedCapacityOnly,
   UpstreamHttp, RouterDevCapacity, RouterDevRetention,
-  OwnedCap, RentedCapped, RentedUncapped, RetentionAdmitted, NoRetention,
+  OwnedCap, RetentionAdmitted, NoRetention,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -297,8 +297,6 @@ fn ca_row(rows: List<RouterDevUpstream>, name: String, cap: Nat, retain: Nat) ->
       RetentionAdmitted { conversations: n } => n == retain
       NoRetention => false
     }
-    RentedCapped { turns: _ } => false
-    RentedUncapped => false
   })) == 1
 }
 
@@ -314,6 +312,7 @@ test fn the_router_rows_carry_the_derived_cap_and_retain() -> Bool {
         && ca_row(rows: rs, name: "h11-07", cap: 1, retain: 1)
         && ca_row(rows: rs, name: "h11-08", cap: 1, retain: 1)
         && ca_row(rows: rs, name: "h11-88", cap: 1, retain: 1)
+        && count(rs) == 8
   }
 }
 
@@ -362,13 +361,15 @@ test fn the_router_admits_an_estimate_only_under_an_admission_and_carries_its_ob
     && ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: derived, admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 0)
 }
 
-// Every shipped first-party row's capacity is an estimate today, so each carries what it rests on.
+// EVERY shipped first-party row's capacity is an estimate, so every row carries what it rests on: no row is
+// exempt. The roster once held one rented row whose capacity rested on nothing and that this test carved out by
+// name; it was retired 2026-11-10 and the carve-out with it, and the roster is counted as well as named so a row
+// that outlives its anchor, or arrives without one, reads false instead of passing unnoticed.
 test fn the_shipped_rows_carry_the_obligations_their_capacity_rests_on() -> Bool {
   match router_dev_first_party() {
     RouterDevFirstPartyRefused { reason: _ } => false
     RouterDevFirstPartyRows { rows: rs } =>
-      count(filter(rs, u => u.name != "ctrl-vast-pool" && count(u.capacity_rests_on) == 0)) == 0
-        && count(filter(rs, u => u.name == "ctrl-vast-pool" && count(u.capacity_rests_on) == 0)) == 1
+      count(rs) == 8 && count(filter(rs, u => count(u.capacity_rests_on) == 0)) == 0
   }
 }
 

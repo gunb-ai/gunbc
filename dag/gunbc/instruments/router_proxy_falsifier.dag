@@ -15,7 +15,7 @@ import extdeps.proxy.openresty {
   ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorSrv3Strata, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_h11_naming, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorSrv3Strata, OwnedCap, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_h11_naming, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups, ServingReplicaConfig }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.router_proxy_config {
@@ -611,17 +611,6 @@ fn srv4_one_row_one_tls_endpoint() -> Bool {
   }
 }
 
-fn shipped_pool_row_renders_its_cap() -> Bool {
-  shipped_rows_hold(p: all_rows => shipped_pool_rows_hold(rows: filter(all_rows, u => u.name == "ctrl-vast-pool")))
-}
-
-fn shipped_pool_rows_hold(rows: List<RouterDevUpstream>) -> Bool {
-  count(rows) == 1 && all(rows, u => match u.capacity {
-    RentedCapped { turns: t } => shipped_row_member_is(name: "ctrl-vast-pool", key: "cap", want: json_int(n: t as Int)) && shipped_row_member_is(name: "ctrl-vast-pool", key: "overflow", want: JsonBool { value: true })
-    _ => false
-  })
-}
-
 // HOW MANY TIMES A NEEDLE OCCURS. Some rows must count, not just spot: eleven rows carrying a field is a
 // different fact from one row carrying it, and a presence test cannot tell them apart.
 // ROW FIELDS ARE COUNTED BY PARSING, NOT BY GREPPING THE RENDER. Two emitters are in play here:
@@ -1075,7 +1064,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
     // The row fields the binding rules read are the ones in the emitted file: a drained row is present
     // and false, an engine-local row is not silently shared, and every row carries the fields at all.
-    case_of(identity: "rows_carry_retain_capacity_and_in_service", held: shipped_json_holds(p: j => row_key_count(json: j, key: "retain") == 8 && row_key_count(json: j, key: "cap") == 9 && row_bool_field_count(json: j, key: "overflow", want: true) == 1 && row_bool_field_count(json: j, key: "in_service", want: true) == 9 && row_bool_field_count(json: j, key: "in_service", want: false) == 0) && contains(s: dev_text(), p: "retains(") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: ""),
+    case_of(identity: "rows_carry_retain_capacity_and_in_service", held: shipped_json_holds(p: j => row_key_count(json: j, key: "retain") == 8 && row_key_count(json: j, key: "cap") == 8 && row_bool_field_count(json: j, key: "overflow", want: true) == 0 && row_bool_field_count(json: j, key: "in_service", want: true) == 8 && row_bool_field_count(json: j, key: "in_service", want: false) == 0) && contains(s: dev_text(), p: "retains(") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: ""),
     // A NAME CANNOT BE BOTH LIVE AND RETIRING. The guard is a function of the rows, so it is tested on
     // rows: clean on the shipped set, and red on each defect it exists to refuse -- a live name in
     // another row's retiring list, and one name retired by two rows at once.
@@ -1146,7 +1135,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_a_retired_name_binding_is_one_owner_for_model_conflict_retention_and_trim", held: w11.success && renamed_again.exit_code == 0 && reloaded_again.exit_code == 0 && contains(s: reloaded_again_models, p: "4324") && contains(s: retired_other_model, p: "\n409 exit=0") && contains(s: renamed_new_session, p: "\n429 exit=0") && w12.success && lowered_again.exit_code == 0 && reloaded_zero.exit_code == 0 && contains(s: reloaded_zero_models, p: "4325") && contains(s: trim_old_names, p: "\"h1c\"") && contains(s: trim_old_names, p: "\"unbound\":1"), observed: concat(one_line(s: retired_other_model), concat(one_line(s: renamed_new_session), one_line(s: trim_old_names)))),
     case_of(identity: "dev_rented_stats_count_uncapped_turns_in_flight", held: rented_reports_uncapped_in_flight(text: uncapped_inflight), observed: one_line(s: uncapped_inflight)),
     case_of(identity: "dev_rented_pool_full_keeps_capped_zero_and_uncapped_distinct", held: contains(s: mixed_pool_stats, p: "\"full\":false") && contains(s: zero_pool_stats, p: "\"full\":true"), observed: concat(one_line(s: mixed_pool_stats), one_line(s: zero_pool_stats))),
-    case_of(identity: "shipped_rows_render_the_derived_retain_cap_and_effort_values", held: shipped_h11_05_renders_derived_retain_and_cap() && shipped_pool_row_renders_its_cap() && shipped_row_effort_rule_is(name: "srv1-vllm", client: "high", to: "xhigh"), observed: ""),
+    case_of(identity: "shipped_rows_render_the_derived_retain_cap_and_effort_values", held: shipped_h11_05_renders_derived_retain_and_cap() && shipped_row_effort_rule_is(name: "srv1-vllm", client: "high", to: "xhigh"), observed: ""),
     case_of(identity: "h11_rows_follow_the_layout_grant", held: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_population_with_ungranted()) == "h11-05:2,h11-07:1,h11-08:1,h11-88:1" && shipped_json_holds(p: j => !contains(s: j, p: "h11-85") && !contains(s: j, p: "h11-87")) && shipped_row_member_is(name: "h11-05", key: "retain", want: json_int(n: 2)) && shipped_row_member_is(name: "h11-07", key: "retain", want: json_int(n: 1)) && shipped_row_member_is(name: "h11-08", key: "retain", want: json_int(n: 1)) && shipped_row_member_is(name: "h11-88", key: "retain", want: json_int(n: 1)), observed: h11_projection_summary(layout: host_6ce85c_layout, engines: h11_population_with_ungranted())),
     case_of(identity: "bindings_keep_the_live_key_scheme_in_router_state", held: contains(s: dev_text(), p: "lua_shared_dict router_state ") && !contains(s: dev_text(), p: "router_bindings") && contains(s: dev_text(), p: "state:get('session:' .. session)") && contains(s: dev_text(), p: "state:set('session:' .. session, pick.name") && contains(s: dev_text(), p: "k:sub(1, 8) == 'session:'"), observed: ""),
     case_of(identity: "a_refused_layout_refuses_the_h11_projection_and_stops_the_write", held: h11_summary_is_refused(text: h11_projection_summary(layout: h11_refused_layout(), engines: h11_population_with_ungranted())) && h11_refused_layout_stops_the_write(), observed: h11_projection_summary(layout: h11_refused_layout(), engines: h11_population_with_ungranted())),
