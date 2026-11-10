@@ -4,8 +4,9 @@ import std.process {ProcessExit,exit_failure}
 import gunbc.host_state_root {host_state_tree}
 import product.printing.print_runtime {observe_cad_runtime,CadRuntimeObserved,CadRuntimeRefused}
 import product.printed_chassis.print_preparation {run_kernel,deposited_path_edge_allowance_um,print_pose_conformance_tolerance_um}
-import product.printed_chassis.assembly_geometry {LayOnXY,LayOnXZ,LayOnYZ,print_pose,print_pose_rows}
-import extdeps.languages.json.emit {serialize_json,JsonValue,json_object,json_kv,json_string,json_array,json_int}
+import product.printed_chassis.assembly_geometry {LayOnXY,LayOnXZ,LayOnYZ}
+import product.printed_chassis.printable_assembly {print_pose_json}
+import extdeps.languages.json.emit {serialize_json,JsonValue,json_object,json_kv,json_string,json_array}
 import product.printing.process_geometry {prototype_support_policy,support_settings}
 fn controls() -> String {join([
  "import tempfile,copy\n",
@@ -126,8 +127,8 @@ fn controls() -> String {join([
  "    must_refuse(lambda:conforms(xz,mirrored(good)))\n",
  "    must_refuse(lambda:conforms(xz,good,'-1 0 0 0 1 0 0 0 1 0 0 0'))\n",
  "    must_refuse(lambda:conforms(xz,good,plan=row((0,0,90))))\n",
- "    must_refuse(lambda:pose_rows([[1,0,0],[0,1,0],[0,0,-1]]))\n",
- "print('PASS: pose conformance in all three print planes and under a bed turn; dropped pose, tilt, mirror (mesh and transform), wrong plan turn and a mirrored pose refuse')\n",
+ "    must_refuse(lambda:pose_rows(None))\n",
+ "print('PASS: pose conformance in all three print planes and under a bed turn; dropped pose, tilt, mirror (mesh and transform), wrong plan turn and a missing pose refuse')\n",
 ],"")}
 // The readback compares a sliced archive's settings with whatever requirements it is handed; these
 // are fixture values for that comparison, not a print policy.
@@ -143,10 +144,10 @@ fn fixture_settings() -> JsonValue {
   json_kv(key:"sparse_infill_density",value:json_string(s:"20%"))
  ]))
 }
-// The three declared planes' poses, read from the authority the CAD check and the packer consume, so a
+// The three declared planes' poses, read through the same emitter the CAD manifest uses, so a
 // control cannot pass against a hand-copied matrix the production route never applies.
 fn pose_fixture() -> JsonValue {
- json_object(members:map([LayOnXY,LayOnXZ,LayOnYZ],plane=>json_kv(key:match plane {LayOnXY=>"XY" LayOnXZ=>"XZ" LayOnYZ=>"YZ"},value:json_array(elements:map(print_pose_rows(p:print_pose(plane:plane)),r=>json_array(elements:map(r,v=>json_int(n:v))))))))
+ json_object(members:map([LayOnXY,LayOnXZ,LayOnYZ],plane=>json_kv(key:match plane {LayOnXY=>"XY" LayOnXZ=>"XZ" LayOnYZ=>"YZ"},value:print_pose_json(plane:plane))))
 }
 fn exercise_kernel(script:String) -> ProcessExit {
  match observe_cad_runtime(tree:host_state_tree()) {

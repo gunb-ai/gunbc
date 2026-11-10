@@ -22,14 +22,13 @@ import product.printed_chassis.assembly_review_checks {review_model_checks}
 fn python_kernel_dissolve_on() -> DissolutionCondition { printed_chassis_python_kernel_dissolve_on }
 // THE PRINT POSE, APPLIED. The CAD manifest carries each printed part's pose as matrix rows derived from its
 // declared plane (product.printed_chassis.assembly_geometry print_pose_rows); this is the one place the
-// Python kernels turn those rows into a rigid transform. It refuses anything but a proper signed axis
-// permutation, so a mirror or a scale cannot ride in as a pose. The CAD check (the oriented STL) and the plate
+// Python kernels turn those rows into a rigid transform. That the pose is a rotation and not a mirror is the
+// type's guarantee (std.orthogonal_geometry OrthogonalRotation3 cannot represent one), so this only refuses rows
+// that are not a signed axis permutation at all -- a missing pose arrives as null and stops here. The CAD check (the oriented STL) and the plate
 // packer (print_preparation_kernel pack_plate) both include it, so neither decides the tilt on its own.
 fn print_pose_kernel_source() -> String { join([
   "def pose_rows(rows):\n",
   "    assert type(rows) is list and len(rows)==3 and all(type(r) is list and len(r)==3 and all(type(v) is int and v in (-1,0,1) for v in r) and sum(map(abs,r))==1 for r in rows), 'Print pose is not a signed axis permutation'\n",
-  "    a,b,c=rows\n",
-  "    assert [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]==c, 'Print pose is a mirror, not a rotation'\n",
   "    return rows\n",
   "\n",
   "def posed(shape,rows):\n",
