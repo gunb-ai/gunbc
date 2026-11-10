@@ -5,7 +5,7 @@ import std.types { List }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.integer { Int }
 import v2.std.grammar { parse_production_emitted_identity_optional }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, loop_edge_role }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
