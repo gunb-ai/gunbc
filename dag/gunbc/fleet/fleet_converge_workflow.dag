@@ -8602,92 +8602,70 @@ fn fleet_converge_hostname_converge_step_env() -> List<YamlKeyValue> {
 
 fn fleet_converge_hostname_converge_plan_step() -> Step {
   RunStep {
-    name: "plan hostname converge (read-only)",
-    id: Present { value: "hostname-converge-plan" },
+    name: Present { value: "hostname converge: dry plan (read the live name, fold it, refuse a three-way conflict)" },
+    id: Present { value: "hostname_converge_plan" },
     run: gunbc_ci_hostname_converge_plan_invoke(),
-    shell: ShellBash,
+    shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
     if_condition: Present { value: fleet_converge_hostname_converge_step_if },
-    continue_on_error: Present { value: false },
+    continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
 }
 
 fn fleet_converge_hostname_converge_apply_step() -> Step {
   RunStep {
-    name: "apply hostname converge (compare-and-set over fleet SSH)",
-    id: Present { value: "hostname-converge-apply" },
+    name: Present { value: "hostname converge: wet apply (compare-and-set over the fleet SSH edge; needs confirm == converge)" },
+    id: Present { value: "hostname_converge_apply" },
     run: gunbc_ci_hostname_converge_apply_invoke(),
-    shell: ShellBash,
+    shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
     if_condition: Present { value: fleet_converge_hostname_converge_apply_step_if },
-    continue_on_error: Present { value: false },
+    continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
 }
 
-// THE READ-BACK IS NOT THE APPLY'S OWN REPORT. It re-reads the live name and fails on a mismatch, so
-// a step that wrote the wrong name cannot pass by believing itself.
+// THE READ-BACK IS NOT THE APPLY'S OWN REPORT. It re-reads the live name and fails on a mismatch, so a
+// step that wrote the wrong name cannot pass by believing itself.
 fn fleet_converge_hostname_converge_read_back_step() -> Step {
   RunStep {
-    name: "read back the hostname (independent of the apply)",
-    id: Present { value: "hostname-converge-read-back" },
+    name: Present { value: "hostname converge: read the target's own name back, independently of the apply" },
+    id: Present { value: "hostname_converge_read_back" },
     run: gunbc_ci_hostname_converge_read_back_invoke(),
-    shell: ShellBash,
+    shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
     if_condition: Present { value: fleet_converge_hostname_converge_step_if },
-    continue_on_error: Present { value: false },
+    continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
 }
 
 fn fleet_converge_hostname_converge_readopt_step() -> Step {
   RunStep {
-    name: "re-adopt the hostname baseline (explicit, typed; refuses by default)",
-    id: Present { value: "hostname-converge-readopt" },
+    name: Present { value: "hostname converge: re-adopt the committed hostname baseline (explicit, typed; refuses by default)" },
+    id: Present { value: "hostname_converge_readopt" },
     run: gunbc_ci_hostname_converge_readopt_invoke(),
-    shell: ShellBash,
+    shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
     if_condition: Present { value: fleet_converge_hostname_converge_readopt_step_if },
-    continue_on_error: Present { value: false },
+    continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
 }
 
-fn fleet_converge_hostname_converge_receipt_upload_step() -> Step {
-  UsesStep {
-    name: "upload hostname converge receipt",
-    id: Present { value: "hostname-converge-upload-receipt" },
-    uses: upload_artifact_action,
-    with: Present {
-      value: workflow_artifact_upload_with(
-        name: "hostname-converge",
-        path: hostname_converge_receipt_path as String,
-        retention_days: Present { value: 30 },
-        compression_level: none,
-        absence: AbsenceRefused
-      )
-    },
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
-    continue_on_error: Present { value: false },
-    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes },
-  }
-}
-
-// THE DISPATCH GATE RUNS IN THE BUILD JOB, BEFORE THIS JOB IS QUEUED: a peer that is also the target,
-// or a peer no runner carries, fails there rather than parking a rename in a queue nothing will drain.
+// THE DISPATCH GATE RUNS IN THE BUILD JOB, BEFORE THIS JOB IS QUEUED: a peer that is also the target, or
+// a peer no runner carries, fails there rather than parking a rename in a queue nothing will drain.
 fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
   RunStep {
-    name: "hostname converge dispatch admission (wet: refuses a peer that is the target, or an unallocated peer)",
-    id: Present { value: "hostname-converge-dispatch-admission" },
+    name: Present { value: "hostname converge dispatch admission (refuses a peer that is the target, or an unallocated peer)" },
+    id: Present { value: "hostname_converge_dispatch_admission" },
     run: gunbc_ci_hostname_converge_dispatch_admission_invoke(),
-    shell: ShellBash,
+    shell: none,
     env: Present {
       value: [
         kv(key: hostname_converge_mode_env_name as String, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
@@ -8706,30 +8684,31 @@ fn fleet_converge_hostname_converge_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: HostnameConverge) as String,
     name: Present { value: "hostname-converge" },
-    needs: Present { value: [fleet_converge_release_bins_job_id as String] },
-    concurrency: Present {
-      value: ConcurrencyMappingQueueNotMax {
-        group: fleet_host_mutation_concurrency_group_expression,
-        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
-        explicit_single: none
-      }
-    },
-    permissions: none,
     runner: fleet_converge_hostname_converge_runner_spec(),
-    container: none,
-    env: Present { value: github_workspace_exports() },
     environment: none,
-    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    steps: [
+      fleet_converge_event_sha_checkout_step(),
+      ci_release_bins_download_step(),
+      ci_release_bins_unpack_verify_step(),
+      fleet_converge_hostname_converge_plan_step(),
+      fleet_converge_hostname_converge_apply_step(),
+      fleet_converge_hostname_converge_read_back_step(),
+      fleet_converge_hostname_converge_readopt_step(),
+      fleet_converge_receipt_upload_step(
+        id: "hostname_converge_receipt",
+        name: "Upload the hostname converge receipt",
+        artifact: "hostname-converge",
+        path: hostname_converge_receipt_path,
+        if_condition: "success()",
+      ),
+    ],
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostnameConverge)),
+    env: none,
+    outputs: none,
     if_condition: Present { value: fleet_converge_hostname_converge_step_if },
-    steps: concat(
-      concat(event_sha_consumer_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]),
-      [
-        fleet_converge_hostname_converge_plan_step(),
-        fleet_converge_hostname_converge_apply_step(),
-        fleet_converge_hostname_converge_read_back_step(),
-        fleet_converge_hostname_converge_readopt_step(),
-        fleet_converge_hostname_converge_receipt_upload_step(),
-      ]
-    ),
+    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: fleet_converge_exclusive_job_concurrency(group: fleet_host_mutation_concurrency_group_expression),
+    permissions: none,
   }
 }
