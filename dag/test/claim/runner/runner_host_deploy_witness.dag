@@ -54,12 +54,14 @@ import extdeps.toolchain.types { ToolchainCapability }
 // from that landing while the install it describes was unchanged. What the row pins is the upstream
 // fact -- v0.15.0's musl tarball unpacks to sccache-v0.15.0-<arch>-unknown-linux-musl/sccache -- and
 // that the binary lands at the installed path; both are spelled here from the release layout and the
-// POSIX quoting rule, not copied from the rendered script.
+// POSIX quoting rule, not copied from the rendered script. The argv now also carries '-T'
+// (mv --no-target-directory): the step overwrites the destination as a file rather than nesting the
+// binary into a same-named directory, so the row pins it as part of the elevated argv it asserts.
 test fn srv4_sccache_prereq_pins_version_and_digest() -> Bool {
   let s = runner_host_sccache_provision_script(arch: "aarch64", sha256: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8")
   string_contains(s: s, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
     && string_contains(s: s, pattern: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8  /tmp/sccache.tar.gz")
-    && string_contains(s: s, pattern: "'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'")
+    && string_contains(s: s, pattern: "'mv' '-T' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'")
 }
 
 test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool {
