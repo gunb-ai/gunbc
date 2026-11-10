@@ -77,13 +77,15 @@ import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.infer { infer, inferred_facts_resolved_type_optional, inferred_facts_witness_for_node }
 import v2.std.witness { Holds, Violates }
 import v2.std.integer { integer_int_type_node }
-import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNoValue, GroundingNotDerived, InferredTree }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.node {
+  Atom,
   Node,
   Symbol,
+  TypeNode,
   node_equal_ignoring_provenance,
   node_subtree_nodes,
   positional_child_target_nodes,
@@ -409,7 +411,11 @@ fn cecf_declared_shape(src: String) -> String {
     Accepted { value: t, diagnostics: _ } =>
       match cecf_cast_node(t: t) {
         Absent => "no_cast"
-        Present { value: c } => cecf_refinement_shape(n: c)
+        Present { value: c } =>
+          match cast_target_optional(n: c) {
+            Absent => "no_target"
+            Present { value: target } => cecf_refinement_shape(n: target)
+          }
       }
     Rejected { diagnostics: _ } => "check_rejected"
   }
@@ -457,6 +463,86 @@ fn cecf_realized_value_shape(src: String) -> String {
                 Accepted { value: v, diagnostics: _ } => cecf_refinement_shape(n: runtime_value_resolved_type(value: v))
                 Rejected { diagnostics: _ } => "operand_not_evaluated"
               }
+          }
+      }
+    Rejected { diagnostics: _ } => "check_rejected"
+  }
+}
+
+// WHICH GROUNDING ARM the node's recorded facts carry. The gate's first refusal reason is
+// eval_rejected_grounding_not_derived, which this distinguishes from a genuine type mismatch: a node can
+// be admitted by the checker and still carry no DerivedGrounding, in which case no relaxation along any
+// carrier could make the gate accept it.
+fn cecf_facts_tag(t: InferredTree, n: Node) -> String {
+  match inferred_facts_witness_for_node(tree: t, node: n) {
+    Violates { diagnostic: _ } => "no_facts"
+    Holds { value: f } =>
+      match f.grounding {
+        DerivedGrounding { grounding: _ } => "derived"
+        GroundingNotDerived { node: _, site: _ } => "not_derived"
+        GroundingNoValue { node: _ } => "no_value"
+      }
+  }
+}
+
+// The refusal's OWN reason, read from the evaluation rooted at `n` (the census's er field is rooted at
+// the cast, so a refusal surfacing from inside the operand subtree is attributed to the cast).
+fn cecf_refusal_reason(t: InferredTree, n: Node) -> String {
+  match cecf_eval_node(t: t, n: n) {
+    Accepted { value: _, diagnostics: _ } => "admitted"
+    Rejected { diagnostics: ds } =>
+      match optional_first_present(values: ds) {
+        Absent => "no_diagnostic"
+        Present { value: d } => symbol_lexeme(sym: d.reason)
+      }
+  }
+}
+
+// WHERE the refusal is located. v2.compiler.eval mints every one of its refusals with
+// eval_diagnostic(reason:, node:), carried as Locus::NodeLocus, so the refusing node is recoverable and
+// the claim can say which node the gate would not accept rather than guessing from the reason name.
+// It is named against the two nodes of this differential and, failing that, by its own Atom identity.
+fn cecf_refusal_node(t: InferredTree, n: Node, cast: Node) -> String {
+  match cecf_eval_node(t: t, n: n) {
+    Accepted { value: _, diagnostics: _ } => "admitted"
+    Rejected { diagnostics: ds } =>
+      match optional_first_present(values: ds) {
+        Absent => "no_diagnostic"
+        Present { value: d } =>
+          match d.at {
+            NodeLocus { anchor: a } =>
+              if node_equal_ignoring_provenance(a: a.at.node, b: n) {
+                "at=operand_root"
+              } else if node_equal_ignoring_provenance(a: a.at.node, b: cast) {
+                "at=cast_root"
+              } else {
+                match a.at.node.kind {
+                  TypeNode { connective: Atom { identity: s } } => "other:" + symbol_lexeme(sym: s)
+                  _ => "other:not_an_atom"
+                }
+              }
+            _ => "not_a_node_locus"
+          }
+      }
+  }
+}
+
+// One field per refined probe, carrying everything the fix has to be aimed by: which grounding arm each
+// of the two nodes carries, and what the operand's own evaluation refuses with and WHERE. The three
+// nodes of the acceptance equality are in the separate *_decl / *_opdecl / *_value fields.
+fn cecf_deep_census(src: String) -> String {
+  match cecf_check(src: src) {
+    Accepted { value: t, diagnostics: _ } =>
+      match cecf_cast_node(t: t) {
+        Absent => "no_cast"
+        Present { value: cast } =>
+          match cecf_cast_operand(n: cast) {
+            Absent => "no_operand"
+            Present { value: operand } =>
+              "castfacts=" + cecf_facts_tag(t: t, n: cast) +
+                ",opdfacts=" + cecf_facts_tag(t: t, n: operand) +
+                ",opreason=" + cecf_refusal_reason(t: t, n: operand) +
+                ",refnode=" + cecf_refusal_node(t: t, n: operand, cast: cast)
           }
       }
     Rejected { diagnostics: _ } => "check_rejected"
@@ -525,7 +611,9 @@ test fn cecf_verdict_census() -> ProcessExit {
     " | widen_decl:" + cecf_declared_shape(src: cecf_widening_source) +
     " | widen_value:" + cecf_realized_value_shape(src: cecf_widening_source) +
     " | ident_opdecl:" + cecf_operand_declared_shape(src: cecf_identity_source) +
-    " | widen_opdecl:" + cecf_operand_declared_shape(src: cecf_widening_source)
+    " | widen_opdecl:" + cecf_operand_declared_shape(src: cecf_widening_source) +
+    " | ident_deep:" + cecf_deep_census(src: cecf_identity_source) +
+    " | widen_deep:" + cecf_deep_census(src: cecf_widening_source)
   let ident = cecf_read_probe(src: cecf_identity_source)
   let widen = cecf_read_probe(src: cecf_widening_source)
   let lit = cecf_read_probe(src: cecf_literal_source)
