@@ -247,6 +247,97 @@ fn route_messages(
         .collect()
 }
 
+// The same production route, returning the PASS so the arm can read the typed state the demanded
+// scope BUILT -- items, item_registry, func_env locals -- not only the diagnostics it emitted.
+// This is the instrument that separates 'the realization filter dropped the service item' from
+// 'the item survived and a later projection never consulted it'.
+fn route_pass(
+    graph: &Rc<crate::v1_compiler_resolve::ModuleGraph>,
+    intern: &Rc<crate::v1_std_core::InternTable>,
+    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    requested: &[&str],
+) -> Rc<infer::TypecheckPass> {
+    let scope = if requested.is_empty() {
+        Rc::new(infer::DeclarationScope::EveryDeclaration)
+    } else {
+        Rc::new(infer::DeclarationScope::ReachableFrom {
+            requested: Rc::new(requested.iter().map(|s| s.to_string()).collect()),
+        })
+    };
+    infer::typecheck_scoped(graph.clone(), si.clone(), intern.clone(), scope)
+}
+
+// Print the typed state a scoped pass holds for the two modules the service-op witness spans:
+// the fixture that DECLARES test.RestReplay and the claim module whose entry SPELLS the call.
+// For each: every item's authored name, kind, transport presence and child count (the exact
+// predicates merge_scope_from_imports gates on, src/v1/04_infer.dag @545-585), the item_registry
+// keys, and the func_env local/parent view keys (func_env_views_for_import @19901: an is_all
+// import brings the parent's WHOLE view; a named list filters -- if the service root binding is
+// demanded-absent while closure-present, this is where it shows).
+fn grain_probe(
+    tag: &str,
+    pass: &Rc<infer::TypecheckPass>,
+    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) {
+    let keys_of = |fe: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>,
+                   depth: usize,
+                   out: &mut Vec<String>| {
+        let mut ks: Vec<String> = fe.local.keys().cloned().collect();
+        ks.sort();
+        out.push(format!("d{depth}:{}[{}]", fe.name, ks.join(",")));
+        if depth < 2 {
+            for parent in fe.parents.iter() {
+                keys_of(parent, depth + 1, out);
+            }
+        }
+    };
+    for tm in pass.graph.modules.iter() {
+        let name = tm.module.name.clone();
+        if !(name.contains("rest_exchange_replay_probe")
+            || name.contains("github_pull_request_decode_witness"))
+        {
+            continue;
+        }
+        let items: Vec<String> = tm
+            .items
+            .iter()
+            .map(|it| {
+                format!(
+                    "{}|{:?}|t{}|c{}",
+                    authored_name_at(si.clone(), it.clone()),
+                    it.module_item_kind,
+                    if it.transport.is_some() { "Y" } else { "n" },
+                    it.children.len()
+                )
+            })
+            .collect();
+        let mut reg: Vec<String> = tm.item_registry.keys().cloned().collect();
+        reg.sort();
+        let mut fe_keys = Vec::new();
+        keys_of(&tm.func_env, 0, &mut fe_keys);
+        eprintln!(
+            "GRAIN_PROBE tag={tag} module={name} items={items:?} registry={reg:?} funcenv={fe_keys:?}",
+            tag = tag,
+            name = name,
+            items = items,
+            reg = reg,
+            fe_keys = fe_keys
+        );
+    }
+    let svc_reg: Vec<String> = pass
+        .graph
+        .item_registry
+        .keys()
+        .filter(|k| k.contains("RestReplay") || k.contains("PullRequestPage"))
+        .cloned()
+        .collect();
+    eprintln!(
+        "GRAIN_PROBE tag={tag} graph_registry={svc_reg:?}",
+        tag = tag,
+        svc_reg = svc_reg
+    );
+}
+
 fn grain_demand(
     modules: &Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     seeds: &[&str],
@@ -852,6 +943,16 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
                 census_ops,
                 surface
             );
+            // TYPED-STATE DIFF. The probes print, per scope, the fixture's typed items with the
+            // exact predicates merge_scope_from_imports gates on, the item_registry keys, and the
+            // func_env view keys. demanded-vs-closure divergence localizes the drop:
+            // - service item missing/demanded (or t-/c- predicates false) -> realization filter;
+            // - item present but registry/funcenv lacks the root or the service key -> the
+            //   projection link quick-newt's seed-simulation pointed at (msg_9e3db779).
+            let demanded_pass = route_pass(&graph, &intern, &si, &["decoded_pull_request"]);
+            let closure_pass = route_pass(&graph, &intern, &si, &[]);
+            grain_probe("demanded", &demanded_pass, &si);
+            grain_probe("closure", &closure_pass, &si);
             assert!(
                 service_realized,
                 "the service whose operation decoded_pull_request spells inside its witness-frame subject must be realized"
