@@ -119,19 +119,49 @@ fn issue_command_acceptance_wet(repo: String, git_program: String = "/usr/bin/gi
         evidence: NoPullRequest,
       }, recorded_at: "2026-11-04T08:00:06Z")
     let door_read = roadmap_events_read(layout: layout, node: refused_node)
-    let passed = match created.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
-      && match moved.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
-      && match retry.result { EventAlreadyPresent { id } => id == first_id  EventAppended { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
-      && match accepted_read.result { EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind { AcceptanceRecordedEvent { receipt: _, evidence: _ } => true  Retired { reason: _ } => false  _ => false })) == 1  EventsReadRefused { node: _, step: _, reason: _ } => false }
-      && match first_retire.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
-      && match replayed_retire.result { EventAlreadyPresent { id: _ } => true  EventAppended { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
-      && match second_retire.result { EventAppendRefused { id: _, step, reason: _ } => step == "not-admitted"  EventAppended { id: _ } => false  EventAlreadyPresent { id: _ } => false }
-      && match retired_read.result { EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind { Retired { reason: _ } => true  _ => false })) == 1  EventsReadRefused { node: _, step: _, reason: _ } => false }
-      && match door.result { EventAppendRefused { id: _, step, reason: _ } => step == "receipt"  EventAppended { id: _ } => false  EventAlreadyPresent { id: _ } => false }
-      && match door_read.result { EventsRead { node: _, envelopes } => count(envelopes) == 0  EventsReadRefused { node: _, step: _, reason: _ } => false }
-      && count(carrier_snapshot_close_failures(closes: [created.close, moved.close, retry.close, accepted_read.close, first_retire.close, replayed_retire.close, second_retire.close, retired_read.close, door.close, door_read.close])) == 0
-    if passed { ExitSuccess } else { exit_failure(reason: join(["acceptance/retry/retirement/door control failed", issue_wet_outcome(result: created.result), issue_wet_outcome(result: moved.result), issue_wet_outcome(result: retry.result), issue_wet_outcome(result: first_retire.result), issue_wet_outcome(result: replayed_retire.result), issue_wet_outcome(result: second_retire.result), issue_wet_outcome(result: door.result)], "\n")) }
+    // Every law of the route is reported by NAME: an operator running this on srv1 must learn which
+    // facet broke, not merely that "control failed".
+    let f_acceptance_appended = match created.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+    let f_head_moved = match moved.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+    let f_retry_answers_present = match retry.result { EventAlreadyPresent { id } => id == first_id  EventAppended { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+    let f_one_acceptance = match accepted_read.result { EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind { AcceptanceRecordedEvent { receipt: _, evidence: _ } => true  Retired { reason: _ } => false  _ => false })) == 1  EventsReadRefused { node: _, step: _, reason: _ } => false }
+    let f_retirement_appended = match first_retire.result { EventAppended { id: _ } => true  EventAlreadyPresent { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+    let f_replay_answers_present = match replayed_retire.result { EventAlreadyPresent { id: _ } => true  EventAppended { id: _ } => false  EventAppendRefused { id: _, step: _, reason: _ } => false }
+    let f_second_reason_refuses = match second_retire.result { EventAppendRefused { id: _, step, reason: _ } => step == "not-admitted"  EventAppended { id: _ } => false  EventAlreadyPresent { id: _ } => false }
+    let f_one_retirement = match retired_read.result { EventsRead { node: _, envelopes } => count(filter(envelopes, e => match e.event.kind { Retired { reason: _ } => true  _ => false })) == 1  EventsReadRefused { node: _, step: _, reason: _ } => false }
+    let f_absence_refuses_at_receipt = match door.result { EventAppendRefused { id: _, step, reason: _ } => step == "receipt"  EventAppended { id: _ } => false  EventAlreadyPresent { id: _ } => false }
+    let f_refusal_left_nothing = match door_read.result { EventsRead { node: _, envelopes } => count(envelopes) == 0  EventsReadRefused { node: _, step: _, reason: _ } => false }
+    let f_every_carrier_closed = count(carrier_snapshot_close_failures(closes: [created.close, moved.close, retry.close, accepted_read.close, first_retire.close, replayed_retire.close, second_retire.close, retired_read.close, door.close, door_read.close])) == 0
+    let facets = [
+      WetFacet { name: "the acceptance appended", ok: f_acceptance_appended },
+      WetFacet { name: "an unrelated act moved the chain head", ok: f_head_moved },
+      WetFacet { name: "the replay after that move is answered as already present, naming the first event", ok: f_retry_answers_present },
+      WetFacet { name: "the node reads back exactly one acceptance", ok: f_one_acceptance },
+      WetFacet { name: "the retirement appended", ok: f_retirement_appended },
+      WetFacet { name: "replaying the retirement answers already-present", ok: f_replay_answers_present },
+      WetFacet { name: "a second retirement reason refuses, naming what it refused", ok: f_second_reason_refuses },
+      WetFacet { name: "the node reads back exactly one retirement", ok: f_one_retirement },
+      WetFacet { name: "the post-cutoff absence of a pull request refuses at the receipt step", ok: f_absence_refuses_at_receipt },
+      WetFacet { name: "the refused acceptance left no event on the node", ok: f_refusal_left_nothing },
+      WetFacet { name: "every carrier snapshot closed", ok: f_every_carrier_closed }
+    ];
+    // A ProcessExit has no stdout to name a facet in, so the NAMES of the facets that did not hold travel in
+    // the failure reason the runtime prints, beside the outcome of every append.
+    let failed = map(filter(facets, facet => !facet.ok), facet => facet.name);
+    let detail = concat(concat(["acceptance/retry/retirement/door control failed; facets that did not hold:"], failed),
+      ["outcomes:", issue_wet_outcome(result: created.result), issue_wet_outcome(result: moved.result),
+       issue_wet_outcome(result: retry.result), issue_wet_outcome(result: first_retire.result),
+       issue_wet_outcome(result: replayed_retire.result), issue_wet_outcome(result: second_retire.result),
+       issue_wet_outcome(result: door.result)]);
+    if count(failed) == 0 { ExitSuccess } else { exit_failure(reason: join(detail, "\n")) }
   }
+}
+
+// One facet of the route, named. A facet that fails on srv1 must say WHICH law broke, and a ProcessExit has
+// no stdout to say it in — so the name travels in the failure reason.
+record WetFacet {
+  name: String
+  ok: Bool
 }
 
 // A receipt the driver can name: the digest is the canonical fold of a ticket, the red control and handback

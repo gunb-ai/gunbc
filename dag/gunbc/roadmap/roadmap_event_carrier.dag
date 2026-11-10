@@ -361,7 +361,7 @@ fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> Strin
 // migration could not be finished by replaying it. Witnessed by `issue_command_acceptance_wet`, in
 // test.manual.issue_command_wet, which commits an acceptance, lets an unrelated act move the head, and
 // requires the FIRST event's own id back from the replay; the pairing of that replay with
-// a_retried_acceptance_is_the_same_operation_though_it_is_not_the_same_command, in
+// a_retried_acceptance_is_the_same_operation_and_the_same_command_because_the_guess_is_not_a_fact, in
 // test.claim.roadmap.roadmap_acceptance_evidence_witness, is what pins it. What a used key
 // still cannot do is carry another payload: that comparison is the one below, and it refuses.
 fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {

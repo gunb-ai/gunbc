@@ -57,6 +57,7 @@ import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedControlExec
 import gunbc.roadmap.roadmap_event_log {
   AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
   roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_migration_problems, EventPrincipalAuthenticated,
+  roadmap_acceptance_pr_evidence_url, roadmap_acceptance_pr_evidence_merged_at, roadmap_acceptance_pr_evidence_head_sha,
 }
 import gunbc.principal_projection { PrincipalRef }
 
@@ -173,7 +174,7 @@ fn opr_principal() -> EventPrincipalAuthenticated {
 // (gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci), while a pure claim is checked by the
 // fast lane and by `--claim-run` on any workstation.
 
-test fn a_retried_acceptance_is_the_same_operation_though_it_is_not_the_same_command() -> Bool {
+test fn a_retried_acceptance_is_the_same_operation_and_the_same_command_because_the_guess_is_not_a_fact() -> Bool {
   let node = "node-retry-head-moved"
   let receipt = sample_receipt(node)
   let key = roadmap_acceptance_operation_identity(
@@ -191,10 +192,21 @@ test fn a_retried_acceptance_is_the_same_operation_though_it_is_not_the_same_com
     string_contains(s: key, pattern: node) && string_contains(s: key, pattern: "-acceptance-")
       && string_contains(s: key, pattern: roadmap_acceptance_receipt_digest_text(receipt: receipt))
       && !string_contains(s: key, pattern: "op-retry-head-moved"))
-  && claim("the retried command is NOT the same command once the head has moved, which is why the carrier answers a retry from its operation receipt and never from command identity",
-    !roadmap_event_same_command(
+  && claim("the carrier's own command equality compares the FACT and not the caller's parent guess, which is "
+             "exactly why a retry whose head moved is answered from the operation receipt as already present "
+             "instead of refused as a conflict (the wet half, over a real append and a real intervening commit, "
+             "is test.manual.issue_command_wet.issue_command_acceptance_wet)",
+    roadmap_event_same_command(
       a: issue_command_event(command: first, recorded_at: "2026-11-04T08:00:00Z"),
       b: issue_command_event(command: retry, recorded_at: "2026-11-04T08:00:02Z")))
+  && claim("the same key may never authorize another payload: changing the acceptance's own fact IS a different command",
+    !roadmap_event_same_command(
+      a: issue_command_event(command: first, recorded_at: "2026-11-04T08:00:00Z"),
+      b: issue_command_event(command: AcceptNode {
+        subject: IssueCommandSubject { node: node as NonEmptyStr as RoadmapNodeId, author: opr_principal(),
+          operation: "op-retry-head-moved" as NonEmptyStr, expected: none },
+        receipt: sample_receipt_on(node: node, day: "2026-11-07"), evidence: earned(fact_set()) },
+        recorded_at: "2026-11-04T08:00:04Z")))
   && claim("two different receipts on one node are two operations, so a node is not accepted once in its whole life",
     key != roadmap_acceptance_operation_identity(node: node,
       choice: BuildAcceptCommand { receipt: sample_receipt_on(node: node, day: "2026-11-06"), evidence: earned(fact_set()) }))
@@ -227,8 +239,18 @@ test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
     match shape { Absent => true, Present { value: _ } => false })
   && claim("three empty arguments are the ONE admissible absence, not three refusals",
     match none_conv { Present { value: NoPullRequest } => true, _ => false })
-  && claim("three complete arguments fold into one typed fact",
-    match all_conv { Present { value: EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } } => true, _ => false })
+  && claim("three complete arguments fold into one typed fact that the row's own readers spell back",
+    match all_conv {
+      Present { value } => roadmap_acceptance_pr_evidence_url(evidence: value) == (facts.url as String)
+        && roadmap_acceptance_pr_evidence_merged_at(evidence: value) == (facts.merged_at as String)
+        && roadmap_acceptance_pr_evidence_head_sha(evidence: value) == (facts.head as String)
+      Absent => false })
+  && claim("the admissible absence is the row's own spelling of no pull request: three empty fields, not three refusals",
+    match none_conv {
+      Present { value } => roadmap_acceptance_pr_evidence_url(evidence: value) == ""
+        && roadmap_acceptance_pr_evidence_merged_at(evidence: value) == ""
+        && roadmap_acceptance_pr_evidence_head_sha(evidence: value) == ""
+      Absent => false })
 }
 
 test fn the_absence_of_a_pull_request_is_admitted_only_before_the_cutoff() -> Bool {
