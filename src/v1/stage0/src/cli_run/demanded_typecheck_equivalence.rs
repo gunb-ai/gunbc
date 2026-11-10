@@ -170,7 +170,9 @@ fn grain_fixture_graph() -> (
     Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
 ) {
-    graph_from("dag/test/fixture/demanded_scope/declaration_grain.dag")
+    let (sources, intern, si, modules, _graph) =
+        graph_from("dag/test/fixture/demanded_scope/declaration_grain.dag");
+    (sources, intern, si, modules)
 }
 
 // The same graph, from any entry: the realization witnesses below also run against real corpus
@@ -213,7 +215,35 @@ fn graph_from(
         );
     }
     let graph = crate::v1_compiler_resolve::resolve_modules(Rc::new(parsed.into()), si.clone());
-    (sources, intern, si, graph.modules.clone())
+    (sources, intern, si, graph.modules.clone(), Rc::new(graph))
+}
+
+// PRODUCTION-ROUTE EQUIVALENCE. `gunbc run` types an entry through v1.compiler.infer
+// `typecheck_scoped` (src/v1/04_infer.dag @21872) with `DeclarationScope::ReachableFrom { requested }`;
+// the demanded realization AND the service census both come from the graph the pass is handed
+// (@21898, build_symbol_index_census over graph.modules -- the same reason a hand-assembled
+// empty-symbol-index pass could see a registry the production pass does not). Handing BOTH scopes the
+// SAME graph isolates the scope itself: any diagnostic the demanded pass adds that the
+// EveryDeclaration pass does not is a read the realization wave dropped, not a graph difference.
+fn route_messages(
+    graph: &Rc<crate::v1_compiler_resolve::ModuleGraph>,
+    intern: &Rc<crate::v1_std_core::InternTable>,
+    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    requested: &[&str],
+) -> Vec<String> {
+    let scope = if requested.is_empty() {
+        Rc::new(infer::DeclarationScope::EveryDeclaration)
+    } else {
+        Rc::new(infer::DeclarationScope::ReachableFrom {
+            requested: Rc::new(requested.iter().map(|s| s.to_string()).collect()),
+        })
+    };
+    let pass = infer::typecheck_scoped(graph.clone(), si.clone(), intern.clone(), scope);
+    pass.graph
+        .diagnostics
+        .iter()
+        .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect()
 }
 
 fn grain_demand(
@@ -477,7 +507,7 @@ fn a_row_named_only_through_a_demanded_signature_is_realized() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
-            let (_sources, _intern, si, modules) =
+            let (_sources, _intern, si, modules, _graph) =
                 graph_from("dag/gunbc/auth/secret_ref_credential.dag");
             let demand = grain_demand(&modules, &["fetch_secret_ref_credential"], &si);
             let realization = match &*demand {
@@ -515,7 +545,7 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
-            let (_sources, intern, si, modules) =
+            let (_sources, intern, si, modules, graph) =
                 graph_from("dag/test/claim/rest_exchange_replay.dag");
             let demand = grain_demand(&modules, &["rest_status_and_body_are_persistable"], &si);
             let realization = match &*demand {
@@ -555,14 +585,13 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
             let svc_found = svc_probe.is_some();
             let (svc_name, svc_authored, svc_demanded, realized_bare) =
                 svc_probe.unwrap_or((String::new(), String::new(), false, false));
-            // DEMANDED-VERSUS-CLOSURE EQUIVALENCE. The demanded chain and the full (EveryDeclaration)
-            // chain each thread their own module index; the demanded chain must refuse no method surface
-            // the full chain does not. The service is realized, so the full chain resolves the Observe op
-            // and yields no surface refusal; if the demanded chain refuses where the closure does not, the
-            // demanded grain has dropped an op surface a full typecheck establishes -- the divergence
-            // #16156 introduced, and the GREEN-at-head assertion below is exactly the equivalence restored.
-            let demanded = grain_typecheck(&modules, &intern, &si, demand.clone());
-            let closure = grain_typecheck(&modules, &intern, &si, Rc::new(DeclarationDemand::AllDeclarations));
+            // DEMANDED-VERSUS-CLOSURE EQUIVALENCE, via the PRODUCTION ENTRY POINTS (route_messages):
+            // both scopes see the SAME graph, so any demanded-only refusal is the realization wave, not
+            // a graph difference. The demanded chain must refuse no method surface the EveryDeclaration
+            // chain does not; the service is realized, so the closure resolves the Observe op and yields
+            // no surface refusal — GREEN below is the equivalence restored.
+            let demanded = route_messages(&graph, &intern, &si, &["rest_status_and_body_are_persistable"]);
+            let closure = route_messages(&graph, &intern, &si, &[]);
             let surface: Vec<String> = demanded
                 .iter()
                 .filter(|m| {
@@ -617,7 +646,7 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
-            let (_sources, intern, si, modules) =
+            let (_sources, intern, si, _modules, graph) =
                 graph_from("dag/test/fixture/demanded_scope/service_op_grain.dag");
             let demand = grain_demand(&modules, &["service_op_spelled_in_entry_body"], &si);
             let realization = match &*demand {
@@ -625,8 +654,10 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
                 DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
             };
             let service_realized = realization.realized.contains_key("test.RestReplay");
-            let demanded = grain_typecheck(&modules, &intern, &si, demand.clone());
-            let closure = grain_typecheck(&modules, &intern, &si, Rc::new(DeclarationDemand::AllDeclarations));
+            // Demanded-vs-closure through the PRODUCTION ENTRY POINTS (route_messages): same graph,
+            // two scopes; a demanded-only refusal is the realization wave.
+            let demanded = route_messages(&graph, &intern, &si, &["service_op_spelled_in_entry_body"]);
+            let closure = route_messages(&graph, &intern, &si, &[]);
             let surface: Vec<String> = demanded
                 .iter()
                 .filter(|m| {
@@ -685,7 +716,7 @@ fn wire_contract_row_reached_by_the_publisher_route_is_realized() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
-            let (_sources, _intern, si, modules) = graph_from("dag/gunbc/heal_publication.dag");
+            let (_sources, _intern, si, modules, _graph) = graph_from("dag/gunbc/heal_publication.dag");
             let demand = grain_demand(&modules, &["heal_publication_publish_for"], &si);
             let realization = match &*demand {
                 DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
