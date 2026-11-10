@@ -38,6 +38,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { ByteSize, byte_size_count, byte_size, Watt, watt, watt_count }
+import gunbc.serving.serving_host_memory { srv3_strata_engine_memory, srv4_serving_engine_memory, serving_reading_bytes_or_zero }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 
@@ -121,26 +122,26 @@ fn gpu_reservation_card_count(g: GpuReservation) -> Nat {
   count(g.devices)
 }
 
-// A REPLICA'S MEMORY RESERVATION IS A MEASURED FACT, A MODELED ALLOWANCE, OR HONESTLY UNMEASURED -- never a
-// fabricated number. This mirrors the module's other quantity faces: a quantity observed carries bytes with a
-// provenance; a quantity the runner needs before it is observed carries a conservative bytes WITH a basis that
-// says it is modeled, not measured; a quantity nobody has read yet is Unmeasured, and the width derivation
-// FAILS CLOSED on it rather than charge a made-up figure (fail_closed). Storing a bare placeholder in a
-// ByteSize field, as this module once did, let the width silently consume a lie.
+// A REPLICA'S MEMORY RESERVATION IS A MEASURED FACT OR HONESTLY UNMEASURED -- never a fabricated number. A
+// quantity observed carries bytes WITH a provenance naming where they were read; a quantity nobody has read
+// yet is Unmeasured, and the width derivation FAILS CLOSED on it rather than charge a made-up figure
+// (fail_closed). There is deliberately no "modeled allowance" arm: a conservative placeholder -- least of all
+// a zero, the least conservative figure there is -- dressed as data is exactly the fabricated default this
+// rule rejects. srv3/srv4 charge their engine's MEASURED cgroup ceiling, consumed from
+// gunbc.serving.serving_host_memory (that module's own frontier note says those rows exist to be charged as
+// claims); a host with no such read (butch) is Unmeasured, not zero.
 type ReplicaMemoryReservation
   = MemoryMeasured { bytes: ByteSize, provenance: String }
-  | MemoryModeledAllowance { bytes: ByteSize, basis: String }
   | MemoryUnmeasured { reason: String }
 
-// THE BYTES a reservation COMMITS, as an Optional: a measured or modeled figure is Present; an unmeasured one
-// is Absent -- NEVER a fabricated zero. A total reader that handed back 0 for the unmeasured arm would let any
-// future caller price an unmeasured engine at nothing; returning Absent makes that state unwritable at the
-// type, and the fold in host_memory_reserved refuses to sum when any replica is Absent, so the width fails
-// closed rather than charging a made-up figure (fail_closed).
+// THE BYTES a reservation COMMITS, as an Optional: a measured figure is Present; an unmeasured one is Absent --
+// NEVER a fabricated zero. A total reader that handed back 0 for the unmeasured arm would let any future caller
+// price an unmeasured engine at nothing; returning Absent makes that state unwritable at the type, and the fold
+// in host_memory_reserved refuses to sum when any replica is Absent, so the width fails closed rather than
+// charging a made-up figure (fail_closed).
 fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> Optional<ByteSize> {
   match m {
     MemoryMeasured { bytes: b, provenance: _ } => Present { value: b }
-    MemoryModeledAllowance { bytes: b, basis: _ } => Present { value: b }
     MemoryUnmeasured { reason: _ } => Absent
   }
 }
@@ -194,23 +195,28 @@ type StrataArtifactDigest {
 }
 
 // WHAT A HOST'S STRATA ENGINE ACTUALLY IS, as an immutable artifact. These are genuinely different artifact
-// KINDS and are kept distinct (operator ruling, 2026-11-10): a NATIVE strata binary is identified by a GIT
-// COMMIT (the build running on butch and srv3 is a native strata-main binary), while a CONTAINER strata image
-// is identified by a CONTENT-ADDRESSED IMAGE DIGEST. Collapsing both onto one "hex" field would let a host's
-// pin claim the wrong artifact -- pinning a container image digest for a host that runs a native binary is a
-// FALSE pin, worse than no pin because it reads as reproducible and is not.
+// KINDS and are kept distinct (operator ruling, 2026-11-10): a NATIVE checkout is identified by a GIT COMMIT
+// (the strata server code, AND SEPARATELY the venv interpreter+packages it runs under -- on srv3/butch these
+// are two DIFFERENT clean checkouts, strata-main and strata); a MANAGED RELEASE is an id in a release
+// directory (srv4's /opt/gunbc-serving/srv4-daily/releases/<id>, a build chosen by the deploy tool, NOT a git
+// commit); and a CONTAINER image is a CONTENT-ADDRESSED IMAGE DIGEST. Collapsing these onto one "hex" field
+// would let a host's pin claim the wrong artifact -- pinning a container digest for a host that runs a native
+// binary, or a git commit for a host that runs a managed release, is a FALSE pin, worse than no pin because
+// it reads as reproducible and is not.
 type StrataArtifact
-  = StrataNativeGitCommit { source: NonEmptyStr, commit: NonEmptyStr }
+  = StrataNativeGitCommit { checkout: NonEmptyStr, commit: NonEmptyStr }
+  | StrataManagedRelease { directory: NonEmptyStr, release_id: NonEmptyStr }
   | StrataContainerImageDigest { digest: StrataArtifactDigest }
 
-// A STRATA RELEASE THE MODEL WILL RUN. `Pinned` carries the artifact AND the authority it was read from, so a
-// pin is auditable to an observation rather than an assertion; `Unpinned` records a moving reference (a tag
-// like "strata:latest", or a build never read off the box) and is refused by every consumer that must
-// reproduce a byte-exact engine. Keeping `Unpinned` as a variant -- rather than making a digest required --
-// lets the model NAME a host's current unpinned state and refuse it, more honest than pretending every host
-// already has a byte-exact build.
+// A STRATA RELEASE THE MODEL WILL RUN. `Pinned` carries the artifacts that MAKE UP the running engine (a
+// native server may span a code checkout AND a venv checkout, so a list, not one) AND the authority they were
+// read from, so a pin is auditable to an observation rather than an assertion. `Unpinned` records a moving
+// reference (a tag like "strata:latest", or a build never read off the box) and is refused by every consumer
+// that must reproduce a byte-exact engine. Keeping `Unpinned` as a variant -- rather than making a digest
+// required -- lets the model NAME a host's current unpinned state and refuse it, more honest than pretending
+// every host already has a byte-exact build.
 type StrataRelease
-  = StrataReleasePinned { artifact: StrataArtifact, read_from: NonEmptyStr }
+  = StrataReleasePinned { artifacts: List<StrataArtifact>, read_from: NonEmptyStr }
   | StrataReleaseUnpinned { reference: NonEmptyStr }
 
 // A digest is content-addressed when it names a real content algorithm; the algorithm is the discriminator,
@@ -220,20 +226,25 @@ fn strata_digest_is_content_addressed(d: StrataArtifactDigest) -> Bool {
   (d.algorithm as String) == "sha256"
 }
 
-// A native binary is a real pin only when it names a FULL git commit (40 hex): a short sha or a branch name is
-// a moving name, not an immutable artifact, and is refused. A container image is a pin when its digest names a
-// real content algorithm (see strata_digest_is_content_addressed). Fail closed: an unpinned release, an
-// un-full commit, or a wrong-algorithm digest is never assumed pinned.
+// A native checkout is a real pin only when it names a FULL git commit (40 hex): a short sha or a branch name
+// is a moving name, not an immutable artifact, and is refused. A managed release names an immutable build in a
+// release directory -- a replaced release is a different build (strata_parked_tier: "a replaced release changes
+// the build and strands every save"), so a non-empty release id pins. A container image pins when its digest
+// names a real content algorithm. Fail closed on each kind.
 fn strata_artifact_is_immutable(a: StrataArtifact) -> Bool {
   match a {
-    StrataNativeGitCommit { source: _, commit: c } => string_length(s: c) == 40
+    StrataNativeGitCommit { checkout: _, commit: c } => string_length(s: c) == 40
+    StrataManagedRelease { directory: _, release_id: _ } => true
     StrataContainerImageDigest { digest: d } => strata_digest_is_content_addressed(d)
   }
 }
 
+// A release is pinned only when it names AT LEAST ONE artifact and EVERY artifact it names is immutable: an
+// empty pinned list is not a pin (fail_closed -- claiming a build with no artifact is a fabricated pin), and
+// one moving component among several must not let the whole release pass.
 fn strata_release_is_pinned(r: StrataRelease) -> Bool {
   match r {
-    StrataReleasePinned { artifact: a, read_from: _ } => strata_artifact_is_immutable(a)
+    StrataReleasePinned { artifacts: as, read_from: _ } => count(as) > 0 && all(as, a => strata_artifact_is_immutable(a))
     StrataReleaseUnpinned { reference: _ } => false
   }
 }
@@ -259,26 +270,29 @@ type ServingHostReservation {
 // fleet's standing claims, and the derivation reads them all the same.
 data serving_host_reservations: List<ServingHostReservation> = [
   // srv3: one Strata engine, its two cards capped, an affinity pin that leaves cores bookable. Its per-engine
-  // MEMORY reservation is not yet observed, so it is a MODELED ALLOWANCE AT ZERO -- established (so srv3's
-  // committed runner width is not built on a fabricated figure) but plainly a model value, not a measurement;
-  // B4b (cool-lark-40) replaces it with MemoryMeasured once the per-engine reservation is read.
+  // MEMORY is MEASURED: the engine's cgroup MemoryHigh ceiling, read from its systemd drop-in and held in
+  // gunbc.serving.serving_host_memory srv3_strata_engine_memory.memory_cap. That ceiling -- not an invented
+  // number, not zero -- is what the runner pool must yield to the engine, so it is charged as a claim (the
+  // purpose that corpus row is reserved for); charging zero left srv3's Strata memory bookable to CI (over-book).
   ServingHostReservation {
     host: operator_host_srv3,
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: MemoryModeledAllowance { bytes: byte_size(count: 0), basis: "per-engine Strata memory reservation not yet observed; modeled at zero so the committed width uses only measured facts -- B4b records MemoryMeasured" },
+        memory: MemoryMeasured { bytes: serving_reading_bytes_or_zero(srv3_strata_engine_memory.memory_cap), provenance: "srv3_strata_engine_memory.memory_cap (gunbc.serving.serving_host_memory): strata-pool.service cgroup MemoryHigh, the ceiling the engine cannot exceed; charged so the runner never books memory the serving engine may hold" },
         gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
   },
-  // srv4: one Strata engine, its two cards capped, an affinity pin; memory modeled at zero as above.
+  // srv4: one Strata engine, its two cards capped, an affinity pin; memory MEASURED from its own cgroup
+  // ceiling in serving_host_memory srv4_serving_engine_memory.memory_cap (gunbc-srv4-daily-engine.service
+  // MemoryHigh), charged as a claim just as srv3's is.
   ServingHostReservation {
     host: operator_host_srv4,
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: MemoryModeledAllowance { bytes: byte_size(count: 0), basis: "per-engine Strata memory reservation not yet observed; modeled at zero so the committed width uses only measured facts -- B4b records MemoryMeasured" },
+        memory: MemoryMeasured { bytes: serving_reading_bytes_or_zero(srv4_serving_engine_memory.memory_cap), provenance: "srv4_serving_engine_memory.memory_cap (gunbc.serving.serving_host_memory): gunbc-srv4-daily-engine.service cgroup MemoryHigh, the ceiling the engine cannot exceed; charged as a claim" },
         gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
@@ -332,7 +346,8 @@ fn host_cores_withheld_from_runner(host: HostIdentity) -> Nat {
 // served_slice_charge charges the prod host's container allowance. It returns Absent when a replica's
 // reservation is unmeasured, so the consumer FAILS CLOSED instead of charging a fabricated figure; a host with
 // no reservation row is established at zero (it runs no replica, and refusing it would refuse every non-serving
-// host). An allowance contributes its bytes; only MemoryUnmeasured blocks the width.
+// host). A measured replica contributes its bytes; any unmeasured replica turns the whole host Absent (the fold
+// propagates it), so the width fails closed rather than understate a host that runs an unmeasured engine.
 fn host_memory_reserved(host: HostIdentity) -> Optional<ByteSize> {
   match host_reservations_for(host) {
     Absent => Present { value: byte_size(count: 0) }
@@ -442,15 +457,22 @@ fn serving_api_key_source_path(host: HostIdentity, replica: NonEmptyStr) -> Opti
 // ── EACH SERVING HOST'S STRATA IS PINNED BY THE DIGEST OF THE BUILD ACTUALLY RUNNING ─────────────────
 
 // WHICH STRATA EACH HOST RUNS. Pinning lives on the host (a data row keyed by the machine), so "butch runs
-// the same build as srv3" is two rows naming the SAME commit, not a branch. The artifact KIND matters: butch
-// and srv3 run the NATIVE strata binary, identified by the git commit cool-lark-40 (B4b) read off the running
-// build on butch (strata-main 8c5fafc1fa84d1af1d3f1459ae86fe55d604774c, 2026-11-10); srv3 is the same build by
-// the operator's "same build and server as srv3 production." A host whose build has NOT been read is left
-// StrataReleaseUnpinned and REFUSED -- srv4 runs a strata engine but neither B4a nor B4b has read its commit,
-// so it is named and refused rather than pinned to a guess (fail_closed). host_strata_is_pinned is true here
-// only because a row names a real full commit (or a content-addressed image digest) read from an authority;
-// a host with no row, or one left StrataReleaseUnpinned, is not pinned. B4b keeps the authoritative ssh read
-// of each box's build and overrides any row whose build differs -- and never the moving tag "latest".
+// the same build as srv3" is two rows naming the SAME commits, not a branch. The running engine is modelled by
+// the artifact KIND each host actually runs, read over ssh by smart-crane-730 (2026-11-10 ~20:10Z, clean):
+//  - srv3 + butch run the NATIVE strata binary. A native server here spans TWO clean checkouts, so each host
+//    pins BOTH as separate StrataNativeGitCommit artifacts: the SERVER CODE in strata-main @ 8c5fafc1fa84d1af1d
+//    3f1459ae86fe55d604774c (strata-pool.service runs .venv/bin/python serve/server.py with cwd strata-main),
+//    AND the venv INTERPRETER+PACKAGES in a second checkout strata @ 44df8fd5f0b26537009bb6194dc7216cc24d6b93
+//    (/home/ubuntu/strata-test/strata/.venv). butch runs the same arrangement under taskset -c CPUS. Pinning
+//    only the server code would silently leave the interpreter/packages unpinned, so both are named.
+//  - srv4 runs a MANAGED RELEASE: gunbc-srv4-daily-engine.service runs /opt/gunbc-serving/srv4-daily/releases/
+//    406c9de18cef/build/strata (bound 127.0.0.1:18080). That release id is already modelled in the corpus --
+//    gunbc.serving.serving_layout (strata_srv4 layout + backend), gunbc.serving.strata_parked_tier, and
+//    gunbc.serving.serving_host_memory (srv4_serving_engine_memory) all carry 406c9de18cef -- so it is CITED,
+//    not refused. It is a release-directory id, a DIFFERENT kind from a git commit, kept in its own arm.
+// host_strata_is_pinned is true only where a row names one or more immutable artifacts read from an authority;
+// a host with no row, or one left StrataReleaseUnpinned, is not pinned. B4b keeps the authoritative ssh read of
+// each box and overrides any row whose build differs -- and never the moving tag "latest".
 type ServingHostStrata {
   host: HostIdentity
   strata: StrataRelease
@@ -458,14 +480,24 @@ type ServingHostStrata {
 
 data serving_host_strata_releases: List<ServingHostStrata> = [
   ServingHostStrata { host: operator_host_srv3, strata: StrataReleasePinned {
-    artifact: StrataNativeGitCommit { source: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
-    read_from: "the native strata build running on srv14 (butch), read over ssh by B4b cool-lark-40 2026-11-10; operator states butch runs the same build as srv3 production",
+    artifacts: [
+      StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool.service: /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
+      StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" },
+    ],
+    read_from: "both checkouts read clean over ssh by smart-crane-730 2026-11-10 ~20:10Z; strata-pool.service runs .venv/bin/python serve/server.py with cwd strata-main",
   } },
-  // srv4 runs a strata engine but its build has never been read; named and REFUSED, not pinned to a guess.
-  ServingHostStrata { host: operator_host_srv4, strata: StrataReleaseUnpinned { reference: "strata build on srv4 -- never read by B4a or B4b; refused as a pin until observed over ssh" } },
+  ServingHostStrata { host: operator_host_srv4, strata: StrataReleasePinned {
+    artifacts: [
+      StrataManagedRelease { directory: "/opt/gunbc-serving/srv4-daily/releases", release_id: "406c9de18cef" },
+    ],
+    read_from: "gunbc-srv4-daily-engine.service runs /opt/gunbc-serving/srv4-daily/releases/406c9de18cef/build/strata (bound 127.0.0.1:18080), read over ssh by smart-crane-730 2026-11-10 ~20:10Z; the release id 406c9de18cef is already modelled in gunbc.serving.serving_layout / strata_parked_tier / serving_host_memory -- cited, not restated",
+  } },
   ServingHostStrata { host: operator_host_srv14, strata: StrataReleasePinned {
-    artifact: StrataNativeGitCommit { source: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
-    read_from: "the native strata build running on butch (srv14), read over ssh by B4b cool-lark-40 2026-11-10",
+    artifacts: [
+      StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool@a/b, /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
+      StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" },
+    ],
+    read_from: "strata-pool@a/b under taskset -c CPUS, cwd strata-main 8c5fafc1 clean, venv strata 44df8fd clean, read over ssh by smart-crane-730 2026-11-10 ~20:10Z; same arrangement as srv3",
   } },
 ]
 

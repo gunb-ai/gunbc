@@ -30,7 +30,7 @@ import gunbc.serving.serving_reservation {
   ServingHostReservation, ReplicaReservation, cpu_reservation_covers,
   serving_api_key_is_reference, serving_api_key_source_path,
   host_strata_is_pinned, strata_release_for, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
-  StrataArtifact, StrataArtifactDigest, StrataNativeGitCommit, StrataContainerImageDigest,
+  StrataArtifact, StrataArtifactDigest, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
 }
 
 fn butch_replicas() -> List<ReplicaReservation> {
@@ -85,23 +85,33 @@ test fn witness_butch_key_is_a_reference_not_a_literal_and_one_key_covers_both()
 test fn witness_butch_strata_is_pinned_by_native_commit_and_a_keyed_absence_is_not_pinned() -> Bool {
   let butch_pinned = host_strata_is_pinned(operator_host_srv14)
   let srv3_pinned = host_strata_is_pinned(operator_host_srv3)
-  // butch runs a NATIVE strata binary, pinned by the full git commit read off it over ssh -- a container image
-  // digest for butch would land in the other arm and make this false, so this also proves the pin is not the
-  // flex image (the earlier defect: pinning a container digest for a host that runs the native binary).
-  let butch_is_native_commit = match strata_release_for(operator_host_srv14) {
-    Present { value: StrataReleasePinned { artifact: StrataNativeGitCommit { source: _, commit: c }, read_from: _ } } => (c as String) == "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c"
-    _ => false
+  let butch_arts = match strata_release_for(operator_host_srv14) {
+    Present { value: StrataReleasePinned { artifacts: as, read_from: _ } } => as
+    _ => []
   }
-  // "same build and server as srv3 production": the two hosts name the SAME native commit.
-  let same_build = match strata_release_for(operator_host_srv14) {
-    Present { value: StrataReleasePinned { artifact: StrataNativeGitCommit { source: _, commit: cb }, read_from: _ } } => match strata_release_for(operator_host_srv3) {
-      Present { value: StrataReleasePinned { artifact: StrataNativeGitCommit { source: _, commit: c3 }, read_from: _ } } => (cb as String) == (c3 as String)
-      _ => false
-    }
-    _ => false
+  let srv3_arts = match strata_release_for(operator_host_srv3) {
+    Present { value: StrataReleasePinned { artifacts: as, read_from: _ } } => as
+    _ => []
   }
-  // discriminating: srv4's build was never read (Unpinned) -> NOT pinned; and an unmodeled host is never pinned.
-  let srv4_unread_not_pinned = host_strata_is_pinned(operator_host_srv4) == false
+  let srv4_arts = match strata_release_for(operator_host_srv4) {
+    Present { value: StrataReleasePinned { artifacts: as, read_from: _ } } => as
+    _ => []
+  }
+  // butch pins BOTH checkouts that make up its running native engine: the server code (strata-main) AND the
+  // venv interpreter+packages (strata), each a full git commit read off the box -- a container image among them
+  // would make butch_no_container false, so this also proves butch is not pinned to the flex image.
+  let has_server_code = any(butch_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" _ => false })
+  let has_venv = any(butch_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "44df8fd5f0b26537009bb6194dc7216cc24d6b93" _ => false })
+  let butch_no_container = all(butch_arts, a => match a { StrataContainerImageDigest { digest: _ } => false _ => true })
+  // "same build and server as srv3 production": srv3 names the SAME two native commits.
+  let srv3_has_code = any(srv3_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" _ => false })
+  let srv3_has_venv = any(srv3_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "44df8fd5f0b26537009bb6194dc7216cc24d6b93" _ => false })
+  let srv3_same = srv3_has_code && srv3_has_venv
+  // srv4 is now PINNED by a MANAGED RELEASE id (a distinct kind from a git commit), cited from the corpus --
+  // not refused. Asserting it is a managed release (not a commit) also proves the kinds stay distinct.
+  let srv4_managed = any(srv4_arts, a => match a { StrataManagedRelease { directory: _, release_id: r } => (r as String) == "406c9de18cef" _ => false })
+  let srv4_not_commit = all(srv4_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: _ } => false _ => true })
   let unmodeled_not_pinned = host_strata_is_pinned(operator_host_srv2) == false
-  butch_pinned && srv3_pinned && butch_is_native_commit && same_build && srv4_unread_not_pinned && unmodeled_not_pinned
+  butch_pinned && srv3_pinned && has_server_code && has_venv && butch_no_container && srv3_same
+    && host_strata_is_pinned(operator_host_srv4) && srv4_managed && srv4_not_commit && unmodeled_not_pinned
 }

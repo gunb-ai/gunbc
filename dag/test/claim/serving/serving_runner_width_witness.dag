@@ -50,15 +50,16 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
     RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
     RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
   }
-  // (b) srv3's OWN row sits at that certified base: its reservation is established (not absent) and adds no
-  //     charge beyond the observed base -- no fabricated figure is folded into its width.
+  // (b) srv3's REAL reservation is subtracted to the byte: the width with its own measured charge folded in
+  //     (host_runner_memory_envelope_resolution) is smaller than the base by exactly that charge -- and the
+  //     charge is nonzero (the engine's measured cgroup ceiling), not the fabricated zero this row once carried.
+  let srv3_charge = match host_memory_reserved(operator_host_srv3) {
+    Present { value: m } => byte_size_count(b: m)
+    Absent => 0 - 1
+  }
   let srv3_real = match host_runner_memory_envelope_resolution(host: operator_host_srv3) {
     RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
     RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
-  }
-  let srv3_charge_is_zero = match host_memory_reserved(operator_host_srv3) {
-    Present { value: m } => byte_size_count(b: m) == 0
-    Absent => false
   }
   // (c) THE PROD HOST srv1 runs no serving replica: charged nothing, its width is its own base, and it is not shrunk.
   let prod_charge_is_zero = match host_memory_reserved(operator_host_srv1) {
@@ -77,8 +78,8 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
   base_bytes > 0
     && charged_bytes > 0
     && base_bytes == charged_bytes + 4096
-    && srv3_real == base_bytes
-    && srv3_charge_is_zero
+    && srv3_charge > 0
+    && srv3_real == base_bytes - srv3_charge
     && prod_charge_is_zero
     && prod_bytes > 0
     && butch_closed
