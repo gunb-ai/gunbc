@@ -540,7 +540,7 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
             // instrument prints the exact item-level verdict, so the fix targets the measured link.
             let svc_probe = modules
                 .iter()
-                .flat_map(|m| module_items(m.module.clone()).into_iter())
+                .flat_map(|m| module_items(m.module.clone()).iter().cloned())
                 .find(|it| it.name == "RestReplay")
                 .map(|it| {
                     (
