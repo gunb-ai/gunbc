@@ -758,20 +758,29 @@ fn bash_build_is_digits(text: String) -> Bool {
 // shell as live code, so it is refused rather than escaped.
 fn bash_build_comment(text: String) -> Optional<Node> {
   match string_head(s: text) {
-    CharFound { value: bash_build_char_hash } =>
-      if string_contains_char(s: text, c: bash_build_char_newline) {
-        Absent
-      } else {
-        Present {
-          value: bash_build_stmt_with_body(
-            binding: ^bash_production_fold_comment,
-            body: [bash_build_name_atom(text: text)]
-          )
+    // Compared, not pattern-matched: an identifier in a pattern position binds
+    // rather than compares, so writing the '#' row there would match any head.
+    // Bash manual, node "Comments": a comment runs to the end of the line, so an
+    // embedded newline would hand the remainder of the text to the shell.
+    CharFound { value: head } =>
+      if head == bash_build_char_hash {
+        if string_contains_char(s: text, c: bash_build_char_newline) {
+          Absent
+        } else {
+          Present {
+            value: bash_build_stmt_with_body(
+              binding: ^bash_production_fold_comment,
+              body: [bash_build_name_atom(text: text)]
+            )
+          }
         }
+      } else {
+        Absent
       }
-    _ => Absent
+    CharAbsent => Absent
   }
 }
+
 
 // Bash manual, node "Shell Functions": name () compound-command. The name is a
 // Name and nothing else; the body is statements, never a caller-written string.
@@ -982,6 +991,13 @@ fn bash_build_word_param_error(index: String, word: String) -> Optional<Node> {
 // Bash manual, node "Shell Parameters": $* (the positional parameters as one
 // word) and $@ (as separate words). Nothing else: a name belongs to the var
 // word kind.
+// Bash manual, node "Special Parameters": `$*` and `$@` are the positional
+// parameters; nothing else is a special parameter of this form, so only those
+// two bytes are accepted.
+fn bash_build_is_positional_all(which: String) -> Bool {
+  which == "*" || which == "@"
+}
+
 fn bash_build_word_positional_all(which: String) -> Optional<Node> {
   if which == "*" || which == "@" {
     Present {
