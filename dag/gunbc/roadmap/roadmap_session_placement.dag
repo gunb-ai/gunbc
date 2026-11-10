@@ -1095,9 +1095,8 @@ data session_launch_manager_wire_user: String = "user"
 // record written after this change carries the field; a record that cannot be read at all is
 // LaunchManagerUnreadable and never reaches this list.
 //
-// CARRIED HERE AND NOT IN A CENSUS ROW, and its retirement condition: dag/gunbc/realization_census_rows
-// .dag is a REGENERATED artifact (rows_gen from a pinned receipt; its own header forbids editing), so a
-// hand-added row there would be erased by the next regeneration. RETIRE THIS ROW BY EMPTYING IT: once
+// CARRIED HERE AND NOT IN A CENSUS ROW (the realization census rows were a regenerated artifact, and
+// were deleted with the census retirement of 2026-11-10), and its retirement condition: RETIRE THIS ROW BY EMPTYING IT: once
 // both references are settled, or re-acquired with a recorded manager, the legacy arm has no members,
 // the list is empty, and the row and the Legacy arm go with it.
 data session_legacy_recorded_manager_absent_references: List<String> = [

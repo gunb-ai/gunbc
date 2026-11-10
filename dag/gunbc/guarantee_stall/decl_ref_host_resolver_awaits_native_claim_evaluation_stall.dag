@@ -32,7 +32,6 @@ data decl_ref_host_resolver_awaits_native_claim_evaluation_stall: GuaranteeStall
   blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: BoundedPopulation {
     members: [
-      "dag/gunbc/defork_type_name_census",
       "dag/gunbc/dissolution_observation",
       "dag/gunbc/doc_graph_roots",
       "dag/gunbc/generated_artifact_producer_coverage",
