@@ -246,15 +246,6 @@ fn bash_translation_rules_node() -> Node {
   )
 }
 
-fn bash_bound_words_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_bound_words,
-    lhs: ^bash_production_bound_words,
-    tokens: bash_bound_words_concrete_tokens(),
-    emitted: bash_bound_words_emitted_command
-  )
-}
-
 fn bash_embedded_quote_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_embedded_quote_lit,
@@ -263,19 +254,6 @@ fn bash_embedded_quote_translation_rules_node() -> Node {
     emitted: bash_embedded_quote_emitted_command
   )
 }
-
-fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
-    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^bash_binding_lit_ROOT }
-  ]
-}
-
-data bash_bound_words_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_bound_words_concrete_tokens()
-)
-
-data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
 fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -657,8 +635,7 @@ fn bash_pipe_and_or_flat_wrong_target_model() -> TargetModel {
 }
 
 fn bash_binding_spellings() -> Map<Symbol, String> {
-  let m0 = map_insert(empty_map(), ^bash_binding_var_ROOT, "ROOT")
-  let m1 = map_insert(m0, ^bash_binding_lit_ROOT, "ROOT")
+  let m1 = map_insert(empty_map(), ^bash_binding_lit_ROOT, "ROOT")
   let m2 = map_insert(m1, ^bash_binding_lit_a_quote_b, "a'b")
   let m3 = map_insert(m2, ^bash_binding_var_WORKDIR, "WORKDIR")
   let m4 = map_insert(m3, ^bash_binding_var_OUT, "OUT")
@@ -697,8 +674,7 @@ fn bash_single_quote_spaced(spelling: String) -> String {
 
 fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m0 = map_insert(empty_map(), ^bash_token_lit, bash_posix_single_quote_transform(prefix: ""))
-  let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_posix_single_quote_transform(prefix: " "))
-  map_insert(m1, ^bash_token_var_ref, EmitSpellingWrap { prefix: "\"$", suffix: "\"" })
+  map_insert(m0, ^bash_token_lit_spaced, bash_posix_single_quote_transform(prefix: " "))
 }
 data bash_token_class_emit_transforms_carried: Map<Symbol, TokenClassEmitTransform> = bash_token_class_emit_transforms()
 
@@ -721,11 +697,6 @@ fn bash_add_target_model_bundle() -> Node {
     rules: bash_translation_rules_node())
 }
 
-fn bash_bound_words_target_model_bundle() -> Node {
-  bash_target_model_bundle(
-    rules: bash_bound_words_translation_rules_node())
-}
-
 fn bash_embedded_quote_target_model_bundle() -> Node {
   bash_target_model_bundle(
     rules: bash_embedded_quote_translation_rules_node())
@@ -742,17 +713,6 @@ fn bash_target_model() -> TargetModel {
     binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: bash_source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  )
-}
-
-fn bash_bound_words_target_model() -> TargetModel {
-  target_model_make_with_emit_transforms(
-    bundle: bash_bound_words_target_model_bundle(),
-    lex: bash_lex(),
-    binding_spellings: bash_binding_spellings(),
-    token_class_emit_transforms: bash_token_class_emit_transforms_carried,
-    authority_source_text: bash_bound_words_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   )
 }

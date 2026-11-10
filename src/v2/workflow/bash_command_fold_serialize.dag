@@ -350,12 +350,6 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
               production_binding: ^bash_production_fold_lit_word,
               rule_name: ^bash_production_fold_lit_word
             )
-          } else if kind == ^bash_fold_word_kind_var {
-            bash_fold_serialize_leaf_node(
-              emitted: word,
-              production_binding: ^bash_production_fold_var_word,
-              rule_name: ^bash_production_fold_var_word
-            )
           } else if kind == ^bash_fold_word_kind_concat {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: parts } =>

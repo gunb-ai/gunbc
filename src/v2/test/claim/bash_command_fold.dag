@@ -46,7 +46,6 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_wc_minus_c_emitted,
   bash_fold_stmt_kind_sentinel,
   bash_fold_word_lit_sentinel,
-  bash_fold_word_var_sentinel,
   bash_fold_word_concat_sentinel,
   bash_fold_word_cmdsubst_sentinel,
   bash_fold_env_prefixed_wrong_target_model_witness,
@@ -387,7 +386,6 @@ test fn bash_fold_command_single_lit_true_holds() -> Bool {
 test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
   bash_fold_stmt_kind_sentinel == "\u{2}"
     && bash_fold_word_lit_sentinel == "\u{0}"
-    && bash_fold_word_var_sentinel == "\u{1}"
     && bash_fold_word_concat_sentinel == "\u{3}"
     && bash_fold_word_cmdsubst_sentinel == "\u{4}"
     && bash_emit_matches_golden(
