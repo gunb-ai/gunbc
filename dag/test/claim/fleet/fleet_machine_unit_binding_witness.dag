@@ -178,6 +178,83 @@ test fn repeated_agreeing_evidence_is_reported_and_binds_once() -> Bool {
   reported && once
 }
 
+// A MACHINE REFUSED THEN BOUND IS BOUND, IN EVERY READING OF THE FOLD: its first row has no serial
+// (BoardSerialAbsent), its second supplies agreeing readings, so the standing, the bound list and the keys a
+// second machine is checked against all name its serial -- and a rival machine on that serial refuses.
+fn unread_evidence(m: String) -> MachineUnitEvidence {
+  MachineUnitEvidence {
+    machine: machine(label: m),
+    inputs: UnitIdentityInputs { bmc_endpoint: mtcollins1_unit_identity_inputs.bmc_endpoint, board_serial_observations: [] },
+  }
+}
+
+test fn a_machine_refused_then_bound_is_bound_everywhere() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    unread_evidence(m: "fixture-a"),
+    evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
+  ])
+  let standing = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
+    Present { value: u } => match u {
+      UnitKeyBound { key: k } => (k as String) == "SERIAL-ONE"
+      UnitKeyRefused { cause: _ } => false
+    }
+    Absent => false
+  }
+  let listed = map(admission.bound, b => b.unit as String) == ["SERIAL-ONE"]
+  let rival = match bind_unit_key(
+    inputs: evidence(m: "fixture-b", fru: "SERIAL-ONE", smbios: "SERIAL-ONE").inputs,
+    other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-b")),
+  ) {
+    UnitKeyRefused { cause: c } => match c {
+      BoardSerialDuplicatedAcrossUnits { serial: _ } => true
+      _ => false
+    }
+    UnitKeyBound { key: _ } => false
+  }
+  standing && listed && rival
+}
+
+// A REFUSED HOLDER'S CLAIM STILL RESERVES ITS SERIAL: A claims S1, then contradicts itself with S2 and is
+// refused. B arriving on S1 refuses as duplicated, A's own re-read of S1 refuses too (its exclusion lapses with
+// its binding), and A's physical binding stays refused.
+test fn a_refused_holders_claim_still_refuses_an_arrival() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE"),
+    evidence(m: "fixture-a", fru: "SERIAL-TWO", smbios: "SERIAL-TWO"),
+  ])
+  let duplicated = fn(u) {
+    match u {
+      UnitKeyRefused { cause: c } => match c {
+        BoardSerialDuplicatedAcrossUnits { serial: d } => (d as String) == "SERIAL-ONE"
+        _ => false
+      }
+      UnitKeyBound { key: _ } => false
+    }
+  }
+  let rival = duplicated(bind_unit_key(
+    inputs: evidence(m: "fixture-b", fru: "SERIAL-ONE", smbios: "SERIAL-ONE").inputs,
+    other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-b")),
+  ))
+  let reread = duplicated(bind_unit_key(
+    inputs: evidence(m: "fixture-a", fru: "SERIAL-ONE", smbios: "SERIAL-ONE").inputs,
+    other_units: bound_unit_keys_except_in(admission: admission, machine: machine(label: "fixture-a")),
+  ))
+  let still_refused = match machine_unit_standing_in(admission: admission, machine: machine(label: "fixture-a")) {
+    Present { value: u } => match physical_machine_admission(
+      host: machine(label: "fixture-a"),
+      unit_standing: u,
+      current_subject: Present { value: subject_for(unit: "SERIAL-ONE" as UnitKey) },
+      fleet: Absent,
+      control: Absent,
+    ) {
+      PhysicalMachineRefused { cause: PhysicalMachineUnitKeyRefused { cause: _ } } => true
+      _ => false
+    }
+    Absent => false
+  }
+  rival && reread && still_refused && admission.bound.length() == 0 && admission.claims.length() == 1
+}
+
 // RE-ENTRY: an admitted machine read again binds its own serial (its own binding is not among the other units),
 // while a second machine claiming that serial still refuses as duplicated.
 test fn an_admitted_machine_rereads_its_own_serial_and_another_still_refuses() -> Bool {
