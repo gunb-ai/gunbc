@@ -29285,7 +29285,7 @@ pub fn realization_row_edges(
             }
         };
         v1_rt::concat(
-            runtime_key_reader_row_edges(item.clone(), source_indices.clone()),
+            realization_wire_contract_row_edges(item.clone(), source_indices.clone()),
             if (reader.clone() == "".to_string()) {
                 Rc::new(vec![])
             } else {
@@ -29311,165 +29311,6 @@ pub fn realization_row_edges(
             },
         )
     }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RuntimeKeyReader {
-    pub name: String,
-    pub kind: String,
-    pub reader_module: String,
-    pub row_name: String,
-}
-
-pub fn runtime_key_readers() -> Rc<Vec<Rc<RuntimeKeyReader>>> {
-    thread_local! {
-        static CACHED: Rc<Vec<Rc<RuntimeKeyReader>>> = {
-            serde_json::from_str("[{\"name\": \"wire_contract_index\", \"kind\": \"wire_contract_shape\", \"reader_module\": \"\", \"row_name\": \"\"}, {\"name\": \"loaded_index_keyed_call\", \"kind\": \"declared_key_row\", \"reader_module\": \"gunbc.http_ingress\", \"row_name\": \"http_ingress_host_read_folds\"}]")
-                .expect("valid data definition")
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<RuntimeKeyReader>>>| c.clone())
-}
-
-pub fn runtime_key_declared_row(
-    modules: Rc<Vec<Rc<ResolvedModule>>>,
-    reader_module: String,
-    row_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for m in modules.iter().cloned() {
-            if (crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone())
-                == reader_module.clone())
-            {
-                __result.push(m);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        std::option::Option::None => std::option::Option::None,
-        Some(m) => match Rc::new({
-            let mut __result = Vec::new();
-            for i in crate::v1_std_core::module_items(m.module.clone())
-                .iter()
-                .cloned()
-            {
-                if ((i.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
-                    && (i.name.clone() == row_name.clone()))
-                {
-                    __result.push(i);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(row) => Some(row.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
-    }
-}
-
-pub fn runtime_key_declared_row_keys(row: Rc<Node>) -> Rc<Vec<String>> {
-    match row.body.clone() {
-        std::option::Option::None => Rc::new(vec![]),
-        Some(body) => body.children.clone().iter().cloned().fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<String>>, child: Rc<Node>| {
-                match crate::v1_std_core::expr_literal_string_optional(child.clone()) {
-                    std::option::Option::None => acc.clone(),
-                    Some(key) => v1_rt::rc_list_push(acc.clone(), key.clone()),
-                }
-            },
-        ),
-    }
-}
-
-pub fn runtime_key_reader_seed_names(
-    modules: Rc<Vec<Rc<ResolvedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    runtime_key_readers().iter().cloned().fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<String>>, r: Rc<RuntimeKeyReader>| {
-            if (r.kind.clone() == "wire_contract_shape".to_string()) {
-                v1_rt::concat(
-                    acc.clone(),
-                    realization_wire_contract_read_names(modules.clone(), source_indices.clone()),
-                )
-            } else {
-                if (r.kind.clone() == "declared_key_row".to_string()) {
-                    match runtime_key_declared_row(
-                        modules.clone(),
-                        r.reader_module.clone(),
-                        r.row_name.clone(),
-                        source_indices.clone(),
-                    ) {
-                        std::option::Option::None => acc.clone(),
-                        Some(row) => v1_rt::concat(
-                            acc.clone(),
-                            v1_rt::concat(
-                                v1_rt::rc_list_push(
-                                    Rc::new(vec![]),
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        row.clone(),
-                                    ),
-                                ),
-                                runtime_key_declared_row_keys(row.clone()),
-                            ),
-                        ),
-                    }
-                } else {
-                    acc.clone()
-                }
-            }
-        },
-    )
-}
-
-pub fn runtime_key_reader_row_edges(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<RealizationEdge>>> {
-    runtime_key_readers().iter().cloned().fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<RealizationEdge>>>, r: Rc<RuntimeKeyReader>| {
-            if (r.kind.clone() == "wire_contract_shape".to_string()) {
-                v1_rt::concat(
-                    acc,
-                    realization_wire_contract_row_edges(item.clone(), source_indices.clone()),
-                )
-            } else {
-                if (((r.kind.clone() == "declared_key_row".to_string())
-                    && (item.module_item_kind.clone()
-                        == ParsedModuleItemKind::ModuleItemDataValue))
-                    && (item.name.clone() == r.row_name.clone()))
-                {
-                    runtime_key_declared_row_keys(item.clone())
-                        .iter()
-                        .cloned()
-                        .fold(acc, |a: Rc<Vec<Rc<RealizationEdge>>>, key: String| {
-                            v1_rt::rc_list_push(
-                                a,
-                                Rc::new(RealizationEdge {
-                                    reader: r.name.clone(),
-                                    name: key.clone(),
-                                    span: item.span.clone(),
-                                }),
-                            )
-                        })
-                } else {
-                    acc
-                }
-            }
-        },
-    )
 }
 
 pub fn realization_wire_contract_read_row(
@@ -29917,7 +29758,7 @@ pub fn realization_names(
         );
         let demand_seeds = v1_rt::concat(
             seeds.clone(),
-            runtime_key_reader_seed_names(modules.clone(), source_indices.clone()),
+            realization_wire_contract_read_names(modules.clone(), source_indices.clone()),
         );
         let seeded = demand_seeds.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
