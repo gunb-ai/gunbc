@@ -4,6 +4,7 @@ import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.json.emit {
   JsonValue,
+  JsonString,
   json_string,
   json_int,
   json_object,
@@ -17,6 +18,9 @@ import extdeps.languages.json.parse {
   json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState,
@@ -64,6 +68,8 @@ data submission_schema: NonEmptyStr = "roadmap-submission/v1" as NonEmptyStr
 data submission_capture_schema: NonEmptyStr = "roadmap-submission-capture/v2" as NonEmptyStr
 
 data submission_capture_schema_v3: NonEmptyStr = "roadmap-submission-capture/v3" as NonEmptyStr
+
+data submission_capture_schema_v4: NonEmptyStr = "roadmap-submission-capture/v4" as NonEmptyStr
 
 // THREE READINGS OF "HOW THE TASK ENDED", NOT ONE. `ready` declares a candidate: capture it and
 // judge it. `blocked` and `needs-context` declare that no candidate exists and why -- they end the
@@ -251,6 +257,7 @@ type SubmissionCapture {
   scm_root_locator: SubmissionCaptureRoot
   digest: String
   submission: WorkerSubmission
+  handin: String?
 }
 
 fn submission_capture_basename(head_sha: String) -> String {
@@ -260,15 +267,29 @@ fn submission_capture_basename(head_sha: String) -> String {
 fn submission_capture_json(capture: SubmissionCapture) -> JsonValue {
   match capture.scm_root_locator {
     SubmissionCaptureRootBound { locator } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: submission_capture_schema_v3 as String)),
-        json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
-        json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
-        json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
-        json_kv(key: "scm_root_locator", value: json_string(s: locator)),
-        json_kv(key: "digest", value: json_string(s: capture.digest)),
-        json_kv(key: "submission", value: submission_json(submission: capture.submission)),
-      ])
+      match capture.handin {
+        Present { value: h } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: submission_capture_schema_v4 as String)),
+            json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
+            json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
+            json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
+            json_kv(key: "scm_root_locator", value: json_string(s: locator)),
+            json_kv(key: "digest", value: json_string(s: capture.digest)),
+            json_kv(key: "submission", value: submission_json(submission: capture.submission)),
+            json_kv(key: "handin", value: json_string(s: h)),
+          ])
+        Absent =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: submission_capture_schema_v3 as String)),
+            json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
+            json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
+            json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
+            json_kv(key: "scm_root_locator", value: json_string(s: locator)),
+            json_kv(key: "digest", value: json_string(s: capture.digest)),
+            json_kv(key: "submission", value: submission_json(submission: capture.submission)),
+          ])
+      }
     SubmissionCaptureRootLegacyUnbound =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: submission_capture_schema as String)),
@@ -298,32 +319,53 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
   match publication_receipt_member(doc: doc, key: "schema") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
     ReceiptMemberRead { value: schema } =>
-      if schema == (submission_capture_schema_v3 as String) {
+      if schema == (submission_capture_schema_v4 as String) {
         match publication_receipt_member(doc: doc, key: "scm_root_locator") {
           ReceiptMemberUnreadable { reason: _ } =>
             CaptureNotDecodable {
               reason: "capture record scm_root_locator member is absent, duplicated or not a string",
             }
           ReceiptMemberRead { value: locator } =>
-            submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
+            match json_object_unique_member(v: doc, key: "handin") {
+              JsonMemberAbsent =>
+                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: none)
+              JsonMemberFound { value: JsonString { value: h } } =>
+                submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: Present { value: h })
+              JsonMemberFound { value: _ } =>
+                CaptureNotDecodable { reason: "capture record handin member is not a string" }
+              JsonMemberDuplicated { count: _ } =>
+                CaptureNotDecodable { reason: "capture record handin member is duplicated" }
+              JsonMemberNotAnObject =>
+                CaptureNotDecodable { reason: "capture record is not a JSON object" }
+            }
+        }
+      } else if schema == (submission_capture_schema_v3 as String) {
+        match publication_receipt_member(doc: doc, key: "scm_root_locator") {
+          ReceiptMemberUnreadable { reason: _ } =>
+            CaptureNotDecodable {
+              reason: "capture record scm_root_locator member is absent, duplicated or not a string",
+            }
+          ReceiptMemberRead { value: locator } =>
+            submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: none)
         }
       } else if schema == (submission_capture_schema as String) {
-        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound)
+        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound, handin: none)
       } else {
         CaptureNotDecodable {
           reason: join([
-            "capture schema is ", schema, ", not ", submission_capture_schema_v3 as String,
-            " (or the ", submission_capture_schema as String, " a historical capture carries)",
+            "capture schema is ", schema, ", not ", submission_capture_schema_v4 as String, ", ",
+            submission_capture_schema_v3 as String, " (or the ", submission_capture_schema as String,
+            " a historical capture carries)",
           ], ""),
         }
       }
   }
 }
 
-// THE MEMBER TAIL, SHARED BY BOTH SCHEMAS. The binding arrived as a parameter because the schema
-// dispatch already decided it; everything from head_sha down is the carrier both versions carry
-// unchanged.
-fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -> SubmissionCaptureDecode {
+// THE MEMBER TAIL, SHARED BY ALL SCHEMAS. The binding arrived as a parameter because the schema
+// dispatch already decided it; everything from head_sha down is the carrier all versions carry
+// unchanged. `handin` arrives as a parameter for the same reason: v4 carries it, v3 and v2 do not.
+fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot, handin: String?) -> SubmissionCaptureDecode {
   match publication_receipt_member(doc: doc, key: "head_sha") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
     ReceiptMemberRead { value: head_sha } =>
@@ -352,6 +394,7 @@ fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -
                               scm_root_locator: root,
                               digest: digest,
                               submission: submission,
+                              handin: handin,
                             },
                           }
                       }

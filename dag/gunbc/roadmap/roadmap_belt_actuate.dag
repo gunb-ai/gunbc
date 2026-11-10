@@ -5665,7 +5665,23 @@ fn attempt_process_for_node(
 ) -> WorkerProcessEvidence {
   match panes {
     BeltAttemptPanesRefused { reason } =>
-      WorkerProcessUnobserved { reason: reason as NonEmptyStr }
+      // THE SEAT LEDGER RECONCILES A MISSING UNIT; THE CONTINUATION MUST TOO. When the pane
+      // system itself is unavailable (tmux down after reboot), we do not stop at "unobserved":
+      // we also try the systemd unit. If the unit is confirmed absent, the worker is ABSENT,
+      // not merely unobserved. Only if BOTH channels fail is it truly unobserved.
+      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+        SystemdUnitNameStemEmpty =>
+          WorkerProcessUnobserved { reason: reason as NonEmptyStr }
+        SystemdUnitNameDisallowedCharacter { stem: _, character: _ } =>
+          WorkerProcessUnobserved { reason: reason as NonEmptyStr }
+        SystemdUnitNameOverlong { length: _ } =>
+          WorkerProcessUnobserved { reason: reason as NonEmptyStr }
+        SystemdUnitNameAdmitted { name } =>
+          match attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+            AttemptUnitAbsent => WorkerProcessAbsent
+            _ => WorkerProcessUnobserved { reason: reason as NonEmptyStr }
+          }
+      }
     BeltAttemptPanesObserved { panes: observed } => {
       let session_name = dispatch_tmux_session_name(
         node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
@@ -8116,6 +8132,7 @@ fn belt_capture_record_write(instance: HostDashboardInstance, node_id: RoadmapNo
           scm_root_locator: intent.scm_root_locator,
           digest: intent.digest,
           submission: intent.submission,
+          handin: intent.handin,
         }),
       ) {
         BeltReceiptWritten => none
@@ -8216,6 +8233,7 @@ fn belt_capture_candidate_mint(
         scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
         digest: digest,
         submission: submission,
+        handin: none,
       }
       let persisted_before = match prior {
         Present { value: p } => commit_ordinal > p.scm_commit_ordinal && p.head_sha == base

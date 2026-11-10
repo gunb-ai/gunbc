@@ -78,6 +78,7 @@ fn capture_at(head: String, submission: WorkerSubmission) -> SubmissionCapture {
     scm_root_locator: SubmissionCaptureRootBound { locator: "0123456789abcdef" },
     digest: submission_digest(submission: submission),
     submission: submission,
+    handin: none,
   }
 }
 
@@ -713,6 +714,7 @@ fn capture_with_root(ordinal: Int, root: SubmissionCaptureRoot) -> SubmissionCap
     scm_root_locator: root,
     digest: submission_digest(submission: ready_submission()),
     submission: ready_submission(),
+    handin: none,
   }
 }
 
@@ -845,5 +847,64 @@ test fn a_capture_for_a_commit_the_envelope_lacks_passes_through_to_the_integrat
             Absent => true
           }
       }
+  }
+}
+
+// CLAIM V4-1 (#15822 row 4, legacy reader). A capture written by the OLD lab build (5592b17b/
+// 4e63be8e) carries schema roadmap-submission-capture/v4 with the extra `handin` field. The reader
+// accepts it, reads it like v3 (scm_root_locator required), and stores the handin text. The shape
+// below is copied from the real legacy record at /opt/gunbc-lab/codex-provider-feedback-v0/
+// attempt-state/v1-rust-source-observation-a71ac07ca21af8e29/submissions/.
+test fn a_v4_capture_record_decodes_with_the_handin_text() -> Bool {
+  let v4_json = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"d1aa78e748288846efcc6cf75c32f16454038e49\",\"scm_repository\":\"/home/briansrls/.gunbc-lab/workspaces/v1-rust-source-observation\",\"scm_commit_ordinal\":5,\"scm_root_locator\":\"f2c00215a29e0c8f50449992b05d616e05365161\",\"digest\":\"b5f5780008095734\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"The observation is modeled, the emitter records it, and every witness claim is green.\",\"limitations\":\"none\"},\"handin\":\"THE HAND-IN (v1-interpreter)\"}"
+  match submission_capture_decode(text: v4_json) {
+    CaptureDecoded { capture } =>
+      capture.head_sha == "d1aa78e748288846efcc6cf75c32f16454038e49"
+        && capture.scm_commit_ordinal == 5
+        && capture.digest == "b5f5780008095734"
+        && (match capture.handin { Present { value: h } => h == "THE HAND-IN (v1-interpreter)" Absent => false })
+        && (match capture.scm_root_locator { SubmissionCaptureRootBound { locator } => locator == "f2c00215a29e0c8f50449992b05d616e05365161" _ => false })
+    _ => false
+  }
+}
+
+// CLAIM V4-2 (v4 without handin is still valid; reads like v3 with handin absent).
+test fn a_v4_capture_record_without_handin_decodes_as_v3() -> Bool {
+  let v4_no_handin = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"aabbccdd\",\"scm_repository\":\"/r.json\",\"scm_commit_ordinal\":2,\"scm_root_locator\":\"loc\",\"digest\":\"d\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"e\",\"limitations\":\"l\"}}"
+  match submission_capture_decode(text: v4_no_handin) {
+    CaptureDecoded { capture } =>
+      capture.head_sha == "aabbccdd"
+        && (match capture.handin { Absent => true _ => false })
+    _ => false
+  }
+}
+
+// CLAIM V4-3 (v4 without scm_root_locator is not decodable -- same rule as v3).
+test fn a_v4_capture_without_scm_root_locator_is_not_decodable() -> Bool {
+  let v4_no_root = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"aabbccdd\",\"scm_repository\":\"/r.json\",\"scm_commit_ordinal\":2,\"digest\":\"d\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"e\",\"limitations\":\"l\"}}"
+  match submission_capture_decode(text: v4_no_root) {
+    CaptureNotDecodable { reason: _ } => true
+    _ => false
+  }
+}
+
+// CLAIM V4-4 (round-trip: a capture with handin encodes as v4 and decodes back).
+test fn a_capture_with_handin_round_trips_as_v4() -> Bool {
+  let base = capture_at(head: "deadbeef", submission: ready_submission())
+  let with_handin = SubmissionCapture {
+    head_sha: base.head_sha,
+    scm_repository: base.scm_repository,
+    scm_commit_ordinal: base.scm_commit_ordinal,
+    scm_root_locator: base.scm_root_locator,
+    digest: base.digest,
+    submission: base.submission,
+    handin: Present { value: "the candidate handin text" },
+  }
+  let text = submission_capture_text(capture: with_handin)
+  match submission_capture_decode(text: text) {
+    CaptureDecoded { capture } =>
+      capture.head_sha == "deadbeef"
+        && (match capture.handin { Present { value: h } => h == "the candidate handin text" Absent => false })
+    _ => false
   }
 }

@@ -112,6 +112,7 @@ fn recorded_capture(head: String) -> SubmissionCapture {
     scm_root_locator: SubmissionCaptureRootBound { locator: "loc" },
     digest: "d",
     submission: WorkerSubmission { readiness: SubmissionReady, explanation: "e", limitations: "l" },
+    handin: none,
   }
 }
 
