@@ -5121,9 +5121,9 @@ fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
 // as a link whose parent is the id of the event it extends, and roadmap_event_causal_chain walks a
 // node's events from its tip and yields nothing unless one chain covers every stored event for that
 // node — so a removed, rewritten or forked event makes the load refuse, never replay a shorter
-// history. The merge-base guard this comment used to cite is deleted with the file and the module it
-// watched (roadmap_acceptance_history_observation, 250 lines, and the JSONL carrier under it); nothing
-// re-creates it, because there is no longer a mutable file whose prior revision could be addressed.
+// history. The merge-base guard this comment used to cite was deleted with this change, together with
+// the observation module and the JSONL carrier it watched; nothing re-creates it, because there is no
+// longer a mutable file whose prior revision could be addressed.
 
 // The single route from a loaded event history to a receipts projection. Both wrappers below
 // call it, so a loaded-but-unreplayable history cannot fabricate an affirmative empty on one
