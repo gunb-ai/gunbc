@@ -4133,15 +4133,28 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
                 match map_get(equality_extensional_container_rows, qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))) {
                   Present { value: extensional } => extensional && equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1)
                   Absent =>
-                    let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
-                    if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
-                      equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
-                    } else if is_unit_variant_phantom_argument(n: peeled, scope: scope) {
+                    // Both arms ask about the argument AS WRITTEN, so they run before the nominal
+                    // expansion below. expand_nominal_alias_rhs rewrites a written name into the
+                    // right-hand side of whatever declaration owns that name, and the rewritten node
+                    // no longer carries the spelling the question was about: a unit-variant marker
+                    // (RackUnitHeight in Measure<Length, RackUnitHeight, Nat>) becomes the enum's whole
+                    // variant list, and a parameter of the declaration being walked becomes whatever
+                    // the parameter's brand expands to. Measured: with the arms after the expansion,
+                    // 'Holder<FooBarUnit>' refused on a locally declared marker and
+                    // 'Measure<Length, RackUnitHeight, Nat>' refused on the std markers, at every
+                    // three-site call. The expansion is the right question only for a name that is
+                    // neither of those -- so it keeps the rung it had, one step later.
+                    if is_unit_variant_phantom_argument(n: peeled, scope: scope) {
                       true
                     } else if equality_argument_is_enclosing_type_parameter(n: peeled, scope: scope) {
                       true
                     } else {
-                      false
+                      let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
+                      if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
+                        equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
+                      } else {
+                        false
+                      }
                     }
                 }
               }
