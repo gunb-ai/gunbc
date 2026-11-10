@@ -1532,6 +1532,44 @@ fn bash_fold_new_word_leaf_productions() -> List<FormalProduction> {
   bash_fold_new_word_productions()
 }
 
+// A new-kind word must also stand ALONE in a command's word list, exactly as lit/var/concat/cmdsubst
+// do: the base of the left spine is 'command_words -> word'. 'new_word_leaf_productions' above is the
+// word's OWN production; these are the command_words membership leaves, the sibling of
+// bash_fold_command_words_leaf_productions. Without them a single new-kind word (and so any command or
+// function containing one) had a command_words node with no production.
+fn bash_fold_new_command_words_leaf_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_bare_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_var_bare_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_array_expansion_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_param_error_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_positional_all_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_double_quoted_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_quoted_text_word)]
+    )
+  ]
+}
+
 fn bash_fold_new_command_words_list_productions() -> List<FormalProduction> {
   [
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_var_bare_word),
@@ -1618,8 +1656,11 @@ fn bash_fold_new_construct_productions() -> List<FormalProduction> {
     list_append(
       list_append(
         list_append(
-          bash_fold_new_word_leaf_productions(),
-          bash_fold_new_command_words_list_productions()
+          list_append(
+            bash_fold_new_word_leaf_productions(),
+            bash_fold_new_command_words_list_productions()
+          ),
+          bash_fold_new_command_words_leaf_productions()
         ),
         bash_fold_new_concat_parts_productions()
       ),

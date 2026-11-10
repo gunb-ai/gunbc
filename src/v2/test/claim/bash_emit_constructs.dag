@@ -28,6 +28,8 @@ import v2.extdeps.languages.bash {
   bash_kw_for_text,
   bash_kw_in_text
 }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess }
 import v2.extdeps.languages.bash_build {
   bash_build_array_assign,
   bash_build_brace_group_from_stmts,
@@ -753,4 +755,94 @@ test fn probe_relation_row_holds_for_a_comment_statement() -> Bool {
         Violates { diagnostic: _ } => false
       }
   }
+}
+
+// ── temporary partition probes for the 6 red positives ─────────────────────
+// 'emits' returns false for BOTH Rejected and Accepted-with-wrong-bytes. These
+// probes report only whether bash_emit_stmts ACCEPTS the statement, so a
+// PASS here + FAIL on the golden control = wrong bytes; a FAIL here = Rejected
+// (a missing production or wrong slot shape). To be deleted with the golden
+// controls go green.
+
+fn emits_anything(stmt: Node) -> Bool {
+  match bash_emit_stmts(statements: [stmt], set_e: false) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn probe_case_is_accepted() -> Bool {
+  emits_anything(stmt: roster_case_statement())
+}
+
+test fn probe_array_assign_is_accepted() -> Bool {
+  emits_anything(stmt: array_assign_statement())
+}
+
+test fn probe_array_expansion_is_accepted() -> Bool {
+  emits_anything(stmt: exec_array_statement())
+}
+
+test fn probe_for_is_accepted() -> Bool {
+  emits_anything(stmt: for_statement())
+}
+
+test fn probe_positional_all_is_accepted() -> Bool {
+  match bash_build_word_positional_all(which: "*") {
+    Absent => false
+    Present { value: star } => emits_anything(stmt: command([word("ev"), star]))
+  }
+}
+
+test fn probe_double_quoted_is_accepted() -> Bool {
+  emits_anything(stmt: quoted_message_statement())
+}
+
+// ── temporary byte dumper (delete with the probes) ─────────────────────────
+// Run non-claim:  gunbc run --source-root dag --source-root src/v2 --entry
+// src/v2/test/claim/bash_emit_constructs.dag --function dump_red_bytes
+// It prints each of the 6 red constructs' ACTUAL emitted spelling (or a marker)
+// against the golden, so the byte difference is read directly rather than
+// guessed. A claim control cannot print; CliWirePrintable is the runner's verbatim channel.
+
+fn emit_or_marker(stmt: Node) -> String {
+  match bash_emit_stmts(statements: [stmt], set_e: false) {
+    Accepted { value: spelling, diagnostics: _ } => spelling
+    Rejected { diagnostics: _ } => "<<REJECTED>>"
+  }
+}
+
+fn posall_stmt() -> Node {
+  match bash_build_word_positional_all(which: "*") {
+    Present { value: star } => command([word("ev"), star])
+    Absent => command([word("unreachable")])
+  }
+}
+
+fn dump_red_bytes() -> CliWireResponse {
+  let sep = "\n=====GOLDEN=====\n"
+  let body = emit_or_marker(stmt: roster_case_statement())
+    + sep
+    + roster_case_golden
+    + sep
+    + emit_or_marker(stmt: array_assign_statement())
+    + sep
+    + array_assign_golden
+    + sep
+    + emit_or_marker(stmt: exec_array_statement())
+    + sep
+    + array_expansion_golden
+    + sep
+    + emit_or_marker(stmt: for_statement())
+    + sep
+    + for_golden
+    + sep
+    + emit_or_marker(stmt: posall_stmt())
+    + sep
+    + positional_all_golden
+    + sep
+    + emit_or_marker(stmt: quoted_message_statement())
+    + sep
+    + quoted_message_golden
+  CliWirePrintable { bytes: body, exit: ExitSuccess }
 }

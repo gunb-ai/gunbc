@@ -1244,7 +1244,7 @@ data srv1_bash_emit_capability_gaps: List<BashEmitCapabilityGap> = [
     missing_from: "CORRECTED 2026-11-10, at the head this PR builds on: the row as first written claimed 2>&1 existed 'only inside literal strings', and that was wrong. v2.extdeps.languages.bash_command_fold already carried bash_production_fold_redir_stderr_to_stdout (and its stdout-to-stderr sibling), v2.workflow.bash_command_fold_serialize already had the serializer arm, and the fold witness already pinned the golden 'true' 2>&1 -- all of it landed in cfdcde24b607 (2026-10-14), before this row was verified. What was actually missing was only the NAMED builder in v2.extdeps.languages.bash_build: the lane had builders for stderr-to-null and stderr-to-file and none for merging stderr into stdout, so a caller could not construct the node the grammar already described. (read 2026-11-10)" as NonEmptyStr,
     used_by: "srv1_replica_container_command_lines" as NonEmptyStr,
     verified_on_utc: "2026-11-10T08:20:00Z" as NonEmptyStr,
-    what_would_close_it: "CLOSED BY THIS PR: bash_build_with_redir_stderr_to_stdout and bash_build_with_redir_stdout_to_stderr in v2.extdeps.languages.bash_build, witnessed in src/v2/test/claim/bash_emit_constructs.dag" as NonEmptyStr,
+    what_would_close_it: "CLOSED BY THIS PR: bash_build_with_redir_stderr_to_stdout and bash_build_with_redir_stdout_to_stderr in v2.extdeps.languages.bash_build, witnessed by v2.test.claim.bash_emit_constructs::merge_stderr_to_stdout_serializes and v2.test.claim.bash_emit_constructs::merge_stdout_to_stderr_serializes" as NonEmptyStr,
   },
   BashEmitCapabilityGap {
     construct: "a case statement (the launcher dispatches on the replica index)" as NonEmptyStr,
