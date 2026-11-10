@@ -1205,6 +1205,21 @@ fn fn_reaching_names(summaries: TypeSummaryIndex, structural_alias_fn_surface_na
   )
 }
 
+// THE ONE AUTHORITY FOR "does this type compare by the target (Rust `==`)?" (gunbc#16143 re-land of #15992,
+// ruling silent-bee-845). A nominal type has Rust `==` exactly when its CLOSED has_fn_fields is false — the SAME
+// fact v1_emit_struct_derives / v1_emit_enum_derives read to drop a type to Clone-only (fn_field_derive_traits),
+// so the emitter's derive decision and the equality checker's collapse-to-by-target read one source and cannot
+// drift (DESIGN 3: one authority, never a restated copy). The caller supplies the CLOSED index (after
+// close_fn_fields). A type the index does not name is NOT credited by-target (DESIGN 5: unknown fails closed).
+// Callers that hold a generic APPLICATION must additionally require every instantiated type argument to have
+// `==` recursively — this predicate judges one nominal leaf, not the application.
+fn type_has_rust_equality(index: TypeSummaryIndex, key: String) -> Bool {
+  match type_summary_lookup(index: index, key: key) {
+    TypeSummaryFound { summary: summary } => !summary.has_fn_fields
+    _ => false
+  }
+}
+
 fn close_fn_fields(summaries: TypeSummaryIndex, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>) -> TypeSummaryIndex {
   let reaching = fn_reaching_names(summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names, structural_alias_direct_fn_names: structural_alias_direct_fn_names)
   TypeSummaryIndex {
