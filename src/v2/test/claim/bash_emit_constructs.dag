@@ -697,3 +697,60 @@ test fn probe_relation_row_holds_for_a_function_definition() -> Bool {
       }
   }
 }
+
+// Second round of probes. Round one falsified the shared-token-class idea: a
+// bare word and an unquoted variable word each HOLD against their own
+// production, while the function definition does not. A statement's row
+// resolves its children recursively, so the question is now whether the failure
+// travels through the word LIST (a bare word that is fine alone is refused as a
+// command word) or through the statement's own slots.
+test fn probe_relation_row_holds_for_a_command_of_literal_words() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: command([bash_build_word_lit(text: "echo"), bash_build_word_lit(text: "up")]),
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn probe_relation_row_holds_for_a_command_of_bare_words() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: command([word("echo"), word("up")]),
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn probe_relation_row_holds_for_a_function_of_literal_words() -> Bool {
+  match bash_build_function_def(
+    name: "ev",
+    body: [command([bash_build_word_lit(text: "echo"), bash_build_word_lit(text: "up")])]
+  ) {
+    Absent => false
+    Present { value: n } =>
+      match bash_fold_relation_row_witness(
+        emitted: n,
+        lhs: ^bash_production_fold_function_def
+      ) {
+        Holds { value: _ } => true
+        Violates { diagnostic: _ } => false
+      }
+  }
+}
+
+test fn probe_relation_row_holds_for_a_comment_statement() -> Bool {
+  match bash_build_comment(text: "# GENERATED") {
+    Absent => false
+    Present { value: n } =>
+      match bash_fold_relation_row_witness(
+        emitted: n,
+        lhs: ^bash_production_fold_comment
+      ) {
+        Holds { value: _ } => true
+        Violates { diagnostic: _ } => false
+      }
+  }
+}
