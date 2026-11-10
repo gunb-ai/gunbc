@@ -426,7 +426,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(16 * 1024),
     elapsed: microsecond(count: 53),
@@ -441,7 +441,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(256 * 1024),
     elapsed: microsecond(count: 55),
@@ -456,7 +456,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(4 * 1024 * 1024),
     elapsed: microsecond(count: 343),
@@ -471,7 +471,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(64 * 1024 * 1024),
     elapsed: microsecond(count: 5390),
@@ -486,7 +486,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(16 * 1024),
     elapsed: microsecond(count: 58),
@@ -501,7 +501,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(256 * 1024),
     elapsed: microsecond(count: 146),
@@ -516,7 +516,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(4 * 1024 * 1024),
     elapsed: microsecond(count: 812),
@@ -531,7 +531,7 @@ data srv1_collective_transport_readings: List<CollectiveTransportReading> = [
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(64 * 1024 * 1024),
     elapsed: microsecond(count: 11519),
@@ -578,13 +578,24 @@ fn nccl_unloaded_arm_instrument(arm: NonEmptyStr, port: NonEmptyStr, printed: No
 // 8788e3353eb939847982a51053aefd9f6aa1c32b2705417cdc078e720238b6e1. THE ANSWER THE OBLIGATION ASKED FOR: the
 // 2x delta at 256 KiB and above does NOT survive -- unloaded, the two arms are within a few percent of each
 // other at every size, and both still print every channel "via SHM/direct" with isAllDirectP2p 0.
+// THE ARMS ARE TWO VALUES, NOT TWO SPELLINGS. The 2026-11-08 loaded pair and the 2026-11-09 unloaded re-run are
+// the same two arms, and a consumer that matches rows across runs -- which is the whole point of having both --
+// cannot do it if one list writes "NCCL_P2P_DISABLE=1" and the other writes "p2pdisabled". That is exactly what
+// this module said until the fleet witness went red on the rows I added, so the label is now a value and both
+// lists read it. Note the distinction the rows keep: `-e ARM=<token>` inside an instrument string is the label
+// the test SCRIPT prints in its log lines (the 2026-11-09 disabled arm ran with ARM=p2pdisabled AND
+// NCCL_P2P_DISABLE=1 exported); `env_arm` is the arm's identity, which is what the environment variable
+// NCCL_P2P_DISABLE changed.
+data srv1_nccl_arm_default: NonEmptyStr = "default" as NonEmptyStr
+data srv1_nccl_arm_p2p_disabled: NonEmptyStr = "NCCL_P2P_DISABLE=1" as NonEmptyStr
+
 data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTransportReading> = [
   CollectiveTransportReading {
     host: operator_host_srv1,
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(16 * 1024),
     elapsed: microsecond(count: 55),
@@ -600,7 +611,7 @@ data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTran
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(256 * 1024),
     elapsed: microsecond(count: 57),
@@ -616,7 +627,7 @@ data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTran
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(4 * 1024 * 1024),
     elapsed: microsecond(count: 350),
@@ -632,7 +643,7 @@ data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTran
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "default" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_default,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(64 * 1024 * 1024),
     elapsed: microsecond(count: 5495),
@@ -648,7 +659,7 @@ data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTran
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "p2pdisabled" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(16 * 1024),
     elapsed: microsecond(count: 52),
@@ -664,7 +675,7 @@ data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTran
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "p2pdisabled" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(256 * 1024),
     elapsed: microsecond(count: 65),
@@ -680,7 +691,7 @@ data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTran
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "p2pdisabled" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(4 * 1024 * 1024),
     elapsed: microsecond(count: 346),
@@ -696,7 +707,7 @@ data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTran
     instrument_path: "/home/briansrls/lil/nccl_test.py" as NonEmptyStr,
     instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
     sizes: [byte_size(16 * 1024), byte_size(256 * 1024), byte_size(4 * 1024 * 1024), byte_size(64 * 1024 * 1024)],
-    env_arm: "p2pdisabled" as NonEmptyStr,
+    env_arm: srv1_nccl_arm_p2p_disabled,
     transport: "SHM/direct" as NonEmptyStr,
     message_bytes: byte_size(64 * 1024 * 1024),
     elapsed: microsecond(count: 5404),
