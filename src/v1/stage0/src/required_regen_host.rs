@@ -6030,6 +6030,133 @@ fn partition_move_explanation_child(
     )
 }
 
+/// THE SCOPED ROUND'S EMISSION SCOPE, COMPUTED IN A CHILD (gunbc.plans.read_set_convergence P2). The scope
+/// needs the whole-pool edge index (`regen_module_edges`) and the model's process-shared index, and an
+/// orchestrator that built them in-process kept them resident into generation 0: on heal for
+/// gunbc#16198 the orchestrator held 13.5 GB when the first generation began, and the slot thrashed
+/// (MemoryStallRefusedPageThrash). So the scope is one more question asked through `answer_in_child`:
+/// the child computes it with the index resident in ITS process, writes this receipt and exits, and
+/// the generations read the receipt (`--regen-emission-scope-carried`) instead of recomputing it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(tag = "answer", deny_unknown_fields)]
+pub enum EmissionScopeReceipt {
+    #[serde(rename = "whole_population")]
+    WholePopulation { schema: String },
+    #[serde(rename = "affected")]
+    Affected {
+        schema: String,
+        members: Vec<String>,
+    },
+    #[serde(rename = "unlocatable")]
+    Unlocatable {
+        schema: String,
+        paths: Vec<String>,
+        reason: String,
+    },
+    #[serde(rename = "refused")]
+    Refused { schema: String, reason: String },
+}
+
+const EMISSION_SCOPE_SCHEMA: &str = "gunbc.regen_emission_scope.v1";
+pub const EMISSION_SCOPE_RECEIPT_REL: &str = "target/stage0-regen-emission-scope.json";
+
+impl ChildAnswer for EmissionScopeReceipt {
+    const SCHEMA: &'static str = EMISSION_SCOPE_SCHEMA;
+    const SUBJECT: &'static str = "emission scope";
+    fn schema(&self) -> &str {
+        match self {
+            Self::WholePopulation { schema }
+            | Self::Affected { schema, .. }
+            | Self::Unlocatable { schema, .. }
+            | Self::Refused { schema, .. } => schema,
+        }
+    }
+}
+
+fn emission_scope_from_receipt(
+    receipt: EmissionScopeReceipt,
+) -> Result<RegenEmissionScope, String> {
+    match receipt {
+        EmissionScopeReceipt::WholePopulation { .. } => Ok(RegenEmissionScope::WholePopulation),
+        EmissionScopeReceipt::Affected { members, .. } => {
+            Ok(RegenEmissionScope::Affected { members })
+        }
+        EmissionScopeReceipt::Unlocatable { paths, reason, .. } => {
+            Ok(RegenEmissionScope::Unlocatable { paths, reason })
+        }
+        EmissionScopeReceipt::Refused { reason, .. } => Err(reason),
+    }
+}
+
+/// The child's entry (`claim_executor --regen-emission-scope`): compute the scope with the index
+/// resident in THIS process, write the answer (a refusal included), and exit.
+pub fn run_emission_scope_answer(
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<EmissionScopeReceipt, String> {
+    let workspace = workspace_root();
+    let schema = EMISSION_SCOPE_SCHEMA.to_string();
+    let receipt = match regen_emission_scope_for_diff(&workspace, source_roots) {
+        Ok(RegenEmissionScope::WholePopulation) => EmissionScopeReceipt::WholePopulation { schema },
+        Ok(RegenEmissionScope::Affected { members }) => {
+            EmissionScopeReceipt::Affected { schema, members }
+        }
+        Ok(RegenEmissionScope::Unlocatable { paths, reason }) => {
+            EmissionScopeReceipt::Unlocatable {
+                schema,
+                paths,
+                reason,
+            }
+        }
+        Err(reason) => EmissionScopeReceipt::Refused { schema, reason },
+    };
+    write_child_answer(&workspace, receipt_rel, &receipt)?;
+    Ok(receipt)
+}
+
+/// The orchestrator's side: one `answer_in_child` call. The receipt stays on disk for the
+/// generations to read.
+fn emission_scope_in_child(
+    workspace: &Path,
+    source_roots: &[String],
+    liveness: &SupervisedSubjectModel,
+) -> Result<RegenEmissionScope, String> {
+    let mut mode = vec!["--regen-emission-scope".to_string()];
+    for root in source_roots {
+        mode.push("--source-root".to_string());
+        mode.push(root.clone());
+    }
+    let receipt: EmissionScopeReceipt =
+        answer_in_child(workspace, &mode, EMISSION_SCOPE_RECEIPT_REL, liveness)?;
+    emission_scope_from_receipt(receipt)
+}
+
+/// A generation's side (`--regen-emission-scope-carried`): read the scope the orchestrator's child
+/// wrote, never recompute it. An absent, unparseable or other-schema receipt refuses.
+pub fn carried_emission_scope(workspace: &Path) -> Result<RegenEmissionScope, String> {
+    let path = workspace.join(EMISSION_SCOPE_RECEIPT_REL);
+    let text = fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "refusal: the carried emission scope {} is unreadable: {e}",
+            path.display()
+        )
+    })?;
+    let receipt: EmissionScopeReceipt = serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "refusal: the carried emission scope {} does not parse: {e}",
+            path.display()
+        )
+    })?;
+    if receipt.schema() != EMISSION_SCOPE_SCHEMA {
+        return Err(format!(
+            "refusal: the carried emission scope names schema {} where {EMISSION_SCOPE_SCHEMA} \
+             is required",
+            receipt.schema()
+        ));
+    }
+    emission_scope_from_receipt(receipt)
+}
+
 /// ONE TYPED ANSWER HANDED ACROSS A PROCESS BOUNDARY by a child of this image. The answer's type is
 /// its only definition (a host carrier, encoded and decoded here and nowhere else), and its schema
 /// names the version both ends must agree on.
@@ -6525,7 +6652,7 @@ fn run_built_seed_regen(
     }
     let mut argv: Vec<String> = vec!["--required-regen".to_string()];
     if affected_scope {
-        argv.push("--regen-affected-scope".to_string());
+        argv.push("--regen-emission-scope-carried".to_string());
     }
     argv.push("--regen-candidate-dir".to_string());
     argv.push(candidate_dir_rel.to_string());
@@ -8842,7 +8969,7 @@ pub fn run_regen_round_cost(
     // The surface roles are NOT computed here. They are corpus-derived generation work
     // (`ConvergenceSurfaceRoles`), carried by generation 0's receipt and bound once it is read.
     let scope = if affected_scope {
-        regen_emission_scope_for_diff(&workspace, source_roots)?
+        emission_scope_in_child(&workspace, source_roots, &liveness_model)?
     } else {
         RegenEmissionScope::WholePopulation
     };

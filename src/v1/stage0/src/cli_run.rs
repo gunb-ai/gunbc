@@ -34480,6 +34480,17 @@ pub fn run_required_regen_scoped(
     required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
 }
 
+/// A generation of a scoped round: the scope is the one the orchestrator's child computed and wrote
+/// (`required_regen_host::carried_emission_scope`), never recomputed in this process.
+pub fn run_required_regen_carried_scope(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    let workspace = workspace_root();
+    let scope = required_regen_host::carried_emission_scope(&workspace)?;
+    required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
+}
+
 /// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --
 /// see `required_regen_host::run_dag_artifact_identity`. Re-exported here rather than reached
 /// directly so every required phase addresses its producer through one surface, the way the
@@ -34492,8 +34503,8 @@ pub use required_regen_host::{
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
 pub use required_regen_host::{
-    run_checkpoint_subject, run_partition_move_explanation, CheckpointSubjectReceipt,
-    PartitionMoveExplanationReceipt,
+    run_checkpoint_subject, run_emission_scope_answer, run_partition_move_explanation,
+    CheckpointSubjectReceipt, PartitionMoveExplanationReceipt,
 };
 
 /// The affected-set bound of the floor's diff range — see
