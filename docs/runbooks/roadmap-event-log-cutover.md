@@ -32,6 +32,10 @@ revision being deployed. Every heavy command runs under `sudo systemd-run --wait
 -p MemoryMax=24G`. Nothing in this runbook touches `/var/lib/gunbc/printer-starts`, any fabric partition other
 than the two named here, or any service outside the five `gunbc-roadmap*` units.
 
+**Finding numbers.** The side chat reviewed this procedure four times and its findings were numbered from scratch
+each time, so this file cites them by the row they are answered in, in the PR body's *Response to the reviews* table
+(PR finding N), and by what was wrong rather than by a bare letter and digit.
+
 **Failure policy.** Each step's assertions are *predicates*, not commentary: a failed one exits nonzero and the
 script stops before any further state change, with the readers left as they were. Step 7 is the rollback; it
 distinguishes **7A degraded restore** (no append landed, so the pre-cutover units may return — the page still
@@ -65,7 +69,7 @@ RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done
 # Same class, same cure, for every nested quote or here-string. With a QUOTED heredoc delimiter nothing is
 # expanded locally at all, and paths arrive as data ($1, $2, …), never as code.
 # Call it as:  RUNF "$D" <<'REMOTE' … REMOTE   and inside, `D=$1`.
-# Verified locally, because the difference is exactly the class F1/F2 are about: with `bash -s`, bash keeps $0
+# Verified locally, because the difference is exactly the class those two findings are about: `bash -s` keeps $0
 # for itself and EVERY word after `--` becomes $1…, so a filler word there would silently shift the arguments
 # and the script would read its export directory as the string "runbook". No filler word: $1 is $D.
 RUNF() { sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash -s -- "$@"; }
@@ -153,7 +157,8 @@ REMOTE
 cat /tmp/t6/step1-export.log        # show this in the PR: it carries EXPORT_DIR and the sha256sum -c OK line
 ```
 
-**Receipt for F2, taken locally before anyone touches srv1.** The same two shapes, run on a scratch box with
+**Receipt for the wrong-shell expansion (PR finding 13), taken locally before anyone touches srv1.** The same two
+shapes, run on a scratch box with
 `git`/`gh` stubbed — the old one dies on the shell boundary, the new one does the work:
 
 ```text
@@ -376,9 +381,9 @@ It prints the committed event identities, and it prints `MIGRATION REFUSED` nami
 instead of certifying.
 
 ```bash
-# THE GATE IS EXECUTABLE, IT IS ONE ENTRY, AND NOTHING DOWNSTREAM RUNS WITHOUT ITS EXIT CODE. The reviewer's
-# F3 was that the first *executable* `grep '^MIGRATION VERIFIED'` sat in step 6, after step 5b had already
-# deployed. It sits here now, and it is not a grep on the operator's reading: `roadmap_event_log_read_back_cli`
+# THE GATE IS EXECUTABLE, IT IS ONE ENTRY, AND NOTHING DOWNSTREAM RUNS WITHOUT ITS EXIT CODE. The finding this
+# answers (PR finding 14) was that the first *executable* `grep '^MIGRATION VERIFIED'` sat in step 6, after step 5b
+# had already deployed. It sits here now, and it is not a grep on the operator's reading: `roadmap_event_log_read_back_cli`
 # asks the three readers production itself asks — the migration verifier, the fail-closed retired read, and the
 # acceptance-history reader — plus the standing sentence for every name in the retired roster, writes what they
 # said to $D/read-back.out through the modeled Filesystem.Write, and exits 0 ONLY when all four parts were
@@ -442,7 +447,7 @@ step 3), or restore the carrier from `$D` (step 7) and report.
 
 ## 5b. The deploy — the FIRST activation of any new reader; NOT executed here; the operator's call
 
-F1 of the side-chat review is why this step sits here and not at 2b. The modeled deploy does not merely
+Why this step sits here and not at 2b (PR finding 7): the modeled deploy does not merely
 repoint dormant unit files: `gunbc.live_deploy.apply_legs deploy_apply_unit_lifecycle_legs` stages the unit,
 runs `daemon-reload`, and **enables and restarts** it — both serving units and every belt member — and
 `systemctl restart` starts a stopped unit. A deploy at 2b would have activated the new readers before steps 3
@@ -546,6 +551,8 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
 
 dispatch_stage plan
 PLAN_RUN="$STAGE_RUN"
+# Safe to read the log only because dispatch_stage has ALREADY positively identified that run and watched it to a
+# successful conclusion; before this the reviewer's finding was consuming logs of a run nobody had identified.
 PLAN_HASH=$(gh run view "$PLAN_RUN" --repo "$REPO" --log | sed -n 's/.*plan_artifact_hash=\([0-9a-f]*\).*/\1/p' | tail -1)
 test -n "$PLAN_HASH" || { echo 'NO DEPLOY: the identified plan run published no plan_artifact_hash'; exit 1; }
 
@@ -669,8 +676,8 @@ steps 5 and 6 measure on the registered instance, and the receipts in this PR ar
 ## 7. Rollback, if verification refuses
 
 One script, and **every check is an admission predicate**: the first that fails exits 1 and leaves every reader
-stopped. Round one (F3) found the rollback started services after a check that only printed; round two (F1)
-found the same class surviving in the revised step 7 — the tip comparison, the five unit-definition
+stopped. The first pass found the rollback starting services after a check that only printed (PR finding 12); the
+next pass found the same class surviving in the revised step 7 — the tip comparison, the five unit-definition
 comparisons, the release identity and the five `is-active` observations were all `echo` diagnostics, and
 `systemctl start` ran unconditionally afterwards. That shape is gone: `need` refuses, and nothing past a
 refusal executes. It travels through `RUNF` intact, with `$D` and `$SHA` as data.
