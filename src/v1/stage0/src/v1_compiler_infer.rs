@@ -15194,6 +15194,43 @@ pub fn fold_accumulator_is_unapplied_generic(n: Rc<Node>) -> bool {
             || (n.connective.clone() == Connective::Conj)))
 }
 
+pub fn refine_fold_acc_from_step_return(
+    fold_acc_type: Option<Rc<Node>>,
+    args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match fold_acc_type.clone() {
+        Some(acc) => {
+            if (!crate::v1_compiler_infer_types::is_fully_resolved(
+                acc.clone(),
+                scope.type_env.source_indices.clone(),
+            ) || fold_accumulator_is_unapplied_generic(acc.clone()))
+            {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for a in args.iter().cloned() {
+                        if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
+                            __result.push(a);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(lambda_arg) => Some(crate::v1_compiler_infer_types::resolved_type(
+                        crate::v1_std_core::arg_value(lambda_arg.clone()),
+                    )),
+                    std::option::Option::None => fold_acc_type.clone(),
+                }
+            } else {
+                fold_acc_type.clone()
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
     if (opt.clone() == std::option::Option::None) {
         false
@@ -17952,44 +17989,11 @@ Rc::new(InferResult {
                                         span.clone(),
                                     ),
                                 };
-                                let refined_call_fold_acc_type = match call_fold_acc_type.clone() {
-                                    Some(acc) => {
-                                        if (!crate::v1_compiler_infer_types::is_fully_resolved(
-                                            acc.clone(),
-                                            scope.type_env.source_indices.clone(),
-                                        ) || fold_accumulator_is_unapplied_generic(acc.clone()))
-                                        {
-                                            match Rc::new({
-                                                let mut __result = Vec::new();
-                                                for a in typed_args.iter().cloned() {
-                                                    if is_lambda_expr(
-                                                        crate::v1_std_core::arg_value(a.clone()),
-                                                    ) {
-                                                        __result.push(a);
-                                                    }
-                                                }
-                                                __result
-                                            })
-                                            .first()
-                                            .cloned()
-                                            {
-                                                Some(lambda_arg) => Some(
-                                                    crate::v1_compiler_infer_types::resolved_type(
-                                                        crate::v1_std_core::arg_value(
-                                                            lambda_arg.clone(),
-                                                        ),
-                                                    ),
-                                                ),
-                                                std::option::Option::None => {
-                                                    call_fold_acc_type.clone()
-                                                }
-                                            }
-                                        } else {
-                                            call_fold_acc_type.clone()
-                                        }
-                                    }
-                                    std::option::Option::None => std::option::Option::None,
-                                };
+                                let refined_call_fold_acc_type = refine_fold_acc_from_step_return(
+                                    call_fold_acc_type.clone(),
+                                    typed_args.clone(),
+                                    scope.clone(),
+                                );
                                 let method_resolution = if crate::v1_compiler_infer_env::listed_import_required_bare_call_blocked(scope.type_env.clone(), func_name.clone()) {
                         Rc::new(KnownMethodResolution {
     semantics: std::option::Option::None,
@@ -18645,38 +18649,11 @@ Rc::new(InferResult {
                         }
                         __result
                     }));
-                    let refined_fold_acc_type = match fold_acc_type.clone() {
-                        Some(acc) => {
-                            if !crate::v1_compiler_infer_types::is_fully_resolved(
-                                acc.clone(),
-                                scope.type_env.source_indices.clone(),
-                            ) {
-                                match Rc::new({
-                                    let mut __result = Vec::new();
-                                    for a in typed_mc_args.iter().cloned() {
-                                        if is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
-                                        {
-                                            __result.push(a);
-                                        }
-                                    }
-                                    __result
-                                })
-                                .first()
-                                .cloned()
-                                {
-                                    Some(lambda_arg) => {
-                                        Some(crate::v1_compiler_infer_types::resolved_type(
-                                            crate::v1_std_core::arg_value(lambda_arg.clone()),
-                                        ))
-                                    }
-                                    std::option::Option::None => fold_acc_type.clone(),
-                                }
-                            } else {
-                                fold_acc_type.clone()
-                            }
-                        }
-                        std::option::Option::None => std::option::Option::None,
-                    };
+                    let refined_fold_acc_type = refine_fold_acc_from_step_return(
+                        fold_acc_type.clone(),
+                        typed_mc_args.clone(),
+                        scope.clone(),
+                    );
                     let method_resolution =
                         crate::v1_compiler_infer_lookup::resolve_known_method_node(
                             recv_typed.clone(),
