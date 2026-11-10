@@ -244,10 +244,13 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
 // from declared facts only:
 // rest_response_declared_cause (cause kind, the located DECLARED field, coproduct, encoding, naming,
 // count),
-// rest_body_read_refused_cause and rest_body_not_json_cause (fixed text; the transport io text and the
-// serde_json message are dropped), and rest_body_null_members_cause (a count; the member names are
-// withheld) -- all four in src/v1/stage0/src/v1_interpreter.rs, each with a marker planted in the exact
-// value it refuses to publish. THE ROUTE IS PART OF THE CLAIM, and the other realization of the same
+// rest_body_read_refused_cause (fixed text; the transport io text is dropped), rest_body_not_json_cause
+// (the serde_json message is dropped; the number of bytes that arrived is kept, which is what tells a
+// truncated 200 from a complete body that does not fit), and rest_body_null_members_cause (a count, plus
+// the member names WHEN the operation's declared output names those members -- a declared name is a fact
+// about this repository, and the record's members are only trusted as declared when every one of them
+// matches the output type's children) -- all four in src/v1/stage0/src/v1_interpreter.rs, each with a
+// marker planted in the exact value it refuses to publish. THE ROUTE IS PART OF THE CLAIM, and the other realization of the same
 // exchange does not yet hold it: src/v1/05_emit_rust.dag:19168 emits the body-read refusal with
 // cause: error.to_string() and :19178 emits the decode failure with the error's own text, both inside
 // emit_rust_rest_result_lowering reached from :18667, and a serde message can carry a spelling the body
