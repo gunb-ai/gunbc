@@ -521,21 +521,35 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
             };
             let service_realized = realization.realized.contains_key("test.RestReplay");
-            let messages = grain_typecheck(&modules, &intern, &si, demand.clone());
-            let surface: Vec<String> = messages
+            // DEMANDED-VERSUS-CLOSURE EQUIVALENCE. The demanded chain and the full (EveryDeclaration)
+            // chain each thread their own module index; the demanded chain must refuse no method surface
+            // the full chain does not. The service is realized, so the full chain resolves the Observe op
+            // and yields no surface refusal; if the demanded chain refuses where the closure does not, the
+            // demanded grain has dropped an op surface a full typecheck establishes -- the divergence
+            // #16156 introduced, and the GREEN-at-head assertion below is exactly the equivalence restored.
+            let demanded = grain_typecheck(&modules, &intern, &si, demand.clone());
+            let closure = grain_typecheck(&modules, &intern, &si, Rc::new(DeclarationDemand::AllDeclarations));
+            let surface: Vec<String> = demanded
                 .iter()
                 .filter(|m| {
                     m.contains("RestReplay")
-                        || m.contains("method surface")
-                        || m.contains("no declared frontier row")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
+                })
+                .cloned()
+                .collect();
+            let closure_surface: Vec<String> = closure
+                .iter()
+                .filter(|m| {
+                    m.contains("RestReplay")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
                 })
                 .cloned()
                 .collect();
             eprintln!(
-                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} surface_refusals={} total={} surface={:?}",
+                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} demanded_refusals={} closure_refusals={} surface={:?}",
                 service_realized,
                 surface.len(),
-                messages.len(),
+                closure_surface.len(),
                 surface
             );
             assert!(
@@ -543,8 +557,8 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 "the service whose operation the demanded entry spells inside its lambda subject must be realized"
             );
             assert!(
-                surface.is_empty(),
-                "a demanded entry that spells a service operation must not refuse on the method surface: {surface:?}"
+                surface.iter().all(|m| closure_surface.contains(m)),
+                "the demanded grain must refuse no method surface the full closure does not: demanded={surface:?} closure={closure_surface:?}"
             );
         })
         .unwrap()
@@ -554,9 +568,10 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
 
 // THE BODY ARM OF THE PAIR: the SAME operation of the SAME service, reached through the SAME braceless
 // whole-module import, spelled DIRECTLY in an entry body. It is the control that decides whether the
-// lambda-subject position is the discriminator. It must be GREEN on both heads -- if it too refuses at
-// main, position is not the axis and the fix has to look elsewhere; if it resolves while the lambda arm
-// refuses, the lambda-subject position is proven to be the discriminator (decided by execution, not inference).
+// lambda-subject position is the discriminator. Measured: BOTH this arm and the lambda arm refuse at main
+// (quick-newt BB 20375b92 / a96b05f2) and both resolve at e1dd6b50, so position is NOT the axis -- the
+// arm is retained as a permanent guard that a body-spelled service op also passes the demanded-vs-closure
+// equivalence, so a future fix cannot fix only the lambda extent and miss the body extent.
 #[test]
 fn service_op_surface_spelled_in_an_entry_body_is_realized() {
     std::thread::Builder::new()
@@ -570,21 +585,29 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
                 DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
             };
             let service_realized = realization.realized.contains_key("test.RestReplay");
-            let messages = grain_typecheck(&modules, &intern, &si, demand.clone());
-            let surface: Vec<String> = messages
+            let demanded = grain_typecheck(&modules, &intern, &si, demand.clone());
+            let closure = grain_typecheck(&modules, &intern, &si, Rc::new(DeclarationDemand::AllDeclarations));
+            let surface: Vec<String> = demanded
                 .iter()
                 .filter(|m| {
                     m.contains("RestReplay")
-                        || m.contains("method surface")
-                        || m.contains("no declared frontier row")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
+                })
+                .cloned()
+                .collect();
+            let closure_surface: Vec<String> = closure
+                .iter()
+                .filter(|m| {
+                    m.contains("RestReplay")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
                 })
                 .cloned()
                 .collect();
             eprintln!(
-                "SERVICE_OP_GRAIN_BODY entry=service_op_spelled_in_entry_body service_realized={} surface_refusals={} total={} surface={:?}",
+                "SERVICE_OP_GRAIN_BODY entry=service_op_spelled_in_entry_body service_realized={} demanded_refusals={} closure_refusals={} surface={:?}",
                 service_realized,
                 surface.len(),
-                messages.len(),
+                closure_surface.len(),
                 surface
             );
             assert!(
@@ -592,8 +615,8 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
                 "the service whose operation the demanded entry spells directly in its body must be realized"
             );
             assert!(
-                surface.is_empty(),
-                "an entry that spells a service operation directly in its body must not refuse on the method surface: {surface:?}"
+                surface.iter().all(|m| closure_surface.contains(m)),
+                "the demanded grain must refuse no method surface the full closure does not: demanded={surface:?} closure={closure_surface:?}"
             );
         })
         .unwrap()
@@ -606,13 +629,16 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
 // interpreter holds in one module while the coproduct it designates lives in another; the demanded entry
 // reaches the coproduct (through `github.Pulls.Get` -> `PullRequestState`) but spells no lexeme for the
 // contract row itself, so before #16241 the declaration-grain cut never realized it and the run answered
-// 'no such coproduct' at the first body that decoded it. #16241's `realization_wire_contract_read_names`
-// seeds every such row by its own shape (a data row named `wire_contract`, or a `CoproductWireContract`
-// row initialising both `coproduct` and `encoding`) into the demanded set. This is the same seed-growth
-// authority as the precedent above (`a_row_named_only_through_a_demanded_signature_is_realized`): a row
-// only reachable through a reader's key, not a source lexeme, grown into the closure. It is RED at origin/main
-// (the reader is absent) and GREEN at head once #16241's reader is integrated, which is what makes it the
-// discriminating witness for that fix.
+// 'no such coproduct' at the first body that decoded it. This is the DEMANDED-VERSUS-CLOSURE equivalence at
+// the reader-key row: the full closure (`EveryDeclaration`) realizes every DECLARED row, so a row that is
+// declared but not realized by the demanded grain is precisely a divergence the closure does not have.
+// #16241's `realization_wire_contract_read_names` seeds every such row by its own shape (a data row named
+// `wire_contract`, or a `CoproductWireContract` row initialising both `coproduct` and `encoding`) into the
+// demanded set, restoring the equivalence. Same authority as the precedent
+// `a_row_named_only_through_a_demanded_signature_is_realized`: a row only reachable through a reader's key,
+// not a source lexeme, grown into the closure. RED at origin/main (the reader is absent: declared, not
+// realized), GREEN at head once #16241's reader is integrated -- which is what makes it the discriminating
+// witness for that fix.
 
 #[test]
 fn wire_contract_row_reached_by_the_publisher_route_is_realized() {
@@ -627,19 +653,20 @@ fn wire_contract_row_reached_by_the_publisher_route_is_realized() {
             };
             let row = "extdeps.github.pulls_contracts.pull_request_state_wire_contract";
             let row_realized = realization.realized.contains_key(row);
-            // The row must be DECLARED in this run's index even when unrealized -- that is what makes its
-            // absence a realization gap (#16241), not an 'undeclared name' error.
+            // A declared row is realized by the full closure (EveryDeclaration realizes everything); so
+            // `row_declared && !row_realized` is exactly a demanded-versus-closure divergence, not an
+            // 'undeclared name' error. row_declared=true is the closure's side of the pair being GREEN.
             let row_declared = realization.declared.contains_key(row);
             eprintln!(
                 "WIRE_CONTRACT_GRAIN entry=heal_publication_publish_for row={row} row_realized={row_realized} row_declared={row_declared}"
             );
             assert!(
                 row_declared,
-                "the contract row is declared in the graph the publisher route reaches (a realization gap, not an absence)"
+                "the contract row is declared in the graph the publisher route reaches (a realization gap vs the closure, not an absence)"
             );
             assert!(
                 row_realized,
-                "the CoproductWireContract row the interpreter decodes at publish must be realized by the demanded grain (reader seed, #16241): {row}"
+                "the demanded grain must realize the CoproductWireContract row the closure realizes and the interpreter decodes at publish (reader seed, #16241): {row}"
             );
         })
         .unwrap()
