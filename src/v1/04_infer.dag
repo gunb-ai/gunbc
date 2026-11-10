@@ -70,7 +70,7 @@ import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, 
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
+  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch, RefinementCastRefused,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOnInadmissibleType, EqualityOptionalityMismatch, EqualityInstantiationBlindGenericSite, CollectionKeyReachesEqualityRoute,
   TypeArgumentArityMismatch,
@@ -9084,7 +9084,7 @@ fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclaratio
   }
 }
 
-fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading) -> ErrorNode? {
+fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading, int_refinement_cast_domain: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
@@ -9092,7 +9092,28 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         Present { value: d } => grounded_cast_verdict(source: d, target: target_reading)
         Absent => GroundedCastNotDecided
       }
-      if source_name == target_name { none }
+      // IDENTITY IS THE SAME DECLARATION, NEVER THE SAME LEAF NAME (gunbc.design_argument::closed_grounded_substrate:
+      // "Type compatibility keys on the exact declaration a position resolves to, never its leaf name"). A value
+      // already on the target's carrier is admitted by the evaluator's cast_identity_result; the checker must agree
+      // on exactly that population. Keying on authored names (the pre-fix `source_name == target_name`) admitted
+      // `x_a as b.Port` when a.Port and b.Port share a leaf name but are DIFFERENT declarations -- the checker then
+      // stayed silent while the evaluator's non-name identity admit refused it, the fork this claim closes. So: when
+      // BOTH sides resolve to a named declaration, identity is declaration_ref_eq; when a side is a kernel target or
+      // an unresolvable source (a literal, a bare Int) there is no declaration to compare and the authored name is
+      // the only key, which is what the kernel/table domains already judge on.
+      let target_declaration = match target_reading {
+        TypeReferenceNamesDeclaration { declaration: t } => Present { value: t }
+        _ => none
+      }
+      let is_identity_cast = match source_declaration {
+        Present { value: sd } =>
+          match target_declaration {
+            Present { value: td } => declaration_ref_eq(a: sd, b: td)
+            Absent => source_name == target_name
+          }
+        Absent => source_name == target_name
+      }
+      if is_identity_cast { none }
       else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
       else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
         let cause = match grounded {
@@ -9105,6 +9126,29 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
+        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+      }
+      else if int_refinement_cast_domain {
+        // The checker must not admit a cast the v1 evaluator's eval_cast refuses -- that gap is exactly class
+        // gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses. This arm fires only in the
+        // domain where the two provably disagree. The domain (`int_refinement_cast_domain`, computed at the call
+        // site where type_env is in scope) is two kernel facts:
+        //   * target_is_int_refined -- the target is a numeric int-predicate refinement (Int/Nat where range|gt_zero);
+        //   * source_int_kernel -- the source's base kernel is Int/Nat, i.e. it arrives on the runtime Int carrier
+        //     that makes eval_cast take its `Value::Int => refused` arm (a String/Float source is OUT of the domain:
+        //     eval_cast walks the target kernel for those and may ADMIT them, so refusing them here would open the
+        //     OPPOSITE fork -- they stay on the eval-decided path).
+        // IDENTITY (a value already on the target's carrier, e.g. `f() as T` whose return is T) is NOT excluded here
+        // by a leaf-name string: it was admitted above by `is_identity_cast`, which keys on the resolved DeclarationRef
+        // the evaluator's cast_identity_result keys on -- so an identity cast never reaches this arm, and a same-leaf-
+        // name different-declaration source (a.Port as b.Port) DOES reach it and is refused, closing the fork on both
+        // directions rather than only the leaf-name-equal one.
+        // Everything left in the domain is a non-literal or cross-refinement `as T` into a refined Int carrier that
+        // eval_cast refuses with "cannot cast Int to <Name>" while the checker was silent; refusing it at check time
+        // (no implicit route that needs a proof, DESIGN 4) turns the run-time latent outage into a located refusal.
+        // A bare literal written directly in the refined position needs no cast and is judged by the refinement wall;
+        // a value already on another carrier crosses only through a checked constructor.
+        let diag = RefinementCastRefused { source: source_name, target: target_name, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
       else {
@@ -12252,7 +12296,29 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let source_reading = cast_source_host_text_reading(source_inferred: inner_typed.inferred, scope: scope)
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading)
+      let target_resolved = match lookup_type_for(env: scope.type_env, node: target_type) {
+        Present { value: r } => r
+        Absent => target_type
+      }
+      let target_is_int_refined = (type_where_refinement_predicates_transitive(ty: target_resolved, type_env: scope.type_env)
+        |> filter(pred => where_refinement_is_int_literal_predicate(pred_name: field_init_node_name_at(n: pred, source_indices: si)))
+        |> count) > 0
+      let source_int_kernel = match inner_typed.inferred {
+        Present { value: Resolved { node: snode } } =>
+          let sresolved = match lookup_type_for(env: scope.type_env, node: snode) {
+            Present { value: r } => r
+            Absent => snode
+          }
+          let sbase_name = authored_name_at(source_indices: si, node: peel_where_refinement_base(ty: sresolved, type_env: scope.type_env))
+          sbase_name == "Int" || sbase_name == "Nat"
+        _ => false
+      }
+      // The domain is only the two kernel facts the checker cannot judge inside validate_cast (they need type_env).
+      // IDENTITY IS NOT TESTED HERE: it is decided once, declaration-keyed, inside validate_cast (see the
+      // is_identity_cast computation), so a source already on the target carrier is admitted and a same-leaf-name
+      // different-declaration source is refused -- both by the SAME key the evaluator uses, not a leaf-name string.
+      let int_refinement_cast_domain = target_is_int_refined && source_int_kernel
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading, int_refinement_cast_domain: int_refinement_cast_domain)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
