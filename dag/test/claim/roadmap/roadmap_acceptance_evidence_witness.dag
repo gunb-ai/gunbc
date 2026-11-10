@@ -60,14 +60,14 @@ import gunbc.principal_projection { PrincipalRef }
 // module deliberately does not import the close route (gunbc.roadmap.roadmap_operator_acceptance) — its
 // claims are about what the log admits and how it folds, and the close route's own claims live in
 // test.claim.roadmap.roadmap_operator_close_retire_witness beside the reader they assert on.
-type witness_pr_facts {
+type WitnessPrFacts {
   url: NonEmptyStr
   merged_at: NonEmptyStr
   head: NonEmptyStr
 }
 
-fn fact_set() -> witness_pr_facts {
-  witness_pr_facts {
+fn fact_set() -> WitnessPrFacts {
+  WitnessPrFacts {
     url: "https://github.com/gunb-ai/gunbc/pull/16100" as NonEmptyStr,
     merged_at: "2026-11-03T10:00:00Z" as NonEmptyStr,
     head: "abc123def456" as NonEmptyStr,
@@ -77,7 +77,7 @@ fn fact_set() -> witness_pr_facts {
 // THE PULL REQUEST THE CLOSE EARNED, spelled once as the typed fact the command carries — the url, the
 // merge time and the head arrive together because the type says they do
 // (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence).
-fn earned(facts: witness_pr_facts) -> AcceptancePrEvidence {
+fn earned(facts: WitnessPrFacts) -> AcceptancePrEvidence {
   EarnedByPullRequest {
     pr_url: facts.url as NonEmptyStr, merged_at: facts.merged_at as NonEmptyStr, head_sha: facts.head as NonEmptyStr,
   }
