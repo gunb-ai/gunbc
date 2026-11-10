@@ -80,7 +80,15 @@ import v2.std.integer { integer_int_type_node }
 import v2.compiler.inferred_tree { DerivedGrounding, GroundingNoValue, GroundingNotDerived, InferredTree }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic {
+  Accepted,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  diagnostics_fatal,
+  diagnostics_fatal_reason
+}
 import v2.std.node {
   Atom,
   Node,
@@ -490,11 +498,7 @@ fn cecf_facts_tag(t: InferredTree, n: Node) -> String {
 fn cecf_refusal_reason(t: InferredTree, n: Node) -> String {
   match cecf_eval_node(t: t, n: n) {
     Accepted { value: _, diagnostics: _ } => "admitted"
-    Rejected { diagnostics: ds } =>
-      match optional_first_present(values: ds) {
-        Absent => "no_diagnostic"
-        Present { value: d } => symbol_lexeme(sym: d.reason)
-      }
+    Rejected { diagnostics: ds } => symbol_lexeme(sym: diagnostics_fatal_reason(d: ds))
   }
 }
 
@@ -506,23 +510,19 @@ fn cecf_refusal_node(t: InferredTree, n: Node, cast: Node) -> String {
   match cecf_eval_node(t: t, n: n) {
     Accepted { value: _, diagnostics: _ } => "admitted"
     Rejected { diagnostics: ds } =>
-      match optional_first_present(values: ds) {
-        Absent => "no_diagnostic"
-        Present { value: d } =>
-          match d.at {
-            NodeLocus { anchor: a } =>
-              if node_equal_ignoring_provenance(a: a.at.node, b: n) {
-                "at=operand_root"
-              } else if node_equal_ignoring_provenance(a: a.at.node, b: cast) {
-                "at=cast_root"
-              } else {
-                match a.at.node.kind {
-                  TypeNode { connective: Atom { identity: s } } => "other:" + symbol_lexeme(sym: s)
-                  _ => "other:not_an_atom"
-                }
-              }
-            _ => "not_a_node_locus"
+      match diagnostics_fatal(d: ds).at {
+        NodeLocus { anchor: a } =>
+          if node_equal_ignoring_provenance(a: a.at.node, b: n) {
+            "at=operand_root"
+          } else if node_equal_ignoring_provenance(a: a.at.node, b: cast) {
+            "at=cast_root"
+          } else {
+            match a.at.node.kind {
+              TypeNode { connective: Atom { identity: s } } => "other:" + symbol_lexeme(sym: s)
+              _ => "other:not_an_atom"
+            }
           }
+        _ => "not_a_node_locus"
       }
   }
 }
