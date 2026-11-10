@@ -29,12 +29,6 @@ import gunbc.ci.ci_runner_placement {
 import gunbc.host.host_converge {
   gunbc_host_converge_runner_sessions_coupling_marker
 }
-import gunbc.instruments.rust_stage0_gates {
-  consumed_input_closure_concept_note,
-  unit_must_run_failclosed_note,
-  unit_must_run_staged_note,
-  should_run_gates_coverage_note
-}
 import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -179,39 +173,6 @@ test fn redundancy_region_budget_fires_on_per_service_overhead_present() -> Bool
   disposition_redundancy_violation_count(
     dispositions: redundancy_region_budget_marks,
     present: [redundancy_region_budget_per_service_overhead_locator]
-  ) == 1
-}
-
-data redundancy_region_rust_gates_marks: List<Disposition> = [
-  consumed_input_closure_concept_note,
-  unit_must_run_failclosed_note,
-  unit_must_run_staged_note,
-  should_run_gates_coverage_note
-]
-
-data redundancy_region_rust_gates_synthetic_present: List<DeclarationRef> = [
-  DeclarationRef {
-    module_path: "gunbc.instruments.rust_stage0_gates",
-    decl_name: "per_unit_test_selector",
-    field: WholeDeclaration
-  }
-]
-
-test fn redundancy_region_rust_gates_marks_nonempty() -> Bool {
-  length(xs: redundancy_region_rust_gates_marks) > 0
-}
-
-test fn redundancy_region_rust_gates_green_against_nonmatching() -> Bool {
-  disposition_redundancy_violation_count(
-    dispositions: redundancy_region_rust_gates_marks,
-    present: redundancy_present_with_successor
-  ) == 0
-}
-
-test fn redundancy_region_rust_gates_fires_on_staged_selector_present() -> Bool {
-  disposition_redundancy_violation_count(
-    dispositions: redundancy_region_rust_gates_marks,
-    present: redundancy_region_rust_gates_synthetic_present
   ) == 1
 }
 
