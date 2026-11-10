@@ -33,15 +33,21 @@ const SLICE_UNIT_SUFFIX: &str = ".slice";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_scope_unit_suffix`
 const SCOPE_UNIT_SUFFIX: &str = ".scope";
 // SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`
-// (declared_system_slice_memory_maxes unit names with memory_max > 0, plus
+// (the capped rows of `gunbc.live_deploy.spec declared_system_slice_memory_maxes_including_deployment`
+// -- the slice_bounds fleet roster plus the derived srv1 daily-workspace deployment slice, whose name
+// deployment_slice_unit_name derives from the instance's DeploymentNames -- plus
 // `gunbc.oomd_install` `gunbc_oomd_sessions_slice`). Wrap cannot eval the DAG;
 // this list is seed-retained with user_work_scope.rs. A census name missing here
-// is a RED in `the_seed_trampoline_mirrors_the_declared_wrap_standing`.
+// is a RED in `the_seed_slice_list_equals_the_declared_capped_rows_plus_sessions`. The
+// gunbc-roadmap.slice entry is the belt-oneshot census row: the deployment slice is capped at boot
+// (MemoryMax= live_deploy_slice_memory_max) yet was absent, so gunbc-roadmap-belt-exit.service refused
+// UncappedSystemSlice under a finite live cap. It is derived in the DAG, never hand-typed there.
 const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
     "gunbc-attempt-worker.slice",
     "gunbc-fci1-controls.slice",
+    "gunbc-roadmap.slice",
     "sessions.slice",
 ];
 
@@ -930,6 +936,29 @@ mod standing_fixture_tests {
         assert_eq!(
             got,
             "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:1"
+        );
+    }
+
+    // The srv1 daily-workspace belt oneshot runs as a named .service under the deployment slice
+    // (gunbc-roadmap.slice), which is capped at boot. The seed list must carry the derived deployment
+    // slice so the runtime classification skips on a finite live cap instead of refusing
+    // UncappedSystemSlice -- the refusal that stopped gunbc-roadmap-belt-exit.service at start.
+    #[test]
+    fn belt_exit_under_the_deployment_slice_skips() {
+        let cg = "0::/gunbc-roadmap.slice/gunbc-roadmap-belt-exit.service";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Capped(1),
+            None,
+        );
+        assert_eq!(
+            got,
+            "ExemptSystemUnit:gunbc-roadmap.slice:gunbc-roadmap-belt-exit.service:1"
         );
     }
 

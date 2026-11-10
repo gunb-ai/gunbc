@@ -33,6 +33,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_with_redir_from_file,
   bash_build_word_var
 }
+import v2.std.text { string_eq }
 import v2.extdeps.languages.bash_command_fold {
   bash_fold_and_then_true_false_emitted,
   bash_fold_assign_foo_bar_emitted,
