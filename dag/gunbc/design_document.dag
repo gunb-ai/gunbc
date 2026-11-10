@@ -19,6 +19,7 @@ import gunbc.design_ruling {
   chain_re_derivation,
   root_generalization_closes_breadth,
   continuous_generalization_is_two_sided,
+  planning_is_one_source_for_every_repo,
   instrument_is_a_row_not_a_flag,
   bad_process_is_worse_than_no_process,
   authorization_pattern_is_a_selection,
@@ -49,6 +50,7 @@ import gunbc.design_argument {
   demand_before_materialization, selection_precedes_convergence,
   guarantee_ladder, fail_closed, witness_one_interface,
   conformance, consumption, replacement_migration, how_to_work, earliest_unjustified_boundary, root_generalization, continuous_generalization,
+  planning_has_one_home,
   self_hosting,
 }
 import gunbc.roadmap.roadmap_review_criteria { review_home_text }
@@ -481,6 +483,15 @@ fn changing_blocks() -> List<MarkdownBlock> {
       p(text: "**Reconciliation is two-sided.** A newcomer accounts for the incumbent's valid obligations, and the incumbent for the newcomer's valid requirements; neither has authority because it arrived first or is the current task. The new case is another instance of an existing rule, or exposes a missing dimension or mistaken assumption in it, or belongs to a genuinely different concept. Forcing it into a model that cannot express it (a sentinel value, flag or adapter branch) and bypassing a model that could (a second path) are both forks. Apply this through the affected dependency slice and its known sibling consumers, and generalize only as far as the combined requirements justify. Namespace views locate the work; **namespace ancestry does not determine semantic ownership.**"),
       p(text: "**An unfinished reconciliation is recorded, not remembered.** It lives in its existing owning record or in `gunbc.integration_concern`, which separates a suspected fork (two or more distinct authorities answering one question) from a suspected capability gap (one model that cannot express a concrete requirement), and an affected location from a semantic home. Recording neither satisfies an obligation nor authorizes a contract or safety deviation. A sighting of a known concern updates its row rather than adding one. A concern closes as integrated, with the integrated revision, the superseded declarations cited at the revision where they existed (so deletion does not break the record) and retained execution results; as distinct, with a reason scoped to what was examined; or as withdrawn, with a reason. A completed work item, a merged abstraction or a shorter ledger is not evidence of integration."),
       p(text: "Conformance stays three-valued; what is being done about an inadequate model is a concern's disposition, not a conformance answer. Concerns are read by relevance to a change — the modules it changes and the existing models it references — and browsed by subtree. Discovery is not exhaustive and nothing here is a census: a reviewer may require a disposition for a concern that was raised, never proof that nothing else was noticed."),
+    ]),
+    claim_section(r: planning_has_one_home, body: [
+      p(text: concat("Every project's plan lives in this repository, and every other place that shows a plan is downstream of it ", concat(ruling(r: planning_is_one_source_for_every_repo), ". A planning rule is a design rule here because a plan forked across surfaces costs what any fork costs, and a plan read by the build makes every planning edit pay for a build."))),
+      ul(items: [
+        li(text: "**One home.** A plan's authority is its `.dag` carrier: the plans under `gunbc.plans` and the roadmap under `gunbc.roadmap`. The daily workspace serves the repository's roadmap and keeps no plan of its own; another repository's plan, the private repository's or the control plane's, names this repository's node ids and never restates them. A second place that decides what is planned is a fork (*Single authority*)."),
+        li(text: concat("**Rendered on demand.** Plan markdown is a projection, written when it is read and not committed ", concat(ruling(r: project_documentation_projections_are_not_checkout_artifacts), "."))),
+        li(text: "**Off the build path.** Neither the compiler build nor heal reads plan data. A change that edits only plans reuses main's compiler through the fast lane and regenerates no mirror, so it lands in minutes rather than after a build; `gunbc.plans.read_set_convergence` measures this as an acceptance check, and the heal time that remains is a stated target there, not a property claimed here."),
+        li(text: "**Deleted when unread.** A plan, ledger or planning store that no live consumer reads is deleted, not kept beside its successor (*Consumption*); its history is the repository's. A planning fact the model already carries, such as a work item's retirement in the roadmap event log (`gunbc.roadmap.roadmap_event_log`), is not restated as a field on a plan row."),
+      ]),
     ]),
   ], bs => bs))
 }

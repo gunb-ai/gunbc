@@ -535,6 +535,19 @@ Conformance stays three-valued; what is being done about an inadequate model is 
 
 *Cite as* `gunbc.design_argument::continuous_generalization`.
 
+### Planning has one home
+
+**A plan is a typed fact with one home: its `.dag` carrier in this repository is the only planning authority, every surface that shows a plan renders it rather than keeping a copy, nothing on the build or generation path reads it, and a plan or planning store with no live consumer is deleted rather than kept.**
+
+Every project's plan lives in this repository, and every other place that shows a plan is downstream of it (ruling `gunbc.design_ruling::planning_is_one_source_for_every_repo`). A planning rule is a design rule here because a plan forked across surfaces costs what any fork costs, and a plan read by the build makes every planning edit pay for a build.
+
+- **One home.** A plan's authority is its `.dag` carrier: the plans under `gunbc.plans` and the roadmap under `gunbc.roadmap`. The daily workspace serves the repository's roadmap and keeps no plan of its own; another repository's plan, the private repository's or the control plane's, names this repository's node ids and never restates them. A second place that decides what is planned is a fork (*Single authority*).
+- **Rendered on demand.** Plan markdown is a projection, written when it is read and not committed (ruling `gunbc.design_ruling::project_documentation_projections_are_not_checkout_artifacts`).
+- **Off the build path.** Neither the compiler build nor heal reads plan data. A change that edits only plans reuses main's compiler through the fast lane and regenerates no mirror, so it lands in minutes rather than after a build; `gunbc.plans.read_set_convergence` measures this as an acceptance check, and the heal time that remains is a stated target there, not a property claimed here.
+- **Deleted when unread.** A plan, ledger or planning store that no live consumer reads is deleted, not kept beside its successor (*Consumption*); its history is the repository's. A planning fact the model already carries, such as a work item's retirement in the roadmap event log (`gunbc.roadmap.roadmap_event_log`), is not restated as a field on a plan row.
+
+*Cite as* `gunbc.design_argument::planning_has_one_home`.
+
 ## The method applied to the compiler
 
 ### Self-hosting
