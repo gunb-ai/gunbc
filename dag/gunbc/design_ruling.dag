@@ -825,6 +825,13 @@ data gunbc_run_checks_only_what_its_entry_reaches: DesignRuling = DesignRuling {
   provenance: "OPERATOR WORDS (decided 2026-11-10, relayed by cool-badger-99 in escalation msg_006569ab; an explicit answer, not a timeout default). Question as put to the operator, verbatim: \"Rule on #16069/#16156: allow gunbc run to typecheck/realize only what its entry reaches, with the demanded_scope controls run by hand until a follow-up enrolls them?\" The operator's answer, verbatim: \"Yes, both as described\". INTERPRETATION (not operator words): this authorizes the declared rung lowering gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked (previous StructurallyGuaranteed, temporary Mitigatable) and landing #16069 with the dag/test/fixture/demanded_scope discriminators run by hand; the enrollment of those controls as an executing route is owed by the follow-up node://adhoc-0eedbb6e-a35. INFERENCE (a bet, not operator words): no new CI job is added by this ruling (ruling ci_job_budgets_closed_to_growth stands), so enrollment must fit an existing route or take its own sign-off."
 }
 
+data run_realizes_only_demanded_declarations: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "run_realizes_only_demanded_declarations"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.rung_drop.gunbc_run_unreached_declarations_not_realized", decl_name: "gunbc_run_unreached_declarations_not_realized"),
+  provenance: "Operator ruling, escalation msg_006569ab, decided 2026-11-10, explicit -- NOT a timeout default -- recorded via session cool-badger-99. Question as put to the operator, verbatim: \"Rule on #16069/#16156: allow gunbc run to typecheck/realize only what its entry reaches, with the demanded_scope controls run by hand until a follow-up enrolls them?\" Operator words, verbatim: \"Yes, both as described\". The operator's words end here; the same ruling is recorded for the guarantee-ladder claim in gunbc.design_ruling::gunbc_run_checks_only_what_its_entry_reaches (PR #16069), which this row does not restate -- it governs only this lane's rung drop. Interpretation, this session's words and not the operator's: this authorizes gunbc run to realize only the non-function declarations a demanded declaration names transitively, where the population is exactly the declarations excluded by the declared read inventories (v1.compiler.infer.realization_row_names: the spelled extent plus the reader families realization_row_edges and realization_provider_row_edges, closed over the typed side by the bounded fixpoint), every edge outside the realized set refuses as the blocking located Diagnostic.DeclarationRealizationGap, and the silent-undeclared-read residue is claimed by NOTHING -- it sits below the guarantee ladder (gunbc.design_argument::guarantee_ladder), is not authorized by the drop row, and has its own next-rung restoration trigger (instrument census consults to refuse whenever a census-resolvable name is not realized). The whole-closure typecheck (compile, emit, self-verify, every EveryDeclaration witness) is untouched; this is a gunbc run lowering alone, reversible with the scope. The demanded_scope controls run by hand under this ruling are enrolled by follow-up node adhoc-0eedbb6e-a35.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     gunbc_run_checks_only_what_its_entry_reaches,
@@ -926,6 +933,7 @@ fn design_rulings() -> List<DesignRuling> {
     seed_read_set_receipt_is_admitted,
     srv1_microvm_slot_charge_waits_for_realization,
     srv3_srv4_fabric_slots_serve_ci,
+    run_realizes_only_demanded_declarations,
   ]
 }
 
