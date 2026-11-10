@@ -646,7 +646,7 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
-            let (_sources, intern, si, _modules, graph) =
+            let (_sources, intern, si, modules, graph) =
                 graph_from("dag/test/fixture/demanded_scope/service_op_grain.dag");
             let demand = grain_demand(&modules, &["service_op_spelled_in_entry_body"], &si);
             let realization = match &*demand {
@@ -747,6 +747,72 @@ fn wire_contract_row_reached_by_the_publisher_route_is_realized() {
             assert!(
                 row_realized,
                 "the demanded grain must realize the CoproductWireContract row the closure realizes and the interpreter decodes at publish (reader seed, #16241): {row}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE WITNESS-ENTRY ARM: the caebcfaa case, verbatim. The two arms above run on the harness fixture
+// `service_op_grain.dag`; a fixture shows the shape a failure has but cannot answer a real-route
+// observation with a different entry. BuildBuddy caebcfaa-a82c-4e44-af06-f455d4d27635 refused
+// `test.RestReplay.PullRequestPage()` at dag/test/claim/github_pull_request_decode_witness.dag:96 --
+// braceless whole-module import of the probe module (:57), the call inside the `fn(_scope) { ... }`
+// subject of `evaluate_in_witness_frame` (:90), reached through the ENTRY `decoded_pull_request`
+// -- and resolved at 5e315131's parent e1dd6b50. This arm drives THAT entry, in THAT file, through
+// the same production equivalence: the demanded grain must refuse no method surface the full closure
+// does not. The file's own header separates the two refusals it documents: the frame's missing
+// RUNTIME realization on the run route exists at every commit and is not this witness; what regressed
+// at 5e315131 is the TYPECHECK-stage method surface, which is what `typecheck_scoped` reports.
+
+#[test]
+fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, intern, si, modules, graph) =
+                graph_from("dag/test/claim/github_pull_request_decode_witness.dag");
+            let demand = grain_demand(&modules, &["decoded_pull_request"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let service_realized = realization.realized.contains_key("test.RestReplay")
+                || realization.realized.contains_key("RestReplay");
+            let demanded = route_messages(&graph, &intern, &si, &["decoded_pull_request"]);
+            let closure = route_messages(&graph, &intern, &si, &[]);
+            let surface: Vec<String> = demanded
+                .iter()
+                .filter(|m| {
+                    m.contains("RestReplay")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
+                })
+                .cloned()
+                .collect();
+            let closure_surface: Vec<String> = closure
+                .iter()
+                .filter(|m| {
+                    m.contains("RestReplay")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
+                })
+                .cloned()
+                .collect();
+            eprintln!(
+                "SERVICE_OP_GRAIN_WITNESS entry=decoded_pull_request service_realized={} demanded_refusals={} closure_refusals={} surface={:?}",
+                service_realized,
+                surface.len(),
+                closure_surface.len(),
+                surface
+            );
+            assert!(
+                service_realized,
+                "the service whose operation decoded_pull_request spells inside its witness-frame subject must be realized"
+            );
+            assert!(
+                surface.iter().all(|m| closure_surface.contains(m)),
+                "the demanded grain must refuse no method surface the full closure does not: demanded={surface:?} closure={closure_surface:?}"
             );
         })
         .unwrap()
