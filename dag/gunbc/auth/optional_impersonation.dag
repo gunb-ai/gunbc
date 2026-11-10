@@ -51,6 +51,20 @@ pattern optional_impersonation(
 
 // The admitted path: the duration has already been ruled on upstream's own terms, which is what lets the
 // bounded mint be planned at all -- an illegal lifetime never reaches it.
+//
+// THE PARAMETER IS WHAT MAKES THIS LEG ADMITTED, and since #16150's review the TYPE enforces that rather
+// than the name: `extdeps.cloud.gcp.iam::AccessTokenLifetime` is `sole_constructor`, so this module, or
+// any other, may receive an admitted lifetime, pass it on and read it, but cannot build one. A caller
+// standing outside the API model has exactly one way to produce this argument, and it runs the bound.
+// Before the seal the word "admitted" described an intention only: this pattern was public and the record
+// was public, so
+// `optional_impersonation_admitted(access_token: t, service_account: sa, lifetime: AccessTokenLifetime {
+// seconds: second(count: 43200) })` compiled, skipped `admit_token_lifetime` entirely, and minted a
+// twelve-hour credential -- the lifetime Google grants only under the organization-policy condition this
+// tree cannot observe. The wall is measured rather than narrated:
+// `test.claim.tailscale_acl_phase2_design_witness::the_admitted_lifetime_has_one_constructor` compiles
+// the forgery and the control through `gunbc.compile_census_probe`. The wire spelling stays the API
+// model's -- `token_lifetime_wire` over the admitted seconds -- so the value ruled on is the value sent.
 pattern optional_impersonation_admitted(
   access_token: Secret,
   service_account: ServiceAccountEmail?,

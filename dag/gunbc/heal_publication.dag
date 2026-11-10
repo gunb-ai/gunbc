@@ -13,6 +13,7 @@ import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
   token_lifetime_wire, admit_token_lifetime, acquire_impersonated_access, gcp_impersonated_presentation,
+  AccessTokenLifetime,
   GcpImpersonatedAccessCredential, GcpImpersonatedAccessAcquired, GcpImpersonatedAccessClockUnread,
   GcpImpersonatedAccessRefused,
 }
@@ -699,13 +700,24 @@ data heal_publisher_cloud_credential_requirement: CredentialUseRequirement = Cre
 // reachable only under `extended_maximum_condition`, which this tree represents no allowlist for. So the
 // publisher asks for at most one hour of credential and refuses its own request above that, instead of
 // sending it and reading a 400.
-fn heal_publisher_lifetime_ceiling_refusal() -> Optional<NonEmptyStr> {
+// THE PUBLISHER'S OWN LIFETIME, RULED ONCE. The API model's checked constructor is asked a single time
+// and its ANSWER -- the admitted lifetime, or the reason it was refused -- is what flows onward, so the
+// value that reaches the mint is the value that was ruled on rather than a second copy of the request
+// re-encoded after the check (`gunbc.design_argument::single_authority`: one place decides, and the
+// consequence carries that decision instead of restating the input).
+type HealPublisherLifetimeRuling
+  = HealPublisherLifetimeAdmitted { lifetime: AccessTokenLifetime }
+  | HealPublisherLifetimeRefused { cause: NonEmptyStr }
+
+fn heal_publisher_lifetime_ruling() -> HealPublisherLifetimeRuling {
   // Asked of the API model's one checked constructor, not recomputed here: the publisher may not state a
   // bound, only ask whether the one it wants is grantable (`gunbc.design_argument::single_authority`).
   match admit_token_lifetime(s: heal_publisher_cloud_token_lifetime) {
-    Present { value: _ } => Absent
-    Absent => Present {
-      value: concat(
+    Present { value: admitted } => HealPublisherLifetimeAdmitted { lifetime: admitted }
+    Absent => HealPublisherLifetimeRefused {
+      // The refused duration is spelled by the API model's encoder -- a refused request still has a
+      // spelling, and only upstream owns what one looks like.
+      cause: concat(
         "HealPublisherLifetimeBeyondOrdinaryMaximum: the publisher asked for ",
         token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
         " of credential, past the lifetime Google grants without the organization-policy constraint this runner cannot observe; nothing was exchanged",
@@ -714,16 +726,41 @@ fn heal_publisher_lifetime_ceiling_refusal() -> Optional<NonEmptyStr> {
   }
 }
 
-fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
-{
-  match heal_publisher_lifetime_ceiling_refusal() {
-    Present { value: reason } => PublisherCloudCredentialNotMinted { cause: reason }
-    Absent => heal_publisher_cloud_credential_exchange()
+// THE SAME DECISION AS A NULLARY REFUSAL, unchanged in shape and text: the recurring-failure-mode record
+// for this boundary measures this entry (and the mint entry below) for rc=2 with this exact sentence on
+// both legs, so it stays a projection of the ruling above rather than a second place that decides.
+fn heal_publisher_lifetime_ceiling_refusal() -> Optional<NonEmptyStr> {
+  match heal_publisher_lifetime_ruling() {
+    HealPublisherLifetimeAdmitted { lifetime: _ } => Absent
+    HealPublisherLifetimeRefused { cause } => Present { value: cause }
   }
 }
 
-// THE THREE LEGS. Split out so the ceiling above is the first decision the mint makes, ahead of any send.
+fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
+{
+  match heal_publisher_lifetime_ruling() {
+    HealPublisherLifetimeRefused { cause } => PublisherCloudCredentialNotMinted { cause: cause }
+    HealPublisherLifetimeAdmitted { lifetime } => heal_publisher_cloud_credential_exchange_admitted(lifetime: lifetime)
+  }
+}
+
+// THE SAME ROUTE, KEPT NULLARY. This is the entry the recurring-failure-mode record measures: called with
+// no environment it still returns the ceiling refusal ahead of any send, because it is this route and not
+// a copy of it. It is a delegation, so the two cannot drift.
 fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
+{
+  heal_publisher_cloud_credential()
+}
+
+// THE THREE LEGS, reached only with a lifetime the API model has already ruled on. Split out so the ceiling
+// is the first decision the mint makes, ahead of any send, and so the mint can only spell the lifetime it
+// was GIVEN: `acquire_impersonated_access` takes the admitted type, whose sole constructor is
+// `extdeps.cloud.gcp.iam::admit_token_lifetime`, so no leg of this exchange can put an unruled lifetime on
+// the wire -- which is the guarantee the seal is for, and the reason the mint no longer re-encodes
+// `heal_publisher_cloud_token_lifetime` itself after the check.
+fn heal_publisher_cloud_credential_exchange_admitted(
+  lifetime: AccessTokenLifetime,
+) -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
 {
   match env_value(name: github_actions_runtime.oidc_request_url_env) {
     Absent =>
@@ -763,7 +800,7 @@ fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses n
                     source_token: federated.access_token,
                     target_service_account: heal_publisher_service_account,
                     scopes: [heal_publisher_cloud_scope],
-                    lifetime: token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
+                    lifetime: lifetime,
                   ) {
                     GcpImpersonatedAccessClockUnread { detail: d } =>
                       PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAcquisitionClockUnread: the publisher cannot date its own credential, so it cannot bound its use: ", d) }

@@ -412,7 +412,9 @@ data default_token_lifetime: TokenLifetime = {
 // The protobuf Duration spelling ("Ns") of a lifetime is upstream's wire form and lives only here; callers
 // hold a Second. It encodes; it deliberately does not rule -- whether a lifetime may be ASKED FOR is
 // admit_token_lifetime's job, because only the ordinary maximum is decidable without observing org policy
-// (see default_token_lifetime's extended_maximum_condition).
+// (see default_token_lifetime's extended_maximum_condition). It stays total over `Second` for that reason:
+// a REFUSED request still has to be spelled in the refusal that names it. The wall is therefore on this
+// type's construction and on the modelled routes into a mint, not on the encoder.
 fn token_lifetime_wire(s: Second) -> String {
   to_string(second_count(s: s)) + "s"
 }
@@ -432,7 +434,27 @@ fn token_lifetime_wire(s: Second) -> String {
 // that `default_token_lifetime.extended_maximum_condition` names, and this tree represents no allowlist for
 // that constraint -- so refusing is the honest answer (`gunbc.design_argument::epistemic_humility`), and the
 // refusal is computable before any round trip instead of arriving as a 400.
-type AccessTokenLifetime = { seconds: Second }
+//
+// THE ONE CONSTRUCTOR IS `admit_token_lifetime`, AND THE LANGUAGE ENFORCES IT. `sole_constructor`
+// refuses a literal of this type outside this module at the literal's own position, so a caller may
+// RECEIVE an admitted lifetime, pass one along, and read it -- but cannot make one. That is what gives
+// `gunbc.auth.optional_impersonation::optional_impersonation_admitted`'s `lifetime` parameter its
+// meaning: a value sitting in it has been through the bound. Unsealed, the admitted leg was reachable by
+// writing `AccessTokenLifetime { seconds: second(count: 43200) }` at the call site and never asking this
+// module -- the twelve hours Google grants only under an organization-policy condition this tree cannot
+// observe, on the wire, which is the one defect the bound was moved here to prevent.
+//
+// RUNG HONESTY, said here and not only in a PR body: the wall is structural on the .dag path. The
+// emitted-Rust mirror of a sole_constructor type is a public struct with public fields, so the same
+// literal is forgeable there -- the second realization has not reached this declaration, the way
+// `extdeps.filesystem.filesystem_io` records it for its own sealed returns. Nothing on the heal-publish
+// or operator route is compiled through the emitter today.
+//
+// MEASURED, NOT ASSERTED: `test.claim.tailscale_acl_phase2_design_witness
+// ::the_admitted_lifetime_has_one_constructor` compiles a foreign module that attempts the forgery --
+// once into the admitted pattern, once bare -- and one that only RECEIVES the admitted value, and counts
+// the blocking diagnostics of class `SoleConstructorViolation` at this type's own position.
+type AccessTokenLifetime sole_constructor { seconds: Second }
 
 fn admit_token_lifetime(s: Second) -> Optional<AccessTokenLifetime> {
   if second_count(s: s) < 1 {
@@ -981,16 +1003,28 @@ fn impersonated_access_credential_of(
 
 // THE CLOCK IS READ BEFORE THE SEND, so the local deadline can only be earlier than the provider's.
 // The requested lifetime is a request input only; the issued expireTime is what the credential carries.
+// THE MODELLED ROUTE INTO AN IMPERSONATED MINT, and it takes the ADMITTED lifetime rather than a wire
+// string: the only way to hold the argument is to have asked `admit_token_lifetime` for it, so no caller
+// of this function can put an unruled lifetime on the wire. The spelling is this module's business --
+// `token_lifetime_wire` is called here, under the ruling's consequence, instead of at each call site --
+// so "every caller spells it the same way" is a consequence of the types rather than a rule someone has
+// to remember. The bare operation still takes a `String`, because the request body IS that string; keeping
+// raw callers off it is an adoption obligation, not something a seal can reach.
 fn acquire_impersonated_access(
   source_token: Secret,
   target_service_account: ServiceAccountEmail,
   scopes: List<String>,
-  lifetime: String,
+  lifetime: AccessTokenLifetime,
 ) -> GcpImpersonatedAccessAcquisition uses net: Network, clk: std.resources.Clock {
   match observe_acquisition_clock(label: "gcp-iam-generate-access-token") {
     AcquisitionClockUnread { detail: d } => GcpImpersonatedAccessClockUnread { detail: d }
     AcquisitionClockObserved { reading: acq } =>
-      match gcp.IAM.GenerateAccessToken(access_token: source_token, target_sa: target_service_account, scope: scopes, lifetime: lifetime) {
+      match gcp.IAM.GenerateAccessToken(
+        access_token: source_token,
+        target_sa: target_service_account,
+        scope: scopes,
+        lifetime: token_lifetime_wire(s: lifetime.seconds),
+      ) {
         RestRefused { refusal: r } => GcpImpersonatedAccessRefused { refusal: r }
         RestAnswered { answer: a } =>
           GcpImpersonatedAccessAcquired {

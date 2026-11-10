@@ -10,6 +10,19 @@ import std.optional { Absent, Present }
 import std.algebra { string_contains }
 import std.measure { second, second_count }
 import std.types { Bool, Secret, String }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe {
+  blocking_subject_census,
+  total_rows_census,
+  census_ran,
+  census_premise,
+  census_verdict,
+  census_verdict_all,
+}
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  censuses_differ_by_exactly_the_target_key,
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.disposition { Scaffold, SingleAuthority }
 import extdeps.cloud.gcp.iam {
@@ -271,4 +284,158 @@ test fn witness_the_api_model_refuses_an_illegal_lifetime_before_any_call() -> B
   refused_above_max && refused_unset && admitted_at_the_ordinary_maximum
     && refused_one_second_above && admitted_leg_mints_through_the_api_model
     && unimpersonated_arm_observed_no_expiry
+}
+
+// THE ADMITTED LIFETIME HAS EXACTLY ONE CONSTRUCTOR, which is the whole reason the word `admitted` in
+// `gunbc.auth.optional_impersonation::optional_impersonation_admitted` means anything. The side-chat
+// review that rejected this PR at 1937e8dca2a8 found the hole: `AccessTokenLifetime` was a plain public
+// record, so any module could write `AccessTokenLifetime { seconds: second(count: 43200) }` -- the
+// twelve hours Google grants only under an organization-policy condition this tree cannot observe -- and
+// hand it straight to the admitted pattern, never asking `admit_token_lifetime`. The admitted leg then
+// put an unruled lifetime on the wire, which is the one thing the whole relocation of the bound into the
+// API model was for.
+//
+// The wall is the language's own, declared where the type is declared
+// (`extdeps/cloud/gcp/iam.dag`: `type AccessTokenLifetime sole_constructor { seconds: Second }`), and it
+// is MEASURED here by execution, not asserted. Each probe below is compiled IN PROCESS by
+// `gunbc.compile_census_probe`, whose builtin runs the real resolve/typecheck/effects pipeline and
+// returns the real diagnostic census; that module's own header names the trap this class of claim falls
+// into -- re-expressing a refusal as a string transformation and passing on the rendering instead of the
+// diagnostic, and reporting an unexecutable probe as false rather than UNOBSERVED.
+//
+// RUNG HONESTY, stated next to the wall and not only in the PR body: on the .dag path the forged
+// construction is refused; the emitted-Rust mirror of a sole_constructor type is a public struct with
+// public fields, so the same literal is forgeable there. That is the second realization not having
+// reached this declaration, not a hole in this one -- nothing on the heal-publish or operator route is
+// compiled through the emitter today -- and it is recorded the same way
+// `extdeps.filesystem.filesystem_io` records it for its own sealed returns.
+//
+// The probes carry no data literals at all: every value they need arrives as a parameter, and the one
+// constant that matters -- the forged construction itself -- is the axis the pair is built to vary. A probe
+// that could not compile for a reason unrelated to the wall would otherwise show up as a census that
+// disagrees rather than one that never ran, and a wrong red is worse than no red.
+//
+// ONE AXIS BY CONSTRUCTION, the discipline `test.claim.a_payload_surplus_variant_wall` sets. The red and
+// green probes are the SAME TEXT except the one expression that obtains the lifetime handed to the
+// admitted pattern: the forged record literal, or the value the mint returned. Same module name, same
+// import list, same pattern name and parameters, same number of lines -- so the ~900 rows the imported
+// closure produces land on identical keys on both sides and cancel in the differential, instead of being
+// read as the probe's own result or swamping a count. Measured before it was claimed: compiling the two
+// texts side by side gives 906 advisories on each and exactly one extra blocking diagnostic on the forged
+// side, the seal, at the literal's own position (`dag/_probe_scratch.dag:12:161` under the compile CLI).
+fn the_lifetime_probe_pair(lifetime_expression: String) -> String {
+  "module probe_lifetime_seal_pair\n"
+    + "import std.measure { Second, second }\n"
+    + "import std.optional { Absent, Present }\n"
+    + "import std.types { Secret }\n"
+    + "import extdeps.cloud.gcp.gcp { ServiceAccountEmail }\n"
+    + "import extdeps.cloud.gcp.iam { AccessTokenLifetime, admit_token_lifetime }\n"
+    + "import gunbc.auth.optional_impersonation { optional_impersonation_admitted, OptionalImpersonation }\n"
+    + "pattern probe_sealed(access_token: Secret, service_account: ServiceAccountEmail?, seconds: Int) -> Optional<OptionalImpersonation> {\n"
+    + "  let span: Second = second(count: seconds)\n"
+    + "  let admitted: Optional<AccessTokenLifetime> = admit_token_lifetime(s: span)\n"
+    + "  match admitted {\n"
+    + "    Present { value: value } => return Present { value: optional_impersonation_admitted(access_token: access_token, service_account: service_account, lifetime: "
+    + lifetime_expression
+    + " ) }\n"
+    + "    Absent => return Absent\n"
+    + "  }\n"
+    + "}\n"
+}
+
+// The red side: the value is BUILT, at the position where only the mint's output belongs.
+fn the_forged_lifetime_probe() -> String {
+  the_lifetime_probe_pair(lifetime_expression: "AccessTokenLifetime { seconds: span }")
+}
+
+// THE POSITIVE CONTROL, and the reason the red above is evidence: the same probe, taking the lifetime the
+// mint returned. It compiles clean, so the refusal is about construction outside the API model and not
+// about the type being unusable (`extdeps.filesystem.filesystem_io`: "the POSITIVE CONTROL is the mint,
+// not the bare type").
+fn the_admitted_lifetime_probe() -> String {
+  the_lifetime_probe_pair(lifetime_expression: "value")
+}
+
+// The wall is on the CONSTRUCTION, not on the call: forging the value is refused even where nothing is
+// impersonated and no admitted pattern is in sight, so no later refactor can re-open the bypass by moving
+// the admitted call away from the place that asks for the type.
+data lifetime_forged_bare_source: String = "module probe_lifetime_forged_bare\nimport std.measure { second }\nimport extdeps.cloud.gcp.iam { AccessTokenLifetime }\npattern probe_forged_bare() -> AccessTokenLifetime {\n  return AccessTokenLifetime { seconds: second(count: 43200) }\n}\n"
+
+test fn the_admitted_lifetime_has_one_constructor() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(
+        source: the_forged_lifetime_probe(),
+        wanted_class: "SoleConstructorViolation",
+        wanted_subject: "AccessTokenLifetime",
+      ),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: lifetime_forged_bare_source,
+        wanted_class: "SoleConstructorViolation",
+        wanted_subject: "AccessTokenLifetime",
+      ),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: the_admitted_lifetime_probe(),
+        wanted_class: "SoleConstructorViolation",
+        wanted_subject: "AccessTokenLifetime",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
+  ])
+}
+
+// THE PROBES' OWN FITNESS, which is what turns the claim above from a passing test into evidence -- and in
+// the form the census module prescribes, not the one that looked convenient. A claim whose pass IS a
+// refusal is only as good as the rest of the probe's shape: a forgery probe that also broke on some
+// unrelated rule would print the same single seal row, and before the seal was added this probe had to
+// print 0 -- for whichever reason, which is exactly the reading a red must not leave open. A total over the
+// probe's own module is not the answer: a census carries the whole compile, imported closure included, so
+// any probe importing a production module carries that closure's rows and "blocking count == 0" is a check
+// whose red cannot be authored (`gunbc.compile_diagnostic_census`: "THE ROW SET IS THE WHOLE COMPILE'S";
+// `gunbc.design_argument::guarantee_ladder` calls such a check a decoration). Measured, not inferred: an
+// earlier revision of this claim asserted exactly that and observed 5 on a probe whose only real defect
+// was the forgery. What IS exact is the DIFFERENTIAL between the pair above, where the shared closure
+// cancels: the forged side must exceed the admitted side at the seal's own key by exactly one occurrence,
+// and agree with it at every key of either side. `censuses_differ_by_exactly_the_target_key` also refuses
+// when the target is absent from both sides, so two identical censuses establish nothing -- the red has to
+// be authored, which is what makes the green worth anything.
+fn the_seal_pair_differs_by_the_seal_row(
+  red: CompileDiagnosticCensus,
+  green: CompileDiagnosticCensus
+) -> Bool {
+  match red {
+    CensusObserved { rows: red_rows } =>
+      match green {
+        CensusObserved { rows: green_rows } =>
+          censuses_differ_by_exactly_the_target_key(
+            red: red_rows,
+            green: green_rows,
+            target_class: "SoleConstructorViolation",
+            target_subject: "AccessTokenLifetime",
+          )
+        CensusNotRunnable { cause: _ } => false
+      }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn the_forgery_probe_breaks_only_the_seal() -> ProcessExit {
+  let red: CompileDiagnosticCensus =
+    total_rows_census(source: the_forged_lifetime_probe())
+  let green: CompileDiagnosticCensus =
+    total_rows_census(source: the_admitted_lifetime_probe())
+  census_verdict_all(verdicts: [
+    census_ran(census: red),
+    census_ran(census: green),
+    census_premise(
+      name: "the forged probe exceeds the admitted probe by exactly one SoleConstructorViolation at AccessTokenLifetime, and by nothing at any other key",
+      holds: the_seal_pair_differs_by_the_seal_row(red: red, green: green),
+    ),
+  ])
 }
