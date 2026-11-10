@@ -100,11 +100,10 @@ import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_acceptance_parse_tail, roadmap_operator_acceptance_receipt_line,
   roadmap_operator_acceptance_history_load,
   roadmap_operator_close, roadmap_operator_close_history, roadmap_operator_node_closed,
-  roadmap_acceptance_migration_problems,
   AcceptanceFound, AcceptanceAbsent, roadmap_operator_date_from_epoch_secs, roadmap_operator_render_civil_date,
 }
 import gunbc.roadmap.roadmap_event_log {
-  roadmap_acceptance_pr_evidence_cutoff,
+  roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_migration_problems,
   RoadmapEvent, RoadmapNodeStanding,
   Claimed, HandedBack, Retired, NodeRetired, NodeReadyForReview, NodeOpen,
   roadmap_event_envelope, roadmap_issue_state, EventPrincipalAuthenticated,

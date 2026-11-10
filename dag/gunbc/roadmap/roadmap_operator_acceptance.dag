@@ -65,7 +65,11 @@ import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AcceptNode, is
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceLookup, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
-import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, roadmap_event_kind_word, roadmap_retired_node_ids_of, RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_acceptance_receipt_members }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEventEnvelope, roadmap_event_kind_word, roadmap_retired_node_ids_of, RoadmapRetiredNodeIds,
+  RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_acceptance_receipt_members,
+  roadmap_acceptance_migration_identity, roadmap_acceptance_migration_problems,
+}
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRecorded, AcceptanceRevoked, roadmap_node_ids_contain, revocation_reopens_active_frontier }
 import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
@@ -789,79 +793,6 @@ fn roadmap_acceptance_migration_verify_instance(
           }
       }
   }
-}
-
-// THE CANONICAL FACT, WHOLE. A migration is certified against the event's COMPLETE evidence, spelled by
-// the same member law that writes the event's canonical bytes (gunbc.roadmap.roadmap_event_log
-// roadmap_acceptance_receipt_members): the node, the criteria digest, the red-control variant with its
-// witness module, fn and executed day, the handback variant with its first and further artifacts, the
-// accepting principal and day — and for a revocation its disposition, its reason, its revoker and its
-// day too. Comparing node and criteria digest alone would certify a migrated acceptance whose
-// red-control witness, handback artifact, accepting principal or day had been swapped: the standing
-// still folds the same way, and the receipt is no longer the one the operator wrote (witness:
-// a_migrated_event_with_swapped_evidence_disagrees_with_the_manifest).
-fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
-  match e {
-    AcceptanceRecorded { receipt } =>
-      join(["acceptance|", serialize_json(v: json_object(roadmap_acceptance_receipt_members(r: receipt)))], "")
-    AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
-      join(["revocation|",
-            if revocation_reopens_active_frontier(disposition: disposition) { "reopens" } else { "remains" },
-            "|", reason, "|", revoked_by, "|", revoked_on, "|",
-            serialize_json(v: json_object(roadmap_acceptance_receipt_members(r: exact_prior_receipt)))], "")
-  }
-}
-
-// THE COMPARISON, PURE: the verifier's refusal logic in one function nobody can skip, so every refusal
-// is witnessed directly over constructed lists rather than only through a live carrier. Three
-// independent failures, each reported with the fact that failed:
-//   1. THE FACTS, AS A MULTISET — not by membership. `any` cannot see that a manifest naming one
-//      acceptance twice met a log holding it once, so each side's COUNT of each distinct fact must
-//      agree: a lost event, a duplicated event and an altered event all refuse, with both counts and the
-//      fact named.
-//   2. CLOSEDNESS, BOTH WAYS. An acceptance the manifest leaves closed on a live receipt that the log's
-//      own reader does not confirm refuses — and so does a node the log calls closed that the manifest
-//      never accepted, because the migration may not invent a closed node either. And a manifest that
-//      does not replay is itself a refusal: it is not evidence of nothing, and reading it as an empty
-//      expectation would certify whatever the log happened to hold.
-//   3. THE RETIRED ROSTER: a node the runbook claims retired that the log does not hold retired.
-fn roadmap_acceptance_migration_problems(
-  wanted: List<RoadmapAcceptanceEvent>,
-  held: List<RoadmapAcceptanceEvent>,
-  closed_nodes: List<String>,
-  not_retired: List<String>,
-) -> List<String> {
-  let wanted_facts = map(wanted, e => roadmap_acceptance_migration_identity(e: e))
-  let held_facts = map(held, e => roadmap_acceptance_migration_identity(e: e))
-  let facts = fold(concat(wanted_facts, held_facts), init: [] as List<String>, f: (acc, x) =>
-    if any(acc, a => a == x) { acc } else { concat(acc, [x]) })
-  let count_problems = filter(
-    map(facts, fct => {
-      let want_count = count(filter(wanted_facts, w => w == fct))
-      let have_count = count(filter(held_facts, h => h == fct))
-      if have_count == want_count { "" }
-      else {
-        join(["the log does not hold the manifest's fact in the same number: expected ",
-          to_string(value: want_count), ", the log holds ", to_string(value: have_count), ", for ", fct], "")
-      }
-    }),
-    pr => pr != "")
-  let replay_problems = match replay_acceptance_history(events: wanted) {
-    Present { value: state } => {
-      let expected_closed = map(state.live, r => r.node as String)
-      concat(
-        filter(expected_closed, n => !any(closed_nodes, cn => cn == n),
-          n => join(["the manifest leaves ", n, " closed on a live receipt; the log does not say so", ""], "")),
-        filter(closed_nodes, cn => !any(expected_closed, n => n == cn),
-          cn => join(["the log calls ", cn, " closed on a live receipt the exported manifest never accepted", ""], "")))
-    }
-    // The manifest IS the evidence. An acceptance history that cannot be put in order — a revocation or
-    // an acceptance whose live receipt the events before it never established — is not evidence that
-    // nothing was closed; treating it as an empty expectation would certify whatever the log held.
-    Absent => ["the exported manifest does not replay as an acceptance history; nothing can be certified from it"]
-  }
-  let retired_problems = map(not_retired, n => join(["the log does not hold ", n, " retired", ""], ""))
-  concat(concat(count_problems, replay_problems), retired_problems)
 }
 
 fn roadmap_acceptance_migration_verdict(
