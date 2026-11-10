@@ -8,7 +8,7 @@ import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.algebra { length }
 import std.optional { Absent, Present }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
-import std.list { list_member }
+import std.list { distinct_by_key, list_member }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -48,8 +48,9 @@ import gunbc.generated_artifact { GeneratedArtifact, RunnerHostSudoersArtifact, 
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
 import gunbc.build_cache.build_cache_instance {
-  BuildCacheInstance, ProcessIdentity, ci_cache_instance,
+  BuildCacheInstance, ProcessIdentity, ci_cache_instance, RunnerSlotIdentity, runner_slot_instance_name,
 }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.host.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
 import gunbc.runner.runner_service_activation {
   RunnerUnitStandings,
@@ -405,16 +406,46 @@ test fn grants_carry_one_unmask_enable_and_start_per_desired_slot() -> Bool {
 // shorter than srv4's committed width and it derives one fewer transition pair. A witness naming
 // srv3-06 would assert the carve's current position; this one asserts the RELATION, which is what
 // would break if the activation roster ever reached past desired_runner_slot_members.
+// THE FABRIC EXECUTION SLOT TAKES NO ACTIVATION GRANT -- AND THE FABRIC EXECUTION SLOTS LEFT ARE SRV1'S.
+// This row read srv3-06 as the reserved fabric cell. gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci
+// (2026-11-09, #16137) retired srv3's and srv4's fabric execution slots: every committed slot on both
+// hosts now serves GitHub Actions, srv3-06/07 and srv4-06/07 with them, and the row that holds that is
+// test. the_masked_fabric_slots_plan_the_three_commands_the_grants_name. Left as it was this row asserted
+// the negation of what the sudoers renders -- provisioning/srv3/gunbc-ghrunner.sudoers carries
+// `/usr/bin/systemctl enable actions-runner@srv3-06.service` -- so it has been red since the ruling
+// landed, and red for a reason that has nothing to do with unmask: runner_host_activation_units maps
+// desired_runner_slot_members, which filters gunbc.runner.runner_slot_allocation
+// fabric_execution_slot_identities, and that population holds no srv3 member at all. The invariant is
+// still owed, so the SUBJECT moves to where the population actually is: srv1-13, the microVM shakedown
+// slot, and srv1-14, the revision-job slot.
 test fn the_reserved_fabric_cell_takes_no_activation_grant() -> Bool {
-  let srv3_units = runner_host_activation_units(deploy: wt_srv3_deploy())
-  let srv3_desired = desired_runner_slot_members(deploy: wt_srv3_deploy())
-  length(xs: srv3_units) == length(xs: srv3_desired)
-    && length(xs: srv3_units) < wt_srv3_deploy().runner_count
-    && !fold(
-         srv3_units,
-         init: false,
-         f: (acc, u) => acc || string_contains(s: u as String, pattern: "srv3-06"),
+  let d = match admitted_deploy_for(host: operator_host_srv1) { Present { value: v } => v  Absent => wt_missing_deploy() }
+  let units = runner_host_activation_units(deploy: d)
+  let grantee = runner_host_spec_of(deploy: d).job_user
+  let on_srv1 = filter(fabric_execution_slot_identities(), s => (s.host as String) == (operator_host_srv1 as String))
+  length(xs: on_srv1) == 2
+    && length(xs: units) > 0
+    && list_member(
+         xs: units,
+         x: runner_unit_name_of_registration(registration_name: "srv1-01" as NonEmptyStr),
+         eq: (a, b) => a == b,
        )
+    && all(on_srv1, s => activation_unit_takes_no_grant(host: operator_host_srv1, units: units, grantee: grantee, slot: s))
+}
+
+// ONE FABRIC EXECUTION SLOT, CHECKED BOTH WAYS: it is not in the activation population the sudoers is
+// rendered from, and none of the three commands the activation plan can issue is granted for it in the
+// rendered bytes. The second does not follow from the first -- the same file carries retirement and
+// slice rows, so "no activation grant" has to be said about the activation rows, and a host whose fabric
+// slot is retired by `mask --now` still has to be refused an `enable`.
+fn activation_unit_takes_no_grant(host: HostIdentity, units: List<NonEmptyStr>, grantee: NonEmptyStr, slot: RunnerSlotIdentity) -> Bool {
+  let unit = runner_unit_name_of_registration(registration_name: runner_slot_instance_name(slot: slot) as NonEmptyStr)
+  let body = activation_sudoers_text(host: host)
+  let bin = ci_runner_sudo_binary_path(b: SudoSystemctl)
+  !list_member(xs: units, x: unit, eq: (a, b) => a == b)
+    && activation_line_count(content: body, line: activation_grant_line(grantee: grantee, argv: [bin, systemctl_unmask_verb, unit as String])) == 0
+    && activation_line_count(content: body, line: activation_grant_line(grantee: grantee, argv: [bin, systemctl_enable_verb, unit as String])) == 0
+    && activation_line_count(content: body, line: activation_grant_line(grantee: grantee, argv: [bin, systemctl_start_verb, unit as String])) == 0
 }
 
 // THE DECLARED STALL AND THE EXECUTED REFUSAL MUST NAME THE SAME BLOCKER, which is what keeps the
@@ -808,8 +839,14 @@ test fn no_activation_grant_exists_that_no_reading_of_the_plan_issues() -> Bool 
 fn activation_host_consumption_holds(host: HostIdentity) -> Bool {
   let d = match admitted_deploy_for(host: host) { Present { value: v } => v  Absent => wt_missing_deploy() }
   let members = desired_runner_slot_members(deploy: d)
-  let issued = flat_map(members, m => activation_plan_steps(unit: runner_unit_name_of_registration(registration_name: m.instance_name)))
-  let granted = map(runner_slot_activation_operations(members: members), op => executor_privileged_operation_argv(op: op))
+  let issued = distinct_by_key(
+    flat_map(members, m => activation_plan_steps(unit: runner_unit_name_of_registration(registration_name: m.instance_name))),
+    key: a => join(a, " "),
+  )
+  let granted = distinct_by_key(
+    map(runner_slot_activation_operations(members: members), op => executor_privileged_operation_argv(op: op)),
+    key: a => join(a, " "),
+  )
   length(xs: granted) == length(xs: issued)
     && all(granted, g => list_member(xs: issued, x: g, eq: (a, b) => a == b))
     && all(issued, i => list_member(xs: granted, x: i, eq: (a, b) => a == b))

@@ -1,7 +1,7 @@
 module test.claim.executor_privileged_operation_witness
 
 import gunbc.runner.runner_host_deploy { runner_host_spec_of }
-import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_slot_provision { desired_runner_slot_members, gunbc_runner_slot_privileged_commands }
 
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.generated_artifact { GeneratedArtifact, RunnerHostSudoersArtifact, artifact_path, artifact_is_committed }
@@ -19,6 +19,11 @@ import gunbc.runner.runner_host_grants {
   fabric_allocation_store_privileged_operations,
   runner_host_wide_privileged_operations,
   runner_slot_retirement_mask_operations,
+  bootstrap_principal_is_not_the_grantee,
+  fabric_cell_host_slots,
+  fabric_cell_privileged_operations,
+  runner_host_privileged_operations,
+  runner_slot_activation_operations,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
@@ -27,7 +32,8 @@ import gunbc.fabric.fabric_cell_effect { fabric_cell_slice_desired_directives }
 import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
-import gunbc.executor_privileged_operation { sudoers_argument_word, executor_managed_directory_mode, RemoveDirectoryTree, SystemdDaemonReload }
+import gunbc.executor_privileged_operation { sudoers_argument_word, executor_managed_directory_mode, RemoveDirectoryTree, SystemdDaemonReload, executor_privileged_operation_argv, executor_privileged_operation_shell_command, executor_privileged_operation_sudoers_command, executor_privileged_operation_sudoers_line }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -120,14 +126,18 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // authorization; one removed takes it away. RED: hand-listing binaries instead of folding the
 // roster decouples the count from the roster and this goes false.
 //
-// THE PER-SLOT GITHUB FACTOR IS THREE IN THIS SUM, SPLIT FOR DISCRIMINATION. Teardown is the
+// THE PER-SLOT GITHUB FACTOR IS FOUR IN THIS SUM, SPLIT FOR DISCRIMINATION. Teardown is the
 // grammar bound, not the desired width. Each desired slot then contributes one install
-// directory and two service transitions (enable, start). `slots * 3` is install+activation;
-// `activation == slots * 2` is the transition half.
+// directory and three service transitions (unmask, enable, start) -- the transitions are no longer
+// hand-listed here, they are the steps the activation plan can issue for that slot
+// (gunbc.runner.runner_slot_actuation::runner_slot_activation_steps), so a masked slot -- srv3-06/07 and
+// srv4-06/07, the former fabric slots now committed to CI -- is reachable by converge instead of stopping
+// at `sudo: a password is required`. `slots * 4` is install+activation; `activation == slots * 3` is the
+// transition half.
 //
-// THE FACTOR IS ASSERTED IN TWO PIECES RATHER THAN AS ONE PRODUCT, because `slots * 4` alone would
+// THE FACTOR IS ASSERTED IN TWO PIECES RATHER THAN AS ONE PRODUCT, because `slots * 5` alone would
 // stay green if the two halves drifted in opposite directions -- four directory operations and no
-// transitions counts the same as two and two. Splitting them means each half has to be right.
+// transitions counts the same as one and four. Splitting them means each half has to be right.
 // THE FABRIC CELL CONTRIBUTES ITS OWN DERIVED TERM, GROUNDED IN THE FABRIC AUTHORITIES RATHER THAN
 // A LITERAL. A fabric host adds one base-directory ensure plus, per fabric slot: two directory
 // ensures (root-owned cell root, delegated attempt root), one set-property grant per desired slice
@@ -157,58 +167,104 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // are one more named component of the roster, so the sum names them the same way.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
   let ds = fabric_cell_slice_desired_directives()
-  let slots = desired_runner_slot_members(deploy: wt_srv3_deploy()).length()
-  let activation = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: wt_srv3_deploy())).length()
-  let fabric_slots = fabric_cell_host_slots(spec: runner_host_spec_of(deploy: wt_srv3_deploy())).length()
+  // THE FABRIC TERMS ARE MEASURED ON SRV1, THE ONLY HOST STILL COMMITTING FABRIC CELLS. srv3 and srv4
+  // committed theirs to CI under gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (#16137), so every
+  // srv3-scoped fabric term in this row has been dead since that landing: `fabric_cell_host_slots(srv3)`
+  // reads [], the allocation store contributes nothing, and no slice directive is granted anywhere on
+  // srv3 (its committed sudoers carries no set-property line). The row could not report that, because the
+  // entry did not resolve at all -- its import block named none of these callees -- so a premise that had
+  // stopped existing kept asserting a population the model no longer renders. Both halves are asserted
+  // here: the fabric population where cells are still committed, and the zero that replaced it on srv3.
+  let fabric_host = wt_srv1_deploy()
+  let fabric_spec = runner_host_spec_of(deploy: fabric_host)
+  let ci_host = wt_srv3_deploy()
+  let ci_spec = runner_host_spec_of(deploy: ci_host)
+  let slots = desired_runner_slot_members(deploy: fabric_host).length()
+  let activation = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: fabric_host)).length()
+  let ci_slots = desired_runner_slot_members(deploy: ci_host).length()
+  let ci_activation = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: ci_host)).length()
+  let fabric_slots = fabric_cell_host_slots(spec: fabric_spec).length()
   let directives = ds.length()
   let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
-  let allocation_store = fabric_allocation_store_privileged_operations(spec: runner_host_spec_of(deploy: wt_srv3_deploy())).length()
-  let host_wide = runner_host_wide_privileged_operations(spec: runner_host_spec_of(deploy: wt_srv3_deploy())).length()
+  let allocation_store = fabric_allocation_store_privileged_operations(spec: fabric_spec).length()
+  let host_wide = runner_host_wide_privileged_operations(spec: fabric_spec).length()
   let microvm_reads = microvm_network_granted_operations().length()
-  let retirement_masks = runner_slot_retirement_mask_operations(spec: runner_host_spec_of(deploy: wt_srv3_deploy())).length()
-  runner_host_privileged_operations(deploy: wt_srv3_deploy()).length()
+  let retirement_masks = runner_slot_retirement_mask_operations(spec: fabric_spec).length()
+  runner_host_privileged_operations(deploy: fabric_host).length()
     == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store + microvm_reads + retirement_masks
     && allocation_store == 2
-    && fabric_cell_privileged_operations(spec: runner_host_spec_of(deploy: wt_srv3_deploy())).length() == fabric_expected
-    && activation == slots * 2
+    && fabric_cell_privileged_operations(spec: fabric_spec).length() == fabric_expected
+    && activation == slots * 3
+    // THE SAME FACTOR ON THE HOST THE DEFECT WAS MEASURED ON. srv3 carries no fabric term now, so its
+    // activation rows are exactly the plan's steps -- unmask, enable, start -- per committed member.
+    && ci_activation == ci_slots * 3
+    && fabric_cell_privileged_operations(spec: ci_spec).length() == 0
     && slots > 0
+    && ci_slots > 0
     && fabric_slots > 0
     && host_wide > 0
     && microvm_reads > 0
 }
 
-// THE CPUQuota GRANT IS THE DECLARED DIRECTIVE, NOT A TRANSCRIBED PERCENTAGE. The generated
-// sudoers body is `artifact_generate` of this host's row; the assignment word is the
-// `systemd_slice_directive_line` of the directive `gunbc_runner_slot_cpu_quota` selects -- a
-// thread ceiling under CpuQuotaResolved, the empty assignment `CPUQuota=` under
-// SlotCpuQuotaUnbounded (the 2026-09-19 policy). RED: hand-insert `CPUQuota=600%` into the
-// committed file, or declare a different quota than the committed projection, and either this
-// or the generated-artifact gate goes false. The unbounded arm asserts the OTHER direction too: no
-// percentage grant may survive in the file, because a 100% quota at one core per slot is the
-// throttle the ruling forbids. That negative is a LINE-TERMINAL `%`: a percentage grant is the
-// only sudoers line that ends in one, whereas a `%group` principal line begins with it, so the
-// clause names the CPU grant and not every future row that happens to carry the character
-// (review 68479). THE SUDOERS SIDE IS READ IN SUDOERS' OWN SPELLING: since #12563 every grant word
-// passes through gunbc.executor_privileged_operation sudoers_argument_word, which escapes `=` as
-// sudoers(5) documents, so the file carries `CPUQuota\=` and the bare directive line can never
-// appear in it. The claim renders the assignment through that same escape rather than transcribing
-// the escaped literal, so the two sides stay one word under the grammar that joins them.
+// THE CPUQuota GRANT IS THE DECLARED DIRECTIVE OF THE CELL IT AUTHORIZES, NOT A TRANSCRIBED PERCENTAGE.
+// The generated sudoers body is `artifact_generate` of this host's row; each grant word is the
+// `systemd_slice_directive_line` of the quota directive `fabric_cell_slice_quota_directive` selects for
+// THAT cell's declared quota -- a thread ceiling under CpuQuotaResolved, the empty assignment `CPUQuota=`
+// under SlotCpuQuotaUnbounded (the 2026-09-19 policy). RED: hand-insert a different quota into the
+// committed file, or declare a different quota than the committed projection, and either this or the
+// generated-artifact gate goes false.
+//
+// MEASURED PER CELL, ON SRV1. This row read srv3 while srv3 still committed fabric cells, both of them
+// unbounded; #16137 (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci) moved srv3's and srv4's cells
+// to CI, so srv3 renders no slice grant at all and the file-wide negative "no line ends in %" was being
+// answered by an empty file. srv1 commits two cells and they declare DIFFERENT quotas -- the shakedown
+// cell a thread ceiling, the revision-job cell unbounded -- so the claim is now made cell by cell, which
+// is also the shape the model has: the per-cell directives come from
+// gunbc.fabric.fabric_cell_effect::fabric_cell_slice_desired_directives_of_slot, and the module itself
+// says a consumer that has a slot must read _for_slot rather than answer the fleet row for it.
+//
+// THE NEGATIVE IS THE NEWLINE. Each cell's grant is asserted as `<slice unit> <escaped assignment>`
+// TERMINATED BY A NEWLINE, so a percentage on an unbounded cell -- `CPUQuota\=100%` -- fails to match the
+// empty assignment it must carry; the earlier file-wide "no line ends in %" could not say which cell was
+// throttled once one legitimate percentage grant existed, and a `%group` principal line begins with the
+// character anyway (review 68479). THE SUDOERS SIDE IS READ IN SUDOERS' OWN SPELLING: since #12563 every
+// grant word passes through gunbc.executor_privileged_operation sudoers_argument_word, which escapes `=`
+// as sudoers(5) documents, so the file carries `CPUQuota\=` and the bare directive line can never appear
+// in it. The claim renders the assignment through that same escape rather than transcribing the escaped
+// literal, so the two sides stay one word under the grammar that joins them.
 test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool {
-  let ds = fabric_cell_slice_desired_directives()
-  let desired_lines = join(map(ds, d => systemd_slice_directive_line(directive: d)), "\n")
-  match gunbc_runner_slot_cpu_quota() {
-    CpuQuotaResolved { threads: t } => {
-      let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
-      string_contains(s: srv3_runner_host_sudoers(), pattern: sudoers_argument_word(w: assignment))
-        && string_contains(s: desired_lines, pattern: assignment)
-    }
-    SlotCpuQuotaUnbounded => {
-      let assignment = systemd_slice_directive_line(directive: slice_cpu_quota_unbounded())
-      string_contains(s: srv3_runner_host_sudoers(), pattern: join([sudoers_argument_word(w: assignment), "\n"], ""))
-        && string_contains(s: desired_lines, pattern: assignment)
-        && !string_contains(s: srv3_runner_host_sudoers(), pattern: join(["%", "\n"], ""))
-    }
-  }
+  let cells = fabric_cell_host_slots(spec: runner_host_spec_of(deploy: wt_srv1_deploy()))
+  let body = runner_host_sudoers_bytes(host: operator_host_srv1)
+  cells.length() > 0
+    && string_contains(s: body, pattern: "ALL=(root) NOPASSWD:")
+    && all(cells, c =>
+      string_contains(
+        s: body,
+        pattern: join(
+          [
+            fabric_cell_slice_name(slot: c),
+            " ",
+            sudoers_argument_word(
+              w: systemd_slice_directive_line(
+                directive: fabric_cell_slice_quota_directive(
+                  quota: gunbc_runner_slot_desired_for(slot: c).cpu_quota),
+              ),
+            ) as String,
+            "\n",
+          ],
+          "",
+        ),
+      ))
+    // AND THE FLEET ROW STILL DECLARES THE 2026-09-19 POLICY: the quota a consumer naming no slot is
+    // answered with is the unbounded assignment, not a percentage. RED: declare a fleet-wide thread
+    // ceiling and this goes false while the per-cell rows above keep passing -- the two claims are
+    // deliberately separate.
+    && string_contains(
+      s: join(map(fabric_cell_slice_desired_directives(), d => systemd_slice_directive_line(directive: d)), "\n"),
+      pattern: systemd_slice_directive_line(directive: slice_cpu_quota_unbounded()),
+    )
+    // AND NOTHING IS LEFT GRANTING A SLICE CAP ON THE HOST THAT NO LONGER COMMITS CELLS.
+    && !string_contains(s: srv3_runner_host_sudoers(), pattern: "CPUQuota")
 }
 
 // A HOST WITH NO RESOLVED WIDTH IS COVERED VACUOUSLY AND SAYS SO. The bound must exceed every width

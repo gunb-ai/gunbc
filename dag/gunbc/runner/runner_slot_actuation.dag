@@ -249,7 +249,7 @@ type RunnerSlotActivationStep
 // (gunbc.runner.runner_host_grants runner_slot_activation_operations) renders one exact line per desired
 // slot per arm, so an arm no reading of the plan reaches would be a grant no plan issues -- the thing
 // gunbc.design_argument::consumption forbids. The witness
-// test.claim.runner.runner_service_activation_witness every_granted_activation_step_is_one_the_plan_issues
+// test.claim.runner.runner_service_activation_witness every_elevated_activation_step_the_plan_issues_has_exactly_one_rendered_grant
 // drives the plan over the readings and goes red if an arm is unreachable, so the roster cannot grow a
 // quiet entitlement.
 fn runner_slot_activation_steps() -> List<RunnerSlotActivationStep> {
