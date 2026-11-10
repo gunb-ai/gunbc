@@ -14664,6 +14664,29 @@ fn reconcile_with_typed_cache(
                                         }
                                     };
                                 let module_tc_started = std::time::Instant::now();
+                                // #16143 (a): the v1 equality walk now reads the single has-== authority
+                                // (type_has_rust_equality) off the closed has-fn-field closure. Mirror what
+                                // realize_module does in the emitter: build it with the emitter's own
+                                // build_emit_graph_info (hence the SAME close_fn_fields fixpoint) over the
+                                // typed dependencies, so this route's equality reader sees the same index the
+                                // self-host route does -- not an empty one. (quick-newt: heal can't reach this
+                                // hand-written caller, so the extra typecheck_module arg is owned here.)
+                                let dep_type_summaries = {
+                                    let dep_modules: Rc<Vec<Rc<TypedModule>>> =
+                                        Rc::new(module_index.values().cloned().collect());
+                                    let dep_registry = module_index.values().fold(
+                                        v1_rt::rc_empty_map(),
+                                        |acc, typed| {
+                                            v1_rt::rc_map_merge(acc, typed.item_registry.clone())
+                                        },
+                                    );
+                                    crate::v1_compiler_infer::build_emit_graph_info(
+                                        dep_modules,
+                                        dep_registry,
+                                    )
+                                    .type_summaries
+                                    .clone()
+                                };
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
                                     module_index.clone(),
@@ -14673,6 +14696,7 @@ fn reconcile_with_typed_cache(
                                     module_symbol_index,
                                     module_variant_base,
                                     equality_by_target.clone(),
+                                    dep_type_summaries,
                                 );
                                 // Per-module attribution for the typecheck-dominant resolves measured
                                 // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
