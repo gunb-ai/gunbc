@@ -554,48 +554,37 @@ data srv1_collective_read_obligation: NonEmptyStr = "STILL OWED, after the 2026-
 // THE RUN RECORD, named as one: window, what had to be stopped to take the read, the measurement
 // interval, and the reading rows it summarises. Kept separate from the obligation so an open task cannot
 // read as closed while keeping its name (review 92817).
-data srv1_collective_read_executed_2026_11_09: NonEmptyStr = "EXECUTED 2026-11-09T22:40:35Z..22:40:51Z in the operator window: both lil-replica units stopped and their serving containers (lil-flash-next-0, lil-flash-next-1) removed, so nothing was using the host while the arms ran (window 22:39:48Z..22:47:37Z; rows in srv1_collective_transport_readings_unloaded_2026_11_09). This is the re-run the 2026-11-08 pair asked for, and the control that pair could not run: same instrument, same sizes, same arm order, nothing loaded. The claim under test was the 2x delta at 256 KiB and above: it does NOT survive an unloaded host. Unloaded, default reaches 4.61 / 11.99 / 12.21 GB/s at 256 KiB / 4 MiB / 64 MiB and NCCL_P2P_DISABLE=1 reaches 4.02 / 12.11 / 12.42 GB/s -- within a few percent, and at 4 MiB and 64 MiB the disabled arm is marginally FASTER. Both arms still print every channel via SHM/direct with isAllDirectP2p 0 directMode 0 isAllCudaP2p 0. So the loaded pair read 2026-11-08T22:22Z was measuring something about the machine at that moment, not about the NCCL_P2P_DISABLE switch; what that something was is still unexplained."
-
-
-// THE SAME TWO ARMS, RE-RUN UNLOADED (2026-11-09, operator window). The instrument differs from the loaded
-// run in one respect only -- both lil-replica units were stopped, so no serving load competes for the two
-// cards. The command below is the command that ran, and it fixes an ambiguity in `nccl_arm_instrument`
-// above: that builder renders the arm label into `-e ARM=<arm>` and nothing else, so as written it cannot
-// have set NCCL_P2P_DISABLE at all, while the printed line those rows carry ("p2pdisabled allreduce ...")
-// is what the script prints FROM ARM. The only way both are true is that the earlier run also passed
-// -e NCCL_P2P_DISABLE=1 explicitly; this arm does, and says so.
-fn nccl_unloaded_arm_instrument(arm: NonEmptyStr, port: NonEmptyStr, printed: NonEmptyStr) -> NonEmptyStr {
-  string_concat_join(
-    fields: [
-      "docker run --rm --network host --ipc host --shm-size=2g --device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 --device nvidia.com/gpu=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 -v /home/briansrls/lil:/lil:ro -e ARM=",
-      arm as String,
-      " -e MASTER_ADDR=127.0.0.1 -e MASTER_PORT=",
-      port as String,
-      " -e NCCL_DEBUG=INFO -e NCCL_DEBUG_SUBSYS=INIT,P2P,SHM,NET ",
-      printed as String,
-    ],
-    separator: ""
-  ) as NonEmptyStr
+// THE RUN RECORD, with the identity that makes it checkable as FIELDS: which units had to be stopped, which
+// containers were removed, when the window was open, when the numbers were actually taken, the instrument and
+// the log that back them, and the reading rows this summarises. `outcome` is the one narrative field; a claim
+// that this run happened can check the fields instead of hunting substrings through a paragraph.
+type Srv1CollectiveReadRun {
+  window_start_utc: NonEmptyStr,
+  window_end_utc: NonEmptyStr,
+  measurement_start_utc: NonEmptyStr,
+  measurement_end_utc: NonEmptyStr,
+  units_stopped: List<NonEmptyStr>,
+  containers_removed: List<NonEmptyStr>,
+  instrument_sha256: NonEmptyStr,
+  results_log_path: NonEmptyStr,
+  results_log_sha256: NonEmptyStr,
+  summary_of_reading_rows: NonEmptyStr,
+  outcome: NonEmptyStr,
 }
 
-// RUN IDENTITY for the unloaded pair: host srv1, both lil-replica@0 and lil-replica@1 stopped and their
-// containers removed for the whole measurement (confirmed `inactive inactive` and no lil-flash container in
-// `docker ps` before the first arm); driver 580.178.04; image 2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9;
-// instrument /home/briansrls/lil/nccl_test.py sha256 702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc
-// (same file, unmodified); window 2026-11-09T22:39:48Z..22:47:37Z, measurement 22:40:35Z..22:40:51Z; the
-// full captured log is /home/briansrls/jh_nccl_results_20261109T224035Z.log sha256
-// 8788e3353eb939847982a51053aefd9f6aa1c32b2705417cdc078e720238b6e1. THE ANSWER THE OBLIGATION ASKED FOR: the
-// 2x delta at 256 KiB and above does NOT survive -- unloaded, the two arms are within a few percent of each
-// other at every size, and both still print every channel "via SHM/direct" with isAllDirectP2p 0.
-// THE ARMS ARE TWO VALUES, NOT TWO SPELLINGS. The 2026-11-08 loaded pair and the 2026-11-09 unloaded re-run are
-// the same two arms, and a consumer that matches rows across runs -- which is the whole point of having both --
-// cannot do it if one list writes "NCCL_P2P_DISABLE=1" and the other writes "p2pdisabled". That is exactly what
-// this module said until the fleet witness went red on the rows I added, so the label is now a value and both
-// lists read it. Note the distinction the rows keep: `-e ARM=<token>` inside an instrument string is the label
-// the test SCRIPT prints in its log lines (the 2026-11-09 disabled arm ran with ARM=p2pdisabled AND
-// NCCL_P2P_DISABLE=1 exported); `env_arm` is the arm's identity, which is what the environment variable
-// NCCL_P2P_DISABLE changed.
-data srv1_nccl_arm_default: NonEmptyStr = "default" as NonEmptyStr
+data srv1_collective_read_executed_2026_11_09: Srv1CollectiveReadRun = Srv1CollectiveReadRun {
+  window_start_utc: "2026-11-09T22:39:48Z" as NonEmptyStr,
+  window_end_utc: "2026-11-09T22:47:37Z" as NonEmptyStr,
+  measurement_start_utc: "2026-11-09T22:40:35Z" as NonEmptyStr,
+  measurement_end_utc: "2026-11-09T22:40:51Z" as NonEmptyStr,
+  units_stopped: ["lil-replica@0" as NonEmptyStr, "lil-replica@1" as NonEmptyStr],
+  containers_removed: ["lil-flash-next" as NonEmptyStr, "lil-flash-next-1" as NonEmptyStr],
+  instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
+  results_log_path: "/home/briansrls/jh_nccl_results_20261109T224035Z.log" as NonEmptyStr,
+  results_log_sha256: "8788e3353eb939847982a51053aefd9f6aa1c32b2705417cdc078e720238b6e1" as NonEmptyStr,
+  summary_of_reading_rows: "srv1_collective_transport_readings_unloaded_2026_11_09" as NonEmptyStr,
+  outcome: "the 2x delta at 256 KiB and above does NOT survive an unloaded host: default arm 4.61 / 11.99 / 12.21 GB/s at 256 KiB / 4 MiB / 64 MiB against the disabled arm's 4.02 / 12.11 / 12.42, with both arms still printing every channel via SHM/direct and isAllDirectP2p 0. So the loaded pair's 2x was the machine holding memory, not the flag; the claim that missing P2P explains the TP=2 versus 2xTP=1 margin is not touched by this run and stays a Hypothesis." as NonEmptyStr,
+}
 data srv1_nccl_arm_p2p_disabled: NonEmptyStr = "NCCL_P2P_DISABLE=1" as NonEmptyStr
 
 data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTransportReading> = [

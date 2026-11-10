@@ -47,6 +47,8 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
   srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
   srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
+  srv1_boot_path_window_router_counting_2026_11_09, srv1_router_window_count_balances, srv1_boot_path_incident_2026_11_09,
+  srv1_installed_boot_path_artifacts_2026_11_09,
   srv1_serving_replica_specs,
   srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
@@ -525,7 +527,30 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
     && all(filter(runs, r => srv1_boot_path_run_is_crash(r)), r => second_count(r.container_created) >= floor)
     && length(filter(runs, r => srv1_boot_path_run_is_cold_start(r))) == 2
     && length(filter(runs, r => srv1_boot_path_run_is_crash(r))) == 2
-    && !string_contains(s: srv1_boot_path_incident_2026_11_09, pattern: "no downtime")
+    && srv1_boot_path_incident_2026_11_09.replica_index == 1
+    && second_count(srv1_boot_path_incident_2026_11_09.downtime) == 756
+    && srv1_boot_path_incident_2026_11_09.container_exit_status == 2
+    && srv1_boot_path_incident_2026_11_09.failed_starts == 4
+    && srv1_router_window_count_balances(record: srv1_boot_path_window_router_counting_2026_11_09)
+    && install_row_digest_matches(host_path: "/usr/local/sbin/lil-replica-launch", render_digest: srv1_render_replica_launcher_sha256())
+    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-0.args", render_digest: srv1_render_replica_engine_args_sha256())
+    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-1.args", render_digest: srv1_render_replica_engine_args_sha256())
+    && install_row_digest_matches(host_path: "/usr/local/sbin/lil-replica", render_digest: srv1_render_replica_helper_sha256())
+}
+
+// The install rows say "the renderer emitted these bytes and the host holds them". The first half is only true
+// as long as the renderer STILL emits them, and nothing re-checks that after an edit to the module: a render
+// that drifts after an install leaves the host holding bytes no row can name a source for, which is the same
+// shape as the window's own incident (installed bytes that disagreed with every claim about them) one step
+// earlier. So the digest computed HERE, from the current renderer, is compared against the digest each row
+// records the host reading back over the file it holds.
+fn install_row_digest_matches(host_path: String, render_digest: String) -> Bool {
+  any(
+    srv1_installed_boot_path_artifacts_2026_11_09,
+    a => a.host_path as String == host_path
+      && a.render_sha256 as String == render_digest
+      && a.installed_sha256_computed_on_host as String == render_digest
+  )
 }
 
 // EVERY HAND-COMPOSED SCRIPT THIS MODULE SHIPS CARRIES A MARKER OF ITS OWN, and each marker names the carrier

@@ -151,7 +151,7 @@ data srv1_serving_shared_pool_key: NonEmptyStr = "/home/briansrls/lil/pool_key"
 
 data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# srv1: one TP=1 Qwen3.8-Flash-Next replica per GPU (2026-11-08: two RTX PRO 6000s; 2xTP1 measured 679 vs TP2 298 tok/s\n# aggregate at 8 warm 150k sessions on srv1 -- no GPU P2P across Altra root complexes, so TP2 runs on NCCL via host memory).\n# Same container recipe as srv1_lil_serve.sh (lil-serve qwen38-flash-next / rtx-pro-6000-pcie, LMCache ram-disk, TLS, API key),\n# one instance per GPU, each with its own port, LMCache disk tier and serve/state dir; the TLS cert and pool key are shared so\n# the router verifies both the same way. Disk-first KV (2026-11-08, operator): small 12 GiB RAM tier L1, 125 GB NVMe tier L2 each;\n# RAM per replica ~ L1 12 + PLE table 26.8 (pinned host, outside the cgroup) + ~6 process. No automatic restart.\n# usage: srv1_lil_serve_gpu.sh 0|1     (EXTRA=\"...\" passes extra lil/vLLM options after \"--\")\nset -eu\nIDX=$\{1:?usage: $0 0|1}\ncase $IDX in\n  0) GPU=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3; NAME=lil-flash-next;   PORT=18000; KV=kv;      SERVE=serve ;;        # Max-Q, 0001:01:00.0\n  1) GPU=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750; NAME=lil-flash-next-1; PORT=18001; KV=kv-gpu1; SERVE=serve-gpu1 ;;   # Workstation (300 W cap), 0004:01:00.0\n  *) echo \"GPU index must be 0 or 1\" >&2; exit 2 ;;\nesac\nEXTRA=$\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9\nB=$HOME/lil; mkdir -p $B/hf $B/$KV $B/$SERVE $B/jit; umask 077\n[ -s $B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d \"/+=\" > $B/pool_key\n# one TLS identity for both replicas (the router pins it via upstream_ca.pem)\nfor f in tls.key tls.crt; do [ -s $B/$SERVE/$f ] || { sudo -n cp -p $B/serve/$f $B/$SERVE/$f; }; done\numask 022\ndocker rm -f $NAME >/dev/null 2>&1 || true\nfor i in $(seq 1 150); do docker container inspect $NAME >/dev/null 2>&1 || break; docker rm -f $NAME >/dev/null 2>&1 || true; sleep 2; done\ndocker run -d --name $NAME --restart no --device nvidia.com/gpu=$GPU --cgroup-parent=srv1-inference.slice --memory=32g --memory-swap=32g \\\n  --shm-size 16g -p $PORT:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v $B/hf:/root/.cache/huggingface -v $B/$KV:/cache/kv -v $B/jit:/cache/jit -v $B/$SERVE:/root/serve -v $B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash $IMG -lc \"\nD=/root/serve; ev(){ echo \\\"\\$(date -u +%FT%TZ) \\$*\\\" >> \\$D/events.log; }\n[ -s \\$D/tls.key ] && [ -s \\$D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj /CN=pool-card -keyout \\$D/tls.key -out \\$D/tls.crt >> \\$D/events.log 2>&1\nev \\\"START srv1 gpu$IDX $GPU (driver \\$(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\\\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=12 --env LMCACHE_L2_GB=125 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 $EXTRA --ssl-keyfile \\$D/tls.key --ssl-certfile \\$D/tls.crt --api-key \\\"\\$(cat /root/.pool_key)\\\" --max-model-len 229376 >> \\$D/serve.log 2>&1\"\necho \"started $NAME on GPU $IDX ($GPU) port $PORT\"; docker ps --filter name=^/$NAME\\$ --format \"{.Status}\"\n",
-  reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route." STATUS ON THIS ROW: RESTORE PATH ONLY since 2026-11-09T21:44:07Z: no systemd path reaches this file any more -- the installed helper now points LAUNCH= at /usr/local/sbin/lil-replica-launch, which renders docker from these rows. The sha above was computed with sha256sum ON srv1 (not relayed). This script still puts the pool bearer key in the engine argv and accepts an unbound EXTRA, which is precisely what the switch removed; it is kept so the window has a rollback target. as NonEmptyStr,
+  reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route STATUS ON THIS ROW: RESTORE PATH ONLY since 2026-11-09T21:44:07Z: no systemd path reaches this file any more -- the installed helper now points LAUNCH= at /usr/local/sbin/lil-replica-launch, which renders docker from these rows. The sha above was computed with sha256sum ON srv1 (not relayed). This script still puts the pool bearer key in the engine argv and accepts an unbound EXTRA, which is precisely what the switch removed; it is kept so the window has a rollback target." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
@@ -1624,8 +1624,25 @@ data srv1_installed_boot_path_artifacts_2026_11_09: List<Srv1InstalledArtifact> 
 
 // The unit file itself was NOT changed by this window, so its digest is recorded to say the change is in
 // the helper and the launcher and nowhere else. The unit is unchanged from the read of 2026-11-09.
-data srv1_replica_unit_unchanged_2026_11_09: NonEmptyStr =
-  "/etc/systemd/system/lil-replica@.service sha256 1372a94f3ea1c2787566d5f75a7c482d50128e89f3359166f2eafc94fadb336c (recorded at backup 20261109T184850Z); ExecStart and ExecStop still run /usr/local/sbin/lil-replica start|stop %i, which is now the rendered helper" as NonEmptyStr
+type Srv1UnitFileState {
+  path: NonEmptyStr,
+  // the digest `sha256sum` printed ON srv1, not the one this repo believes the file has
+  sha256_computed_on_host: NonEmptyStr,
+  read_on_utc: NonEmptyStr,
+  backup_dir: NonEmptyStr,
+  // what the verbs still hand off to; the change lives in what THAT path holds, not in the unit
+  exec_verbs_run: NonEmptyStr,
+  changed_by_this_window: Bool,
+}
+
+data srv1_replica_unit_unchanged_2026_11_09: Srv1UnitFileState = Srv1UnitFileState {
+  path: "/etc/systemd/system/lil-replica@.service" as NonEmptyStr,
+  sha256_computed_on_host: "1372a94f3ea1c2787566d5f75a7c482d50128e89f3359166f2eafc94fadb336c" as NonEmptyStr,
+  read_on_utc: "2026-11-09T18:48:50Z" as NonEmptyStr,
+  backup_dir: "/home/briansrls/jh_backups/20261109T184850Z" as NonEmptyStr,
+  exec_verbs_run: "/usr/local/sbin/lil-replica start|stop %i" as NonEmptyStr,
+  changed_by_this_window: false,
+}
 
 // Which run of the boot path a receipt describes. The set is CLOSED on purpose: a cold start and a crash are
 // different claims about the boot path (one proves the start path, the other proves systemd's restart), and
@@ -1724,13 +1741,99 @@ fn srv1_boot_path_crash_restart_floor_seconds() -> Nat { second_count(srv1_repli
 // are cumulative since the router started, so the cost is a difference between two snapshots taken on srv1.
 // The window is every action taken against the serving replicas on 2026-11-09: the first (failed) switch
 // attempt, the two cold-start switches, the two crash tests and the NCCL re-run with both replicas stopped.
-data srv1_boot_path_window_router_counting_2026_11_09: NonEmptyStr =
-  "status:502 13 at 2026-11-09T20:38:24Z (before anything was touched) -> 64 at 22:47:37Z (after the whole window): +51 total, of which upstream srv1-vllm +24 and srv1-vllm-1 +24. By phase: the failed first attempt and manual recovery (21:04:54Z..21:34:50Z) +7; replica 1 switch +4; replica 1 crash +2; replica 0 switch +4; replica 0 crash +6; the NCCL window with BOTH replicas down (22:39:48Z..22:47:37Z, 469 s, measurement itself 16 s) +28. status:200 over the same span went 27150 -> 29727, so every 502 is a slice of real traffic, not a dry run. The NCCL window is the honest bulk of it: stopping both replicas is what the re-run required, and no rollback protects against that." as NonEmptyStr
+// The disruption the window cost, with the counters as FIELDS: the router's counters are cumulative, so the
+// cost is a difference, and the phase and upstream breakdowns must ADD UP to that difference. In prose those
+// numbers could drift apart silently; here a witness can check the arithmetic.
+type Srv1RouterWindowCount {
+  snapshot_from_utc: NonEmptyStr,
+  snapshot_to_utc: NonEmptyStr,
+  status_502_before: Nat,
+  status_502_after: Nat,
+  status_200_before: Nat,
+  status_200_after: Nat,
+  // the closed set of actions this window took against the serving path; their sum is the difference above
+  failed_first_attempt_502: Nat,
+  replica1_switch_502: Nat,
+  replica1_crash_502: Nat,
+  replica0_switch_502: Nat,
+  replica0_crash_502: Nat,
+  nccl_window_502: Nat,
+  // the two upstreams this window touched, and what everything ELSE on the router contributed
+  upstream_srv1_vllm_502_added: Nat,
+  upstream_srv1_vllm_1_502_added: Nat,
+  other_upstreams_502_added: Nat,
+  nccl_window_seconds: Second,
+  nccl_measurement_seconds: Second,
+  note: NonEmptyStr,
+}
+
+data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = Srv1RouterWindowCount {
+  snapshot_from_utc: "2026-11-09T20:38:24Z" as NonEmptyStr,
+  snapshot_to_utc: "2026-11-09T22:47:37Z" as NonEmptyStr,
+  status_502_before: 13,
+  status_502_after: 64,
+  status_200_before: 27150,
+  status_200_after: 29727,
+  failed_first_attempt_502: 7,
+  replica1_switch_502: 4,
+  replica1_crash_502: 2,
+  replica0_switch_502: 4,
+  replica0_crash_502: 6,
+  nccl_window_502: 28,
+  upstream_srv1_vllm_502_added: 24,
+  upstream_srv1_vllm_1_502_added: 24,
+  other_upstreams_502_added: 3,
+  nccl_window_seconds: second(469),
+  nccl_measurement_seconds: second(16),
+  note: "status:200 over the same span went 27150 -> 29727, so every 502 is a slice of real traffic, not a dry run. The NCCL window is the honest bulk of it: stopping both replicas is what the unloaded re-run required, and no rollback protects against that." as NonEmptyStr,
+}
 
 // The outage this window cost, in its own row rather than folded into the success rows. It is the price of
 // the switch and the PR must not read as if the switch were free.
-data srv1_boot_path_incident_2026_11_09: NonEmptyStr =
-  "replica 1 was down 2026-11-09T21:04:54Z..21:17:30Z (756 s) on the FIRST switch attempt. Cause: the rendered container command had one stray `)` -- the args-file refusal was concatenated onto the end of the captured START line -- so the container's `bash -lc` exited 2 within a second, four times, until lil-replica@1 exhausted its restart burst ('Start request repeated too after 5 attempts') and failed. Recovery was manual (restore the backed-up helper, daemon-reload, reset-failed, start), which is why the switch script now carries its own rollback: on any failure inside the deadline it reinstalls the backup, resets the counter and starts the old path, and reports the total outage. Router-attributed cost of the window is counted from the upstream counters, not from this log." as NonEmptyStr
+// The outage this window cost, as fields rather than a paragraph: which unit, how long, what it exited with,
+// what the unit decided, and what was changed so the same recovery is not manual next time. A `no downtime`
+// claim cannot be made about this row by accident, and the downtime is a duration, not a number in prose.
+type Srv1BootPathIncident {
+  replica_index: Nat,
+  down_from_utc: NonEmptyStr,
+  down_to_utc: NonEmptyStr,
+  downtime: Second,
+  failed_starts: Nat,
+  container_exit_status: Nat,
+  unit_outcome: NonEmptyStr,
+  cause: NonEmptyStr,
+  recovery: NonEmptyStr,
+  repair: NonEmptyStr,
+}
+
+data srv1_boot_path_incident_2026_11_09: Srv1BootPathIncident = Srv1BootPathIncident {
+  replica_index: 1,
+  down_from_utc: "2026-11-09T21:04:54Z" as NonEmptyStr,
+  down_to_utc: "2026-11-09T21:17:30Z" as NonEmptyStr,
+  downtime: second(756),
+  failed_starts: 4,
+  container_exit_status: 2,
+  unit_outcome: "lil-replica@1 exhausted its restart burst (Start request repeated too quickly after 5 attempts; StartLimitBurst=3 inside StartLimitIntervalSec=3600) and the unit entered failed" as NonEmptyStr,
+  cause: "the rendered container command carried one unmatched ) : the args-file refusal had been CONCATENATED onto the end of the captured START line, so the container's bash -lc exited 2 within a second of starting, four times. The witness that was supposed to catch it asked only whether each captured line appeared INSIDE the rendered line, which an appended token cannot be caught by -- see a_control_that_shares_its_derivation_with_its_subject, SPECIMEN THREE." as NonEmptyStr,
+  recovery: "manual: restore the backed-up helper, systemctl daemon-reload, systemctl reset-failed, start the old path" as NonEmptyStr,
+  repair: "the switch script now rolls itself back on any failure inside the deadline (reinstall the backup, reset the counter, start the old path, report the total outage), and the containment control was replaced with whole-LINE equality plus two gates that do not travel through this module's own representation: the serving image's bash parses the emitted command, and a dry run of it must yield the argv docker inspect reported before the switch." as NonEmptyStr,
+}
+
+// The window's counter row has to ADD UP. The phase fields are the closed set of actions this window took
+// against the serving path, and the two upstreams it touched plus everything else on the router must account
+// for the same difference between the two snapshots. Written without subtraction on Nats: a partial sum plus
+// the before-count must equal the after-count, so a row whose parts drift from its totals goes red instead of
+// reading as a plausible paragraph.
+fn srv1_router_window_count_balances(record: Srv1RouterWindowCount) -> Bool {
+  record.status_502_before
+      + record.failed_first_attempt_502 + record.replica1_switch_502 + record.replica1_crash_502
+      + record.replica0_switch_502 + record.replica0_crash_502 + record.nccl_window_502
+    == record.status_502_after
+    && record.status_502_before
+      + record.upstream_srv1_vllm_502_added + record.upstream_srv1_vllm_1_502_added + record.other_upstreams_502_added
+    == record.status_502_after
+    && record.status_200_after > record.status_200_before
+}
 
 // What a witness cannot see, said plainly: no host reboot has been run, so the boot path is executed but
 // not shown to survive a boot. The unit's enablement (systemctl is-enabled = enabled, read 2026-11-09) is

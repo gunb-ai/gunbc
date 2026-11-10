@@ -12,6 +12,7 @@ import std.nat { Nat }
 import std.algebra { string_contains }
 import std.measure { Bandwidth, ByteSize, Microsecond, bandwidth, bandwidth_count, byte_size, byte_size_count, microsecond, microsecond_count }
 import std.optional { Absent, Present }
+import std.content_hash { lower_hex_64 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pci.identity { PciAddress }
 import extdeps.storage.types { PcieLink, Gen4, Gen5, pcie_generation_wire }
@@ -209,8 +210,8 @@ test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
     && disabled_arm.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
     && default_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
     && !disabled_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
-    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "lil-flash-next")
-    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "re-run")
+    && any(srv1_collective_read_executed_2026_11_09.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
+    && string_contains(s: srv1_collective_read_executed_2026_11_09.outcome as String, pattern: "does NOT survive an unloaded host")
 }
 
 // THE TWO RUNS NAME THEIR ARMS WITH THE SAME VALUES. This is the control that caught a real defect in the rows
@@ -269,9 +270,9 @@ test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
     && arms_within(list: unloaded, at_bytes: byte_size(64 * 1024 * 1024), numerator: 8, denominator: 10)
     // the obligation now names the run it was executed in, the confounder that had to be removed, and the
     // fact that it was the re-run the earlier pair asked for
-    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "lil-flash-next")
-    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "re-run")
-    && string_contains(s: srv1_collective_read_executed_2026_11_09 as String, pattern: "EXECUTED")
+    && any(srv1_collective_read_executed_2026_11_09.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
+    && string_contains(s: srv1_collective_read_executed_2026_11_09.outcome as String, pattern: "does NOT survive an unloaded host")
+    && string_contains(s: srv1_collective_read_executed_2026_11_09.results_log_path as String, pattern: "jh_nccl_results")
 }
 
 // A NEGATIVE FOR THE NEGATIVE: if the unloaded rows were filled from the loaded ones, or if either arm had
@@ -300,7 +301,7 @@ test fn the_unloaded_rows_are_not_the_loaded_rows_relabelled() -> Bool {
 // named there, and the run window plus the rows it summarises carried by the record.
 test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
   let obligation = srv1_collective_read_obligation as String
-  let record = srv1_collective_read_executed_2026_11_09 as String
+  let record = srv1_collective_read_executed_2026_11_09
   !string_contains(s: obligation, pattern: "EXECUTED")
     && !string_contains(s: obligation, pattern: "DONE")
     && !string_contains(s: obligation, pattern: "COMPLETED")
@@ -309,9 +310,16 @@ test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
     && string_contains(s: obligation, pattern: "NCCL_DEBUG_SUBSYS=TRANSPORT")
     && string_contains(s: obligation, pattern: "TP=2")
     && string_contains(s: obligation, pattern: "srv1_collective_read_executed_2026_11_09")
-    && string_contains(s: record, pattern: "EXECUTED 2026-11-09T22:40:35Z")
-    && string_contains(s: record, pattern: "22:39:48Z..22:47:37Z")
-    && string_contains(s: record, pattern: "srv1_collective_transport_readings_unloaded_2026_11_09")
+    && record.measurement_start_utc as String == "2026-11-09T22:40:35Z"
+    && record.window_start_utc as String == "2026-11-09T22:39:48Z"
+    && record.window_end_utc as String == "2026-11-09T22:47:37Z"
+    && record.summary_of_reading_rows as String == "srv1_collective_transport_readings_unloaded_2026_11_09"
+    // the record names the things that had to be stopped, and the instrument by digest, so a later
+    // reader can tell this run from the loaded pair without parsing prose
+    && length(record.units_stopped) == 2
+    && any(record.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
+    && lower_hex_64(value: record.instrument_sha256)
+    && lower_hex_64(value: record.results_log_sha256)
 }
 
 // AN EXPLANATION IS NEVER A PREMISE. Both srv1 rows -- the one about what missing peer access accounts for,
