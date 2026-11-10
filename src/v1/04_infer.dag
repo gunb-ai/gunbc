@@ -4206,6 +4206,22 @@ fn equality_applied_argument_route_admitted(a: Node, scope: InferScope) -> Bool 
 // variable is instantiation-blind and stays admitted; everything else is judged by the same walk the
 // plan uses (one question, one walk): refusal means not structural (gunbc#15175 re-land, ruling
 // silent-bee-845 after the 10-row classification).
+// A RESOLVED KERNEL SCALAR: a leaf the resolver's own kernel layer recognizes (bare_occurrence_binding =>
+// BareOccurrenceIsKernelName) carrying no arguments. Decided by RESOLUTION, not by spelling -- a corpus
+// type that happens to be named "String" has a real declaration span, so the classifier returns
+// DeclaredInItsFile (not IsKernelName) and it is NOT admitted here; it is walked. The kernel-scalar
+// short-circuit MUST precede the realizes-natively test in the structural chain (the function's stated
+// intent, "Kernel scalars are structural"), because a kernel scalar's provenance IS KernelMinted, which
+// provenance_realizes_natively answers true for, and firing that first made String a non-structural
+// argument and load-refused Medium<String> once the !occurs bypass was removed.
+fn equality_argument_is_resolved_kernel_scalar(peeled: Node, scope: InferScope) -> Bool {
+  let leaf = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
+  match bare_occurrence_binding(index: scope.type_env.symbol_index, name: leaf, reference: peeled) {
+    BareOccurrenceIsKernelName => (peeled.children |> count) == 0
+    _ => false
+  }
+}
+
 fn equality_applied_argument_is_structural(n: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
   if depth > 64 {
     false
@@ -4213,7 +4229,6 @@ fn equality_applied_argument_is_structural(n: Node, scope: InferScope, visited: 
     true
   } else {
     let peeled = normalize_access_type_node(n: n)
-    let si = scope.type_env.source_indices
     // Route by the argument's DECLARING identity. Ambiguous or unbound => refuse (condition 2): this is an
     // argument judgment, so never fall back to the use-site key (the known-wrong one).
     match equality_argument_identity(a: n, scope: scope) {
@@ -4224,10 +4239,10 @@ fn equality_applied_argument_is_structural(n: Node, scope: InferScope, visited: 
           Absent =>
             if peeled.connective == Arrow {
               false
+            } else if equality_argument_is_resolved_kernel_scalar(peeled: peeled, scope: scope) {
+              true
             } else if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
               false
-            } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: si, node: peeled))) && (peeled.children |> count) == 0 {
-              true
             } else {
               let w = equality_operand_walk(n: n, scope: scope, visited: visited, depth: depth + 1, at_root: false)
               w.refusal == none
