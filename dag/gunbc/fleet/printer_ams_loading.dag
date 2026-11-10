@@ -21,12 +21,18 @@ type AmsSlotReading {
 }
 
 // 2026-11-04, operator to wise-tern-646: PETG in AMS slot 4 and PLA in slot 1 on both printers.
+// 2026-11-10, operator to sleek-wren-619: both printers hold PETG in slot 4 (slot 1 not re-read).
 data ams_slot_readings: List<AmsSlotReading> = [
   AmsSlotReading { printer: printer_01, slot: 1, material: Pla, read_on: "2026-11-04" },
-  AmsSlotReading { printer: printer_01, slot: 4, material: Petg, read_on: "2026-11-04" },
+  AmsSlotReading { printer: printer_01, slot: 4, material: Petg, read_on: "2026-11-10" },
   AmsSlotReading { printer: printer_02, slot: 1, material: Pla, read_on: "2026-11-04" },
-  AmsSlotReading { printer: printer_02, slot: 4, material: Petg, read_on: "2026-11-04" },
+  AmsSlotReading { printer: printer_02, slot: 4, material: Petg, read_on: "2026-11-10" },
 ]
+
+// What a receipt says this printer's AMS holds: every declared reading, with its date, and nothing else.
+fn ams_slot_readings_of(printer: PhysicalAssetIdentity) -> List<AmsSlotReading> {
+  filter(ams_slot_readings, r => r.printer == printer)
+}
 
 // SELECTION PRECEDES CONVERGENCE (gunbc.design_argument::selection_precedes_convergence): the start command receives a tray chosen here by
 // matching the recipe's material to what the printer's AMS holds. There is no default tray. No match
