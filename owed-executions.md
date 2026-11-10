@@ -88,12 +88,19 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - UNOWNED: commit_writer_admission_witness 0/13, refused at LOAD (expected Product(PositiveInt), got Primitive(Int), at 8 sites). Pre-existing, outside the cast class.
 
 ## From fierce-lark-531's final report (2026-11-10)
-- runner_host_deploy_witness 0/9: its own effect-summary errors (inv 918ff157). Unowned.
-- commit_writer_admission_witness 0/13, refused at LOAD: nine Product(PositiveInt) mismatches (:202 through :595). Unowned.
+- runner_host_deploy_witness 0/9: its own effect-summary errors (inv 918ff157). OWNED by gentle-ram-548 (adhoc-29d1e3bf) since 2026-11-10.
+- commit_writer_admission_witness 0/13, refused at LOAD: nine Product(PositiveInt) mismatches (:202 through :595). OWNED by gentle-ram-548 (#16218). Once it loads, line 103 is expected red until zesty's #16224 drops the cast; either order is fine.
 - Sweep quality: the v1_src_dag_parse test does not count a `| Arm` head, an `operation` or a `service` as a declaration. About 31 of the 312 reference rows are spurious for that reason; the rest is real work. The 398-line list is attached to #16200 (comments 6756695262, 6756696281).
 - seed_builder_free_route_probe_witness is non-discriminating (2/2 at both legs).
 
 ## No detectors (sunny-bat-59, #16214)
 - Lock staleness: `cargo metadata --locked` returns rc 0 even with a stale package. Only an unlocked step followed by `git diff --exit-code Cargo.lock` sees it.
 - Witness load drift: no required job loads dag/test/claim/*.dag (v1_required_lanes_withdrawn). The cheap sweep shape is claim_batch --hermetic --wet --source-root dag --source-root src/v2 --entry <file> --functions <all>, one file per invocation. A corpus pass would find the rest of the load-refused witnesses.
-- rustfmt drift on main makes the pre-commit hook refuse every commit; a lane is dispatched.
+- rustfmt drift: already repaired on main by #16183 (fmt --check rc 0 at a38e6eb9, invocation 7e9667fb). Hooks failing on older checkouts just need a main merge.
+
+## fierce-lark-531 handoff (2026-11-10, lane closed)
+- Landed: #16200 #16205 #16208 #16209 #16211 #16216. Post-merge composition 47/47 at fd28ef2f (BuildBuddy a5408368) and eefe616d (775fa819).
+- UNOWNED: disposition_redundancy 0/25, refused at load on main.
+- UNOWNED: the 398-line sweep list is a FLOOR (the sweep hit a 38-min timeout while emitting; ask quick-newt-573 for the tail). The list is form-blind, so triage before budgeting.
+- NOT CLEARED: HttpStatus / Milliseconds casts were never observed red, because the files carrying them do not load.
+- RISK for #16224: if the ARM-REFINE pre-empts assignment conformance on the same field, fierce-lark's 2 TypeMismatch rows drop to 0. The identity pin a_value_already_on_the_carrier_casts_by_identity must stay ADMITTED.
