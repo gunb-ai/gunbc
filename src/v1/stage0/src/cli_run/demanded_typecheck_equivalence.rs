@@ -184,6 +184,7 @@ fn graph_from(
     Rc<crate::v1_std_core::InternTable>,
     Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+    Rc<crate::v1_compiler_resolve::ModuleGraph>,
 ) {
     let sources = closure_of(entry);
     let mut intern = empty_intern_table();
@@ -215,7 +216,7 @@ fn graph_from(
         );
     }
     let graph = crate::v1_compiler_resolve::resolve_modules(Rc::new(parsed.into()), si.clone());
-    (sources, intern, si, graph.modules.clone(), Rc::new(graph))
+    (sources, intern, si, graph.modules.clone(), graph)
 }
 
 // PRODUCTION-ROUTE EQUIVALENCE. `gunbc run` types an entry through v1.compiler.infer
