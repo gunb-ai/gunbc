@@ -1267,6 +1267,9 @@ type ObservedReading sole_constructor {
 fn observed_reading(evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedReading
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_probe"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_credential_probe"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_probe_from"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_read_bmc_account_state"),
   ]
 {
   ObservedReading { evidence: evidence, observed_at: observed_at }
@@ -1333,6 +1336,7 @@ fn derive_shared_store_retirement(
 ) -> SharedStoreRetirementOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_published_credential"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_published_derivation"),
   ]
 {
   let shared = shared_store_surfaces(key: policy)
@@ -1367,6 +1371,8 @@ type ObservedPublishedAccount sole_constructor {
 fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedPublishedAccount
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_mint"),
   ]
 {
   ObservedPublishedAccount { kind: kind, evidence: evidence, observed_at: observed_at }
@@ -1478,6 +1484,8 @@ fn observed_bmc_account_state(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "observation_with_controller_clock"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_mint"),
   ]
 {
   BmcAccountStateObservation {
@@ -3034,6 +3042,19 @@ fn bmc_secure_standing_of_phase_receipt(
 
 data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.bmc_secure dry realization over gunbc.bmc_model BmcWorld" as NonEmptyStr
 
+// THE LIVE READ'S REALIZATION NAME. Named apart from the dry one so a sealed observer instant from a
+// live account-state read can never be mistaken for a dry-modeling instant; the reader itself reads the
+// observer clock through gunbc.clock_read observer_clock_modeled (the same authority the dry pass uses),
+// NEVER the controller's clock.
+// THE SUPPLIED-TRANSPORT READ'S REALIZATION NAME. The reader (PXE 1c, sharp-crane-14) mints its instants
+// through gunbc.clock_read observer_clock_modeled, exactly as the dry reader does, over a transport of
+// caller-handed fixture responses. This name therefore SAYS SUPPLIED-TRANSPORT / MODELED -- it is the
+// honest label for what this path is (a second dry realization with a live-shaped interface), so a
+// modeled EpochMs is never stamped as a live read. The word "live" is reserved for the wet transport (its
+// driver is the sibling PR) that reads the real observer clock through observer_clock_read and discharges
+// bmc_secure_state_live_read_frontier / bmc_served_lockout_live_read_frontier.
+data bmc_account_state_supplied_transport_realization_name: NonEmptyStr = "gunbc.machine_intake.bmc_secure supplied-transport realization (caller-handed responses; instants modeled via observer_clock_modeled, NOT a live read)" as NonEmptyStr
+
 // THE DRY REALIZATION'S OBSERVER SCHEDULE, SEALED. An EpochMs is turned into a sealed observer instant
 // only on behalf of the dry read and the dry apply, which are themselves admitted only to the named
 // witness callers: the seed does not refuse a record at an EpochMs formal (gunbc#13385), so these admit
@@ -3228,6 +3249,313 @@ fn dry_read_bmc_account_state(
   )
 }
 
+// ============================ THE LIVE ACCOUNT-STATE READ ============================
+//
+// A LIVE realization beside dry_read_bmc_account_state. Where the dry read consults a
+// modeled BmcWorld and stamps synthetic dry evidence, this reader takes the responses a
+// live controller actually returned -- one per probe and per census -- commits every one as
+// CONTENT-ADDRESSED evidence, and stamps every instant from the OBSERVER's clock
+// (gunbc.clock_read observer_clock_read), never the controller's clock. It is generic over
+// controllers: the controller, board, firmware, managed reference and users are inputs; no
+// per-host literal is consulted (gunbc.plans.fleet_machine_naming ruling D2).
+//
+// IT NEVER PROBES THE PUBLISHED CREDENTIAL. On OpenBMC 3.22.00 / ALTRAD8UD-1L2T the budget
+// is tight and the published account IS the managed account (root is both); the published
+// retirement is DERIVED on the managed account under the credential-policy row
+// (gunbc.machine_intake.bmc_credential_policy) -- the wet analogue of DryDerivePublishedRetirement.
+// A missing or ungrounded policy row REFUSES with a typed cause; it is never a reason to
+// probe to find out. This is the realization bmc_secure_state_live_read_frontier and
+// bmc_served_lockout_live_read_frontier were waiting on.
+
+// One answer a live controller gave for one read, and whether its capture was committed as
+// content-addressed evidence. A response whose bytes were never committed cannot back the
+// observation (BmcLiveReadRefusal.ResponseNotCommitted).
+type BmcLiveResponse {
+  read: NonEmptyStr
+  response: NonEmptyStr
+  // THE EVIDENCE READBACK OF THESE BYTES, produced by the wet layer's content-addressed evidence-store write
+  // (the driver PR, which writes each response and reads its ref back). The assembler does NOT take the
+  // caller's word that a capture was committed: it recomputes the content hash of `response` and refuses
+  // unless it equals this digest, so a response whose capture was never written to the store cannot be
+  // represented by a matching ref -- there is no committed answer to point at. Construction (the store
+  // write), not a caller boolean, is what makes an uncommitted answer impossible here.
+  evidence: EvidenceRef
+}
+
+// The break-glass standing handed to the reader. A host with no break-glass generation
+// (srv15 has none: no onboarding plan derives bmc-srv15-admin as a second generation) is
+// modelled as ABSENT -- never invented. The assessment then flags/refuses it as
+// BreakGlassGenerationUnestablished. A present generation is user-tested over IPMI; its
+// bytes are materialized through gunbc.auth.secret_ref_credential fetch_secret_ref_credential
+// by the caller, which hands the test result back in `answer`.
+type BmcBreakGlassStanding
+  = BreakGlassAbsent { cause: NonEmptyStr }
+  | BreakGlassPresent { reference: ManagedCredentialReference, accepted: Bool, answer: BmcLiveResponse }
+
+// THE SUPPLIED TRANSPORT: the decoded value of each read plus the raw answer that produced
+// it and whether that answer was committed. This is the boundary the witnesses drive with
+// fixture responses and the real run drives with committed BMC captures.
+type BmcLiveAccountStateTransport {
+  managed_accepted: Bool
+  managed_answer: BmcLiveResponse
+  census: IpmiControllerChannelCensus
+  census_answer: BmcLiveResponse
+  users_answer: BmcLiveResponse
+  redfish_census: BmcRedfishAccountCensusReading
+  redfish_census_answer: BmcLiveResponse
+  redfish_surface_served: Bool
+  redfish_surface_answer: BmcLiveResponse
+  // THE SERVED LOCKOUT, read live: a Redfish GET of AccountService and a Get LAN
+  // Configuration Parameters of the addressed channel.
+  account_service: RedfishAccountServiceLockoutVerdict
+  account_service_answer: BmcLiveResponse
+  lan_threshold: IpmiLanBadPasswordThresholdVerdict
+  lan_threshold_answer: BmcLiveResponse
+  break_glass: BmcBreakGlassStanding
+}
+
+type BmcLiveReadRefusal
+  = ResponseNotCommitted { read: NonEmptyStr }
+  | PublishedRetirementPolicyUngrounded { detail: NonEmptyStr }
+  | NoObserverClockReading { detail: NonEmptyStr }
+
+type BmcLiveAccountStateReadOutcome
+  = LiveReadRefused { cause: BmcLiveReadRefusal }
+  | LiveReadMinted { observation: BmcAccountStateObservation }
+
+// Does a response's evidence readback actually correspond to its bytes? The proof of commitment is that the
+// content hash of the response equals the digest the evidence store read back -- not a caller's assertion.
+fn live_response_evidence_matches(answer: BmcLiveResponse) -> Bool {
+  content_hash_equal(
+    left: content_hash_of_value(value: answer.response),
+    right: answer.evidence.digest,
+  )
+}
+
+// Content-addressed evidence for a response, but ONLY when its evidence digest corresponds to its bytes. A
+// response whose evidence does not match -- i.e. an answer whose capture was never written to the store --
+// yields none, and the caller refuses rather than mint an observation from an unproven response.
+fn live_account_state_evidence(answer: BmcLiveResponse) -> EvidenceRef? {
+  if live_response_evidence_matches(answer: answer) {
+    Present { value: answer.evidence }
+  } else {
+    none
+  }
+}
+
+// The first read whose evidence does not correspond to its bytes (its capture was never committed), or none
+// when every answer is backed by a matching evidence readback.
+fn live_first_uncommitted(answers: List<BmcLiveResponse>) -> NonEmptyStr? {
+  match list_head(xs: filter(answers, a => !live_response_evidence_matches(answer: a))) {
+    Absent => none
+    Present { value: a } => Present { value: a.read }
+  }
+}
+
+// The observer's clock, never the controller's -- but MODELED, not read live. The reader mints its instant
+// through gunbc.clock_read observer_clock_modeled (the same authority the dry realization uses) under the
+// SUPPLIED-TRANSPORT realization name, so a sealed observer instant is never a controller clock and never a
+// live-read instant. observed_reading's seal is the other half: it refuses a ControllerClockReading at
+// observed_at, and the observation carries controller_clock: none. Admitted only to the reader.
+fn live_account_state_instant(millis: EpochMs) -> ObserverClockInstant?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_read_bmc_account_state"),
+  ]
+{
+  Present { value: observer_clock_modeled(millis: millis, realization: bmc_account_state_supplied_transport_realization_name) }
+}
+
+fn live_probe_from(evidence: EvidenceRef, accepted: Bool, at: ObserverClockInstant) -> ObservedCredentialProbe {
+  let reading = observed_reading(evidence: evidence, observed_at: at)
+  if accepted {
+    ObservedCredentialAccepted { reading: reading }
+  } else {
+    ObservedCredentialRejected { reading: reading }
+  }
+}
+
+fn live_credential_probe(accepted: Bool, answer: BmcLiveResponse, at: ObserverClockInstant) -> ObservedCredentialProbe? {
+  match live_account_state_evidence(answer: answer) {
+    none => none
+    Present { value: e } => Present { value: live_probe_from(evidence: e, accepted: accepted, at: at) }
+  }
+}
+
+// THE DERIVATION'S GATE: under the credential-policy row, derive the published retirement on
+// the managed account. None -- and so a refusal, never a probe -- when the row is absent or the
+// derivation refuses. The reader spends no published-credential login.
+fn live_published_derivation(
+  policy: BmcCredentialPolicyKey?,
+  managed_account: NonEmptyStr,
+  published_account: NonEmptyStr,
+  served: List<CredentialSurface>,
+  generation_is_published_password: Bool,
+) -> SharedStoreRetirement? {
+  match policy {
+    none => none
+    Present { value: p } =>
+      match derive_shared_store_retirement(
+        policy: p,
+        published_account: published_account,
+        managed_account: managed_account,
+        served: served,
+        generation_is_published_password: generation_is_published_password,
+      ) {
+        SharedStoreRetirementDerived { derivation: d } => Present { value: d }
+        SharedStoreRetirementRefused { cause: _ } => none
+      }
+  }
+}
+
+// THE LIVE READ. Every response must have been committed as content-addressed evidence; the
+// published credential is DERIVED (zero published-credential logins); the served lockout is
+// read through bmc_lockout_surface_from_redfish and bmc_lockout_surface_from_ipmi_lan; the
+// instants are the observer's. It mints the same BmcAccountStateObservation the dry reader
+// mints for the same world (test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness).
+fn live_read_bmc_account_state(
+  transport: BmcLiveAccountStateTransport,
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
+  firmware: BmcFirmwareReleaseIdentity,
+  managed: ManagedCredentialReference,
+  managed_user: IpmiUserId,
+  published_user: IpmiUserId,
+  published_account: NonEmptyStr,
+  published_account_kind: PublishedAccountKind,
+  // The credential-policy row that grounds DERIVING the published retirement on the managed
+  // account. None (or one the derivation refuses) refuses -- the reader never probes the
+  // published credential to find out.
+  policy: BmcCredentialPolicyKey?,
+  published_generation_is_password: Bool,
+  served_surfaces: List<CredentialSurface>,
+  attempt: AttemptIdentity,
+  // The observer schedule this pass is stamped at, exactly as dry_read_bmc_account_state takes its
+  // read_at_millis: the reader turns it into a sealed observer instant via gunbc.clock_read, never the
+  // controller's clock.
+  read_at_millis: EpochMs,
+) -> BmcLiveAccountStateReadOutcome
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness", decl_name: "live_read_of"),
+  ]
+{
+  match live_account_state_instant(millis: read_at_millis) {
+    none => LiveReadRefused { cause: NoObserverClockReading { detail: "the observer clock is unreadable: a live account-state read cannot be stamped" as NonEmptyStr } }
+    Present { value: at } =>
+      match live_published_derivation(
+        policy: policy,
+        managed_account: managed.account,
+        published_account: published_account,
+        served: served_surfaces,
+    generation_is_published_password: published_generation_is_password,
+  ) {
+    none => LiveReadRefused { cause: PublishedRetirementPolicyUngrounded { detail: "no grounded credential-policy row for this board/firmware: the published retirement cannot be derived and the published credential is never probed" as NonEmptyStr } }
+    Present { value: derivation } =>
+      match live_first_uncommitted(answers: [
+        transport.managed_answer, transport.census_answer, transport.users_answer,
+        transport.redfish_census_answer, transport.redfish_surface_answer,
+        transport.account_service_answer, transport.lan_threshold_answer,
+      ]) {
+        Present { value: uncommitted } => LiveReadRefused { cause: ResponseNotCommitted { read: uncommitted } }
+        none =>
+          match live_account_state_evidence(answer: transport.managed_answer) {
+            none => LiveReadRefused { cause: ResponseNotCommitted { read: transport.managed_answer.read } }
+            Present { value: managed_evidence } =>
+              match live_account_state_evidence(answer: transport.census_answer) {
+                none => LiveReadRefused { cause: ResponseNotCommitted { read: transport.census_answer.read } }
+                Present { value: census_evidence } =>
+                  match live_account_state_evidence(answer: transport.account_service_answer) {
+                    none => LiveReadRefused { cause: ResponseNotCommitted { read: transport.account_service_answer.read } }
+                    Present { value: account_service_evidence } =>
+                      match live_account_state_evidence(answer: transport.lan_threshold_answer) {
+                        none => LiveReadRefused { cause: ResponseNotCommitted { read: transport.lan_threshold_answer.read } }
+                        Present { value: lan_threshold_evidence } =>
+                          live_mint(
+                            transport: transport, subject: subject, endpoint: endpoint, board: board, firmware: firmware,
+                            managed: managed, managed_user: managed_user, published_user: published_user,
+                            published_account_kind: published_account_kind, at: at, attempt: attempt,
+                            managed_evidence: managed_evidence, census_evidence: census_evidence,
+                            account_service_evidence: account_service_evidence, lan_threshold_evidence: lan_threshold_evidence,
+                            derivation: derivation,
+                          )
+                  }
+              }
+          }
+      }
+  }
+  }
+}
+}
+
+// The mint, split out so the reader stays a readable chain of gates. Builds the shared
+// pieces once, then hands the break-glass standing to its one of two shapes. The instants it
+// stamps are the observer's `at`; it takes no controller clock.
+fn live_mint(
+  transport: BmcLiveAccountStateTransport,
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
+  firmware: BmcFirmwareReleaseIdentity,
+  managed: ManagedCredentialReference,
+  managed_user: IpmiUserId,
+  published_user: IpmiUserId,
+  published_account_kind: PublishedAccountKind,
+  at: ObserverClockInstant,
+  attempt: AttemptIdentity,
+  managed_evidence: EvidenceRef,
+  census_evidence: EvidenceRef,
+  account_service_evidence: EvidenceRef,
+  lan_threshold_evidence: EvidenceRef,
+  derivation: SharedStoreRetirement,
+) -> BmcLiveAccountStateReadOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_read_bmc_account_state"),
+  ]
+{
+  let managed_probe = live_probe_from(evidence: managed_evidence, accepted: transport.managed_accepted, at: at)
+  let published_credential = PublishedCredentialRetiredOnTheManagedAccount { derivation: derivation }
+  let published_account_obs = observed_published_account(kind: published_account_kind, evidence: managed_evidence, observed_at: at)
+  let lockout = bmc_lockout_reading(surfaces: [
+    bmc_lockout_surface_from_redfish(verdict: transport.account_service, not_authenticated: ControllerRefusedTheAuthenticatedRead { detail: "the AccountService lockout properties read was not authenticated; the served verdict is read below" as NonEmptyStr }, evidence: account_service_evidence, read_at: at),
+    bmc_lockout_surface_from_ipmi_lan(verdict: transport.lan_threshold, evidence: lan_threshold_evidence, read_at: at),
+  ], read_at: at)
+  match transport.break_glass {
+    // No break-glass generation: the standing is typed Absent, the probe is Unestablished with
+    // the row's cause, and the reference is the managed one (root is both). The assessment flags
+    // it as BreakGlassGenerationUnestablished -- the absence is modelled, never invented.
+    BreakGlassAbsent { cause: c } =>
+      LiveReadMinted { observation: observed_bmc_account_state(
+        subject: subject, endpoint: endpoint, board: board, firmware: firmware,
+        managed: managed, managed_user: managed_user, attempt: attempt,
+        read_floor: at, managed_probe: managed_probe,
+        channel_census: transport.census, census_evidence: census_evidence, census_observed_at: at,
+        published_credential: published_credential,
+        published_user: published_user, published_account: published_account_obs,
+        break_glass: managed, break_glass_probe: ObservedCredentialUnestablished { detail: c },
+        redfish_accounts: transport.redfish_census, redfish_surface_served: transport.redfish_surface_served,
+        controller_clock: none, lockout: lockout,
+      ) }
+    // A break-glass generation exists: its bytes were materialized by the caller through
+    // fetch_secret_ref_credential and user-tested; its answer must itself be committed.
+    BreakGlassPresent { reference: bg_ref, accepted: bg_accepted, answer: bg_answer } =>
+      match live_credential_probe(accepted: bg_accepted, answer: bg_answer, at: at) {
+        none => LiveReadRefused { cause: ResponseNotCommitted { read: bg_answer.read } }
+        Present { value: bg_probe } =>
+          LiveReadMinted { observation: observed_bmc_account_state(
+            subject: subject, endpoint: endpoint, board: board, firmware: firmware,
+            managed: managed, managed_user: managed_user, attempt: attempt,
+            read_floor: at, managed_probe: managed_probe,
+            channel_census: transport.census, census_evidence: census_evidence, census_observed_at: at,
+            published_credential: published_credential,
+            published_user: published_user, published_account: published_account_obs,
+            break_glass: bg_ref, break_glass_probe: bg_probe,
+            redfish_accounts: transport.redfish_census, redfish_surface_served: transport.redfish_surface_served,
+            controller_clock: none, lockout: lockout,
+          ) }
+      }
+  }
+}
+
 type BmcChannelWritesDryStep {
   world: BmcWorld
   completed: Bool
@@ -3377,8 +3705,19 @@ fn dry_apply_bmc_account_plan(
 
 // ── DECLARED FRONTIERS ───────────────────────────────────────────────────────────────────────────
 
+// OPEN (rung-honest, PXE 1c sharp-crane-14). The response-to-observation ASSEMBLER has landed
+// (live_read_bmc_account_state just above, shadowed by machine_intake_bmc_secure_live_read_witness): it
+// turns committed probe/census responses into BmcAccountStateObservation, derives the published retirement
+// under the credential-policy row instead of probing the published credential, and stamps every instant
+// through gunbc.clock_read. But that assembler runs over a SUPPLIED transport with modeled instants -- a
+// second dry realization with a live-shaped interface -- so it does NOT discharge this frontier. What
+// remains is the WET transport behind the interface (real ipmitool lanplus user-test / channel census /
+// user list / Get LAN Configuration Parameters, real Redfish AccountService and Accounts GET, the secret
+// through gunbc.auth.secret_ref_credential fetch_secret_ref_credential, instants from gunbc.clock_read
+// observer_clock_read, each response written as content-addressed evidence) plus one live srv15 run whose
+// receipt is committed; the frontier binds when THAT transport has produced srv15's committed receipt.
 data bmc_secure_state_live_read_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live read of a controller's account state mints BmcAccountStateObservation beside dry_read_bmc_account_state from IPMI user-test and channel-census transport calls, including the user test of the published account with the goal's exact break-glass generation (break_glass_probe) materialized through fetch_secret_ref_credential, timed by gunbc.clock_read observer_clock_read, with every probe and census response committed as content-addressed evidence; NOT satisfied by the dry realization, by a transcription of an older readback, or by a read whose instants come from the controller's clock" as NonEmptyStr,
+  description: "dissolves when a live read of a controller's account state mints BmcAccountStateObservation beside dry_read_bmc_account_state from IPMI user-test and channel-census transport calls, including the user test of the published account with the goal's exact break-glass generation (break_glass_probe) materialized through fetch_secret_ref_credential, timed by gunbc.clock_read observer_clock_read, with every probe and census response committed as content-addressed evidence; LANDED: the response-to-observation assembler over a transport interface, live_read_bmc_account_state, witnessed by machine_intake_bmc_secure_live_read_witness; REMAINING: the wet transport behind that interface (real ipmitool lanplus user-test/channel-census/user-list/Get LAN Configuration Parameters, real Redfish AccountService and Accounts GET, the secret through fetch_secret_ref_credential, instants from observer_clock_read, each response committed as evidence) and one live srv15 run whose receipt is committed; NOT satisfied by the dry realization, by the supplied/fixed-response transport with modeled instants (that assembler is not a live read), by a transcription of an older readback, or by a read whose instants come from the controller's clock" as NonEmptyStr,
 )
 
 data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissolution(
@@ -4347,8 +4686,18 @@ fn bmc_failed_login_budget_verdict(
 // receipts. NOT satisfied by a capture under artifacts/bmc/ standing in for a
 // read: the H11SSL "Bad Password Threshold : 3" is a REPORTED read of one unit at
 // one moment, and the threshold is operator-writable.
+// OPEN (rung-honest, PXE 1c sharp-crane-14). The lockout SURFACE ASSEMBLY has landed: live_mint (reached
+// through live_read_bmc_account_state) turns a supplied Redfish AccountService verdict through
+// bmc_lockout_surface_from_redfish and a supplied IpmiLanBadPasswordThresholdVerdict through
+// bmc_lockout_surface_from_ipmi_lan into the BmcControllerLockoutReading, and
+// machine_intake_bmc_secure_live_read_witness mints both surfaces over a supplied transport. But that
+// transport is fixed-response with modeled instants -- not a live read -- so it does NOT discharge this
+// frontier. What remains is the WET transport: the real Redfish GET of AccountService and the real Get
+// LAN Configuration Parameters over ipmitool lanplus, instants from gunbc.clock_read observer_clock_read,
+// each response written as content-addressed evidence, on a controller this repository holds a subject
+// for; the frontier binds when one live srv15 run commits its receipt.
 data bmc_served_lockout_live_read_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when the account-state read of gunbc.machine_intake.bmc_secure takes its BmcControllerLockoutReading from a live Redfish GET of AccountService (extdeps.bmc.redfish RedfishAccountServiceLockoutVerdict) and a live Get LAN Configuration Parameters of the addressed channel (extdeps.bmc.ipmi_channel IpmiLanBadPasswordThresholdVerdict), through bmc_lockout_surface_from_redfish and bmc_lockout_surface_from_ipmi_lan, on a controller this repository holds a subject for; NOT satisfied by a witness passing a forged reading, by the H11SSL lan-print capture, or by any per-build row" as NonEmptyStr,
+  description: "dissolves when the account-state read of gunbc.machine_intake.bmc_secure takes its BmcControllerLockoutReading from a live Redfish GET of AccountService (extdeps.bmc.redfish RedfishAccountServiceLockoutVerdict) and a live Get LAN Configuration Parameters of the addressed channel (extdeps.bmc.ipmi_channel IpmiLanBadPasswordThresholdVerdict), through bmc_lockout_surface_from_redfish and bmc_lockout_surface_from_ipmi_lan, on a controller this repository holds a subject for; LANDED: the surface assembly over a transport interface, live_mint behind live_read_bmc_account_state, witnessed by machine_intake_bmc_secure_live_read_witness minting both surfaces; REMAINING: the wet transport behind that interface (real Redfish AccountService GET, real Get LAN Configuration Parameters over ipmitool lanplus, instants from observer_clock_read, each response committed as evidence) and one live srv15 run whose receipt is committed; NOT satisfied by a witness passing a forged reading, by the supplied/fixed-response transport with modeled instants, by the H11SSL lan-print capture under artifacts/bmc/, or by any per-build row" as NonEmptyStr,
 )
 
 // THE ONE EXCLUSION THIS SECTION MAKES, said out loud instead of left silent.

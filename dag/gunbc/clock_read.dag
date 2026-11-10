@@ -76,6 +76,10 @@ fn observer_clock_read() -> ObserverClockRead {
 fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_bmc_account_instant"),
+    // PXE 1c (sharp-crane-14): the LIVE account-state read mints its instant through the same
+    // observer-clock authority, under the SUPPLIED-TRANSPORT realization name (never the word "live", which
+    // is reserved for the wet transport), so a sealed instant here is never mistaken for a live-read one.
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "live_account_state_instant"),
     // The served-lockout fixture of test.fixture.machine_intake.bmc_lockout forges a
     // dry pass's lockout READING for the witnesses of the failed-login budget in
     // gunbc.machine_intake.bmc_secure; its instants are that fixture's schedule, and
