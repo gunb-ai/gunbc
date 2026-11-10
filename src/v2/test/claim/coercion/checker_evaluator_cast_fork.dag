@@ -1,0 +1,257 @@
+module v2.test.claim.coercion.checker_evaluator_cast_fork
+
+// CLASS-ROW WITNESS: does v2 carry the checker/evaluator cast fork that #16224 (9443e64f) closed in v1?
+// (class row gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses, whose untested
+// follow-up names this sibling: the v2 checker and the v2 evaluator are separate procedures -- the checker's
+// cast admission is v2.compiler.infer's `infer_transform_cast_optional`, which consults
+// v2.std.coercion.coercion_cast_crossing, and the cast's realization is
+// v2.extdeps.runtimes.v2_evaluator's `v2_eval_coerce` -- and nothing in the corpus PAIRS their verdicts on
+// one authored cast.)
+//
+// THE FORK, stated as a read: for one authored program, the checker ADMITS the cast and the evaluator's own
+// step REFUSES it. That pair is what #16224 closed in v1, where v1's checker abstained on a cast of an
+// Int-kernel value into a different range-refined Int carrier and v1's `eval_cast` refused it at run time
+// with `cannot cast <value> to <carrier>`. The v1 witness is
+// dag/test/claim/machine_intake/refined_int_cast_fork_witness.dag.
+//
+// WHY THIS IS NOT ALREADY ANSWERED BY THE v2 ROWS THAT EXIST.
+// src/v2/test/claim/body_cast_node.dag reads the CHECKER alone -- its refinement probes stop at infer's
+// verdict, and its evaluation rows hand-build the cast node and give the cast node and its operand the SAME
+// hand-written facts, so the case where the two authorities could disagree is exactly the case it writes
+// out. src/v2/test/claim/coercion/two_algebra_fork.dag reads the CHECKER against a hand-written expectation
+// of what evaluation admits, and states in its own header that the checker is accepted as STRICTER than the
+// evaluator; an expectation of strictness cannot see a refusal on the admitted side.
+// src/v2/test/claim/execution/emit_host_identity_cast_native.dag runs an INT-kernel identity cast, whose
+// target is the carrier itself -- the one shape no authority can disagree about. No row puts a refinement-
+// carrier cast in front of BOTH procedures and reads their verdicts together.
+//
+// THE ONE INTERFACE (gunbc.design_argument::witness_one_interface): a probe's SOURCE STRING goes in, the
+// PAIRED verdict comes out -- the checker's verdict on the resolved tree and, when the checker admits, the
+// evaluator's verdict on the SAME tree, once rooted at the cast node and once at the cast's operand. Both
+// arms run production: v2.compiler.refinement_discharge's `infer_and_discharge` for the checker, and
+// v2.compiler.eval's `eval` over v2.extdeps.runtimes.v2_evaluator's `v2_evaluator_interpretation()` for the
+// evaluator. Nothing here reimplements a verdict.
+//
+// NO VACUITY. A probe the checker refuses cannot form the pair, so a row asking only "is the pair absent?"
+// could be satisfied by a checker that refuses EVERYTHING -- the opposite failure, the one
+// src/v2/test/claim/coercion/two_algebra_fork.dag already pins as accepted design. Three rows keep this
+// discriminating: the two controls name their OWN verdict (identity and widening must each be admitted by
+// the checker AND by the evaluator, so a stricter checker and a stricter evaluator both red), and the
+// reading refuses to call an operand that will not evaluate an evaluator refusal -- that is NotRunnable, and
+// `cecf_the_control_probes_reach_the_evaluator_at_all` claims the operands do evaluate.
+//
+// WHY THE PROBES ARE CLOSED AND READ BY A DIFFERENTIAL. v2.compiler.eval's `Inputs` carries a root and
+// nothing else, so an open term's free parameter has no binder to evaluate against; a probe whose operand is
+// a parameter would refuse for a reason that is not the cast's. Each probe is therefore a closed module, and
+// each pair reads eval(cast node) AGAINST eval(operand node): the two roots differ only by the cast, so a
+// refusal that appears at the cast and not at the operand is the cast's doing, which is the class's shape.
+//
+// WHY THE PREDICATES ARE CONSTANTS. The v2 evaluator realizes no comparison, so a range predicate over Int
+// cannot be DECIDED by it -- the same reason
+// src/v2/test/claim/compiler/literal_refinement_judgment_witness.dag and body_cast_node.dag author
+// `fn p(x: Int) -> Bool { true }`. A constant-true predicate is the honest stand-in for "the literal is in
+// range", which is the in-range case this fixture is asked to pose.
+
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.node { Node, Symbol, node_subtree_nodes, positional_child_target_nodes }
+import v2.std.runtime { RuntimeValue }
+import v2.std.text { String }
+import v2.std.type_binder { cast_target_optional }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import std.algebra { list_at_optional, list_find_first }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SHARED HEADER. Every probe carries it unchanged, so the only thing a probe's verdict can turn on is
+// its own declaration. `cecf_in_range` is the range predicate, constant-true for the reason the header gives:
+// the literal under test IS in range. `Port` and `Mode` are two different declarations over the same Int
+// carrier -- the pair #16224's fixture used, and the shape the fork lives on. `cecf_const` and `cecf_chan`
+// are how a CLOSED module obtains a value of a refined carrier: a data declaration whose declared type is
+// the refinement (the literal-refinement judgment, decided by the constant-true predicate) and a call that
+// hands it back. Neither carries a cast, so neither can be the probe's cast node.
+data cecf_header: String = "module cecf\nimport std.types { Bool, Int, String }\nfn cecf_in_range(x: Int) -> Bool { true }\nfn cecf_above_low(x: Int) -> Bool { true }\ntype Port = Int where cecf_in_range\ntype Mode = Int where cecf_above_low\ndata cecf_const: Port = 1\nfn cecf_chan() -> Port { cecf_const }\n"
+
+// CLASS PROBE 1 -- the in-range literal cast into a range-refined Int carrier: #16224's shape, where the
+// operand's own type is the Int kernel, neither the target refinement nor the carrier of a refinement.
+data cecf_literal_source: String = concat(cecf_header, "data cecf_target: Port = 1 as Port\n")
+
+// CLASS PROBE 2 -- the cross-refinement call-source cast: the operand is a CALL whose declared type is one
+// refinement, cast into a DIFFERENT refinement over the same carrier.
+data cecf_crossref_source: String = concat(cecf_header, "data cecf_target: Mode = cecf_chan() as Mode\n")
+
+// CONTROL 1 -- the identity cast: a call source cast onto its OWN carrier. Exact structural equality, so the
+// checker's algebra admits it, and the evaluator must too. #16224's fix had to keep this admitted; a checker
+// that refused it would be the opposite failure mode, not a pass here.
+data cecf_identity_source: String = concat(cecf_header, "data cecf_target: Port = cecf_chan() as Port\n")
+
+// CONTROL 2 -- the widening cast: a refined value back to its declared carrier. The one crossing the checker's
+// algebra calls a widening, and the one the evaluator realizes as the operand's own value.
+data cecf_widening_source: String = concat(cecf_header, "data cecf_target: Int = cecf_chan() as Int\n")
+
+// THE INTERFACE, arm by arm. The checker's verdict is the PIPELINE's -- infer plus the refinement discharge,
+// the verdict the authoring surface reports.
+fn cecf_check(src: String) -> Outcome<InferredTree> {
+  bind_outcome(o: tpb_assemble(src: src), f: fn(r) { infer_and_discharge(tree: r) })
+}
+
+// A refusal's reason NAME, and Absent where the checker admitted. The reason is read as a NAME so a refusal
+// that moved into an internal fault, or into a refusal for a reason that is not the crossing, is visible.
+fn cecf_check_refusal(src: String) -> Optional<Symbol> {
+  match cecf_check(src: src) {
+    Accepted { value: _, diagnostics: _ } => Absent
+    Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+  }
+}
+
+// The module's one cast node: each probe declares exactly one `<cast-target>` edge (its own declaration), and
+// the header's data declaration and call carry none.
+fn cecf_node_has_cast_target(n: Node) -> Bool {
+  match cast_target_optional(n: n) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn cecf_cast_node(t: InferredTree) -> Optional<Node> {
+  list_find_first(
+    xs: node_subtree_nodes(root: t.root),
+    predicate: fn(n) { cecf_node_has_cast_target(n: n) }
+  )
+}
+
+// A cast node's positional children are [coerce, operand] -- that shape is what
+// v2.compiler.infer's `infer_transform_is_cast` requires before the crossing is consulted at all -- so the
+// operand is positional child 1.
+fn cecf_cast_operand(n: Node) -> Optional<Node> {
+  list_at_optional(xs: positional_child_target_nodes(node: n), index: 1)
+}
+
+fn cecf_eval_node(t: InferredTree, n: Node) -> Outcome<RuntimeValue> {
+  eval(
+    tree: t,
+    interpretation: v2_evaluator_interpretation(),
+    inputs: inputs_root_only(root: n)
+  )
+}
+
+fn cecf_eval_admits(t: InferredTree, n: Node) -> Bool {
+  match cecf_eval_node(t: t, n: n) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cecf_eval_refusal(t: InferredTree, n: Node) -> Optional<Symbol> {
+  match cecf_eval_node(t: t, n: n) {
+    Accepted { value: _, diagnostics: _ } => Absent
+    Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+  }
+}
+
+// THE READING. A tree to evaluate, a cast node to evaluate, and an operand that evaluates: then the cast must
+// evaluate too. A refused operand is NOT read as a cast refusal -- it means the differential never ran, and
+// saying so is what keeps the class claim from being satisfied by an evaluation that never happened.
+type CecfProbeReading
+  = PairAdmitted
+  | PairRefused { cast_reason: Optional<Symbol> }
+  | NotRunnable { why: Symbol }
+
+fn cecf_read_probe(src: String) -> CecfProbeReading {
+  match cecf_check(src: src) {
+    Accepted { value: t, diagnostics: _ } =>
+      match cecf_cast_node(t: t) {
+        Absent => NotRunnable { why: ^cecf_no_cast_node }
+        Present { value: cast } =>
+          match cecf_cast_operand(n: cast) {
+            Absent => NotRunnable { why: ^cecf_cast_operand_absent }
+            Present { value: operand } =>
+              if !cecf_eval_admits(t: t, n: operand) {
+                NotRunnable { why: ^cecf_operand_does_not_evaluate }
+              } else if cecf_eval_admits(t: t, n: cast) {
+                PairAdmitted
+              } else {
+                PairRefused { cast_reason: cecf_eval_refusal(t: t, n: cast) }
+              }
+          }
+      }
+    Rejected { diagnostics: _ } => NotRunnable { why: ^cecf_check_refused }
+  }
+}
+
+fn cecf_is_pair_admitted(r: CecfProbeReading) -> Bool {
+  match r {
+    PairAdmitted => true
+    PairRefused { cast_reason: _ } => false
+    NotRunnable { why: _ } => false
+  }
+}
+
+fn cecf_is_pair_refused(r: CecfProbeReading) -> Bool {
+  match r {
+    PairAdmitted => false
+    PairRefused { cast_reason: _ } => true
+    NotRunnable { why: _ } => false
+  }
+}
+
+// THE CLASS CLAIM. No probe may pair a checker admission with an evaluator refusal on the cast. This is the
+// row that goes RED if v2 carries #16224's fork, and the row the class row's follow-up names as the trigger
+// for a v2 fix.
+test fn cecf_no_probe_pairs_a_check_admission_with_an_evaluator_refusal() -> Bool {
+  !cecf_is_pair_refused(r: cecf_read_probe(src: cecf_literal_source)) &&
+  !cecf_is_pair_refused(r: cecf_read_probe(src: cecf_crossref_source)) &&
+  !cecf_is_pair_refused(r: cecf_read_probe(src: cecf_identity_source)) &&
+  !cecf_is_pair_refused(r: cecf_read_probe(src: cecf_widening_source))
+}
+
+// CONTROL 1, both arms. The identity cast is admitted by the checker AND evaluated by the evaluator. This is
+// the row that stops the class claim above from being satisfied by a checker that refuses everything.
+test fn cecf_identity_cast_is_admitted_by_the_checker_and_the_evaluator() -> Bool {
+  cecf_is_pair_admitted(r: cecf_read_probe(src: cecf_identity_source))
+}
+
+// CONTROL 2, both arms. The widening cast -- a refined value to its declared carrier -- is admitted by the
+// checker AND evaluated by the evaluator. #16224's witness pins v1's arm admits it; this pins that v2's two
+// authorities agree on it.
+test fn cecf_widening_cast_is_admitted_by_the_checker_and_the_evaluator() -> Bool {
+  cecf_is_pair_admitted(r: cecf_read_probe(src: cecf_widening_source))
+}
+
+// THE DIFFERENTIAL RUNS. The controls above mean what they say only if the operand the cast wraps evaluates on
+// its own; otherwise an "admitted" reading would be an artifact of a root that never ran. This is the
+// inhabitance claim on the supplied boundary (gunbc.design_argument::witness_one_interface: supplying inputs
+// may never remove the last execution of the real path).
+test fn cecf_the_control_probes_reach_the_evaluator_at_all() -> Bool {
+  match cecf_check(src: cecf_identity_source) {
+    Accepted { value: t, diagnostics: _ } =>
+      match cecf_cast_node(t: t) {
+        Absent => false
+        Present { value: cast } =>
+          match cecf_cast_operand(n: cast) {
+            Absent => false
+            Present { value: operand } => cecf_eval_admits(t: t, n: operand)
+          }
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE WALL KEEPS ITS OWN NAME. Each class probe is refused by the checker, and the refusal carries a reason
+// name rather than being absent. The two class probes must be refused for the SAME reason -- they differ only
+// in whether the operand is a literal or a call, and no authority's cast judgement may turn on that.
+test fn cecf_class_probes_refuse_at_the_checker_for_one_named_reason() -> Bool {
+  match cecf_check_refusal(src: cecf_literal_source) {
+    Absent => false
+    Present { value: literal_reason } => match cecf_check_refusal(src: cecf_crossref_source) {
+      Absent => false
+      Present { value: crossref_reason } => literal_reason == crossref_reason
+    }
+  }
+}
