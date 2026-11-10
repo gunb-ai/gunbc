@@ -34,6 +34,7 @@ import std.decimal { fixed_point_trimmed_wire }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_2026_11_09, srv1_collective_read_measurement_duration, srv1_collective_read_window_duration, srv1_window_seconds_between }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
@@ -1671,7 +1672,11 @@ type Srv1BootPathRun {
   window_start_utc: NonEmptyStr,
   window_end_utc: NonEmptyStr,
   container_created: Second,
-  engine_ready: Second,
+  // Time from the stop/kill to the first 200 from /health is NOT a field: it is the difference of this
+  // row's own two instants (srv1_boot_path_run_ready_duration below). A row that types it beside the
+  // instants can disagree with them, and one of the four runs in this window did -- by 7 s.
+  // container_created stays a field: it is an independent stopwatch phase (start -> container created),
+  // not a difference of the window's ends, so there is no pair of instants to derive it from.
   restarts_observed: Nat,
   verdict: NonEmptyStr,
 }
@@ -1684,7 +1689,6 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     window_start_utc: "2026-11-09T21:51:38Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T21:59:21Z" as NonEmptyStr,
     container_created: second(46),
-    engine_ready: second(463),
     restarts_observed: 0,
     verdict: "ready inside the 10-minute deadline; engine argv carries no --api-key (count 0) and the engine's environment carries VLLM_API_KEY (count 1); router upstream srv1-vllm-1 served six /v1/chat/completions probes at 200 with zero new 502s" as NonEmptyStr,
   },
@@ -1692,10 +1696,9 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     replica_index: 1,
     kind: Crash,
     note: "docker kill the container while the replica was serving; systemd Restart=on-failure with the contract's restart_delay as the floor" as NonEmptyStr,
-    window_start_utc: "2026-11-09T22:11:08Z" as NonEmptyStr,
+    window_start_utc: "2026-11-09T22:11:01Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T22:19:33Z" as NonEmptyStr,
     container_created: second(39),
-    engine_ready: second(512),
     restarts_observed: 1,
     verdict: "systemd did restart it, but NOT within the 30 s the brief set as the bar: the unit's own RestartSec=30 makes 30 s the FLOOR, and the measured replacement container appeared 39 s after the kill (22:11:39Z, written by the rendered launcher's own START event). Engine ready 512 s. Auth held: 401 without the key, 200 with it. No --api-key in .Config.Cmd; VLLM_API_KEY present in the engine environment." as NonEmptyStr,
   },
@@ -1706,7 +1709,6 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     window_start_utc: "2026-11-09T22:24:35Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T22:31:38Z" as NonEmptyStr,
     container_created: second(46),
-    engine_ready: second(423),
     restarts_observed: 0,
     verdict: "ready inside the deadline; `ps` on the host shows zero processes carrying --api-key once both replicas are on this path (previously the engine's own argv named the key)" as NonEmptyStr,
   },
@@ -1717,11 +1719,22 @@ data srv1_boot_path_runs_executed_2026_11_09: List<Srv1BootPathRun> = [
     window_start_utc: "2026-11-09T22:32:21Z" as NonEmptyStr,
     window_end_utc: "2026-11-09T22:39:23Z" as NonEmptyStr,
     container_created: second(38),
-    engine_ready: second(422),
     restarts_observed: 1,
     verdict: "replacement container 38 s after the kill (again above the 30 s bar, which the unit's RestartSec=30 sets); engine ready 422 s; auth held (401 without key, 200 with); no --api-key in .Config.Cmd" as NonEmptyStr,
   },
 ]
+
+// Readiness is computed from the row's own instants, not transcribed beside them: the same ISO 8601 calendar
+// the fleet module reads its NCCL spans through, so one pair of instants cannot mean two different durations
+// in two rows. It answers Absent when a row names instants that do not parse or come out reversed, which is
+// how a mistyped instant surfaces -- as a claim that refuses to resolve, not as a plausible number.
+// The r1 crash row is the proof this was worth having: its kill instant had been transcribed 7 s late
+// (22:11:08Z where the host recorded 22:11:01Z, epoch 1794262261), and the hand-typed ready duration agreed
+// with the WRONG instant. Deriving it from the pair exposes the disagreement instead of hiding it.
+fn srv1_boot_path_run_ready_duration(run: Srv1BootPathRun) -> Second? {
+  srv1_window_seconds_between(earlier: run.window_start_utc, later: run.window_end_utc)
+}
+
 
 // What a reader may ask of a run receipt, phrased in the module that owns the closed set rather than in the
 // test that asks it: a witness in another module branches on these, and never has to name a member.
@@ -1746,7 +1759,6 @@ fn srv1_boot_path_crash_restart_floor_seconds() -> Nat { second_count(srv1_repli
 // numbers could drift apart silently; here a witness can check the arithmetic.
 type Srv1RouterWindowCount {
   snapshot_from_utc: NonEmptyStr,
-  snapshot_to_utc: NonEmptyStr,
   status_502_before: Nat,
   status_502_after: Nat,
   status_200_before: Nat,
@@ -1762,14 +1774,13 @@ type Srv1RouterWindowCount {
   upstream_srv1_vllm_502_added: Nat,
   upstream_srv1_vllm_1_502_added: Nat,
   other_upstreams_502_added: Nat,
-  nccl_window_seconds: Second,
-  nccl_measurement_seconds: Second,
+  nccl_window: Second?,
+  nccl_measurement: Second?,
   note: NonEmptyStr,
 }
 
 data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = Srv1RouterWindowCount {
   snapshot_from_utc: "2026-11-09T20:38:24Z" as NonEmptyStr,
-  snapshot_to_utc: "2026-11-09T22:47:37Z" as NonEmptyStr,
   status_502_before: 13,
   status_502_after: 64,
   status_200_before: 27150,
@@ -1783,13 +1794,11 @@ data srv1_boot_path_window_router_counting_2026_11_09: Srv1RouterWindowCount = S
   upstream_srv1_vllm_502_added: 24,
   upstream_srv1_vllm_1_502_added: 24,
   other_upstreams_502_added: 3,
-  nccl_window_seconds: second(469),
-  nccl_measurement_seconds: second(16),
+  nccl_window: srv1_collective_read_window_duration(run: srv1_collective_read_executed_2026_11_09),
+  nccl_measurement: srv1_collective_read_measurement_duration(run: srv1_collective_read_executed_2026_11_09),
   note: "status:200 over the same span went 27150 -> 29727, so every 502 is a slice of real traffic, not a dry run. The NCCL window is the honest bulk of it: stopping both replicas is what the unloaded re-run required, and no rollback protects against that." as NonEmptyStr,
 }
 
-// The outage this window cost, in its own row rather than folded into the success rows. It is the price of
-// the switch and the PR must not read as if the switch were free.
 // The outage this window cost, as fields rather than a paragraph: which unit, how long, what it exited with,
 // what the unit decided, and what was changed so the same recovery is not manual next time. A `no downtime`
 // claim cannot be made about this row by accident, and the downtime is a duration, not a number in prose.

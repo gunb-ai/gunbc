@@ -10,7 +10,7 @@ module test.claim.fleet.gpu_interconnect_observation_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { string_contains }
-import std.measure { Bandwidth, ByteSize, Microsecond, bandwidth, bandwidth_count, byte_size, byte_size_count, microsecond, microsecond_count }
+import std.measure { Bandwidth, ByteSize, Microsecond, Second, bandwidth, bandwidth_count, byte_size, byte_size_count, microsecond, microsecond_count, second_count }
 import std.optional { Absent, Present }
 import std.content_hash { lower_hex_64 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -33,6 +33,7 @@ import gunbc.fleet.gpu_interconnect_observation {
   srv1_collective_transport_readings_unloaded_2026_11_09,
   srv1_nccl_arm_default, srv1_nccl_arm_p2p_disabled,
   srv1_collective_read_obligation, srv1_collective_read_executed_2026_11_09,
+  srv1_collective_read_window_duration, srv1_collective_read_measurement_duration, srv1_window_seconds_between,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -211,7 +212,12 @@ test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
     && default_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
     && !disabled_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
     && any(srv1_collective_read_executed_2026_11_09.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
-    && string_contains(s: srv1_collective_read_executed_2026_11_09.outcome as String, pattern: "does NOT survive an unloaded host")
+    // THE RECORD AND THE ROWS IT PRODUCED NAME THE SAME INSTRUMENT, BY DIGEST. That link -- not a sentence
+    // saying "these rows came from that run" -- is what makes the two agree: a row re-measured with a different
+    // instrument, or a record pasted over someone else's sweep, stops matching.
+    && srv1_collective_transport_readings_unloaded_2026_11_09.all(r =>
+      r.instrument_sha256 == srv1_collective_read_executed_2026_11_09.instrument_sha256 && r.host == operator_host_srv1)
+    && srv1_collective_transport_readings_unloaded_2026_11_09.length() == 8
 }
 
 // THE TWO RUNS NAME THEIR ARMS WITH THE SAME VALUES. This is the control that caught a real defect in the rows
@@ -271,7 +277,6 @@ test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
     // the obligation now names the run it was executed in, the confounder that had to be removed, and the
     // fact that it was the re-run the earlier pair asked for
     && any(srv1_collective_read_executed_2026_11_09.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
-    && string_contains(s: srv1_collective_read_executed_2026_11_09.outcome as String, pattern: "does NOT survive an unloaded host")
     && string_contains(s: srv1_collective_read_executed_2026_11_09.results_log_path as String, pattern: "jh_nccl_results")
 }
 
@@ -313,13 +318,55 @@ test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
     && record.measurement_start_utc as String == "2026-11-09T22:40:35Z"
     && record.window_start_utc as String == "2026-11-09T22:39:48Z"
     && record.window_end_utc as String == "2026-11-09T22:47:37Z"
-    && record.summary_of_reading_rows as String == "srv1_collective_transport_readings_unloaded_2026_11_09"
+    // the record points at its evidence by digest and path, not by naming a list of rows in prose
+    && record.instrument_sha256 as String == "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc"
+    && string_contains(s: record.results_log_path as String, pattern: "jh_nccl_results_20261109T224035Z")
+    && lower_hex_64(value: record.results_log_sha256) && record.results_log_sha256 != record.instrument_sha256
     // the record names the things that had to be stopped, and the instrument by digest, so a later
     // reader can tell this run from the loaded pair without parsing prose
     && length(record.units_stopped) == 2
     && any(record.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
     && lower_hex_64(value: record.instrument_sha256)
     && lower_hex_64(value: record.results_log_sha256)
+}
+
+// THE RECORD'S SPANS ARE COMPUTED, NOT REPEATED. The window and the measurement inside it are differences of
+// the record's own instants, read through the shared ISO 8601 calendar (extdeps.units.iso8601_calendar) -- the
+// same route srv1_serving_replica_layout's router-window row reads them through, so 469 s and 16 s exist in
+// exactly one place. The green control re-measures the same pair the record names; the red controls are what a
+// transcription error looks like -- an instant 7 s off, a pair typed in the wrong order, a year or a leading
+// zero wrong -- and each must answer by refusing, not by producing a number.
+test fn the_record_spans_are_computed_from_its_instants() -> Bool {
+  let run = srv1_collective_read_executed_2026_11_09
+  match srv1_collective_read_window_duration(run: run) {
+    Absent => false
+    Present { value: w } => second_count(w) == 469
+  }
+    && match srv1_collective_read_measurement_duration(run: run) {
+      Absent => false
+      Present { value: m } => second_count(m) == 16
+    }
+    // and the smaller span is still inside the larger one, which only holds while BOTH come from the same pair
+    && match srv1_collective_read_window_duration(run: run) {
+      Absent => false
+      Present { value: w } =>
+        match srv1_collective_read_measurement_duration(run: run) {
+          Absent => false
+          Present { value: m } => second_count(m) < second_count(w)
+        }
+    }
+    && match srv1_window_seconds_between(earlier: "2026-11-09T22:47:37Z" as NonEmptyStr, later: "2026-11-09T22:39:48Z" as NonEmptyStr) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match srv1_window_seconds_between(earlier: "2026-11-09T22:39:41Z" as NonEmptyStr, later: "2026-11-09T22:47:37Z" as NonEmptyStr) {
+      Absent => false
+      Present { value: w } => second_count(w) == 476
+    }
+    && match srv1_window_seconds_between(earlier: "2026/11/09 22:39:48" as NonEmptyStr, later: "2026-11-09T22:47:37Z" as NonEmptyStr) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 // AN EXPLANATION IS NEVER A PREMISE. Both srv1 rows -- the one about what missing peer access accounts for,

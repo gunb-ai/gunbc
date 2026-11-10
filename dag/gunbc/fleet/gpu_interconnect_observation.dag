@@ -26,7 +26,9 @@ module gunbc.fleet.gpu_interconnect_observation
 // `Srv1ReadingWarrant` for a reading not yet taken; every row of this module is read today, and the re-run the
 // loaded machine forces is carried as `srv1_collective_read_obligation`.
 
-import std.nat { Nat }
+import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, nat_sub }
+import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
+import std.measure { Second, measure_count, second }
 import std.types { Bool, List, NonEmptyStr }
 import std.algebra { string_concat_join }
 import std.optional { Absent, Present }
@@ -568,8 +570,10 @@ type Srv1CollectiveReadRun {
   instrument_sha256: NonEmptyStr,
   results_log_path: NonEmptyStr,
   results_log_sha256: NonEmptyStr,
-  summary_of_reading_rows: NonEmptyStr,
-  outcome: NonEmptyStr,
+  // What this run MEANS is not a field. A conclusion is an arithmetic claim over the reading rows the run
+  // produced (the witness claims on the two runs), not a sentence a consumer has to trust and a substring
+  // test has to grep. The record holds only what cannot be re-derived: which units were stopped and removed,
+  // the instrument and its digest, the log and its digest, and the instants the spans are computed from.
 }
 
 data srv1_collective_read_executed_2026_11_09: Srv1CollectiveReadRun = Srv1CollectiveReadRun {
@@ -582,9 +586,45 @@ data srv1_collective_read_executed_2026_11_09: Srv1CollectiveReadRun = Srv1Colle
   instrument_sha256: "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc" as NonEmptyStr,
   results_log_path: "/home/briansrls/jh_nccl_results_20261109T224035Z.log" as NonEmptyStr,
   results_log_sha256: "8788e3353eb939847982a51053aefd9f6aa1c32b2705417cdc078e720238b6e1" as NonEmptyStr,
-  summary_of_reading_rows: "srv1_collective_transport_readings_unloaded_2026_11_09" as NonEmptyStr,
-  outcome: "the 2x delta at 256 KiB and above does NOT survive an unloaded host: default arm 4.61 / 11.99 / 12.21 GB/s at 256 KiB / 4 MiB / 64 MiB against the disabled arm's 4.02 / 12.11 / 12.42, with both arms still printing every channel via SHM/direct and isAllDirectP2p 0. So the loaded pair's 2x was the machine holding memory, not the flag; the claim that missing P2P explains the TP=2 versus 2xTP=1 margin is not touched by this run and stays a Hypothesis." as NonEmptyStr,
 }
+
+// THE INSTANTS ARE THE FACT; A DURATION IS COMPUTED FROM THEM. The instants in the record are transcriptions of
+// what the host printed, in the canonical UTC second form; a duration is the difference of two of them read
+// through the shared ISO 8601 calendar, not a third number typed out beside them. A pair that does not parse,
+// or that comes out reversed (a clock step, a mistyped field), answers Absent -- it never falls back to the
+// number someone remembered. This is not ceremony: making the two dependent caught a real 7 s drift between a
+// kill instant and a ready duration elsewhere in this window, where both had been written by hand.
+fn srv1_window_seconds_between(earlier: NonEmptyStr, later: NonEmptyStr) -> Second? {
+  match iso8601_utc_epoch_seconds(text: earlier as String) {
+    Absent => none
+    Present { value: from } =>
+      match iso8601_utc_epoch_seconds(text: later as String) {
+        Absent => none
+        Present { value: until } =>
+          match nat_sub(measure_count(until), measure_count(from)) {
+            NatDifference { value: d } => Present { value: second(count: d) }
+            NatSubtrahendExceedsMinuend => none
+          }
+      }
+  }
+}
+
+// The spans of a collective read, derived from its own record. The router-window row in
+// gunbc.serving.srv1_serving_replica_layout reads these instead of typing the same two durations out again, so
+// correcting an instant here moves the number there, or turns it red if the instants stop naming a span.
+fn srv1_collective_read_window_duration(run: Srv1CollectiveReadRun) -> Second? {
+  srv1_window_seconds_between(earlier: run.window_start_utc, later: run.window_end_utc)
+}
+
+fn srv1_collective_read_measurement_duration(run: Srv1CollectiveReadRun) -> Second? {
+  srv1_window_seconds_between(earlier: run.measurement_start_utc, later: run.measurement_end_utc)
+}
+
+// The two arms of every srv1 collective read, named ONCE. Both the 2026-11-08 loaded sweep and the
+// 2026-11-09 unloaded re-run say which arm a row belongs to by referencing these values, so a claim can ask
+// "the same arm, in both runs" without spelling a string, and a row that renames an arm stops matching
+// instead of quietly comparing different runs.
+data srv1_nccl_arm_default: NonEmptyStr = "no-flag default" as NonEmptyStr
 data srv1_nccl_arm_p2p_disabled: NonEmptyStr = "NCCL_P2P_DISABLE=1" as NonEmptyStr
 
 data srv1_collective_transport_readings_unloaded_2026_11_09: List<CollectiveTransportReading> = [

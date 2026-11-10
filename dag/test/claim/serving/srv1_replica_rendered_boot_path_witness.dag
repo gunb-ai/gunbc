@@ -47,12 +47,14 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
   srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
   srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
+  srv1_boot_path_run_ready_duration,
   srv1_boot_path_window_router_counting_2026_11_09, srv1_router_window_count_balances, srv1_boot_path_incident_2026_11_09,
   srv1_installed_boot_path_artifacts_2026_11_09,
-  srv1_serving_replica_specs,
+  srv1_serving_replica_roster,
   srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
   srv1_replica_helper_bash_emit_dissolution,
+import gunbc.fleet.gpu_interconnect_observation { srv1_window_seconds_between }
 }
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
@@ -521,7 +523,7 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
     && all(arts, a => lower_hex_64(value: a.render_sha256) && a.render_sha256 == a.installed_sha256_computed_on_host)
     && length(runs) == 4
     && deadline == 600 && floor == 30
-    && all(runs, r => second_count(r.engine_ready) >= 1 && second_count(r.engine_ready) <= deadline)
+    && all(runs, r => match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(e) >= 1 && second_count(e) <= deadline })
     && !any(runs, r => srv1_boot_path_run_claims_reboot(r))
     && all(filter(runs, r => srv1_boot_path_run_is_cold_start(r)), r => string_contains(s: r.note, pattern: "NOT a host reboot"))
     && all(filter(runs, r => srv1_boot_path_run_is_crash(r)), r => second_count(r.container_created) >= floor)
@@ -572,7 +574,7 @@ fn marker_text(condition: DissolutionCondition) -> String {
 // UUID-less profile would print appears in NO rendered artifact.
 test fn the_rendered_boot_path_pins_the_card_from_the_profile_row() -> Bool {
   let launcher = srv1_render_replica_launcher()
-  let units = srv1_serving_replica_specs
+  let units = srv1_serving_replica_roster
   length(units) == 2
     && all(units, r => string_contains(s: launcher, pattern: srv1_replica_gpu_uuid_text(replica: r)))
     && any(units, a => any(units, b => srv1_replica_gpu_uuid_text(replica: a) != srv1_replica_gpu_uuid_text(replica: b)))
@@ -600,6 +602,34 @@ test fn every_hand_composed_script_carries_its_own_marker() -> Bool {
         && (string_contains(s: m, pattern: "v2.workflow.bash_emit") || string_contains(s: m, pattern: "extdeps.docker.create_spec")))
 }
 
+// A DURATION CANNOT DISAGREE WITH THE INSTANTS IT MEASURES. Each run row keeps its two instants and one
+// independent stopwatch phase; readiness is computed from the pair through the same ISO 8601 calendar the fleet
+// module reads its NCCL spans through. That dependency earned its keep: replica 1's crash row had been
+// transcribed with the kill 7 s late (the host recorded 22:11:01Z, epoch 1794262261; the row said 22:11:08Z),
+// and the hand-typed ready duration agreed with the WRONG instant. With the duration derived, the row can only
+// say what the instants say. The red controls are the shapes of transcription errors this window actually
+// produced -- a reversed pair, an instant missing its leading zero -- and each must answer Absent rather than
+// returning the number someone expected.
+test fn the_ready_duration_is_the_instants_and_not_a_third_copy() -> Bool {
+  let runs = srv1_boot_path_runs_executed_2026_11_09
+  let r1_crash = filter(runs, r => srv1_boot_path_run_is_crash(r) && r.replica_index == 1)
+  length(r1_crash) == 1
+    && all(r1_crash, r => r.window_start_utc as String == "2026-11-09T22:11:01Z"
+      && match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(e) == 512 })
+    && match srv1_window_seconds_between(earlier: "2026-11-09T22:11:01Z" as NonEmptyStr, later: "2026-11-09T22:19:33Z" as NonEmptyStr) {
+      Absent => false
+      Present { value: e } => second_count(e) == 512
+    }
+    && match srv1_window_seconds_between(earlier: "2026-11-09T22:19:33Z" as NonEmptyStr, later: "2026-11-09T22:11:01Z" as NonEmptyStr) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match srv1_window_seconds_between(earlier: "2026-11-9T22:11:01Z" as NonEmptyStr, later: "2026-11-09T22:19:33Z" as NonEmptyStr) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
 // THE BARS THEMSELVES ARE NOT FREE NUMBERS. The crash floor must be the CONTRACT's restart delay, so a unit
 // whose RestartSec changed drags this test along with it; and the readiness deadline must stay a duration, not
 // a count that can be compared against a port number or a byte size.
@@ -609,7 +639,7 @@ test fn the_bars_come_from_the_rows_not_from_the_test() -> Bool {
   srv1_boot_path_crash_restart_floor_seconds() == second_count(srv1_replica_unit_contract.restart_delay)
     && srv1_boot_path_ready_deadline_seconds() == second_count(srv1_boot_path_ready_deadline)
     && length(crashes) == 2
-    && all(crashes, r => second_count(r.container_created) < second_count(r.engine_ready))
+    && all(crashes, r => match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(r.container_created) < second_count(e) })
 }
 
 // ONE CERTIFICATE IDENTITY FOR BOTH REPLICAS, enforced by the render rather than by the operator remembering
