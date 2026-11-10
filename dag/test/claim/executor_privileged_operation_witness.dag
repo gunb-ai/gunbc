@@ -24,11 +24,19 @@ import gunbc.runner.runner_host_grants {
   fabric_cell_privileged_operations,
   runner_host_privileged_operations,
   runner_slot_activation_operations,
+  runner_slot_teardown_grant_operations,
+  runner_slot_member_install_operations,
+  workspace_host_launch_operations,
+  microvm_slot_reserve_start_operations,
+  revision_job_start_operations,
+  dashboard_directory_observation_operations,
+  printer_state_privileged_operations,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, gunbc_runner_slot_desired_for, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_cpu_quota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
-import gunbc.fabric.fabric_cell_effect { fabric_cell_slice_desired_directives }
+import gunbc.fabric.fabric_cell_effect { fabric_cell_slice_desired_directives, fabric_cell_slice_quota_directive }
 import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
@@ -166,46 +174,61 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // The retirement mask grants (runner_slot_retirement_mask_operations, derived from host_maskable_units)
 // are one more named component of the roster, so the sum names them the same way.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
-  let ds = fabric_cell_slice_desired_directives()
   // THE FABRIC TERMS ARE MEASURED ON SRV1, THE ONLY HOST STILL COMMITTING FABRIC CELLS. srv3 and srv4
   // committed theirs to CI under gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (#16137), so every
-  // srv3-scoped fabric term in this row has been dead since that landing: `fabric_cell_host_slots(srv3)`
-  // reads [], the allocation store contributes nothing, and no slice directive is granted anywhere on
-  // srv3 (its committed sudoers carries no set-property line). The row could not report that, because the
-  // entry did not resolve at all -- its import block named none of these callees -- so a premise that had
-  // stopped existing kept asserting a population the model no longer renders. Both halves are asserted
-  // here: the fabric population where cells are still committed, and the zero that replaced it on srv3.
+  // srv3-scoped fabric term this row used to carry had been dead since that landing: `fabric_cell_host_slots
+  // (srv3)` reads [], the allocation store contributes nothing, and srv3's committed sudoers carries no
+  // set-property line anywhere. The row could not say so, because the entry did not resolve at all -- its
+  // import block named none of these callees -- and a premise that had stopped existing kept asserting a
+  // population the model no longer renders.
+  //
+  // WHAT THIS ROW DISCRIMINATES, stated so it is not mistaken for a recomposition: the ACTIVATION rung is a
+  // HAND FACTOR, slots * 3 -- unmask, enable, start, one grant per step the activation plan can issue -- so
+  // a generator change that drops the unmask row, or grants one the plan never issues, goes red here as
+  // well as in test.claim.runner.runner_service_activation_witness. The fabric block is a hand formula over
+  // the committed cell roster. Every other block enters as its own call: dropping a block from
+  // runner_host_privileged_operations_of is not what this row catches, and does not pretend to.
   let fabric_host = wt_srv1_deploy()
   let fabric_spec = runner_host_spec_of(deploy: fabric_host)
   let ci_host = wt_srv3_deploy()
-  let ci_spec = runner_host_spec_of(deploy: ci_host)
-  let slots = desired_runner_slot_members(deploy: fabric_host).length()
-  let activation = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: fabric_host)).length()
-  let ci_slots = desired_runner_slot_members(deploy: ci_host).length()
-  let ci_activation = runner_slot_activation_operations(members: desired_runner_slot_members(deploy: ci_host)).length()
+  let members = desired_runner_slot_members(deploy: fabric_host)
+  let slots = members.length()
+  let ci_members = desired_runner_slot_members(deploy: ci_host)
+  let ci_slots = ci_members.length()
   let fabric_slots = fabric_cell_host_slots(spec: fabric_spec).length()
-  let directives = ds.length()
+  let directives = fabric_cell_slice_desired_directives().length()
   let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
   let allocation_store = fabric_allocation_store_privileged_operations(spec: fabric_spec).length()
   let host_wide = runner_host_wide_privileged_operations(spec: fabric_spec).length()
   let microvm_reads = microvm_network_granted_operations().length()
-  let retirement_masks = runner_slot_retirement_mask_operations(spec: fabric_spec).length()
   runner_host_privileged_operations(deploy: fabric_host).length()
-    == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store + microvm_reads + retirement_masks
-    && allocation_store == 2
+    == runner_slot_teardown_grant_operations(spec: fabric_spec).length()
+      + runner_slot_member_install_operations(spec: fabric_spec, members: members).length()
+      + (slots * 3)
+      + runner_slot_retirement_mask_operations(spec: fabric_spec).length()
+      + fabric_expected
+      + allocation_store
+      + workspace_host_launch_operations(spec: fabric_spec).length()
+      + microvm_slot_reserve_start_operations(spec: fabric_spec).length()
+      + revision_job_start_operations(spec: fabric_spec).length()
+      + host_wide
+      + microvm_reads
+      + dashboard_directory_observation_operations(spec: fabric_spec).length()
+      + printer_state_privileged_operations(spec: fabric_spec).length()
+    && runner_slot_activation_operations(members: members).length() == slots * 3
+    // THE SAME FACTOR ON THE HOST THE DEFECT WAS MEASURED ON: srv3's activation rows are the plan's three
+    // steps per committed member, which is the row set that was missing the unmask grant.
+    && runner_slot_activation_operations(members: ci_members).length() == ci_slots * 3
     && fabric_cell_privileged_operations(spec: fabric_spec).length() == fabric_expected
-    && activation == slots * 3
-    // THE SAME FACTOR ON THE HOST THE DEFECT WAS MEASURED ON. srv3 carries no fabric term now, so its
-    // activation rows are exactly the plan's steps -- unmask, enable, start -- per committed member.
-    && ci_activation == ci_slots * 3
-    && fabric_cell_privileged_operations(spec: ci_spec).length() == 0
+    && allocation_store == 2
+    // AND NOTHING IS LEFT GRANTING A SLICE CAP ON THE HOST THAT NO LONGER COMMITS CELLS.
+    && !string_contains(s: srv3_runner_host_sudoers(), pattern: "set-property")
     && slots > 0
     && ci_slots > 0
     && fabric_slots > 0
     && host_wide > 0
     && microvm_reads > 0
 }
-
 // THE CPUQuota GRANT IS THE DECLARED DIRECTIVE OF THE CELL IT AUTHORIZES, NOT A TRANSCRIBED PERCENTAGE.
 // The generated sudoers body is `artifact_generate` of this host's row; each grant word is the
 // `systemd_slice_directive_line` of the quota directive `fabric_cell_slice_quota_directive` selects for
@@ -386,6 +409,13 @@ fn wt_missing_deploy() -> RunnerHostDeploy {
     job_user: "unadmitted",
     app: gunbc_ci_github_app,
     runner_count: 1,
+  }
+}
+
+fn wt_srv1_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
   }
 }
 
