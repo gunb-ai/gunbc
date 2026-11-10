@@ -9024,19 +9024,22 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
       else if int_refinement_cast_domain {
         // The checker must not admit a cast the v1 evaluator's eval_cast refuses -- that gap is exactly class
         // gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses. This arm fires only in
-        // the domain where the two provably disagree: the TARGET is a numeric int-predicate refinement
-        // (`Int`/`Nat where range|gt_zero`, computed as target_is_int_refined) AND the SOURCE's base kernel is
-        // Int/Nat (source_int_kernel), i.e. the source arrives on the runtime Int carrier that makes eval_cast
-        // take its `Value::Int => refused` arm. The identity arms above (source_name == target_name, keyed on the
-        // same resolved type node eval reads via cast_expr_inferred_type_name) already admit EXACTLY what eval_cast
-        // admits (its cast_identity_result); this arm refuses the remainder rather than leave the pair to eval
-        // alone, so a non-literal or cross-refinement `as T` into a refined Int carrier earns a located refusal at
-        // check time instead of a load that dies at run time (the latent outage shape). No implicit route that
-        // needs a proof (DESIGN 4): a bare literal written directly in the refined position needs no cast and is
-        // judged by the refinement wall; a value already on another carrier crosses only through a checked
-        // constructor. A String/Float source is deliberately OUT of this domain -- eval_cast walks the target
-        // kernel for those (its host-text parse arm) and may ADMIT them, so refusing here would open the opposite
-        // fork; source_int_kernel is false for them and they stay on the eval-decided path.
+        // the domain where the two provably disagree, all three computed at the call site on the RESOLVED source
+        // type node (the same accessor eval's cast_expr_inferred_type_name reads, via lookup_type_for):
+        //   * target_is_int_refined -- the target is a numeric int-predicate refinement (Int/Nat where range|gt_zero);
+        //   * source_int_kernel -- the source's base kernel is Int/Nat, i.e. it arrives on the runtime Int carrier
+        //     that makes eval_cast take its `Value::Int => refused` arm (a String/Float source is OUT of the domain:
+        //     eval_cast walks the target kernel for those and may ADMIT them, so refusing them here would open the
+        //     OPPOSITE fork -- they stay on the eval-decided path);
+        //   * source_type_name != target_name -- NOT identity. A value already on the target's carrier (bare `x as T`
+        //     with x: T, or a call source `f() as T` whose declared return is T) is admitted by eval_cast's
+        //     cast_identity_result, so it is excluded here on the resolved source name -- deliberately NOT left to
+        //     any sibling identity arm, so the identity admit cannot be silently dropped (DESIGN 6b).
+        // Everything left in the domain is a non-literal or cross-refinement `as T` into a refined Int carrier that
+        // eval_cast refuses with "cannot cast Int to <Name>" while the checker was silent; refusing it at check time
+        // (no implicit route that needs a proof, DESIGN 4) turns the run-time latent outage into a located refusal.
+        // A bare literal written directly in the refined position needs no cast and is judged by the refinement wall;
+        // a value already on another carrier crosses only through a checked constructor.
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- a value on ", source_name, " reaches ", target_name, " only through a checked constructor (or write a bare literal in the refined position, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
@@ -12187,6 +12190,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let target_is_int_refined = (type_where_refinement_predicates_transitive(ty: target_resolved, type_env: scope.type_env)
         |> filter(pred => where_refinement_is_int_literal_predicate(pred_name: field_init_node_name_at(n: pred, source_indices: si)))
         |> count) > 0
+      let source_type_name = match inner_typed.inferred {
+        Present { value: Resolved { node: snode } } =>
+          let sresolved = match lookup_type_for(env: scope.type_env, node: snode) {
+            Present { value: r } => r
+            Absent => snode
+          }
+          authored_name_at(source_indices: si, node: sresolved)
+        _ => ""
+      }
       let source_int_kernel = match inner_typed.inferred {
         Present { value: Resolved { node: snode } } =>
           let sresolved = match lookup_type_for(env: scope.type_env, node: snode) {
@@ -12195,9 +12207,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
           let sbase_name = authored_name_at(source_indices: si, node: peel_where_refinement_base(ty: sresolved, type_env: scope.type_env))
           sbase_name == "Int" || sbase_name == "Nat"
-        Absent => false
+        _ => false
       }
-      let int_refinement_cast_domain = target_is_int_refined && source_int_kernel
+      let int_refinement_cast_domain = target_is_int_refined && source_int_kernel && source_type_name != target_name
       let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading, int_refinement_cast_domain: int_refinement_cast_domain)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
