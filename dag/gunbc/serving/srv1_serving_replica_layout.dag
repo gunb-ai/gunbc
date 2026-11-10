@@ -27,9 +27,9 @@ module gunbc.serving.srv1_serving_replica_layout
 import std.types { String, NonEmptyStr, Port, List, FilePath, Int }
 import std.algebra { string_concat_join }
 import std.content_hash { sha256_hex_of_text }
-import std.nat { Nat }
+import std.nat { Nat, NatDivisionByZero, NatQuotientRemainder, nat_div_rem }
 import std.optional { Absent, Optional, Present }
-import std.measure { ByteSize, Second, BasisPoint, byte_size, byte_size_count, second, second_count, basis_point, basis_point_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
+import std.measure { ByteSize, Second, BasisPoint, byte_size, byte_size_count, second, second_count, basis_point, basis_point_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling, seconds_per_day }
 import std.decimal { fixed_point_trimmed_wire }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -169,8 +169,8 @@ data srv1_serving_gpu_launcher_bash_emit_dissolution: DissolutionCondition = unb
 // ties that to Srv1AdoptionMismatchAction's refusal of DestroyAndRelaunch.
 data srv1_replica_helper: RetainedShellScript = RetainedShellScript {
   body: "#!/bin/bash\n# lil-replica start|stop <gpu-index> -- systemd helper for lil-replica@.service (srv1, 2026-11-08).\n# start: adopt the replica container if it is already running (no relaunch), else launch it with\n#        srv1_lil_serve_gpu.sh; then block on the container and exit with ITS status\n#        (143 = stopped by SIGTERM = success; anything else -> systemd Restart=on-failure).\n# stop:  docker stop with a long grace period so LMCache can flush its disk tier.\nset -u\nACTION=${1:?start|stop}; IDX=${2:?gpu index}\ncase $IDX in 0) NAME=lil-flash-next ;; 1) NAME=lil-flash-next-1 ;; *) echo \"unknown GPU index $IDX\" >&2; exit 2 ;; esac\nLAUNCH=/home/briansrls/strata-test/srv1_lil_serve_gpu.sh\ncase $ACTION in\n  start)\n    if [ \"$(docker container inspect -f '{{.State.Running}}' \"$NAME\" 2>/dev/null)\" = true ]; then\n      echo \"adopting running container $NAME\"\n    else\n      \"$LAUNCH\" \"$IDX\" || exit 1\n    fi\n    rc=$(docker wait \"$NAME\") || exit 1\n    echo \"$NAME exited with status $rc\"; exit \"$rc\" ;;\n  stop)\n    exec docker stop -t 240 \"$NAME\" ;;\n  *) echo \"usage: $0 start|stop <idx>\" >&2; exit 2 ;;\nesac\n",
-  reason: "the systemd helper /usr/local/sbin/lil-replica on srv1 (sha256 e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d, read from the host 2026-11-09): the unit's ExecStart/ExecStop verb handler — adopt-or-launch by roster name, docker-wait to propagate the container exit status to systemd, docker stop -t 240 for the LMCache disk flush. Adoption today checks only the running flag by name; the contract's verification set is the requirement, tracked as srv1_helper_adoption_verification_gap." as NonEmptyStr,
-  dissolves_to: decl_ref(module_path: "v2.workflow.bash_emit AS OF 2026-11-09T21:44:07Z THIS BODY IS THE RESTORE PATH, NOT THE LIVE FILE: /usr/local/sbin/lil-replica now holds srv1_render_replica_helper (sha256 8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e, computed on the host and equal to the digest the interpreter printed), which is this body with the LAUNCH= line repointed at the rendered launcher and the three comment lines that named gpu.sh rewritten -- 3 lines out, 4 in, and the installer refuses any other diff. The sha256 above was recomputed on the host from the backup copy, so the earlier relayed-digest caveat on this row is retired", decl_name: "bash_emit_stmts"),
+  reason: "the systemd helper /usr/local/sbin/lil-replica on srv1 (sha256 e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d, recomputed on the host 2026-11-09 from the backup copy, which retires this row's earlier relayed-digest caveat): the unit's ExecStart/ExecStop verb handler — adopt-or-launch by roster name, docker-wait to propagate the container exit status to systemd, docker stop -t 240 for the LMCache disk flush. Adoption today checks only the running flag by name; the contract's verification set is the requirement, tracked as srv1_helper_adoption_verification_gap. AS OF 2026-11-09T21:44:07Z THIS BODY IS THE RESTORE PATH, NOT THE LIVE FILE: /usr/local/sbin/lil-replica now holds srv1_render_replica_helper (sha256 8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e, computed on the host and equal to the digest the interpreter printed), which is this body with the LAUNCH= line repointed at the rendered launcher and the three comment lines that named gpu.sh rewritten -- 3 lines out, 4 in, and the installer refuses any other diff." as NonEmptyStr,
+  dissolves_to: decl_ref(module_path: "v2.workflow.bash_emit", decl_name: "bash_emit_stmts"),
 }
 
 // The counted scaffold marker authorizing the retained helper, mirroring the launcher's
@@ -980,7 +980,11 @@ type Srv1ContainerRunShape {
   // re-render cannot silently mint a certificate the router will reject and produce an outage that looks
   // like an engine failure.
   tls_curve: NonEmptyStr
-  tls_validity_days: Nat
+  // Validity as a duration, with std.measure owning the unit. The `openssl req -days` argument is DERIVED from
+  // this at the flag boundary (srv1_tls_validity_days_for_flag), so the render stays byte-identical to what the
+  // live containers mint while a validity change is edited once, with its unit attached, instead of as a bare
+  // count that could mean days, hours, or a typo.
+  tls_validity: Second
   tls_subject_common_name: NonEmptyStr
 }
 
@@ -996,7 +1000,7 @@ data srv1_replica_container_run_shape: Srv1ContainerRunShape = Srv1ContainerRunS
   engine_args_container_path: "/root/engine.args" as NonEmptyStr,
   pool_key_container_path: "/root/.pool_key" as NonEmptyStr,
   tls_curve: "prime256v1" as NonEmptyStr,
-  tls_validity_days: 3650,
+  tls_validity: second(3650 * seconds_per_day()),
   tls_subject_common_name: "pool-card" as NonEmptyStr,
 }
 
@@ -1032,6 +1036,16 @@ fn srv1_replica_engine_args_host_path(replica: Srv1ServingReplicaSpec) -> NonEmp
 // a quote cannot smuggle one. Every token is the render; nothing here is re-spelled.
 fn srv1_replica_engine_args_body(config: Srv1LaunchConfig) -> String {
   string_concat_join(srv1_replica_engine_argv(config: config) as List<String>, "\n")
+}
+
+// The `openssl req -days` argument, DERIVED from the Second carrier on the shape row. Whole days are the unit
+// the flag takes, so the flag boundary is exactly where the measure is read out; the zero-divisor arm is the
+// carrier's arithmetic, not a policy (seconds_per_day is 24*60*60 through extdeps.units.iso8601, never zero).
+fn srv1_tls_validity_days_for_flag() -> Nat {
+  match nat_div_rem(a: second_count(srv1_replica_container_run_shape.tls_validity), b: seconds_per_day()) {
+    NatQuotientRemainder { quotient: q, remainder: _ } => q
+    NatDivisionByZero => 0
+  }
 }
 
 // The container-side command, as the single argument after `-lc` (which is how `docker inspect` reports it,
@@ -1090,7 +1104,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
           ),
           shape.tls_curve as String
         ),
-        concat(concat(" -nodes   -days ", to_string(shape.tls_validity_days)), " -subj /CN=")
+        concat(concat(" -nodes   -days ", to_string(srv1_tls_validity_days_for_flag())), " -subj /CN=")
       ),
       concat(
         concat(
@@ -1145,6 +1159,21 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
     concat("exec \"$\{ENGINE_ARGS[@]}\" >> $D/serve.log 2>&1", ""),
   ]
 }
+
+// THE SCAFFOLD MARKER FOR THE CONTAINER-COMMAND RENDER ABOVE, sitting on the carrier it covers. The launcher
+// and the helper each have one (srv1_serving_gpu_launcher_bash_emit_dissolution,
+// srv1_replica_helper_bash_emit_dissolution); this body had none, which is the gap review 92777 named:
+// hand-shell with no marker is debt nobody counts.
+//
+// WHAT IS ADMITTED: the container's inner command -- event logger, TLS guard, START event, args-file refusal,
+// engine exec -- is composed from strings rather than emitted as nodes. It is admitted because the composition
+// is pinned OUTSIDE this module's own representation: the witness refuses any render whose lines differ from
+// the command the live containers reported through `docker inspect .Config.Cmd`, and the installer parsed and
+// dry-ran that command with the serving image's own bash. The strings answer to host evidence, not to a model's
+// taste. That is also why migrating the medium here is not free: the installed bytes ARE this render,
+// digest-matched on the host, so an emitter swap must reproduce them exactly or the receipts desync from the
+// machine. The debt is the medium, not the artifact.
+data srv1_container_command_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_container_command_lines — the container's inner command is hand-composed strings (concat over literals), admitted as a capture-and-digest-pinned receipt: the witness refuses any render whose lines differ from the command the live containers ran on 2026-11-09, and the installer parses and dry-runs it with the serving image's own bash. DISSOLVES WHEN the same command is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ContainerRunShape/Srv1LaunchConfig rows, KEEPING that byte-for-byte control against docker inspect .Config.Cmd so the migration changes the medium and not the artifact. Until then this is adopted hand-shell under a marker, and it is not an authority on how shell should be written.")
 
 // The `docker run` line for one replica, with every value rendered -- no host shell variable survives into
 // it. This is the shape change that makes the adoption claim checkable: the command the container reports is

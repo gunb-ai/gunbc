@@ -25,7 +25,7 @@ module test.claim.serving.srv1_replica_rendered_boot_path_witness
 import std.types { Bool, String, NonEmptyStr, List, FilePath, Port, Int }
 import std.nat { Nat }
 import std.algebra { length, string_contains, string_concat_join }
-import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_to_byte_size, seconds_per_day }
 import std.decimal { fixed_point_trimmed_wire }
 import std.content_hash { sha256_hex_of_text, lower_hex_64 }
 import gunbc.serving.srv1_serving_replica_layout {
@@ -45,7 +45,8 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_runs_executed_2026_11_09, srv1_boot_path_ready_deadline,
   srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
   srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
-  srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract,
+  srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag,
+  srv1_container_command_render_bash_emit_dissolution,
 }
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
@@ -397,7 +398,8 @@ test fn changing_any_single_container_shape_field_changes_the_docker_command() -
   let over_tls = string_contains(s: cmd, pattern: "ec_paramgen_curve:prime256v1")
     && string_contains(s: cmd, pattern: "-days 3650")
     && string_contains(s: cmd, pattern: "-subj /CN=pool-card")
-    && s.tls_curve as String == "prime256v1" && s.tls_validity_days == 3650 && (s.tls_subject_common_name as String) == "pool-card"
+    && s.tls_curve as String == "prime256v1" && second_count(s.tls_validity) == 3650 * seconds_per_day() && srv1_tls_validity_days_for_flag() == 3650
+    && (s.tls_subject_common_name as String) == "pool-card"
   over_cgroup && over_shm && over_restart && over_entry && over_args_path && over_pool_key && over_tls
 }
 

@@ -149,8 +149,8 @@ fn arms_within(list: List<CollectiveTransportReading>, at_bytes: ByteSize, numer
   list.any(a => list.any(b =>
     (a.env_arm as String) == ("default" as NonEmptyStr)
       && (b.env_arm as String) == ("NCCL_P2P_DISABLE=1" as NonEmptyStr)
-      && byte_size_count(a.message_bytes) == byte_size_count(at_bytes)
-      && byte_size_count(b.message_bytes) == byte_size_count(at_bytes)
+      && message_bytes_count(a) == byte_size_count(at_bytes)
+      && message_bytes_count(b) == byte_size_count(at_bytes)
       && bandwidth_count(b: bus_bw_of(c: a)) * denominator >= bandwidth_count(b: bus_bw_of(c: b)) * numerator
       && bandwidth_count(b: bus_bw_of(c: b)) * denominator >= bandwidth_count(b: bus_bw_of(c: a)) * numerator))
 }
@@ -159,6 +159,23 @@ fn elapsed_of(c: CollectiveTransportReading) -> Microsecond {
   match c.elapsed {
     Present { value: e } => e
     Absent => microsecond(count: 0)
+  }
+}
+
+// The optional measurement cells are optional, so a consumer says what absent means instead of letting an
+// absent cell compare equal to a zero-filled one. Both helpers are only used where the row is a READ row,
+// and the sizes they pin are nonzero, so `Absent => 0` can never satisfy a comparison here by accident.
+fn message_bytes_count(c: CollectiveTransportReading) -> Nat {
+  match c.message_bytes {
+    Present { value: v } => byte_size_count(v)
+    Absent => 0
+  }
+}
+
+fn transport_of(c: CollectiveTransportReading) -> String {
+  match c.transport {
+    Present { value: t } => t as String
+    Absent => ""
   }
 }
 
@@ -210,7 +227,7 @@ test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
       && string_contains(s: read_on_of(w: c.warrant), pattern: "2026-11-09T22:40:35Z")
       && string_contains(s: read_on_of(w: c.warrant), pattern: "replicas stopped")
       && string_contains(s: c.instrument_sha256 as String, pattern: "702a2bce")
-      && (c.transport as String) == "SHM/direct")
+      && transport_of(c: c) == "SHM/direct")
     // the two runs of the same instrument state DIFFERENT windows; no row of one can be read as the other
     && !unloaded.any(c => string_contains(s: read_on_of(w: c.warrant), pattern: "2026-11-08T22:22"))
     // the loaded discriminators invert here: the disabled arm reaches the 10 GB/s class, and no row is slow
@@ -236,11 +253,11 @@ test fn the_unloaded_rows_are_not_the_loaded_rows_relabelled() -> Bool {
   let loaded = srv1_collective_transport_readings
   unloaded.all(c => !loaded.any(d =>
     (d.env_arm as String) == (c.env_arm as String)
-      && byte_size_count(d.message_bytes) == byte_size_count(c.message_bytes)
+      && message_bytes_count(d) == message_bytes_count(c)
       && microsecond_count(m: elapsed_of(c: d)) == microsecond_count(m: elapsed_of(c: c))))
     && unloaded.any(c => unloaded.any(d =>
       (c.env_arm as String) != (d.env_arm as String)
-      && byte_size_count(c.message_bytes) == byte_size_count(d.message_bytes)
+      && message_bytes_count(c) == message_bytes_count(d)
       && microsecond_count(m: elapsed_of(c: c)) * 4 >= microsecond_count(m: elapsed_of(c: d))))
 }
 
