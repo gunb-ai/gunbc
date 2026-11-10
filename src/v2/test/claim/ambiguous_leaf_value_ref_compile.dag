@@ -55,6 +55,16 @@ data entry_bare: String = "module ambx.entry\nimport ambx.peer_a { peer_a_probe 
 // satisfied by a compiler that refuses every reference to a shared leaf.
 data entry_owner_named: String = "module ambx.entry\nimport ambx.peer_a { peer_a_probe }\nimport ambx.peer_b { peer_b_probe }\ndata picked: Int = ambx.peer_a.shared_leaf\nfn use_picked() -> Int { picked + peer_a_probe() + peer_b_probe() }\n"
 
+// CONTROL #2 (the manager's required case) -- the SAME bare reference `shared_leaf`, but the entry module
+// explicitly IMPORTS it from ONE named owner while the closure STILL holds two owners (peer_b declares it too).
+// It must compile CLEAN: the resolution pass must not refuse it (the import binding reaches one owner) AND the
+// emitter must render it (not the undefined-symbol poison), because both consult the SAME import authority
+// (`bare_import_owner_index`). This is the population the old emitter handed to `LeafAmbiguous` -- the bug
+// #16155 patched at six call sites by hand-qualifying them. If the import resolver is missing from the pass,
+// this case is refused (red); if it is missing from the emitter, it compiles but the emitted crate fails on
+// the poison symbol (red). It is the control that pins the pass and the emitter to one import authority.
+data entry_imported: String = "module ambx.entry\nimport ambx.peer_a { peer_a_probe, shared_leaf }\nimport ambx.peer_b { peer_b_probe }\ndata picked: Int = shared_leaf\nfn use_picked() -> Int { picked + peer_a_probe() + peer_b_probe() }\n"
+
 fn compile_ambiguous_leaf_fixture(entry: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [
@@ -92,4 +102,10 @@ fn refuses_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bo
 test fn the_bare_ambiguous_leaf_is_refused_at_compile_time_and_the_owner_named_form_compiles() -> Bool {
   refuses_with_class(compile_ambiguous_leaf_fixture(entry_bare), "AmbiguousReference")
     && compiles_clean(compile_ambiguous_leaf_fixture(entry_owner_named))
+}
+
+// CONTROL #2 as its own claim, so the manager sees the import case counted separately from the RED: the bare
+// reference in a two-owner closure that the entry IMPORTS from one named owner compiles clean.
+test fn the_imported_bare_reference_in_a_two_owner_closure_compiles() -> Bool {
+  compiles_clean(compile_ambiguous_leaf_fixture(entry_imported))
 }
