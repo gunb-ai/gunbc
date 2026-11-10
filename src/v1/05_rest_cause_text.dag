@@ -13,7 +13,9 @@ module v1.compiler.rest_cause_text
 // emit_rust_rest_result_lowering) -- and a second copy of the rendering was the leak the emitted
 // route carried (it published `error.to_string()` / the serde message, which can echo a spelling
 // the body presented). This module is the single place the declared-side PHRASES and the pinned
-// CAUSE TEMPLATE are declared, so both realizations speak one text.
+// CAUSE TEMPLATE are declared, so the two realizations converge on ONE text. In THIS change the
+// emitted route converges on it; the interpreted route still carries its own copies of these
+// strings until the declared frontier named below folds it in (see "THE FORK" at the bottom).
 //
 // WHAT STAYS IN RUST, AND WHY THIS IS NOT THE .dag THE INTERPRETER ALREADY DECLINED
 // (#16241's gunbc.declared_side_refusal_cause_seed_growth, "WHY IT IS RUST AND NOT .dag").
@@ -27,6 +29,19 @@ module v1.compiler.rest_cause_text
 // a declared phrase); this module owns only the fixed wording and the shape
 // "body did not inhabit the declared output: <declared> at <located> (<coproduct>)" that the claims
 // in dag/test/claim/rest_exchange_replay.dag pin.
+//
+// THE FORK, AND THE FRONTIER THAT CLOSES IT. The interpreted route's four renderers
+// (src/v1/stage0/src/v1_interpreter.rs: rest_response_declared_cause, rest_body_read_refused_cause,
+// rest_body_not_json_cause, rest_body_null_members_cause) still carry their OWN Rust-literal copies
+// of these phrase strings, so until PR-2 the strings exist in two places (the fork single_authority
+// forbids). It is a DECLARED residue, not a silent one: it is tracked in
+// dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag with a named trigger, and the
+// switch-over is dispatched by silent-bee-845 as PR-2. FRONTIER -- what consumes the two phrases here
+// that no caller uses yet (rest_body_not_json_cause_text, rest_body_null_members_cause_text): PR-2
+// points the two interpreter renderers at these exact fns. TRIGGER -- PR-1 on main with heal-publish
+// having committed this module's generated constants, so hand-Rust may reference a symbol that
+// already exists; it cannot co-land, or hand-Rust references a not-yet-committed generated symbol, the
+// E0599 heal deadlock #16224 needed a grant for. Until then the fork is visible, not dangling-untracked.
 
 fn rest_body_read_refused_cause_text() -> String {
   // Fixed text. The read error is dropped by the caller (the emitter never splices it; the
