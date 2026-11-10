@@ -799,6 +799,18 @@ data srv1_microvm_slot_charge_waits_for_realization: DesignRuling = DesignRuling
   provenance: "Operator decision 2026-11-09, to bold-wren-111, verbatim: \"yes please do A and then B\". A = start 3 more CI runners on srv1 by hand now (done: srv1-07, srv1-08 and srv1-09 unmasked, enabled and started as CI runners on labels self-hosted,linux,arm64,gunbc-heavy,srv1 from the shared template). B = in the repo, stop charging srv1's two authored microVM slots against its runner memory until their controller is actually installed and running, so the width derivation gives srv1 more CI slots on its own and takes them back when the microVM lane goes live. Carried into the model by still-otter-622; the live reading behind the rows (no controller, no slot units, only gunbc-microvm-nft.service active; 502 GiB total / 273 GiB available) is the operator's, 2026-11-09 ~01:20Z.",
 }
 
+// The fleet decision of 2026-11-09, recorded because it REMOVES a role two hosts were carrying and
+// every carrier that described those slots as fabric execution members is wrong from this date. The
+// two decisions it supersedes (2026-08-21, 2026-09-18) were recorded in the note beside
+// `srv3_fabric_first_slot` in `gunbc.runner.runner_slot_allocation`; that note is deleted with the
+// slots it described, so this row is where its content survives.
+data srv3_srv4_fabric_slots_serve_ci: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator decision (2026-11-09, to bold-wren-111, verbatim answer \"A is fine\" to: \"hand srv3's and srv4's fabric slots to CI in runner_slot_allocation, so 18 CI runners on each\"): srv3 and srv4 no longer carry fabric execution slots; all 18 committed slots on each serve GitHub Actions. This SUPERSEDES the operator rulings of 2026-08-21 / 2026-09-18 that made srv3-06/07 and srv4-06/07 fabric execution members. The live read that made those rulings unreasonable: bold-wren-111's 2026-11-09 read -- srv3-06/07 and srv4-06/07 are masked, have NO install trees under /opt/actions-runner, and no fabric cell or slice exists on either host; fabric runs nothing on either host.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     thermal_runner_cap_lifted_2026_11_08,
@@ -897,6 +909,7 @@ fn design_rulings() -> List<DesignRuling> {
     plans_reset_and_audit_recommendations_2026_11_08,
     seed_read_set_receipt_is_admitted,
     srv1_microvm_slot_charge_waits_for_realization,
+    srv3_srv4_fabric_slots_serve_ci,
   ]
 }
 

@@ -497,9 +497,14 @@ fn runner_slot_member_observed(instance_name: String, provenance: RunnerSlotProv
 // It works on INDICES, not rendered names, so the fabric identity is compared as an identity and
 // never by parsing a slot number back out of a string it was just formatted into.
 //
-// CONSEQUENCE ON THE FLEET: srv3 AND srv4 are the fabric execution hosts and each gives up two
-// members, so each desires two fewer runners than its committed width; srv1 and srv2 carry no
-// fabric member and are unchanged. The membership is gunbc.runner.runner_slot_allocation
+// CONSEQUENCE ON THE FLEET, STATED AGAINST THE POPULATION AND NOT TRANSCRIBED: the hosts that carry a
+// fabric member are the hosts that desire fewer runners than their committed width, and today that is
+// srv1 ALONE -- the microVM shakedown at 13 and the revision job at 14. srv3 and srv4 used to be the
+// execution hosts, each giving up two members, until gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci
+// (operator, 2026-11-09) handed those slots to GitHub Actions; they now desire their full committed
+// width, which is also what makes their slots 06 and 07 provisioning targets again rather than slots the
+// fleet speaks for elsewhere. srv2 is unchanged and still carries none, though its count is unresolved
+// for an unrelated reason. The membership is gunbc.runner.runner_slot_allocation
 // fabric_execution_slot_identities and the widths are gunbc_runner_committed_width -- named rather
 // than transcribed, because the previous form of this sentence quoted a desired count and a width
 // from the one-execution-host fleet and both were falsified without it, srv4's carve by gunbc#11625

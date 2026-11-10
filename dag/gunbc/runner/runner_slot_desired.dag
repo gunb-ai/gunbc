@@ -123,7 +123,11 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 // AND 41 IS NOT THE CI-SERVING NUMBER EITHER. `host_github_slot_count` is the committed width MINUS
 // `host_fabric_slot_count`, so some committed slots are fabric execution members rather than GitHub
 // runners. Every total in this note is an ALLOCATION count; the serving count is lower and is the
-// one a capacity conversation actually wants.
+// one a capacity conversation actually wants. SINCE 2026-11-09 THE GAP IS SRV1'S ALONE: srv3 and srv4
+// returned their two each to GitHub Actions (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci), so
+// on those hosts the serving count equals the allocation and the only host still short of its own
+// allocation is srv1, whose shakedown and revision-job slots stay carved. A total quoted across all
+// four hosts is still an allocation count and still over-states what serves CI.
 //
 // dissolve-on: the floor's demand falls below this line. The prepared-product and dependency
 // lifetime reductions have a measured exchange rate now -- roughly one slot per GiB removed on

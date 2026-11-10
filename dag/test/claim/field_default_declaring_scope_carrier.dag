@@ -1,0 +1,13 @@
+module test.claim.field_default_declaring_scope_carrier
+
+// THE ARM POPULATION THE DECLARING MODULE DOES NOT OWN.
+//
+// `FieldDefaultCarrierAck` is the arm the fixture (`test.claim.field_default_declaring_scope_fixture`)
+// reaches in a parameter default through a NAMED IMPORT rather than through its own declarations. It is
+// the second half of the moved population: a default read that the declaring site can name because its
+// own file imports the name, which the caller still cannot see. Without it, a fix could bind only the
+// declaring module's own arms and pass every other claim in this file set while leaving the imported-arm
+// shape — and any future `= SomeOtherModule'sArm` default — to the caller's environment.
+type FieldDefaultCarrierToken
+  = FieldDefaultCarrierAck
+  | FieldDefaultCarrierNack

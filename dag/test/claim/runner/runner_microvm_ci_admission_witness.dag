@@ -6,7 +6,7 @@ import product.fabric.sanitation { CellId }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric.fabric_executor_class { ExecutorSanctioned, ExecutorUnclassified, fleet_cell_sanction }
-import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv3_fabric_first_slot, workspace_execution_slot_identities, gunbc_runner_slot_desired_for }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv1_revision_job_slot, workspace_execution_slot_identities, gunbc_runner_slot_desired_for }
 import std.measure { byte_size_count }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
@@ -80,7 +80,14 @@ test fn workspace_recovery_cannot_bypass_owner_settlement() -> Bool {
 // Exercise the real designation, not a caller-authored CustomerExecutableCapacity fixture.
 test fn desired_workspace_transfer_withdraws_only_the_budgeted_demo_cell_from_ci() -> Bool {
   let slot = srv1_microvm_shakedown_slot()
-  let other = srv3_fabric_first_slot()
+  // The retained arm is a fabric execution member the withdrawal does NOT name. It used to be
+  // srv3_fabric_first_slot, one of the two slots srv3 gave the fabric; gunbc.design_ruling::
+  // srv3_srv4_fabric_slots_serve_ci (2026-11-09) took srv3 out of that population, and a CI slot makes
+  // the wrong contrast here -- this row asks whether the withdrawal reaches every FABRIC cell or only
+  // the budgeted demo one, so both arms must be cells. srv1-14 is the revision job: sanctioned, a cell
+  // of its own, and not in workspace_execution_slot_identities, so it is admitted while srv1-13 is
+  // refused.
+  let other = srv1_revision_job_slot()
   let cell = runner_slot_instance_name(slot: slot) as NonEmptyStr
   let other_cell = runner_slot_instance_name(slot: other) as NonEmptyStr
   let retired = microvm_ci_admission(executor: cell, sanction: fleet_cell_sanction(slot: slot),

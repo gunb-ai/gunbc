@@ -19,6 +19,7 @@ import gunbc.machine_intake.mount_establishment {
 }
 import gunbc.machine_intake.megarac_media_attach {
   MegaRacShareBinding,
+  cd_error_attach_policy_admits,
   MegaRacShareNfs,
   AttachReadiness,
   ConvergeStepAttachFromListing,
