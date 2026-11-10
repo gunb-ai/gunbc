@@ -144,15 +144,15 @@ fn issue_command_acceptance_wet(repo: String, git_program: String = "/usr/bin/gi
       WetFacet { name: "the post-cutoff absence of a pull request refuses at the receipt step", ok: f_absence_refuses_at_receipt },
       WetFacet { name: "the refused acceptance left no event on the node", ok: f_refusal_left_nothing },
       WetFacet { name: "every carrier snapshot closed", ok: f_every_carrier_closed }
-    ];
+    ]
     // A ProcessExit has no stdout to name a facet in, so the NAMES of the facets that did not hold travel in
     // the failure reason the runtime prints, beside the outcome of every append.
-    let failed = map(filter(facets, facet => !facet.ok), facet => facet.name);
+    let failed = map(filter(facets, facet => !facet.ok), facet => facet.name)
     let detail = concat(concat(["acceptance/retry/retirement/door control failed; facets that did not hold:"], failed),
       ["outcomes:", issue_wet_outcome(result: created.result), issue_wet_outcome(result: moved.result),
        issue_wet_outcome(result: retry.result), issue_wet_outcome(result: first_retire.result),
        issue_wet_outcome(result: replayed_retire.result), issue_wet_outcome(result: second_retire.result),
-       issue_wet_outcome(result: door.result)]);
+       issue_wet_outcome(result: door.result)])
     if count(failed) == 0 { ExitSuccess } else { exit_failure(reason: join(detail, "\n")) }
   }
 }
