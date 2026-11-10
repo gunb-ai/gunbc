@@ -551,3 +551,52 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
         .join()
         .unwrap();
 }
+
+// THE BODY ARM OF THE PAIR: the SAME operation of the SAME service, reached through the SAME braceless
+// whole-module import, spelled DIRECTLY in an entry body. It is the control that decides whether the
+// lambda-subject position is the discriminator. It must be GREEN on both heads -- if it too refuses at
+// main, position is not the axis and the fix has to look elsewhere; if it resolves while the lambda arm
+// refuses, the lambda-subject position is proven to be the discriminator (decided by execution, not inference).
+#[test]
+fn service_op_surface_spelled_in_an_entry_body_is_realized() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, intern, si, modules) =
+                graph_from("dag/test/fixture/demanded_scope/service_op_grain.dag");
+            let demand = grain_demand(&modules, &["service_op_spelled_in_entry_body"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let service_realized = realization.realized.contains_key("test.RestReplay");
+            let messages = grain_typecheck(&modules, &intern, &si, demand.clone());
+            let surface: Vec<String> = messages
+                .iter()
+                .filter(|m| {
+                    m.contains("RestReplay")
+                        || m.contains("method surface")
+                        || m.contains("no declared frontier row")
+                })
+                .cloned()
+                .collect();
+            eprintln!(
+                "SERVICE_OP_GRAIN_BODY entry=service_op_spelled_in_entry_body service_realized={} surface_refusals={} total={} surface={:?}",
+                service_realized,
+                surface.len(),
+                messages.len(),
+                surface
+            );
+            assert!(
+                service_realized,
+                "the service whose operation the demanded entry spells directly in its body must be realized"
+            );
+            assert!(
+                surface.is_empty(),
+                "an entry that spells a service operation directly in its body must not refuse on the method surface: {surface:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

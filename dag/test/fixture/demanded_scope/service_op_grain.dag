@@ -1,0 +1,30 @@
+module test.fixture.demanded_scope.service_op_grain
+
+// THE BODY ARM OF THE #16156 SERVICE-OP METHOD-SURFACE PAIR.
+//
+// WHAT THIS FILE ISOLATES. #16156 (5e315131, "run: realize only the declarations an entry can name")
+// replaced the blanket first wave that realized EVERY non-function declaration with a wave seeded only by
+// what the entry can NAME. On the `gunbc run` grain that dropped the method surface of a service whose
+// operation the entry spells only inside a `fn(_scope) { ... }` lambda subject: the measured refusal is
+// `method '<Op>' cannot be resolved: receiver type 'Primitive(test.RestReplay)' establishes no method
+// surface, so the method's existence is not established and no declared frontier row admits it` (BuildBuddy
+// a96b05f2 at main; the same entries resolve at e1dd6b50, 63dd5bc0). The lambda arm of the pair is the real
+// main-resident witness entry `rest_status_and_body_are_persistable` in test.claim.rest_exchange_replay.
+//
+// THIS IS THE CONTROL: the SAME operation of the SAME service, reached through the SAME braceless
+// whole-module import of the SAME probe module, spelled DIRECTLY in an entry body instead of inside a lambda
+// subject. It is the only difference between this file and the lambda arm; import style and the service are
+// held fixed. Whether it resolves where the lambda arm refuses is what decides that the lambda-subject
+// position (not the braceless import, not the service) is the discriminator -- decided by execution on the
+// gunbc-run grain, not inferred.
+
+import std.types { Bool, String }
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import test.fixture.rest_exchange_replay_probe
+
+fn service_op_spelled_in_entry_body() -> Bool {
+  match test.RestReplay.Observe() {
+    RestAnswered { answer } => answer.message == "accepted"
+    RestRefused { refusal: _ } => false
+  }
+}
