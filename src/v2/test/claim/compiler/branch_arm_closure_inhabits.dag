@@ -84,7 +84,7 @@ fn bac_arm_wrong_return_refuses() -> Outcome<ResolvedTree> {
   bac_assemble(body: "fn f(c: Bool) -> fn(Int) -> Int {\n  if c { fn(q) -> Bool { true } } else { fn(r) -> Int { r } }\n}\n")
 }
 test fn bac_arm_wrong_return_still_refuses() -> Bool {
-  !bac_infer_accepted(o: bac_arm_wrong_return_refuses())
+  bac_fatal_is(o: bac_arm_wrong_return_refuses(), reason: ^infer_arms_declare_conflicting_types)
 }
 
 // NEGATIVE CONTROL 2: one arm is a closure, the other is a literal Int -- they cannot inhabit fn(Int) -> Int.
@@ -92,5 +92,5 @@ fn bac_mixed_shapes_refuse() -> Outcome<ResolvedTree> {
   bac_assemble(body: "fn f(c: Bool) -> fn(Int) -> Int {\n  if c { fn(q) -> Int { q } } else { 1 }\n}\n")
 }
 test fn bac_mixed_closure_and_literal_refuses() -> Bool {
-  !bac_infer_accepted(o: bac_mixed_shapes_refuse())
+  bac_fatal_is(o: bac_mixed_shapes_refuse(), reason: ^infer_arms_declare_conflicting_types)
 }

@@ -9852,7 +9852,12 @@ fn infer_arrow_body_child_frame(parent: Node, frame: InferFrame, edge: Edge) -> 
         Ambiguous => infer_frame_inherited(frame: frame)
         NotFound => infer_frame_inherited(frame: frame)
       }
-    TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
+    TypeNode { connective: _ } =>
+      if match_arm_node_conforms(arm: parent) && edge_is_core(e: edge, marker: MatchArmBodyEdge) {
+        infer_branch_arm_callback_frame(frame: frame, callback: edge.target)
+      } else {
+        infer_frame_inherited(frame: frame)
+      }
     ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
   }
 }
@@ -10072,12 +10077,7 @@ fn infer_gather_child_context_unscoped(parent: Node, frame: InferFrame, acc: Inf
             }
           ComputationNode { behavior: Branch } => infer_branch_arm_callback_frame(frame: infer_branch_arm_child_frame(slot: slot, frame: frame), callback: edge.target)
           ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
-          TypeNode { connective: _ } =>
-            if match_arm_node_conforms(arm: parent) && edge_is_core(e: edge, marker: MatchArmBodyEdge) {
-              infer_branch_arm_callback_frame(frame: frame, callback: edge.target)
-            } else {
-              infer_frame_inherited(frame: frame)
-            }
+          TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
         }
       }
     Authored { name: _ } => infer_frame_inherited(frame: frame)
