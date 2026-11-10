@@ -1,6 +1,6 @@
-module test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness
+module test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness
 
-// THE ACCOUNT-STATE OBSERVATION ASSEMBLER, WITNESSED. bmc_secure.live_read_bmc_account_state is the
+// THE ACCOUNT-STATE OBSERVATION ASSEMBLER, WITNESSED. bmc_secure.supplied_transport_read_bmc_account_state is the
 // response-to-observation ASSEMBLER -- the half bmc_secure_state_live_read_frontier and
 // bmc_served_lockout_live_read_frontier need but are NOT yet discharged by. It mints
 // BmcAccountStateObservation from supplied probe/census responses, commits every one as content-addressed
@@ -40,9 +40,9 @@ import gunbc.machine_intake.subject {
 import std.scoped_authorization { AttemptIdentity }
 import gunbc.machine_intake.bmc_credential_policy { CredentialSurface, RedfishBasicOrSession, BmcCredentialPolicyKey, asrock_altrad8ud_openbmc_3_22_00_key }
 import gunbc.machine_intake.bmc_secure {
-  BmcAccountStateObservation, BmcLiveAccountStateTransport, BmcLiveResponse, BmcBreakGlassStanding,
-  BreakGlassAbsent, BreakGlassPresent, BmcLiveAccountStateReadOutcome, LiveReadMinted, LiveReadRefused,
-  BmcLiveReadRefusal, ResponseNotCommitted, PublishedRetirementPolicyUngrounded, live_read_bmc_account_state,
+  BmcAccountStateObservation, BmcSuppliedAccountStateTransport, BmcSuppliedResponse, BmcBreakGlassStanding,
+  BreakGlassAbsent, BreakGlassPresent, BmcSuppliedAccountStateReadOutcome, SuppliedTransportMinted, SuppliedTransportRefused,
+  BmcSuppliedReadRefusal, ResponseNotCommitted, PublishedRetirementPolicyUngrounded, supplied_transport_read_bmc_account_state,
   ManagedCredentialReference, PublishedAccountKind, PublishedAccountRetired,
   PublishedCredentialRetiredOnTheManagedAccount, PublishedCredentialProbed,
   ObservedCredentialAccepted, ObservedCredentialRejected, ObservedCredentialUnestablished,
@@ -126,8 +126,8 @@ fn lan_threshold_served() -> IpmiLanBadPasswordThresholdVerdict {
 }
 
 // A committed capture: the evidence-store readback whose digest corresponds to the bytes.
-fn committed(read: NonEmptyStr, response: NonEmptyStr) -> BmcLiveResponse {
-  BmcLiveResponse {
+fn committed(read: NonEmptyStr, response: NonEmptyStr) -> BmcSuppliedResponse {
+  BmcSuppliedResponse {
     read: read,
     response: response,
     evidence: EvidenceRef { label: read, digest: content_hash_of_value(value: response) },
@@ -137,8 +137,8 @@ fn committed(read: NonEmptyStr, response: NonEmptyStr) -> BmcLiveResponse {
 // An UNCOMMITTED capture: there is no store readback whose digest corresponds to these bytes, so the
 // reader's correspondence check fails and it refuses. (The wet driver only ever builds committed answers
 // from a real store write+readback; the witness models the never-written case by a non-corresponding ref.)
-fn uncommitted(read: NonEmptyStr, response: NonEmptyStr) -> BmcLiveResponse {
-  BmcLiveResponse {
+fn uncommitted(read: NonEmptyStr, response: NonEmptyStr) -> BmcSuppliedResponse {
+  BmcSuppliedResponse {
     read: read,
     response: response,
     evidence: EvidenceRef {
@@ -151,8 +151,8 @@ fn uncommitted(read: NonEmptyStr, response: NonEmptyStr) -> BmcLiveResponse {
 // THE FAITHFUL TRANSPORT: the responses a live ALTRAD8UD-1L2T / OpenBMC 3.22.00 returns for the lab
 // world (root shared, published retired on the managed account), every one committed. srv15 has no
 // break-glass generation, so the standing is typed Absent.
-fn faithful_transport() -> BmcLiveAccountStateTransport {
-  BmcLiveAccountStateTransport {
+fn faithful_transport() -> BmcSuppliedAccountStateTransport {
+  BmcSuppliedAccountStateTransport {
     managed_accepted: true,
     managed_answer: committed("ipmi-user-test-managed", "check-password: ok"),
     census: census(),
@@ -177,17 +177,17 @@ fn policy_row() -> BmcCredentialPolicyKey? {
 // Every surface the lab controller serves, per its grounded policy row (Redfish shared store).
 data served_surfaces: List<CredentialSurface> = [RedfishBasicOrSession]
 
-// THE ONE AUTHORIZED CALLER of the live reader (the reader is admit_callers-gated to this declaration).
-fn live_read_of(transport: BmcLiveAccountStateTransport, policy: BmcCredentialPolicyKey?) -> BmcLiveAccountStateReadOutcome
+// THE ONE AUTHORIZED CALLER of the supplied-transport reader (the reader is admit_callers-gated to this declaration).
+fn supplied_transport_read_of(transport: BmcSuppliedAccountStateTransport, policy: BmcCredentialPolicyKey?) -> BmcSuppliedAccountStateReadOutcome
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness", decl_name: "the_live_read_mints_the_dry_observation"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness", decl_name: "an_uncommitted_response_refuses"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness", decl_name: "an_ungrounded_policy_refuses_without_a_published_probe"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness", decl_name: "the_live_read_never_sets_a_controller_clock"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_live_read_witness", decl_name: "a_break_glass_answer_must_be_committed"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "the_supplied_transport_read_mints_the_dry_observation"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "an_uncommitted_response_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "an_ungrounded_policy_refuses_without_a_published_probe"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "the_supplied_transport_read_never_sets_a_controller_clock"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_supplied_transport_read_witness", decl_name: "a_break_glass_answer_must_be_committed"),
   ]
 {
-  live_read_bmc_account_state(
+  supplied_transport_read_bmc_account_state(
     transport: transport, subject: lab_subject(), endpoint: lab_endpoint,
     board: lab_board(), firmware: lab_firmware(),
     managed: root_ref(), managed_user: root_user, published_user: root_user,
@@ -199,10 +199,10 @@ fn live_read_of(transport: BmcLiveAccountStateTransport, policy: BmcCredentialPo
   )
 }
 
-fn minted(outcome: BmcLiveAccountStateReadOutcome) -> BmcAccountStateObservation? {
+fn minted(outcome: BmcSuppliedAccountStateReadOutcome) -> BmcAccountStateObservation? {
   match outcome {
-    LiveReadMinted { observation: obs } => Present { value: obs }
-    LiveReadRefused { cause: _ } => none
+    SuppliedTransportMinted { observation: obs } => Present { value: obs }
+    SuppliedTransportRefused { cause: _ } => none
   }
 }
 
@@ -229,13 +229,13 @@ fn break_glass_is_typed_absence(obs: BmcAccountStateObservation) -> Bool {
   }
 }
 
-// THE EQUIVALENCE. Over a faithful committed transport the live reader mints the decision-relevant
+// THE EQUIVALENCE. Over a faithful committed transport the supplied-transport reader mints the decision-relevant
 // observation the dry reader mints for the SAME world: managed accepted, published DERIVED-retired
 // (never probed), no break-glass standing, Redfish served. (The served lockout is assembled through
 // bmc_lockout_surface_from_redfish + bmc_lockout_surface_from_ipmi_lan in the reader's own mint, so a
 // mint at all proves both adapters ran.)
-test fn the_live_read_mints_the_dry_observation() -> Bool {
-  match minted(live_read_of(transport: faithful_transport(), policy: policy_row())) {
+test fn the_supplied_transport_read_mints_the_dry_observation() -> Bool {
+  match minted(supplied_transport_read_of(transport: faithful_transport(), policy: policy_row())) {
     Absent => false
     Present { value: obs } =>
       managed_is_accepted(obs: obs)
@@ -255,7 +255,7 @@ fn carries_no_controller_clock(o: BmcAccountStateObservation) -> Bool {
 // RED. Flip the user-list response's committed flag off: the read refuses with the named read.
 test fn an_uncommitted_response_refuses() -> Bool {
   let t = faithful_transport()
-  let broken = BmcLiveAccountStateTransport {
+  let broken = BmcSuppliedAccountStateTransport {
     managed_accepted: t.managed_accepted, managed_answer: t.managed_answer, census: t.census,
     census_answer: t.census_answer, users_answer: uncommitted("ipmi-user-list", "ID Name\n 1 root"),
     redfish_census: t.redfish_census, redfish_census_answer: t.redfish_census_answer,
@@ -264,8 +264,8 @@ test fn an_uncommitted_response_refuses() -> Bool {
     lan_threshold: t.lan_threshold, lan_threshold_answer: t.lan_threshold_answer,
     break_glass: t.break_glass,
   }
-  match live_read_of(transport: broken, policy: policy_row()) {
-    LiveReadRefused { cause: ResponseNotCommitted { read: _ } } => true
+  match supplied_transport_read_of(transport: broken, policy: policy_row()) {
+    SuppliedTransportRefused { cause: ResponseNotCommitted { read: _ } } => true
     _ => false
   }
 }
@@ -273,15 +273,15 @@ test fn an_uncommitted_response_refuses() -> Bool {
 // RED. No credential-policy row: the published retirement cannot be derived and the reader REFUSES --
 // it never probes the published credential to find out. The lockout-budget floor.
 test fn an_ungrounded_policy_refuses_without_a_published_probe() -> Bool {
-  match live_read_of(transport: faithful_transport(), policy: none) {
-    LiveReadRefused { cause: PublishedRetirementPolicyUngrounded { detail: _ } } => true
+  match supplied_transport_read_of(transport: faithful_transport(), policy: none) {
+    SuppliedTransportRefused { cause: PublishedRetirementPolicyUngrounded { detail: _ } } => true
     _ => false
   }
 }
 
 // RED. Every instant is the observer's; the minted observation never carries a controller clock.
-test fn the_live_read_never_sets_a_controller_clock() -> Bool {
-  match minted(live_read_of(transport: faithful_transport(), policy: policy_row())) {
+test fn the_supplied_transport_read_never_sets_a_controller_clock() -> Bool {
+  match minted(supplied_transport_read_of(transport: faithful_transport(), policy: policy_row())) {
     Absent => false
     Present { value: obs } => carries_no_controller_clock(obs)
   }
@@ -291,7 +291,7 @@ test fn the_live_read_never_sets_a_controller_clock() -> Bool {
 // an observation with an unproven break-glass probe.
 test fn a_break_glass_answer_must_be_committed() -> Bool {
   let t = faithful_transport()
-  let broken = BmcLiveAccountStateTransport {
+  let broken = BmcSuppliedAccountStateTransport {
     managed_accepted: t.managed_accepted, managed_answer: t.managed_answer, census: t.census,
     census_answer: t.census_answer, users_answer: t.users_answer,
     redfish_census: t.redfish_census, redfish_census_answer: t.redfish_census_answer,
@@ -300,8 +300,8 @@ test fn a_break_glass_answer_must_be_committed() -> Bool {
     lan_threshold: t.lan_threshold, lan_threshold_answer: t.lan_threshold_answer,
     break_glass: BreakGlassPresent { reference: root_ref(), accepted: true, answer: uncommitted("ipmi-user-test-break-glass", "check-password: ok") },
   }
-  match live_read_of(transport: broken, policy: policy_row()) {
-    LiveReadRefused { cause: ResponseNotCommitted { read: _ } } => true
+  match supplied_transport_read_of(transport: broken, policy: policy_row()) {
+    SuppliedTransportRefused { cause: ResponseNotCommitted { read: _ } } => true
     _ => false
   }
 }
