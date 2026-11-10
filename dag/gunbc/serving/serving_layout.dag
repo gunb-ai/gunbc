@@ -906,8 +906,10 @@ fn srv3_rtx_2000_ada_device(slot: String) -> ServingDevice {
 data srv3_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_srv3,
   // THE CAP, READ FROM THE ROW THAT OWNS IT (review 38602): srv3_strata_engine_memory.memory_cap is the single literal
-  // for the limit the engine guard reads, so the grant cannot drift from what the engine reports about itself.
-  usable_ram: HostUsableRamConservativeLowerBound { bytes: serving_reading_bytes_or_zero(r: srv3_strata_engine_memory.memory_cap), basis: "the strata.slice cgroup limit srv3's engine memory guard reads from its own cgroup (strata-pool.service, read over ssh 2026-11-08); the host has far more but shares it with CI runners, so the slice limit is what serving may count on. gunbc.serving.serving_host_memory srv3_strata_engine_memory.memory_cap is that reading" as NonEmptyStr },
+  // for the limit that binds this engine, so the grant cannot drift from what the engine reports about itself. Since
+  // the 2026-11-09 hand change it is the engine service's OWN MemoryHigh (its drop-in 60-expert-l1-cap.conf), exactly
+  // as srv4 reads the MemoryHigh of its engine unit — not the strata.slice limit, which still sits above it.
+  usable_ram: HostUsableRamConservativeLowerBound { bytes: serving_reading_bytes_or_zero(r: srv3_strata_engine_memory.memory_cap), basis: "the MemoryHigh of the engine service's cgroup (its drop-in 60-expert-l1-cap.conf, installed by bold-wren-111 2026-11-09 alongside --mmap-experts); above it the kernel throttles and reclaims, so it is the RAM L1 bound the expert page cache is charged under, and MemoryMax is the hard edge above it. Measured under it: MemoryCurrent ~79-81 GiB, of which memory.stat reads ~8.7 GB anon (under live --batch 8 load, not idle) and ~72.5 GB file (the cgroup's whole file-backed set -- shmem/tmpfs included, not all expert pages). gunbc.serving.serving_host_memory srv3_strata_engine_memory.memory_cap is that reading" as NonEmptyStr },
   overhead: HostFixedOverheadAllowance { bytes: byte_size(count: 0), reason: "the grant is the engine's own cgroup limit: the pool's other processes, sshd and the CI runners live outside it, so nothing else is reserved inside it" as NonEmptyStr },
   shared: [srv3_routed_expert_artifact],
   // The swap bound is the fleet's no-swap convention for serving slices, DECLARED for srv3 and labelled Assumed
@@ -920,37 +922,62 @@ data srv3_grant: ServingResourceGrant = ServingResourceGrant {
   // layout's budget and the memory model's verdict never disagree about it (single authority).
   swap_bound: srv3_strata_engine_memory.swap_cap,
   charging: [
-    "the routed experts are the engine's OWN private anonymous memory on srv3 (no --mmap-experts, no shared file): the arena is charged inside this grant and to nobody else, and nothing about it is reclaimable — which is why its rung is pinned and charged whole" as NonEmptyStr,
-    "one copy per host, charged once: srv3 runs ONE engine across both cards, so the arena is that engine's own and there is no second copy to charge (bold-wren-111, 2026-11-09); its bytes live once, in the artifact's pinned rung" as NonEmptyStr,
-    "base and expert tier are charged SEPARATELY and must stay that way: the base excludes the arena, because the arena is the artifact's pinned rung. Charging an UNSPLIT base (the engine's whole resident set, experts included) on top of the pinned rung would bill the same bytes twice; srv3_strata_engine_memory.base is the split figure, and its reason carries the arithmetic that produced it" as NonEmptyStr,
+    "the routed experts are the ENGINE's cgroup's own page cache: --mmap-experts maps the GGUF shards in place (no experts.bin; the engine log reads 'experts via mmap (--mmap-experts; the GGUF shards in place, no experts.bin)'), so their pages are charged to the engine that touches them and are reclaimed first under the service MemoryHigh — the same mechanism srv4 runs, and the reason the host-RAM rung is evictable and reserved only to its floor (bold-wren-111, 2026-11-09 ~22:10Z; the operator's 'sounds good', gunbc.design_ruling::srv3_experts_mmap_under_service_cap)" as NonEmptyStr,
+    "one copy per host, charged once: srv3 runs ONE engine across both cards, so the artifact is that engine's mapping and there is no second copy to charge (bold-wren-111, 2026-11-09); its bytes live once, in the artifact's disk rung, held hot in the engine cgroup's page cache" as NonEmptyStr,
+    "base and expert tier are charged SEPARATELY and must stay that way: the base is the engine's own anon (srv3_strata_engine_memory.base, an estimate derived from the live --batch-8 anon total), distinct from the mapped expert file pages the host-RAM rung models. Charging an UNSPLIT base (the engine's whole resident set, experts included -- the withdrawn ~116 GiB that held the 46.84 GiB arena pinned) on top of the mapped expert tier would bill the same bytes twice; srv3_strata_engine_memory.base is the split figure, and the artifact's host-RAM rung carries its own attribution obligation (the cgroup file counter is not all experts)" as NonEmptyStr,
     "the slice's swap limit is budgeted under the fleet no-swap convention (Assumed 0, review 92384): srv4's identical slice reads MemorySwapMax=0 and h11 grants 2 GiB; srv3's own is UNREAD -- the figure is labelled an assumption, never a reading, and carries its read obligation (systemctl show strata-pool.service -p MemorySwapMax)" as NonEmptyStr,
   ] as List<NonEmptyStr>,
   devices: [srv3_rtx_2000_ada_device(slot: "cuda0"), srv3_rtx_2000_ada_device(slot: "cuda1")],
 }
 
-// THE ROUTED EXPERTS AS SRV3 ACTUALLY HOLDS THEM: private anonymous memory inside one engine process, not a
-// mapped file. Same placement vocabulary as srv4 and h11, opposite mechanics: nothing maps it, so nothing can
-// evict it, and the whole 46.84 GiB must be reserved. Moving srv3 onto --mmap-experts under a cap turns this
-// artifact into srv4's shape (a device rung, an evictable host-RAM rung with a floor, a disk rung) — which is the
-// realization the qualification's obligation names, deliberately not taken until srv4's decode reading under the
-// cap says whether the miss path is affordable at all.
+// THE ROUTED EXPERTS, AS SRV3 NOW HOLDS THEM — ONE ARTIFACT ON SRV4'S THREE RUNGS. On 2026-11-09 ~22:10Z
+// bold-wren-111 moved srv3 onto --mmap-experts under a service cap (cfg.json gained --mmap-experts after
+// '--expert-cache auto', backup cfg.json.bak-20261109-pre-mmap; drop-in 60-expert-l1-cap.conf MemoryHigh=96G
+// MemoryMax=112G; the engine restarted once and its log reads "experts via mmap (--mmap-experts; the GGUF shards
+// in place, no experts.bin)"). That is exactly the realization the old qualification named, and it turns the pinned
+// 46.84 GiB private arena into srv4's evictable shape: a device rung, an evictable host-RAM rung whose floor is the
+// working set the budget reserves, and a pinned disk rung. The cap is the RAM L1 bound; the page cache grows into
+// what it leaves free and is reclaimed first. srv4's carriers express srv3 with no new vocabulary.
+// WHAT SRV3 HAS NOT READ, and why the host-RAM rung is UNREAD not a reading: the only memory figure for the expert
+// tier is the cgroup memory.stat FILE counter (~72.5 GB at the cap, 2026-11-09). That counter is the cgroup's WHOLE
+// file-backed working set — it includes shmem (the conversation cache), tmpfs and other file cache, NOT just the mapped
+// expert GGUF — so it does not attribute those pages to the experts, and it exceeds the 46.84 GiB shard it caches (a RAM
+// rung cannot exceed the file it caches, and srv4's own partition witness pins host_ram <= disk). The host-RAM rung
+// bytes are therefore UNREAD with the read obligation to attribute that counter: mapped expert-file pages vs shmem
+// (conversation cache) vs tmpfs vs other file cache; the counter is kept only as historical evidence in the rung's
+// reason, never as its size. The on-card expert cache (device rung) is Unread, and the shard size on disk (disk rung)
+// is Assumed pending a du; NEITHER is derived from that file counter. What the budget reserves on the host-RAM rung is
+// only its FLOOR (22 GiB, srv4's read working set on the same model/split).
 data srv3_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact {
-  name: "Qwen3.8-Flash-Next iq3_s routed experts, in the engine's private anonymous arena (not mapped, not shared)" as NonEmptyStr,
+  name: "Qwen3.8-Flash-Next iq3_s routed-expert GGUF, mmap'd by the engine under its service cap" as NonEmptyStr,
+  // The artifact total is the SAME-MODEL 46.8 GiB expert file srv4's engine plans against (srv4_routed_expert_artifact
+  // reads 46 GiB / "46.8 GiB experts"), not srv3's cgroup file counter: that counter is the cgroup's whole file-backed
+  // set (shmem/conversation cache/tmpfs in) and overstates the shard by ~22 GiB -- it sizes the page-cache rung below,
+  // not this file. The disk rung carries the same grounded figure until a du on the shards replaces it.
   bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)),
-  owner: "the engine process itself (strata-pool.service, user ubuntu, /home/ubuntu/strata-test): the arena is private anonymous memory — there is no second process to share it with today, and no unit that could reclaim it" as NonEmptyStr,
+  owner: "the engine's own mmap (--mmap-experts; the GGUF shards in place, no experts.bin), held as the engine cgroup's page cache under the cap srv3_strata_engine_memory.memory_cap reads -- that row is the cap's only home (review 92380)" as NonEmptyStr,
   device: Present { value: ServingArtifactRung {
     holds: ArtifactHeldPinned { mechanism: "Strata's on-card expert cache holds its resident experts on the card for the life of the engine; the per-card elastic bound strata_srv3_layer_split_profile.device_min_elastic_vram is what caps how much of the card it may take -- a device rung reserves host RAM for nothing, so it carries no host-RAM floor (review 92466)" as NonEmptyStr },
-    bytes: ServingMemoryUnread { reason: "srv3's per-card expert cache has not been read; its cache held ~7,822 experts against srv4's ~12,054 on 2026-11-08, so it is smaller than srv4's 22.9 GiB and by how much is unread" as NonEmptyStr },
-    realizes: "Strata's expert caches on both cards; what they cannot hold is served from the arena below" as NonEmptyStr,
+    bytes: ServingMemoryUnread { reason: "srv3's per-card expert cache has not been read since the mmap change; it held ~7,822 experts against srv4's ~12,054 on 2026-11-08, so it is smaller than srv4's 22.9 GiB and by how much is unread. Under --mmap-experts the card cache still fills from the mapped shards; a /metrics expert_cache_mib read on strata-pool.service replaces it" as NonEmptyStr },
+    realizes: "Strata's expert caches on both cards, filled by the routing-aware prefetcher ahead of the walk; what they cannot hold is served from the page cache below" as NonEmptyStr,
   } },
   host_ram: Present { value: ServingArtifactRung {
-    holds: ArtifactHeldPinned { mechanism: "private anonymous memory allocated by the engine itself (no --mmap-experts, no experts.bin, no shared file): it is not a page cache, so the kernel cannot reclaim it" as NonEmptyStr },
-    bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the engine's expert arena, 46.84 GiB of private anon per engine, read over ssh 2026-11-08 by bold-wren-111 (NOT shared, NOT mapped)" as NonEmptyStr },
-    realizes: "one private copy in the one engine the host runs; an expert miss is served from it and nothing can evict it -- holding the whole arena in the process is why srv3's base row is an engine-without-mmap figure while srv4's mapped engine charges only its anon and shmem" as NonEmptyStr,
+    holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup cap that srv3_strata_engine_memory.memory_cap reads (its MemoryHigh, from the drop-in 60-expert-l1-cap.conf installed 2026-11-09); MemoryMax is the hard edge above it, unread by this model and held on the host's unit file" as NonEmptyStr, floor: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), reason: "srv3's per-request expert working set has not been read; 22 GiB is srv4's READ working set on the same model and 24:24 split, taken as srv3's floor pending a read of strata-pool.service's 'file tier I/O this request' lines at 500-token requests under the cap. Corroborated: after the first cold request read ~58 GB, warm requests read only KBs to tens of MB of OS storage at the 96 GiB cap, so the working set is held" as NonEmptyStr } },
+    // This rung is the engine cgroup's PAGE CACHE of the expert shards -- what it would keep if nothing bounded it.
+    // Its SIZE is Unread: srv3 has not attributed how many expert-file pages the page cache actually holds. A RAM rung
+    // cannot be larger than the file it caches (the disk rung's 46.84 GiB, and srv4's own partition witness pins
+    // host_ram <= disk), so the aggregate cgroup file counter (~72.5 decimal GB read 2026-11-09 ~22:10Z) is NOT this
+    // rung's size -- that counter is the cgroup's WHOLE file-backed set (shmem/conversation cache, tmpfs and other file
+    // cache included) and can only be historical evidence that the cache is large. READ OBLIGATION: attribute the file
+    // counter to mapped expert-file pages vs shmem vs tmpfs vs other file cache (e.g. /proc/<engine>/smaps_rollup or a
+    // per-VMA breakdown); the attributed expert page cache must fall to at most the disk rung's size. What the budget
+    // RESERVES meanwhile is only the FLOOR above; the disk rung below is the re-readable backing this cache copies.
+    bytes: ServingMemoryUnread { reason: "srv3's resident mapped-expert page count is unread: the only figure for the expert tier is the cgroup memory.stat FILE counter (~72.5 decimal GB at the 96 GiB cap, bold-wren-111 2026-11-09 ~22:10Z, corroborated by MemoryCurrent ~79-81 GiB = base + that whole counter), but that counter is the cgroup's WHOLE file-backed working set -- shmem (conversation cache), tmpfs and other file cache included -- and exceeds the 46.84 GiB shard it caches, so it is kept only as historical evidence, NOT as this rung's size. READ OBLIGATION: attribute the file counter to mapped expert-file pages vs shmem vs tmpfs vs other file cache (/proc/<engine>/smaps_rollup or a per-VMA breakdown); the attributed figure must be <= the disk rung's size" as NonEmptyStr },
+    realizes: "the engine cgroup's page cache under the service cap: it grows into what the cap leaves free, and cold experts are evicted and re-read from the disk rung -- KBs to tens of MB read per warm request once the working set is resident, after a first cold request that read ~58 GB" as NonEmptyStr,
   } },
   disk: Present { value: ServingArtifactRung {
-    holds: ArtifactHeldPinned { mechanism: "the two GGUF shards under /home/ubuntu/strata-test, the copy the arena was filled from" as NonEmptyStr },
-    bytes: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 46)), reason: "srv3's own shard sizes have not been read; 46 GiB is the same model's routed-expert file as srv4's engine plans against ('46.8 GiB experts', 2026-11-09). du on the shards replaces it" as NonEmptyStr },
+    holds: ArtifactHeldPinned { mechanism: "the GGUF shards under /home/ubuntu/strata-test, in place: the copy every rung above is a copy of (--mmap-experts, no experts.bin)" as NonEmptyStr },
+    bytes: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), reason: "srv3's own shard sizes have not been du'd; this is the SAME-MODEL 46.8 GiB expert file srv4's engine plans against (srv4_routed_expert_artifact: '46.8 GiB experts', and its artifact total reads 46 GiB), taken as srv3's shard size until a du replaces it -- NOT derived from srv3's cgroup memory.stat file counter, which is the cgroup's WHOLE file-backed set (shmem/conversation cache/tmpfs included) and overstates the shard by ~22 GiB, so it measures the page cache, not the file. READ OBLIGATION: du on the shards under /home/ubuntu/strata-test" as NonEmptyStr },
     realizes: "the backing store: re-readable, so an expert miss is never a loss. srv3's drive has not been timed (srv4's reads 2.50 GB/s)" as NonEmptyStr,
   } },
 }
@@ -967,11 +994,16 @@ data srv3_layer_split_groups: List<ServingDeviceGroup> = [
 // its conversation cache 64 GiB in 24 slots, nvidia-smi -pl 40 per card. Every figure srv3 has not been read to
 // is an assumption naming the reading that replaces it, and none of them is srv4's figure without saying so.
 //
-// THE ARITHMETIC THAT CLOSES, and is the reason the base may be assumed at all: srv4's pre-mmap engine read
-// 52 GiB of memory.current with the experts in its own anon (2026-10-30); srv3's engine today is that same shape
-// with the same 46.84 GiB private arena. 52 GiB less the arena is 5284 MiB, which the same build's mmap'd
-// VmRSS on srv4 corroborates at 6451 MiB of anon+shmem. Base and expert rung together must always re-sum to what
-// memory.current reads on srv3; that sum is a witness.
+// THE ARITHMETIC, and why the figures are typed the way they are: under --mmap-experts (the 2026-11-09 hand change)
+// srv3_strata_engine_memory.base is the engine's anon, derived from the live --batch-8 memory.stat anon total (~8.7 GB)
+// with the loaded-and-idle anon as its obligation (the old 5284 MiB derivation from srv4's pre-mmap 52 GiB less the
+// 46.84 GiB arena belonged to the pinned shape and is named there as withdrawn). The expert host-RAM rung is UNREAD:
+// the only figure for it is the cgroup memory.stat file counter (~72.5 GB), which is the cgroup's whole file-backed set
+// (shmem/tmpfs included) and exceeds the 46.84 GiB shard it caches, so it is kept only as historical evidence in the
+// rung's reason, never as its size (a RAM rung cannot exceed the file it caches; srv4's partition witness pins
+// host_ram <= disk). The service's own MemoryCurrent read (~79-81 GiB = base + that whole counter) is recorded in the
+// grant basis and the rung's reason as an OBSERVATION; no witness composes it from model figures, because the expert
+// share of that counter is the very thing still unattributed.
 data strata_srv3_layer_split_profile: ServingBackendProfile = ServingBackendProfile {
   backend: "strata qwen3.8-flash-next-iq3_s, layer split 24, --batch 8 on strata-pool.service (the binary's --version is unread; the fleet's srv3 image row records strata-main master@7045b8d0)" as NonEmptyStr,
   device_fixed_vram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 4529)), reason: "srv3's per-card fixed VRAM is unread; 4529 MiB is the larger of srv4's two cards measured beside its expert caches (nvidia-smi 15216 MiB less 10687 MiB of cache, 2026-10-30) on the same board, model and 24/24 split. nvidia-smi and /metrics on srv3 replace it" as NonEmptyStr },
@@ -1002,7 +1034,7 @@ data strata_srv3_layer_split_profile: ServingBackendProfile = ServingBackendProf
 
 data srv3_layout: ServingLayoutResult = serving_layout_with_qualification(
   result: serving_layout_derive(g: srv3_grant, groups: srv3_layer_split_groups, b: strata_srv3_layer_split_profile, r: serving_context_ceiling_requirement),
-  q: ServingLiveUnqualified { obligation: "srv3 has never been laid out, so nothing in this configuration has been run through it: read memory.current and memory.peak on strata-pool.service through real turns at the ceiling (its base, its active-slot RAM and its per-card fixed VRAM are all assumptions now), read its binary's --version and its slice's MemorySwapMax, and read whether ITS build answers slot save/restore with 501 under --batch 8 the way srv4's does. The realization step is a separate change owned by bold-wren-111 — moving srv3 onto --mmap-experts under a capped cgroup, which turns this artifact into srv4's evictable shape — and it is held until srv4's decode reading under the cap its memory row reports says whether the miss path is affordable." as NonEmptyStr },
+  q: ServingLiveUnqualified { obligation: "srv3 has never been laid out through a live receipt, so nothing in this configuration has been run through it end to end: read memory.current and memory.peak on strata-pool.service through real turns at the ceiling (its active-slot RAM and per-card fixed VRAM are still assumptions), read its binary's --version and its slice's MemorySwapMax, and read whether ITS build answers slot save/restore with 501 under --batch 8 the way srv4's does. THE REALIZATION IS DONE: the 2026-11-09 hand change moved srv3 onto --mmap-experts under the service cap its memory row reports (bold-wren-111, the operator's 'sounds good', gunbc.design_ruling::srv3_experts_mmap_under_service_cap), which turned this artifact into srv4's evictable shape; what remains is to read srv4's and srv3's decode under the cap and the still-unread figures above, not to move srv3 again." as NonEmptyStr },
 )
 
 // CONSUMER, declared frontier (gunbc.design_argument::consumption): the h11 engine units' MemoryMax, MemorySwapMax,
