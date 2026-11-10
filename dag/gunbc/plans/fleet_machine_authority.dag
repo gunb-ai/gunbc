@@ -260,7 +260,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
         ]),
       ]),
       li_blocks(blocks: [
-        p(text: "**P2, registry and admissions** (medium). Depends on smart-crane-730's srv13 retirement PR (its own small PR, 2026-11-10, with the 2026-10-07 captures keeping their provenance and `gunbc.integration_concern::srv13_and_srv15_name_one_board` closed as integrated), since otherwise A2 refuses the production roster on BR80S6102300049."),
+        p(text: "**P2, registry and admissions** (medium). The registry rows live in `gunbc.hostname_allocation` (the existing name authority, `fleet_machine_registry`), so the handles in `gunbc.fleet.fleet_host_identity` and the selector lookups stay where their consumers import them, and no import cycle forms. A2 is its own module, `gunbc.fleet.fleet_machine_unit_binding`. A2 seeds only machines whose board-serial readings are modeled as data today (mtcollins1), so P2 does not wait on X1. srv13 and srv15 join A2 only after X1 retires srv13; until then the known duplicate stays recorded at `gunbc.integration_concern::srv13_and_srv15_name_one_board`."),
         ul(items: [
           li_blocks(blocks: [
             p(text: "**Scope:**"),
@@ -440,7 +440,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
           li(text: "In other lanes at the same time: X1, X2, X3, X5."),
         ]),
       ]),
-      li(text: "**Wave 1: P2** (registry and admissions), which needs X1."),
+      li(text: "**Wave 1: P2** (registry and admissions). It does not wait on X1 (P2 seeds A2 only from observations modeled today); srv13 and srv15 join A2 after X1. In progress by vivid-koi-387."),
       li_blocks(blocks: [
         p(text: "**Wave 2, after P2, all in parallel:**"),
         ul(items: [
@@ -476,7 +476,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
       ]),
       li(text: "**Completion:** every wave done, with W1-W4 receipts at the final revision."),
     ]),
-    p(text: "**Critical path to the first flip:** X1, P2, P4, P5, P9. P3 (srv4), P8a-P8c, P1 and srv4's X5 account window must also be in by P9. Everything in waves 0 and 2 that is off that path (P6, P13, P8d) runs beside it."),
+    p(text: "**Critical path to the first flip:** P2, P4, P5, P9. P3 (srv4), P8a-P8c, P1 and srv4's X5 account window must also be in by P9. Everything in waves 0 and 2 that is off that path (P6, P13, P8d) runs beside it."),
     p(text: "Before each PR, search the open PRs that touch its files (`gh pr list --json files` filtered by path). At this revision: #16058 and #16246 touch the `runner_host_*` files, #16035 and #15978 touch `runner_host_file_converge`, #15221 touches `runner_connectivity_recovery`, and #15287 touches the mtcollins1 boot approval."),
     p(text: "**What the required job does not judge.** `v2-bootstrap` evaluates no witness outside its two emitted closures (`gunbc.rung_drop` `v1_required_lanes_withdrawn`). W1-W4 are therefore run with `gunbc run --claim-run`, and each PR cites the receipt. Completion is read from those receipts at the final revision, not from a green required job."),
 
