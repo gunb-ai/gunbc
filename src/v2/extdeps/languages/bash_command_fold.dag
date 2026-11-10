@@ -846,10 +846,10 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       // loop keyword texts are the shared bash_kw_*_text rows of
       // v2.extdeps.languages.bash — the same rows the ingest-only classes read,
       // so there is one spelling of each in the tree.
-      bash_fold_lex_rule(token_class: ^bash_token_func_paren_open, text: "("),
-      bash_fold_lex_rule(token_class: ^bash_token_func_paren_close, text: ")"),
-      bash_fold_lex_rule(token_class: ^bash_token_brace_group_open, text: "{ "),
-      bash_fold_lex_rule(token_class: ^bash_token_brace_group_close, text: "; }"),
+      bash_fold_lex_rule(token_class: ^bash_token_func_paren_open, text: bash_kw_func_paren_open_text),
+      bash_fold_lex_rule(token_class: ^bash_token_func_paren_close, text: bash_kw_func_paren_close_text),
+      bash_fold_lex_rule(token_class: ^bash_token_brace_group_open, text: bash_kw_brace_group_open_text),
+      bash_fold_lex_rule(token_class: ^bash_token_brace_group_close, text: bash_kw_brace_group_close_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_case_in_kw, text: bash_kw_case_in_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_case_pattern_sep, text: bash_kw_case_pattern_sep_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_case_clause_indent, text: bash_kw_case_clause_indent_text),
@@ -896,8 +896,8 @@ fn bash_ingest_only_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_case, text: bash_kw_case_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_esac, text: bash_kw_esac_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_case_clause_sep, text: bash_kw_case_clause_sep_text),
-      bash_fold_lex_rule(token_class: ^bash_ingest_brace_open, text: "{ "),
-      bash_fold_lex_rule(token_class: ^bash_ingest_brace_close, text: "; }"),
+      bash_fold_lex_rule(token_class: ^bash_ingest_brace_open, text: bash_kw_brace_group_open_text),
+      bash_fold_lex_rule(token_class: ^bash_ingest_brace_close, text: bash_kw_brace_group_close_text),
       bash_fold_lex_rule(token_class: ^bash_token_orch_seq_newline, text: "\n")
     ],
     modes: []

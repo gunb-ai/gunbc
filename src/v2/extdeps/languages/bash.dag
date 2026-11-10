@@ -1762,13 +1762,13 @@ data bash_stmt_brace_group_emitted: Node = bash_conj_emitted_from_tokens(
 )
 
 fn bash_stmt_brace_group_source_text(body: String) -> String {
-  concat("{ ", concat(body, "; }"))
+  concat(bash_kw_brace_group_open_text, concat(body, bash_kw_brace_group_close_text))
 }
 
 fn bash_stmt_brace_group_lex() -> LexRules {
   phrase_to_lex_rules(p: phrase([
-    span(text: "{ ", class: ^bash_token_brace_group_open),
-    span(text: "; }", class: ^bash_token_brace_group_close)
+    span(text: bash_kw_brace_group_open_text, class: ^bash_token_brace_group_open),
+    span(text: bash_kw_brace_group_close_text, class: ^bash_token_brace_group_close)
   ]))
 }
 
@@ -2761,6 +2761,16 @@ data bash_kw_in_text: String = " in "
 // spelling, exactly as the brace group's "; }" carries its own.
 data bash_kw_do_text: String = " do "
 data bash_kw_done_text: String = "; done"
+// The brace group's delimiters and the function definition's parameter-list
+// parens are spelled ONCE here. srv1's container command emits a function whose
+// compound-command is a brace group; the brace-group statement and the function
+// definition read these SAME rows rather than each carrying a copy, and
+// v2.extdeps.languages.bash_command_fold reads them again when it declares the
+// fold's emit- and ingest-side lexical classes for these tokens.
+data bash_kw_func_paren_open_text: String = "("
+data bash_kw_func_paren_close_text: String = ")"
+data bash_kw_brace_group_open_text: String = "{ "
+data bash_kw_brace_group_close_text: String = "; }"
 
 // ── function definition ────────────────────────────────────────────────────
 // Bash manual, node "Shell Functions": a function is defined as
@@ -2788,15 +2798,15 @@ data bash_stmt_function_def_emitted: Node = bash_conj_emitted_from_tokens(
 )
 
 fn bash_stmt_function_def_source_text(name: String, body: String) -> String {
-  concat(name, concat("()", concat("{ ", concat(body, "; }"))))
+  concat(name, concat(bash_kw_func_paren_open_text, concat(bash_kw_func_paren_close_text, concat(bash_kw_brace_group_open_text, concat(body, bash_kw_brace_group_close_text)))))
 }
 
 fn bash_stmt_function_def_lex() -> LexRules {
   phrase_to_lex_rules(p: phrase([
-    span(text: "(", class: ^bash_token_func_paren_open),
-    span(text: ")", class: ^bash_token_func_paren_close),
-    span(text: "{ ", class: ^bash_token_brace_group_open),
-    span(text: "; }", class: ^bash_token_brace_group_close)
+    span(text: bash_kw_func_paren_open_text, class: ^bash_token_func_paren_open),
+    span(text: bash_kw_func_paren_close_text, class: ^bash_token_func_paren_close),
+    span(text: bash_kw_brace_group_open_text, class: ^bash_token_brace_group_open),
+    span(text: bash_kw_brace_group_close_text, class: ^bash_token_brace_group_close)
   ]))
 }
 
@@ -2830,7 +2840,7 @@ fn bash_stmt_function_def_target_model(name: String, body: String) -> TargetMode
 }
 
 // ── case statement ─────────────────────────────────────────────────────────
-// Bash manual, node "Bash Conditional Expressions" (the case command):
+// Bash manual, node "Conditional Constructs" (the case command):
 //   case word in
 //       [ [(] pattern [| pattern] command-list ;;]…
 //   esac
