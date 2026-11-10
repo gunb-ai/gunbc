@@ -411,7 +411,7 @@ test fn comment_refuses_an_embedded_newline() -> Bool {
 // Bash manual, node "Looping Constructs": for name [ [in [words …] ; ] do
 // commands; done.
 
-data for_golden: String = "for i in 1 2 do echo up; done\n"
+data for_golden: String = "for i in 1 2; do echo up; done\n"
 
 fn for_statement() -> Node {
   match bash_build_for(

@@ -2756,10 +2756,15 @@ data bash_kw_case_arm_newline_text: String = "\n"
 data bash_kw_esac_text: String = "esac"
 data bash_kw_for_text: String = "for "
 data bash_kw_in_text: String = " in "
-// Bash manual, node "Looping Constructs": the loop is 'do commands; done', so
-// the ';' that terminates the command list travels in the closing token's
-// spelling, exactly as the brace group's "; }" carries its own.
-data bash_kw_do_text: String = " do "
+// Bash manual, node "Looping Constructs":
+//   for name [ [in [words ...] ] ; ] do commands; done
+// The form this lane emits always supplies the word list, so the loop needs
+// TWO list terminators, not one: the ';' that ends the word list before 'do',
+// and the ';' that ends the command list before 'done'. Each travels in the
+// spelling of the keyword that FOLLOWS it -- "; do " and "; done" -- exactly as
+// the brace group's "; }" carries its own. Drop the first and bash keeps
+// reading words, never sees the 'do' keyword, and fails at 'done'.
+data bash_kw_do_text: String = "; do "
 data bash_kw_done_text: String = "; done"
 // The brace group's delimiters and the function definition's parameter-list
 // parens are spelled ONCE here. srv1's container command emits a function whose
