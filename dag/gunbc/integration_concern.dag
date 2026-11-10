@@ -809,7 +809,7 @@ data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
         RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet_naming_witness", decl_name: "witness_binding_for_another_member_refuses"),
           run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/fleet_naming_witness.dag (every test fn), local, at 7bbb4ef",
-          conclusion: "37/37 PASS with srv16 standing in as the other member srv13 used to be",
+          conclusion: "37/37 PASS with srv14 standing in as the other member srv13 used to be",
         },
       ],
     },
