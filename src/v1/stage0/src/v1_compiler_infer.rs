@@ -195,6 +195,7 @@ pub use crate::std_types::{
     is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
 };
 pub use crate::v1_compiler_coercion::provenance_realizes_natively;
+pub use crate::v1_compiler_emit_core_support::declaration_is_host_census_row;
 pub use crate::v1_compiler_infer_access::{
     check_index_access_node, check_slice_access_node, AccessCheckResultNode,
 };
@@ -29683,9 +29684,208 @@ pub fn realization_of(
 ) -> Rc<Realization> {
     Rc::new(Realization {
         active: true,
-        realized: realization_names(modules.clone(), seeds, source_indices.clone()),
+        realized: census_realized_names(
+            modules.clone(),
+            realization_names(modules.clone(), seeds, source_indices.clone()),
+            source_indices.clone(),
+        ),
         declared: realization_declared_names(modules.clone(), symbol_index, source_indices.clone()),
     })
+}
+
+pub fn census_realized_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    demanded: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    modules.clone().iter().cloned().fold(
+        demanded.clone(),
+        |acc: Rc<HashMap<String, bool>>, m: Rc<ResolvedModule>| {
+            crate::v1_std_core::module_items(m.module.clone())
+                .iter()
+                .cloned()
+                .fold(acc, |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+                    if crate::v1_compiler_emit_core_support::declaration_is_host_census_row(
+                        item.clone(),
+                        crate::v1_std_core::module_items(m.module.clone()),
+                        crate::v1_std_core::module_imports(m.module.clone()),
+                        source_indices.clone(),
+                    ) {
+                        {
+                            let alias_name = match item.body.clone() {
+                                Some(body) => {
+                                    if ((item.module_item_kind.clone()
+                                        == ParsedModuleItemKind::ModuleItemDataValue)
+                                        && (crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            item.clone(),
+                                        ) == "wire_contract".to_string()))
+                                    {
+                                        match (*body.expr_data.clone()).clone() {
+                                            ExprData::ExprVar {
+                                                binding_kind: _, ..
+                                            } => Some(crate::v1_std_core::expr_var_name_at(
+                                                body.clone(),
+                                                source_indices.clone(),
+                                            )),
+                                            _ => std::option::Option::None,
+                                        }
+                                    } else {
+                                        std::option::Option::None
+                                    }
+                                }
+                                std::option::Option::None => std::option::Option::None,
+                            };
+                            let with_row = v1_rt::rc_map_insert(
+                                inner,
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    item.clone(),
+                                ),
+                                true,
+                            );
+                            match alias_name.clone() {
+                                Some(alias) => census_alias_chain_names(
+                                    modules.clone(),
+                                    alias.clone(),
+                                    source_indices.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                .fold(
+                                    with_row.clone(),
+                                    |chain_acc: Rc<HashMap<String, bool>>, chain_name: String| {
+                                        v1_rt::rc_map_insert(chain_acc, chain_name.clone(), true)
+                                    },
+                                ),
+                                std::option::Option::None => with_row.clone(),
+                            }
+                        }
+                    } else {
+                        inner
+                    }
+                })
+        },
+    )
+}
+
+pub fn census_alias_chain_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    start: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new(v1_rt::map_keys(&census_alias_chain_step(
+        modules,
+        start,
+        v1_rt::rc_empty_map::<String, bool>(),
+        32,
+        source_indices,
+    )))
+}
+
+pub fn census_alias_chain_step(
+    mut __tco_loop_modules: Rc<Vec<Rc<ResolvedModule>>>,
+    mut __tco_loop_name: String,
+    mut __tco_loop_acc: Rc<HashMap<String, bool>>,
+    mut __tco_loop_fuel: i64,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut modules = __tco_loop_modules;
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let seen = match v1_rt::map_get(&acc, name.clone()) {
+                Some(_) => true,
+                std::option::Option::None => false,
+            };
+            if ((fuel.clone() <= 0) || seen.clone()) {
+                break acc.clone();
+            } else {
+                let item_lists = Rc::new({
+                    let mut __result = Vec::new();
+                    for m in modules.iter().cloned() {
+                        __result.push(crate::v1_std_core::module_items(m.module.clone()));
+                    }
+                    __result
+                });
+                let items = item_lists.iter().cloned().fold(
+                    Rc::new(vec![]),
+                    |items_acc: _, items_of_m: Rc<Vec<Rc<Node>>>| {
+                        v1_rt::concat(items_acc, items_of_m.clone())
+                    },
+                );
+                let candidates = Rc::new({
+                    let mut __result = Vec::new();
+                    for item in items.iter().cloned() {
+                        __result.push(census_var_alias_body_name(
+                            item.clone(),
+                            name.clone(),
+                            source_indices.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let target = candidates.iter().cloned().fold(
+                    "".to_string(),
+                    |found: String, candidate: String| {
+                        if (found.clone() == "".to_string()) {
+                            candidate.clone()
+                        } else {
+                            found.clone()
+                        }
+                    },
+                );
+                if (target.clone() == "".to_string()) {
+                    break v1_rt::rc_map_insert(acc.clone(), name.clone(), true);
+                } else {
+                    {
+                        let __tco_0 = modules;
+                        let __tco_1 = target.clone();
+                        let __tco_2 = v1_rt::rc_map_insert(acc, name, true);
+                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        let __tco_4 = source_indices;
+                        __tco_loop_modules = __tco_0;
+                        __tco_loop_name = __tco_1;
+                        __tco_loop_acc = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        __tco_loop_source_indices = __tco_4;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn census_var_alias_body_name(
+    item: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
+        && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+            == name.clone()))
+    {
+        match item.body.clone() {
+            Some(body) => match (*body.expr_data.clone()).clone() {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => crate::v1_std_core::expr_var_name_at(body.clone(), source_indices.clone()),
+                _ => "".to_string(),
+            },
+            std::option::Option::None => "".to_string(),
+        }
+    } else {
+        "".to_string()
+    }
 }
 
 pub fn realization_includes(realization: Rc<Realization>, name: String) -> bool {

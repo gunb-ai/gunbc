@@ -49,7 +49,7 @@ pub use crate::v1_compiler_coercion::{coerce_primitive_type, is_copy, target_cal
 pub use crate::v1_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v1_compiler_dag_collect_support::{connective_name};
 pub use crate::v1_compiler_emit::{render_target_name, BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, BoundOperation, ShellResultField, ShellResultChannel, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal, NativeEffectRealizationAdmission, NativeEffectDeclSite, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
-pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection, escape_json_string, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
+pub use crate::v1_compiler_emit_core_support::{field_value_by_name, literal_string_value, record_string_field, coproduct_decl_ref_decl_name, is_coproduct_wire_contract_row, coproduct_wire_contract_encoding, coproduct_wire_contract_targets, EmitResult, TestProjection, escape_json_string, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{is_lambda_expr, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{TypeDeclOccurrenceBinding};
 pub use crate::v1_compiler_infer_emit_info::{declaring_span_key, type_decl_occurrence_binding, type_decl_resolution_at_identity, EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence, TypeRepr, DataVariantWireSpelling, TypeDeclResolution};
@@ -4431,70 +4431,15 @@ pub fn rust_screaming_snake_string_policy() -> Rc<RustEnumWireSerde> {
     )
 }
 
-pub fn field_value_by_name(
-    record: Rc<Node>,
-    field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for fi in record.children.clone().iter().cloned() {
-            if (crate::v1_std_core::field_init_node_name_at(fi.clone(), source_indices.clone())
-                == field_name.clone())
-            {
-                __result.push(fi);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(fi) => Some(crate::v1_std_core::field_init_node_value(fi.clone())),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn literal_string_value(n: Rc<Node>) -> Option<String> {
-    match (*n.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
-            LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
-            _ => std::option::Option::None,
-        },
-        _ => std::option::Option::None,
-    }
-}
-
-pub fn record_string_field(
-    record: Rc<Node>,
-    field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    match field_value_by_name(record, field_name, source_indices) {
-        Some(value_node) => literal_string_value(value_node.clone()),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
 pub fn naming_policy_node(
     encoding: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    field_value_by_name(encoding, "naming".to_string(), source_indices)
-}
-
-pub fn coproduct_decl_ref_decl_name(
-    body: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    match field_value_by_name(body, "coproduct".to_string(), source_indices.clone()) {
-        Some(decl_ref_node) => record_string_field(
-            decl_ref_node.clone(),
-            "decl_name".to_string(),
-            source_indices.clone(),
-        ),
-        std::option::Option::None => std::option::Option::None,
-    }
+    crate::v1_compiler_emit_core_support::field_value_by_name(
+        encoding,
+        "naming".to_string(),
+        source_indices,
+    )
 }
 
 pub fn optional_string_record_field(
@@ -4502,8 +4447,12 @@ pub fn optional_string_record_field(
     field_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match field_value_by_name(record, field_name, source_indices) {
-        Some(n) => literal_string_value(n.clone()),
+    match crate::v1_compiler_emit_core_support::field_value_by_name(
+        record,
+        field_name,
+        source_indices,
+    ) {
+        Some(n) => crate::v1_compiler_emit_core_support::literal_string_value(n.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -4513,8 +4462,12 @@ pub fn required_literal_string_policy_field(
     field_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match field_value_by_name(record, field_name, source_indices) {
-        Some(n) => literal_string_value(n.clone()),
+    match crate::v1_compiler_emit_core_support::field_value_by_name(
+        record,
+        field_name,
+        source_indices,
+    ) {
+        Some(n) => crate::v1_compiler_emit_core_support::literal_string_value(n.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -4706,7 +4659,7 @@ pub fn rust_internal_policy_for_encoding(
     encoding: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
-    match record_string_field(
+    match crate::v1_compiler_emit_core_support::record_string_field(
         encoding.clone(),
         "tag_field".to_string(),
         source_indices.clone(),
@@ -4974,35 +4927,11 @@ continue;
     }
 }
 
-pub fn coproduct_wire_contract_encoding(
-    contract_item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match contract_item.body.clone() {
-        Some(body) => field_value_by_name(body.clone(), "encoding".to_string(), source_indices),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
 pub fn variant_encoding_is_string_variant(
     encoding: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_std_core::authored_name_at(source_indices, encoding) == "StringVariant".to_string())
-}
-
-pub fn coproduct_wire_contract_targets(
-    contract_item: Rc<Node>,
-    coproduct_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match contract_item.body.clone() {
-        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
-            Some(target_name) => (target_name.clone() == coproduct_name.clone()),
-            std::option::Option::None => false,
-        },
-        std::option::Option::None => false,
-    }
 }
 
 pub fn emit_rust_compile_error_item(message: String) -> String {
@@ -5019,131 +4948,16 @@ pub fn emit_rust_compile_error_expr(message: String) -> String {
     )
 }
 
-pub fn module_imports_std_serialization_coproduct_wire_contract(
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let mut __found = false;
-        for imp in imports.iter().cloned() {
-            if ((crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())
-                == "std.serialization".to_string())
-                && (crate::v1_std_core::import_is_all(imp.clone()) || {
-                    let mut __found = false;
-                    for name in crate::v1_std_core::import_specific_names_at(
-                        imp.clone(),
-                        source_indices.clone(),
-                    )
-                    .iter()
-                    .cloned()
-                    {
-                        if (name.clone() == "CoproductWireContract".to_string()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }))
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn data_item_type_is_coproduct_wire_contract(
-    item: Rc<Node>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match item.type_annotation.clone() {
-        Some(type_node) => {
-            ((crate::v1_std_core::authored_name_at(source_indices.clone(), type_node.clone())
-                == "CoproductWireContract".to_string())
-                && module_imports_std_serialization_coproduct_wire_contract(
-                    imports,
-                    source_indices.clone(),
-                ))
-        }
-        std::option::Option::None => false,
-    }
-}
-
-pub fn module_defines_local_coproduct_wire_contract_type(
-    module_items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let mut __found = false;
-        for item in module_items.iter().cloned() {
-            if (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
-                || crate::v1_compiler_emit_core_support::is_type_alias_item(
-                    item.clone(),
-                    source_indices.clone(),
-                ))
-                || crate::v1_compiler_emit_core_support::is_type_decl_item(
-                    item.clone(),
-                    source_indices.clone(),
-                ))
-                && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
-                    == "CoproductWireContract".to_string()))
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn is_coproduct_wire_contract_row(
-    item: Rc<Node>,
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if (item.module_item_kind.clone() != ParsedModuleItemKind::ModuleItemDataValue) {
-        false
-    } else {
-        if module_defines_local_coproduct_wire_contract_type(module_items, source_indices.clone()) {
-            false
-        } else {
-            if !data_item_type_is_coproduct_wire_contract(
-                item.clone(),
-                imports,
-                source_indices.clone(),
-            ) {
-                false
-            } else {
-                match item.body.clone() {
-                    Some(body) => {
-                        ((field_value_by_name(
-                            body.clone(),
-                            "coproduct".to_string(),
-                            source_indices.clone(),
-                        ) != std::option::Option::None)
-                            && (field_value_by_name(
-                                body.clone(),
-                                "encoding".to_string(),
-                                source_indices.clone(),
-                            ) != std::option::Option::None))
-                    }
-                    std::option::Option::None => false,
-                }
-            }
-        }
-    }
-}
-
 pub fn emit_coproduct_wire_contract_target_validation(
     contract_item: Rc<Node>,
     local_coproduct_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match contract_item.body.clone() {
-        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
+        Some(body) => match crate::v1_compiler_emit_core_support::coproduct_decl_ref_decl_name(
+            body.clone(),
+            source_indices,
+        ) {
             Some(target_name) => {
                 if {
                     let mut __found = false;
@@ -5191,7 +5005,7 @@ pub fn emit_coproduct_wire_contract_validations(
                 for item in Rc::new({
                     let mut __result = Vec::new();
                     for item in module_items.clone().iter().cloned() {
-                        if is_coproduct_wire_contract_row(
+                        if crate::v1_compiler_emit_core_support::is_coproduct_wire_contract_row(
                             item.clone(),
                             module_items.clone(),
                             imports.clone(),
@@ -5237,12 +5051,12 @@ pub fn resolve_local_coproduct_wire_policy(
         let contracts = Rc::new({
             let mut __result = Vec::new();
             for item in module_items.clone().iter().cloned() {
-                if (is_coproduct_wire_contract_row(
+                if (crate::v1_compiler_emit_core_support::is_coproduct_wire_contract_row(
                     item.clone(),
                     module_items.clone(),
                     imports.clone(),
                     source_indices.clone(),
-                ) && coproduct_wire_contract_targets(
+                ) && crate::v1_compiler_emit_core_support::coproduct_wire_contract_targets(
                     item.clone(),
                     coproduct_name.clone(),
                     source_indices.clone(),
@@ -5257,29 +5071,33 @@ pub fn resolve_local_coproduct_wire_policy(
         } else {
             if ((contracts.clone().len() as i64) == 1) {
                 match contracts.clone().first().cloned() {
-                    Some(contract) => match coproduct_wire_contract_encoding(
-                        contract.clone(),
-                        source_indices.clone(),
-                    ) {
-                        Some(encoding) => {
-                            if (variant_encoding_is_string_variant(
-                                encoding.clone(),
-                                source_indices.clone(),
-                            ) && !all_unit_variants.clone())
-                            {
-                                Some(rust_serde_error_policy(v1_rt::concat("CoproductWireContract StringVariant requires a nullary-only coproduct: ".to_string(), coproduct_name.clone())))
-                            } else {
-                                Some(resolve_wire_serde_policy_from_encoding_node(
+                    Some(contract) => {
+                        match crate::v1_compiler_emit_core_support::coproduct_wire_contract_encoding(
+                            contract.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Some(encoding) => {
+                                if (variant_encoding_is_string_variant(
                                     encoding.clone(),
                                     source_indices.clone(),
-                                ))
+                                ) && !all_unit_variants.clone())
+                                {
+                                    Some(rust_serde_error_policy(v1_rt::concat("CoproductWireContract StringVariant requires a nullary-only coproduct: ".to_string(), coproduct_name.clone())))
+                                } else {
+                                    Some(resolve_wire_serde_policy_from_encoding_node(
+                                        encoding.clone(),
+                                        source_indices.clone(),
+                                    ))
+                                }
+                            }
+                            std::option::Option::None => {
+                                Some(rust_serde_error_policy(v1_rt::concat(
+                                    "CoproductWireContract missing encoding for ".to_string(),
+                                    coproduct_name.clone(),
+                                )))
                             }
                         }
-                        std::option::Option::None => Some(rust_serde_error_policy(v1_rt::concat(
-                            "CoproductWireContract missing encoding for ".to_string(),
-                            coproduct_name.clone(),
-                        ))),
-                    },
+                    }
                     std::option::Option::None => std::option::Option::None,
                 }
             } else {
@@ -44724,7 +44542,7 @@ pub fn emit_data_def(
         let ty_str = if ((raw_ty_str.clone() == "BoundedLattice".to_string())
             || (raw_ty_str.clone() == "Rc<BoundedLattice>".to_string()))
         {
-            match field_value_by_name(
+            match crate::v1_compiler_emit_core_support::field_value_by_name(
                 value.clone(),
                 "top".to_string(),
                 scope.type_env.source_indices.clone(),
@@ -44889,38 +44707,42 @@ pub fn emit_data_def_body(
         if (type_name.clone() == "BoundedLattice".to_string()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                    let lattice_value = field_value_by_name(
+                    let lattice_value = crate::v1_compiler_emit_core_support::field_value_by_name(
                         value.clone(),
                         "lattice".to_string(),
                         scope.type_env.source_indices.clone(),
                     );
-                    let meet_value = match field_value_by_name(
+                    let meet_value = match crate::v1_compiler_emit_core_support::field_value_by_name(
                         value.clone(),
                         "meet".to_string(),
                         scope.type_env.source_indices.clone(),
                     ) {
                         Some(n) => Some(n.clone()),
                         std::option::Option::None => match lattice_value.clone() {
-                            Some(lattice) => field_value_by_name(
-                                lattice.clone(),
-                                "meet".to_string(),
-                                scope.type_env.source_indices.clone(),
-                            ),
+                            Some(lattice) => {
+                                crate::v1_compiler_emit_core_support::field_value_by_name(
+                                    lattice.clone(),
+                                    "meet".to_string(),
+                                    scope.type_env.source_indices.clone(),
+                                )
+                            }
                             std::option::Option::None => std::option::Option::None,
                         },
                     };
-                    let join_value = match field_value_by_name(
+                    let join_value = match crate::v1_compiler_emit_core_support::field_value_by_name(
                         value.clone(),
                         "join".to_string(),
                         scope.type_env.source_indices.clone(),
                     ) {
                         Some(n) => Some(n.clone()),
                         std::option::Option::None => match lattice_value.clone() {
-                            Some(lattice) => field_value_by_name(
-                                lattice.clone(),
-                                "join".to_string(),
-                                scope.type_env.source_indices.clone(),
-                            ),
+                            Some(lattice) => {
+                                crate::v1_compiler_emit_core_support::field_value_by_name(
+                                    lattice.clone(),
+                                    "join".to_string(),
+                                    scope.type_env.source_indices.clone(),
+                                )
+                            }
                             std::option::Option::None => std::option::Option::None,
                         },
                     };
@@ -44952,7 +44774,7 @@ pub fn emit_data_def_body(
                             "compile_error!(\"BoundedLattice data missing join\")".to_string()
                         }
                     };
-                    let top_str = match field_value_by_name(
+                    let top_str = match crate::v1_compiler_emit_core_support::field_value_by_name(
                         value.clone(),
                         "top".to_string(),
                         scope.type_env.source_indices.clone(),
@@ -44970,7 +44792,7 @@ pub fn emit_data_def_body(
                             "compile_error!(\"BoundedLattice data missing top\")".to_string()
                         }
                     };
-                    let bottom_str = match field_value_by_name(
+                    let bottom_str = match crate::v1_compiler_emit_core_support::field_value_by_name(
                         value.clone(),
                         "bottom".to_string(),
                         scope.type_env.source_indices.clone(),
@@ -46114,7 +45936,11 @@ pub fn native_ingress_string_field(
     field_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match field_value_by_name(record, field_name, source_indices) {
+    match crate::v1_compiler_emit_core_support::field_value_by_name(
+        record,
+        field_name,
+        source_indices,
+    ) {
         Some(v) => native_ingress_literal_text(v.clone()),
         std::option::Option::None => std::option::Option::None,
     }
@@ -46154,7 +45980,7 @@ pub fn native_ingress_literal_ref(
                     })
                 }
                 Some(d) => {
-                    let field_kind = match field_value_by_name(
+                    let field_kind = match crate::v1_compiler_emit_core_support::field_value_by_name(
                         n.clone(),
                         "field".to_string(),
                         source_indices.clone(),
@@ -46929,7 +46755,11 @@ pub fn native_ingress_startup_reading(
     descriptor: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NativeIngressStartupReading> {
-    match field_value_by_name(descriptor, "startup".to_string(), si.clone()) {
+    match crate::v1_compiler_emit_core_support::field_value_by_name(
+        descriptor,
+        "startup".to_string(),
+        si.clone(),
+    ) {
         std::option::Option::None => {
             Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
                 reason: "the descriptor has no startup field".to_string(),
@@ -46952,7 +46782,11 @@ pub fn native_ingress_startup_reading(
                         ),
                     })
                 } else {
-                    match field_value_by_name(v.clone(), "value".to_string(), si.clone()) {
+                    match crate::v1_compiler_emit_core_support::field_value_by_name(
+                        v.clone(),
+                        "value".to_string(),
+                        si.clone(),
+                    ) {
                         std::option::Option::None => {
                             Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
                                 reason: "the descriptor's startup is Present with no value"
@@ -46967,7 +46801,7 @@ pub fn native_ingress_startup_reading(
     reason: "the descriptor's startup value is not a NativeIngressStartup literal".to_string(),
 })
                             } else {
-                                match field_value_by_name(st.clone(), "fold".to_string(), si.clone()) {
+                                match crate::v1_compiler_emit_core_support::field_value_by_name(st.clone(), "fold".to_string(), si.clone()) {
     std::option::Option::None => Rc::new(NativeIngressStartupReading::NativeIngressStartupUnread {
     reason: "the descriptor's startup names no fold".to_string(),
 }),
@@ -47060,39 +46894,41 @@ pub fn native_ingress_program_from_descriptor(
                         native_ingress_unresolved(label.clone(), "the descriptor's body is not a NativeIngressProgram literal; a program descriptor is read, never evaluated".to_string())
                     } else {
                         {
-                            let binding_ref = match field_value_by_name(
-                                body.clone(),
-                                "binding".to_string(),
-                                si.clone(),
-                            ) {
-                                Some(b) => native_ingress_literal_ref(
-                                    b.clone(),
-                                    "the binding constructor".to_string(),
+                            let binding_ref =
+                                match crate::v1_compiler_emit_core_support::field_value_by_name(
+                                    body.clone(),
+                                    "binding".to_string(),
                                     si.clone(),
-                                ),
-                                std::option::Option::None => {
-                                    Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
-                                        reason: "the descriptor names no binding constructor"
-                                            .to_string(),
-                                    })
-                                }
-                            };
-                            let handler_ref = match field_value_by_name(
-                                body.clone(),
-                                "handler".to_string(),
-                                si.clone(),
-                            ) {
-                                Some(h) => native_ingress_literal_ref(
-                                    h.clone(),
-                                    "the handler".to_string(),
+                                ) {
+                                    Some(b) => native_ingress_literal_ref(
+                                        b.clone(),
+                                        "the binding constructor".to_string(),
+                                        si.clone(),
+                                    ),
+                                    std::option::Option::None => {
+                                        Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                                            reason: "the descriptor names no binding constructor"
+                                                .to_string(),
+                                        })
+                                    }
+                                };
+                            let handler_ref =
+                                match crate::v1_compiler_emit_core_support::field_value_by_name(
+                                    body.clone(),
+                                    "handler".to_string(),
                                     si.clone(),
-                                ),
-                                std::option::Option::None => {
-                                    Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
-                                        reason: "the descriptor names no handler".to_string(),
-                                    })
-                                }
-                            };
+                                ) {
+                                    Some(h) => native_ingress_literal_ref(
+                                        h.clone(),
+                                        "the handler".to_string(),
+                                        si.clone(),
+                                    ),
+                                    std::option::Option::None => {
+                                        Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                                            reason: "the descriptor names no handler".to_string(),
+                                        })
+                                    }
+                                };
                             let startup_reading =
                                 native_ingress_startup_reading(body.clone(), si.clone());
                             let binding_site = native_ingress_function_site(
@@ -47245,22 +47081,22 @@ pub fn native_ingress_program_resolution(
                 {
                     let si = d.source_indices.clone();
                     let program_ref = match d.body.clone() {
-                        Some(b) => {
-                            match field_value_by_name(b.clone(), "program".to_string(), si.clone())
-                            {
-                                Some(p) => native_ingress_literal_ref(
-                                    p.clone(),
-                                    "the program reference".to_string(),
-                                    si.clone(),
-                                ),
-                                std::option::Option::None => {
-                                    Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
-                                        reason: "the NativeIngressDriver names no program"
-                                            .to_string(),
-                                    })
-                                }
+                        Some(b) => match crate::v1_compiler_emit_core_support::field_value_by_name(
+                            b.clone(),
+                            "program".to_string(),
+                            si.clone(),
+                        ) {
+                            Some(p) => native_ingress_literal_ref(
+                                p.clone(),
+                                "the program reference".to_string(),
+                                si.clone(),
+                            ),
+                            std::option::Option::None => {
+                                Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
+                                    reason: "the NativeIngressDriver names no program".to_string(),
+                                })
                             }
-                        }
+                        },
                         std::option::Option::None => {
                             Rc::new(NativeIngressRefReading::NativeIngressRefUnread {
                                 reason: "the NativeIngressDriver row has no body".to_string(),

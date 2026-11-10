@@ -22200,8 +22200,8 @@ impl fmt::Display for RestResponseDecodeRefusal {
 /// module's `wire_contract: VariantEncoding` (declared there or imported, alias chains followed).
 /// (declaring module path, coproduct name) -> every contract row's encoding node naming it.
 pub(crate) struct CoproductWireContractIndex {
-    encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>>,
-    module_defaults: std::collections::HashMap<String, Result<Rc<Node>, String>>,
+    pub(crate) encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>>,
+    pub(crate) module_defaults: std::collections::HashMap<String, Result<Rc<Node>, String>>,
 }
 
 const MODULE_WIRE_CONTRACT_NAME: &str = "wire_contract";
@@ -22271,13 +22271,15 @@ fn resolve_module_encoding(
     None
 }
 
-fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireContractIndex {
+pub(crate) fn build_coproduct_wire_contract_index(
+    ctx: &InterpContext,
+) -> CoproductWireContractIndex {
     // Row admission and target reading are the emitter's predicates, not a second copy:
     // `is_coproduct_wire_contract_row` (typed CoproductWireContract imported from
     // std.serialization, not a local homonym, both fields present) and
     // `coproduct_decl_ref_decl_name`. The DeclarationRef's module_path is the one field the
     // emitter has no reader for, because it only ever matches rows in the declaring module.
-    use crate::v1_compiler_emit_rust::{
+    use crate::v1_compiler_emit_core_support::{
         coproduct_decl_ref_decl_name, coproduct_wire_contract_encoding, field_value_by_name,
         is_coproduct_wire_contract_row, record_string_field,
     };

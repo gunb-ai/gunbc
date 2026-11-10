@@ -3,6 +3,8 @@
 
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
 pub use crate::gunbc_rust_emitted_edge::{module_to_filename, EmittedEdge};
+pub use crate::std_syntax::LiteralValue;
+use crate::std_syntax::LiteralValue::LitStr;
 pub use crate::std_unicode_scalar::{ascii_lowercase, ascii_uppercase, ascii_uppercase_first};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
@@ -20,13 +22,15 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::{EmittedSymbolCollision, ModuleFilenameCollision};
 use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::ExprData::ExprLiteral;
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, field_init_node_name_at, make_error_node, CompilerDiagnostic, Connective,
-    ErrorNode, NewlineIndex, Node, ParsedModuleItemKind, TextFile,
+    authored_name_at, field_init_node_name_at, field_init_node_value, import_is_all,
+    import_specific_names_at, make_error_node, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    NewlineIndex, Node, ParsedModuleItemKind, TextFile,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -964,4 +968,211 @@ result.diagnostics.clone()
         }
         __result
     })
+}
+
+pub fn field_value_by_name(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for fi in record.children.clone().iter().cloned() {
+            if (crate::v1_std_core::field_init_node_name_at(fi.clone(), source_indices.clone())
+                == field_name.clone())
+            {
+                __result.push(fi);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(fi) => Some(crate::v1_std_core::field_init_node_value(fi.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn literal_string_value(n: Rc<Node>) -> Option<String> {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
+            LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+            _ => std::option::Option::None,
+        },
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn record_string_field(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(record, field_name, source_indices) {
+        Some(value_node) => literal_string_value(value_node.clone()),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn coproduct_decl_ref_decl_name(
+    body: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(body, "coproduct".to_string(), source_indices.clone()) {
+        Some(decl_ref_node) => record_string_field(
+            decl_ref_node.clone(),
+            "decl_name".to_string(),
+            source_indices.clone(),
+        ),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn module_imports_std_serialization_coproduct_wire_contract(
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for imp in imports.iter().cloned() {
+            if ((crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())
+                == "std.serialization".to_string())
+                && (crate::v1_std_core::import_is_all(imp.clone()) || {
+                    let mut __found = false;
+                    for name in crate::v1_std_core::import_specific_names_at(
+                        imp.clone(),
+                        source_indices.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        if (name.clone() == "CoproductWireContract".to_string()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn data_item_type_is_coproduct_wire_contract(
+    item: Rc<Node>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match item.type_annotation.clone() {
+        Some(type_node) => {
+            ((crate::v1_std_core::authored_name_at(source_indices.clone(), type_node.clone())
+                == "CoproductWireContract".to_string())
+                && module_imports_std_serialization_coproduct_wire_contract(
+                    imports,
+                    source_indices.clone(),
+                ))
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn module_defines_local_coproduct_wire_contract_type(
+    module_items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for item in module_items.iter().cloned() {
+            if (((is_type_def_item(item.clone())
+                || is_type_alias_item(item.clone(), source_indices.clone()))
+                || is_type_decl_item(item.clone(), source_indices.clone()))
+                && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+                    == "CoproductWireContract".to_string()))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn is_coproduct_wire_contract_row(
+    item: Rc<Node>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (item.module_item_kind.clone() != ParsedModuleItemKind::ModuleItemDataValue) {
+        false
+    } else {
+        if module_defines_local_coproduct_wire_contract_type(module_items, source_indices.clone()) {
+            false
+        } else {
+            if !data_item_type_is_coproduct_wire_contract(
+                item.clone(),
+                imports,
+                source_indices.clone(),
+            ) {
+                false
+            } else {
+                match item.body.clone() {
+                    Some(body) => {
+                        ((field_value_by_name(
+                            body.clone(),
+                            "coproduct".to_string(),
+                            source_indices.clone(),
+                        ) != std::option::Option::None)
+                            && (field_value_by_name(
+                                body.clone(),
+                                "encoding".to_string(),
+                                source_indices.clone(),
+                            ) != std::option::Option::None))
+                    }
+                    std::option::Option::None => false,
+                }
+            }
+        }
+    }
+}
+
+pub fn coproduct_wire_contract_encoding(
+    contract_item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match contract_item.body.clone() {
+        Some(body) => field_value_by_name(body.clone(), "encoding".to_string(), source_indices),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn coproduct_wire_contract_targets(
+    contract_item: Rc<Node>,
+    coproduct_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match contract_item.body.clone() {
+        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
+            Some(target_name) => (target_name.clone() == coproduct_name.clone()),
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
+    }
+}
+
+pub fn declaration_is_host_census_row(
+    item: Rc<Node>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (is_coproduct_wire_contract_row(item.clone(), module_items, imports, source_indices.clone())
+        || ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
+            && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+                == "wire_contract".to_string())))
 }

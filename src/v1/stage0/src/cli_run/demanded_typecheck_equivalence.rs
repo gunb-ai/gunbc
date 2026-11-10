@@ -497,3 +497,156 @@ fn a_row_named_only_through_a_demanded_signature_is_realized() {
         .join()
         .unwrap();
 }
+
+// ---------------------------------------------------------------------------------------------
+// HOST CENSUS SEEDING. The run host reads wire-contract rows it does not spell: the interpreter's
+// coproduct index enumerates every `CoproductWireContract` row by SHAPE and its module-encoding
+// resolver reads each module's `wire_contract` default by that host key. A declaration-grain cut
+// that realizes only what demanded declarations name hides those rows from the host scan, and the
+// REST decode then answers `no CoproductWireContract row names this coproduct` for a row that
+// exists -- a SILENT MISS of the kind gunbc.design_argument::fail_closed forbids. The census
+// (@ref(v1.compiler.emit_core_support::declaration_is_host_census_row), seeded into the realization by
+// @ref(v1.compiler.infer::census_realized_names), which follows the whole alias chain like the host's
+// resolve_module_encoding) is the declared edge from those reads to the rows; these tests pin that
+// the census is real in both directions: census rows are realized though nothing demands them,
+// and an ordinary undemanded data declaration stays unrealized (the census is not a blanket rule).
+
+#[test]
+fn grain_seeds_the_host_wire_census_so_the_decode_index_resolves_actor_spelling() {
+    std::thread::Builder::new()
+        .stack_size(256 << 20)
+        .spawn(host_census_body)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn host_census_body() {
+    let (_sources, intern, si, modules) = graph_from("dag/extdeps/github/workflow_runs.dag");
+    let seed_fn = "github_workflow_run_id_is_positive";
+    let census = infer::build_symbol_index_census(modules.clone(), si.clone());
+    let realization = infer::realization_of(
+        modules.clone(),
+        Rc::new(im::vector![seed_fn.to_string()]),
+        census,
+        si.clone(),
+    );
+    // Positive control: the grant tool's GetRun decode reads `run.actor.type` at
+    // (extdeps.github.github, UserType). No demanded declaration names this row; the census must.
+    assert!(
+        realization.realized.contains_key("user_type_wire_contract"),
+        "the CoproductWireContract row for UserType must be seeded by the host census"
+    );
+    assert!(
+        realization
+            .realized
+            .contains_key("workflow_run_status_wire_contract"),
+        "the ListWorkflowRuns decode rows must be seeded by the host census too"
+    );
+    assert!(
+        realization.realized.contains_key("wire_contract"),
+        "the module `wire_contract` default is read by the host (resolve_module_encoding)"
+    );
+    // Negative control: an ordinary data declaration in the same closure that no demanded
+    // declaration names and no host census reads stays UNREALIZED. If this ever realizes, the
+    // census became a blanket rule and the cut stopped being a cut.
+    assert!(
+        !realization
+            .realized
+            .contains_key("extdeps_external_authority_anchor"),
+        "host-census seeding must not re-widen realization to all data declarations"
+    );
+    // The index the REST decode consults, built exactly the way the interpreter builds it.
+    let demand = Rc::new(DeclarationDemand::OnlyDeclarations {
+        names: realization.realized.clone(),
+        realization: realization.clone(),
+    });
+    let mut typed_map = crate::v1_rt::rc_empty_map::<String, Rc<infer::TypedModule>>();
+    let mut surfaces = crate::v1_rt::rc_empty_map::<String, Rc<infer::VariantExportSurface>>();
+    let mut eq = crate::v1_rt::rc_empty_map::<String, bool>();
+    for m in modules.iter() {
+        let r = infer::typecheck_module_demanded(
+            m.clone(),
+            typed_map.clone(),
+            surfaces.clone(),
+            si.clone(),
+            intern.clone(),
+            crate::v1_compiler_infer_env::empty_symbol_index(),
+            crate::v1_rt::rc_empty_map(),
+            eq.clone(),
+            demand.clone(),
+            None,
+        );
+        let path = authored_name_at(si.clone(), r.typed.module.clone());
+        let vs = infer::build_variant_export_surface(r.typed.clone(), surfaces.clone(), si.clone());
+        surfaces = crate::v1_rt::rc_map_insert(surfaces, path.clone(), vs);
+        eq = infer::equality_table_with_module(eq.clone(), r.typed.clone(), si.clone());
+        typed_map = crate::v1_rt::rc_map_insert(typed_map, path, r.typed.clone());
+    }
+    let typed: Vec<Rc<infer::TypedModule>> = typed_map.values().cloned().collect();
+    let graph = crate::v1_compiler_infer_items::ResolvedGraph {
+        modules: Rc::new(typed.into()),
+        item_registry: Rc::new(im::HashMap::new()),
+        item_leaf_owner_modules: Rc::new(im::HashMap::new()),
+        diagnostics: Rc::new(im::vector![]),
+    };
+    let ctx = crate::v1_interpreter::InterpContext::new(
+        &graph,
+        si.clone(),
+        crate::v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let index = crate::v1_interpreter::build_coproduct_wire_contract_index(&ctx);
+    assert!(
+        index
+            .encodings
+            .contains_key(&("extdeps.github.github".to_string(), "UserType".to_string())),
+        "the decode reads the UserType spelling; an index that cannot see the row is a silent miss"
+    );
+    assert!(
+        index.encodings.contains_key(&(
+            "extdeps.github.workflow_runs".to_string(),
+            "WorkflowRunStatus".to_string()
+        )) || index.encodings.contains_key(&(
+            "extdeps.github.github".to_string(),
+            "WorkflowRunStatus".to_string()
+        )),
+        "the list decode reads the WorkflowRunStatus spelling; its row must be indexed too"
+    );
+}
+
+// THE ALIAS CHAIN, END TO END. v1_interpreter::resolve_module_encoding follows `data x = other`
+// aliases recursively (fuel 32). A census that seeded only wire_contract's first alias hop would
+// leave a later link unrealized, and the host would then refuse a row that EXISTS by blaming the
+// next link ("aliases ..., which resolves nowhere") -- the silent miss this census exists to
+// prevent, dressed as a located error. The fixture pairs the chain with an undemanded, uncensused
+// data declaration that must stay unrealized, so the seed stays a census and not a blanket rule.
+#[test]
+fn grain_seeds_every_link_of_a_wire_contract_alias_chain() {
+    let (_sources, _intern, si, modules) =
+        graph_from("dag/test/fixture/demanded_scope/wire_contract_alias_chain.dag");
+    let census = infer::build_symbol_index_census(modules.clone(), si.clone());
+    let realization = infer::realization_of(
+        modules.clone(),
+        Rc::new(im::vector!["demanded_entry".to_string()]),
+        census,
+        si.clone(),
+    );
+    for link in [
+        "wire_contract",
+        "alias_left",
+        "alias_right",
+        "grain_row_wire_contract",
+    ] {
+        assert!(
+            realization.realized.contains_key(link),
+            "{link} must be seeded by the host census (alias chain and row), got {:?}",
+            realization.realized.keys().collect::<Vec<_>>()
+        );
+    }
+    assert!(
+        !realization
+            .realized
+            .contains_key("unreached_sidecar_note"),
+        "an undemanded, uncensused data declaration must stay unrealized: the census is a census, not the old blanket rule"
+    );
+}

@@ -2,6 +2,12 @@ module v1.compiler.infer
 
 import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
 import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
+// The run host's wire-contract census (interpreter build_coproduct_wire_contract_index
+// and resolve_module_encoding): rows it reads without any demanded declaration
+// spelling them are seeded into Realization.realized below. Authored in
+// v1.compiler.emit_core_support so every partition crate that compiles the checker
+// or the emitter also compiles the census.
+import v1.compiler.emit_core_support { declaration_is_host_census_row }
 import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope }
 import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments, field_access_spine }
 import v1.compiler.ownership { fold_terminal_expr }
@@ -16953,8 +16959,87 @@ fn realization_of(
 ) -> Realization {
   Realization {
     active: true,
-    realized: realization_names(modules: modules, seeds: seeds, source_indices: source_indices),
+    realized: census_realized_names(modules: modules, demanded: realization_names(modules: modules, seeds: seeds, source_indices: source_indices), source_indices: source_indices),
     declared: realization_declared_names(modules: modules, symbol_index: symbol_index, source_indices: source_indices)
+  }
+}
+
+// Seed the host census: every row v1.compiler.emit_core_support ::
+// declaration_is_host_census_row matches is realized for the run, because the
+// reading host (the interpreter's wire-contract index and module-encoding
+// resolver) consults it without any demanded declaration spelling its name.
+// The alias spelling of a `wire_contract` default seeds its WHOLE alias chain:
+// resolve_module_encoding follows `data x = other` links recursively (fuel 32),
+// so any unfilled link would make the host blame a row that exists.
+fn census_realized_names(modules: List<ResolvedModule>, demanded: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  modules |> fold(init: demanded, f: (acc, m) =>
+    module_items(n: m.module) |> fold(init: acc, f: (inner, item) =>
+      if declaration_is_host_census_row(item: item, module_items: module_items(n: m.module), imports: module_imports(n: m.module), source_indices: source_indices) {
+        let alias_name = match item.body {
+          Present { value: body } => if (item.module_item_kind == ModuleItemDataValue
+              && authored_name_at(source_indices: source_indices, node: item) == "wire_contract") {
+            match body.expr_data {
+              ExprVar { binding_kind: _ } => Present { value: expr_var_name_at(texpr: body, source_indices: source_indices) }
+              _ => Absent
+            }
+          } else {
+            Absent
+          }
+          Absent => Absent
+        }
+        let with_row = map_insert(inner, authored_name_at(source_indices: source_indices, node: item), true)
+        match alias_name {
+          Present { value: alias } =>
+            census_alias_chain_names(modules: modules, start: alias, source_indices: source_indices)
+            |> fold(init: with_row, f: (chain_acc, chain_name) => map_insert(chain_acc, chain_name, true))
+          Absent => with_row
+        }
+      } else {
+        inner
+      }))
+}
+
+// Seeds every name in a `wire_contract` alias chain, not just its first hop:
+// v1_interpreter::resolve_module_encoding follows `data x = other` aliases
+// recursively with fuel 32, so a chain `wire_contract = a`, `a = b` leaves
+// `b` unresolvable (and the host blames a row that exists) unless every link
+// is realized. Same bound, same stop conditions: fuel, already-seen cycle,
+// or a body that is not a variable alias.
+fn census_alias_chain_names(modules: List<ResolvedModule>, start: String, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  map_keys(census_alias_chain_step(modules: modules, name: start, acc: empty_map(), fuel: 32, source_indices: source_indices))
+}
+
+fn census_alias_chain_step(modules: List<ResolvedModule>, name: String, acc: Map<String, Bool>, fuel: Int, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  let seen = match map_get(acc, name) { Present { value: _ } => true  Absent => false }
+  if fuel <= 0 || seen {
+    acc
+  } else {
+    let item_lists = modules |> map(m => module_items(n: m.module))
+    let items = item_lists |> fold(init: [], f: (items_acc, items_of_m) => concat(items_acc, items_of_m))
+    let candidates = items |> map(item => census_var_alias_body_name(item: item, name: name, source_indices: source_indices))
+    let target = candidates |> fold(init: "", f: (found, candidate) =>
+      if found == "" { candidate } else { found })
+    if target == "" {
+      map_insert(acc, name, true)
+    } else {
+      census_alias_chain_step(modules: modules, name: target, acc: map_insert(acc, name, true), fuel: fuel - 1, source_indices: source_indices)
+    }
+  }
+}
+
+// The variable a data declaration aliases to, when one is named `name` and its body is a bare
+// variable. "" means "no alias": not a data item, not this name, or a non-variable body.
+fn census_var_alias_body_name(item: Node, name: String, source_indices: Map<String, NewlineIndex>) -> String {
+  if item.module_item_kind == ModuleItemDataValue && authored_name_at(source_indices: source_indices, node: item) == name {
+    match item.body {
+      Present { value: body } => match body.expr_data {
+        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: body, source_indices: source_indices)
+        _ => ""
+      }
+      Absent => ""
+    }
+  } else {
+    ""
   }
 }
 

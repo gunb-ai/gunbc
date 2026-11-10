@@ -1,0 +1,32 @@
+module test.fixture.demanded_scope.wire_contract_alias_chain
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored, CoproductWireContract }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// An entry so a realization exists. Everything that matters here is what this does NOT name.
+fn demanded_entry() -> Int { 1 }
+
+// A CoproductWireContract row, matched by the host census on shape. Nothing demanded names it; the
+// census must realize it anyway, because the interpreter's wire-contract index reads it without any
+// demanded declaration spelling its name.
+data grain_row_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "test.fixture.demanded_scope.wire_contract_alias_chain", decl_name: "DemandedShape", field: WholeDeclaration },
+  encoding: StringVariant { naming: AsAuthored }
+}
+
+type DemandedShape { side: Int }
+
+// THE ALIAS CHAIN. The host resolve_module_encoding follows `data x = other` aliases recursively
+// with fuel 32, so the census must seed EVERY link -- wire_contract, alias_left, alias_right -- and
+// not just the first hop. A census that seeded one hop would leave `alias_right` out of the realized
+// set and the host would refuse with "alias_left aliases alias_right, which resolves nowhere" for a
+// row that exists: the same silent miss dressed as a located error.
+data wire_contract: VariantEncoding = alias_left
+
+data alias_left: VariantEncoding = alias_right
+
+data alias_right: VariantEncoding = StringVariant { naming: AsAuthored }
+
+// NEGATIVE CONTROL. A data declaration no demanded declaration names and the census does not match
+// stays UNREALIZED -- the census is a census, not a blanket rule restored.
+data unreached_sidecar_note: DemandedShape = DemandedShape { side: 7 }
