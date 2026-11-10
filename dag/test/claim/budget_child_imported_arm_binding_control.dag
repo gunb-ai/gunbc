@@ -1,0 +1,101 @@
+module test.claim.budget_child_imported_arm_binding_control
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { Memory, One, byte_size }
+import extdeps.accounting.budget { Appropriation }
+import product.budget_tree { BudgetChild, BudgetChildFound, BudgetChildMissing, BudgetNode, budget_child_named }
+
+// WHAT THIS CONTROL HOLDS.
+//
+// This is the imported sibling of test.claim.budget_child_unimported_arm_binding_control: same
+// fixture, same four rows, same two arms in the same two orders -- and BudgetChildFound and
+// BudgetChildMissing ARE imported above. It holds the other half of the pair: that a constructor
+// named in a match arm and present in the import table binds, so the sibling's result cannot be
+// explained by the fixture being broken in some way that makes both files pass, nor by an arm
+// that never fires in either direction. Read the two files together: they differ by exactly one
+// axis, the import of the two constructors, and both are green, which is what pins arm-head
+// resolution to name resolution rather than to the import table.
+//
+// WHAT WOULD TURN IT RED. The ordinary case: BudgetChild, its variants, budget_child_named or
+// Appropriation changing shape, or the budget_tree authority moving. It also goes red if imported
+// pattern heads stop binding, which would be a far louder compiler failure than the sibling's.
+// Measured green as a pair at main 8732750e2d69792228fc02ab91d64cb4e5480541: this file 4/4 and the
+// unimported sibling 4/4, claim_batch --hermetic over dag + src/v2, invocation
+// 7282392b-e47e-427a-a995-1ff1d84abb47 (claim_batch 3433d286…, rc=0, 127 s, 5.9 GiB).
+//
+// The historical record below is carried in the sibling's header, where it is the load-bearing
+// reason for the file; it is repeated here only so this file can be read alone. gunbc#8372: 17
+// pattern-match failures on main from one unresolved arm head, fixed by adding the single missing
+// variant import (NetMemberBelongsToAnotherDesign, #8419, merged 2026-08-18).
+//
+// WHY IT IS WORTH CARRYING. gunbc#8372 recorded exactly this shape going wrong: 17 pattern-match
+// failures on main, one arm head that did not resolve, fixed by adding the one missing variant
+// import (NetMemberBelongsToAnotherDesign, #8419, merged 2026-08-18). A match head that fails to
+// resolve is not always loud -- with a catch-all it silently never fires and every value falls
+// through to the next arm, which turns a witness green on a verdict it never computed. This file
+// has no catch-all and covers BOTH arm orders and BOTH values, so an arm that stops matching
+// cannot hide: with missing-first, `present_missing_first_is_found` goes red (the unbound
+// BudgetChildMissing arm swallows the found value); with found-first, `absent_found_first_is_missing`
+// goes red on the way back. One row per arm order is not enough to tell those apart, which is why
+// the file is four rows and not two.
+//
+// WHAT WOULD TURN IT RED. Any change to how a match arm head is resolved -- the arm head is
+// carried as a bare name string (v1 MatchPattern::VariantPattern) whose parent carrier is filled
+// later by inference rather than by the parser -- such that a constructor named only in a pattern,
+// never imported, stops binding. Measured green as a pair at main
+// 8732750e2d69792228fc02ab91d64cb4e5480541: this file 4/4 and its imported sibling 4/4, in
+// claim_batch --hermetic over dag + src/v2, invocation
+// 7282392b-e47e-427a-a995-1ff1d84abb47 (claim_batch 3433d286…, rc=0, 127 s, 5.9 GiB).
+//
+// SCOPE OF THE CLAIM, stated narrowly so it is not over-read: this route (claim_batch --hermetic,
+// the v1 seed interpreter), this one coproduct (product.budget_tree BudgetChild), one nullary arm
+// and one record arm, both orders. It says nothing about pattern-position hazards on other
+// carriers, other routes, or the emitted v2 route.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn appr(n: std.nat.Nat) -> Appropriation<Memory, One> {
+  Appropriation { ceiling: byte_size(count: n) }
+}
+
+fn leaf(name: String) -> BudgetNode {
+  BudgetNode { name: name, appropriation: appr(n: 10), claims: [], children: [] }
+}
+
+fn root() -> BudgetNode {
+  BudgetNode { name: "root", appropriation: appr(n: 100), claims: [], children: [leaf(name: "a")] }
+}
+
+// Missing-first. If the BudgetChildMissing head ever fails to bind, this classifier answers
+// "missing" for the found child and present_missing_first_is_found is the row that says so.
+fn classify_missing_first(child: BudgetChild) -> String {
+  match child {
+    BudgetChildMissing => "missing"
+    BudgetChildFound { node: _ } => "found"
+  }
+}
+
+// Found-first, the same arms in the opposite order, so a non-binding head is caught whichever
+// arm it sits in.
+fn classify_found_first(child: BudgetChild) -> String {
+  match child {
+    BudgetChildFound { node: _ } => "found"
+    BudgetChildMissing => "missing"
+  }
+}
+
+test fn absent_missing_first_is_missing() -> Bool {
+  classify_missing_first(child: budget_child_named(node: root(), name: "nope")) == "missing"
+}
+
+test fn present_missing_first_is_found() -> Bool {
+  classify_missing_first(child: budget_child_named(node: root(), name: "a")) == "found"
+}
+
+test fn absent_found_first_is_missing() -> Bool {
+  classify_found_first(child: budget_child_named(node: root(), name: "nope")) == "missing"
+}
+
+test fn present_found_first_is_found() -> Bool {
+  classify_found_first(child: budget_child_named(node: root(), name: "a")) == "found"
+}
