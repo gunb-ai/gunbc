@@ -29,8 +29,8 @@ import gunbc.serving.serving_reservation {
   host_reservations_for, host_memory_reserved, host_gpus_withheld_from_runner, host_cores_withheld_from_runner,
   ServingHostReservation, ReplicaReservation, cpu_reservation_covers,
   serving_api_key_is_reference, serving_api_key_source_path,
-  host_strata_is_pinned, strata_release_for, StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
-  StrataArtifact, StrataArtifactDigest, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
+  host_strata_is_pinned, strata_release_for, strata_release_artifacts, StrataRelease,
+  StrataArtifact, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
 }
 
 fn butch_replicas() -> List<ReplicaReservation> {
@@ -86,16 +86,16 @@ test fn witness_butch_strata_is_pinned_by_native_commit_and_a_keyed_absence_is_n
   let butch_pinned = host_strata_is_pinned(operator_host_srv14)
   let srv3_pinned = host_strata_is_pinned(operator_host_srv3)
   let butch_arts = match strata_release_for(operator_host_srv14) {
-    Present { value: StrataReleasePinned { artifacts: as, read_from: _ } } => as
-    _ => []
+    Present { value: r } => strata_release_artifacts(r)
+    Absent => []
   }
   let srv3_arts = match strata_release_for(operator_host_srv3) {
-    Present { value: StrataReleasePinned { artifacts: as, read_from: _ } } => as
-    _ => []
+    Present { value: r } => strata_release_artifacts(r)
+    Absent => []
   }
   let srv4_arts = match strata_release_for(operator_host_srv4) {
-    Present { value: StrataReleasePinned { artifacts: as, read_from: _ } } => as
-    _ => []
+    Present { value: r } => strata_release_artifacts(r)
+    Absent => []
   }
   // butch pins BOTH checkouts that make up its running native engine: the server code (strata-main) AND the
   // venv interpreter+packages (strata), each a full git commit read off the box -- a container image among them

@@ -22,8 +22,8 @@ module test.claim.serving.serving_reservation_witness
 //     --functions <the witness_* names, comma-joined>
 import std.types { Bool }
 import std.nat { Nat }
-import std.measure { byte_size, byte_size_count, Watt, watt, watt_count }
-import gunbc.serving.serving_host_memory { srv3_strata_engine_memory, srv4_serving_engine_memory, serving_reading_bytes_or_zero }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, Watt, watt, watt_count }
+import std.algebra { FreeSemigroup }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
@@ -32,11 +32,11 @@ import gunbc.serving.serving_reservation {
   GpuReservation, ReplicaReservation,
   ReplicaMemoryReservation, MemoryMeasured,
   ServingBind, ServingBindAddress, BindLan, BindLoopback, BindAddress,
-  StrataArtifact, StrataArtifactDigest, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
+  StrataArtifact, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
   StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
   cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores, cpu_reservation_covers,
   gpu_reservation_card_count, bind_is_lan_reachable,
-  strata_digest_is_content_addressed, strata_artifact_is_immutable, strata_release_is_pinned,
+  strata_release_is_pinned,
   host_cores_withheld_from_runner, host_memory_reserved, host_gpus_withheld_from_runner,
   reservation_reduces_runner_width,
 }
@@ -65,33 +65,34 @@ test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_ho
 }
 
 // EVERY SERVING HOST IS CHARGED, NOT THE PROD-ROLE HOST ALONE. srv3 runs a Strata engine and is not the
-// prod-role host, yet it pays a memory reservation and gives up its two cards to the runner -- while its
-// affinity pin costs it no cores. The finding's gap was that srv3/srv4's Strata were never charged; here a
-// non-prod serving host is, keyed by its own identity.
+// prod-role host, yet it pays a memory reservation -- its cgroup HARD ceiling MemoryMax (112 GiB) -- and gives
+// up its two cards to the runner, while its affinity pin costs it no cores. The finding's gap was that
+// srv3/srv4's Strata were never charged; here a non-prod serving host is, keyed by its own identity, and the
+// HARD ceiling (MemoryMax) is charged rather than the soft MemoryHigh, because MemoryMax is what the cgroup
+// enforces. srv3's fixed_overhead predates its engine, so this is the engine's only charge, not a double-count.
 test fn witness_a_non_prod_serving_host_is_charged_for_memory_and_cards_though_its_affinity_costs_no_cores() -> Bool {
-  // srv3's one engine: two cards withheld, an affinity pin -> zero cores withheld; its per-engine memory is a
-  // MEASURED charge equal to the cgroup ceiling held in serving_host_memory srv3_strata_engine_memory -- NOT
-  // the fabricated zero this row once carried. That charge is what keeps srv3's Strata memory out of the runner
-  // pool, so a non-prod serving host is now priced, not left bookable to CI.
+  // srv3's one engine: two cards withheld, an affinity pin -> zero cores withheld; its per-engine memory is the
+  // MEASURED cgroup HARD ceiling MemoryMax = 112 GiB, not the soft MemoryHigh and not the fabricated zero this
+  // row once carried. That charge keeps srv3's Strata memory out of the runner pool.
   let cores_whole = host_cores_withheld_from_runner(operator_host_srv3) == 0
   let srv3_bytes = match host_memory_reserved(operator_host_srv3) {
     Present { value: m } => byte_size_count(b: m)
     Absent => 0 - 1
   }
-  let srv3_cap = byte_size_count(b: serving_reading_bytes_or_zero(srv3_strata_engine_memory.memory_cap))
+  let memory_max_srv3 = byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 112)))
   let cards_held = host_gpus_withheld_from_runner(operator_host_srv3) == 2
-  // srv4 likewise, keyed by its own identity -- a second serving host charged to its OWN measured cap, no code
-  // change between the two hosts (the derivation is not keyed on a single host).
+  // srv4 likewise, keyed by its own identity -- a second serving host charged to its OWN hard ceiling MemoryMax
+  // = 64 GiB, no code change between the two hosts (the derivation is not keyed on a single host).
   let srv4_bytes = match host_memory_reserved(operator_host_srv4) {
     Present { value: m } => byte_size_count(b: m)
     Absent => 0 - 1
   }
-  let srv4_cap = byte_size_count(b: serving_reading_bytes_or_zero(srv4_serving_engine_memory.memory_cap))
+  let memory_max_srv4 = byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 64)))
   cores_whole
-    && srv3_bytes == srv3_cap
+    && srv3_bytes == memory_max_srv3
     && srv3_bytes > 0
     && cards_held
-    && srv4_bytes == srv4_cap
+    && srv4_bytes == memory_max_srv4
     && srv4_bytes > 0
     && host_gpus_withheld_from_runner(operator_host_srv4) == 2
 }
@@ -110,30 +111,27 @@ test fn witness_a_power_cap_present_on_the_reservation_is_distinguishable_from_u
   cards_counted && capped_empty && two_cards
 }
 
-// WHAT NAMES A STRATA ENGINE. A CONTENT-ADDRESSED IMAGE DIGEST and a FULL NATIVE GIT COMMIT both pin an
-// engine; a moving tag, a SHORT git sha, and a wrong-algorithm digest are all refused (fail_closed). The two
-// artifact KINDS are kept distinct, so a native binary is never "pinned" by a container image digest.
+// WHAT NAMES A STRATA ENGINE. A CONTENT-ADDRESSED IMAGE DIGEST, a FULL NATIVE GIT COMMIT, a two-checkout
+// native build, and a MANAGED RELEASE id all pin an engine; a moving tag is refused. The runtime checks this
+// witness used to make -- a short git sha, a wrong-algorithm digest, an empty artifact list -- are NO LONGER
+// WRITABLE, so it does not (cannot) construct them: a commit must be a 40-char lowercase SHA-1 (Sha1DigestHex),
+// an image digest a 64-char one (Sha256DigestHex, so the algorithm is in the type and no "md5"/"sha256" string
+// exists to get wrong), and `artifacts` a FreeSemigroup with no empty inhabitant. The fail-closed moved from
+// runtime here into the TYPES; what remains checkable is exactly the writable distinction -- real pins are
+// pinned, and every moving reference is only expressible as Unpinned, which is refused.
 test fn witness_a_latest_tag_is_refused_where_a_content_digest_is_pinned() -> Bool {
-  let image_pinned = StrataReleasePinned { artifacts: [ StrataContainerImageDigest { digest: StrataArtifactDigest { algorithm: "sha256", hex: "1a2b3c4d5e6f" } } ], read_from: "witness synthetic image" }
-  let native_pinned = StrataReleasePinned { artifacts: [ StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" } ], read_from: "witness synthetic native build" }
-  // a native server spanning a code checkout AND a venv checkout pins BOTH; two full commits -> pinned.
-  let two_checkout = StrataReleasePinned { artifacts: [ StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" }, StrataNativeGitCommit { checkout: "strata", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" } ], read_from: "witness synthetic two checkouts" }
+  let image_pinned = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataContainerImageDigest { digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }, tail: [] }, read_from: "witness synthetic image" }
+  let native_pinned = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" }, tail: [] }, read_from: "witness synthetic native build" }
+  // a native server spanning a code checkout AND a venv checkout pins BOTH; head + tail, both full commits.
+  let two_checkout = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" }, tail: [ StrataNativeGitCommit { checkout: "strata", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" } ] }, read_from: "witness synthetic two checkouts" }
   // a MANAGED RELEASE id from a release directory pins, and is a distinct kind from a git commit.
-  let managed_pinned = StrataReleasePinned { artifacts: [ StrataManagedRelease { directory: "/opt/gunbc-serving/srv4-daily/releases", release_id: "406c9de18cef" } ], read_from: "witness synthetic managed release" }
-  let short_commit = StrataReleasePinned { artifacts: [ StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc" } ], read_from: "witness synthetic short sha" }
-  // one moving component among several must NOT let the whole release pass (fail_closed on the set).
-  let one_moving = StrataReleasePinned { artifacts: [ StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" }, StrataContainerImageDigest { digest: StrataArtifactDigest { algorithm: "md5", hex: "deadbeef" } } ], read_from: "witness synthetic one moving" }
-  // a pinned release naming NO artifact is not a pin (fail_closed -- claiming a build with nothing is fabricated).
-  let empty = StrataReleasePinned { artifacts: [], read_from: "witness synthetic empty" }
+  let managed_pinned = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataManagedRelease { directory: "/opt/gunbc-serving/srv4-daily/releases", release_id: "406c9de18cef" }, tail: [] }, read_from: "witness synthetic managed release" }
   let latest = StrataReleaseUnpinned { reference: "strata:latest" }
   let nightly = StrataReleaseUnpinned { reference: "strata:nightly" }
   strata_release_is_pinned(image_pinned)
     && strata_release_is_pinned(native_pinned)
     && strata_release_is_pinned(two_checkout)
     && strata_release_is_pinned(managed_pinned)
-    && !strata_release_is_pinned(short_commit)
-    && !strata_release_is_pinned(one_moving)
-    && !strata_release_is_pinned(empty)
     && !strata_release_is_pinned(latest)
     && !strata_release_is_pinned(nightly)
 }

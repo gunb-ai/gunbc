@@ -2140,7 +2140,50 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
+// WIDTH FROM A FIXED_OVERHEAD THAT PREDATES THE WORKLOADS IT SHOULD EXCLUDE. srv3 and srv4's runner memory
+// width subtracts a fixed_overhead read 2026-07-16 (gunbc_ci_srv3_memavailable_high_water), before both the
+// 64 GiB DIMM upgrade (they now read ~502 GiB usable) and the strata engines (both cgroup caps raised
+// 2026-11-09). Because that bound cannot contain an engine that did not exist yet, gunbc.serving.serving_reservation
+// charges each engine its cgroup MemoryMax as a SEPARATE serving term. That is only correct while the overhead
+// stays pre-engine; a quiescent read that folds the engine in would make the separate charge a double-count.
+// The width is derived from the stale bound in the meantime -- recorded so nobody silently trusts it (fail_closed:
+// an uncounted degradation stated, not hidden). Filed per manager ruling 2026-11-10 (smart-crane-730) so it
+// outlives the PR that found it. NOT fixed in this PR: the fix is the quiescent read host_memory_observation
+// already names as its own dissolution trigger.
+data serving_width_uses_pre_engine_fixed_overhead: IntegrationConcern = IntegrationConcern {
+  identity: "serving_width_uses_pre_engine_fixed_overhead",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_host_fixed_overhead_for"),
+    requirement: "a per-host CI memory width must not be derived from a fixed_overhead observation that predates the resident services and jobs the width is meant to exclude; either the observation's provenance postdates every workload charged against it, or the width fails closed rather than silently under-subtracting them",
+    standing: RequirementUnestablished { decided_by: "a quiescent MemAvailable read on srv3/srv4 taken while the strata engine is resident -- the ordinary read host_memory_observation already names as this bound's dissolution trigger -- would retire this row and make serving_reservation's separate MemoryMax charge redundant (and its removal required, or it double-counts); until then the width is derived from the 2026-07-16 / 125 GiB bound" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_managed_host_fixed_overhead"),
+    tail: [
+      decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_srv3_memavailable_high_water"),
+      decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_host_fixed_overhead_for"),
+      decl_ref(module_path: "gunbc.serving.serving_reservation", decl_name: "serving_host_reservations"),
+    ],
+  },
+  question: "Who re-reads srv3/srv4 fixed_overhead after the strata engines arrived, and until then how is the width -- derived from a 2026-07-16 / 125 GiB bound that predates both the DIMM upgrade and the engines -- kept from being silently trusted, when serving_reservation is forced to charge each engine separately only because that bound is stale?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "864d2aacab0a7bd89942416b3aa9cf31273bebfb",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.host_memory_observation", decl_name: "gunbc_ci_srv3_memavailable_high_water") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.serving.serving_reservation", decl_name: "serving_host_reservations") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.serving.serving_host_memory", decl_name: "srv3_strata_engine_memory") },
+        ],
+      },
+      account: "srv3/srv4 fixed_overhead = host_overhead_upper_bound(gunbc_ci_srv3_memavailable_high_water), observed 2026-07-16 at host_total 125 GiB, before the DIMM upgrade and before both strata engines (srv3 MemoryHigh drop-in and srv4 cap raised 2026-11-09 per serving_host_memory). serving_reservation therefore charges each engine its cgroup MemoryMax as a separate serving term, because the overhead bound cannot already contain an engine that postdates it -- so it is not a double-count today. If a future quiescent read folds the engine into fixed_overhead, that separate charge double-counts and must be dropped. The width rests on the stale bound meanwhile.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, serving_width_uses_pre_engine_fixed_overhead]
+
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

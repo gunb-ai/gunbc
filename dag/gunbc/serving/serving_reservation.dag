@@ -37,8 +37,9 @@ module gunbc.serving.serving_reservation
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { ByteSize, byte_size_count, byte_size, Watt, watt, watt_count }
-import gunbc.serving.serving_host_memory { srv3_strata_engine_memory, srv4_serving_engine_memory, serving_reading_bytes_or_zero }
+import std.measure { ByteSize, byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, Watt, watt, watt_count }
+import std.algebra { FreeSemigroup, list_append }
+import std.content_hash { Sha1DigestHex, Sha256DigestHex }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 
@@ -184,68 +185,61 @@ fn bind_is_lan_reachable(b: ServingBind) -> Bool {
 
 // ── THE STRATA RELEASE IS PINNED BY ARTIFACT DIGEST, NOT TAGGED "latest" ─────────────────────────────
 
-// THE CONTENT REFERENCE OF THE STRATA ARTIFACT, held as an algorithm and its hex rather than one string to
-// be parsed: a producer supplies "sha256" and the hex, so "is this pinned?" is a fact of the carrier and
-// not of a parser (gunbc.design_argument::minimize_redundancy). A tag -- "latest", "v1", "nightly" -- is a
-// name standing where the content should be (gunbc.design_argument::name_should_match_reality), so it is
-// not representable as a digest at all.
-type StrataArtifactDigest {
-  algorithm: NonEmptyStr
-  hex: NonEmptyStr
-}
-
 // WHAT A HOST'S STRATA ENGINE ACTUALLY IS, as an immutable artifact. These are genuinely different artifact
-// KINDS and are kept distinct (operator ruling, 2026-11-10): a NATIVE checkout is identified by a GIT COMMIT
-// (the strata server code, AND SEPARATELY the venv interpreter+packages it runs under -- on srv3/butch these
-// are two DIFFERENT clean checkouts, strata-main and strata); a MANAGED RELEASE is an id in a release
-// directory (srv4's /opt/gunbc-serving/srv4-daily/releases/<id>, a build chosen by the deploy tool, NOT a git
-// commit); and a CONTAINER image is a CONTENT-ADDRESSED IMAGE DIGEST. Collapsing these onto one "hex" field
-// would let a host's pin claim the wrong artifact -- pinning a container digest for a host that runs a native
-// binary, or a git commit for a host that runs a managed release, is a FALSE pin, worse than no pin because
-// it reads as reproducible and is not.
+// KINDS and are kept distinct (operator ruling, 2026-11-10): a NATIVE checkout is identified by a GIT COMMIT --
+// a 40-char lowercase SHA-1, the type `Sha1DigestHex` is `String where lower_hex_40`, so a short sha, a branch
+// name, or any non-hex text simply WILL NOT CONSTRUCT -- AND SEPARATELY the venv interpreter+packages it runs
+// under (on srv3/butch these are two DIFFERENT clean checkouts, strata-main and strata); a MANAGED RELEASE is an
+// id in a release directory (srv4's /opt/gunbc-serving/srv4-daily/releases/<id>, a build chosen by the deploy
+// tool, NOT a git commit); and a CONTAINER image is a CONTENT-ADDRESSED IMAGE DIGEST -- the type
+// `Sha256DigestHex` is `String where lower_hex_64`, so the algorithm is carried IN THE TYPE and no "sha256"
+// string is ever compared. Collapsing these onto one "hex" field would let a host's pin claim the wrong artifact
+// -- pinning a container digest for a host that runs a native binary, or a git commit for a host that runs a
+// managed release, is a FALSE pin, worse than no pin because it reads as reproducible and is not. A tag
+// ("latest", "nightly", "v1") cannot enter ANY of these arms -- it is neither 40-hex, 64-hex, nor a managed
+// build id -- so the moving-reference case lives only in StrataReleaseUnpinned below, and a "pinned" value can
+// never BE a tag: the bad states are UNWRITABLE at the type, not filtered at runtime (fail_closed: making a
+// wrong state unwritable beats catching it; the guarantee ladder's "structurally impossible" rung, not runtime
+// validation dressed as it).
 type StrataArtifact
-  = StrataNativeGitCommit { checkout: NonEmptyStr, commit: NonEmptyStr }
+  = StrataNativeGitCommit { checkout: NonEmptyStr, commit: Sha1DigestHex }
   | StrataManagedRelease { directory: NonEmptyStr, release_id: NonEmptyStr }
-  | StrataContainerImageDigest { digest: StrataArtifactDigest }
+  | StrataContainerImageDigest { digest: Sha256DigestHex }
 
-// A STRATA RELEASE THE MODEL WILL RUN. `Pinned` carries the artifacts that MAKE UP the running engine (a
-// native server may span a code checkout AND a venv checkout, so a list, not one) AND the authority they were
-// read from, so a pin is auditable to an observation rather than an assertion. `Unpinned` records a moving
-// reference (a tag like "strata:latest", or a build never read off the box) and is refused by every consumer
-// that must reproduce a byte-exact engine. Keeping `Unpinned` as a variant -- rather than making a digest
-// required -- lets the model NAME a host's current unpinned state and refuse it, more honest than pretending
-// every host already has a byte-exact build.
+// A STRATA RELEASE THE MODEL WILL RUN. `Pinned` carries the artifacts that MAKE UP the running engine (a native
+// server may span a code checkout AND a venv checkout, so a NONEMPTY list -- `FreeSemigroup` -- never a
+// possibly-empty one) AND the authority they were read from, so a pin is auditable to an observation rather than
+// an assertion. FreeSemigroup has no empty inhabitant (its `head` is a required field, std.algebra), so a
+// "pinned release with no artifact" -- a fabricated pin -- CANNOT be written; emptiness is constructed, never
+// checked at runtime (nonemptiness_is_constructed_or_proved). Every member is immutable BY TYPE (a 40-hex
+// commit, a 64-hex digest, or a managed build id), so there is nothing left to validate. `Unpinned` records a
+// moving reference (a tag like "strata:latest", or a build never read off the box) and is refused by every
+// consumer that must reproduce a byte-exact engine. Keeping `Unpinned` as a variant -- rather than making a
+// digest required -- lets the model NAME a host's current unpinned state and refuse it, more honest than
+// pretending every host already has a byte-exact build.
 type StrataRelease
-  = StrataReleasePinned { artifacts: List<StrataArtifact>, read_from: NonEmptyStr }
+  = StrataReleasePinned { artifacts: FreeSemigroup<StrataArtifact>, read_from: NonEmptyStr }
   | StrataReleaseUnpinned { reference: NonEmptyStr }
 
-// A digest is content-addressed when it names a real content algorithm; the algorithm is the discriminator,
-// because a tag ("latest", "nightly", "v1") is a name, never a content algorithm, and a wrong algorithm is
-// refused rather than trusted. Fail closed: an unpinned release is never assumed pinned.
-fn strata_digest_is_content_addressed(d: StrataArtifactDigest) -> Bool {
-  (d.algorithm as String) == "sha256"
-}
-
-// A native checkout is a real pin only when it names a FULL git commit (40 hex): a short sha or a branch name
-// is a moving name, not an immutable artifact, and is refused. A managed release names an immutable build in a
-// release directory -- a replaced release is a different build (strata_parked_tier: "a replaced release changes
-// the build and strands every save"), so a non-empty release id pins. A container image pins when its digest
-// names a real content algorithm. Fail closed on each kind.
-fn strata_artifact_is_immutable(a: StrataArtifact) -> Bool {
-  match a {
-    StrataNativeGitCommit { checkout: _, commit: c } => string_length(s: c) == 40
-    StrataManagedRelease { directory: _, release_id: _ } => true
-    StrataContainerImageDigest { digest: d } => strata_digest_is_content_addressed(d)
+// A release is pinned exactly when it is the `Pinned` variant. There is no algorithm string to compare and no
+// length to check, because the arms already cannot hold a moving reference (a tag will not type-check as a
+// commit or digest) and `FreeSemigroup` cannot be empty -- the checks this function once made are now enforced
+// BY THE TYPES, so this predicate is the pinned/unpinned DISTINCTION alone (fail_closed: an Unpinned release is
+// never assumed pinned).
+fn strata_release_is_pinned(r: StrataRelease) -> Bool {
+  match r {
+    StrataReleasePinned { artifacts: _, read_from: _ } => true
+    StrataReleaseUnpinned { reference: _ } => false
   }
 }
 
-// A release is pinned only when it names AT LEAST ONE artifact and EVERY artifact it names is immutable: an
-// empty pinned list is not a pin (fail_closed -- claiming a build with no artifact is a fabricated pin), and
-// one moving component among several must not let the whole release pass.
-fn strata_release_is_pinned(r: StrataRelease) -> Bool {
+// THE ARTIFACTS a release names, as an ordinary list for iteration -- an accessor over the nonempty head+tail,
+// so a consumer (an auditor, a witness) can ask "which builds make up this host's engine?" without pattern
+// matching the FreeSemigroup shape. An Unpinned release names no immutable artifact, so it lists none.
+fn strata_release_artifacts(r: StrataRelease) -> List<StrataArtifact> {
   match r {
-    StrataReleasePinned { artifacts: as, read_from: _ } => count(as) > 0 && all(as, a => strata_artifact_is_immutable(a))
-    StrataReleaseUnpinned { reference: _ } => false
+    StrataReleasePinned { artifacts: FreeSemigroup { head: h, tail: t }, read_from: _ } => list_append(left: [h], right: t)
+    StrataReleaseUnpinned { reference: _ } => []
   }
 }
 
@@ -270,29 +264,33 @@ type ServingHostReservation {
 // fleet's standing claims, and the derivation reads them all the same.
 data serving_host_reservations: List<ServingHostReservation> = [
   // srv3: one Strata engine, its two cards capped, an affinity pin that leaves cores bookable. Its per-engine
-  // MEMORY is MEASURED: the engine's cgroup MemoryHigh ceiling, read from its systemd drop-in and held in
-  // gunbc.serving.serving_host_memory srv3_strata_engine_memory.memory_cap. That ceiling -- not an invented
-  // number, not zero -- is what the runner pool must yield to the engine, so it is charged as a claim (the
-  // purpose that corpus row is reserved for); charging zero left srv3's Strata memory bookable to CI (over-book).
+  // MEMORY is MEASURED as the cgroup's HARD ceiling, MemoryMax = 112 GiB (the drop-in that caps the engine also
+  // sets MemoryHigh 96 G / MemoryMax 112 G). The HARD ceiling is charged, not the soft MemoryHigh: MemoryMax is
+  // what the cgroup ENFORCES, so it is the fail-closed amount the runner must never book (the engine can be
+  // pushed to MemoryMax under pressure; MemoryHigh only throttles above it). It is NOT already covered by the
+  // host's fixed_overhead -- srv3's overhead observation (gunbc.host.host_memory_observation
+  // gunbc_ci_srv3_memavailable_high_water) was read 2026-07-16, four months BEFORE this engine was deployed
+  // (2026-11-09), so the engine's RSS is not inside that bound and this is its only charge, not a double-count.
   ServingHostReservation {
     host: operator_host_srv3,
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: MemoryMeasured { bytes: serving_reading_bytes_or_zero(srv3_strata_engine_memory.memory_cap), provenance: "srv3_strata_engine_memory.memory_cap (gunbc.serving.serving_host_memory): strata-pool.service cgroup MemoryHigh, the ceiling the engine cannot exceed; charged so the runner never books memory the serving engine may hold" },
+        memory: MemoryMeasured { bytes: gibibyte_to_byte_size(gibibyte(count: 112)), provenance: "strata-pool.service cgroup MemoryMax = 112 GiB (drop-in /etc/systemd/system/strata-pool.service.d/60-expert-l1-cap.conf, MemoryHigh=96G / MemoryMax=112G, installed 2026-11-09; the cgroup caps are read into gunbc.serving.serving_host_memory srv3_strata_engine_memory). The HARD ceiling MemoryMax is charged, not MemoryHigh: it is what the cgroup enforces, so it is the fail-closed figure the runner must never book. srv3's fixed_overhead (gunbc_ci_srv3_memavailable_high_water, 2026-07-16) predates this engine (2026-11-09) and so does NOT already subtract it -- this is the engine's only charge." },
         gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
   },
-  // srv4: one Strata engine, its two cards capped, an affinity pin; memory MEASURED from its own cgroup
-  // ceiling in serving_host_memory srv4_serving_engine_memory.memory_cap (gunbc-srv4-daily-engine.service
-  // MemoryHigh), charged as a claim just as srv3's is.
+  // srv4: one Strata engine, its two cards capped, an affinity pin; memory MEASURED as its cgroup HARD ceiling
+  // MemoryMax = 64 GiB (drop-in MemoryHigh 56 G / MemoryMax 64 G, gunbc-srv4-daily-engine.service). Same
+  // reasoning as srv3 -- hard ceiling charged, and srv4's fixed_overhead is the same 2026-07-16 bound that
+  // predates this engine, so the charge is not a double-count.
   ServingHostReservation {
     host: operator_host_srv4,
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: MemoryMeasured { bytes: serving_reading_bytes_or_zero(srv4_serving_engine_memory.memory_cap), provenance: "srv4_serving_engine_memory.memory_cap (gunbc.serving.serving_host_memory): gunbc-srv4-daily-engine.service cgroup MemoryHigh, the ceiling the engine cannot exceed; charged as a claim" },
+        memory: MemoryMeasured { bytes: gibibyte_to_byte_size(gibibyte(count: 64)), provenance: "gunbc-srv4-daily-engine.service cgroup MemoryMax = 64 GiB (drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf, MemoryHigh=56G / MemoryMax=64G, raised 2026-11-09; the cgroup caps are read into gunbc.serving.serving_host_memory srv4_serving_engine_memory). The HARD ceiling MemoryMax is charged, not MemoryHigh: it is what the cgroup enforces, so it is the fail-closed figure the runner must never book. srv4's fixed_overhead (the 2026-07-16 gunbc_ci_managed_host_fixed_overhead bound) predates this engine (2026-11-09) and does NOT already subtract it." },
         gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
@@ -480,23 +478,24 @@ type ServingHostStrata {
 
 data serving_host_strata_releases: List<ServingHostStrata> = [
   ServingHostStrata { host: operator_host_srv3, strata: StrataReleasePinned {
-    artifacts: [
-      StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool.service: /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
-      StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" },
-    ],
+    artifacts: FreeSemigroup {
+      head: StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool.service: /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
+      tail: [ StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" } ],
+    },
     read_from: "both checkouts read clean over ssh by smart-crane-730 2026-11-10 ~20:10Z; strata-pool.service runs .venv/bin/python serve/server.py with cwd strata-main",
   } },
   ServingHostStrata { host: operator_host_srv4, strata: StrataReleasePinned {
-    artifacts: [
-      StrataManagedRelease { directory: "/opt/gunbc-serving/srv4-daily/releases", release_id: "406c9de18cef" },
-    ],
+    artifacts: FreeSemigroup {
+      head: StrataManagedRelease { directory: "/opt/gunbc-serving/srv4-daily/releases", release_id: "406c9de18cef" },
+      tail: [],
+    },
     read_from: "gunbc-srv4-daily-engine.service runs /opt/gunbc-serving/srv4-daily/releases/406c9de18cef/build/strata (bound 127.0.0.1:18080), read over ssh by smart-crane-730 2026-11-10 ~20:10Z; the release id 406c9de18cef is already modelled in gunbc.serving.serving_layout / strata_parked_tier / serving_host_memory -- cited, not restated",
   } },
   ServingHostStrata { host: operator_host_srv14, strata: StrataReleasePinned {
-    artifacts: [
-      StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool@a/b, /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
-      StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" },
-    ],
+    artifacts: FreeSemigroup {
+      head: StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool@a/b, /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
+      tail: [ StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" } ],
+    },
     read_from: "strata-pool@a/b under taskset -c CPUS, cwd strata-main 8c5fafc1 clean, venv strata 44df8fd clean, read over ssh by smart-crane-730 2026-11-10 ~20:10Z; same arrangement as srv3",
   } },
 ]

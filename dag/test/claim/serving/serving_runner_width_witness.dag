@@ -51,8 +51,9 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
     RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
   }
   // (b) srv3's REAL reservation is subtracted to the byte: the width with its own measured charge folded in
-  //     (host_runner_memory_envelope_resolution) is smaller than the base by exactly that charge -- and the
-  //     charge is nonzero (the engine's measured cgroup ceiling), not the fabricated zero this row once carried.
+  //     (host_runner_memory_envelope_resolution) is smaller than the no-serving base by exactly that charge --
+  //     and the charge is nonzero (the engine's cgroup HARD ceiling MemoryMax, 112 GiB), not the fabricated zero
+  //     this row once carried. This is also the deploy-visible shrink vs main: main charges no serving term.
   let srv3_charge = match host_memory_reserved(operator_host_srv3) {
     Present { value: m } => byte_size_count(b: m)
     Absent => 0 - 1
