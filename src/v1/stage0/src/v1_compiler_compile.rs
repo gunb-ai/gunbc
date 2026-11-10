@@ -49,7 +49,7 @@ pub use crate::v1_compiler_emit::{
 pub use crate::v1_compiler_emit_core_support::{escape_json_string, EmitResult};
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
-pub use crate::v1_compiler_emit_rust::{ambiguous_leaf_value_ref_diagnostics, emit_rust_selected};
+pub use crate::v1_compiler_emit_rust::emit_rust_selected;
 use crate::v1_compiler_infer::DeclarationScope::{EveryDeclaration, ReachableFrom};
 pub use crate::v1_compiler_infer::{reconcile_scoped, DeclarationScope};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
@@ -3568,23 +3568,15 @@ pub fn compile_to_resolved_with_options(
                 } else {
                     Rc::new(vec![])
                 };
-                let ambiguous_leaf_diags =
-                    crate::v1_compiler_emit_rust::ambiguous_leaf_value_ref_diagnostics(
-                        typed.clone(),
-                        source_indices.clone(),
-                    );
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                                all_diags.clone(),
-                            ),
-                            test_reference_diags.clone(),
+                            v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+                            all_diags.clone(),
                         ),
-                        ambiguous_leaf_diags.clone(),
+                        test_reference_diags.clone(),
                     ),
                     provider_demands: pass.provider_demands.clone(),
                     source_indices: source_indices.clone(),
