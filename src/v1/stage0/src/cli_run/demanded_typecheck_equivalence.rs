@@ -3,7 +3,9 @@
 //! refuse nothing the full typecheck does not. Run on a real closure from the repository: the full
 //! chain and the demanded chain each thread their own module index, as `cli_run` does.
 use crate::v1_compiler_infer::{self as infer, DeclarationDemand};
-use crate::v1_std_core::{authored_name_at, build_newline_index, empty_intern_table, module_items};
+use crate::v1_std_core::{
+    authored_name_at, build_newline_index, empty_intern_table, module_items, qualified_last_segment,
+};
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -541,16 +543,18 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
             let svc_probe = modules
                 .iter()
                 .flat_map(|m| module_items(m.module.clone()).iter().cloned().collect::<Vec<_>>())
-                .find(|it| it.name == "RestReplay")
+                .find(|it| qualified_last_segment(it.name.clone()) == "RestReplay")
                 .map(|it| {
                     (
+                        it.name.clone(),
                         authored_name_at(si.clone(), it.clone()),
                         infer::declaration_demanded(demand.clone(), it.clone(), si.clone()),
                         realization.realized.contains_key("RestReplay"),
                     )
                 });
-            let (svc_authored, svc_demanded, realized_bare) =
-                svc_probe.unwrap_or((String::new(), false, false));
+            let svc_found = svc_probe.is_some();
+            let (svc_name, svc_authored, svc_demanded, realized_bare) =
+                svc_probe.unwrap_or((String::new(), String::new(), false, false));
             // DEMANDED-VERSUS-CLOSURE EQUIVALENCE. The demanded chain and the full (EveryDeclaration)
             // chain each thread their own module index; the demanded chain must refuse no method surface
             // the full chain does not. The service is realized, so the full chain resolves the Observe op
@@ -576,9 +580,11 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 .cloned()
                 .collect();
             eprintln!(
-                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} census_has_service={} svc_authored={} svc_demanded={} realized_bare={} demanded_refusals={} closure_refusals={} surface={:?}",
+                "SERVICE_OP_GRAIN entry=rest_status_and_body_are_persistable service_realized={} census_has_service={} svc_found={} svc_name={} svc_authored={} svc_demanded={} realized_bare={} demanded_refusals={} closure_refusals={} surface={:?}",
                 service_realized,
                 census_has_service,
+                svc_found,
+                svc_name,
                 svc_authored,
                 svc_demanded,
                 realized_bare,
@@ -686,13 +692,22 @@ fn wire_contract_row_reached_by_the_publisher_route_is_realized() {
                 DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
             };
             let row = "extdeps.github.pulls_contracts.pull_request_state_wire_contract";
-            let row_realized = realization.realized.contains_key(row);
+            // Realization sets may key either by the full dotted path or the item's authored
+            // (last-segment) name depending on which inventory fed them; probe BOTH forms so the
+            // datum is a reading, not a key-format assumption.
+            let row_bare = qualified_last_segment(row.to_string());
+            let row_realized = realization.realized.contains_key(row)
+                || realization.realized.contains_key(row_bare.as_str());
             // A declared row is realized by the full closure (EveryDeclaration realizes everything); so
             // `row_declared && !row_realized` is exactly a demanded-versus-closure divergence, not an
             // 'undeclared name' error. row_declared=true is the closure's side of the pair being GREEN.
-            let row_declared = realization.declared.contains_key(row);
+            let row_declared =
+                realization.declared.contains_key(row) || realization.declared.contains_key(row_bare.as_str());
             eprintln!(
-                "WIRE_CONTRACT_GRAIN entry=heal_publication_publish_for row={row} row_realized={row_realized} row_declared={row_declared}"
+                "WIRE_CONTRACT_GRAIN entry=heal_publication_publish_for row={row} row_realized={row_realized} row_declared={row_declared} realized_qualified={} realized_bare={} bare={}",
+                realization.realized.contains_key(row),
+                realization.realized.contains_key(row_bare.as_str()),
+                row_bare
             );
             assert!(
                 row_declared,
