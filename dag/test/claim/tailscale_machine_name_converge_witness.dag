@@ -110,7 +110,7 @@ test fn a_reading_that_matches_the_derivation_is_a_no_op() -> Bool {
     host: operator_host_srv1,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: self_names_srv1_document),
+    observation: tailscale_machine_name_document(document: self_names_srv1_document)
   ) {
     DeviceNameAlreadyCurrent { name: name } => name == "srv1"
     _ => false
@@ -122,7 +122,7 @@ test fn a_reading_that_differs_from_the_derivation_owes_one_write_naming_both_en
     host: operator_host_srv4,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: self_names_srv1_document),
+    observation: tailscale_machine_name_document(document: self_names_srv1_document)
   ) {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name } =>
       from_name == "srv1" && to_name == "srv4"
@@ -138,13 +138,13 @@ test fn the_same_plan_over_the_swapped_pair_is_the_rename_window_rollback() -> B
     host: operator_host_srv4,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: self_names_srv1_document),
+    observation: tailscale_machine_name_document(document: self_names_srv1_document)
   );
   let back = tailscale_machine_name_plan(
     host: operator_host_srv1,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: self_names_srv4_document),
+    observation: tailscale_machine_name_document(document: self_names_srv4_document)
   );
   match forward {
     DeviceNameChangeOwed { from_name: here, to_name: there } =>
@@ -168,13 +168,13 @@ test fn an_apply_outside_the_rename_window_is_refused_by_the_window_gate() -> Bo
     host: operator_host_srv4,
     window: claim_of_prepare_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: self_names_srv1_document),
+    observation: tailscale_machine_name_document(document: self_names_srv1_document)
   );
   let no_claim_at_all = tailscale_machine_name_plan(
     host: operator_host_srv4,
     window: claim_of_no_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: self_names_srv1_document),
+    observation: tailscale_machine_name_document(document: self_names_srv1_document)
   );
   match inside_prepare {
     PlanRefused { cause: WindowIsNotTheRenameWindow { window: claimed, mode: ApplyInsideWindow } } =>
@@ -192,7 +192,7 @@ test fn an_observe_outside_the_rename_window_is_not_refused_by_the_window_gate()
     host: operator_host_srv4,
     window: claim_of_prepare_window,
     mode: ObserveOnly,
-    observation: tailscale_machine_name_document(document: self_names_srv1_document),
+    observation: tailscale_machine_name_document(document: self_names_srv1_document)
   ) {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name } => true
     _ => false
@@ -220,7 +220,7 @@ test fn an_unparseable_status_document_refuses_with_that_cause() -> Bool {
     host: operator_host_srv4,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: document_unreadable),
+    observation: tailscale_machine_name_document(document: document_unreadable)
   ) {
     PlanRefused { cause: StatusDocumentRefused { cause: StatusDocumentUnreadable { detail: _ } } } => true
     _ => false
@@ -232,7 +232,7 @@ test fn a_status_document_without_a_self_member_refuses_with_that_cause() -> Boo
     host: operator_host_srv4,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
-    observation: tailscale_machine_name_document(document: self_member_absent_document),
+    observation: tailscale_machine_name_document(document: self_member_absent_document)
   ) {
     PlanRefused { cause: StatusDocumentRefused { cause: StatusSelfMemberAbsent } } => true
     _ => false
@@ -244,7 +244,7 @@ test fn a_status_document_without_a_self_member_refuses_with_that_cause() -> Boo
 test fn a_self_member_without_a_host_name_refuses_instead_of_inventing_one() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "srv4",
-    observation: tailscale_machine_name_document(document: self_host_name_absent_document),
+    observation: tailscale_machine_name_document(document: self_host_name_absent_document)
   ) {
     ReadBackRefused { cause: StatusDocumentRefused { cause: StatusHostNameMemberAbsent } } => true
     _ => false
@@ -273,7 +273,7 @@ test fn the_name_compared_is_the_host_name_and_never_the_dns_name() -> Bool {
     host: operator_host_srv1,
     window: claim_of_rename_window,
     mode: ApplyInsideWindow,
-    observation: reading,
+    observation: reading
   );
   match reading {
     DeviceNameReported { name: name, dns_name: dns_name } =>
@@ -295,7 +295,7 @@ test fn the_name_compared_is_the_host_name_and_never_the_dns_name() -> Bool {
 test fn a_read_back_reporting_what_was_asked_for_confirms_the_run() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "srv4",
-    observation: tailscale_machine_name_document(document: self_names_srv4_document),
+    observation: tailscale_machine_name_document(document: self_names_srv4_document)
   ) {
     ReadBackConfirmsRequested { name: name } => name == "srv4"
     _ => false
@@ -305,7 +305,7 @@ test fn a_read_back_reporting_what_was_asked_for_confirms_the_run() -> Bool {
 test fn a_read_back_still_reporting_the_old_name_refuses_the_run() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "srv4",
-    observation: tailscale_machine_name_document(document: self_names_srv1_document),
+    observation: tailscale_machine_name_document(document: self_names_srv1_document)
   ) {
     ReadBackContradictsRequest { requested: requested, reported: reported } =>
       requested == "srv4" && reported == "srv1"
@@ -318,7 +318,7 @@ test fn a_read_back_still_reporting_the_old_name_refuses_the_run() -> Bool {
 test fn a_read_back_the_device_cannot_answer_refuses_the_run() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "srv4",
-    observation: ObservationRefused { cause: StatusDocumentRefused { cause: StatusSelfMemberAbsent } },
+    observation: ObservationRefused { cause: StatusDocumentRefused { cause: StatusSelfMemberAbsent } }
   ) {
     ReadBackRefused { cause: StatusDocumentRefused { cause: StatusSelfMemberAbsent } } => true
     _ => false
@@ -387,7 +387,7 @@ test fn the_leg_words_are_host_free_and_the_route_comes_from_the_reach_model() -
             && one.principal == executor_bootstrap_principal.login
             && !string_contains(
                  s: string_join(fields: argv_words(command: tailscale_status_json_command()), separator: " "),
-                 pattern: "srv",
+                 pattern: "srv"
                )
         _ => false
       }

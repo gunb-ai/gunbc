@@ -264,7 +264,7 @@ fn tailscale_machine_name_plan_refusal_wire(cause: TailscaleMachineNamePlanRefus
           tailscale_machine_name_window_wire(window: window),
           " -- the Tailscale machine name is only moved inside a host's rename window (gunbc.plans.fleet_machine_authority S3), never in the additive prepare stage",
         ],
-        "",
+        ""
       )
     NameNotDerivable { host: host, cause: cause } =>
       join(["refused: no name derivable for ", host as String, ": ", cause], "")
@@ -353,7 +353,7 @@ fn tailscale_machine_name_status_leg(
   match typed_argv_exec_over_fleet_ssh(
     target: target,
     context: context,
-    argv: argv_words(command: tailscale_status_json_command()),
+    argv: argv_words(command: tailscale_status_json_command())
   ) {
     TypedArgvExecRefused { reason: reason } =>
       ObservationRefused { cause: StatusLegRefused { detail: reason } }
@@ -396,7 +396,7 @@ fn tailscale_machine_name_set_leg(
   match typed_argv_exec_over_fleet_ssh(
     target: target,
     context: context,
-    argv: sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: name))),
+    argv: sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: name)))
   ) {
     TypedArgvExecRefused { reason: reason } => SetLegRefused { detail: reason }
     TypedArgvExecConverged { result: result } =>
@@ -440,7 +440,7 @@ fn tailscale_machine_name_run_refusal_wire(cause: TailscaleMachineNameRunRefusal
           "refused: after the set, the device reports `", reported, "` and not the requested `", requested,
           "`; the tailnet did not take the name as asked (set stderr: ", set_stderr, ")",
         ],
-        "",
+        ""
       )
     ReadBackRefused { cause: cause } =>
       join(["refused after the write: the read-back status read is unusable: ",
@@ -459,13 +459,13 @@ fn tailscale_machine_name_outcome_wire(outcome: TailscaleMachineNameOutcome) -> 
           host as String, ": tailnet machine name is `", from_name, "` and would be set to `", to_name,
           "`; nothing written (observe-only run)",
         ],
-        "",
+        ""
       )
     NameChangedAndReadBack { host: host, from_name: from_name, to_name: to_name } =>
       join(
         [host as String, ": tailnet machine name set from `", from_name, "` to `", to_name,
           "` and read back as `", to_name, "`"],
-        "",
+        ""
       )
     RunRefused { host: host, cause: cause } =>
       join([host as String, ": ", tailscale_machine_name_run_refusal_wire(cause: cause)], "")
@@ -494,7 +494,7 @@ fn converge_tailscale_machine_name(
     host: host,
     window: window,
     mode: mode,
-    observation: tailscale_machine_name_status_leg(target: target, context: context),
+    observation: tailscale_machine_name_status_leg(target: target, context: context)
   ) {
     PlanRefused { cause: cause } =>
       RunRefused { host: host, cause: RunPlanRefused { cause: cause } }
@@ -512,7 +512,7 @@ fn converge_tailscale_machine_name(
           SetAccepted { stderr: stderr } =>
             match tailscale_machine_name_read_back(
               requested: to_name,
-              observation: tailscale_machine_name_status_leg(target: target, context: context),
+              observation: tailscale_machine_name_status_leg(target: target, context: context)
             ) {
               ReadBackConfirmsRequested { name: name } =>
                 NameChangedAndReadBack { host: host, from_name: from_name, to_name: name }
@@ -562,8 +562,8 @@ fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
                   target: target,
                   context: context,
                   window: window,
-                  mode: mode,
-                ),
+                  mode: mode
+                )
               )
           }
       }
@@ -583,7 +583,7 @@ fn tailscale_machine_name_report(
       tailscale_machine_name_window_wire(window: window), "\n",
       tailscale_machine_name_outcome_wire(outcome: outcome), "\n",
     ],
-    "",
+    ""
   )
   let written = Filesystem.Write(path: tailscale_machine_name_receipt_path, content: body)
   if !written.success {
