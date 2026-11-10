@@ -12,10 +12,10 @@ module v2.test.claim.bash_emit_constructs
 // "Bash Conditional Expressions" (case), "Arrays", "Shell Parameters",
 // "Comments", "Looping Constructs", "Definition of Terms", "Quotes".
 
-import std.algebra { list_head }
+import std.algebra { list_at_optional, list_head }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
-import std.result { Accepted, Outcome, Violates }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.extdeps.languages.bash {
   bash_kw_case_arm_newline_text,
   bash_kw_case_block_lead_text,
@@ -83,9 +83,9 @@ fn command(words: List<Node>) -> Node {
 }
 
 fn emits(stmt: Node, golden: String) -> Bool {
-  bash_emit_stmts(statements: [stmt], set_e: false) == Accepted {
-    value: golden,
-    diagnostics: None
+  match bash_emit_stmts(statements: [stmt], set_e: false) {
+    Accepted { value: spelling, diagnostics: _ } => spelling == golden
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -157,21 +157,28 @@ test fn merge_stdout_to_stderr_serializes() -> Bool {
 }
 
 test fn the_two_descriptor_merges_are_not_the_same_bytes() -> Bool {
-  bash_emit_stmts(
+  match bash_emit_stmts(
     statements: [
       bash_build_with_redir_stderr_to_stdout(
         inner: command([word("echo"), word("x")])
       )
     ],
     set_e: false
-  ) != bash_emit_stmts(
-    statements: [
-      bash_build_with_redir_stdout_to_stderr(
-        inner: command([word("echo"), word("x")])
-      )
-    ],
-    set_e: false
-  )
+  ) {
+    Accepted { value: merged, diagnostics: _ } =>
+      match bash_emit_stmts(
+        statements: [
+          bash_build_with_redir_stdout_to_stderr(
+            inner: command([word("echo"), word("x")])
+          )
+        ],
+        set_e: false
+      ) {
+        Accepted { value: reversed, diagnostics: _ } => merged != reversed
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // ── case ───────────────────────────────────────────────────────────────────
@@ -258,7 +265,7 @@ fn list_contains_lex_rule_matches(
   token_class: Symbol,
   text: String
 ) -> Bool {
-  match list_at(xs: rules, index: index) {
+  match list_at_optional(xs: rules, index: index) {
     Present { value: rule } =>
       match rule {
         TokenRule { token_class: c, pattern: p } =>
@@ -285,7 +292,7 @@ fn list_contains_lex_rule_from(
   token_class: Symbol,
   text: String
 ) -> Bool {
-  match list_at(xs: rules, index: index) {
+  match list_at_optional(xs: rules, index: index) {
     Absent => false
     Present { value: rule } =>
       match rule {
@@ -320,7 +327,7 @@ fn list_contains_lex_rule_from(
 // the quoted expansion re-splits the engine arguments.
 
 data array_assign_golden: String = "ENGINE_ARGS=('a' 'b')\n"
-data array_expansion_golden: String = "exec \"\${ENGINE_ARGS[@]}\" 2>&1\n"
+data array_expansion_golden: String = "exec \"$\{ENGINE_ARGS[@]}\" 2>&1\n"
 
 fn array_assign_statement() -> Node {
   match bash_build_array_assign(
@@ -354,7 +361,7 @@ test fn array_expansion_keeps_its_quotes_and_stays_one_word() -> Bool {
 // caller cannot reach it by asking for a bare word: the bare-word constructor
 // refuses '$', so the unquoted form simply cannot be built.
 test fn unquoted_array_expansion_cannot_be_built() -> Bool {
-  match bash_build_word_bare(text: "\${ENGINE_ARGS[@]}") {
+  match bash_build_word_bare(text: "$\{ENGINE_ARGS[@]}") {
     Absent => true
     Present { value: _ } => false
   }
@@ -455,7 +462,7 @@ test fn brace_group_serializes() -> Bool {
 // Bash manual, node "Shell Parameters": ${parameter:?word} aborts with word when
 // the parameter is unset or null; $* is the positional parameters as one word.
 
-data param_error_golden: String = "IDX=\${1:?usage: replica index required}\n"
+data param_error_golden: String = "IDX=$\{1:?usage: replica index required}\n"
 data positional_all_golden: String = "ev $*\n"
 
 fn param_error_statement() -> Node {
@@ -500,10 +507,7 @@ test fn param_error_refuses_a_non_numeric_index() -> Bool {
 test fn bare_word_serializes_unquoted() -> Bool {
   match bash_build_word_bare(text: "mapfile") {
     Present { value: n } =>
-      bash_emit_stmts(statements: [command([n])], set_e: false) == Accepted {
-        value: "mapfile\n",
-        diagnostics: None
-      }
+      emits(stmt: command([n]), golden: "mapfile\n")
     Absent => false
   }
 }
