@@ -10,7 +10,6 @@ use self::CarrierMatch::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
 use self::EqualityDerivedTarget::*;
-use self::EqualityLiftStep::*;
 use self::GroundedArmReading::*;
 use self::GroundedBinding::*;
 use self::GroundedBound::*;
@@ -222,6 +221,7 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
     TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceNamesDeclaration,
     TypeReferenceUnidentified,
 };
+use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::UnitVariantPhantomPresent;
 pub use crate::v1_compiler_infer_env::{
     alias_rhs_head_of_declaration, bare_name_miss_diagnostic, binding_declares_name,
     build_unit_variant_index, carried_declaration_ref, census_declaration_type_env,
@@ -234,20 +234,22 @@ pub use crate::v1_compiler_infer_env::{
     inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
     is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
-    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
-    merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
-    node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
-    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_head_of_declaration,
-    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
+    lookup_type, lookup_type_by_name, lookup_type_for, lookup_unit_variant_phantom_type,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
+    node_is_kernel_mint_named, node_with_children, node_with_inferred, overlay_skips_kernel_name,
+    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
+    settled_head_of_declaration, settled_type, settled_type_of_declaration,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
+    text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
     type_env_with_equality_by_target, type_reference_declaration,
     type_reference_declaration_reading, type_reference_declaration_ref,
     unit_variant_index_shadow_insert, GlobalBareCandidate, GlobalBareLookupState,
     GuardedTypeEnvCacheMerge, ServiceCensusEntry, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache,
     TypeEnvCacheMergeConflict, TypeReferenceDeclarationReading, UnitVariantContribution,
+    UnitVariantPhantomLookup,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ResourceItem, ServiceItem, TypeItem,
@@ -1503,13 +1505,15 @@ pub fn expected_decided_variant_type(
 
 pub fn optional_nullary_arm_of(owner: Rc<Node>, name: String, scope: Rc<InferScope>) -> bool {
     match (*variant_parent_identity_of(Some(owner.clone()), scope.clone())).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. }
-            if matches!(
-                key.as_ref(),
-                VariantParentKey::VariantParentDeclaration { declaration: _, .. }
-            ) =>
+        VariantParentIdentity::VariantParentIdentified {
+            key: ref __rc_key, ..
+        } if matches!(
+            __rc_key.as_ref(),
+            VariantParentKey::VariantParentDeclaration { declaration: _, .. }
+        ) =>
         {
-            let VariantParentKey::VariantParentDeclaration { declaration: d, .. } = key.as_ref()
+            let VariantParentKey::VariantParentDeclaration { declaration: d, .. } =
+                __rc_key.as_ref()
             else {
                 unreachable!()
             };
@@ -5065,10 +5069,11 @@ pub fn expected_type_head_exposure(
 
 pub fn exposure_is_application(exposure: Rc<TypeHeadExposure>) -> bool {
     match (*exposure.clone()).clone() {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-        {
-            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+        TypeHeadExposure::ExposedTypeHead {
+            view: ref __rc_view,
+            ..
+        } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+            let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                 unreachable!()
             };
             true
@@ -5890,7 +5895,10 @@ pub fn equality_exposure_refusal(
     at_operand_root: bool,
 ) -> Option<Rc<EqualityAdmissionRefusal>> {
     match (*exposure.clone()).clone() {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. } => match view.as_ref() {
+        TypeHeadExposure::ExposedTypeHead {
+            view: ref __rc_view,
+            ..
+        } => match __rc_view.as_ref() {
             TypeHeadView::KernelScalarHead {
                 type_identity: _, ..
             } => std::option::Option::None,
@@ -6192,41 +6200,21 @@ pub fn equality_resolved_declaration_structure(
     at_root: bool,
 ) -> Rc<EqualityWalk> {
     {
-        let si = scope.type_env.source_indices.clone();
         let applied = equality_reference_applies_arguments(peeled.clone());
-        let parameter_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in rt.params.clone().iter().cloned() {
-                __result.push(crate::v1_std_core::authored_name_at(si.clone(), p.clone()));
-            }
-            __result
-        });
-        let basis = if (applied.clone() && ((parameter_names.clone().len() as i64) > 0)) {
-            crate::v1_compiler_infer_env::declaration_substitution_basis(
-                rt.clone(),
-                scope.type_env.clone(),
-                parameter_names.clone(),
-            )
-        } else {
-            rt.clone()
-        };
         let w = equality_resolved_declaration_structure_core(
-            basis.clone(),
+            rt.clone(),
             peeled.clone(),
             name.clone(),
             identity,
-            scope.clone(),
-            visited.clone(),
+            equality_scope_with_params(scope.clone(), rt.clone()),
+            visited,
             depth.clone(),
             at_root,
         );
         if (((w.refusal.clone() != std::option::Option::None) || !applied.clone())
-            || equality_applied_arguments_by_target(
-                basis.clone(),
-                parameter_names.clone(),
+            || equality_arguments_by_target(
                 peeled.children.clone(),
                 scope.clone(),
-                visited.clone(),
                 v1_rt::int_add(depth.clone(), 1),
             ))
         {
@@ -6237,181 +6225,58 @@ pub fn equality_resolved_declaration_structure(
     }
 }
 
-pub fn equality_applied_arguments_by_target(
-    basis: Rc<Node>,
-    parameter_names: Rc<Vec<String>>,
-    arguments: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    visited: Rc<HashMap<String, bool>>,
-    depth: i64,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match parameter_names.clone().first().cloned() {
-            std::option::Option::None => ((arguments.clone().len() as i64) == 0),
-            Some(pn) => match arguments.clone().first().cloned() {
-                std::option::Option::None => false,
-                Some(a) => {
-                    ((!equality_type_variable_occurs(basis.clone(), pn.clone())
-                        || (equality_applied_argument_is_structural(
-                            a.clone(),
-                            scope.clone(),
-                            visited.clone(),
-                            depth.clone(),
-                        ) && equality_argument_by_target(
-                            a.clone(),
-                            scope.clone(),
-                            v1_rt::int_add(depth.clone(), 1),
-                        )))
-                        && equality_applied_arguments_by_target(
-                            basis.clone(),
-                            Rc::new(v1_rt::list_skip(&parameter_names.clone(), 1)),
-                            Rc::new(v1_rt::list_skip(&arguments.clone(), 1)),
-                            scope.clone(),
-                            visited.clone(),
-                            depth.clone(),
-                        ))
-                }
-            },
-        }
-    })
+pub fn equality_argument_is_enclosing_type_parameter(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    name_is_enclosing_declared_type_parameter(
+        crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), n),
+        scope.clone(),
+    )
 }
 
-pub fn equality_type_variable_occurs(n: Rc<Node>, id: String) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        ((match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: v, .. }) => (v.clone() == id.clone()),
-            _ => false,
-        } || (n.name.clone() == id.clone()))
-            || {
-                let mut __found = false;
-                for ch in n.children.clone().iter().cloned() {
-                    if equality_type_variable_occurs(ch.clone(), id.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            })
-    })
-}
-
-pub fn equality_applied_argument_is_structural(
-    n: Rc<Node>,
-    scope: Rc<InferScope>,
-    visited: Rc<HashMap<String, bool>>,
-    depth: i64,
-) -> bool {
-    if (depth.clone() > 64) {
-        false
-    } else {
-        if (equality_operand_is_type_variable(n.clone(), scope.clone())
-            || equality_operand_is_type_variable(
-                crate::v1_compiler_infer_types::child_type_node(n.clone()),
-                scope.clone(),
-            ))
-        {
-            true
-        } else {
-            {
-                let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
-                let si = scope.type_env.source_indices.clone();
-                let identity = type_reference_identity(peeled.clone(), si.clone());
-                match equality_route_for(identity) {
-                    Some(_) => false,
-                    std::option::Option::None => {
-                        if (peeled.connective.clone() == Connective::Arrow) {
-                            false
-                        } else {
-                            if crate::v1_compiler_coercion::provenance_realizes_natively(
-                                crate::v1_std_core::type_reference_provenance(peeled.clone()),
-                            ) {
-                                false
-                            } else {
-                                if (crate::std_types::is_kernel_type(
-                                    crate::v1_std_core::qualified_last_segment(
-                                        crate::v1_std_core::authored_name_at(
-                                            si.clone(),
-                                            peeled.clone(),
-                                        ),
-                                    ),
-                                ) && ((peeled.children.clone().len() as i64) == 0))
-                                {
-                                    true
-                                } else {
-                                    {
-                                        let w = equality_operand_walk(
-                                            n.clone(),
-                                            scope.clone(),
-                                            visited,
-                                            v1_rt::int_add(depth.clone(), 1),
-                                            false,
-                                        );
-                                        (w.refusal.clone() == std::option::Option::None)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+pub fn equality_scope_with_params(scope: Rc<InferScope>, rt: Rc<Node>) -> Rc<InferScope> {
+    {
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for p in rt.params.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::authored_name_at(
+                    scope.type_env.source_indices.clone(),
+                    p.clone(),
+                ));
             }
+            __result
+        });
+        if ((names.clone().len() as i64) == 0) {
+            scope.clone()
+        } else {
+            Rc::new(InferScope {
+                type_env: scope.type_env.clone(),
+                func_env: scope.func_env.clone(),
+                locals: scope.locals.clone(),
+                body_locals: scope.body_locals.clone(),
+                match_bound_names: scope.match_bound_names.clone(),
+                module_name: scope.module_name.clone(),
+                service_registry: scope.service_registry.clone(),
+                item_registry: scope.item_registry.clone(),
+                lambda_param_provenance: scope.lambda_param_provenance.clone(),
+                caller_decl_name: scope.caller_decl_name.clone(),
+                in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+                enclosing_declared_type_param_names: v1_rt::concat(
+                    scope.enclosing_declared_type_param_names.clone(),
+                    names.clone(),
+                ),
+            })
         }
     }
 }
 
-pub fn equality_table_arguments_by_target(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    arguments: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    depth: i64,
-) -> bool {
-    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-        n,
-        source_indices.clone(),
+pub fn is_unit_variant_phantom_argument(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(
         scope.type_env.clone(),
+        crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), n),
     ))
     .clone()
     {
-        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-            declaration: d, ..
-        } => match crate::v1_compiler_infer_env::declaration_node_of_ref(
-            d.clone(),
-            scope.type_env.clone(),
-        ) {
-            Some(decl) => {
-                let parameter_names = Rc::new({
-                    let mut __result = Vec::new();
-                    for pp in decl.params.clone().iter().cloned() {
-                        __result.push(crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            pp.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let basis = if ((parameter_names.clone().len() as i64) > 0) {
-                    crate::v1_compiler_infer_env::declaration_substitution_basis(
-                        decl.clone(),
-                        scope.type_env.clone(),
-                        parameter_names.clone(),
-                    )
-                } else {
-                    decl.clone()
-                };
-                equality_applied_arguments_by_target(
-                    basis,
-                    parameter_names.clone(),
-                    arguments.clone(),
-                    scope.clone(),
-                    v1_rt::rc_empty_map::<String, bool>(),
-                    depth.clone(),
-                )
-            }
-            std::option::Option::None => {
-                equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone())
-            }
-        },
-        _ => equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone()),
+        UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: _, .. } => true,
+        _ => false,
     }
 }
 
@@ -6483,9 +6348,7 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
                                             (declaration_by_target.clone()
                                                 && (!equality_reference_applies_arguments(
                                                     peeled.clone(),
-                                                ) || equality_table_arguments_by_target(
-                                                    peeled.clone(),
-                                                    source_indices.clone(),
+                                                ) || equality_arguments_by_target(
                                                     peeled.children.clone(),
                                                     scope.clone(),
                                                     v1_rt::int_add(depth.clone(), 1),
@@ -6530,7 +6393,15 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
 if ((resolved.connective.clone() != Connective::NoConnective) || (type_reference_identity(resolved.clone(), source_indices.clone()) != identity.clone())) {
                                                 equality_argument_by_target(resolved.clone(), scope.clone(), v1_rt::int_add(depth.clone(), 1))
                                             } else {
-                                                false
+                                                if is_unit_variant_phantom_argument(peeled.clone(), scope.clone()) {
+                                                    true
+                                                } else {
+                                                    if equality_argument_is_enclosing_type_parameter(peeled.clone(), scope.clone()) {
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                }
                                             }
 },
 }
@@ -7339,184 +7210,7 @@ pub fn equality_plan_synthesizable(plan: Rc<EqualityPlan>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EqualitySynthHelper {
-    pub module_path: String,
-    pub fn_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum EqualityLiftStep {
-    LiftPresence { inner: Rc<EqualityStep> },
-    LiftElements { element: Rc<EqualityStep> },
-    LiftMapValues { value: Rc<EqualityStep> },
-}
-
-pub fn equality_lift_step_helper(l: Rc<EqualityLiftStep>) -> Rc<EqualitySynthHelper> {
-    match (*l.clone()).clone() {
-        EqualityLiftStep::LiftPresence { inner: _, .. } => Rc::new(EqualitySynthHelper {
-            module_path: "std.optional".to_string(),
-            fn_name: "optional_eq".to_string(),
-        }),
-        EqualityLiftStep::LiftElements { element: _, .. } => Rc::new(EqualitySynthHelper {
-            module_path: "std.algebra".to_string(),
-            fn_name: "zip_eq".to_string(),
-        }),
-        EqualityLiftStep::LiftMapValues { value: _, .. } => Rc::new(EqualitySynthHelper {
-            module_path: "std.algebra".to_string(),
-            fn_name: "map_values_eq".to_string(),
-        }),
-    }
-}
-
-pub fn equality_step_helpers(s: Rc<EqualityStep>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
-        EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(
-            Rc::new(vec![equality_lift_step_helper(Rc::new(
-                EqualityLiftStep::LiftPresence { inner: i.clone() },
-            ))]),
-            equality_step_helpers(i.clone()),
-        ),
-        EqualityStep::EqualityElements { element: e, .. } => v1_rt::concat(
-            Rc::new(vec![equality_lift_step_helper(Rc::new(
-                EqualityLiftStep::LiftElements { element: e.clone() },
-            ))]),
-            equality_step_helpers(e.clone()),
-        ),
-        EqualityStep::EqualityMapValues { value: v, .. } => v1_rt::concat(
-            Rc::new(vec![equality_lift_step_helper(Rc::new(
-                EqualityLiftStep::LiftMapValues { value: v.clone() },
-            ))]),
-            equality_step_helpers(v.clone()),
-        ),
-        EqualityStep::EqualityRouted { function: _, .. } => Rc::new(vec![]),
-        EqualityStep::EqualityThroughPlan { declaration: _, .. } => Rc::new(vec![]),
-        EqualityStep::EqualityByTarget => Rc::new(vec![]),
-    })
-}
-
-pub fn equality_structure_helpers(
-    structure: Rc<EqualityStructure>,
-) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
-    match (*structure.clone()).clone() {
-        EqualityStructure::ProductPlan { fields: fs, .. } => Rc::new({
-            let mut __result = Vec::new();
-            for f in fs.iter().cloned() {
-                __result.extend((*equality_step_helpers(f.step.clone())).iter().cloned());
-            }
-            __result
-        }),
-        EqualityStructure::CoproductPlan {
-            first: f, rest: r, ..
-        } => v1_rt::concat(
-            Rc::new({
-                let mut __result = Vec::new();
-                for fd in f.fields.clone().iter().cloned() {
-                    __result.extend((*equality_step_helpers(fd.step.clone())).iter().cloned());
-                }
-                __result
-            }),
-            Rc::new({
-                let mut __result = Vec::new();
-                for arm in r.iter().cloned() {
-                    __result.extend(
-                        (*Rc::new({
-                            let mut __result = Vec::new();
-                            for fd in arm.fields.clone().iter().cloned() {
-                                __result.extend(
-                                    (*equality_step_helpers(fd.step.clone())).iter().cloned(),
-                                );
-                            }
-                            __result
-                        }))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }),
-        ),
-    }
-}
-
-pub fn equality_plan_helpers(plan: Rc<EqualityPlan>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for d in plan.declarations.clone().iter().cloned() {
-            __result.extend(
-                (*equality_structure_helpers(d.structure.clone()))
-                    .iter()
-                    .cloned(),
-            );
-        }
-        __result
-    })
-}
-
-pub fn equality_helper_declared(helper: Rc<EqualitySynthHelper>, index: Rc<SymbolIndex>) -> bool {
-    match crate::v1_compiler_infer_env::symbol_index_lookup(
-        index,
-        v1_rt::concat(
-            v1_rt::concat(helper.module_path.clone(), ".".to_string()),
-            helper.fn_name.clone(),
-        ),
-    ) {
-        Some(n) => ((n.params.clone().len() as i64) > 0),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn equality_body_block_reason(
-    row: Rc<DeclarationEqualityPlan>,
-    index: Rc<SymbolIndex>,
-) -> Option<String> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for h in equality_structure_helpers(row.structure.clone())
-            .iter()
-            .cloned()
-        {
-            if !equality_helper_declared(h.clone(), index.clone()) {
-                __result.push(h);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(h) => Some(v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "no module declares the helper ".to_string(),
-                        h.module_path.clone(),
-                    ),
-                    ".".to_string(),
-                ),
-                h.fn_name.clone(),
-            ),
-            " that the synthesized body binds it to".to_string(),
-        )),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn equality_derived_body_emitted(
-    row: Rc<DeclarationEqualityPlan>,
-    index: Rc<SymbolIndex>,
-) -> bool {
-    match equality_body_block_reason(row, index) {
-        std::option::Option::None => true,
-        Some(_) => false,
-    }
-}
-
-pub fn equality_derived_target(
-    plan: Rc<EqualityPlan>,
-    index: Rc<SymbolIndex>,
-) -> Rc<EqualityDerivedTarget> {
+pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarget> {
     match (*plan.root.clone()).clone() {
     EqualityStep::EqualityRouted { function: f, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: f.clone(),
@@ -7532,14 +7226,9 @@ pub fn equality_derived_target(
 })
     } else {
         match (*d.reading.clone()).clone() {
-    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => match equality_body_block_reason(d.clone(), index) {
-    std::option::Option::None => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
+    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: crate::std_decl_ref::decl_ref(r.module_path.clone(), equality_derived_name(r.decl_name.clone())),
 }),
-    Some(why) => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
-    member: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the derived equality body for ".to_string(), r.decl_name.clone()), " in ".to_string()), r.module_path.clone()), " is not emitted: ".to_string()), why.clone()),
-}),
-},
     EqualityDeclarationReading::DeclarationUnreadable { declaration_name: unread, .. } => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
     member: v1_rt::concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ".to_string(), unread.clone()),
 }),
@@ -7972,7 +7661,7 @@ equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::
     diags: Rc::new(vec![]),
     derived: std::option::Option::None,
 }),
-    Some(p) => match (*equality_derived_target(p.clone(), scope.type_env.symbol_index.clone())).clone() {
+    Some(p) => match (*equality_derived_target(p.clone())).clone() {
     EqualityDerivedTarget::EqualityCallsDeclared { function: f, .. } => Rc::new(EqualityAdmission {
     diags: Rc::new(vec![]),
     derived: Some(f.clone()),
@@ -8010,10 +7699,11 @@ pub fn literal_introduction_type_mismatch(
             formal.clone(),
         );
         match (*actual_expr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-            {
-                let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
+            ExprData::ExprLiteral {
+                value: ref __rc_value,
+                ..
+            } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => {
+                let LiteralValue::LitInt { value: _, .. } = __rc_value.as_ref() else {
                     unreachable!()
                 };
                 false
@@ -9486,26 +9176,29 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
             "".to_string()
         } else {
             match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-                {
-                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+                    let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                         unreachable!()
                     };
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(
-                        view.as_ref(),
-                        TypeHeadView::ProductHead {
-                            type_identity: _,
-                            ..
-                        }
-                    ) =>
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(
+                    __rc_view.as_ref(),
+                    TypeHeadView::ProductHead {
+                        type_identity: _,
+                        ..
+                    }
+                ) =>
                 {
                     let TypeHeadView::ProductHead {
                         type_identity: _, ..
-                    } = view.as_ref()
+                    } = __rc_view.as_ref()
                     else {
                         unreachable!()
                     };
@@ -9572,26 +9265,29 @@ pub fn nominal_coproduct_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String
             "".to_string()
         } else {
             match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-                {
-                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+                    let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                         unreachable!()
                     };
                     nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
                 }
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(
-                        view.as_ref(),
-                        TypeHeadView::CoproductHead {
-                            type_identity: _,
-                            ..
-                        }
-                    ) =>
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(
+                    __rc_view.as_ref(),
+                    TypeHeadView::CoproductHead {
+                        type_identity: _,
+                        ..
+                    }
+                ) =>
                 {
                     let TypeHeadView::CoproductHead {
                         type_identity: _, ..
-                    } = view.as_ref()
+                    } = __rc_view.as_ref()
                     else {
                         unreachable!()
                     };
@@ -9746,10 +9442,11 @@ pub fn nominal_coproduct_application_head_name(n: Rc<Node>, scope: Rc<InferScope
             "".to_string()
         } else {
             match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
-                TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-                {
-                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                TypeHeadExposure::ExposedTypeHead {
+                    view: ref __rc_view,
+                    ..
+                } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+                    let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                         unreachable!()
                     };
                     {
@@ -9923,10 +9620,11 @@ pub fn applied_type_argument_conflicts(
 
 pub fn applied_type_argument_is_nested_application(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
     match (*exposure_view_for_node(n, scope.type_env.source_indices.clone())).clone() {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-        {
-            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+        TypeHeadExposure::ExposedTypeHead {
+            view: ref __rc_view,
+            ..
+        } if matches!(__rc_view.as_ref(), TypeHeadView::ApplicationHead { .. }) => {
+            let TypeHeadView::ApplicationHead { .. } = __rc_view.as_ref() else {
                 unreachable!()
             };
             true
@@ -14407,7 +14105,7 @@ pub fn grounded_cast_verdict(
     cause: crate::std_literal_elaboration::kernel_crossing_refusal_message(c.clone()),
 }),
 },
-    CarrierGroundingLookup::CarrierGroundingRefused { ref cause, .. } if matches!(cause.as_ref(), KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. }) => { let KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. } = cause.as_ref() else { unreachable!() }; if natural.clone() {
+    CarrierGroundingLookup::CarrierGroundingRefused { cause: ref __rc_cause, .. } if matches!(__rc_cause.as_ref(), KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. }) => { let KernelCrossingRefusal::CarrierNotGrounded { carrier: _, .. } = __rc_cause.as_ref() else { unreachable!() }; if natural.clone() {
             Rc::new(GroundedCastVerdict::GroundedCastRefused {
     cause: v1_rt::concat("no declared conversion route onto ".to_string(), crate::std_decl_ref::declaration_ref_display_key(t.clone())),
 })
@@ -22413,7 +22111,9 @@ pub fn name_is_std_optional_payload_member(scope: Rc<InferScope>, name: String) 
 
 pub fn parent_name_is_std_optional(parent_name: String) -> bool {
     match (*kernel_mint_parent_identity(parent_name)).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
+        VariantParentIdentity::VariantParentIdentified {
+            key: ref __rc_key, ..
+        } => match __rc_key.as_ref() {
             VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
                 crate::v1_compiler_infer_types::declaration_is_std_optional(d.clone())
             }
@@ -22514,7 +22214,9 @@ pub fn optional_reading_by_census(
 
 pub fn optional_reading_of_kernel_mint(kernel: String) -> Rc<OptionalDeclarationReading> {
     match (*kernel_mint_parent_identity(kernel.clone())).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
+        VariantParentIdentity::VariantParentIdentified {
+            key: ref __rc_key, ..
+        } => match __rc_key.as_ref() {
             VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
                 if crate::v1_compiler_infer_types::declaration_is_std_optional(d.clone()) {
                     Rc::new(OptionalDeclarationReading::IsStdOptional)
@@ -36300,10 +36002,11 @@ pub fn grounded_signed_construct(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     match (*payload.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-        {
-            let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => {
+            let LiteralValue::LitInt { value: j, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             grounded_int_literal(
@@ -36352,10 +36055,11 @@ pub fn grounded_successor(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     match (*prev.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-        {
-            let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
+        ExprData::ExprLiteral {
+            value: ref __rc_value,
+            ..
+        } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => {
+            let LiteralValue::LitInt { value: j, .. } = __rc_value.as_ref() else {
                 unreachable!()
             };
             grounded_int_literal(
@@ -37217,15 +36921,20 @@ pub fn grounded_arm_body(
     {
         let body = crate::v1_std_core::arm_body(arm.clone());
         match (*reading.clone()).clone() {
-            GroundedArmReading::GroundedArmPlan { ref binding, .. }
-                if matches!(binding.as_ref(), GroundedBinding::GroundedBinder { .. }) =>
+            GroundedArmReading::GroundedArmPlan {
+                binding: ref __rc_binding,
+                ..
+            } if matches!(
+                __rc_binding.as_ref(),
+                GroundedBinding::GroundedBinder { .. }
+            ) =>
             {
                 let GroundedBinding::GroundedBinder {
                     declaration: decl,
                     value: bound,
                     binder_type: bt,
                     ..
-                } = binding.as_ref()
+                } = __rc_binding.as_ref()
                 else {
                     unreachable!()
                 };
@@ -38180,20 +37889,11 @@ pub fn equality_synthesized_for(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec
                                 .cloned()
                                 {
                                     std::option::Option::None => Rc::new(vec![]),
-                                    Some(dp) => {
-                                        if !equality_derived_body_emitted(
-                                            dp.clone(),
-                                            scope.type_env.symbol_index.clone(),
-                                        ) {
-                                            Rc::new(vec![])
-                                        } else {
-                                            Rc::new(vec![equality_derived_declaration(
-                                                scope.module_name.clone(),
-                                                name.clone(),
-                                                dp.clone(),
-                                            )])
-                                        }
-                                    }
+                                    Some(dp) => Rc::new(vec![equality_derived_declaration(
+                                        scope.module_name.clone(),
+                                        name.clone(),
+                                        dp.clone(),
+                                    )]),
                                 }
                             }
                         }
@@ -38365,27 +38065,30 @@ pub fn equality_synth_compare(
             f.decl_name.clone(),
             Rc::new(vec![x.clone(), y.clone()]),
         ),
-        EqualityStep::EqualityPresence { inner: i, .. } => equality_synth_step_qcall(
+        EqualityStep::EqualityPresence { inner: i, .. } => equality_synth_qcall(
             m.clone(),
-            Rc::new(EqualityLiftStep::LiftPresence { inner: i.clone() }),
+            "std.optional".to_string(),
+            "optional_eq".to_string(),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
                 equality_synth_inner(m.clone(), i.clone(), depth.clone()),
             ]),
         ),
-        EqualityStep::EqualityElements { element: e, .. } => equality_synth_step_qcall(
+        EqualityStep::EqualityElements { element: e, .. } => equality_synth_qcall(
             m.clone(),
-            Rc::new(EqualityLiftStep::LiftElements { element: e.clone() }),
+            "std.algebra".to_string(),
+            "zip_eq".to_string(),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
                 equality_synth_inner(m.clone(), e.clone(), depth.clone()),
             ]),
         ),
-        EqualityStep::EqualityMapValues { value: v, .. } => equality_synth_step_qcall(
+        EqualityStep::EqualityMapValues { value: v, .. } => equality_synth_qcall(
             m.clone(),
-            Rc::new(EqualityLiftStep::LiftMapValues { value: v.clone() }),
+            "std.algebra".to_string(),
+            "map_values_eq".to_string(),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
@@ -38485,46 +38188,50 @@ pub fn equality_synth_qcall(
     args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
     {
-        let qualified = v1_rt::concat(
-            v1_rt::concat(module_path.clone(), ".".to_string()),
-            fn_name.clone(),
+        let segments = Rc::new(
+            module_path
+                .clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
         );
-        let sp = equality_synthetic_span(m, qualified.clone());
+        let receiver = Rc::new(v1_rt::list_skip(&segments.clone(), 1))
+            .iter()
+            .cloned()
+            .fold(
+                equality_synth_var(
+                    m.clone(),
+                    segments.clone().first().cloned().clone().unwrap(),
+                ),
+                |acc: Rc<Node>, seg: String| equality_synth_field(m.clone(), acc, seg.clone()),
+            );
+        let sp = equality_synthetic_span(m.clone(), fn_name.clone());
         crate::v1_std_core::make_named_expr_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            qualified.clone(),
-            Rc::new(ExprData::ExprCall {
-                call_semantics: std::option::Option::None,
-                descent_evidence: std::option::Option::None,
+            fn_name.clone(),
+            Rc::new(ExprData::ExprMethodCall {
+                method_semantics: std::option::Option::None,
             }),
-            Rc::new({
-                let mut __result = Vec::new();
-                for a in args.iter().cloned() {
-                    __result.push(crate::v1_std_core::make_arg_node(
-                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                        std::option::Option::None,
-                        a.clone(),
-                        sp.clone(),
-                        sp.clone(),
-                    ));
-                }
-                __result
-            }),
+            v1_rt::concat(
+                Rc::new(vec![receiver.clone()]),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for a in args.iter().cloned() {
+                        __result.push(crate::v1_std_core::make_arg_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                            std::option::Option::None,
+                            a.clone(),
+                            sp.clone(),
+                            sp.clone(),
+                        ));
+                    }
+                    __result
+                }),
+            ),
             std::option::Option::None,
             sp.clone(),
             sp.clone(),
         )
-    }
-}
-
-pub fn equality_synth_step_qcall(
-    m: String,
-    lift: Rc<EqualityLiftStep>,
-    args: Rc<Vec<Rc<Node>>>,
-) -> Rc<Node> {
-    {
-        let h = equality_lift_step_helper(lift);
-        equality_synth_qcall(m, h.module_path.clone(), h.fn_name.clone(), args)
     }
 }
 
