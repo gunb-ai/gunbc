@@ -1292,7 +1292,7 @@ fn router_dev_first_party_for_roster(roster: List<RouterDevHostRoster>) -> Route
     RouterDevFirstPartyRefused { reason: rr } => RouterDevFirstPartyRefused { reason: rr }
     RouterDevFirstPartyRows { rows: projected } => match router_dev_first_party_head() {
       RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-      RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(concat(head, projected), router_dev_first_party_tail()) }
+      RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(head, projected) }
     }
   }
 }

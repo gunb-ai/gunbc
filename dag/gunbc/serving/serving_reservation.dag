@@ -158,28 +158,46 @@ type ReplicaReservation {
   gpu: GpuReservation
 }
 
-// THE ADDRESS AN ENGINE BINDS AND THE PORT IT BINDS IT ON. `BindLan` is the address a Strata engine
-// listens on so its siblings on the LAN can reach it -- the finding's "engines bind the LAN." `BindLoopback`
-// is a local-only engine; `BindAddress` pins an explicit interface. The port is a Nat so a collision
-// (two replicas one host gave the same port) is decidable rather than a string-compare accident.
+// AN IPv4 ADDRESS AS ITS FOUR OCTETS, not a string. Holding the parts, not one `String` leaf, is what lets
+// loopback be DECIDED over structure (review 93308): the loopback block is 127.0.0.0/8, so an address is
+// loopback exactly when its FIRST octet is 127 -- which catches 127.0.0.2, not merely the spelling "127.0.0.1".
+// A malformed address, a bare hostname, or an IPv6 literal like "::1" cannot be written here at all (they are
+// not four naturals), so they can never be reported LAN-reachable by a string comparison slipping past -- the
+// open-side error the old `!= "127.0.0.1" && != "localhost"` made. Each octet is 0..255 (a witness pins it).
+type Ipv4Octets {
+  a: Nat
+  b: Nat
+  c: Nat
+  d: Nat
+}
+
+// THE ADDRESS AN ENGINE BINDS AND THE PORT IT BINDS IT ON. `BindLan` is the address a Strata engine listens on
+// so its siblings on the LAN can reach it -- the finding's "engines bind the LAN." `BindLoopback` is a
+// local-only engine (the named variant carries the meaning; there is no loopback STRING to get wrong).
+// `BindIpv4` pins an explicit IPv4 interface, decided structurally below. The port is a Nat so a collision
+// (two replicas on one host given the same port) is decidable rather than a string-compare accident.
 type ServingBindAddress
   = BindLan
   | BindLoopback
-  | BindAddress { address: NonEmptyStr }
+  | BindIpv4 { ip: Ipv4Octets }
 
 type ServingBind {
   address: ServingBindAddress
   port: Nat
 }
 
-// AN ENGINE BINDS THE LAN: a serving replica's bind must be LAN-addressable to serve, so a loopback-only
-// replica is not reachable by the router and is refused by the reachability check below. `BindAddress` on a
-// LAN interface counts as binding the LAN.
+// AN ENGINE BINDS THE LAN: a serving replica must be LAN-addressable to serve, so a loopback-only replica is
+// not reachable by the router and is refused by this check (fail_closed -- a wrong "reachable" fabricates a
+// routable engine). BindLan is reachable; BindLoopback is not; an explicit IPv4 is reachable only when it is a
+// WELL-FORMED address (every octet 0..255) AND falls outside 127/8, both decided over the octets so every
+// loopback spelling is refused and a malformed octet (e.g. 999) is not a real interface either. IPv6 is
+// simply not expressible as an IPv4 octet, so it is never wrongly accepted here.
 fn bind_is_lan_reachable(b: ServingBind) -> Bool {
   match b.address {
     BindLan => true
     BindLoopback => false
-    BindAddress { address: a } => (a as String) != "127.0.0.1" && (a as String) != "localhost"
+    BindIpv4 { ip: ip } =>
+      ip.a <= 255 && ip.b <= 255 && ip.c <= 255 && ip.d <= 255 && ip.a != 127
   }
 }
 

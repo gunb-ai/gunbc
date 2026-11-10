@@ -31,7 +31,7 @@ import gunbc.serving.serving_reservation {
   CpuRange, CpuSet, CpuReservation, CpuAffinity, CpuExclusive, NoCpuSet, CpuRanges,
   GpuReservation, ReplicaReservation,
   ReplicaMemoryReservation, MemoryMeasured,
-  ServingBind, ServingBindAddress, BindLan, BindLoopback, BindAddress,
+  ServingBind, ServingBindAddress, BindLan, BindLoopback, BindIpv4, Ipv4Octets,
   StrataArtifact, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
   StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
   cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores, cpu_reservation_covers,
@@ -137,12 +137,24 @@ test fn witness_a_latest_tag_is_refused_where_a_content_digest_is_pinned() -> Bo
 }
 
 // AN ENGINE BINDS THE LAN. A replica bound to the LAN is reachable by the router; one bound to loopback is
-// not; an explicit address refuses only the loopback addresses. This is the model fact item 3 asks for --
-// the port and address live on the replica, and "engines bind the LAN" is a check the model can run.
+// not; an explicit address is reachable only when it is a well-formed IPv4 outside 127/8. This is the model
+// fact item 3 asks for -- the port and address live on the replica, and "engines bind the LAN" is a check the
+// model can run.
 test fn witness_an_engine_bound_to_the_lan_is_reachable_where_a_loopback_bind_is_not() -> Bool {
   let lan = ServingBind { address: BindLan, port: 18081 }
   let loopback = ServingBind { address: BindLoopback, port: 18082 }
-  let explicit_lan = ServingBind { address: BindAddress { address: "192.168.1.64" }, port: 18083 }
-  let explicit_loop = ServingBind { address: BindAddress { address: "127.0.0.1" }, port: 18084 }
-  bind_is_lan_reachable(lan) && !bind_is_lan_reachable(loopback) && bind_is_lan_reachable(explicit_lan) && !bind_is_lan_reachable(explicit_loop)
+  let explicit_lan = ServingBind { address: BindIpv4 { ip: Ipv4Octets { a: 192, b: 168, c: 1, d: 64 } }, port: 18083 }
+  let explicit_loop = ServingBind { address: BindIpv4 { ip: Ipv4Octets { a: 127, b: 0, c: 0, d: 1 } }, port: 18084 }
+  // the discriminating case the old string match got WRONG: 127.0.0.2 is loopback (all of 127/8), but
+  // `!= "127.0.0.1" && != "localhost"` reported it reachable. Deciding over octets refuses the whole block.
+  let whole_8 = ServingBind { address: BindIpv4 { ip: Ipv4Octets { a: 127, b: 0, c: 0, d: 2 } }, port: 18085 }
+  // a malformed octet (299) is not a well-formed IPv4 at all, so it is not a real LAN interface either --
+  // an out-of-range address must not be reported reachable. This is what pins the 0..255 bound.
+  let malformed = ServingBind { address: BindIpv4 { ip: Ipv4Octets { a: 192, b: 168, c: 1, d: 299 } }, port: 18086 }
+  bind_is_lan_reachable(lan)
+    && !bind_is_lan_reachable(loopback)
+    && bind_is_lan_reachable(explicit_lan)
+    && !bind_is_lan_reachable(explicit_loop)
+    && !bind_is_lan_reachable(whole_8)
+    && !bind_is_lan_reachable(malformed)
 }

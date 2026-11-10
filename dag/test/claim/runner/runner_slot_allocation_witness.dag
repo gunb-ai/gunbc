@@ -149,9 +149,13 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // subtracted: 2 authored + floor(145.85/25) = 7. The pin is the fold's answer, not a remembered number
 // -- the same fold against a MicrovmSlotRealized reading returns 3, which the row below pins.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
+  // srv3/srv4 now pay their strata engine's cgroup MemoryMax (112 GiB / 64 GiB, gunbc.serving.serving_reservation)
+  // as the 7th envelope term, so they admit FEWER slots than the pre-engine 18 this witness carried: srv3's
+  // 112 GiB costs 4 (18->14), srv4's 64 GiB costs 2 (18->16). The reservation is a priced model fact, not a
+  // silent widen; the committed-width witness below re-baselines to the same charged numbers.
   host_memory_admitted_width(host: operator_host_srv1) == 7
-    && host_memory_admitted_width(host: operator_host_srv3) == 18
-    && host_memory_admitted_width(host: operator_host_srv4) == 18
+    && host_memory_admitted_width(host: operator_host_srv3) == 14
+    && host_memory_admitted_width(host: operator_host_srv4) == 16
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -242,8 +246,12 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv3, expected: 18)
-    && committed_width_is(host: operator_host_srv4, expected: 18)
+  // srv3/srv4 committed widths are re-baselined from the pre-engine 18 to the charged values (their engine's
+  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16. The dynamic assertions
+  // just below (committed == memory-admitted, and cpu axis > memory-admitted) still hold and prove memory is
+  // the binding axis at these charged values; srv1 pays nothing and stays at memory-admitted + transitional.
+  committed_width_is(host: operator_host_srv3, expected: 14)
+    && committed_width_is(host: operator_host_srv4, expected: 16)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
