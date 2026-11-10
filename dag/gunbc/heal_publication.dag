@@ -247,13 +247,16 @@ fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
 // rest_body_read_refused_cause and rest_body_not_json_cause (fixed text; the transport io text and the
 // serde_json message are dropped), and rest_body_null_members_cause (a count; the member names are
 // withheld) -- all four in src/v1/stage0/src/v1_interpreter.rs, each with a marker planted in the exact
-// value it refuses to publish. THE ROUTE IS PART OF THE CLAIM, and the other realization of the same
-// exchange does not yet hold it: src/v1/05_emit_rust.dag:19168 emits the body-read refusal with
-// cause: error.to_string() and :19178 emits the decode failure with the error's own text, both inside
-// emit_rust_rest_result_lowering reached from :18667, and a serde message can carry a spelling the body
-// presented. Nothing is compiled through the emitter on this path today, so nothing leaks; if that
-// changes, closing those two arms is a precondition of leaving this one published, and the un-closed path
-// is recorded as a receipt in
+// value it refuses to publish. THE ROUTE IS PART OF THE CLAIM. Both realizations of the same exchange
+// now mint that text from ONE declared-side authority, src/v1/05_rest_cause_text.dag
+// (v1.compiler.rest_cause_text): the emitted route -- v1.compiler.emit_rust emit_rust_rest_result_lowering
+// -- builds its two RestBodyUndecodable causes from it (the body-read arm the fixed read-refused phrase,
+// the decode arm the declared 'did not inhabit ... at <located> (<coproduct>)' template over the declared
+// output type), and neither splices the io error or the serde_json message into the cause, closing the
+// emitted-route credential-path leak the second-realization receipt kept visible. The interpreter's four
+// renderers still hold the same phrase strings as literals; a follow-up points them at the same generated
+// constants (it cannot land with this one without hand-Rust referencing a not-yet-committed generated
+// symbol). The emitted bytes are witnessed in v1-compiler-tests; the receipt is closed at
 // dag/gunbc/rung_drop/gunbc_run_unreached_declarations_not_realized.dag. The 2026-11-10 heal-publish outage printed 'status 200 undecodable' for two
 // days of runs while the interpreter knew the body had failed at NoWireContract on PullRequestState.
 // A withheld cause is not a safe refusal, it is an undiagnosable one.

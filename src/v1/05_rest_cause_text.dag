@@ -1,0 +1,73 @@
+module v1.compiler.rest_cause_text
+
+// ONE AUTHORITY FOR THE DECLARED-SIDE RestBodyUndecodable CAUSE TEXT.
+//
+// WHY THIS MODULE EXISTS (DESIGN 3 single_authority / method_separate_order_compose --
+// "define each rule at its authority and reuse its definitions and valid results").
+// The REST response decode mints a RestBodyUndecodable whose `cause` leaves the compiler as the
+// only field of that refusal, and its consumer is gunbc.heal_publication rest_refusal_text -- a
+// publish path running with a credential in hand. The cause is therefore a CREDENTIAL PATH: a
+// string a hostile response wrote must never ride out on it. The rule that decides the safe text
+// is one rule, but it is reached by TWO realizations of the same exchange -- the interpreted route
+// (v1_interpreter decide_rest_exchange) and the emitted route (v1.compiler.emit_rust
+// emit_rust_rest_result_lowering) -- and a second copy of the rendering was the leak the emitted
+// route carried (it published `error.to_string()` / the serde message, which can echo a spelling
+// the body presented). This module is the single place the declared-side PHRASES and the pinned
+// CAUSE TEMPLATE are declared, so both realizations speak one text.
+//
+// WHAT STAYS IN RUST, AND WHY THIS IS NOT THE .dag THE INTERPRETER ALREADY DECLINED
+// (#16241's gunbc.declared_side_refusal_cause_seed_growth, "WHY IT IS RUST AND NOT .dag").
+// That receipt refuses to move the enum-to-cause SELECTION into .dag, because the safe/unsafe
+// distinction lives on the payloads of the interpreter's hand-Rust RestResponseDecodeCause enum:
+// only the enum knows that `spelling`/`json_text`/`wire_spellings` are body-derived and so must be
+// withheld, while `field_path`/`coproduct`/`count` are compiler-known. That argument is about WHICH
+// fields may be shown -- a decision -- and it stays Rust. What moved HERE is only the phrase STRINGS
+// and the template that ASSEMBLES them: a rendering rule, not a decision. The caller supplies the
+// already-safe fragments (the interpreter passes the declared cause it selected, the emitter bakes
+// a declared phrase); this module owns only the fixed wording and the shape
+// "body did not inhabit the declared output: <declared> at <located> (<coproduct>)" that the claims
+// in dag/test/claim/rest_exchange_replay.dag pin.
+
+fn rest_body_read_refused_cause_text() -> String {
+  // Fixed text. The read error is dropped by the caller (the emitter never splices it; the
+  // interpreter takes it as a parameter and refuses it), so no host/io text can ride out.
+  "the response body could not be read from the host"
+}
+
+fn rest_body_not_json_cause_text() -> String {
+  // Fixed text, and the body's own shape is NOT in the message. The interpreter's serde_json
+  // message is refused; the caller passes it only so a witness can plant a marker in it.
+  "the body is not JSON, as the operation's declared response format requires"
+}
+
+fn rest_body_null_members_cause_text(missing_count: String) -> String {
+  // Count only, never the member names: an authored member name is a spelling, and a naming
+  // policy may derive it from what the body presented. The caller counts the withheld names.
+  concat(
+    "body did not inhabit the declared output: ",
+    missing_count,
+    " declared members were left uninhabited, their names withheld on a credential path"
+  )
+}
+
+fn rest_body_uninhabited_declared_phrase() -> String {
+  // The declared statement the EMITTED route shows when its serde decode fails: the body does not
+  // inhabit its declared output type. Declared-side only -- it names no value the body presented.
+  "the response body does not inhabit its declared output type"
+}
+
+fn rest_declared_cause_text(declared: String, located: String, coproduct: String) -> String {
+  // The pinned shape every refusal that withholds body text takes. Every argument is declared-side:
+  // `declared` is a selected cause phrase, `located` a compiler-known field, `coproduct` the
+  // declared output type name. The claims assert a located substring and a coproduct substring
+  // rather than one exact sentence, so the shape is what is pinned here.
+  concat(
+    "body did not inhabit the declared output: ",
+    declared,
+    " at ",
+    located,
+    " (",
+    coproduct,
+    ")"
+  )
+}

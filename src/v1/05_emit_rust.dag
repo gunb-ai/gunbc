@@ -4,6 +4,7 @@ import v1.compiler.infer_emit_info { declaring_span_key, type_decl_occurrence_bi
 import v1.std.core { expr_literal_string_optional, item_generic_param_names }
 import v1.compiler.infer_types { is_leaf_type }
 import v1.compiler.emit { render_target_name }
+import v1.compiler.rest_cause_text { rest_body_read_refused_cause_text, rest_body_uninhabited_declared_phrase, rest_declared_cause_text }
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic, authored_occurrence_of }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
@@ -19165,7 +19166,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "let status = response.status().as_u16();\n",
     "let __rest_text = match response.text().await {\n",
     "    Ok(text) => text,\n",
-    "    Err(error) => return Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: error.to_string() }"), "),\n",
+    "    Err(_error) => return Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_body_read_refused_cause_text(), "\".to_string() }")), "),\n",
     "};\n",
     "if !(200..300).contains(&status) {\n",
     "    return Ok(", rust_rest_refused(refusal_arm: "RestStatusRefused { status: status as i64, body: __rest_text }"), ");\n",
@@ -19175,7 +19176,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "})();\n",
     "match __rest_decoded {\n",
     "    Ok(answer) => Ok(", rust_rest_answered(answer_expr: "answer"), "),\n",
-    "    Err(error) => Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }"), "),\n",
+    "    Err(_error) => Ok(", rust_rest_refused(refusal_arm: concat("RestBodyUndecodable { status: status as i64, cause: \"", rest_declared_cause_text(declared: rest_body_uninhabited_declared_phrase(), located: output_type, coproduct: output_type), "\".to_string() }")), "),\n",
     "}")
 }
 
