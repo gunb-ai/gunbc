@@ -1,15 +1,16 @@
-// Ordering-equivalence witness for routing the install fold off the MODELED
-// list_sort_by_key onto the native `sort_by` kernel (adhoc-551ba662-dd5, DESIGN §6b).
-// Executes jolly-hawk-60's condition 2: native sort_by (canonical_content_cmp) must
-// equal tree_path_total_order so the tree-hash lines -- and the sealed content hash
-// built on them -- stay byte-identical. Elevation-free: no host seam is called.
-// The stress paths hit shared prefixes, '/' vs other low bytes, case, and non-ASCII;
-// duplicate paths exercise tie-order (stability). tree_path_compare is byte-identical
-// to gunbc.host.host_effect_realize.dag:6449 tree_path_compare.
+// Ordering-equivalence witness: the install fold routes its readback sorts onto the native
+// `sort_by` kernel. This witness binds the fold's OWN comparator -- gunbc.host.host_effect_realize::
+// tree_path_total_order and ::tree_path_compare, IMPORTED rather than reimplemented, so a single
+// authority decides the path order -- against the native order. Supplying the stress inputs here never
+// removes the last execution of the real path: the modeled side sorts with the imported
+// tree_path_total_order, and the landmark calls the imported tree_path_compare directly. The two orders
+// agree on shared prefixes, '/' against other low bytes, case and non-ASCII, and on duplicate-path tie
+// order (stability); a deliberately reversed order is detected. Elevation-free: no host seam is called.
 module test.claim.runner.tree_hash_sort_equivalence
 
 import std.algebra { list_sort_by_key, list_map, FreeMonoid, TotalOrder, Ordering, Less, Greater, Equal }
 import std.content_hash { sha256_hex_of_text }
+import gunbc.host.host_effect_realize { tree_path_total_order, tree_path_compare }
 
 data entry: FreeMonoid<Entry> = [
   Entry { hex: "01", path: "a/b" },
@@ -32,11 +33,8 @@ data entry: FreeMonoid<Entry> = [
 
 type Entry { hex: String, path: String }
 
-data tree_path_total_order: TotalOrder<String> = { compare: tree_path_compare }
-fn tree_path_compare(a: String, b: String) -> Ordering {
-  if a < b { Less } else { if a > b { Greater } else { Equal } }
-}
-// A comparator that DIFFERS from the fold's (reversed): the RED witness.
+// RED control: an order deliberately OPPOSITE to the fold's, to prove the witness discriminates.
+// It is a purpose-built mutant here, never the production comparator.
 data reversed_order: TotalOrder<String> = { compare: reversed_compare }
 fn reversed_compare(a: String, b: String) -> Ordering {
   if a < b { Greater } else { if a > b { Less } else { Equal } }
@@ -56,11 +54,14 @@ test fn native_and_modeled_lists_agree() -> Bool { to_lines(native_sorted()) == 
 test fn native_and_modeled_hashes_agree() -> Bool {
   sha256_hex_of_text(text: to_lines(native_sorted())) == sha256_hex_of_text(text: to_lines(modeled_sorted()))
 }
-// Sanity: the agreed order is the bytewise one, not input order. Bytewise-first is the
-// '/'-leading path (0x2f), bytewise-last is the non-ASCII 'é' (0xc3 > 'z' 0x7a).
-test fn order_is_bytewise_landmark() -> Bool {
-  let n = to_lines(native_sorted())
-  starts_with(s: n, prefix: "10  /root") && ends_with(s: n, suffix: "14  é\n")
+// The agreed order IS the imported comparator's: exercise tree_path_compare directly on the low-byte and
+// leading-'/' landmarks, and check the agreed lines sit in that order (bytewise-first is '/'-leading,
+// bytewise-last is the non-ASCII entry).
+test fn order_matches_imported_comparator() -> Bool {
+  tree_path_compare(a: "a/b", b: "a.b") == Greater
+    && tree_path_compare(a: "/root", b: "z") == Less
+    && starts_with(s: to_lines(native_sorted()), prefix: "10  /root")
+    && ends_with(s: to_lines(native_sorted()), suffix: "14  é\n")
 }
-// RED: a differing order is detected -- reversed sort is NOT equal to the native order.
+// RED: a differing order is detected -- the reversed order is NOT equal to the native order.
 test fn red_differing_order_detected() -> Bool { to_lines(native_sorted()) != to_lines(reversed_sorted()) }

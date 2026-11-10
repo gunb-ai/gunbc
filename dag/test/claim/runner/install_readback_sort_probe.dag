@@ -1,8 +1,9 @@
-// Exercises the REAL, post-fix fold readback sort functions (no host seam is called, so
-// this is elevation-free). Proves: (1) tree_hash_lines / tree_ancestor_directories still
-// order bytewise after routing onto the native sort_by kernel, and (2) under the scratch
-// binary's lowered CALL_DEPTH_LIMIT=3000 they COMPLETION at n=8000 -- the modeled sort
-// would raise call-depth-exceeded at list_at_optional here. adhoc-551ba662-dd5, §6b.
+// Exercises the REAL, post-fix fold readback functions -- gunbc.host.host_effect_realize::
+// tree_hash_lines and ::tree_ancestor_directories -- which now sort through the native `sort_by`
+// kernel. No host seam is called, so this is elevation-free. It asserts they still order bytewise
+// on a stress set (shared prefixes, a leading '/', non-ASCII) and complete over a large planted
+// set: a regression guard that the readback path stays free of per-entry frame growth.
+// (adhoc-551ba662-dd5, DESIGN §6b.)
 module test.claim.runner.install_readback_sort_probe
 
 import gunbc.host.host_effect_realize { tree_hash_lines, tree_ancestor_directories, TreeFileHash }

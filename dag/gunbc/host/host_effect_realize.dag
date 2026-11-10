@@ -6451,11 +6451,10 @@ fn tree_path_compare(a: String, b: String) -> Ordering {
 }
 
 fn sort_tree_file_hashes(entries: List<TreeFileHash>) -> List<TreeFileHash> {
-  // Native `sort_by` kernel (stable, canonical_content_cmp on the String key): depth is
-  // constant in the entry count. The modeled list_sort_by_key recursed ~1 frame/merged
-  // element (list_at_optional at the leaf), so the fold's readback died at the 100k
-  // ceiling. tree_path_total_order == canonical String order (executed equivalence
-  // witness test/claim/runner/tree_hash_sort_equivalence), so the fed hash is unchanged.
+  // The native `sort_by` kernel (std.primitives::sort_by) -- a stable sort over the canonical
+  // content order of the key -- so interpreted depth is constant in the entry count. It applies
+  // the same bytewise String order as gunbc.host.host_effect_realize::tree_path_total_order, so
+  // the fed tree-hash lines, and the digest built on them, are unchanged.
   entries |> sort_by(e => tree_file_hash_path(e))
 }
 
