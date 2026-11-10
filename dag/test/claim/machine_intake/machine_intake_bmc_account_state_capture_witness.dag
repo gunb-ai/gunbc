@@ -25,8 +25,8 @@ import gunbc.machine_intake.bmc_secure {
 }
 import gunbc.machine_intake.bmc_account_state_capture {
   BmcAccountStateCaptures, BmcAccountStateCaptureOutcome, CapturedTransportAssembled, CapturedTransportUndecodable,
-  AccountsCollectionUndecodableWhileServed, CensusNamesDisagreeWithCollection,
-  assemble_account_state_transport,
+  UserAccessRowsUndecodable, AccountsCollectionUndecodableWhileServed, CensusNamesDisagreeWithCollection,
+  ServedCensusClaimedWithoutSurface, assemble_account_state_transport,
 }
 import extdeps.bmc.ipmi_channel {
   IpmiChannelCensusMember, IpmiLanBadPasswordThresholdRead, IpmiLanBadPasswordThresholdNotAvailable,
@@ -94,6 +94,8 @@ fn assembled(captures: BmcAccountStateCaptures) -> BmcAccountStateCaptureOutcome
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_served_redfish_with_an_unreadable_accounts_body_refuses_never_a_fabricated_census"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_census_entry_the_collection_does_not_list_refuses"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "no_break_glass_answer_assembles_unmaterializable_never_a_substituted_reference"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_census"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_census"),
   ]
 {
   assemble_account_state_transport(captures: captures)
@@ -226,5 +228,45 @@ test fn no_break_glass_answer_assembles_unmaterializable_never_a_substituted_ref
       BreakGlassUnmaterializable { detail: _ } => true
       _ => false
     }
+  }
+}
+
+// RED (fail_closed, never a defaulted census). A get-access table whose privilege word is not one the
+// decoder knows (SUPERVISOR is not a valid IPMI privilege limit) must refuse the WHOLE census with the
+// UserAccessRowsUndecodable cause -- it must not silently drop the bad row and mint a partial census that
+// looks complete. Reuses the exact malformed body the parser witness proves decodes to Malformed.
+test fn a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_census() -> Bool {
+  let c = faithful_captures()
+  let broken = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: c.managed_answer,
+    census_answer: committed("ipmi-get-user-access", "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      false      SUPERVISOR\n"),
+    redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
+    account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
+    break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: broken) {
+    CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
+    _ => false
+  }
+}
+
+// RED (single_authority, never an unfounded census). The driver supplies a Served Redfish census while the
+// service-root probe body is NOT a Redfish surface (a 404): the census cannot be founded on a surface the
+// probe says is absent, so the assembler refuses with ServedCensusClaimedWithoutSurface -- it does not
+// trust the driver's Served census over the contradicting surface bytes.
+test fn a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_census() -> Bool {
+  let c = faithful_captures()
+  let broken = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    redfish_accounts_answer: c.redfish_accounts_answer,
+    redfish_surface_answer: committed("redfish-surface", "404 Not Found"),
+    account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
+    break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: broken) {
+    CapturedTransportUndecodable { cause: ServedCensusClaimedWithoutSurface { detail: _ } } => true
+    _ => false
   }
 }
