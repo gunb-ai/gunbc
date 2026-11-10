@@ -369,6 +369,18 @@ data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(co
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
+// srv1's LMCache L1 PER REPLICA as it runs: LMCACHE_L1_GB=12 on each container, read from the run identity's
+// own environment (srv1_topology_comparison's run row records the container environment, read 2026-11-08) and
+// corroborated by srv1_lil_serve.sh's LMCache block, which passes 12. LMCache's GB is GiB, as the L2 row's
+// rejection reading established. NOT the 2026-10-30 engine-memory figure below (L1_GB=100): the tier has been
+// 12 GiB per replica since the 2026-11-08 move to two replicas, which is also why no 110 GiB /dev/shm is needed.
+data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 12))
+
+data srv1_lmcache_l1_tier: ServingMemoryReading = ServingMemoryRead {
+  bytes: srv1_lmcache_l1_configured,
+  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L1_GB=12 each (the run identity's environment, srv1_topology_comparison; corroborated by srv1_lil_serve.sh's LMCache block), 2026-11-08" as NonEmptyStr,
+}
+
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
   bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_configured) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
   provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L2_GB=125 each (docker inspect, 2026-11-08) at the L2 eviction watermark 0.80 (serve.log eviction_controller)" as NonEmptyStr,
