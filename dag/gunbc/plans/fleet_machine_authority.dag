@@ -260,7 +260,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
         ]),
       ]),
       li_blocks(blocks: [
-        p(text: "**P2, registry and admissions** (medium). Depends on smart-crane-730's bobo admission PR having deleted srv13, since otherwise A2 refuses the production roster on BR80S6102300049."),
+        p(text: "**P2, registry and admissions** (medium). Depends on smart-crane-730's srv13 retirement PR (its own small PR, 2026-11-10, with the 2026-10-07 captures keeping their provenance and `gunbc.integration_concern::srv13_and_srv15_name_one_board` closed as integrated), since otherwise A2 refuses the production roster on BR80S6102300049."),
         ul(items: [
           li_blocks(blocks: [
             p(text: "**Scope:**"),
@@ -317,13 +317,13 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
       li_blocks(blocks: [
         p(text: "**P6a-P6c, the generalizations** (medium each; required for completion)."),
         ul(items: [
-          li(text: "**Scope:** R2 typed per-concern projections; R3 keyed state over the applicable population; R4 policy columns on `HostEnrollmentIntent`, with `arrival_subject` and the mtcollins1 federation moved onto them. D2's re-keying of per-machine fact declarations happens table by table as each rule lifts. Delivered elsewhere and consumed here: the derived `RunnerHostSpec` and access template (cool-lark-40), and the host-generic Redfish boot-once (R5, smart-crane-730)."),
+          li(text: "**Scope:** R2 typed per-concern projections; R3 keyed state over the applicable population; R4 policy columns on `HostEnrollmentIntent`, with the mtcollins1 federation moved onto them. The `arrival_subject` part of R4 is delivered by smart-crane-730 in PXE 1 (2026-11-10): the arrival row carries its `HostIdentity` and standing grant, and the mtcollins1 exclusion becomes a managed-host-membership check. R4 consumes it. D2's re-keying of per-machine fact declarations happens table by table as each rule lifts. Delivered elsewhere and consumed here: the derived `RunnerHostSpec` and access template (cool-lark-40), and the host-generic Redfish boot-once (R5, smart-crane-730)."),
           li_blocks(blocks: [
             p(text: "**Acceptance:**"),
             ul(items: [
               li(text: "Each absorbed branch or declaration is deleted, not wrapped."),
               li(text: "A fixture machine outside srv1-srv4 gets a real answer or a typed inapplicable or unread outcome, never a default."),
-              li(text: "srv13/bobo's arrival admits against its own grant."),
+              li(text: "bobo's arrival (delivered by smart-crane-730) admits against its own grant."),
             ]),
           ]),
           li(text: "**Done:** the 4.2 regex over `gunbc/runner`, `gunbc/host` and `gunbc/fleet` finds no `== operator_host_` arm. Any remaining per-machine declaration is an individually justified fact about that machine, keyed by its handle."),
