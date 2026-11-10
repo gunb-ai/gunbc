@@ -28,6 +28,7 @@ import std.algebra { length, string_contains, string_concat_join }
 import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_to_byte_size, seconds_per_day }
 import std.decimal { fixed_point_trimmed_wire }
 import std.content_hash { sha256_hex_of_text, lower_hex_64 }
+import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
 import gunbc.serving.srv1_serving_replica_layout {
   Srv1LaunchConfig, Srv1LmCacheL2Placement, Srv1CheckpointRetentionPolicy, Srv1TlsMaterial,
   Srv1ApiKeyReference, Srv1ContainerRunShape, Srv1ServingReplicaSpec,
@@ -46,7 +47,9 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_ready_deadline_seconds, srv1_boot_path_crash_restart_floor_seconds,
   srv1_boot_path_run_is_cold_start, srv1_boot_path_run_is_crash,
   srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag,
-  srv1_container_command_render_bash_emit_dissolution,
+  srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
+  srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
+  srv1_replica_helper_bash_emit_dissolution,
 }
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
@@ -522,6 +525,38 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
     && length(filter(runs, r => srv1_boot_path_run_is_cold_start(r))) == 2
     && length(filter(runs, r => srv1_boot_path_run_is_crash(r))) == 2
     && !string_contains(s: srv1_boot_path_incident_2026_11_09, pattern: "no downtime")
+}
+
+// EVERY HAND-COMPOSED SCRIPT THIS MODULE SHIPS CARRIES A MARKER OF ITS OWN, and each marker names the carrier
+// it covers. A comment may claim "this is tracked as X" and mean nothing: the launcher's debt was pointed at
+// srv1_serving_gpu_launcher_bash_emit_dissolution (which covers the RETAINED gpu.sh, now the restore path) and
+// at srv1_replica_launcher_shape_dissolution, which no row declared (review 92788). This claim references each
+// marker by name, so an undeclared one fails to resolve, and it refuses a marker that does not name what it
+// covers, so a marker cannot be a generic paragraph about debt.
+fn marker_text(condition: DissolutionCondition) -> String {
+  match condition {
+    BoundDissolution { trigger: _ } => ""
+    UnboundDissolution { description: d } => d as String
+  }
+}
+
+test fn every_hand_composed_script_carries_its_own_marker() -> Bool {
+  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
+  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
+  let shape_marker = marker_text(condition: srv1_replica_launcher_shape_dissolution)
+  let gpu_sh_marker = marker_text(condition: srv1_serving_gpu_launcher_bash_emit_dissolution)
+  let helper_marker = marker_text(condition: srv1_replica_helper_bash_emit_dissolution)
+  string_contains(s: launcher_marker, pattern: "srv1_replica_launcher_lines")
+    && string_contains(s: command_marker, pattern: "srv1_replica_container_command_lines")
+    && string_contains(s: shape_marker, pattern: "Srv1ContainerRunShape")
+    && string_contains(s: gpu_sh_marker, pattern: "srv1_serving_gpu_launcher")
+    && string_contains(s: helper_marker, pattern: "srv1_replica_helper")
+    // every marker states its trigger, and names the modeled route it waits on: the shell bodies point at
+    // v2.workflow.bash_emit, the docker argv points at the docker spec input -- a marker that named NEITHER
+    // route is a paragraph, not a dissolution
+    && all([launcher_marker, command_marker, shape_marker, gpu_sh_marker, helper_marker], m =>
+      string_contains(s: m, pattern: "dissolve-on:")
+        && (string_contains(s: m, pattern: "v2.workflow.bash_emit") || string_contains(s: m, pattern: "extdeps.docker.create_spec")))
 }
 
 // THE BARS THEMSELVES ARE NOT FREE NUMBERS. The crash floor must be the CONTRACT's restart delay, so a unit

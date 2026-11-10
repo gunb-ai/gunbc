@@ -142,9 +142,14 @@ fn arm_rows_in(list: List<CollectiveTransportReading>, arm: NonEmptyStr) -> List
   list.filter(c => (c.env_arm as String) == (arm as String))
 }
 
-// The two arms at ONE size, within `numerator/denominator` of each other. Pinning both rows to the same
-// message size is what makes this the pair at that size and not any two rows that happen to be close: the
-// 16 KiB pair is uninteresting and would pass any tolerance, which is exactly how a vacuous control is born.
+// The two arms at ONE size, within tolerance: each arm must be at least `numerator/denominator` of the other.
+// The ratio pair is written that way on purpose -- `a*D >= B*N` and `B*D >= A*N` bounds the RATIO, so passing
+// N=8,D=10 means neither arm is below four-fifths of the other. (The first cut of this helper passed N=5,D=4,
+// which asks a >= 1.25b AND b >= 1.25a: unsatisfiable, so the control read false on correct data and the
+// failure was in the test, not the machine -- the kind of mistake a tolerance written as one inequality hides.)
+// Pinning both rows to the same message size is what makes this the pair at that size and not any two rows
+// that happen to be close: the 16 KiB pair is uninteresting and would pass any tolerance, which is exactly how
+// a vacuous control is born.
 fn arms_within(list: List<CollectiveTransportReading>, at_bytes: ByteSize, numerator: Nat, denominator: Nat) -> Bool {
   list.any(a => list.any(b =>
     (a.env_arm as String) == ("default" as NonEmptyStr)
@@ -234,9 +239,10 @@ test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
     && unloaded_disabled.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
     && !unloaded_disabled.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
     && !unloaded_default.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
-    // and at the two sizes where the loaded pair was ~2x apart, unloaded they are within 25%
-    && arms_within(list: unloaded, at_bytes: byte_size(4 * 1024 * 1024), numerator: 5, denominator: 4)
-    && arms_within(list: unloaded, at_bytes: byte_size(64 * 1024 * 1024), numerator: 5, denominator: 4)
+    // and at the two sizes where the loaded pair was ~2x apart, unloaded neither arm falls below
+    // four-fifths of the other
+    && arms_within(list: unloaded, at_bytes: byte_size(4 * 1024 * 1024), numerator: 8, denominator: 10)
+    && arms_within(list: unloaded, at_bytes: byte_size(64 * 1024 * 1024), numerator: 8, denominator: 10)
     // the obligation now names the run it was executed in, the confounder that had to be removed, and the
     // fact that it was the re-run the earlier pair asked for
     && string_contains(s: srv1_collective_read_obligation as String, pattern: "lil-flash-next")

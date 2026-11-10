@@ -1004,6 +1004,13 @@ data srv1_replica_container_run_shape: Srv1ContainerRunShape = Srv1ContainerRunS
   tls_subject_common_name: "pool-card" as NonEmptyStr,
 }
 
+// THE MARKER THE COMMENT ABOVE PROMISES. That comment leaves the docker-shape step "open as
+// srv1_replica_launcher_shape_dissolution"; a named dissolution that is never declared is the same defect as an
+// empty marker file -- a reader follows the name and finds nothing (review 92788). Declared here, on the rows it
+// covers.
+data srv1_replica_launcher_shape_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_docker_argv and Srv1ContainerRunShape — the container the launcher asks docker for is emitted as flag STRINGS from typed shape rows, which pins the SPELLINGS docker reported (--volume host:container, --memory=32g, --shm-size=16g) rather than the input the flag names. DISSOLVES WHEN the same container is described through extdeps.docker.create_spec DockerCreateSpec, where the mount TYPE and the IPC namespace are explicit fields instead of implied by a spelling, KEEPING the byte-for-byte control against docker inspect so an adoption diff stays attributable. Left open deliberately mid-window: switching --volume to --mount while switching a live replica puts two changes in one diff and leaves neither isolated.")
+
+
 // The directory the TLS identity is copied FROM when a replica's own serve directory has none. Both replicas
 // present ONE certificate identity and the router pins it (upstream_ca.pem), so a replica that minted its own
 // pair would come up healthy on every local check and be rejected by the router -- an outage that reads like an
@@ -1160,10 +1167,12 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
   ]
 }
 
-// THE SCAFFOLD MARKER FOR THE CONTAINER-COMMAND RENDER ABOVE, sitting on the carrier it covers. The launcher
-// and the helper each have one (srv1_serving_gpu_launcher_bash_emit_dissolution,
-// srv1_replica_helper_bash_emit_dissolution); this body had none, which is the gap review 92777 named:
-// hand-shell with no marker is debt nobody counts.
+// THE SCAFFOLD MARKER FOR THE CONTAINER-COMMAND RENDER ABOVE, sitting on the carrier it covers. Every hand-
+// composed script this module carries now has one of its own: the retained gpu.sh (srv1_serving_gpu_launcher_
+// bash_emit_dissolution), the helper (srv1_replica_helper_bash_emit_dissolution), the launcher render
+// (srv1_replica_launcher_render_bash_emit_dissolution), the docker argv shape (srv1_replica_launcher_shape_
+// dissolution), and -- added because review 92777 found this body unmarked -- this one. Hand-shell with no
+// marker is debt nobody counts.
 //
 // WHAT IS ADMITTED: the container's inner command -- event logger, TLS guard, START event, args-file refusal,
 // engine exec -- is composed from strings rather than emitted as nodes. It is admitted because the composition
@@ -1402,6 +1411,20 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
     ]
   )
 }
+
+// THE SCAFFOLD MARKER FOR THE NEW LAUNCHER RENDER, on its own carrier. review 92788 is right that the gpu.sh
+// marker does not cover this: srv1_serving_gpu_launcher_bash_emit_dissolution is about the RETAINED operator
+// script, which after 2026-11-09 is only the restore path. The function above is the script the fleet now
+// boots, and it is composed from strings -- input guards, `case` arms over the roster, `docker run -d`, the
+// TLS copy guards, the exec of the rendered args file -- so its debt gets its own row instead of borrowing a
+// neighbour's.
+//
+// WHY IT IS ADMITTED AS SCAFFOLD RATHER THAN MIGRATED IN THIS CHANGE: the value of the switch is that the bytes
+// installed on the host are the bytes the interpreter rendered (digest-matched on-host) and that the container's
+// inner command equals what `docker inspect` reported before the switch. Those controls do not depend on the
+// medium, and they are what makes a live switch attributable; swapping the emitter in the same diff would move
+// the bytes while a live replica was moving, and the window's evidence would then explain neither.
+data srv1_replica_launcher_render_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_launcher_lines — the launcher the fleet boots as of 2026-11-09 (input guards, case arms over srv1_serving_replica_specs, docker run -d with the rendered argv, the TLS copy guards, exec of the rendered engine args file) is composed from strings. The gpu.sh marker covers only the retained restore script; this is the live render, and its debt is counted here. DISSOLVES WHEN the launcher is emitted as nodes through v2.workflow.bash_emit bash_emit_stmts from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig/Srv1ContainerRunShape rows, KEEPING the three install-time gates that do not depend on the medium: the serving image's own bash parses the emitted inner command, a dry-run of it yields the argv docker inspect .Config.Cmd reported before the switch, and sha256(render) equals the on-host sha256 of the installed file. Until then this is adopted hand-shell under a marker, not an authority on how a launcher should be written.")
 
 // The launcher as installed, in one string. CLI entry:
 //   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_launcher
