@@ -1,0 +1,68 @@
+module gunbc.test.claim.serving.serving_runner_width_witness
+
+// THE WITNESS THAT THE RUNNER WIDTH DERIVATION CONSUMES THE SERVING RESERVATIONS (B4a, item 2). The
+// reservation facts live in gunbc.serving.serving_reservation, but a fact nothing consumes is a guess: the
+// finding named two functions -- gunbc.runner.runner_slot_allocation and gunbc.live_deploy.served_slice_charge
+// host_served_deployment_claim -- that today charge only the prod-role host and never srv3/srv4's Strata. This
+// file is the real consumer on the OTHER side: it drives the width derivation itself and discriminates the
+// two axes the finding required.
+//
+//   1. MEMORY (the binding axis at cores_per_slot 1). srv3 -- a Strata host that is NOT the prod host -- pays
+//      its reserved memory into the runner envelope, to the byte; the prod host srv1 carries no serving row
+//      and so is charged nothing. The discriminating red: if the derivation orphaned the reservation (never
+//      subtracted it) or ignored it and charged zero, the envelope would not fall by the charge and the
+//      equality breaks. srv1 being charged zero is checked too, so a host that runs no Strata replica cannot
+//      be silently shrunk.
+//   2. CPU (an axis the module kept for the day it binds). An AFFINITY pin leaves the offered threads whole;
+//      an EXCLUSIVE pin loses exactly the cores it withholds. srv3 pins affinitively, so its axis stays 128
+//      and non-binding, exactly as the 2026-09-19 ruling intends -- a witness that could not tell affinity
+//      from exclusive would fail here.
+//
+// Run (the whole floor is CI's job; this file runs alone):
+//   claim_batch --hermetic --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/serving/serving_runner_width_witness.dag \
+//     --functions witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_byte,witness_an_affinity_pin_leaves_the_cpu_axis_whole_where_an_exclusive_pin_withholds_its_cores
+import std.types { Bool }
+import std.measure { byte_size, byte_size_count, hardware_thread_count }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.runner.runner_slot_allocation {
+  RunnerMemoryEnvelopeDerived, RunnerMemoryEnvelopeUnestablished,
+  host_runner_memory_envelope_resolution, host_runner_memory_envelope_resolution_with_serving,
+  cpu_width_of_threads_withheld,
+}
+import gunbc.serving.serving_reservation { host_memory_reserved, host_cores_withheld_from_runner }
+
+// MEMORY: THE SERVING HOST PAYS, THE PROD HOST DOES NOT. srv3 reserves memory and the envelope falls by
+// exactly that; srv1 reserves nothing and is charged nothing. The subtraction and the feed are pinned by one
+// equality -- base and charged are the SAME derivation with the charge flipped on -- so neither a missing
+// subtraction nor a zero feed can pass.
+test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_byte() -> Bool {
+  let charge = byte_size_count(b: host_memory_reserved(operator_host_srv3))
+  let base = host_runner_memory_envelope_resolution_with_serving(host: operator_host_srv3, serving: byte_size(count: 0))
+  let charged = host_runner_memory_envelope_resolution(host: operator_host_srv3)
+  let base_bytes = match base {
+    RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
+  }
+  let charged_bytes = match charged {
+    RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
+  }
+  let prod_carries_nothing = byte_size_count(b: host_memory_reserved(operator_host_srv1)) == 0
+  charge == 32
+    && base_bytes > 0
+    && charged_bytes > 0
+    && base_bytes == charged_bytes + charge
+    && prod_carries_nothing
+}
+
+// CPU: AFFINITY LEAVES THE WIDTH WHOLE, EXCLUSIVE PAYS ITS CORES. The axis is fed by the withheld count and
+// nothing else -- an affinity pin withholds zero and keeps all 128 offered threads; a pin that took 40 cores
+// exclusively offers 88. srv3's real pin is affinity, so its withheld count is zero and its axis is whole.
+test fn witness_an_affinity_pin_leaves_the_cpu_axis_whole_where_an_exclusive_pin_withholds_its_cores() -> Bool {
+  let whole = cpu_width_of_threads_withheld(threads: hardware_thread_count(count: 128), withheld_cores: 0)
+  let minus_forty = cpu_width_of_threads_withheld(threads: hardware_thread_count(count: 128), withheld_cores: 40)
+  let srv3_whole = host_cores_withheld_from_runner(operator_host_srv3) == 0
+    && cpu_width_of_threads_withheld(threads: hardware_thread_count(count: 128), withheld_cores: host_cores_withheld_from_runner(operator_host_srv3)) == 128
+  whole == 128 && minus_forty == 88 && srv3_whole
+}

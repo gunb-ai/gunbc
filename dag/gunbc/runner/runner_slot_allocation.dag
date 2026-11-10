@@ -20,6 +20,7 @@ import gunbc.host.host_memory_observation { gunbc_ci_host_memory_observation_for
 import gunbc.host.host_memory_carrier { HostUsableRam, HostFixedOverhead, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.fabric.fabric_control_plane_charge { HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured, host_fabric_control_plane_claim }
 import gunbc.live_deploy.served_slice_charge { HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured, host_served_deployment_claim }
+import gunbc.serving.serving_reservation { host_memory_reserved, host_cores_withheld_from_runner, host_gpus_withheld_from_runner }
 import gunbc.ci.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
@@ -443,59 +444,76 @@ type RunnerMemoryEnvelope
   = RunnerMemoryEnvelopeDerived { bytes: ByteSize }
   | RunnerMemoryEnvelopeUnestablished { cause: String }
 
+// THE SEVENTH TERM (B4a, 2026-11-10): A SERVING HOST PAYS FOR THE RESERVATIONS IT RUNS. Every serving
+// replica's memory reservation is subtracted from this host's runner memory envelope, for EVERY host that
+// carries a reservation row -- not the prod-role host alone. gunbc.live_deploy.served_slice_charge charges
+// the one host the deployment is pinned to; a srv3/srv4 host running a Strata engine was charging nothing,
+// because nothing typed existed to charge with. Now it does (gunbc.serving.serving_reservation) and the
+// width folds it here. CPU and GPU reservations price on their own axes (the CPU axis below reads the
+// exclusive-withheld cores); a host with no reservation row is charged zero, so the prod-role host and every
+// non-serving host are unaffected. The single-host entry is unchanged so no consumer notices; the
+// _with_serving sibling lets the witness flip the charge on and off to prove it is CONSUMED, not orphaned.
 fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnvelope {
-  runner_memory_envelope_of(f: host_width_facts(host: host))
+  host_runner_memory_envelope_resolution_with_serving(host: host, serving: host_memory_reserved(host: host))
+}
+
+fn host_runner_memory_envelope_resolution_with_serving(host: HostIdentity, serving: ByteSize) -> RunnerMemoryEnvelope {
+  runner_memory_envelope_of_with_serving(f: host_width_facts(host: host), serving: serving)
 }
 
 fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
+  runner_memory_envelope_of_with_serving(f: f, serving: host_memory_reserved(host: f.host))
+}
+
+fn runner_memory_envelope_of_with_serving(f: HostWidthFacts, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.fixed_overhead {
     HostFixedOverheadUnmeasured { reason: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("host fixed overhead is unmeasured: the envelope cannot be derived without knowing what the host owes its own residents: ", why as String)
       }
     HostFixedOverheadMeasured { bytes: overhead, provenance: _ } =>
-      envelope_after_overhead(f: f, overhead: overhead)
+      envelope_after_overhead(f: f, overhead: overhead, serving: serving)
     HostFixedOverheadAllowance { bytes: overhead, reason: _ } =>
-      envelope_after_overhead(f: f, overhead: overhead)
+      envelope_after_overhead(f: f, overhead: overhead, serving: serving)
   }
 }
 
-fn envelope_after_overhead(f: HostWidthFacts, overhead: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_overhead(f: HostWidthFacts, overhead: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.usable_ram {
     HostUsableRamUnmeasured { reason: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("host usable RAM is unmeasured: no /proc/meminfo MemTotal read exists for this host: ", why as String)
       }
     HostUsableRamMeasured { bytes: usable, provenance: _ } =>
-      envelope_after_usable(f: f, usable: usable, overhead: overhead)
+      envelope_after_usable(f: f, usable: usable, overhead: overhead, serving: serving)
     HostUsableRamConservativeLowerBound { bytes: usable, basis: _ } =>
-      envelope_after_usable(f: f, usable: usable, overhead: overhead)
+      envelope_after_usable(f: f, usable: usable, overhead: overhead, serving: serving)
   }
 }
 
-fn envelope_after_usable(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_usable(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.session {
     ReservationBytesUnestablished { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("host session reservation is unestablished, so the subtraction cannot be performed: ", why)
       }
     ReservationBytesNotApplicable =>
-      envelope_after_session(f: f, usable: usable, overhead: overhead, session: byte_size(0))
+      envelope_after_session(f: f, usable: usable, overhead: overhead, session: byte_size(0), serving: serving)
     ReservationBytes { bytes: session } =>
-      envelope_after_session(f: f, usable: usable, overhead: overhead, session: session)
+      envelope_after_session(f: f, usable: usable, overhead: overhead, session: session, serving: serving)
   }
 }
 
-fn envelope_after_session(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_session(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   match f.control_plane {
     ControlPlaneClaimUnmeasured { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
       }
     ControlPlaneNotPlaced =>
-      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0), serving: serving)
     ControlPlaneClaimResolved { memory: m } =>
-      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: m)
+      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: m, serving: serving)
   }
 }
 
@@ -507,31 +525,37 @@ fn envelope_after_session(f: HostWidthFacts, usable: ByteSize, overhead: ByteSiz
 // slices grew to 40 + 10 GiB (#12015) srv1's derived width no longer conserved and
 // gunbc.ci.ci_runner_placement refused it as over-committed. Width and verdict now subtract one set of
 // residents, so a width this module derives is one the verdict can admit.
-fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
+  // THE SEVENTH TERM rides in with the sixth: `serving` is the fold of this host's serving-replica memory
+  // reservations, priced at entry. It is not gated on the deployment placement -- a srv3/srv4 host that runs
+  // a Strata engine but no prod deployment still owes its reserved memory back to the runner pool.
   match f.served_deployment {
     ServedDeploymentClaimUnmeasured { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("served deployment is placed on this host with an unmeasured allowance: ", why)
       }
     ServedDeploymentNotPlaced =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0))
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0), serving: serving)
     ServedDeploymentClaimResolved { memory: m } =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m)
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m, serving: serving)
   }
 }
 
-fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize) -> RunnerMemoryEnvelope {
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
     bytes: byte_size_saturating_sub(
       total: byte_size_saturating_sub(
         total: byte_size_saturating_sub(
           total: byte_size_saturating_sub(
-            total: byte_size_saturating_sub(total: usable, reserved: overhead),
-            reserved: session
+            total: byte_size_saturating_sub(
+              total: byte_size_saturating_sub(total: usable, reserved: overhead),
+              reserved: session
+            ),
+            reserved: control_plane
           ),
-          reserved: control_plane
+          reserved: served_deployment
         ),
-        reserved: served_deployment
+        reserved: serving
       ),
       reserved: oomd_actuation_floor(host: usable)
     )
@@ -895,7 +919,24 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 //
 // THE QUOTIENT STAYS IN THE CARRIER: threads over threads-per-slot, both HardwareThreadCount.
 fn compute_host_cpu_admitted_width(host: ComputeHost) -> Int {
-  measure_fit_count_floor(capacity: compute_host_cpu_threads(host: host), each: gunbc_runner_cores_per_slot()) as Int
+  cpu_width_of_threads_withheld(threads: compute_host_cpu_threads(host: host), withheld_cores: host_cores_withheld_from_runner(host: host.identity))
+}
+
+// THE CPU AXIS, NOW PRICED (B4a, 2026-11-10). Until today this axis had NO CPU reservation: every core was
+// offered to runner slots (the comment above said so and kept the axis for the day it binds -- a future
+// cores_per_slot above 1, or a box that is not an M128-30). A serving replica that takes cores EXCLUSIVELY is
+// that day arriving: exclusively-withheld cores belong to no other tenant and so cannot be offered to CI. An
+// AFFINITY pin -- a cpuset the engine may run on -- is NOT withheld; the runner keeps those cores and the width
+// is unchanged. The derivation's decision, witnessed in gunbc.test.claim.serving.serving_runner_width_witness:
+// only the exclusive arm reduces width, and it reduces it by exactly the cores withheld. srv3/srv4 pin their
+// engines AFFINITIVELY, so their offered threads are unchanged (the axis stays 128 and non-binding, as the
+// 2026-09-19 ruling intends); a host that reserved cores exclusively offers the pool minus the withheld count,
+// and the committed width falls by it once the axis binds. Fail closed: a host whose exclusive reservations
+// exceed its cores offers zero -- over-committed and visibly so, never under-priced.
+fn cpu_width_of_threads_withheld(threads: HardwareThreadCount, withheld_cores: Nat) -> Int {
+  let total = hardware_thread_count_value(t: threads)
+  let available = if withheld_cores <= total { total - withheld_cores } else { 0 }
+  measure_fit_count_floor(capacity: hardware_thread_count(count: available), each: gunbc_runner_cores_per_slot()) as Int
 }
 
 type HostCpuWidthResolution
