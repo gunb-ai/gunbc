@@ -1,11 +1,18 @@
 module test.claim.serving.scratch_merry_dump2
 
-// SCRATCH, NOT FOR MERGE. Isolate which fold piece refuses with the generic
-// grammar_relation_production_not_found. DELETE when done.
+// SCRATCH, NOT FOR MERGE. One run, three dumps:
+//   1. P1..P8: which fold piece refuses with the generic grammar_relation_production_not_found;
+//   2. the launcher render between sentinels, for a byte diff against the installed file;
+//   3. the container command body between sentinels, for a byte diff against the host's.
+// DELETE when done.
 
 import std.types { String }
 import std.process { ExitSuccess }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.serving.srv1_serving_replica_layout {
+  srv1_replica_0, srv1_replica_1, srv1_admitted_launch_config, srv1_replica_container_command_lines,
+  srv1_render_replica_launcher,
+}
 import v2.std.diagnostic { diagnostics_reason_lexemes, Outcome }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.extdeps.languages.bash_build {
@@ -22,23 +29,25 @@ fn probe(label: String, outcome: Outcome<String>) -> String {
   }
 }
 
-fn main() -> CliWireResponse {
-  let positional0 = match bash_build_word_positional(index: "0") {
-    Present { value: p } => p
-    Absent => bash_build_word_kinded(kind: ^scratch_refused_positional, value: "0")
-  }
-  let dq0 = match bash_build_word_double_quoted(parts: [positional0]) {
+fn or_node(outcome: Optional<Node>, kind: Symbol, value: String) -> Node {
+  match outcome {
     Present { value: n } => n
-    Absent => bash_build_word_kinded(kind: ^scratch_refused_dq, value: "0")
+    Absent => bash_build_word_kinded(kind: kind, value: value)
   }
+}
+
+fn main() -> CliWireResponse {
+  let positional0 = or_node(outcome: bash_build_word_positional(index: "0"), kind: ^scratch_refused_positional, value: "0")
+  let dq0 = or_node(outcome: bash_build_word_double_quoted(parts: [positional0]), kind: ^scratch_refused_dq, value: "0")
+  let bare_echo = or_node(outcome: bash_build_word_bare(text: "echo"), kind: ^scratch_refused_bare, value: "echo")
+  let bare_path =
+    or_node(
+      outcome: bash_build_word_bare(text: "/root/engine.args"),
+      kind: ^scratch_refused_bare_path,
+      value: "/root/engine.args"
+    )
   let exec_cmd = bash_build_command_from_lits(lits: ["exec"])
-  let echo_bare = bash_build_command_with_words(words: [bash_build_word_bare(text: "echo")])
-  let echo_lit = bash_build_command_with_words(words: [bash_build_word_lit(text: "echo")])
-  let bad_var = bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "1x")])
-  let redir_bare = bash_build_with_redir_from_file(
-    inner: exec_cmd,
-    path: bash_build_word_bare(text: "/root/engine.args")
-  )
+  let body = join(parts: srv1_replica_container_command_lines(replica: srv1_replica_0, config: srv1_admitted_launch_config), separator: "\n")
   CliWirePrintable {
     bytes: concat(
       concat(
@@ -46,23 +55,46 @@ fn main() -> CliWireResponse {
           concat(
             concat(
               concat(
-                concat("P1_POSITIONAL ", probe(label: "", outcome: bash_fold_serialize_node(stmt: positional0))),
-                concat("P2_DQ0 ", probe(label: "", outcome: bash_fold_serialize_node(stmt: dq0)))
+                concat(
+                  concat("P1_POSITIONAL ", probe(label: "", outcome: bash_fold_serialize_node(stmt: positional0))),
+                  concat("P2_DQ0 ", probe(label: "", outcome: bash_fold_serialize_node(stmt: dq0)))
+                ),
+                concat("P3_EXEC ", probe(label: "", outcome: bash_fold_serialize_node(stmt: exec_cmd)))
               ),
-              concat("P3_EXEC ", probe(label: "", outcome: bash_fold_serialize_node(stmt: exec_cmd)))
+              concat(
+                "P4_REDIR_DQ0 ",
+                probe(
+                  label: "",
+                  outcome: bash_fold_serialize_node(stmt: bash_build_with_redir_from_file(inner: exec_cmd, path: dq0))
+                )
+              )
             ),
-            concat(
-              "P4_REDIR_DQ0 ",
-              probe(label: "", outcome: bash_fold_serialize_node(stmt: bash_build_with_redir_from_file(inner: exec_cmd, path: dq0)))
+            concat("P5_ECHO_BARE ", probe(label: "", outcome: bash_fold_serialize_node(stmt: bash_build_command_with_words(words: [bare_echo]))))
+          ),
+          concat("P6_ECHO_LIT ", probe(label: "", outcome: bash_fold_serialize_node(stmt: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo")]))))
+        ),
+        concat(
+          concat(
+            "P7_BADVAR ",
+            probe(
+              label: "",
+              outcome: bash_fold_serialize_node(stmt: bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "1x")]))
             )
           ),
-          concat("P5_ECHO_BARE ", probe(label: "", outcome: bash_fold_serialize_node(stmt: echo_bare)))
-        ),
-        concat("P6_ECHO_LIT ", probe(label: "", outcome: bash_fold_serialize_node(stmt: echo_lit)))
+          concat(
+            "P8_REDIR_BARE ",
+            probe(
+              label: "",
+              outcome: bash_fold_serialize_node(
+                stmt: bash_build_with_redir_from_file(inner: exec_cmd, path: bare_path)
+              )
+            )
+          )
+        )
       ),
       concat(
-        concat("P7_BADVAR ", probe(label: "", outcome: bash_fold_serialize_node(stmt: bad_var))),
-        concat("P8_REDIR_BARE ", probe(label: "", outcome: bash_fold_serialize_node(stmt: redir_bare)))
+        concat("<<<BODY>>>\n", concat(body, "\n<<<END_BODY>>>\n")),
+        concat("<<<LAUNCHER>>>\n", concat(srv1_render_replica_launcher(), "\n<<<END_LAUNCHER>>>\n"))
       )
     ),
     exit: ExitSuccess,
