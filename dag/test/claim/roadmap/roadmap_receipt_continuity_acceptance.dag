@@ -1,6 +1,17 @@
 module test.claim.roadmap.roadmap_receipt_continuity_acceptance
 
 import std.types { NonEmptyStr }
+import gunbc.roadmap.roadmap_event_cli {
+  roadmap_retired_verdict_is_admitted, roadmap_acceptance_history_verdict_is_loaded,
+  roadmap_migration_verdict_is_admitted, roadmap_read_back_is_admitted,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
+}
+import gunbc.roadmap.roadmap_acceptance_history_carrier {
+  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+}
 import std.content_hash { content_hash_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_authority {
@@ -554,4 +565,57 @@ test fn witness_replayable_empty_live_set_still_projects_affirmatively() -> Bool
           RoadmapAcceptanceReceiptsProjected { receipts: receipts } => count(receipts) == 0
         }
   }
+}
+
+// THE READ-BACK DOORS DECIDE NOTHING NEW — AND THAT IS THE CLAIM. Each of the three exits the live
+// migration gates on is a verdict turned into an exit; these hold that the mapping keeps its
+// direction under a controlled RED: a log that refused is never admitted, an empty-but-loaded set is
+// admitted (an empty retired set is a real fact; an unreadable log is not), and a verifier verdict
+// that names both words is refused rather than resolved.
+fn a_retired_verdict_maps_to_the_exit_the_log_earned() -> Bool {
+  let loaded_empty = RetiredNodeIdsLoaded { ids: [] }
+  let loaded_one = RetiredNodeIdsLoaded { ids: [nid("a-node")] }
+  let refused = RetiredNodeIdsRefused { detail: "the event log directory is not opened" as NonEmptyStr }
+  claim(roadmap_retired_verdict_is_admitted(verdict: loaded_empty),
+    "a log that loaded and holds no retirements is admitted — the empty set is a fact, not a failure")
+  && claim(roadmap_retired_verdict_is_admitted(verdict: loaded_one),
+    "a log that loaded its retirements is admitted")
+  && claim(!roadmap_retired_verdict_is_admitted(verdict: refused),
+    "a log that refused is NEVER admitted: the report door exits 1 rather than serving a plan that looks unretired")
+}
+
+fn an_acceptance_history_verdict_maps_to_the_exit_the_log_earned() -> Bool {
+  let loaded = RoadmapAcceptanceEventHistoryLoaded { events: [] }
+  let refused = RoadmapAcceptanceEventHistoryLoadRefused { detail: "the event log could not be read" }
+  claim(roadmap_acceptance_history_verdict_is_loaded(verdict: loaded),
+    "a history that loaded — even with no acceptances yet — is admitted")
+  && claim(!roadmap_acceptance_history_verdict_is_loaded(verdict: refused),
+    "a history that refused is never admitted: the page would otherwise serve no accepted work at all")
+}
+
+fn the_migration_verdict_admits_only_verified_unrefused_text() -> Bool {
+  claim(roadmap_migration_verdict_is_admitted(text: "MIGRATION VERIFIED: 18 manifest events (18 exact) and 3 retirements reconcile"),
+    "the verifier's own admitted spelling opens the door")
+  && claim(!roadmap_migration_verdict_is_admitted(text: "MIGRATION REFUSED: no dashboard instance is registered at /opt/gunbc/dashboard"),
+    "a refusal closes the door — the activation waits for the verifier, never for the operator's patience")
+  && claim(!roadmap_migration_verdict_is_admitted(text: "MIGRATION VERIFIED — but MIGRATION REFUSED: the retired lane does not order"),
+    "a verdict naming both words is refused, not chosen: the door never picks the convenient half")
+  && claim(!roadmap_migration_verdict_is_admitted(text: ""),
+    "the empty text is not a verification")
+}
+
+// THE READ-BACK DOCUMENT IS ADMITTED ONLY WHEN EVERY PART IS. Each part is another reader's verdict, and
+// the composition must not be able to average them: one refusal anywhere refuses the whole document, which
+// is what keeps a half-read log from being quoted as a migration that completed.
+fn the_read_back_refuses_when_any_single_part_refuses() -> Bool {
+  claim(roadmap_read_back_is_admitted(verdict_ok: true, retired_ok: true, history_ok: true, wrote_ok: true),
+    "all four parts admitted admits the document")
+  && claim(!roadmap_read_back_is_admitted(verdict_ok: false, retired_ok: true, history_ok: true, wrote_ok: true),
+    "a refused verdict refuses the document, however clean the rest reads")
+  && claim(!roadmap_read_back_is_admitted(verdict_ok: true, retired_ok: false, history_ok: true, wrote_ok: true),
+    "a refused retired read refuses the document — the plan would otherwise be quoted as unretired")
+  && claim(!roadmap_read_back_is_admitted(verdict_ok: true, retired_ok: true, history_ok: false, wrote_ok: true),
+    "a refused acceptance history refuses the document — no accepted work may be certified from a log that will not read")
+  && claim(!roadmap_read_back_is_admitted(verdict_ok: true, retired_ok: true, history_ok: true, wrote_ok: false),
+    "and a document that could not be WRITTEN refuses too: an unread receipt is not a receipt")
 }
