@@ -31596,7 +31596,10 @@ mod t9_host_recursion_probes {
     /// rest_refusal_text), so nothing the RESPONSE presented may appear in it: the cause kind, the
     /// coproduct, the declared encoding/naming/count are kept; the strings the body presented are dropped;
     /// and the located `field_path` is dropped because a record decode builds it from the keys the object
-    /// presented, not from the fields the type declared.
+    /// presented, not from the fields the type declared. Every variant of `RestResponseDecodeCause` that
+    /// carries a response-supplied payload is planted here -- `UnknownSpelling`, `NotAnExactDecimal`,
+    /// `ModuleWireContractUnresolved`, `AuthoredNameIsNotTheWireKey` and `AmbiguousWireSpelling` -- so an
+    /// arm edited later to interpolate its payload turns red instead of publishing it.
     #[test]
     fn undecodable_cause_is_declared_side_only() {
         let located = |cause: crate::v1_interpreter::RestResponseDecodeCause| {
@@ -31637,6 +31640,35 @@ mod t9_host_recursion_probes {
         assert!(
             !decimal.contains("FAKE-SECRET-MARKER"),
             "cause echoed the presented number: {decimal}"
+        );
+        let module_contract = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::ModuleWireContractUnresolved {
+                cause: "FAKE-SECRET-MARKER".to_string(),
+            },
+        ));
+        assert!(
+            !module_contract.contains("FAKE-SECRET-MARKER"),
+            "cause echoed the module's own unresolved text: {module_contract}"
+        );
+        let authored_key = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
+                authored: "FAKE-SECRET-MARKER".to_string(),
+                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+            },
+        ));
+        assert!(
+            !authored_key.contains("FAKE-SECRET-MARKER"),
+            "cause echoed an authored or wire spelling: {authored_key}"
+        );
+        let both_spellings = crate::v1_interpreter::rest_response_declared_cause(&located(
+            crate::v1_interpreter::RestResponseDecodeCause::AmbiguousWireSpelling {
+                authored: "FAKE-SECRET-MARKER".to_string(),
+                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+            },
+        ));
+        assert!(
+            !both_spellings.contains("FAKE-SECRET-MARKER"),
+            "cause echoed both spellings of one member: {both_spellings}"
         );
     }
 }
