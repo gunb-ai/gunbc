@@ -5926,6 +5926,7 @@ fn partition_move_explained_by_this_change(
             let mut args = affected_set_model_args(
                 ctx,
                 &population.edited_modules,
+                &population.edited_modules,
                 &population.unlocatable,
                 &edges,
                 &compared,
@@ -11923,15 +11924,23 @@ fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
 
 /// The arguments `gunbc.regen_affected_set regen_affected_set` is asked with, one construction for
 /// the bound's own run and for the partition-move decision that consumes the typed bound.
+/// `walk_roots` bounds the subgraph handed to the model, and must name every set the model walks
+/// from: the change's own `edited` always, and for a diverged change the base delta's modules too
+/// (`regen_affected_set_over_diverged_change` walks them separately). A subgraph bounded by
+/// `edited` alone would hand the base-delta walk no edges -- for a plan-only change, none at all --
+/// so a base change to a module the emitter imports would select nothing (side-chat review of
+/// #16239 at 916dd47). The model's walk from `edited` over the wider subgraph reaches the same set,
+/// because every edge into that set is still present.
 fn affected_set_model_args(
     ctx: &crate::v1_interpreter::InterpContext,
+    walk_roots: &[String],
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
     compared: &[(String, String)],
 ) -> Vec<(Option<String>, crate::v1_interpreter::Value)> {
     use crate::v1_interpreter::{str_value, Value};
-    let reached = regen_reverse_closure_host(edited, edges);
+    let reached = regen_reverse_closure_host(walk_roots, edges);
     let edge_values: Vec<Value> = edges
         .iter()
         .filter(|(_, to)| reached.contains(to))
@@ -11998,7 +12007,14 @@ pub fn render_affected_set_bound(
 
     // The bound over a whole change takes the model's shared arguments plus the change's other paths
     // (`regen_affected_set_over_change`); the partition-move explanation reads the shared ones alone.
-    let mut args = affected_set_model_args(&ctx, edited, unlocatable, edges, compared);
+    let walk_roots: Vec<String> = edited
+        .iter()
+        .chain(base_delta.modules.iter())
+        .cloned()
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect();
+    let mut args = affected_set_model_args(&ctx, &walk_roots, edited, unlocatable, edges, compared);
     args.push((
         Some("non_module_paths".to_string()),
         Value::List(Rc::new(
