@@ -3508,7 +3508,8 @@ test fn the_real_e1_refuses_what_it_cannot_attribute() -> Bool {
   count(real_parts) == 2
     && all(real_parts, c => identification_established(i: c.identification))
     && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u51 }))
-    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_c10 }))
+    // C10_P5 was refused here until 2026-11-09; it now cites the roster's boxed atlas frame sd123 and is established.
+    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_c10 }))
     && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u4 }))
     && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 3).contains("is READ by the part")
     && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 7).contains("is DRIVEN by the part")
