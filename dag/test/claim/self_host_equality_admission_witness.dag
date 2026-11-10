@@ -30,25 +30,69 @@ fn eq_census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn eq_blocking_count(source: String, wanted: String) -> Int {
-  match eq_census_of(source: source) {
+// CENSUS-TAKING CORES, so a claim binds each source's census ONCE and derives every check
+// from that result (ruling msg_448d322c: avoid repeated compiles of one source). The builtin
+// itself does NOT memoize (its own doc records the memo deletion in
+// src/v1/stage0/src/cli_run/emit_host.rs), so whether repeated REFERENCES of a census data
+// re-run the compile is an interpreter data-sharing question -- recorded as unverified, not
+// claimed. What IS established at the source: each bound source has exactly one census
+// production site instead of one per predicate.
+fn eq_blocking_count_in(census: CompileDiagnosticCensus, wanted: String) -> Int {
+  match census {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
-fn eq_blocking_count_at_subject(source: String, wanted: String, subject: String) -> Int {
-  match eq_census_of(source: source) {
+fn eq_blocking_count_at_subject_in(census: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match census {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_blocking_rows(rows: rows) |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
+fn eq_blocking_total_in(census: CompileDiagnosticCensus) -> Int {
+  match census {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn eq_census_observed_in(census: CompileDiagnosticCensus) -> Bool {
+  match census {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn eq_admitted_in(census: CompileDiagnosticCensus) -> Bool {
+  match census {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn eq_blocking_count(source: String, wanted: String) -> Int {
+  eq_blocking_count_in(census: eq_census_of(source: source), wanted: wanted)
+}
+
+fn eq_blocking_count_at_subject(source: String, wanted: String, subject: String) -> Int {
+  eq_blocking_count_at_subject_in(census: eq_census_of(source: source), wanted: wanted, subject: subject)
+}
+
 fn eq_wall_refusal_count(source: String) -> Int {
   eq_blocking_count(source: source, wanted: "EqualityOnFunctionMember")
     + eq_blocking_count(source: source, wanted: "EqualityMemberUnjudgeable")
+}
+
+fn eq_blocking_total(source: String) -> Int {
+  eq_blocking_total_in(census: eq_census_of(source: source))
+}
+
+fn eq_census_observed(source: String) -> Bool {
+  eq_census_observed_in(census: eq_census_of(source: source))
 }
 
 fn eq_census_clean(source: String) -> Bool {
@@ -59,10 +103,7 @@ fn eq_census_clean(source: String) -> Bool {
 }
 
 fn eq_admitted(source: String) -> Bool {
-  match eq_census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
-    CensusNotRunnable { cause: _ } => false
-  }
+  eq_admitted_in(census: eq_census_of(source: source))
 }
 
 data interpretation_algebra_eq_red_source: String = "module eq_probe_interpretation_algebra\nimport v2.std.runtime { InterpretationAlgebra }\nfn same(a: InterpretationAlgebra, b: InterpretationAlgebra) -> Bool { a == b }\n"
@@ -109,6 +150,71 @@ data collection_key_inferred_census_row_source: String = "module eq_probe_collec
 
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
+// THE gunbc#15175 WALL, pinned. A member typed as a generic APPLICATION whose applied argument
+// is either the enclosing declaration's OWN type parameter (std.effects CreateEffect { cause:
+// CreateCause<K> } under EffectShape<KeySource> -- host.host_effect's converge-loop evidence,
+// dag/gunbc/host/host_effect.dag) or a declared by-target type (Measure<Q,S,M> { count: M } under
+// the Kibibyte application -- gunbc.compute.compute_seat_ensure's seat_fell_by) refused at main:
+// the by-target judgment read the argument as an unbound global name and said "a routed member
+// inside a generic application". The argument is judged at the spelling declaration instead:
+// its parameter roster first, then the symbol index by declaring identity. The green rows are
+// both admitted shapes; the red control is the same shape with a ROUTED argument, which must keep
+// refusing with the same located cause -- the wall stays closed for routed members.
+data nested_own_param_eq_green_source: String = "module eq_probe_nested_own_param\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<String>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+data nested_declared_argument_eq_green_source: String = "module eq_probe_nested_declared_argument\ntype ProbeKey\n  = KeyA { name: String }\n  | KeyB\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<ProbeKey>\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+data nested_routed_argument_eq_red_source: String = "module eq_probe_nested_routed_argument\nimport v2.std.node { Node }\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<Node>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+test fn nested_own_parameter_equality_stays_admitted() -> Bool {
+  eq_admitted(source: nested_own_param_eq_green_source)
+}
+
+test fn nested_declared_by_target_argument_equality_stays_admitted() -> Bool {
+  eq_admitted(source: nested_declared_argument_eq_green_source)
+}
+
+test fn nested_routed_argument_equality_still_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: nested_routed_argument_eq_red_source) >= 1
+}
+
+// THE BOUNDARY, AND THE CONTROL THAT DISCRIMINATES IT. An applied generic argument is judged where it is WRITTEN:
+// v1.compiler.infer::equality_resolved_declaration_structure conjoins the walk of the declaration with
+// v1.compiler.infer::equality_arguments_by_target over the arguments written at the use. That is the question the
+// emitted comparison actually asks: a by-target member lowers to Rust `==` (v1.compiler.infer::equality_synth_binop,
+// the EqualityByTarget arm), and the derive roster (v1.compiler.trait_derive_emit::v1_emit_struct_derives,
+// v1_emit_enum_derives) withholds PartialEq from any carrier that reaches a function value -- so an argument may
+// compare by the target only when the by-target rule names it true. A parameter of the generic being walked is the
+// one argument that cannot be judged from the declaration: the emitted derive bounds EVERY parameter
+// (impl<V: PartialEq> PartialEq for Engine<V>), and the bound is discharged by the argument actually written at the
+// use, which this same rule judges there. So a nested application whose parameter is bounded by a structural carrier
+// admits, while the same shape bounded by a routed carrier (nested_routed_argument_equality_still_refuses_blocking)
+// or by a carrier that reaches a function value (generic_nested_fn_equality_refuses,
+// demand_shape_nested_declared_arg_equality_refuses) still refuses -- the last two are the executing red controls
+// for the E0369 class (run 42236475532 at #15992 head cf31183f, and v2-bootstrap run 42575201140 at 0619830d7f6e,
+// where the emitted self-host closure compared Rc<DemandEngine<Rc<NativeDemandValue>>> with Rust `==` against a
+// carrier the roster had narrowed to Clone). The shape below mirrors v2.std.demand_engine::DemandEngine (its entries
+// member, a Map<DemandIdentity, DemandEntry<V>>) and its Carrier. Measured at 3d34fc61ca6e the pre-repair compiler
+// refused this specimen at its INNER declaration (equality admission for 'Inner' cannot be judged); at this head it
+// admits with no blocking row, and it goes red the moment the argument rule stops judging the use.
+data nested_structural_argument_eq_source: String = "module eq_probe_nested_structural_argument\nimport std.types { Map, Int, String }\ntype Ident { name: String }\ntype Entry<V> {\n  identity: Ident\n  weight: Int\n  value: Optional<V>\n}\ntype Engine<V> {\n  entries: Map<Ident, Entry<V>>\n  ready: List<Ident>\n}\ntype LeafTag { label: Ident }\ntype LeafVal\n  = Plain { tag: LeafTag }\n  | Weighted { tag: LeafTag, weight: Int }\ntype Carrier {\n  engine: Engine<LeafVal>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+test fn nested_structural_argument_equality_admits_at_the_use() -> Bool {
+  eq_admitted(source: nested_structural_argument_eq_source)
+}
+
+// THE OTHER SIDE OF THE SAME RULE, executing rather than prose. The arm the repair adds reads the DECLARED parameter
+// roster (v1.compiler.infer::equality_argument_is_enclosing_type_parameter), deliberately not "any name the reading
+// could not bind": an unresolved name arrives unidentified too, so an arm built on that would admit every typo and
+// leave the wall open wherever a module forgot an import. This source names a type no declaration provides, and it
+// must keep refusing. It refuses before inference reaches the argument rule -- resolution reports the name -- which
+// is why the control asserts a blocking row rather than an EqualityMemberUnjudgeable one: the claim is that the
+// refusal survives, not which stage carries it.
+data unresolved_name_eq_red_source: String = "module eq_probe_unresolved_name\ntype Holder {\n  v: NotAType\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+test fn an_unresolved_type_name_still_refuses_blocking() -> Bool {
+  eq_blocking_total(source: unresolved_name_eq_red_source) >= 1
+}
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
@@ -748,3 +854,186 @@ test fn plain_non_function_alias_operand_stays_admitted() -> Bool {
 test fn local_generic_plain_alias_operand_stays_admitted() -> Bool {
   eq_admitted(source: local_generic_plain_alias_eq_green_source)
 }
+
+// AN APPLIED ARGUMENT IS JUDGED WHERE IT IS WRITTEN, not where its parameter happens to be used. The walk judges the
+// declaration's members with that declaration's parameter roster visible (v1.compiler.infer::equality_scope_with_params),
+// and every argument written at the applied reference goes through
+// v1.compiler.infer::equality_argument_by_target -- the same condition the emitted derive answers, because a derived
+// impl bounds every parameter. A function-typed argument therefore refuses wherever it is written, INCLUDING in a
+// position the declaration never mentions: measured at main and at this head, EqPhantom<fn(Int) -> Int, Int> over
+// EqPhantom<Q, M> { count: M } refuses with "a routed member inside a generic application whose shape the equality plan
+// does not model". That refusal is over-broad -- no walked member reaches Q, so no carrier can reach a function value --
+// and it is fail-closed, which is the side the wall takes. The next rung would have the argument rule consult whether
+// the parameter occurs in any walked member; until then this pair records that the rule is syntactic, not usage-based.
+// An earlier shape of this PR judged arguments by occurrence instead; it is ruled out in the commit that removed it,
+// because it exempted arguments wholesale and let DemandEngine<NativeDemandValue> through to E0369.
+data generic_phantom_fn_refuses_source: String = "module eq_probe_phantom\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<fn(Int) -> Int, Int>, b: EqPhantom<fn(Int) -> Int, Int>) -> Bool { a == b }\n"
+
+data generic_phantom_fn_occurring_red_source: String = "module eq_probe_phantom_red\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<Int, fn(Int) -> Int>, b: EqPhantom<Int, fn(Int) -> Int>) -> Bool { a == b }\n"
+
+data generic_nested_green_source: String = "module eq_probe_nested\ntype EqCause<K> = EqPost | EqKeyed { key: K }\ntype EqShape<K> = EqRead | EqCreate { cause: EqCause<K> }\ntype EqKey = EqPath { param: String }\ntype EqEvidence = EqLattice { shape: EqShape<EqKey> }\nfn same(a: EqEvidence, b: EqEvidence) -> Bool { a == b }\n"
+
+data generic_nested_fn_red_source: String = "module eq_probe_nested_red\ntype EqCause<K> = EqPost | EqKeyed { key: K }\ntype EqShape<K> = EqRead | EqCreate { cause: EqCause<K> }\ntype EqFnKey = EqFn { f: fn(Int) -> Int }\ntype EqEvidence = EqLattice { shape: EqShape<EqFnKey> }\nfn same(a: EqEvidence, b: EqEvidence) -> Bool { a == b }\n"
+
+test fn a_function_typed_argument_refuses_even_in_a_phantom_position() -> Bool {
+  eq_wall_refusal_count(source: generic_phantom_fn_refuses_source) > 0
+}
+
+test fn a_parameter_that_occurs_in_the_body_and_binds_a_function_type_refuses() -> Bool {
+  eq_wall_refusal_count(source: generic_phantom_fn_occurring_red_source) > 0
+}
+
+test fn a_nested_application_over_the_parents_parameter_is_admitted_at_a_by_target_argument() -> Bool {
+  eq_admitted(source: generic_nested_green_source)
+}
+
+test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_bearing_argument() -> Bool {
+  eq_wall_refusal_count(source: generic_nested_fn_red_source) > 0
+}
+
+// THE E0369 SHAPE, AS AN EXECUTING RED (gunbc#15175, v2-bootstrap run 42414168425): the self-host lane
+// emitted a raw Rust '==' on Rc<DemandEngine<Rc<NativeDemandValue>>> in the emitted self-host closure
+// (generated artifact v2_compiler_source_root_eval.rs, position 5142 beside it) and rustc refused it,
+// because the emitted carrier for NativeDemandValue is #[derive(Clone)] with NO PartialEq (measured off
+// the emitted crate). DemandEngine<V> mentions V ONLY nested -- entries is
+// Map<DemandIdentity, DemandEntry<V>>, and V appears again at DemandState<V>'s DemandAvailable arm -- so an
+// argument judged only at the bound leaf goes unjudged, the whole application goes by-target, and the body
+// compares a carrier the target cannot compare. DqEngine/DqEntry/DqValue/DqResolution is that shape with the
+// module names changed: the parameter occurs only inside an applied member, and the argument reaches a
+// function value TRANSITIVELY (through DqResolution), not at its own top. It must refuse at admission, with
+// a located diagnostic, at every revision of this repair.
+data demand_shape_nested_declared_arg_green_source: String = "module eq_probe_demand_green\nimport std.types { List }\ntype DqEntry<V> { value: V }\ntype DqEngine<V> { entries: List<DqEntry<V>> }\ntype DqPlain { code: Int }\nfn same(a: DqEngine<DqPlain>, b: DqEngine<DqPlain>) -> Bool { a == b }\n"
+
+data demand_shape_nested_declared_arg_red_source: String = "module eq_probe_demand_red\nimport std.types { List }\ntype DqEntry<V> { value: V }\ntype DqEngine<V> { entries: List<DqEntry<V>> }\ntype DqResolution { handler: fn(Int) -> Int }\ntype DqValue { resolution: DqResolution }\nfn same(a: DqEngine<DqValue>, b: DqEngine<DqValue>) -> Bool { a == b }\n"
+
+test fn a_parameter_occurring_only_inside_an_applied_member_admits_a_by_target_argument() -> Bool {
+  eq_admitted(source: demand_shape_nested_declared_arg_green_source)
+}
+
+test fn a_parameter_occurring_only_inside_an_applied_member_refuses_a_transitively_function_bearing_argument() -> Bool {
+  eq_wall_refusal_count(source: demand_shape_nested_declared_arg_red_source) > 0
+}
+
+// HELPER BINDING IS DECLARING IDENTITY (integration concern
+// equality_synthesis_helper_binding_is_import_authority, source-integrated; disposition Open until
+// the executed validation named on the row lands). The synthesized equality body binds its step
+// helpers by the helper's own qualified name; the resolver resolves that qualified name through
+// declared_module_owner over module_named_imports - which records module REALIZATION, not authoring
+// import authority: the census pass (the module_named_imports fold over module nodes in
+// v1.compiler.infer) keys EVERY pool module, empty map included (std.optional declares no
+// imports and still carries its key), and symbol_index_with_bare_fill (v1.compiler.infer)
+// merges keys tree-wide - and the emitter writes
+// crate::<module-to-filename-of-the-declaring-module>::<helper-name>. The holder's import table is
+// consulted at none of gate, resolution, or emission. These cells pin the ADMISSION invariance of that re-base for
+// the case they run: a same-module holder of container members stays admitted with NO DIRECT
+// import of either helper module. The helpers are realized TRANSITIVELY for the census: the
+// fixtures import std.types (import std.types), which itself names std.algebra
+// (std.types names std.algebra in its import list - std.types::FinitePowerSet /
+// std.types::FinitelySupportedFunction / std.types::FreeMonoid) - the traced realization edge - and
+// v2.std.runtime, which names std.types and std.algebra in its own import list. The closure is NOT claimed import-free
+// of the helper modules, and these bytes are not an import-free reviewed baseline: the
+// imports were restored by ruling msg_448d322c precisely because the census closure follows
+// named edges. What the cells claim is the ABSENCE OF A DIRECT holder import of
+// std.algebra/std.optional - import authority in the authoring sense - nothing stronger.
+// The cross-module positive is DESIGNED below, not
+// executed - it is NOT claimed by these cells. The executed proof of the binding itself is the
+// v2-bootstrap compile of the emitted units with zero equality-only imports in the corpus (the
+// census instruments do not read emitted bytes by design). The census-absent refusal arm is
+// UNEXECUTED at this revision: nothing here witnesses the refusal of a body whose helper is genuinely
+// absent from the census, and this comment is the only record of that gap - no typed concern row for it
+// exists on main at this revision, and this PR does not add one because the gate that arm belongs to is
+// not part of this change.
+data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\nimport std.types { String, List, Map }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
+
+// UNEXECUTED OBLIGATION (independent review, 2026-11-06): what this instrument CANNOT witness is
+// the refusal of a body whose helper is genuinely absent from the census. It is recorded here, in the
+// instrument that cannot witness it, because no typed concern row carries it on main at this revision.
+// CENSUS ROUTE (corrected per keen-otter ruling): eq_census_of calls compile_dag_diagnostic_census
+// (src/v1/stage0/src/cli_run/emit_host.rs), which reads the LIVE TREE via default_source_roots and
+// close_fixture_imported_corpus with live_tree_disposition = ReadsLiveTree - the census is therefore
+// DEPENDENT ON THE PINNED CHECKOUT, and the compile it observes carries the imported-corpus closure
+// whose size and cost are UNMEASURED for these fixtures. FEASIBILITY, as recorded on the typed row: (A) CURRENT-PRIMITIVE
+// POSSIBLE - an absent-realization control: a probe source with NO import chain reaching
+// std.algebra omits it from the closure entirely, so the helpers are census-absent before census
+// construction, paired with the same source plus the realization edge import std.types
+// (std.types names std.algebra in its import list); List/Map are declared in std.types
+// (std.types::List, std.types::Map) with std.types::kernel_type_set entries, so the
+// absent-realization fixture still compiles. (B) STILL INSTRUMENT-SCOPED - selectively deleting
+// ONE ACTUAL helper declaration (std.algebra.map_values_eq) while everything else is realized:
+// the primitive takes only the probed source and reads the live tree, so that denylist needs a
+// SEPARATELY SCOPED instrument variant; no instrument implementation is made here. A pool-local
+// helper declaration cannot serve as a positive control either, because the gate looks up
+// std.algebra.map_values_eq by that exact qualified name. The runtime row of that refusal is
+// class EqualityMemberUnjudgeable at the authored compared subject (v1.compiler.infer, the
+// equality_derived_target consumer arm) - the internal constructor name EqualityRootRefused is
+// NOT a census class; expectations are spelled out on the typed row.
+// PAIRED GREEN (positive pairing for the red cell above): structurally identical Host minus the
+// function-bearing sibling - admits through the identity-bound container path, so any refusal the
+// red observes is attributable to the Broken member descent, not to the fixture harness.
+data nested_skipped_sibling_paired_green_source: String = "module eq_probe_nested_skipped_paired\nimport std.types { Int, List }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Fixed {\n  n: Int\n}\ntype Host {\n  list: List<Fixed>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+
+data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\nimport std.types { Int, List }\nimport v2.std.runtime { InterpretationAlgebra }\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+
+// EACH SOURCE'S CENSUS IS BOUND ONCE; every check below derives from these two values.
+data sibling_red_census: CompileDiagnosticCensus = eq_census_of(source: nested_skipped_sibling_via_container_red_source)
+data sibling_paired_green_census: CompileDiagnosticCensus = eq_census_of(source: nested_skipped_sibling_paired_green_source)
+
+test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
+  eq_admitted(source: identity_same_module_container_eq_green_source)
+}
+
+test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container_member() -> Bool {
+  // Subject- AND class-pinned, restoring the original specificity: the refusal must be of class
+  // EqualityOnFunctionMember AT the sibling subject Broken - the by-target descent reaches the
+  // sibling through Host's List<Broken> member and refuses it at its own name. The wall counter
+  // alone could be satisfied from either counted class (EqualityOnFunctionMember or
+  // EqualityMemberUnjudgeable) at ANY member of the closure, so it is not used. The
+  // TOTAL ACCOUNTING (existing row data only): eq_blocking_total counts every blocking row of the
+  // whole observed compile (rows carry imported-corpus closure diagnostics too), and the equality
+  // conjunct requires that set to be exactly the intended EqualityOnFunctionMember rows at Broken -
+  // no competing blocking wall of any class can hide in the closure. GENUINE CENSUS-ERROR REFUSAL:
+  // eq_census_observed fails the whole predicate when the census is CensusNotRunnable, so a
+  // not-runnable census cannot satisfy the !admitted conjunct by vacuity (the ruling's point:
+  // !admitted alone would pass on instrument failure). POSITIVE PAIRING: the structurally identical
+  // fixture minus the function member (paired green) must ADMIT, so the refusal cannot originate
+  // from the harness or the container alone - only the function-bearing sibling path
+  // can satisfy both sides. A never-walked closure yields 0 for the counted conjunct (fails).
+  eq_blocking_count_at_subject_in(census: sibling_red_census, wanted: "EqualityOnFunctionMember", subject: "Broken") >= 1
+    && eq_blocking_total_in(census: sibling_red_census)
+         == eq_blocking_count_at_subject_in(census: sibling_red_census, wanted: "EqualityOnFunctionMember", subject: "Broken")
+    && eq_census_observed_in(census: sibling_red_census)
+    && !eq_admitted_in(census: sibling_red_census)
+    && eq_admitted_in(census: sibling_paired_green_census)
+}
+
+// CROSS-MODULE POSITIVE, DESIGN ONLY (not executed; not claimed by any cell above).
+// Identities: COMPARISON module eq_probe_identity_cross, declaring fn same(a: Sack, b: Sack) ->
+// Bool { a == b }; HOLDER type Sack in eq_probe_identity_cross, members tags: List<String> and
+// counts: Map<String, Int>; HELPER-DECLARATING module std.algebra (zip_eq, map_values_eq), reached
+// by the holder's only import statement (import std.types { String, List, Map } plus no
+// std.algebra/std.optional import at all - admission must not depend on those imports existing).
+// What it would pin: admission of the holder despite the helpers being foreign. RESOLVER-ARM
+// TALK IS RETIRED (precheck, 2026-11-07): the equality-synthesis route is STRUCTURALLY
+// IMPORT-INDEPENDENT - equality_synthesis_scope (v1.compiler.infer) types synthesized bodies
+// with func_env local EMPTY and parents EMPTY, the only import-conditional branch
+// (listed_import_required_bare_call_blocked -> bare_free_call_requires_listed_import, both
+// v1.compiler.infer_env, src/v1/04_env.dag) is a
+// hard-coded name list that never fires for the helper names, and owner candidates are therefore
+// always empty, so the corpus-wide census fallback (func_sig_from_global_bare in
+// v1.compiler.infer_lookup, src/v1/04_lookup.dag) is taken BY CONSTRUCTION in every cell. Cells cannot discriminate resolver
+// arms; what this design separates instead: SUBJECT identity (which routed member class ->
+// which helper), HOLDER-vs-COMPARISON identity (door classification and the block-reason subject
+// key), CENSUS PRESENCE of the exact qualified helper name, and candidate COUNT (1 resolves,
+// 0 refuses via the gate, many give CallableAmbiguous).
+// The prior cross-module cell (v2.std.node Edge) was deleted, not replaced: its subject carried
+// target: Node, and Node is equality-inadmissible corpus-wide (v2.std.node::Node; the comment there
+// refers to the gate's symbols v1.compiler.infer::equality_route_for and
+// v1.compiler.infer::equality_root_refused_leaf_names, both DECLARED in src/v1/04_infer.dag), so
+// the cell could only
+// pass by the instrument ignoring the member. Lost coverage stated: positive cross-module census
+// admission remains unexecuted until the bootstrap and this fixture run under a granted workload.
+// Prepared cell (commented out; do not enable without an executed validation grant):
+// data identity_cross_module_container_eq_design_source: String = "module eq_probe_identity_cross\ntype Sack {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Sack, b: Sack) -> Bool { a == b }\n"
+// test fn cross_module_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
+//   eq_admitted(source: identity_cross_module_container_eq_design_source)
+// }
