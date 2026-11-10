@@ -1663,17 +1663,17 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
     },
     tail: [
       ConcernSighting {
-        revision: "44c956632168157313f00c3afc7878b643882c78",
+        revision: "eeae4193aaf5a1d7054a80eb0100a850244378b0",
         evidence: FreeSemigroup {
           head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
           tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "is_unit_variant_phantom_argument") }],
         },
-        account: "Closing read, measured at this branch with a compiler built from this seed AND with the partition crates (src/v1/stage0_v1_infer, stage0_emit_core, stage0_std_surface) actually recompiled: the generated mirrors are pulled into those crates through #[path] includes outside their own src/, and a build that only rebuilds v1-compiler keeps the previously compiled rule, which is how an earlier read at this branch reported these entries green while they still refused. That earlier read is withdrawn. The rule as shipped also had to move its two arms ahead of expand_nominal_alias_rhs, which rewrites a written argument name into the rhs of the declaration that owns it and so destroys the spelling the arms ask about; with the arms after it, Holder<FooBarUnit> on a locally declared marker and the written Measure<Length, RackUnitHeight, Nat> both refused. With the repair, the three entries that used to refuse each resolve with zero equality rows and zero resolve-failed headers; at 3d34fc61ca6e the same entries refused at host_effect_is_converge_loop_evidence, seat_fell_by and fleet_nominal_rackmount_arithmetic_holds. The self-host instrument builds under rustc with zero E0369 where the previous head failed v2-bootstrap with E0369. The whole equality witness module runs 76 PASS and 4 FAIL, and those four fail identically under a compiler built from origin/main, so the repair admits the structural shapes without moving any refusal.",
+      account: "Closing read, measured at eeae4193aaf5 with a compiler built from that seed AND with the partition crates (src/v1/stage0_v1_infer, stage0_emit_core, stage0_std_surface) actually recompiled: the generated mirrors are pulled into those crates through #[path] includes outside their own src/, and a build that only rebuilds v1-compiler keeps the previously compiled rule -- that is how an earlier read on this branch reported these entries green while they still refused, and how a later read reported the shipped arms as failing specimens they in fact pass. Both of those reads are withdrawn. Measured with the crates recompiled, the two arms in the position they ship admit Holder<FooBarUnit> on a marker declared in the specimen module, Holder<RackUnitHeight>, Holder<Length>, Pair<Length, Nat> and the written Measure<Length, RackUnitHeight, Nat>, and the three entries that used to refuse each resolve with zero equality rows and zero resolve-failed headers; at 3d34fc61ca6e the same entries refused at host_effect_is_converge_loop_evidence, seat_fell_by and fleet_nominal_rackmount_arithmetic_holds. The only specimen refusals left are the alias-as-argument ones, recorded in their own row. The self-host instrument builds under rustc with zero E0369 where the previous head failed v2-bootstrap with E0369. The whole equality witness module runs 76 PASS and 4 FAIL, and those four fail identically under a compiler built from origin/main, so the repair admits the structural shapes without moving any refusal.",
       },
     ],
   },
   disposition: Integrated { evidence: IntegrationEvidence {
-    integrated_at: "44c956632168157313f00c3afc7878b643882c78" as CommitSha,
+    integrated_at: "eeae4193aaf5a1d7054a80eb0100a850244378b0" as CommitSha,
     // The interim leaves this PR deletes, each cited at the revision that introduced it: #16099 rewrote the
     // host_effect CreateCause site and seat_fell_by, #16045 rewrote the fleet rackmount arithmetic. With the
     // root rule in place all three read as plain structural '==' again.
@@ -1694,8 +1694,8 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
     executions: FreeSemigroup {
       head: RetainedExecutionResult {
         control: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence"),
-        run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/host_effect.dag --function \"\" with a compiler built from this seed at 44c956632168157313f00c3afc7878b643882c78, partition crates recompiled",
-        conclusion: "PASS: NoSuchFunction for the empty function name, zero equality rows, zero resolve-failed headers, 825 modules, 5.27 GiB peak. At 3d34fc61ca6e the same entry refused at gunbc.host.host_effect::host_effect_is_converge_loop_evidence.",
+        run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/host_effect.dag --function \"\" with a compiler built from the seed at eeae4193aaf5a1d7054a80eb0100a850244378b0, partition crates recompiled",
+        conclusion: "PASS: NoSuchFunction for the empty function name, zero equality rows, zero resolve-failed headers, 825 modules, 5.28 GiB peak. At 3d34fc61ca6e the same entry refused at gunbc.host.host_effect::host_effect_is_converge_loop_evidence.",
       },
       tail: [
         RetainedExecutionResult {
@@ -1739,7 +1739,7 @@ data equality_alias_argument_not_expanded_before_admission: IntegrationConcern =
   question: "An argument written as a nominal alias is refused structural equality admission while the very same type, spelled as an application, is admitted. Measured at 44c956632168157313f00c3afc7878b643882c78 with the wall repair in place, in a module declaring 'type Holder<A> { v: Nat }', 'type Box<A> { a: A }' and 'type MyUnit = Measure<Length, RackUnitHeight, Nat>': 'Holder<Measure<Length, RackUnitHeight, Nat>>' and 'Box<Measure<Length, RackUnitHeight, Nat>>' admit, while 'Holder<RackUnit>', 'Box<RackUnit>' and 'Holder<MyUnit>' -- RackUnit being std.measure's own alias for the same application, MyUnit declared in the specimen module itself -- each refuse at the '==' row with 'equality admission for ... cannot be judged'. The walk does reach expand_nominal_alias_rhs for those names, but that helper returns the right-hand side under with_authored_identity, keeping the alias's own identity, so the guard that decides whether to recurse ('the connective changed, or the identity changed') sees neither change for an alias whose right-hand side is an applied reference, and the arm falls through to refusal instead of judging the application's arguments. Emission has no such gap: the emitted Rust carries the expanded type with its derive, so the disagreement is admission being stricter than emission. The refusal is fail-closed, so nothing unsound follows; the cost is that one program may write the same type two ways and get two answers. Nothing in the three-site wall depends on it -- host_effect, fleet_physical_inventory and compute_seat_ensure all write Measure's application directly -- so it is recorded here rather than folded into the wall repair. The next rung: judge an alias argument by the application its right-hand side is, keeping an alias whose expansion is not admissible refusing, and hold both as executing controls.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
-      revision: "44c956632168157313f00c3afc7878b643882c78",
+      revision: "eeae4193aaf5a1d7054a80eb0100a850244378b0",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
         tail: [],
