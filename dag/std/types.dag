@@ -407,6 +407,25 @@ type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
 type Seconds       = Int where range(min: 0), brand("Seconds")
 
+// The sanctioned Int -> EpochSecs crossing. EpochSecs refines Int by range(min: 0); DESIGN's
+// Integers table says the reverse of the total Int<-Nat widening is a CHECKED crossing, and the
+// where-refinement ruling retires an unchecked refinement in favour of a checked constructor
+// returning Optional. The predicate is the refinement's own bound (n >= 0); an out-of-range value
+// is Absent, never silently admitted. The value is delivered at the refined POSITION -- never
+// through a cast the evaluator would have to re-decide: eval_cast has no refined-Int arm, so
+// `t as EpochSecs` is refused at run time (std.recurring_failure_mode::
+// the_checker_admits_a_cast_the_evaluator_refuses) -- and the checker grants the non-literal only an
+// advisory WhereRefinementUnenforced, so the constructor is the one authority that turns a proof
+// into a value. Modelled on http_status_of above; it reads epoch_sec_min so the bound is one data
+// row, not a magic number re-typed at each parse site. The literal in `range(min: 0)` and this data
+// row must carry the same number; their pairing is the same language-layer gap as http_status_of's,
+// with next-rung trigger gunbc.where_refinement_predicate_vocabulary.
+data epoch_sec_min: Int = 0
+
+fn checked_int_to_epoch_secs(n: Int) -> EpochSecs? {
+  if n < epoch_sec_min { optional_absent() } else { optional_present(value: n) }
+}
+
 type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
 type IntentId     = NonEmptyStr where brand("IntentId")
