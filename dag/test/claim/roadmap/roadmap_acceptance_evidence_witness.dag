@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_acceptance_evidence_witness
 
-// EXECUTING WITNESS for the acceptance law of the roadmap event log — the four claims this PR added, run
+// EXECUTING WITNESS for the acceptance law of the roadmap event log — the ten claims this PR added, run
 // here rather than in test.claim.roadmap.roadmap_operator_close_retire_witness, and here is why in one
 // paragraph. Those claims were first written into the close/retire witness, whose twenty-six claims and
 // thirty-odd imports include three files the seed probe itself cannot resolve (`roadmap_authority`,
@@ -24,9 +24,13 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 //           acceptance recorded before the dated cutoff — the one-time migration's case — and a live
 //           acceptance naming none refuses at the route, located, writing nothing; half a pull request is
 //           refused where the command line's three arguments are read, because it is not a value of the type.
-//   VERIFIER — a migrated event whose evidence differs from the exported manifest DISAGREES with it: the
-//           comparison reads complete canonical facts, so a swapped or missing field refuses rather than
-//           certifying a different history.
+//   VERIFIER — the migration gate's seven facets, one named claim each, because the runbook prints WHICH
+//           problem it found: agreement reports nothing; swapped evidence refuses on BOTH sides of the
+//           difference; a fact the manifest names twice against one copy reports its counts; an acceptance
+//           the log lost refuses with the closedness it carried; a node the log closes that the manifest
+//           never accepted refuses; a manifest that does not replay REFUSES rather than certifying an empty
+//           expectation; and a claimed retirement the log does not hold retired refuses. The comparison
+//           reads complete canonical facts, so a swapped or missing field cannot certify a different history.
 
 import std.types { String, Bool, NonEmptyStr, List }
 import std.optional { Present, Absent }
