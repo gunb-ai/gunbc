@@ -530,16 +530,29 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
           } else if kind == ^bash_fold_word_kind_double_quoted {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: parts } =>
-                bind_outcome(
-                  o: bash_fold_serialize_word_parts_concatenated(parts: parts),
-                  f: fn(_) {
-                    bash_fold_serialize_leaf_node(
-                      emitted: word,
-                      production_binding: ^bash_production_fold_double_quoted_word,
-                      rule_name: ^bash_production_fold_double_quoted_word
-                    )
-                  }
-                )
+                // The parts are serialized FIRST, and only as a refusal check: a part
+                // whose word kind has no arm (an unsupported kind, an unsafe quoted text,
+                // a cmdsubst body that is not a command) rejects here with its own
+                // diagnostic instead of being silently dropped by the grammar route.
+                // Its SPELLING is deliberately not used, because the bytes of this word
+                // come from one place -- the grammar row for
+                // ^bash_production_fold_double_quoted_word, which supplies the two quotes
+                // around the parts (gunbc.design_argument::single_authority). Splicing the
+                // concatenated parts in here would render `"$X"` from two authorities: the
+                // parts from this function, the quotes from the row.
+                match bash_fold_serialize_word_parts_concatenated(parts: parts) {
+                  Accepted { value: _, diagnostics: pd } =>
+                    match pd {
+                      None =>
+                        bash_fold_serialize_leaf_node(
+                          emitted: word,
+                          production_binding: ^bash_production_fold_double_quoted_word,
+                          rule_name: ^bash_production_fold_double_quoted_word
+                        )
+                      Some { diagnostics: r } => Rejected { diagnostics: r }
+                    }
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                }
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
             }
           } else if kind == ^bash_build_refused_empty_word_list {
