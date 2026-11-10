@@ -784,8 +784,43 @@ data plans_reset_and_audit_recommendations_2026_11_08: DesignRuling = DesignRuli
   provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). Operator words: \"For clean up yeah just clean anything up it's not sensitive we can always bring it back later but yes all your recommendations are fine for housekeeping yes everything is 0 your recommendations are fine but basically the same applies just do as much housekeeping as you can I think we should probably just bankrupt all of our plans\". Authorizes retiring or restating stale and contradicting planning carriers (roadmap nodes and notes, gunbc.plans carriers, docs/plans markdown, rung-drop triggers naming retired instruments) per the audit's edit list; git history keeps everything. Accepted as recommended: D5 (merge_group-bound triggers and the frontier roster mint rebind to the required job's push-on-main run; Q4 void); D7 (namespace waves admitted per shard with a bounded red; ACT-0 milestones dropped); D9 (length is the canonical size spelling; method forms on kernel receivers are respelled to free calls by generator; no new where clauses; namespace-resolution-design section 13 amended to admit declaration-time binder refusal); D11 (the unsigned emission-admission design is retired); D12 (the heal-publish and drift-watch jobs are approved explicitly); D13 (priority: N7 typed, then the names N7's closure needs, then the native CI step, then dogfood, then the whole-repo namespace program); D14 (dead and duplicate roadmap nodes retired, acceptance backlog drained); D8 of the audit (privileged_effect_census kept as a per-site registry, its every-site completeness claim dropped). Not decided here: N7 Phase B executor question (1) (D10).",
 }
 
+// srv1's two authored microVM slots (srv1-13 shakedown, srv1-14 revision-job) were charged against
+// srv1's runner memory envelope on AUTHORSHIP ALONE while nothing microVM was installed on the host --
+// no controller unit, no slot instance, only the network ruleset active -- reserving ~60-68 GiB for
+// slots that did not exist and holding srv1's committed width at 4. The operator's decision makes the
+// charge conditional on the slot's realization, modeled as
+// gunbc.runner.runner_slot_allocation::MicrovmSlotRealization: the width moves by derivation when the
+// slots are read not realized and returns by the same derivation when the lane goes live. Its Unobserved
+// arm keeps charging, so the release direction requires a positive read of absence (fail_closed).
+data srv1_microvm_slot_charge_waits_for_realization: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_microvm_slot_charge_waits_for_realization"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator decision 2026-11-09, to bold-wren-111, verbatim: \"yes please do A and then B\". A = start 3 more CI runners on srv1 by hand now (done: srv1-07, srv1-08 and srv1-09 unmasked, enabled and started as CI runners on labels self-hosted,linux,arm64,gunbc-heavy,srv1 from the shared template). B = in the repo, stop charging srv1's two authored microVM slots against its runner memory until their controller is actually installed and running, so the width derivation gives srv1 more CI slots on its own and takes them back when the microVM lane goes live. Carried into the model by still-otter-622; the live reading behind the rows (no controller, no slot units, only gunbc-microvm-nft.service active; 502 GiB total / 273 GiB available) is the operator's, 2026-11-09 ~01:20Z.",
+}
+
+// The fleet decision of 2026-11-09, recorded because it REMOVES a role two hosts were carrying and
+// every carrier that described those slots as fabric execution members is wrong from this date. The
+// two decisions it supersedes (2026-08-21, 2026-09-18) were recorded in the note beside
+// `srv3_fabric_first_slot` in `gunbc.runner.runner_slot_allocation`; that note is deleted with the
+// slots it described, so this row is where its content survives.
+data srv3_srv4_fabric_slots_serve_ci: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator decision (2026-11-09, to bold-wren-111, verbatim answer \"A is fine\" to: \"hand srv3's and srv4's fabric slots to CI in runner_slot_allocation, so 18 CI runners on each\"): srv3 and srv4 no longer carry fabric execution slots; all 18 committed slots on each serve GitHub Actions. This SUPERSEDES the operator rulings of 2026-08-21 / 2026-09-18 that made srv3-06/07 and srv4-06/07 fabric execution members. The live read that made those rulings unreasonable: bold-wren-111's 2026-11-09 read -- srv3-06/07 and srv4-06/07 are masked, have NO install trees under /opt/actions-runner, and no fabric cell or slice exists on either host; fabric runs nothing on either host.",
+}
+
+data gunbc_run_checks_only_what_its_entry_reaches: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "gunbc_run_checks_only_what_its_entry_reaches"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "OPERATOR WORDS (decided 2026-11-10, relayed by cool-badger-99 in escalation msg_006569ab; an explicit answer, not a timeout default). Question as put to the operator, verbatim: \"Rule on #16069/#16156: allow gunbc run to typecheck/realize only what its entry reaches, with the demanded_scope controls run by hand until a follow-up enrolls them?\" The operator's answer, verbatim: \"Yes, both as described\". INTERPRETATION (not operator words): this authorizes the declared rung lowering gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked (previous StructurallyGuaranteed, temporary Mitigatable) and landing #16069 with the dag/test/fixture/demanded_scope discriminators run by hand; the enrollment of those controls as an executing route is owed by the follow-up node://adhoc-0eedbb6e-a35. INFERENCE (a bet, not operator words): no new CI job is added by this ruling (ruling ci_job_budgets_closed_to_growth stands), so enrollment must fit an existing route or take its own sign-off."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    gunbc_run_checks_only_what_its_entry_reaches,
     thermal_runner_cap_lifted_2026_11_08,
     dispatch_is_continue_or_start_fresh,
     printer_start_gate_is_the_approval_not_the_ref,
@@ -881,6 +916,8 @@ fn design_rulings() -> List<DesignRuling> {
     imports_are_the_terminal_name_mechanism,
     plans_reset_and_audit_recommendations_2026_11_08,
     seed_read_set_receipt_is_admitted,
+    srv1_microvm_slot_charge_waits_for_realization,
+    srv3_srv4_fabric_slots_serve_ci,
   ]
 }
 

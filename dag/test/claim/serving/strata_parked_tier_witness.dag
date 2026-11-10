@@ -1,0 +1,135 @@
+module test.claim.serving.strata_parked_tier_witness
+
+// THE STRATA PARKED-TIER ADAPTER: may a conversation be saved to disk at all, and does the host have the room the
+// DECLARED budget asks for. Each test refuses one thing that a passing shape must refuse; the shapes themselves are
+// witnessed in serving_capacity_anchor_witness.
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { millisecond, gibibyte, gibibyte_to_byte_size, byte_size_count }
+import gunbc.serving.serving_host_memory {
+  ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread,
+  srv4_strata_parked_budget, srv4_host_free_disk, srv3_strata_parked_budget, srv3_host_free_disk, srv4_strata_snapshot_cost, serving_reading_bytes_or_zero,
+}
+import gunbc.serving.strata_parked_tier {
+  ServingRungAdmissibility, RungAdmissible, RungRefused, StrataRungRefusal, StrataRestoreGuard, StrataRestoreSafety,
+  srv4_strata_restore_guard, strata_slot_file_admissible,
+  srv3_strata_rung_admissible, srv4_strata_rung_admissible, strata_warm_admission,
+}
+import gunbc.serving.serving_capacity_anchor {
+  ServingWarmSwap, WarmSwapRestores, WarmSwapRefused, SwapTierDisk, SwapByRouterSlotFile, slot_file_warm_swap,
+  SurvivesProcessRestart, RungSharingUnread,
+}
+import extdeps.external_authority { TranscribedUncited, CitedFigureStanding }
+
+fn ad(why: StrataRungRefusal, v: ServingRungAdmissibility) -> Bool {
+  match v {
+    RungRefused { why: w, reason: _, cites: _ } => w == why
+    RungAdmissible { admission_standings: _ } => false
+  }
+}
+
+fn admitted(v: ServingRungAdmissibility) -> Bool {
+  match v {
+    RungAdmissible { admission_standings: _ } => true
+    RungRefused { why: _, reason: _, cites: _ } => false
+  }
+}
+
+// THE BATCH REFUSAL IS THE CONSTRAINT (rule 6): the SAME budget and the SAME free space admit a one-slot replica and
+// refuse a batch-8 replica, typed -- because on the installed release the engine answers 501 to save/restore under
+// parallel requests (serve/server.py:4091). Delete the constraint and both halves answer admissible.
+test fn witness_batch_over_one_refuses_the_rung_the_way_an_inactive_knob_never_would() -> Bool {
+  admitted(v: srv4_strata_rung_admissible())
+    && admitted(v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard))
+    && ad(why: BatchDisablesSlotFiles { active_slots: 8 }, v: strata_slot_file_admissible(active_slots: 8, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard))
+    // srv3 as it runs: --batch 8 refuses by the same typed cause -- and it reads srv3's OWN rows to get there.
+    && ad(why: BatchDisablesSlotFiles { active_slots: 8 }, v: srv3_strata_rung_admissible())
+}
+
+// THE BUDGET IS DECLARED, FREE SPACE ONLY ADMITS IT (rule 5). A budget the host cannot hold refuses, with both
+// figures in the typed cause; an unread free space refuses rather than assuming the disk is large; an undeclared
+// budget refuses rather than falling back to free space. And in the admitted case the rung's bytes are the BUDGET's,
+// even though the host has more -- free space never becomes the figure the store charges against.
+test fn witness_declared_budget_is_the_figure_and_free_space_only_admits_it() -> Bool {
+  let too_big = ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 300)), reason: "fixture: a budget past this host's free space" as NonEmptyStr }
+  let unread_free = ServingMemoryUnread { reason: "fixture: df was never run" as NonEmptyStr }
+  let unread_budget = ServingMemoryUnread { reason: "fixture: nobody declared a cap" as NonEmptyStr }
+  let more_free_than_budget = ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 256)), provenance: "fixture" as NonEmptyStr }
+  ad(why: FreeSpaceBelowBudget { budget_bytes: gibibyte_to_byte_size(g: gibibyte(count: 300)), free_bytes: gibibyte_to_byte_size(g: gibibyte(count: 186)) },
+     v: strata_slot_file_admissible(active_slots: 1, budget: too_big, free: srv4_host_free_disk, guard: srv4_strata_restore_guard))
+    && ad(why: FreeSpaceUnread { detail: "fixture: df was never run" as NonEmptyStr },
+          v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: unread_free, guard: srv4_strata_restore_guard))
+    && ad(why: BudgetUndeclared { detail: "fixture: nobody declared a cap" as NonEmptyStr },
+          v: strata_slot_file_admissible(active_slots: 1, budget: unread_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard))
+    && match slot_file_warm_swap(admissible: strata_warm_admission(v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: more_free_than_budget, guard: srv4_strata_restore_guard)), budget: srv4_strata_parked_budget, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 1500), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, durability: SurvivesProcessRestart) {
+         // The rung's sharing is UNREAD (RungSharingUnread -- the ladder folds it inclusive of the RAM tier), it survives the
+         // process, and it charges the DECLARED 128 GiB -- not the host's 256 GiB of free space (free space admits
+         // the rung; it is never the figure charged).
+         WarmSwapRestores { tier: SwapTierDisk, mechanism: SwapByRouterSlotFile, durability: SurvivesProcessRestart, sharing: RungSharingUnread { reason: _ }, restore: _, cache: c, slots: Absent, cost: _, standing: _, admission_standings: _ } =>
+           byte_size_count(b: serving_reading_bytes_or_zero(r: c)) == byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_strata_parked_budget))
+             && byte_size_count(b: serving_reading_bytes_or_zero(r: c)) != byte_size_count(b: serving_reading_bytes_or_zero(r: more_free_than_budget))
+         _ => false
+       }
+}
+
+// THE RESTORE GUARD IS ADMISSIBILITY, NOT DURABILITY (rule 4): a mutable model or a changed engine build refuses the
+// rung outright -- every file already saved has become unrestorable -- while the rung's durability arm stays
+// untouched by these questions.
+test fn witness_restore_guard_refuses_before_bytes_are_ever_counted() -> Bool {
+  let mutable_guard = StrataRestoreGuard { model_immutable: SafetyViolated { reason: "the model file is being rewritten in place" } as StrataRestoreSafety, engine_build_matches: SafetyEstablished { evidence: "fixture: the release the engine runs" } as StrataRestoreSafety, cites: "fixture: the model file is being rewritten in place" as NonEmptyStr }
+  let changed_guard = StrataRestoreGuard { model_immutable: SafetyEstablished { evidence: "fixture: a release directory" } as StrataRestoreSafety, engine_build_matches: SafetyViolated { reason: "a new engine build replaced the one that saved" } as StrataRestoreSafety, cites: "fixture: a new engine build replaced the one that saved" as NonEmptyStr }
+  ad(why: ModelNotImmutable, v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: mutable_guard))
+    && ad(why: EngineBuildChanged, v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: changed_guard))
+    // A HARD refusal reaches the rung as a NAMED refusal (WarmSwapRefused), not an unread store: it contributes
+    // nothing and is never handed a read obligation -- the store simply cannot be used here (review 92430). Before
+    // the fix this same input folded to WarmSwapRestores with an unread cache, inventing a measurement to wait for.
+    && match slot_file_warm_swap(admissible: strata_warm_admission(v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: mutable_guard)), budget: srv4_strata_parked_budget, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 1500), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, durability: SurvivesProcessRestart) {
+         WarmSwapRefused { reason: _, cites: _ } => true
+         _ => false
+       }
+    // ... while a genuinely UNMEASURED rung (an undeclared budget) still reaches the store as an unread rung, so the
+    // two arms stay distinguishable at the adapter boundary.
+    && match slot_file_warm_swap(admissible: strata_warm_admission(v: strata_slot_file_admissible(active_slots: 1, budget: ServingMemoryUnread { reason: "fixture: nobody declared a cap" as NonEmptyStr }, free: srv4_host_free_disk, guard: srv4_strata_restore_guard)), budget: srv4_strata_parked_budget, cost: srv4_strata_snapshot_cost, restore: millisecond(count: 1500), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr }, durability: SurvivesProcessRestart) {
+         WarmSwapRestores { tier: _, mechanism: _, durability: _, sharing: _, restore: _, cache: ServingMemoryUnread { reason: r }, slots: _, cost: _, standing: _, admission_standings: _ } =>
+           byte_size_count(b: serving_reading_bytes_or_zero(r: ServingMemoryUnread { reason: r })) == 0 && byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_strata_parked_budget)) != 0
+         _ => false
+       }
+}
+
+// A RESTORE CONTRACT NOBODY HAS READ is not a satisfied one: admissible refuses the rung fail-closed rather than
+// letting it rest on a fact nobody checked on the live host (review 92453; fail_closed -- an unknown contract is not
+// a plausible-output to fabricate). Distinct from a Violated contract (refused by name) and from an Assumed one (the
+// honest bet every figure here is, while the module stays ServingLiveUnqualified).
+test fn witness_restore_safety_unread_refuses_the_rung_fail_closed() -> Bool {
+  let unread_build = StrataRestoreGuard { model_immutable: SafetyEstablished { evidence: "fixture: a release directory" } as StrataRestoreSafety, engine_build_matches: SafetyUnread { reason: "the build match has not been read on the live host" } as StrataRestoreSafety, cites: "fixture: build match unread" as NonEmptyStr }
+  let unread_model = StrataRestoreGuard { model_immutable: SafetyUnread { reason: "the model path has not been read on the live host" } as StrataRestoreSafety, engine_build_matches: SafetyEstablished { evidence: "fixture: the release the engine runs" } as StrataRestoreSafety, cites: "fixture: model unread" as NonEmptyStr }
+  ad(why: RestoreSafetyUnread { which: "engine build match" }, v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: unread_build))
+    && ad(why: RestoreSafetyUnread { which: "model immutability" }, v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: unread_model))
+    // and a satisfied (established or assumed) contract still admits -- the refusal is about the UNKNOWN, not the bet.
+    && admitted(v: strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard))
+}
+
+fn is_uncited_bet(x: CitedFigureStanding) -> Bool {
+  match x { TranscribedUncited { read_obligation: _ } => true, _ => false }
+}
+
+// THE RESTORE-SAFETY BET TRAVELS WITH ADMISSION, NOT CONSUMED AS FACT (review 92497, epistemic_humility). srv4's disk
+// rung admits: model immutability is established (a fact, carries no standing), engine build match is an ASSUMED
+// contract. Admission must carry the assumed contract as an uncited bet so the ladder's tally shows the rung admitted
+// on a bet rather than presenting the match as deduced. An all-established guard carries no standing at all.
+// Discriminating: make strata_slot_file_admissible return plain RungAdmissible (the old loss) and the bet vanishes --
+// srv4's adm is empty and this goes RED; making an established contract emit an uncited standing flips the second case.
+test fn witness_assumed_build_match_is_carried_as_a_bet_not_a_fact() -> Bool {
+  let both_established = StrataRestoreGuard { model_immutable: SafetyEstablished { evidence: "fixture: a release directory" } as StrataRestoreSafety, engine_build_matches: SafetyEstablished { evidence: "fixture: the engine runs the release the slot was saved under" } as StrataRestoreSafety, cites: "fixture: both established" as NonEmptyStr }
+  match srv4_strata_rung_admissible() {
+    RungAdmissible { admission_standings: adm } =>
+      adm.length() == 1 && adm.any(x => is_uncited_bet(x: x))
+        && match strata_slot_file_admissible(active_slots: 1, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: both_established) {
+             RungAdmissible { admission_standings: est } => est.length() == 0
+             RungRefused { why: _, reason: _, cites: _ } => false
+           }
+    RungRefused { why: _, reason: _, cites: _ } => false
+  }
+}

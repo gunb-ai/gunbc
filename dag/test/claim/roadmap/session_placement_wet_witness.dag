@@ -1285,7 +1285,7 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       // demanded (review 91388 could not confirm which; this position does not care). If the second pass
       // re-publishes, the generation moves and only after_second_pass can see it; if the first carry
       // misreports what it wrote, only this one can.
-      let after_first_pass = store_holds_reported_generation(store: s.slots, c: carry_first, reference: unit_a())
+      let after_first_pass = store_holds_reported_generation(store: s.slots.slots, c: carry_first, reference: unit_a())
       let outcome_first = belt_attempt_slots_cutover_record_write(
         stores: s,
         record: attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_first, carry: carry_first),
@@ -1303,7 +1303,7 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       // the store after both passes under EITHER evaluation order: if a let runs where it is written, the
       // passes above it have already run; if it runs where it is first demanded, the conjunct that demands
       // it is below them too.
-      let after_second_pass = store_holds_reported_generation(store: s.slots, c: carry_first, reference: unit_a())
+      let after_second_pass = store_holds_reported_generation(store: s.slots.slots, c: carry_first, reference: unit_a())
       let read_back = Filesystem.Read(path: path as FilePath)
       seeded
       // First tick: the abandoned slot moves into the store the settle pass enumerates.
@@ -2087,6 +2087,14 @@ fn store_generation_matches(store: SlotStore, reference: String, expected: CasGe
 // store side is a real read: read it once between two passes and once after, and the two answers differ
 // exactly when a pass wrote. (Reading a file where it is demanded is how this file sequences state at
 // all -- see launching_when_found and the slot_is_launching / slot_is_terminal pairs elsewhere.)
+// WHY THE ARGUMENT IS THE PLAIN STORE, NOT THE SEALED ONE. This helper wraps the read seam
+// gunbc.compute.attempt_lifecycle attempt_slot_read, which is declared over SlotStore, so the wrapper keeps
+// that declaration and the callers project the sealed store that SessionPlacementStores.slots carries (the
+// seal, 2e74dfc2 #14972) down to it with `.slots.slots` -- the same projection this file already makes for
+// attempt_slot_keys and attempt_slot_read, and the same one production makes when census hands
+// attempt_slots_census_entry its target.slots. Passing the sealed store itself is what refused to close this
+// whole file ("declared 'Product(SlotStore)', produced 'Product(SessionAttemptSlotsStore)')") from c92bda9a
+// (#15949), which wrote the call against the pre-seal world, until this row.
 fn store_holds_reported_generation(store: SlotStore, c: AttemptSlotsCarry, reference: String) -> Bool {
   match carry_report_of(c: c) {
     Absent => false

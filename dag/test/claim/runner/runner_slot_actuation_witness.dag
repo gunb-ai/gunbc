@@ -27,9 +27,14 @@ import gunbc.runner.runner_slot_actuation {
   SlotReadingTyped, SlotReadingUnknownWord,
   slot_actuation_argvs,
   SlotActuationNoop, SlotActivated, SlotDrainPending, SlotActuationRefused, SlotNotInstalled,
+  SlotRetirementWithheld, SlotRetirementRefused, SlotRetirementUndecided,
   DrainUnitNotInstalled, slot_actuation_outcome_wire,
   slot_actuation_settled,
   runner_job_process_comm,
+}
+import gunbc.runner.runner_retirement_causes {
+  WaitingOnReplacement, RegistrationPending, NotRegistered, NoDecisionFor,
+  HandStartedOutsideTheDerivedPopulation,
 }
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileDesired,
@@ -371,4 +376,44 @@ test fn a_pid_without_its_grounding_is_ungrounded_not_an_identity() -> Bool {
 test fn an_unobserved_worker_or_unit_leg_never_settles_the_local_observation() -> Bool {
   !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "ps refused" as NonEmptyStr }, main: NoMainProcess })
     && !slot_local_observation_settled(o: SlotLocalUnobserved { unit: slot_u, step: "unit-read", reason: "ssh refused" })
+}
+
+// THE RETIREMENT CAUSES ARRIVE TYPED AND ARE RENDERED ONLY IN THIS MODULE'S WIRE. The gate decided
+// "waiting on srv3-06, not registered"; if the outcome carried a string assembled at the decision site, the
+// wire would be a second representation of a decision already made elsewhere, and a caller could report a
+// withhold it had not actually decided. The standing has to survive to here, and the words come out here.
+test fn a_withheld_retirement_renders_the_standing_it_carries() -> Bool {
+  let held = SlotRetirementWithheld {
+    unit: slot_u,
+    cause: WaitingOnReplacement {
+      replacement: "srv3-06" as NonEmptyStr,
+      pending: RegistrationPending { standing: NotRegistered { slot: "srv3-06" as NonEmptyStr } },
+    },
+  }
+  contains(slot_actuation_outcome_wire(o: held), "RETIRE-WITHHELD")
+    && contains(slot_actuation_outcome_wire(o: held), "waiting on srv3-06")
+    && contains(slot_actuation_outcome_wire(o: held), "is not registered in the org runner roster")
+    && !slot_actuation_settled(o: held)
+}
+
+// A SILENT GATE IS UNDECIDED, NOT REFUSED -- and it does not settle the host either. Reporting it as a
+// refusal would fold "the gate never spoke" into "the gate classified this unit", which is the difference
+// between a plan that can be fixed by wiring and one that needs an operator.
+test fn a_silent_gate_is_undecided_rather_than_refused_and_never_settles() -> Bool {
+  let quiet = SlotRetirementUndecided { unit: slot_u, cause: NoDecisionFor { candidate: slot_u } }
+  contains(slot_actuation_outcome_wire(o: quiet), "RETIRE-UNDECIDED")
+    && contains(slot_actuation_outcome_wire(o: quiet), "produced no decision")
+    && !slot_actuation_settled(o: quiet)
+}
+
+// A HAND-STARTED SLOT IS HELD, REPORTED, AND SETTLED: it was never requested for anything, so it cannot be
+// outstanding, and a notice about it must not veto sizing the host quota to the committed width.
+test fn a_hand_capacity_notice_reports_the_refusal_and_settles() -> Bool {
+  let refused = SlotRetirementRefused {
+    unit: slot_u,
+    cause: HandStartedOutsideTheDerivedPopulation { unit: slot_u },
+  }
+  contains(slot_actuation_outcome_wire(o: refused), "RETIRE-REFUSED")
+    && contains(slot_actuation_outcome_wire(o: refused), "hand-started")
+    && !slot_actuation_settled(o: refused)
 }

@@ -1,0 +1,27 @@
+module gunbc.seed_build_inputs
+
+import std.types { List }
+import v2.std.read_set { ReadSetMember, ReadSetFile, ReadSetDir }
+
+// THE INPUTS THAT BUILD THE SEED, declared once (gunbc.plans.read_set_convergence, A1 and P2). The seed is
+// the generator of every stage0 mirror and the binary every required-job step runs, so a change to any of
+// these can change what the seed produces: its own source tree, the workspace manifest and lockfile, the
+// toolchain pin, and the cargo configuration. They are DECLARED members (v2.std.read_set ReadSetDeclared):
+// nothing records them as observed reads, and an uninstrumented input must not disappear from validity.
+//
+// Two consumers read this list and each adds only what is its own:
+// - the required job's fast lane (gunbc.read_set_restore fast_lane_fixed_input_members) adds the fixture
+//   roots its control walks read and the workflow tree that is executing;
+// - heal's scoped mirror round (gunbc.regen_affected_set regen_seed_source_edits) treats an edit here as
+//   a generator change and selects the whole mirror population, excluding heal's own committed products.
+//
+// src/v1 stays a member until the current seed identity can be established independently of a restored
+// binary; only then does it move into generator semantics identity (plan A1).
+data seed_build_input_members: List<ReadSetMember> = [
+  ReadSetDir { path: "src/v1" },
+  ReadSetFile { path: "Cargo.toml" },
+  ReadSetFile { path: "Cargo.lock" },
+  ReadSetFile { path: "rust-toolchain" },
+  ReadSetFile { path: "rust-toolchain.toml" },
+  ReadSetDir { path: ".cargo" },
+]
