@@ -46,8 +46,8 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //
 // WHAT THE EXECUTION SAID, so the rows below are read against a measurement and not a hope. Run by the
 // remote build owner under `claim_batch --hermetic --source-root dag --source-root src/v2 --entry
-// src/v2/test/claim/coercion/checker_evaluator_cast_fork.dag` at 22f63fe69f9eb15661f259bfb3e8d618ca7bf259
-// (BuildBuddy invocation ab5507ec-f9fa-4ce6-b8c9-10ebe1a956b1): 4 pass / 5 fail, rc 1. The receipt is also on
+// src/v2/test/claim/coercion/checker_evaluator_cast_fork.dag` at 76b72a49a3a6fd1940abcb20a08d8a64403645c0
+// (BuildBuddy invocation 5b6fd63e-b301-478e-95e2-7e89697cdd78): 4 pass / 5 fail, rc 1. The receipt is also on
 // the class row (dag/gunbc/recurring_failure_mode/the_checker_admits_a_cast_the_evaluator_refuses.dag) and in
 // the pull request body.
 //   lit, xref   pre=n, chk=n, cr=find_witness_reason_no_candidate -- v2's CHECKER closes #16224's population:
@@ -56,7 +56,11 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //                 reached from v2.std.coercion's evidence search at src/v2/std/coercion.dag `coercion_cast_exact_witness`), so the exact
 //                 v1 fork -- check admits, eval_cast refuses -- cannot arise in v2 at that population.
 //   ident       pre=y, chk=y, cast=y, opd=y, eop=n, eca=n, er=eval_rejected_grounding_not_derived
+//               ident_deep:castfacts=derived,opdfacts=derived,opreason=eval_rejected_resolved_type_mismatch,
+//                 refnode=at=operand_root
 //   widen       pre=y, chk=y, cast=y, opd=y, eop=n, eca=n, er=eval_rejected_resolved_type_mismatch
+//               widen_deep:castfacts=derived,opdfacts=derived,opreason=eval_rejected_resolved_type_mismatch,
+//                 refnode=at=operand_root
 //                 -- both authorities admit the crossing, and the evaluator then refuses the refined-carrier
 //                 VALUE the checker admitted, at the operand the cast wraps. That is #16224's
 //                 producer-admits/consumer-refuses pair one node before the cast, and it is why
@@ -72,8 +76,37 @@ module v2.test.claim.coercion.checker_evaluator_cast_fork
 //                 inferred resolved type and the value's resolved type -- a node typed as a refinement can
 //                 therefore never accept the value its own operand realizes. The two refusals carry DIFFERENT
 //                 reason names and each needs its own diagnosis; neither is assumed to be the other.
+//   THE DEEP READING IS THE DIAGNOSIS. For BOTH controls the operand's own facts are DERIVED, the
+//     refusal is located AT THE OPERAND ROOT, and the reason there is
+//     eval_rejected_resolved_type_mismatch -- the value's stamped type against the node's declared type.
+//     eval_rejected_grounding_not_derived appears only when evaluation is ROOTED AT THE CAST, which is a
+//     knock-on of the same operand refusal, not a second gap: identity therefore shares widening's root
+//     and is expected to go green with it, which the identity row below measures rather than assumes.
+//     The earliest unjustified link is the EVALUATOR, not the checker: a checker-side arm would delete
+//     the only two refined casts v2 admits (identity and widening), which is why the fix is the carrier
+//     arm and not a second refusal.
+//
+// WHAT THIS PR BUILDS ON TOP OF THE READING -- THE CARRIER ARM.
+//   v2.compiler.eval eval_runtime_value_acceptance_witness, on the arm that compares the node's declared
+//   type with the value's resolved type, now falls through to v2.compiler.eval
+//   eval_declared_carrier_admission: it accepts a value whose resolved type is the DECLARED CARRIER of the
+//   node's refinement. The carrier arrives as a recorded fact, InferredFacts.refinement_carrier, written
+//   by v2.compiler.infer infer_record_refinement_carriers on the one route (v2.compiler.refinement_discharge
+//   infer_and_discharge) -- the checker is the only layer that may read the declaration index, and the
+//   evaluator's header says it does not. The crossing is judged by THE ONE TEST the checker's widening arm
+//   already uses, v2.std.coercion coercion_cast_exact_witness, so the two layers share one structural
+//   equality (DESIGN gunbc.design_argument::single_authority) rather than each owning a cast rule; that
+//   same test is what keeps a value of a DIFFERENT refinement over the SAME carrier refused, which
+//   `cecf_the_gate_refuses_a_value_of_a_different_refinement_over_the_same_carrier` claims, and
+//   `cecf_the_gate_admits_a_value_whose_type_is_the_refinements_declared_carrier` claims the admitted side.
+//   Absent refuses, because Absent means "the checker never read a carrier for this node", not "there is
+//   none" (gunbc.design_argument::fail_closed).
 
-import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.eval {
+  eval,
+  eval_accept_runtime_value_with_facts,
+  inputs_root_only
+}
 import v2.compiler.infer { infer, inferred_facts_resolved_type_optional, inferred_facts_witness_for_node }
 import v2.std.witness { Holds, Violates }
 import v2.std.integer { integer_int_type_node }
@@ -99,13 +132,18 @@ import v2.std.node {
   positional_child_target_nodes,
   symbol_lexeme
 }
-import v2.std.runtime { RuntimeValue, runtime_value_resolved_type }
+import v2.std.runtime {
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  runtime_value_resolved_type
+}
 import v2.std.text { String }
 import v2.std.type_binder { cast_target_optional, refinement_declaration_of_node }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import std.algebra { list_at_optional, list_find_first }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present, optional_absent }
 import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import std.types { Bool, List }
 
@@ -145,6 +183,16 @@ data cecf_identity_source: String = concat(cecf_header, "data cecf_target: Port 
 // CONTROL 2 -- the widening cast: a refined value back to its declared carrier. The one crossing the checker's
 // algebra calls a widening, and the one the evaluator realizes as the operand's own value.
 data cecf_widening_source: String = concat(cecf_header, "data cecf_target: Int = cecf_chan(1) as Int\n")
+
+// THE FOREIGN-REFINATION SOURCE. A second refinement over the SAME Int carrier (Mode = Int where
+// cecf_above_low), reached by a cast whose source type is Mode itself, so the checker ADMITS it through
+// coercion_cast_crossing's Exact arm and the tree is available. Its cast TARGET is the Mode node, which
+// the gate control below stamps a value with: that is "a value of a DIFFERENT refinement over the same
+// carrier", which the carrier arm must keep refusing.
+data cecf_mode_call_source: String = concat(
+  cecf_header,
+  "fn cecf_take_mode(x: Mode) -> Mode { x }\n\ndata cecf_target: Mode = cecf_take_mode(1) as Mode\n"
+)
 
 // ROUTE CONTROL 1 -- a kernel identity cast: the target is the Int kernel itself and the operand is a
 // literal, so no refinement is involved anywhere. The evaluator's own cast row
@@ -358,6 +406,27 @@ test fn cecf_the_control_probes_reach_the_evaluator_at_all() -> Bool {
 // THE WALL KEEPS ITS OWN NAME. Each class probe is refused by the checker, and the refusal carries a reason
 // name rather than being absent. The two class probes must be refused for the SAME reason -- they differ only
 // in whether the operand is a literal or a call, and no authority's cast judgement may turn on that.
+// THE CARRIER ARM, ADMITTED SIDE. The identity probe's cast node has declared type Port, whose declared
+// carrier is the Int kernel; a value whose resolved type IS that carrier must be admitted by the gate.
+// Before the carrier arm exists this row is RED (the gate refuses); it stays green afterwards as the
+// regression control for the arm.
+test fn cecf_the_gate_admits_a_value_whose_type_is_the_refinements_declared_carrier() -> Bool {
+  cecf_gate_verdict(src: cecf_identity_source, value_type: integer_int_type_node()) == "admitted"
+}
+
+// THE CARRIER ARM, REFUSING SIDE. The same gate, the same real node (declared Port, carrier Int), with a
+// value whose resolved type is Mode -- a DIFFERENT refinement over the SAME Int carrier. Admitting this
+// would make the arm shape-based rather than keyed on declaration identity, and would let one refinement's
+// value masquerade as another's. The test that decides it is the checker's own one test,
+// coercion_cast_exact_witness, so this row is also the claim that the two layers still share it.
+test fn cecf_the_gate_refuses_a_value_of_a_different_refinement_over_the_same_carrier() -> Bool {
+  match cecf_mode_target_node() {
+    Absent => false
+    Present { value: mode_node } =>
+      cecf_gate_verdict(src: cecf_identity_source, value_type: mode_node) == "refused"
+  }
+}
+
 test fn cecf_class_probes_refuse_at_the_checker_for_one_named_reason() -> Bool {
   match cecf_check_refusal(src: cecf_literal_source) {
     Absent => false
@@ -563,6 +632,56 @@ fn cecf_pre_admits(src: String) -> Bool {
   }
 }
 
+// THE GATE, RUN DIRECTLY. eval_accept_runtime_value_with_facts is v2's production realized-type gate;
+// these two controls feed it a real checked node with its real derived facts and a value whose resolved
+// type the test chooses, so the arm can be tested for WHAT IT KEYS ON -- a value whose type is this
+// refinement's own declared carrier must be admitted, a value whose type is a DIFFERENT refinement over
+// the same carrier must stay refused. Stamping the type is the only way to ask that question without a
+// second declaration path; the gate itself is never reimplemented.
+fn cecf_value_typed_as(n: Node) -> RuntimeValue {
+  RuntimeValue { RuntimeUnit { value: RuntimeUnitValue { unit_type: n } } }
+}
+
+fn cecf_mode_target_node() -> Optional<Node> {
+  match cecf_check(src: cecf_mode_call_source) {
+    Accepted { value: t, diagnostics: _ } => match cecf_cast_node(t: t) {
+      Absent => optional_absent()
+      Present { value: cast } => cast_target_optional(operand_index: 1, node: cast)
+    }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn cecf_gate_foreign_verdict() -> String {
+  match cecf_mode_target_node() {
+    Absent => "mode_absent"
+    Present { value: mode_node } =>
+      cecf_gate_verdict(src: cecf_identity_source, value_type: mode_node)
+  }
+}
+
+// admitted | refused | no_cast | no_facts | checker_refused
+fn cecf_gate_verdict(src: String, value_type: Node) -> String {
+  match cecf_check(src: src) {
+    Accepted { value: t, diagnostics: _ } => match cecf_cast_node(t: t) {
+      Absent => "no_cast"
+      Present { value: cast } => match inferred_facts_witness_for_node(tree: t, node: cast) {
+        Violates { diagnostic: _ } => "no_facts"
+        Holds { value: facts } =>
+          match eval_accept_runtime_value_with_facts(
+            node: cast,
+            facts: facts,
+            value: cecf_value_typed_as(n: value_type)
+          ) {
+            Accepted { value: _, diagnostics: _ } => "admitted"
+            Rejected { diagnostics: _ } => "refused"
+          }
+      }
+    }
+    Rejected { diagnostics: _ } => "checker_refused"
+  }
+}
+
 fn cecf_check_reason_tag(src: String) -> String {
   match cecf_check(src: src) {
     Accepted { value: _, diagnostics: _ } => "-"
@@ -613,7 +732,9 @@ test fn cecf_verdict_census() -> ProcessExit {
     " | ident_opdecl:" + cecf_operand_declared_shape(src: cecf_identity_source) +
     " | widen_opdecl:" + cecf_operand_declared_shape(src: cecf_widening_source) +
     " | ident_deep:" + cecf_deep_census(src: cecf_identity_source) +
-    " | widen_deep:" + cecf_deep_census(src: cecf_widening_source)
+    " | widen_deep:" + cecf_deep_census(src: cecf_widening_source) +
+    " | gate_carrier:" + cecf_gate_verdict(src: cecf_identity_source, value_type: integer_int_type_node()) +
+    " | gate_foreign:" + cecf_gate_foreign_verdict()
   let ident = cecf_read_probe(src: cecf_identity_source)
   let widen = cecf_read_probe(src: cecf_widening_source)
   let lit = cecf_read_probe(src: cecf_literal_source)
@@ -622,7 +743,9 @@ test fn cecf_verdict_census() -> ProcessExit {
   let kern_ref = cecf_read_probe(src: cecf_kernel_dataref_source)
   let clean = cecf_is_pair_admitted(r: ident) && cecf_is_pair_admitted(r: widen) &&
     cecf_is_pair_admitted(r: kern_lit) && cecf_is_pair_admitted(r: kern_ref) &&
-    !cecf_is_any_refusal(r: lit) && !cecf_is_any_refusal(r: xref)
+    !cecf_is_any_refusal(r: lit) && !cecf_is_any_refusal(r: xref) &&
+    cecf_gate_verdict(src: cecf_identity_source, value_type: integer_int_type_node()) == "admitted" &&
+    cecf_gate_foreign_verdict() == "refused"
   if clean {
     ExitSuccess
   } else {
