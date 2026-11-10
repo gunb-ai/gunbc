@@ -177,11 +177,20 @@ test fn w_RED_a_base_seed_source_change_answers_whole_population() -> Bool {
   is_whole_with(bound: diverged_bound(base_delta_paths: ["src/v1/stage0/src/cli_run.rs", "docs/notes.md"], base_delta_modules: [], edited: ["gunbc.d"]), inputs: ["src/v1/stage0/src/cli_run.rs"])
 }
 
-// POSITIVE CONTROL: the base's other commits -- another module's mirror, a `.dag` HEAD does not carry, a
-// seed-build artifact heal wrote -- are not this change, and HEAD's own bound is unchanged.
+// THE GENERATOR IS ALSO WHAT IT IMPORTS: the base changed the mirror of std.a, which the emitter imports,
+// so the seed is compiled from a different std.a and emits differently -- whole population, naming the
+// generation-role module the walk reached.
+test fn w_RED_a_base_change_to_a_module_the_emitter_imports_answers_whole_population() -> Bool {
+  is_whole_with(bound: diverged_bound(base_delta_paths: [], base_delta_modules: ["std.a"], edited: ["gunbc.d"]), inputs: ["v1.compiler.emit_rust"])
+}
+
+// POSITIVE CONTROL: the base's other commits -- mirrors of modules no generator reaches (gunbc.c is an
+// importer of the emitter's import, not an import of the emitter; std.x is imported only by gunbc.d), a
+// `.dag` HEAD does not carry, a seed-build artifact heal wrote -- are not this change, and HEAD's own
+// bound is unchanged.
 test fn a_base_change_outside_the_generator_keeps_the_change_bound() -> Bool {
   same_members(
-    a: mirrors_of(bound: diverged_bound(base_delta_paths: ["dag/std/x.dag", "src/v1/stage0/src/instrument_registry_generated.rs"], base_delta_modules: ["gunbc.c", "std.a"], edited: ["gunbc.d"])),
+    a: mirrors_of(bound: diverged_bound(base_delta_paths: ["dag/std/x.dag", "src/v1/stage0/src/instrument_registry_generated.rs"], base_delta_modules: ["gunbc.c", "std.x"], edited: ["gunbc.d"])),
     b: ["gunbc_d.rs"]
   )
 }
