@@ -9991,6 +9991,10 @@ fn infer_branch_arm_child_frame(slot: ChildSlot, frame: InferFrame) -> InferFram
 // argument uses (infer_callback_formal_frame). Without this frame, the closure's type stays undetermined
 // at FunctionValueSignatureUndetermined and the branch join refuses it with a grounding-not-derived
 // diagnostic even though the expected type supplies the missing information.
+// It is applied at the positions where an arm's CALLBACK actually sits: the Branch then/else slot target,
+// and a match arm's BODY edge. A match arm node itself is Conj-shaped (a pattern edge and a body edge),
+// never a function value, so the arm slot is framed only for the declared expected and its body carries
+// the callback.
 fn infer_branch_arm_callback_frame(frame: InferFrame, callback: Node) -> InferFrame {
   match frame.declared_position_expected {
     Absent => frame
@@ -10070,7 +10074,7 @@ fn infer_gather_child_context_unscoped(parent: Node, frame: InferFrame, acc: Inf
             match slot.ordinal {
               PositionalOrdinal { index: i } =>
                 match match_positional_slot(ordinal: i) {
-                  MatchArmSlot => infer_branch_arm_callback_frame(frame: infer_frame_with_declared_position_expected(frame: infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved), expected: frame.declared_position_expected), callback: edge.target)
+                  MatchArmSlot => infer_frame_with_declared_position_expected(frame: infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved), expected: frame.declared_position_expected)
                   MatchScrutineeSlot => infer_frame_inherited(frame: frame)
                 }
               LabeledChild => infer_frame_inherited(frame: frame)
