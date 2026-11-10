@@ -1,0 +1,77 @@
+module test.claim.roadmap.roadmap_belt_exit_spool_times_witness
+
+// THE EXIT-SPOOL STAGE-TIME CROSSING, EXECUTED HERMETICALLY ON SUPPLIED VALUES (DESIGN
+// test_strategy::witness_one_interface -- reach the production code through the ONE interface it is designed
+// to be driven through, here the per-entry stat-text seam of belt_exit_spool_stage_times; no filesystem, no
+// wet route). The launch-receipt job crosses each exit-spool entry's parsed stat mtime into the range-refined
+// EpochSecs carrier. That crossing was `t as EpochSecs` -- a NON-literal Int into a refined carrier, which the
+// v1 evaluator's eval_cast (Float/Int/String arms only) refuses outright, while validate_cast granted the
+// non-literal only the advisory WhereRefinementUnenforced (gunbc.recurring_failure_mode::
+// the_checker_admits_a_cast_the_evaluator_refuses). The fix routes it through std.types::checked_int_to_epoch_secs.
+//
+// These controls EXECUTE the evaluator on the production crossing with chosen stat texts, so the conversion is
+// proven by evaluation, not by a checker census (rung: an evaluator fix needs an executing claim). GREEN AT
+// HEAD. At the base commit the seam function belt_exit_spool_entry_time and the constructor do not exist, so
+// this module cannot LOAD against base -- it does not discriminate base from head; the discriminating red at
+// base (the evaluator refusing `t as EpochSecs`) comes from the WET sibling
+// test.claim.roadmap.roadmap_belt_exit_spool_times_wet_witness, which drives the production fold over a real
+// spool using only base-existing symbols.
+
+import std.optional { Present, Absent }
+import std.types { Bool, String, Int, checked_int_to_epoch_secs }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_exit_spool_entry_time, BeltExitSpoolTimesRead, BeltExitSpoolTimesUnreadable,
+}
+import gunbc.spool_queue { SpoolRole, RolePending }
+
+// THE CONVERSION: a non-negative stat text folds to a Read carrying the entry at the epoch it names. The
+// evaluator runs the crossing here -- parse_int, then checked_int_to_epoch_secs, then the value lands on the
+// refined position. A supplied "1000000000" is a non-literal to the fold (it arrives as text), the exact shape
+// the base cast refused.
+test fn a_supplied_nonnegative_stat_text_folds_to_the_epoch_secs() -> Bool {
+  match belt_exit_spool_entry_time(entries: [], stage: RolePending, entry: "worker-exit", label: "inbox", stat_text: "1000000000") {
+    BeltExitSpoolTimesRead { entries } =>
+      count(entries) == 1
+        && any(entries, e => e.entry == "worker-exit" && e.stage == RolePending && (e.mtime_epoch as Int) == 1000000000)
+    BeltExitSpoolTimesUnreadable { reason: _ } => false
+  }
+}
+
+// THE NEGATIVE CONTROL: a negative stat text yields the typed Unreadable -- the value is refused, not silently
+// admitted as a negative EpochSecs, and not a crash. This is the branch checked_int_to_epoch_secs's Absent arm
+// owns, and it is byte-for-byte the refusal the pre-fix fold emitted.
+test fn a_supplied_negative_stat_text_is_a_typed_unreadable() -> Bool {
+  match belt_exit_spool_entry_time(entries: [], stage: RolePending, entry: "worker-exit", label: "inbox", stat_text: "-100000") {
+    BeltExitSpoolTimesUnreadable { reason } => string_contains(s: reason, pattern: "is negative")
+    BeltExitSpoolTimesRead { entries: _ } => false
+  }
+}
+
+// THE UNPARSABLE CONTROL: stat text that is not an integer yields the typed did-not-parse Unreadable -- the
+// sibling arm the fix left untouched, proving the crossing did not collapse the two refusals.
+test fn a_supplied_unparsable_stat_text_is_a_typed_unreadable() -> Bool {
+  match belt_exit_spool_entry_time(entries: [], stage: RolePending, entry: "worker-exit", label: "inbox", stat_text: "not-a-number") {
+    BeltExitSpoolTimesUnreadable { reason } => string_contains(s: reason, pattern: "did not parse")
+    BeltExitSpoolTimesRead { entries: _ } => false
+  }
+}
+
+// THE CHECKED CROSSING ITSELF: the constructor refuses a negative and keeps a non-negative, including the
+// boundary 0 (the predicate is n < epoch_sec_min, epoch_sec_min = 0, so 0 is in range). This is the one
+// authority turning a proof into an EpochSecs value -- modelled on the same executed-claim shape as
+// test.claim.refinement_cast_wall_witness's checked_int_to_nat control.
+test fn checked_int_to_epoch_secs_refuses_a_negative_and_keeps_a_nonnegative() -> Bool {
+  let neg = match checked_int_to_epoch_secs(n: 0 - 3) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let zero = match checked_int_to_epoch_secs(n: 0) {
+    Absent => false
+    Present { value: v } => v as Int == 0
+  }
+  let pos = match checked_int_to_epoch_secs(n: 1000) {
+    Absent => false
+    Present { value: v } => v as Int == 1000
+  }
+  neg && zero && pos
+}
