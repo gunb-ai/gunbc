@@ -1205,7 +1205,7 @@ fn run_verb(
         &graph,
         &source_indices,
         &requested,
-        run_args,
+        &run_args,
     ) {
         Ok(widened) => widened,
         Err(reason) => {
