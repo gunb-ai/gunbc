@@ -1,5 +1,23 @@
 module test.claim.srv3.srv3_network_identity_subsumption_witness
 
+// THE CLAIMS LIVE IN gunbc.network_identity_subsumption; this file only gives each one a `test fn` so the
+// claim-run executes it. (Its import block was lost -- the file resolved nothing and could not run at all;
+// restored here, with no change to what any test asserts.)
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.disposition { Scaffold, Terminal }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.network_identity_subsumption {
+  bmc_static_reservation_does_not_subsume_os_fleet_slot,
+  network_identity_subsumes_fleet_slot,
+  srv3_bmc_static_lease_row,
+  srv3_os_lan_ipv4_dissolution_trigger,
+  srv3_os_lan_mac_dissolution_trigger,
+  srv3_os_up_dynamic_lease_row,
+  srv3_post_install_fixture_subsumes_fleet_slot,
+  srv3_pre_install_has_no_os_up_subsumption,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
