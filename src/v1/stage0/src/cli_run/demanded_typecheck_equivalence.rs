@@ -1561,7 +1561,7 @@ fn caller_side_recv_rt_decides_the_service_op_leaf() {
                 let mut rows: Vec<String> = Vec::new();
                 fn shape(
                     n: &Rc<crate::v1_std_core::Node>,
-                    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+                    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
                 ) -> String {
                     format!(
                         "auth={} conn={:?} ch={} inf={}",
@@ -1582,7 +1582,7 @@ fn caller_side_recv_rt_decides_the_service_op_leaf() {
                 }
                 fn walk(
                     n: &Rc<crate::v1_std_core::Node>,
-                    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+                    si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
                     depth: usize,
                     rows: &mut Vec<String>,
                 ) {
@@ -1644,7 +1644,7 @@ fn caller_side_recv_rt_decides_the_service_op_leaf() {
                                 let recv_rt =
                                     crate::v1_compiler_infer_lookup::resolve_method_receiver_type(
                                         rt.unwrap_or_else(|| n.clone()),
-                                        pass.env.clone(),
+                                        env.clone(),
                                     );
                                 let hit = crate::v1_compiler_infer_service::check_service_method_call_node(
                                     recv_rt.clone(),
@@ -1665,9 +1665,18 @@ fn caller_side_recv_rt_decides_the_service_op_leaf() {
                         }
                     }
                 }
+                let binding = ctx.locals.get("test.RestReplay");
+                let locals_hit = match binding {
+                    Some(b) => format!(
+                        "PRESENT resolved={}",
+                        shape(&b.resolved, &si)
+                    ),
+                    None => "ABSENT".to_string(),
+                };
+                let variant_hit = ctx.variant_locals.get("test.RestReplay").is_some();
                 eprintln!(
-                    "CALLER_SIDE tag={} replay=[{}] rows={:?}",
-                    tag, replay, rows
+                    "CALLER_SIDE tag={} replay=[{}] locals_hit={} variant_hit={} rows={:?}",
+                    tag, replay, locals_hit, variant_hit, rows
                 );
             }
         })
