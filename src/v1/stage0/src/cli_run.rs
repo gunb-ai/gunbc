@@ -14671,22 +14671,10 @@ fn reconcile_with_typed_cache(
                                 // typed dependencies, so this route's equality reader sees the same index the
                                 // self-host route does -- not an empty one. (quick-newt: heal can't reach this
                                 // hand-written caller, so the extra typecheck_module arg is owned here.)
-                                let dep_type_summaries = {
-                                    let dep_modules: Rc<Vec<Rc<TypedModule>>> =
-                                        Rc::new(module_index.values().cloned().collect());
-                                    let dep_registry = module_index.values().fold(
-                                        v1_rt::rc_empty_map(),
-                                        |acc, typed| {
-                                            v1_rt::rc_map_merge(acc, typed.item_registry.clone())
-                                        },
+                                let dep_type_summaries =
+                                    crate::v1_compiler_infer::dep_closed_type_summaries_from_parent(
+                                        module_index.clone(),
                                     );
-                                    crate::v1_compiler_infer::build_emit_graph_info(
-                                        dep_modules,
-                                        dep_registry,
-                                    )
-                                    .type_summaries
-                                    .clone()
-                                };
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
                                     module_index.clone(),

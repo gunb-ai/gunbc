@@ -21496,6 +21496,18 @@ fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List
   )
 }
 
+// #16143 (a): the ONE authority for the closed has-fn-field TypeSummaryIndex over a module's typed
+// dependencies. Both the emitter driver (realize_module) and the hand-written cli_run caller build it with
+// the emitter's own build_emit_graph_info (hence the SAME close_fn_fields fixpoint), so the equality reader
+// (type_has_rust_equality) sees the same index on every route -- never an empty one. Keeping map_values /
+// the List realization inside generated code lets the hand-Rust caller pass only the map (the mirror aliases
+// im::Vector as Vec, so a hand-built std Vec would not typecheck against build_emit_graph_info).
+fn dep_closed_type_summaries_from_parent(parent_index: Map<String, TypedModule>) -> TypeSummaryIndex {
+  let registry = map_values(parent_index)
+    |> fold(init: empty_map(), f: (acc, t) => map_merge(acc, t.item_registry))
+  build_emit_graph_info(modules: map_values(parent_index), registry: registry).type_summaries
+}
+
 fn realize_module(
   name: String,
   resolved_by_name: Map<String, ResolvedModule>,
@@ -21526,7 +21538,7 @@ fn realize_module(
           // Ruling silent-bee-845, 2026-11-10: the CLOSED has-fn-field closure is computed once here at the
           // typecheck driver, with the emitter's own build_emit_graph_info (hence the same close_fn_fields), over
           // the typed dependencies, and threaded to the equality walk so it reads the one has-== authority.
-          let dep_closed_index = build_emit_graph_info(modules: map_values(dep_state.module_index), registry: dep_state.item_registry).type_summaries
+          let dep_closed_index = dep_closed_type_summaries_from_parent(parent_index: dep_state.module_index)
           let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target, type_summaries: dep_closed_index)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
