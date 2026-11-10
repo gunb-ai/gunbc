@@ -773,22 +773,47 @@ data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
     },
     tail: [],
   },
-  disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15") },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
-        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_write_controller_witness", decl_name: "srv15_admits_a_per_write_approval_at_its_own_controller"),
-        statement: "the board's write-controller row admits a per-write approval only at the board's own current controller and refuses the standing grant",
-      },
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
-        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_state_admits_only_its_own_controller_and_build"),
-        statement: "the forced-first-rotation and arrival witnesses keep replaying the board's 2026-10-07 factory 403 and Manager captures against the controller as it was then (192.168.1.247, OpenBMC 3.22.00), and still refuse another controller or build",
-      },
+  // CLOSED (smart-crane-730, 2026-11-10; the operator retired srv13 and keeps srv15, "bobo"). The captures
+  // keep their provenance: they replay against the endpoint their own network observation names
+  // (gunbc.machine_intake.mtjade1_factory_network srv13_bmc_observed_network, 192.168.1.247), reached through
+  // gunbc.machine_intake.bmc_rotation_route_evidence observed_bmc_network_endpoint, so no row claims a
+  // controller the board no longer has. Both preserved obligations stay executed by their controls below.
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "7bbb4efaebd8eda775478d65c6ac74692367028b" as CommitSha,
+    superseded: [
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv13" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.fleet.fleet_intent", decl_name: "srv13_baseboard" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.machine_intake.bmc_rotation_route_evidence", decl_name: "mtjade1_observed_endpoint" },
     ],
-    next: climbs_when(capability: "a write-controller row (or the witnesses' supplied controller) can name the endpoint a board HAD at a capture's time apart from the endpoint it has now, so srv13's 2026-10-07 captures replay against srv15's board; then operator_host_srv13, srv13_baseboard, srv13_bmc_write_controller and srv13's hostname row are deleted and every srv13 consumer is repointed at srv15"),
-  },
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15"),
+      tail: [
+        decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+        decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route_evidence", decl_name: "observed_bmc_network_endpoint"),
+        decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_credential_policy_witness", decl_name: "first_contact_capture_controller"),
+      ],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_write_controller_witness", decl_name: "srv15_admits_a_per_write_approval_at_its_own_controller"),
+        run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_bmc_write_controller_witness.dag (every test fn), local, at b436f77",
+        conclusion: "all claims PASS; srv15's row admits a per-write approval only at its current controller and refuses the controller the board had at first contact as another endpoint",
+      },
+      tail: [
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_state_admits_only_its_own_controller_and_build"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_bmc_forced_first_rotation_witness.dag (every test fn), local, at 7bbb4ef",
+          conclusion: "10/10 PASS: the 2026-10-07 captures replay at 192.168.1.247 and still refuse another controller or build (the file did not compile at 495211e without this branch's import fix)",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.fleet_naming_witness", decl_name: "witness_binding_for_another_member_refuses"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/fleet_naming_witness.dag (every test fn), local, at 7bbb4ef",
+          conclusion: "37/37 PASS with srv16 standing in as the other member srv13 used to be",
+        },
+      ],
+    },
+  } },
 }
 
 data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = IntegrationConcern {
