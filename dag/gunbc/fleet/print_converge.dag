@@ -52,7 +52,7 @@ import gunbc.fleet.printer_receipt { write_receipt }
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource }
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.fleet.printer_credential_source { read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
-import gunbc.fleet.print_request { completion_text,
+import gunbc.fleet.print_request { completion_text, plate_plan_file,
   PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name,
   PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded, CompletionRecordMismatched,
   print_standing, print_standing_name, print_action, Prepare, RequestBedClearThenStart, RecordCompletion, ObserveOnly, Stop,
@@ -91,12 +91,16 @@ fn ensure_printer_state_directories(tree: HostStateTree) -> String? {
   })
 }
 
-// THE PREPARING PASS. The root's committed plate plan (artifacts/printing/<root>/plate.json) is the
+// THE PREPARING PASS. The request's committed plate plan (artifacts/printing/<root>/<plate>.json) is the
 // placement; the recipe is the machine and process; the request is the physical printer. It needs no
 // credential and never contacts the printer.
 fn prepare_and_record(tree: HostStateTree, requests: PrintRequestStore, request: PrintRequest, source_revision: NonEmptyStr, run_id: String) -> RecordRead {
   let output = join([print_run_directory(tree: tree) as String, "/", request_record_name(request_id: request.request_id), "-", run_id], "")
-  match prepare_request_plate(plate_file: join(["artifacts/printing/", request.root as String, "/plate.json"], ""), output: output, recipe: request.recipe as String, source_revision: source_revision as String, root: request.root as String) {
+  let plate_file = match plate_plan_file(request: request) {
+    Present { value: p } => p
+    Absent => return RecordRefused { cause: "Plate name must be lowercase letters, digits and hyphens, beginning with a letter or digit" }
+  }
+  match prepare_request_plate(plate_file: plate_file, output: output, recipe: request.recipe as String, source_revision: source_revision as String, root: request.root as String) {
     RequestPlateRefused { cause: c } => RecordRefused { cause: concat("Preparation refused: ", c) }
     RequestPlatePrepared { artifact: a, path: located } => {
       let record = PrintRequestRecord { request: request, source_revision: source_revision, artifact_sha256: a, artifact_location: located as NonEmptyStr, attempt_id: print_attempt_id(request: request, artifact_sha256: a) }

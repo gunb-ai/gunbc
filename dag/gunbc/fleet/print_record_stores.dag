@@ -118,9 +118,10 @@ fn missing(name: String) -> RecordRead { RecordRefused { cause: join(["Request r
 
 fn record_json(r: PrintRequestRecord) -> String {
   serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "gunbc.print-request-record.v2")),
+    json_kv(key: "schema", value: json_string(s: "gunbc.print-request-record.v3")),
     json_kv(key: "request_id", value: json_string(s: r.request.request_id as String)),
     json_kv(key: "root", value: json_string(s: r.request.root as String)),
+    json_kv(key: "plate", value: json_string(s: r.request.plate as String)),
     json_kv(key: "recipe", value: json_string(s: r.request.recipe as String)),
     json_kv(key: "printer", value: json_string(s: r.request.printer as String)),
     json_kv(key: "source_revision", value: json_string(s: r.source_revision as String)),
@@ -149,9 +150,10 @@ fn print_request_read(store: PrintRequestStore, request: PrintRequest) -> Record
       match parse_json_document(s: read.content) {
         JsonDocumentUnreadable { gap: _ } => RecordRefused { cause: "Request record is not JSON" }
         JsonDocumentParsed { value: v } => {
-          if !field_is(v: v, key: "schema", expected: "gunbc.print-request-record.v2") { return RecordRefused { cause: "Request record does not declare schema gunbc.print-request-record.v2" } }
+          if !field_is(v: v, key: "schema", expected: "gunbc.print-request-record.v3") { return RecordRefused { cause: "Request record does not declare schema gunbc.print-request-record.v3" } }
           let request_id = match field(v: v, key: "request_id") { Present { value: x } => x Absent => return missing(name: "request_id") }
           let root = match field(v: v, key: "root") { Present { value: x } => x Absent => return missing(name: "root") }
+          let plate = match field(v: v, key: "plate") { Present { value: x } => x Absent => return missing(name: "plate") }
           let recipe = match field(v: v, key: "recipe") { Present { value: x } => x Absent => return missing(name: "recipe") }
           let printer = match field(v: v, key: "printer") { Present { value: x } => x Absent => return missing(name: "printer") }
           let revision = match field(v: v, key: "source_revision") { Present { value: x } => x Absent => return missing(name: "source_revision") }
@@ -159,10 +161,10 @@ fn print_request_read(store: PrintRequestStore, request: PrintRequest) -> Record
           let artifact = match digest_field(v: v, key: "artifact_sha256") { Present { value: x } => x Absent => return missing(name: "artifact_sha256") }
           let attempt = match field(v: v, key: "attempt_id") { Present { value: x } => x Absent => return missing(name: "attempt_id") }
           let recorded = PrintRequestRecord {
-            request: PrintRequest { request_id: request_id, root: root, recipe: recipe, printer: printer as PhysicalAssetIdentity },
+            request: PrintRequest { request_id: request_id, root: root, plate: plate, recipe: recipe, printer: printer as PhysicalAssetIdentity },
             source_revision: revision, artifact_sha256: artifact, artifact_location: location, attempt_id: attempt,
           }
-          if !record_matches(record: recorded, request: request) { RecordRefused { cause: "This request id is recorded for a different root, recipe or printer; use a new request id" } }
+          if !record_matches(record: recorded, request: request) { RecordRefused { cause: "This request id is recorded for a different root, plate, recipe or printer; use a new request id" } }
           else { if recorded.attempt_id != print_attempt_id(request: request, artifact_sha256: recorded.artifact_sha256) { RecordRefused { cause: "Recorded attempt does not derive from the recorded request and artifact" } }
           else { RecordPresent { record: recorded } } }
         }

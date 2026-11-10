@@ -19,7 +19,7 @@ import gunbc.fleet.print_converge {
 fn digest_of(s: String) -> Sha256Digest { sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: s))) }
 
 fn branch_designed_record() -> PrintRequestRecord {
-  let r = PrintRequest { request_id: "ring-1", root: "a16-plug-fit-ring", recipe: "a1-mini-pla-prototype-v1", printer: printer_01 }
+  let r = PrintRequest { request_id: "ring-1", root: "a16-plug-fit-ring", plate: "plate", recipe: "a1-mini-pla-prototype-v1", printer: printer_01 }
   PrintRequestRecord { request: r, source_revision: "branchsha", artifact_sha256: digest_of(s: "branch plate"), artifact_location: "/var/lib/gunbc/print-runs/ring-1-77.3mf", attempt_id: print_attempt_id(request: r, artifact_sha256: digest_of(s: "branch plate")) }
 }
 

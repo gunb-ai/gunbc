@@ -89,7 +89,7 @@ on:
         options: [printer-01, printer-02]
         type: choice
       printer_request:
-        description: "Printer operation JSON: operation (observe or converge); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes."
+        description: "Printer operation JSON: operation (observe or converge); for converge also request_id (one per physical copy), root (printed assembly root wire), plate (a plate plan under artifacts/printing/<root>/, named without .json) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes."
         required: false
         type: string
       agent_state_slot:
@@ -5170,6 +5170,7 @@ jobs:
           PRINTER_OPERATION: ${{ fromJSON(inputs.printer_request || '{}').operation }}
           PRINTER_REQUEST_ID: ${{ fromJSON(inputs.printer_request || '{}').request_id }}
           PRINTER_ROOT: ${{ fromJSON(inputs.printer_request || '{}').root }}
+          PRINTER_PLATE: ${{ fromJSON(inputs.printer_request || '{}').plate }}
           PRINTER_RECIPE: ${{ fromJSON(inputs.printer_request || '{}').recipe }}
         timeout-minutes: 45
       - name: Upload printer operation receipt
