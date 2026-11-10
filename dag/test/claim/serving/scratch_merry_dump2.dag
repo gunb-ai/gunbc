@@ -1,20 +1,24 @@
-// scratch (merry-gull-120): isolate which fold piece refuses with the generic
+module test.claim.serving.scratch_merry_dump2
+
+// SCRATCH, NOT FOR MERGE. Isolate which fold piece refuses with the generic
 // grammar_relation_production_not_found. DELETE when done.
-use v2.std.diagnostic.*
-use v2.extdeps.languages.bash_build.*
-use v2.workflow.bash_command_fold_serialize.*
 
-data scratch_main_ok: Int = 0
+import std.types { String }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import v2.std.diagnostic { diagnostics_reason_lexemes, Outcome }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_from_word_nodes, bash_build_word_var, bash_build_command_from_lits,
+  bash_build_with_redir_from_file, bash_build_word_positional, bash_build_word_double_quoted,
+  bash_build_word_kinded, bash_build_command_with_words, bash_build_word_bare, bash_build_word_lit,
+}
 
-fn scratch_probe(label: String, node: Node) -> String {
-  match bash_fold_serialize_node(stmt: node) {
-    Accepted { value: v, diagnostics: _ } => concat(label, concat(" ACCEPTED[", concat(v, "]")))
+fn probe(label: String, outcome: Outcome<String>) -> String {
+  match outcome {
+    Accepted { value: v } => concat(label, concat(" ACCEPTED[", concat(v, "]\n")))
     Rejected { diagnostics: d } =>
-      match diagnostics_first(diagnostics: d) {
-        Present { value: x } =>
-          concat(label, concat(" REJECTED[", concat(diagnostics_reason_lexemes(d: x), "]")))
-        Absent => concat(label, " REJECTED[]")
-      }
+      concat(label, concat(" REJECTED[", concat(diagnostics_reason_lexemes(diagnostics: d), "]\n")))
   }
 }
 
@@ -30,23 +34,37 @@ fn main() -> CliWireResponse {
   let exec_cmd = bash_build_command_from_lits(lits: ["exec"])
   let echo_bare = bash_build_command_with_words(words: [bash_build_word_bare(text: "echo")])
   let echo_lit = bash_build_command_with_words(words: [bash_build_word_lit(text: "echo")])
-  let bad_var_cmd = bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "1x")])
+  let bad_var = bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "1x")])
   let redir_bare = bash_build_with_redir_from_file(
     inner: exec_cmd,
     path: bash_build_word_bare(text: "/root/engine.args")
   )
-  let lines = [
-    scratch_probe(label: "P1_POSITIONAL", node: positional0),
-    scratch_probe(label: "P2_DQ0", node: dq0),
-    scratch_probe(label: "P3_EXEC", node: exec_cmd),
-    scratch_probe(label: "P4_REDIR_DQ0", node: bash_build_with_redir_from_file(inner: exec_cmd, path: dq0)),
-    scratch_probe(label: "P5_ECHO_BARE", node: echo_bare),
-    scratch_probe(label: "P6_ECHO_LIT", node: echo_lit),
-    scratch_probe(label: "P7_BADVAR_CMD", node: bad_var_cmd),
-    scratch_probe(label: "P8_REDIR_BARE", node: redir_bare)
-  ]
   CliWirePrintable {
-    bytes: join(parts: lines, separator: "\n"),
-    exit: ExitSuccess
+    bytes: concat(
+      concat(
+        concat(
+          concat(
+            concat(
+              concat(
+                concat("P1_POSITIONAL ", probe(label: "", outcome: bash_fold_serialize_node(stmt: positional0))),
+                concat("P2_DQ0 ", probe(label: "", outcome: bash_fold_serialize_node(stmt: dq0)))
+              ),
+              concat("P3_EXEC ", probe(label: "", outcome: bash_fold_serialize_node(stmt: exec_cmd)))
+            ),
+            concat(
+              "P4_REDIR_DQ0 ",
+              probe(label: "", outcome: bash_fold_serialize_node(stmt: bash_build_with_redir_from_file(inner: exec_cmd, path: dq0)))
+            )
+          ),
+          concat("P5_ECHO_BARE ", probe(label: "", outcome: bash_fold_serialize_node(stmt: echo_bare)))
+        ),
+        concat("P6_ECHO_LIT ", probe(label: "", outcome: bash_fold_serialize_node(stmt: echo_lit)))
+      ),
+      concat(
+        concat("P7_BADVAR ", probe(label: "", outcome: bash_fold_serialize_node(stmt: bad_var))),
+        concat("P8_REDIR_BARE ", probe(label: "", outcome: bash_fold_serialize_node(stmt: redir_bare)))
+      )
+    ),
+    exit: ExitSuccess,
   }
 }
