@@ -20,7 +20,7 @@ import gunbc.fleet.printer_federation { printer_lan_host_identity }
 import gunbc.host_state_root { HostStateTree }
 import gunbc.fleet.printer_workflow_artifact { print_run_directory, printer_state_group }
 import gunbc.fleet.printer_state_parent_reown_host { printer_state_parent_identity_leg_on_host }
-import gunbc.fleet.printer_state_layout { printer_state_directories, printer_state_move, PrinterStateMoved, PrinterStateMoveRefused }
+import gunbc.fleet.printer_state_layout { printer_state_directories }
 import gunbc.fleet.print_record_stores {
   print_request_store, PrintRequestStoreReady, PrintRequestStoreUnready, PrintRequestStore, print_request_read, print_request_record,
   print_completion_store, PrintCompletionStoreReady, PrintCompletionStoreUnready, PrintCompletionStore, print_completion_presence,
@@ -48,7 +48,6 @@ import gunbc.fleet.printer_operator_approval { approve_and_print }
 import product.printing.print_recipe { print_recipe_from_wire }
 import gunbc.fleet.printer_ams_loading { select_ams_tray, AmsTraySelected, AmsTrayRefused }
 import gunbc.fleet.printer_start_evidence_store { start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready }
-import gunbc.fleet.printer_execution_hold { printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready }
 import gunbc.fleet.printer_receipt { write_receipt }
 import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource }
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -202,12 +201,10 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, source_revision: N
   let host = os.Hostname.ReadShort()
   if !host.success || trim(s: host.value) != (printer_lan_host_identity() as String) { return exit_failure(reason: "Print convergence runs on the modeled printer LAN host") }
   match ensure_printer_state_directories(tree: tree) { Present { value: r } => return exit_failure(reason: concat("Printer state directory not converged: ", r)) Absent => {} }
-  match printer_state_move(tree: tree) { PrinterStateMoveRefused { cause: c } => return exit_failure(reason: concat("Printer state layout not converged: ", c)) PrinterStateMoved => {} }
   let requests = match print_request_store(tree: tree) { PrintRequestStoreReady { store: x } => x PrintRequestStoreUnready { detail: d } => return exit_failure(reason: concat("Print request records unavailable: ", d)) }
   let completions = match print_completion_store(tree: tree) { PrintCompletionStoreReady { store: x } => x PrintCompletionStoreUnready { detail: d } => return exit_failure(reason: concat("Print completion records unavailable: ", d)) }
   let claims = match printer_start_claims(tree: tree) { PrinterStartClaimsReady { store: x } => x PrinterStartClaimsUnready { detail: d } => return exit_failure(reason: concat("Printer start claims unavailable: ", d)) }
   let start_evidence = match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: x } => x StartEvidenceStoreUnready { detail: d } => return exit_failure(reason: concat("Printer start evidence unavailable: ", d)) }
-  let holds = match printer_execution_hold_store(tree: tree) { PrinterExecutionHoldStoreReady { store: x } => x PrinterExecutionHoldStoreUnready { detail: d } => return exit_failure(reason: concat("Printer execution hold unavailable: ", d)) }
   let route = print_pass_route(record: print_request_read(store: requests, request: request))
   let record = match route {
     PrintPassRecordRefused { cause: _ } => return exit_failure(reason: print_pass_refusal_text(route: route))
@@ -268,7 +265,7 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, source_revision: N
         }
       }
       if !copy_verified(record: record, path: path) { return exit_failure(reason: "The recorded artifact is missing or no longer hashes to its recorded digest; prepare under a new request id") }
-      approve_and_print(printer: record.request.printer as String, hold_store: holds, claims: claims, evidence: start_evidence, path: path, digest: record.artifact_sha256.hex as String, version: version as String, attempt: record.attempt_id as String, credential_source: credential_source, ams_tray: tray)
+      approve_and_print(printer: record.request.printer as String, claims: claims, evidence: start_evidence, path: path, digest: record.artifact_sha256.hex as String, version: version as String, attempt: record.attempt_id as String, credential_source: credential_source, ams_tray: tray)
     }
   }
 }

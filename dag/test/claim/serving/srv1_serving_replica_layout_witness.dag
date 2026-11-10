@@ -1,0 +1,339 @@
+module test.claim.serving.srv1_serving_replica_layout_witness
+
+import std.types { Bool, NonEmptyStr, List }
+import std.nat { Nat }
+import std.algebra { length, string_contains }
+import std.optional { Absent, Present }
+import std.measure { byte_size_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
+import gunbc.serving.srv1_serving_replica_layout {
+  srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
+  srv1_replica_host_budget, srv1_replica_total_host_claim,
+  srv1_admitted_launch_config, Srv1LaunchConfig, Srv1LaunchAdmission,
+  Srv1KvCacheDtype,
+  srv1_launch_admission,
+  srv1_replica_unit_contract, srv1_disk_guard_contract,
+  srv1_serving_gpu_launcher, srv1_replica_engine_argv, srv1_replica_device_words, srv1_replica_gpu_uuid,
+  srv1_replica_helper,
+  srv1_contract_verifies_container_name, srv1_contract_verifies_gpu_uuid, srv1_contract_verifies_image_digest,
+  srv1_contract_verifies_port_binding, srv1_contract_verifies_mounts, srv1_contract_verifies_memory_limit,
+  srv1_contract_verifies_shm_size, srv1_contract_verifies_cgroup_parent,
+  srv1_contract_reports_drift, srv1_contract_exits_nonzero, srv1_contract_may_destroy, srv1_contract_restarts_on_failure,
+  Srv1ServingReplicaSpec,
+  srv1_fleet_boot_survival_audit, srv1_audit_entry_is_unreadable, srv1_audit_entry_is_enabled_at_boot,
+  srv1_audit_entry_is_user_scope, srv1_audit_entry_is_restart_unless_stopped,
+  srv1_test_only_artifacts,
+  BootSurvivalObservation,
+}
+import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
+import gunbc.rung_drop.srv1_serving_boot_installer_is_adopted_not_staged { srv1_serving_boot_installer_is_adopted_not_staged }
+import gunbc.rung_drop { Standing, TypedDeclaration, AuthoredProse, Retired, Superseded, Dissolved }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ── admission guard witnesses ───────────────────────────────────────────────────────────────────────
+//
+// Each refusal test has a discriminating input: the configuration that triggers the refusal differs from
+// the admitted configuration in EXACTLY ONE field. If the guard is removed (the function returns Admitted
+// unconditionally), the test goes red because it expects Refused. Conversely, if the defect row is
+// removed (upstream fixes the defect and the row dissolves), the refusal stops and the test must change.
+
+// THE ADMITTED CONFIGURATION is admitted. If this goes red, the guard is over-refusing.
+// Builds a srv1 launch config for the admission/render tests, varying only the shape under test; the engine
+// rows (profile, hardware, LMCache tiers, max-model-len, image) are the srv1 constants so a test discriminates
+// on exactly one field (tensor_parallel_size / kv_cache_dtype / lil_replicas / host_gpu_p2p).
+fn witness_cfg(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool) -> Srv1LaunchConfig {
+  Srv1LaunchConfig {
+    tensor_parallel_size: tp,
+    kv_cache_dtype: kv,
+    profile: "qwen38-flash-next" as NonEmptyStr,
+    hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
+    lmcache_l1: gibibyte_to_byte_size(g: gibibyte(count: 12)),
+    max_model_len: 229376,
+    image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
+    lil_replicas: reps,
+    host_gpu_p2p: p2p,
+  }
+}
+
+test fn the_admitted_config_is_admitted() -> Bool {
+  match srv1_launch_admission(config: srv1_admitted_launch_config) {
+    Srv1LaunchAdmitted { layout: _ } => true
+    Srv1LaunchRefused { cause: _, defect_identity: _ } => false
+  }
+}
+
+// (a) TP=2 on a P2P-less host → refused, citing F24. Discriminates on tensor_parallel_size: the only
+// difference from srv1_admitted_launch_config is TP=2 instead of TP=1.
+test fn tp2_without_p2p_is_refused_by_f24() -> Bool {
+  let request = witness_cfg(tp: 2, kv: Fp8E4m3, reps: 1, p2p: false)
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f24-b12x-pcie-allreduce-tp2-hang"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+}
+
+// (a') TP=2 WITH P2P is not refused by F24 (the defect is specifically about no-P2P; with P2P, TP=2
+// works). Discriminates on host_gpu_p2p: the only difference from the refusal test is p2p=true.
+test fn tp2_with_p2p_passes_f24_check() -> Bool {
+  let request = witness_cfg(tp: 2, kv: Fp8E4m3, reps: 1, p2p: true)
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchAdmitted { layout: _ } => true
+    Srv1LaunchRefused { cause: _, defect_identity: _ } => false
+  }
+}
+
+// (b) nvfp4 kv_cache_dtype → refused, citing F25. Discriminates on kv_cache_dtype: the only difference
+// from the admitted config is kv_cache_dtype="nvfp4".
+test fn nvfp4_kv_cache_is_refused_by_f25() -> Bool {
+  let request = witness_cfg(tp: 1, kv: NvFp4, reps: 1, p2p: false)
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f25-nvfp4-main-kv-unsupported"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+}
+
+// (c) lil REPLICAS=2 (single-process multi-replica) → refused, citing F26a (first standing defect).
+// Discriminates on lil_replicas: the only difference from the admitted config is replicas=2.
+test fn lil_replicas_2_is_refused_by_f26a() -> Bool {
+  let request = witness_cfg(tp: 1, kv: Fp8E4m3, reps: 2, p2p: false)
+  match srv1_launch_admission(config: request) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f26a-lmcache-replica-checkpoint-dma-crash"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+}
+
+// ── replica roster witnesses ────────────────────────────────────────────────────────────────────────
+
+// The roster has exactly two replicas, at indices 0 and 1.
+test fn the_roster_has_two_replicas() -> Bool {
+  length(xs: srv1_serving_replica_roster) == 2
+}
+
+// The two replicas have distinct GPU UUIDs (they are on different cards). The UUIDs are read from each
+// unit's PROFILE card row -- gunbc.serving.serving_replica_profile is their owner; the unit asks for them.
+test fn the_replica_gpu_uuids_are_distinct() -> Bool {
+  let u0 = srv1_replica_gpu_uuid(replica: srv1_replica_0)
+  let u1 = srv1_replica_gpu_uuid(replica: srv1_replica_1)
+  match u0 {
+    Absent => false
+    Present { value: a } => match u1 {
+      Absent => false
+      Present { value: b } => a != b
+    }
+  }
+}
+
+// The two replicas have distinct host ports (they publish on different ports).
+test fn the_replica_ports_are_distinct() -> Bool {
+  srv1_replica_0.host_port != srv1_replica_1.host_port
+}
+
+// The two replicas have distinct KV directories (they write to different L2 roots).
+test fn the_replica_kv_dirs_are_distinct() -> Bool {
+  srv1_replica_0.host_kv_dir != srv1_replica_1.host_kv_dir
+}
+
+// Each replica's host budget total equals the sum of its three components (shm + PLE + anon).
+test fn the_host_budget_components_sum_to_the_total() -> Bool {
+  byte_size_count(b: srv1_replica_total_host_claim(budget: srv1_replica_host_budget)) == byte_size_count(b: srv1_replica_host_budget.l1_shm) + byte_size_count(b: srv1_replica_host_budget.ple_pinned) + byte_size_count(b: srv1_replica_host_budget.anon)
+}
+
+// The PLE table is outside the cgroup: the total host claim exceeds the cgroup memory limit.
+test fn ple_is_outside_the_cgroup() -> Bool {
+  byte_size_count(b: srv1_replica_total_host_claim(budget: srv1_replica_host_budget)) > byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit)
+}
+
+// The disk guard requires at least L2 GiB free per replica (the reserve is positive).
+test fn the_disk_guard_reserve_is_positive() -> Bool {
+  byte_size_count(b: srv1_disk_guard_contract.required_free_per_replica) > 0
+}
+
+// The systemd contract carries the unit file's semantics as TYPED carriers (review 92396): restart policy,
+// exit status, and the power-cap ordering edge are machine-readable, not English.
+test fn the_systemd_contract_matches_the_unit_file() -> Bool {
+  srv1_contract_restarts_on_failure(c: srv1_replica_unit_contract)
+    && srv1_replica_unit_contract.success_exit_status == 143
+    && (srv1_replica_unit_contract.power_cap_unit.name as String) == "gpu-power-limit.service"
+}
+
+// Adoption policy is typed (review 92396 + parent item 2): the contract verifies the eight aspects, and on a
+// mismatch it REPORTS DRIFT and EXITS NON-ZERO — it can never hold DestroyAndRelaunch, and the retained
+// helper carries no destroy path. A contract that added the destroy action goes red here.
+test fn the_adoption_policy_never_destroys_a_healthy_engine() -> Bool {
+  let c = srv1_replica_unit_contract
+  let verifies_all =
+    srv1_contract_verifies_container_name(c: c)
+    && srv1_contract_verifies_gpu_uuid(c: c)
+    && srv1_contract_verifies_image_digest(c: c)
+    && srv1_contract_verifies_port_binding(c: c)
+    && srv1_contract_verifies_mounts(c: c)
+    && srv1_contract_verifies_memory_limit(c: c)
+    && srv1_contract_verifies_shm_size(c: c)
+    && srv1_contract_verifies_cgroup_parent(c: c)
+  let safe_outcomes =
+    srv1_contract_reports_drift(c: c)
+    && srv1_contract_exits_nonzero(c: c)
+    && !srv1_contract_may_destroy(c: c)
+  let helper_has_no_destroy = !string_contains(s: srv1_replica_helper.body as String, pattern: "docker rm")
+  verifies_all && safe_outcomes && helper_has_no_destroy
+}
+
+// The retained helper is a receipt of the ON-HOST adopt-or-launch script (read 2026-11-09): it adopts by
+// the roster names, propagates the container exit status through docker wait, and stops with -t 240. The
+// contract's eight-field verification set is NOT in the helper — that live gap is the declared frontier
+// srv1_helper_adoption_verification_gap, and this test pins what the helper DOES so the gap stays honest.
+test fn the_helper_receipt_is_the_live_adopt_or_launch_route() -> Bool {
+  let b = srv1_replica_helper.body as String
+  let r0 = srv1_replica_0
+  let r1 = srv1_replica_1
+  string_contains(s: b, pattern: r0.container_name as String)
+    && string_contains(s: b, pattern: r1.container_name as String)
+    && string_contains(s: b, pattern: "docker wait")
+    && string_contains(s: b, pattern: "exit \"$rc\"")
+    && string_contains(s: b, pattern: "docker stop -t 240")
+    && string_contains(s: b, pattern: "adopting running container")
+    && !string_contains(s: b, pattern: "docker rm")
+}
+
+// The contract enables both instances.
+test fn both_replica_instances_are_enabled() -> Bool {
+  length(xs: srv1_replica_unit_contract.enabled_instances) == 2
+}
+
+// ── the engine command is CONSTRUCTED from typed rows (review 92292 F1 + 92314 F1/F2; fail_closed) ──
+//
+// The realization is RENDERED from the typed srv1_admitted_launch_config (construction), not scraped from the
+// launcher string. The admitted config renders the full engine argv (profile, hardware, LMCache tiers,
+// max-model-len) with no --kv-cache-dtype (FP8 E4M3 is the engine default); a config set to a refused shape BOTH
+// renders that flag AND is refused by the matching defect -- so realization and guard track one typed source, and
+// no string's absence can silently default the guard to safe (review 92314; fail_closed).
+test fn the_engine_argv_is_constructed_from_typed_rows() -> Bool {
+  let admitted = srv1_replica_engine_argv(config: srv1_admitted_launch_config)
+  let has = any(admitted, t => (t as String) == "229376")
+    && any(admitted, t => (t as String) == "LMCACHE_L2_GB=125")
+    && any(admitted, t => (t as String) == "qwen38-flash-next")
+    && any(admitted, t => (t as String) == "rtx-pro-6000-pcie")
+    && !any(admitted, t => (t as String) == "--kv-cache-dtype")
+  let nv = witness_cfg(tp: 1, kv: NvFp4, reps: 1, p2p: false)
+  let nv_renders = any(srv1_replica_engine_argv(config: nv), t => (t as String) == "nvfp4")
+  let nv_refused = match srv1_launch_admission(config: nv) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f25-nvfp4-main-kv-unsupported"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+  let tp = witness_cfg(tp: 2, kv: Fp8E4m3, reps: 1, p2p: false)
+  let tp_renders = any(srv1_replica_engine_argv(config: tp), t => (t as String) == "--tensor-parallel-size")
+  let tp_refused = match srv1_launch_admission(config: tp) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f24-b12x-pcie-allreduce-tp2-hang"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+  let rp = witness_cfg(tp: 1, kv: Fp8E4m3, reps: 2, p2p: false)
+  let rp_refused = match srv1_launch_admission(config: rp) {
+    Srv1LaunchRefused { cause: _, defect_identity: id } => (id as String) == "srv1-f26a-lmcache-replica-checkpoint-dma-crash"
+    Srv1LaunchAdmitted { layout: _ } => false
+  }
+  has && nv_renders && nv_refused && tp_renders && tp_refused && rp_refused
+}
+
+// ── the launcher's per-index case is tied to the roster (review 92292 F2: no silent drift) ───────────
+//
+// The launcher is the operator's verbatim on-disk script (its sha is the C12 receipt); the roster is the
+// model's authoritative layout. This ties them: every replica's UUID, container name and host port from the
+// roster must appear in the launcher body, and the per-index serve/kv names must be present. A change to
+// either copy independently breaks here, so the two cannot silently diverge.
+test fn the_launcher_case_statement_matches_the_roster() -> Bool {
+  let body = srv1_serving_gpu_launcher.body as String
+  let uuids_ok = all(srv1_serving_replica_roster, r => match srv1_replica_gpu_uuid(replica: r) {
+    Absent => false
+    Present { value: u } => string_contains(s: body, pattern: u as String)
+  })
+  let names_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: r.container_name as String))
+  let ports_ok = all(srv1_serving_replica_roster, r => string_contains(s: body, pattern: to_string(r.host_port as Int)))
+  let dirs_ok = string_contains(s: body, pattern: "lil-flash-next-1")
+    && string_contains(s: body, pattern: "serve-gpu1")
+    && string_contains(s: body, pattern: "kv-gpu1")
+  uuids_ok && names_ok && ports_ok && dirs_ok
+}
+
+// The launcher pins each replica by its roster GPU UUID via the shared device-selector form (the one home
+// for nvidia.com/gpu=<UUID>, the same primitive #16048's TP-group path renders).
+test fn the_replica_device_word_uses_the_shared_selector() -> Bool {
+  let r = srv1_replica_0
+  let words = srv1_replica_device_words(replica: r)
+  // The model's device word is the shared selector's output tagged --device (one home for nvidia.com/gpu=<UUID>).
+  let model_ok = match srv1_replica_gpu_uuid(replica: r) {
+    Absent => false
+    Present { value: u } => words == ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
+  }
+  // gpu.sh pins the device with the SAME CDI prefix the shared selector emits; it binds the UUID itself from
+  // the case statement into `--device nvidia.com/gpu=$GPU`, so the launcher carries the prefix, not the literal
+  // UUID, on the docker line. The UUID↔index binding to the roster is asserted by
+  // the_launcher_case_statement_matches_the_roster, which checks each replica's UUID appears in the body.
+  let launcher_flag = join(["--device ", nvidia_cdi_device_name_prefix as String], "")
+  let launcher_ok = string_contains(s: srv1_serving_gpu_launcher.body as String, pattern: launcher_flag)
+  model_ok && launcher_ok
+}
+
+// THE LAUNCHER RECEIPT AGREES WITH THE TYPED ROWS (review 92353: the retained body restates the 32g memory
+// limit and the L1/L2 tier sizes as literals — a hash-pinned ADOPTED on-host receipt, not a second authority).
+// This ties each restated literal to its typed source so a drift between the host file and the model is a RED
+// witness, not a silent authority fork: --memory=32g tracks srv1_replica_host_budget.cgroup_memory_limit (32
+// GiB), the L1/L2 env values track srv1_admitted_launch_config.lmcache_l1 and srv1_lmcache_l2_configured, and
+// --max-model-len tracks the config. If the operator edits the on-host script (its sha256 no longer matches
+// srv1_serving_gpu_launcher) the receipt itself is stale; if only a typed row moves, this catches the divergence.
+test fn the_launcher_receipt_agrees_with_the_typed_rows() -> Bool {
+  let body = srv1_serving_gpu_launcher.body as String
+  let cfg = srv1_admitted_launch_config
+  let mem_gib = gibibyte_count(g: gibibyte_ceiling(b: srv1_replica_host_budget.cgroup_memory_limit))
+  let l1_gib = gibibyte_count(g: gibibyte_ceiling(b: cfg.lmcache_l1))
+  let l2_gib = gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured))
+  let mem_ok = mem_gib == 32 && string_contains(s: body, pattern: "--memory=32g")
+  let l1_ok = l1_gib == 12 && string_contains(s: body, pattern: "LMCACHE_L1_GB=12")
+  let l2_ok = l2_gib == 125 && string_contains(s: body, pattern: "LMCACHE_L2_GB=125")
+  let mml_ok = cfg.max_model_len == 229376 && string_contains(s: body, pattern: "--max-model-len 229376")
+  mem_ok && l1_ok && l2_ok && mml_ok
+}
+
+// THE RUNG DROP IS ROSTERED (review 92440, guarantee_ladder "no silent regression"): the boot path's
+// descent from staged-by-convergence to adopted-from-operator is a typed row in gunbc.rung_drop with
+// previous=MechanicallyPreventable, temporary=Mitigatable and a restoration trigger naming the witness
+// that climbs back. If anyone retires the row while the boot path is still adopted, this goes red.
+test fn the_boot_installer_drop_is_rostered_typed() -> Bool {
+  match srv1_serving_boot_installer_is_adopted_not_staged.standing {
+    Standing { declaration: d } =>
+      match d {
+        TypedDeclaration { previous: p, temporary: t, reason: _, population: _, restoration_trigger: rt } =>
+          (match p { MechanicallyPreventable => true, _ => false })
+            && (match t { Mitigatable => true, _ => false })
+            && string_contains(s: rt, pattern: "witness on srv1 diffs both on-host files")
+        AuthoredProse { legacy: _, authored: _ } => false
+      }
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    Dissolved { removal: _, declaration: _ } => false
+  }
+}
+
+// ── D20: the boot-survival audit keeps UNKNOWN honest ─────────────────────────────────────
+// An unreadable host must read Unreadable, never a fabricated healthy verdict; the enabled services
+// the audit claims (srv3/srv4) must carry the enabled verdict, srv2's pool the user-scope one.
+test fn the_boot_survival_audit_keeps_unknown_unreadable() -> Bool {
+  let a = srv1_fleet_boot_survival_audit
+  any(a, o => o.host == "h11-05" && srv1_audit_entry_is_unreadable(o))
+      && any(a, o => o.host == "h11-07" && srv1_audit_entry_is_unreadable(o))
+      && any(a, o => o.host == "h11-08" && srv1_audit_entry_is_unreadable(o))
+      && any(a, o => o.host == "h11-88" && srv1_audit_entry_is_unreadable(o))
+      && !any(a, o => string_contains(s: o.host, pattern: "h11") && srv1_audit_entry_is_enabled_at_boot(o))
+      && any(a, o => o.host == "srv3" && o.unit == "strata-pool.service" && srv1_audit_entry_is_enabled_at_boot(o))
+      && any(a, o => o.host == "srv2" && string_contains(s: o.unit, pattern: "ctrl-vast-pool") && srv1_audit_entry_is_user_scope(o))
+      && any(a, o => o.host == "srv1" && o.unit == "gunbc-router" && srv1_audit_entry_is_restart_unless_stopped(o))
+}
+
+// ── F27: the test-only artifact inventory is the complete six-path list ───────────────────
+test fn the_test_artifact_inventory_covers_the_six_paths() -> Bool {
+  let arts = srv1_test_only_artifacts
+  length(xs: arts) == 6
+      && any(arts, p => string_contains(s: p, pattern: "nccl_test.py"))
+      && any(arts, p => string_contains(s: p, pattern: "serve_test"))
+      && any(arts, p => string_contains(s: p, pattern: "warm150k"))
+      && any(arts, p => string_contains(s: p, pattern: "/patch/"))
+}

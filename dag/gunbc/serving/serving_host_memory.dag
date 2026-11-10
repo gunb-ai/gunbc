@@ -304,6 +304,40 @@ data srv4_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotC
 // ~/strata-pool/engine.log read 2026-11-08 (up to 228,921 tokens): at 10 KiB per token the largest fixed part
 // any park needed was 1,234.2 MiB, so 1,240 MiB plus 10 KiB per token lies above every one. A different build
 // from srv4's, and srv4's 800 MiB envelope does not cover it, so its own row.
+// SRV4's PARKED-CONVERSATION DISK BUDGET, AND THE FREE SPACE THAT MUST ADMIT IT (operator, 2026-11-09: "small RAM L1 +
+// larger disk", capped disk with minimal host impact). The BUDGET is a declared workflow figure, so it is an assumption
+// carrying its reason and its read obligation -- never a ServingMemoryRead, which would present a decision as an
+// observation. It is also NOT the filesystem's free space: free space is a separate reading that must admit the budget
+// (gunbc.serving.strata_parked_tier), because a tier sized to whatever the disk happens to have left is a tier that
+// shrinks when something else writes, and a save that fails for space must not be a surprise at park time. 128 GiB
+// holds roughly seventy conversations at srv4's declared snapshot cost (srv4_strata_snapshot_cost: 800 MiB plus 10 KiB
+// per token, so ~1.8 GiB at the anchor context) -- far more than the 16 GiB RAM tier's eight slots, which is the point
+// of the ladder. srv3's own rows (srv3_host_free_disk, srv3_strata_parked_budget, srv3_strata_snapshot_cost) follow
+// below: its replica runs --batch 8 and the engine refuses save/restore under parallel requests, so its rung is
+// refused today, and those rows are what its verdict reads the day the batch lifts (it has ~1.3 TB free, read 2026-11-09).
+data srv4_strata_parked_budget: ServingMemoryReading = ServingMemoryAssumed {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 128)),
+  reason: "declared cap on router-driven slot-file saves (workflow decision, 2026-11-09, under the operator's capped-disk instruction): read the bytes actually written per parked conversation on srv4 (du over slot_save_path through real turns) and revise this to what the engine really costs, not what was guessed" as NonEmptyStr
+}
+
+data srv4_host_free_disk: ServingMemoryReading = ServingMemoryRead {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 186)),
+  provenance: "read 2026-11-09 by bold-wren-111 over ssh: ~200 GB free on srv4 after the swap files were deleted (the disk was 85% full at 69 GB before); recorded as 186 GiB, the round figure at or under the reading (~200 GB = 186.3 GiB), so a budget this row admits is admitted by the host -- recording the observed GB as GiB would round UP and widen the very wall that admits the disk budget (gunbc.design_argument::fail_closed)" as NonEmptyStr
+}
+
+// SRV3's parked-conversation tier rows, as srv4's mirror: its OWN declared budget and its OWN free-space reading.
+// srv3's live --batch 8 refuses the rung today, so these two rows are what the verdict will be checked against the
+// day srv3 drops --batch; reading srv4's rows for srv3 would be the duplicated-reading defect again.
+data srv3_host_free_disk: ServingMemoryReading = ServingMemoryRead {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 1200)),
+  provenance: "df on srv3 (192.168.1.221), 2026-11-09, read by bold-wren-111 for this item: 1.3 TB free; recorded as 1200 GiB, the round figure at or under the reading, so a budget admitted by this row is admitted by the host." as NonEmptyStr,
+}
+
+data srv3_strata_parked_budget: ServingMemoryReading = ServingMemoryAssumed {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 32)),
+  reason: "srv3's OWN declared cap on router-driven slot-file saves -- NOT the same figure as srv4 (srv4 declares 128 GiB on its dedicated release; srv3 declares 32 GiB, the conservative first-declared cap on the hand-run strata-pool host, which is a test pool at /home/ubuntu/strata-pool shared with CI runners rather than a dedicated serving box, so it is declared smaller until it earns the bytes). Each host declares independently; srv3's is a distinct bet, not a copy. Declared, not read, and UNTESTED on this host: srv3 runs --batch 8 today, which refuses slot save/restore outright, so no slot file has ever been written there. The read obligation is to re-admit the rung only when srv3's pool drops --batch (server.py:4091's 501 lifts with it) and then du the slot dir under /home/ubuntu/strata-pool. NEVER free space, which must admit this instead." as NonEmptyStr,
+}
+
 data srv3_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
   fixed: mebibyte_to_byte_size(m: mebibyte(count: 1240)),
   per_token: kibibyte_to_byte_size(k: kibibyte(count: 10)),
@@ -335,6 +369,18 @@ data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(co
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
+// srv1's LMCache L1 PER REPLICA as it runs: LMCACHE_L1_GB=12 on each container, read from the run identity's
+// own environment (srv1_topology_comparison's run row records the container environment, read 2026-11-08) and
+// corroborated by srv1_lil_serve.sh's LMCache block, which passes 12. LMCache's GB is GiB, as the L2 row's
+// rejection reading established. NOT the 2026-10-30 engine-memory figure below (L1_GB=100): the tier has been
+// 12 GiB per replica since the 2026-11-08 move to two replicas, which is also why no 110 GiB /dev/shm is needed.
+data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 12))
+
+data srv1_lmcache_l1_tier: ServingMemoryReading = ServingMemoryRead {
+  bytes: srv1_lmcache_l1_configured,
+  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L1_GB=12 each (the run identity's environment, srv1_topology_comparison; corroborated by srv1_lil_serve.sh's LMCache block), 2026-11-08" as NonEmptyStr,
+}
+
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
   bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_configured) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
   provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L2_GB=125 each (docker inspect, 2026-11-08) at the L2 eviction watermark 0.80 (serve.log eviction_controller)" as NonEmptyStr,
@@ -342,7 +388,10 @@ data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
 
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being
 // killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had.
-data serving_engine_swap_bound: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))
+data serving_engine_swap_bound: ServingMemoryReading = ServingMemoryAssumed {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)),
+  reason: "the operator's DECISION of 2026-10-30, not a measurement: a little swap per engine so an overrun slows instead of being killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had (systemctl show h11-strata@87 MemorySwapMax=34359738368, read 2026-10-30T16:18Z). Read obligation: MemorySwapMax as actually configured on the live units, against this decision." as NonEmptyStr,
+}
 
 fn host_6ce85c_engine_as_launched(bus: String) -> ServingEngineMemory {
   ServingEngineMemory {
@@ -368,7 +417,7 @@ data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDe
   // kB on 2026-10-30T19:05Z, equal to the 54,817,524,224-byte file). The 49,560,204 kB Mlocked read at 16:18Z
   // was the lock only partly held under that boot's memory pressure, not a smaller file.
   shared_resident: kibibyte_to_byte_size(k: kibibyte(count: 53532740)),
-  swap_bound: serving_engine_swap_bound,
+  swap_bound: serving_reading_bytes_or_zero(r: serving_engine_swap_bound),
   engines: [
     host_6ce85c_engine_as_launched(bus: "85"), host_6ce85c_engine_as_launched(bus: "87"), host_6ce85c_engine_as_launched(bus: "88"),
     host_6ce85c_engine_as_launched(bus: "c5"), host_6ce85c_engine_as_launched(bus: "c7"), host_6ce85c_engine_as_launched(bus: "c8"),
@@ -392,26 +441,39 @@ data srv1_vllm_engine_memory: ServingEngineMemory = ServingEngineMemory {
 
 // srv3 Strata over the RTX 2000 Ada pair: its /metrics reported --conversation-cache-mib 65536 and 24 slots
 // on 2026-10-30. Nobody has a srv3 shell, so its cgroup caps are unread.
+// Read again over ssh 2026-11-08 by bold-wren-111 (read-only), so "no shell on srv3" is no longer the reason a
+// figure is missing — what has not been read is now stated as unread, and the three figures that pass did read:
+// the cap the engine's own guard reports, the conversation cache, and the base minus the expert arena.
 data srv3_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "srv3-strata" as NonEmptyStr,
-  memory_cap: ServingMemoryUnread { reason: "srv3 Strata memory cap: no shell on srv3 (node@srv3 key refused)" as NonEmptyStr },
-  swap_cap: ServingMemoryUnread { reason: "srv3 Strata swap cap: no shell on srv3" as NonEmptyStr },
-  base: ServingMemoryUnread { reason: "srv3 Strata base: no shell on srv3" as NonEmptyStr },
-  conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 65536)), provenance: "srv3 Strata /metrics conversation_cache_mib 65536, read through the srv1 router's upstream 2026-10-30" as NonEmptyStr },
+  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 110)), provenance: "strata-pool.service engine log 'memory guard: limit 110.0 GiB (source: cgroup)', read over ssh 2026-11-08 by bold-wren-111" as NonEmptyStr },
+  swap_cap: ServingMemoryAssumed { bytes: byte_size(count: 0), reason: "the fleet's no-swap convention for serving slices: srv4's gunbc-srv4-daily.slice was read to MemorySwapMax=0 (2026-10-30) and h11's engines carry only 2 GiB, so srv3's strata.slice is budgeted at no swap. UNREAD on srv3 -- read obligation: systemctl show strata-pool.service -p MemorySwapMax; the figure is taken as 0 until that read lands. This row is srv3's swap limit's ONLY home; srv3_grant reads it rather than writing its own value (review 92498, single authority)" as NonEmptyStr },
+  // The engine's OWN memory, with the 46.84 GiB private expert arena taken out: srv3 runs the same shape srv4's
+  // pre-mmap engine was read in — same cards, same model, same 24/24 layer split, experts in the engine's own
+  // anon — and that base read 52 GiB (2026-10-30); 52 GiB less the 46.84 GiB arena the artifact charges is 5284
+  // MiB, corroborated by the same build's mmap'd anon+shmem of 6451 MiB on srv4 (2026-11-09). memory.current on
+  // strata-pool.service replaces it; base and the artifact's pinned rung must always re-sum to what it reads.
+  base: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 5284)), reason: "memory.current on strata-pool.service has never been read; 5284 MiB is srv4's read 52 GiB base (2026-10-30, same cards/model/split) less the 46.84 GiB expert arena the artifact charges, and the same build's mmap'd anon+shmem on srv4 (6451 MiB, 2026-11-09) corroborates it" as NonEmptyStr },
+  conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 65536)), provenance: "srv3 Strata /metrics conversation_cache_mib 65536, read through the srv1 router's upstream 2026-10-30, and confirmed by the 2026-11-08 ssh read of strata-pool.service (conversation cache 64 GiB in 24 slots)" as NonEmptyStr },
   conversation_slots: Present { value: 24 },
 }
 
-// srv4's daily-workspace engine, read 2026-10-30T20:5xZ over the fleet credential. The engine service itself has
-// no cap; its slice gunbc-srv4-daily.slice does (MemoryHigh 96 GiB, MemoryMax 120 GiB, MemorySwapMax 0), so the
-// cap read here is the slice's. Its base is the service's memory.current loaded and idle, with one 5,361-token
-// qualification turn served since its 2026-10-29T01:45Z start; the routed experts sit in the engine's own
-// anonymous memory (anon 52,731,273,216 B), since srv4 has no shared expert-lock service.
+// srv4's daily-workspace engine, on release 406c9de18cef. Read 2026-10-30T20:5xZ over the fleet credential, and
+// again 2026-11-09 00:18Z after the operator's hand change (engine.json.bak-20261109-pre-mmap on the host keeps
+// what it replaced): the engine now maps its experts (--mmap-experts, the GGUF shards in place, no experts.bin)
+// and is capped by its own drop-in 60-expert-l1-cap.conf. The figures the change withdrew are named rather than
+// quietly repainted — the slice's MemoryHigh 96 GiB / MemoryMax 120 GiB (2026-10-30) no longer describes what
+// binds this engine, a base of 56,139,382,784 B that INCLUDED a 46.84 GiB private expert arena this engine no
+// longer allocates, and a 32 GiB conversation cache. What binds it now is the service's own MemoryHigh 40 GiB
+// (MemoryMax 48 GiB), and the base is the engine's own anon plus shmem: the 13.2 GiB of file-backed RSS beside it
+// is the mapped expert tier, which gunbc.serving.serving_layout charges once as an artifact, never inside a base.
+// Every figure here is a CANDIDATE reading, not a fleet recommendation: srv4's DIMM A1 is degraded (UE 262,144).
 data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "gunbc-srv4-daily-engine" as NonEmptyStr,
-  memory_cap: ServingMemoryRead { bytes: byte_size(count: 128849018880), provenance: "systemctl show gunbc-srv4-daily.slice MemoryMax=128849018880, 2026-10-30" as NonEmptyStr },
-  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "systemctl show gunbc-srv4-daily.slice MemorySwapMax=0, 2026-10-30" as NonEmptyStr },
-  base: ServingMemoryRead { bytes: byte_size(count: 56139382784), provenance: "gunbc-srv4-daily-engine.service memory.current, loaded and idle, one qualification turn since start, 2026-10-30" as NonEmptyStr },
-  conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 32768)), provenance: "srv4 Strata /metrics conversation_cache_mib 32768, 2026-10-30" as NonEmptyStr },
+  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 56)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryHigh=56G (MemoryMax=64G), raised in place 2026-11-09 after MemoryHigh=40G starved the ~22 GB expert working set (cold decode 5.1 tok/s on 41.5 GB of drive reads); at 56G MemoryCurrent read 46.5 GB. The engine's own guard reports the same limit from the cgroup" as NonEmptyStr },
+  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "systemctl show gunbc-srv4-daily.slice MemorySwapMax=0, 2026-10-30; the 2026-11-09 drop-in caps memory only, so no swap remains" as NonEmptyStr },
+  base: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6451)), provenance: "VmRSS 19.5 GB after load under --mmap-experts = anon 2.5 GiB + file 13.2 GiB + shmem 3.8 GiB; the base is the anon and shmem the engine owns (6451 MiB), the file part is the expert artifact's host-RAM rung (2026-11-09 00:18Z)" as NonEmptyStr },
+  conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16384)), provenance: "engine.json --conversation-cache-mib 16384, read 2026-11-09 with the mmap change (it was 32768 MiB on 2026-10-30); 3.8 GiB of shmem was resident in it at the read" as NonEmptyStr },
   conversation_slots: Present { value: 8 },
 }
 

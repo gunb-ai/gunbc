@@ -23,6 +23,7 @@ import gunbc.machine_intake.ethernet {
   BmcHostBus,
   FunctionObserved,
   FunctionUnobserved,
+  HostData,
   lan_configured_address,
 }
 import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_link_is_read, mtjade1_bmc_link_mac }

@@ -262,6 +262,14 @@ data duct_print_plate: SightingEvidence = CitesArtifact {
   sha256: Sha256Digest { hex: "7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb" as Sha256DigestHex },
 }
 
+// The main revision the r07 tray panel P3 was sliced against on the corrected print-pose route (#16213).
+data tray_panel_p3_source_revision: CommitSha = "9d2484ae1cea7a10b750d8d97ff5d78a3e964cf5"
+
+data tray_panel_p3_r07_plate: SightingEvidence = CitesArtifact {
+  label: "r07 tray panel P3 laid flat in its declared print pose and sliced on srv1 by the pinned OrcaSlicer under the a1-mini-petg-functional-v1 process, 2026-11-10 (probe plate, not retained)",
+  sha256: Sha256Digest { hex: "b87659e31f4cd57922eae6729eaae6a11068d9e70f599219f1df1fce060cf4f2" as Sha256DigestHex },
+}
+
 data support_restriction_scope: IntegrationConcern = IntegrationConcern {
   identity: "support_restriction_scope",
   kind: SuspectedCapabilityGap {
@@ -290,7 +298,20 @@ data support_restriction_scope: IntegrationConcern = IntegrationConcern {
       },
       account: "Printed shoulder-down under the bed-only automatic support policy, the duct's generated support reached the seat face the blower rests on, which sets the model-derived head clearance. The readback's support record is motion centerlines, not a contact surface, so it shows where support was laid, not what it left on the face. The earlier failure-mode row cited is a related lesson about support meeting functional geometry, not the same concern.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: tray_panel_p3_source_revision,
+        evidence: FreeSemigroup {
+          head: tray_panel_p3_r07_plate,
+          tail: [
+            CitesDeclaration { declaration: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "plate_bottom_y") },
+            CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.cassette", decl_name: "lap_ridge_profiles") },
+          ],
+        },
+        account: "Laid flat as declared, the r07 panel needed support under its whole plate, because the rail foot projected below the plate's underside, and under its two receiver-lap pockets, whose flat ceilings overhang the bed whichever half of a flat half-lap carries the tongue. Whole-part support_free refused it correctly. The repair was geometry, not a finer restriction: the plate now lies in the foot's bearing plane, and the laps are 45-degree ridges in grooves with a land on the bed between grooves; the same probe then sliced with no support. This sighting therefore needed no region-scoped restriction; it does not decide the duct's seat-face question above.",
+      },
+    ],
   },
   disposition: Open,
 }
@@ -564,19 +585,16 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     standing: RequirementUnestablished { decided_by: "approval_store_receipt_mac_key_secret_ref is not yet minted, and a verifier holding the current single key could also mint receipts, so a verify-only half must exist first" },
   },
   affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing"),
-    tail: [
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
-      decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
-    ],
+    head: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
+    tail: [],
   },
-  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the printer hold release and for the bed-clear approval, which both read that route at the same trust.",
+  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the bed-clear approval, which reads that route. (The printer hold release that also read it was deleted on 2026-11-09.)",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "b79423bb29e6b7a2804dc0bd0d3db629eb5688f4",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing") }],
+        tail: [],
       },
       account: "The printer job runs as the plain CI runner and cannot read the operator-only approval store, so the printer hold release reads the decision through the broker's unauthenticated loopback status route, the same route and trust as the converge's bed-clear approval. The MAC-receipted store route exists but its key is unminted.",
     },
@@ -586,12 +604,12 @@ data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConc
     home: ExistingHome { model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
     preserve: [
       PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+        holder: decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
         control: Absent,
-        statement: "a hold releases only on an approved decision over this exact hold and generation; Denied, Expired, Pending and mismatched intent refuse",
+        statement: "a print starts only on an approved decision over this exact attempt; Denied, Expired, Pending and mismatched intent refuse",
       },
     ],
-    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for both the printer hold and bed-clear consumers"),
+    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for the bed-clear consumer"),
   },
 }
 
@@ -1119,6 +1137,7 @@ data user_work_slice_admission_deferral_has_no_visible_count: IntegrationConcern
       },
       account: "Raised while repairing srv1 #15822 row 29 (#16013): the goal-audit reviewer was memcg-OOM-killed because the belt admitted it into gunbc-user-work.slice on slot count and liveness alone. The repair adds a pre-launch memory-fit admission that returns ReviewDeferred when the slice cannot hold the unit. The row-30 owner noted that a deferral holds forever by design (no expiry) and asked that the refusal count be surfaced somewhere visible; the belt spawn is per-tick and holds no cross-tick store, and the deferral never reaches the reconciliation standings fold, so neither the belt nor the attempt record persists a count today. This row records that gap rather than inventing cross-tick state in #16013.",
     },
+    tail: [],
   },
   disposition: Open,
 }
@@ -1146,6 +1165,7 @@ data user_work_slice_admission_check_races_within_a_tick: IntegrationConcern = I
       },
       account: "Raised on the #16013 review of the srv1 #15822 row-29 repair: the pre-launch memory-fit admission reads the slice and then launches as separate steps, so two spawns admitted in one tick can both observe enough free room. A per-tick reservation of already-admitted bounded bytes would make the check exact. The check still prevents the incident (launching a reviewer into a slice the standing daemons already fill); this row records the remaining race, not a defect in the incident repair.",
     },
+    tail: [],
   },
   disposition: Open,
 }
@@ -1428,7 +1448,6 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
         decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
         decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
         decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-        decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
         decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
       ],
     },
@@ -1441,11 +1460,10 @@ data approval_submit_deadline_restated_per_caller: IntegrationConcern = Integrat
       decl_ref(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_submit_timeout"),
       decl_ref(module_path: "gunbc.auth.approved_gcp_access", decl_name: "approved_gcp_file_request"),
       decl_ref(module_path: "gunbc.auth.branch_run_grant", decl_name: "branch_run_grant_request_wet"),
-      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request_filing"),
       decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
     ],
   },
-  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at seven sites: three per-module rows and four inline literals. Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all seven change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
+  question: "Is the 30 s submit_timeout every caller passes to approval_file_stored_request one decision -- how long any caller waits for the approval broker to accept a submission -- or several? It is 30 s at six sites: three per-module rows and three inline literals (a seventh, the printer hold release, was deleted on 2026-11-09). Equal values are a reason to ask, not a finding: if the broker's admission latency changed, would all six change together? If so the decision gets one owner, and callers may still pass it explicitly, including a tighter remaining budget.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "8d22701ad6ca9edf3e98ad5562efcd04031f4f36",
@@ -1666,6 +1684,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
     },
     tail: [],
   },
+  disposition: Open,
 }
 
 data host_effect_apply_witness_import_block_absent: IntegrationConcern = IntegrationConcern {
@@ -1693,9 +1712,255 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
     },
     tail: [],
   },
+  disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim]
+
+// THE srv1 MICROVM SLOTS' CHARGE IS RELEASED BY A READING THE LANE NEVER WRITES (filed by
+// still-otter-622, 2026-11-09, under the operator decision
+// gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization). The standing
+// gunbc.runner.runner_slot_allocation::MicrovmSlotRealization now decides whether an authored microVM
+// slot's memory is charged against its host's runner envelope. srv1-13 and srv1-14 carry
+// MicrovmSlotNotRealized rows read on 2026-11-09 (no controller, no slot instance, only the network
+// ruleset active), which frees ~60-68 GiB and takes srv1 from a committed width of 4 to 8. Every arm of
+// that standing is written BY HAND: the lane's install route
+// (gunbc.live_deploy.apply microvm_controller_install_wet) reads back the tree receipt, the VMM receipt
+// and whether systemd loads the slot template -- a positive read of realization, which is exactly what
+// MicrovmSlotRealized means -- and then throws it away. So the charge returns only if someone edits a
+// row, and the invalidation each row names is an event nothing performs on the row. That is the gap this
+// concern records; the rows' invalidated_by is the carrier that keeps it from being forgotten.
+data microvm_lane_install_writes_no_slot_realization: IntegrationConcern = IntegrationConcern {
+  identity: "microvm_lane_install_writes_no_slot_realization",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization"),
+    requirement: "when the microVM lane installs its controller on a host and starts a slot, the realization rows for that host's authored microVM slots read MicrovmSlotRealized, so their memory charge returns by derivation in the same release that puts the controller on the host -- and when a slot is torn down its row returns to MicrovmSlotRealizationUnobserved rather than standing stale",
+    standing: RequirementUnestablished { decided_by: "the operator's 2026-11-09 decision (gunbc.design_ruling srv1_microvm_slot_charge_waits_for_realization) is that the charge follows realization; no route in the model writes the MicrovmSlotRealized arm, so the return half of that decision is owed to the microVM lane" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "microvm_controller_install_wet"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "microvm_slot_realization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_shakedown_slot_realization"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_revision_job_slot_realization"),
+    ],
+  },
+  question: "Who flips srv1-13 and srv1-14 from MicrovmSlotNotRealized to MicrovmSlotRealized when the lane goes live: the install route's own readback (which already sees the tree receipt, the VMM receipt and systemd loading the template, so it holds exactly the reading the arm means), a host converge that re-reads the host afterwards, or a hand edit of the rows? If the install readback is the writer, where do the rows live -- gunbc.runner.runner_slot_allocation keeps the fold that consumes them, and gunbc.runner.runner_microvm_slot_unit owns the receipt store whose Unready/Refused arms cannot tell an uninstalled host from an unreadable one?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "e5c2a417867ace582fed545ce9ddefd8f5eeca6d",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "MicrovmSlotRealization") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "authored_microvm_slots_charge_over") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_receipt_store") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_receipt_history") },
+        ],
+      },
+      account: "srv1 reads no microVM controller and no slot instance, yet until this change its two authored microVM slots were charged 52 GiB and 46 GiB against the host's runner envelope on AUTHORSHIP ALONE, holding the derived committed width at 4. Reading them as MicrovmSlotNotRealized takes srv1 to 8 committed. The RELEASE direction is what the model can justify today; the RETURN direction is not mechanical. The wet homes that could carry it refuse the question rather than answering it: microvm_receipt_store reports MicrovmReceiptStoreUnready and microvm_receipt_history MicrovmReceiptHistoryRefused for an absent store directory and an unreadable one in the SAME arm, so conditioning the width on them would report an uninstalled host as unobserved and keep charging it -- correct as a fail-closed answer for a width, useless for a lane that wants its charge back when it goes live. Only gunbc.live_deploy.apply microvm_controller_install_wet reads realization positively, and it reads it to decide whether ITS OWN install succeeded.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// CONVERGE RETIRES A WORKING SLOT BEFORE ITS REPLACEMENT HAS RUN A JOB. Surfaced by
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09), which moved srv3-06/07 and
+// srv4-06/07 from fabric execution to GitHub Actions: the live hosts then carry CI slots 01-05 and
+// 08-20 (19 and 20 started by hand to deliver the promised 18) while the model commits 01-18. One pass
+// of the converge entry therefore asks for 06 and 07 to be provisioned AND for 19 and 20 to be retired,
+// in the same plan -- so the two runners that are serving today stop before the two that are meant to
+// replace them have registered, let alone completed a job. Nothing in the ordering is wrong in the
+// model; what is missing is the ORDER ITSELF: converge has no phase that reads back a completed job on
+// a newly provisioned slot before it lets the retirement side of the same transition fire.
+//
+// This row is where that invariant is owned, not a caller's discipline. The operator is not running
+// converge on srv3/srv4 while it stands.
+data converge_retires_before_replacement_has_run: IntegrationConcern = IntegrationConcern {
+  identity: "converge_retires_before_replacement_has_run",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    requirement: "a converge pass must not retire a slot that is serving while the slot meant to replace it has neither registered nor completed a job: provision, read back one completed job on the replacement, then retire",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "classify_runner_slot_population_with_fabric"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_provision", decl_name: "desired_runner_slot_members"),
+      decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host"),
+    ],
+  },
+  question: "Where does the ordering live -- a phase in the converge pass that holds retirements until every provisioned replacement has registered and completed one job, a standing the plan carries and the caller must satisfy, or separate passes with a readback between them? And what exactly is the readback: registration alone, a completed job on the new slot, or a completed job plus the old slot's queue draining?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8ca9a3a44194e713da051e7b764b501e93436cd2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_provision", decl_name: "desired_runner_slot_members") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host") },
+        ],
+      },
+      account: "Read on 2026-11-09 while implementing that ruling: srv3 and srv4 carry install trees for slots 01-05 and 08-20 (19 and 20 started by hand once 06/07 were released from fabric duty, which left the hosts with 18 serving runners), while the committed population after the ruling is 01-18. The provisioning side keys on desired_runner_slot_members and would build 06/07 from nothing -- the same path that brought up 01-05, so it is supported -- and the retirement side, driven by required_retirees_for_host over the same width, names 19 and 20 as observed-but-unexpected in the same pass. Both halves are correct against the model; running them together is what loses two runners before the replacements exist. No host was touched while this was read.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome {
+      model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+        control: Absent,
+        statement: "a converge pass over a width transition emits retirements only for slots whose replacement has registered and completed at least one job; it goes red if a plan can retire a serving slot in the same pass that provisions its replacement, which is exactly what it can do today",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host"),
+        control: Absent,
+        statement: "the retirement side stays derivable from the width alone -- the two-phase ordering gates WHEN a derived retirement may be executed, it does not make the retiree list a caller's opinion",
+      },
+    ],
+    next: climbs_when(capability: "converge becomes a two-phase transition -- provision, readback of one completed job on each replacement, then retire -- so the ordering is enforced in the pass rather than left to the caller's discipline"),
+  },
+}
+
+// THE FCI-1 INSTRUMENT STILL BUILDS LABELS FROM AN UNBOUND SUBJECT. The 2026-11-09 review of the
+// srv3/srv4 fabric-slot ruling found that gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot()
+// was a TOTAL function over the refusal arms of its own subject gate, and ~29 call sites used it to build
+// allocation keys, /opt/fabric-cells paths and systemctl unit names -- so "the caller checked the gate
+// first" was the only thing between a refusal and an effect. That is what gunbc.design_argument::fail_closed
+// forbids ("a failure arm refuses, never widens"; "making it unwritable" beats catching the wrong state).
+// The effect surface is closed: the legs that mutate -- market reservation, the CAS attempt, the release
+// commit, the host preconditions, the live cell observation, the systemctl read -- now take
+// cp_probe_authorized_slot and act only on the identity BOUND by the roster's Selected arm, and a refusal
+// projects a marker that names no host and no committed index, so it cannot name a cell.
+// What remains is the label half: about twenty key/path/report builders still read the projection. Under a
+// refusal they build marker-shaped labels, which is safe today only because the effects no longer consume
+// them -- a fact about the callers, not about the types. Carrying the bound identity down those builders and
+// deleting the total projection is the rung; it was not taken here because it changes the signature of
+// nearly every observation helper in a ~4,000-line instrument whose wet paths cannot be exercised hermetically.
+data cp_probe_labels_are_built_from_an_unbound_subject: IntegrationConcern = IntegrationConcern {
+  identity: "cp_probe_labels_are_built_from_an_unbound_subject",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    requirement: "a refused subject must be unable to produce a label that a leg can carry forward: every key, path and unit builder takes the RunnerSlotIdentity bound by the subject gate's Selected arm, and the total projection over the refusal arms is deleted",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    tail: [
+      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
+      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_label"),
+    ],
+  },
+  question: "Do the key/path builders take the bound RunnerSlotIdentity as a parameter (the shape fci1_bounded_controls_legs already uses), or does the label surface collapse into a single builder that is handed the selection once per instrument run? And once no caller remains, can cp_probe_slot be deleted rather than documented?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8ca9a3a44194e713da051e7b764b501e93436cd2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+        ],
+      },
+      account: "Raised by the 2026-11-09 review of the srv3/srv4 ruling, which counted the call sites and quoted the new comment admitting the value 'can only reach a caller that skipped the gate'. The review is right that the comment was not a fix. The same review's remedy -- bind the Selected identity in the helpers -- is now carried by every mutating leg and is witnessed in test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness; the builders are what is left.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome {
+      model: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
+        control: Absent,
+        statement: "no leg that mutates OR READS the market, the allocation store or the host may obtain a slot, or an answer about a cell, except through the identity bound by the subject gate's Selected arm -- a refusal is an arm of its own type (AllocationSlotNoSubject, Fci1SlotNoSubject, Fci1BindingNoSubject, AllocationSlotRefusedNoSubject), never the arm that a real observation of an empty directory produces; a row that lets a mutating leg read the projection instead goes red here",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_label"),
+        control: Absent,
+        statement: "a refusal projects only the label string that names its own absence, which is not a host the fleet has, so a label built on a refusal cannot name a real cell; the projection itself is an Optional and no reader or writer may obtain an identity from a refusal at all -- only the pure builders in the residual scope may consume the label -- the property that keeps those uses from being a hazard while this rung stands",
+      },
+    ],
+    next: climbs_when(capability: "the RESIDUAL key, path and report builders -- pure label and wire sites only, since every effectful reader and writer was gated on the selection on 2026-11-09 (review 92425) -- take the Selected-bound identity and gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot is deleted, so no function in the instrument can name a slot the roster did not select"),
+  },
+}
+
+// A produced fn whose item body is a Branch or Match with a closure in tail position cannot reach
+// the emitter, so the #16177/#16180 item-return move/Box::new boundary is unobservable for that
+// form. Three independent upstream refusals block the shape; the emitter fixture becomes writable
+// as soon as any one admits it. All sightings at origin/main b882c902; gunbc digests are per-dispatch
+// (the build path is embedded in the binary; the run-tree reader append is not part of the build).
+data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern = IntegrationConcern {
+  identity: "branch_match_arm_closure_declared_return_not_admitted",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_no_candidate_return_reason"),
+    requirement: "a function whose declared return is a function type admits a body whose branches are closures of that return type: fn f(p: Int, c: Bool) -> fn(Int) -> Int { if c { fn(q) { p } } else { fn(r) { r } } } (and its match twin) should parse, infer, and inhabit the declared fn(Int) -> Int, reaching the emitter so the returned closure can be checked for the item-return move/Box::new that #16177 (arrow body) and #16180 (let tail) restored. Three independent refusals block the shape before the emitter (one per blocker Sighting below). TRIGGER: the emitter's branch/match tail-closure position becomes testable — a red-then-green fixture becomes writable — as soon as ANY ONE of the three admits the shape; none of them need be fixed together.",
+    standing: RequirementUnestablished { decided_by: "a semantic-owner ruling on v2.std.inhabitance (does a Branch/Match body whose arms are each a closure of the declared return inhabit it?) and on v2.compiler.infer (is the declared return meant to reach Branch/Match arm positions as an expected type, or is the arm-vs-arm gather join the sole route?); not ruled a defect here — the manager's position is that it is not to be judged blind" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_no_candidate_return_reason"),
+    tail: [
+      decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_settled_arm_open_type"),
+      decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_branch_arm_sibling"),
+      decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr"),
+    ],
+  },
+  question: "Should a Branch then/else arm, or a Match arm body, that is a closure of the enclosing function's declared return type parse, infer, and inhabit that return — so a closure in an if/match tail position reaches the emitter? Today every authored spelling is refused before the emitter: typed arm parameters do not parse (the v2 fn-literal grammar admits no typed params); a return-annotated arm closure is refused as not inhabiting the declared fn(Int) -> Int; and unannotated arm closures are settled open because the declared return never reaches the arm as an expected type. #16177 and #16180 fixed the identical dropped item-return position at the EMITTER for the arrow-body and let-tail forms; the branch/match form is blocked two stages upstream, so no fixture can be written for it here.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "b882c902cded8a1bd08d07e0cf0257d8edf2fc32",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_fn_literal_expr") },
+        tail: [
+          CitesArtifact { label: "typed-parameter arm closures of every spelling — fn(q: Int) -> Int { p } (https://app.buildbuddy.io/invocation/7eedbf78-a79f-44d6-9f53-9f3308bd9906), fn(q: Int): Int { p } (f94fdd6c-c364-4676-a2c5-103d587b9da1), fn(q: Int) { p } (5e2e6bd7-139b-4185-abd5-28ec63e4929d) — each refused ^parse_g0_tokens_remain on both the Branch and Match specimens, checked via function_value_body_route.dag fvb_emit_verdict_of on the run tree at b882c902; the fn-literal grammar admits an optional untyped parameter list and an optional `->` return type only, so an arm closure's parameter type cannot be authored", sha256: Sha256Digest { hex: "9cd601c2ffa139dffe0bd251842c51cdf21e824055129e7f18103ae772cca902" as Sha256DigestHex } },
+          CitesArtifact { label: "same check, the fn(q: Int): Int { p } spelling, refused ^parse_g0_tokens_remain", sha256: Sha256Digest { hex: "bfc91314aa720b0f759f7775b6215a5c9e67bdb708f12a812cd582d08f31c7dd" as Sha256DigestHex } },
+          CitesArtifact { label: "same check, the fn(q: Int) { p } spelling, refused ^parse_g0_tokens_remain", sha256: Sha256Digest { hex: "1fc7978d3e9d01a5e7d9e718b4e9004d684e473c6f8b9ada8c9dda5efd09d6b3" as Sha256DigestHex } },
+        ],
+      },
+      account: "BLOCKER (i) grammar: the v2 fn-literal (v2.extdeps.languages.dag :: dag_grammar_fn_literal_expr) has no typed parameters, so the arm closure's parameter cannot be annotated to give it a closed type. This is the boundary for any attempt to author a groundable arm closure by annotation.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: "b882c902cded8a1bd08d07e0cf0257d8edf2fc32",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.inhabitance", decl_name: "inhabitance_no_candidate_return_reason") },
+          tail: [CitesArtifact { label: "the ONLY grammar-admitted annotation — return-annotated arm closures fn(q) -> Int { p } / fn(r) -> Int { r } — refused ^arrow_body_does_not_inhabit_declared_return on both the Branch and the Match specimen (item declared return IS fn(Int) -> Int and each arm IS such a closure), no emitted text, rustc N/A; checked via fvb_emit_verdict_of on the run tree; https://app.buildbuddy.io/invocation/a3960825-0d25-41d3-8b9c-049eb96fc6eb", sha256: Sha256Digest { hex: "86ffe3a31f0b39e96aa24d49c82a9e75dac1eba692c66c00deddd851c5cde436" as Sha256DigestHex } }],
+        },
+        account: "BLOCKER (ii) typing — MOST LIKE A REAL DEFECT: with the return type annotated, the arm closures do reach typing, yet inhabitance refuses the Branch/Match body as not inhabiting the declared fn(Int) -> Int even though each arm IS a closure of exactly that type. Whether this is a genuine typing gap or by design is the open question; if it is a gap, fixing it alone makes the shape (and the emitter fixture) writable.",
+      },
+      ConcernSighting {
+        revision: "b882c902cded8a1bd08d07e0cf0257d8edf2fc32",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_settled_arm_open_type") },
+          tail: [CitesArtifact { label: "unannotated arm closures fn(q) { p } / fn(r) { r } (then captures p, else captures nothing) refused ^infer_grounding_not_derived on both the Branch and the Match specimen, no emitted text; each arm settles open (the gather hand-up 'NO ARM DECLARES A TYPE HERE: THE ENCLOSING JOIN MAY' closes types only by arm-vs-arm join, and the two arms are independent open closure types, so the declared return never reaches an arm as an expected type); checked via fvb_emit_verdict_of on the run tree at b882c902; https://app.buildbuddy.io/invocation/c90f09d7-3a2f-409e-b522-77ea84a1d9a2", sha256: Sha256Digest { hex: "33411e297f5befda246203de051e6e6757f7bfb41c3fbe8eb8c6fd126db50012" as Sha256DigestHex } }],
+        },
+        account: "BLOCKER (iii) inference: an unannotated arm closure never receives the enclosing function's declared return as an expected type, so it settles open and refuses at inference. The same refusal was first observed at 4bfa629e7ff (off main's lineage); this sighting reconfirms it on real main at b882c902. Lineage: after appending the branch specimen, function_value_body_route.dag's blob at b882c902 is 61ef52ba, byte-identical to the 4bfa629e run's post-append blob — the claim file is the same at both commits, so the two sightings differ only in the compiler beneath them, and both give the same reason.",
+      },
+      ConcernSighting {
+        revision: "c316604f06104fcdd9c61884f09a002b07930e66",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_branch_arm_callback_frame") },
+          tail: [
+            CitesArtifact { label: "pair run of v2.test.claim.compiler.branch_arm_closure_inhabits (claim file blob fd78e33255171bcffd7139820f67401fbc27b33b, held constant across legs): 4/4 green at c316604f0610 (https://app.buildbuddy.io/invocation/c26c0e93-4aa3-482d-bb46-de3772394c7d) against 0/4 at 8732750e2d69 with only that claim file overlaid (https://app.buildbuddy.io/invocation/fdf76b2b-25f1-44fe-93c4-c1a939836516) — the two return-annotated specimens (if-arms, match-arms) move refused -> admitted by the infer change alone; the two negative controls (an arm closure returning Bool where Int is required; a closure in one arm and an Int literal in the other) stay refused", sha256: Sha256Digest { hex: "ea18d82f17117bbd530c08099725f4afb009b097426c98bf88501203c10efa1b" as Sha256DigestHex } },
+            CitesArtifact { label: "fatal-reason probe on both negative-control specimens (probe fns appended in the run tree, blob 8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8, identical on both legs): at 8732750e2d69 infer rejects them with arrow_body_does_not_inhabit_declared_return — the boundary this sighting cited (https://app.buildbuddy.io/invocation/f56a789e-fa04-4c81-8cc4-f4d3b6a8e885); at c316604f0610 with infer_arms_declare_conflicting_types (https://app.buildbuddy.io/invocation/ff0f73a1-c61e-4a8e-80ce-4d491bbc1d8f). The refusal moved from this boundary to the arm-vs-arm join; it did not disappear", sha256: Sha256Digest { hex: "8e4706f6a34a0a9bd5a1055afee7e06ed54fe4d8" as Sha256DigestHex } },
+          ],
+        },
+        account: "BLOCKER (ii) typing — RULED A DEFECT AND FIXED at c316604f0610 (PR #16212). Chain re-derivation put the earliest unjustified boundary in inference, not in inhabitance: the Branch arm child frame and the Match arm body-edge frame never supplied callback-frame instances from the frame's declared_position_expected arrow, so the arm closure's unannotated parameter binder stayed uninstantiated, the arm's own type was never held, and the refusal surfaced one stage later as inhabitance_no_candidate_return_reason / arrow_body_does_not_inhabit_declared_return. The fix (infer_branch_arm_callback_frame) supplies the SAME instances an application argument already gets from infer_callback_formal_frame, at both arm positions — no second mechanism. The other two blockers stand: blocker (i) (typed arm parameters do not parse) is a grammar gap, and blocker (iii) (a wholly unannotated arm closure settles open) is untouched by this change, which is why the requirement as stated is not yet met and this row stays Open. TRIGGER SATISFIED for the emitter: with a return-annotated arm closure the shape now reaches the emitter, so the branch/match tail-closure move/Box::new fixture becomes writable — that fixture is not part of this lane.",
+      },
+    ],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

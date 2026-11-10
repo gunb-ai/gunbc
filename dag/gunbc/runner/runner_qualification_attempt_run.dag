@@ -50,7 +50,11 @@ import gunbc.runner.runner_qualification_ref_pin {
   ensure_qualification_ref_pin, remove_qualification_ref_pin, qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused,
   qualification_selected_workflow,
 }
-import gunbc.runner.runner_qualification_dispatch { qualification_dispatch_subject, dispatch_qualification_floor, collect_qualification_run, QualificationRunCollected, QualificationRunRefused }
+import gunbc.runner.runner_qualification_dispatch {
+  qualification_dispatch_subject, dispatch_qualification_floor, collect_qualification_run, QualificationRunCollected,
+  QualificationRunRefused, replacement_job_evidence_of_collected,
+}
+import gunbc.runner.runner_retirement_causes { FloorJobCollected, FloorJobRefused }
 import extdeps.github.workflow_runs { Success }
 import gunbc.runner.runner_qualification_floor_job { qualification_floor_job_id, qualification_attempt_subject_env_name }
 import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerNotLaunched, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved }
@@ -72,8 +76,8 @@ import gunbc.runner.runner_qualification_attempt_pass {
 // that token; the unit hold for the subject host, which takes the accepted revision and without which
 // dispatch_qualification_floor refuses; and under the hold the runner initialization
 // (gunbc.runner.runner_initialization runner_initialization_live): the subject's running-OS receipt from its boot
-// run, the host authenticated over a live anchored transport GATED on the operator's go
-// (gunbc.host.anchored_host_transport anchored_host_transport_live) with its boot id re-read over it, its account
+// run, the host authenticated by the per-boot pin that receipt carries over a live anchored transport GATED on the
+// operator's go (gunbc.host.anchored_host_transport anchored_host_transport_live_per_boot) with its boot id re-read over it, its account
 // and the accepted revision. The key is removed and the hold released on every arm after they were taken.
 
 data qualification_attempt_wif_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"
@@ -185,9 +189,27 @@ fn qualification_attempt_run_verdict(run: QualificationAttemptRun) -> Qualificat
             match c {
               QualificationRunRefused { run_id: _, refusal: _ } => not_qualified(cause: "the dispatched run could not be collected as this attempt's floor")
               QualificationRunCollected { collected: run } =>
-                match run.conclusion {
-                  Success => AttemptQualified
-                  _ => not_qualified(cause: "the collected floor run did not conclude in success")
+                // THE ATTEMPT IS QUALIFIED THROUGH THE ONE CARRIER THAT ATTESTS THIS FACT. Whether a slot's floor
+                // job ran and concluded is asked in exactly one place on the tree -- the collected reading
+                // gunbc.runner.runner_retirement_causes::CollectedFloorJobReading, whose mint only
+                // gunbc.runner.runner_qualification_dispatch::replacement_job_evidence_of may call -- and the converge
+                // retirement gate withholds a drain on exactly that carrier. Deciding the attempt on `run.conclusion`
+                // beside it would put a second reading of the same fact on the tree, and the two could drift: the
+                // attempt route would call a slot qualified while the gate, reading the other copy, kept waiting for a
+                // proof nobody was producing. The slot the evidence is about comes from the floor job's own runner, so
+                // a collection whose job names no runner attests nothing and qualifies nothing.
+                match replacement_job_evidence_of_collected(collected: run) {
+                  Absent => not_qualified(cause: "the collected floor job does not name the runner that took it")
+                  Present { value: evidence } =>
+                    match evidence {
+                      FloorJobCollected { collected: reading } =>
+                        match reading.conclusion {
+                          Success => AttemptQualified
+                          _ => not_qualified(cause: "the collected floor run did not conclude in success")
+                        }
+                      FloorJobRefused { slot: _, reason: reason } =>
+                        not_qualified(cause: concat("the collected floor run could not be read: ", reason))
+                    }
                 }
             }
           }

@@ -1,0 +1,874 @@
+module gunbc.serving.srv1_serving_replica_layout
+
+// The TWO-REPLICA SERVING LAYOUT on srv1 (operator, 2026-11-08): two TP=1 vLLM containers, one per RTX
+// PRO 6000 Blackwell card, replacing the single --device nvidia.com/gpu=all TP=1 container that ran since
+// the 2026-10-30 recovery1 cutover.
+//
+// WHY TWO REPLICAS (not one container with TP=2): srv1's driver has NO GPU P2P (NCCL tests on the host
+// returned 0 GB/s between the two cards; srv1_topology_comparison.dag on #16104's branch measures the
+// consequence: 2xTP=1 delivers 679 tok/s aggregate at 8 warm 150k sessions vs TP=2's 298 — 2.28x,
+// 96% scaling efficiency vs TP=2's 42%). The decision is the operator's, taken from srv1's own A/B.
+//
+// WHAT THIS MODULE OWNS and what it does not:
+//   - it OWNS the per-replica deployment facts (which GPU, which port, which KV dir, which serve dir)
+//     and the systemd management that makes them durable;
+//   - it does NOT own the shared launch template (image digest, engine flags, LMCache environment) — those
+//     are gunbc.serving.srv1_serving_launch's; this module references it for the shared config;
+//   - it does NOT own the router's routing policy (gunbc.serving.router_dev_policy's) — only the launch-
+//     derived address and port each replica publishes;
+//   - it does NOT own the host resource budget — the srv1 slice and its terms are in
+//     gunbc.fleet.fleet_host_budget; this module records the per-replica claims and the disk guard.
+//
+// WHY NOT IN srv1_serving_launch.dag: that module models the LAUNCH TEMPLATE (image identity, argv, the
+// LMCache environment) — facts shared by both replicas. The per-replica identity (which card, which port,
+// which directories) is a DEPLOYMENT decision that changes when the operator decides; keeping it here
+// makes the two concerns separable (gunbc.design_argument::single_authority).
+
+import std.types { String, NonEmptyStr, Port, List }
+import std.nat { Nat }
+import std.optional { Absent, Optional, Present }
+import std.measure { ByteSize, Second, byte_size, byte_size_count, second, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.retained_shell_script { RetainedShellScript }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
+import gunbc.serving.lil_serving_defects { LilServingDefect, srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect }
+import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
+import gunbc.serving.serving_replica_profile {
+  ServingReplicaProfile, replica_gpu_uuid, srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile,
+}
+
+// ── the per-replica identity ─────────────────────────────────────────────────────────────────────────
+//
+// One row per physical card. The GPU UUID (not index) is the pin: indices are kernel enumeration order
+// and can change (PCIe rescan, driver reload); UUIDs are burned into the card by NVIDIA and cannot
+// collide. The gpu.sh launcher takes the index argument (0 or 1) and maps it through a case statement to
+// the correct UUID, name, port, and directory.
+
+// The immutable per-replica specification. The index is the systemd instance number and the argument to
+// the gpu.sh launcher; the UUID is the hardware pin.
+type Srv1ServingReplicaSpec {
+  // The replica index: 0 (GPU0, host port 18000) or 1 (GPU1, host port 18001). Matches the
+  // lil-replica@.service instance number and the srv1_lil_serve_gpu.sh positional argument.
+  index: Nat
+  // The container name on the host. The systemd helper adopts a running container by this name.
+  container_name: NonEmptyStr
+  // THE PROFILE THIS UNIT IS. The hardware facts -- NVIDIA UUID, PCI bus, board edition, power cap -- are
+  // the profile's card rows (gunbc.serving.serving_replica_profile, the one roster); this unit keeps only
+  // the deployment wiring the card rows do not carry (container name, host port, serve/kv dirs). The UUID
+  // this unit pins Docker's --device to is read from the row via srv1_replica_gpu_uuid -- no second copy of
+  // the hardware pin stands here (which edition is which card was spelled in comments until the row owned it).
+  profile: ServingReplicaProfile
+  // The host port the engine is published on. Inside the container the engine always binds 18000
+  // (-e PORT=18000, --port 18000); Docker's -p maps the host port to the container port.
+  host_port: Port
+  // The serve directory on the host (mount to /root/serve). Carries TLS keypair, serve.log, events.log.
+  // Replica 0's is ~/lil/serve (the original); replica 1's is ~/lil/serve-gpu1 (created by gpu.sh).
+  host_serve_dir: NonEmptyStr
+  // The LMCache L2 root on the host (mount to /cache/kv). Per-replica: two replicas writing to one L2
+  // root would collide on namespace files.
+  host_kv_dir: NonEmptyStr
+  // The human-readable label (the router's upstream name for this replica).
+  label: NonEmptyStr
+}
+
+// GPU0: NVIDIA RTX PRO 6000 Blackwell Max-Q (0001:01:00.0), UUID from nvidia-smi (srv1, verified
+// 2026-11-08 21:36 UTC). This is the card the original single-container ran on.
+data srv1_replica_0: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
+  index: 0,
+  container_name: "lil-flash-next" as NonEmptyStr,
+  profile: srv1_vllm_replica_0_profile,
+  host_port: 18000,
+  host_serve_dir: "/home/briansrls/lil/serve" as NonEmptyStr,
+  host_kv_dir: "/home/briansrls/lil/kv" as NonEmptyStr,
+  // The router's upstream name for this replica IS the profile's deployment name -- one owner, so the
+  // router, the anchor and the roster cannot spell the replica differently.
+  label: srv1_vllm_replica_0_profile.id,
+}
+
+// GPU1: NVIDIA RTX PRO 6000 Blackwell Workstation (300 W cap, 0004:01:00.0), UUID from nvidia-smi (srv1,
+// verified 2026-11-08 21:36 UTC).
+data srv1_replica_1: Srv1ServingReplicaSpec = Srv1ServingReplicaSpec {
+  index: 1,
+  container_name: "lil-flash-next-1" as NonEmptyStr,
+  profile: srv1_vllm_replica_1_profile,
+  host_port: 18001,
+  host_serve_dir: "/home/briansrls/lil/serve-gpu1" as NonEmptyStr,
+  host_kv_dir: "/home/briansrls/lil/kv-gpu1" as NonEmptyStr,
+  label: srv1_vllm_replica_1_profile.id,
+}
+
+// The authoritative roster. The router and systemd iterate over this list.
+data srv1_serving_replica_roster: List<Srv1ServingReplicaSpec> = [
+  srv1_replica_0,
+  srv1_replica_1,
+]
+
+// ── shared paths (identical for both replicas) ──────────────────────────────────────────────────────
+
+// The HuggingFace cache: shared between replicas (model weights, read once per container startup). Not a
+// coordination point — each container reads independently; concurrent readers are safe.
+data srv1_serving_shared_hf_dir: NonEmptyStr = "/home/briansrls/lil/hf"
+
+// The JIT cache (b12x / FlashInfer kernel tuning, hours for new batch-shape sets). Shared across both
+// replicas: the tuning result is deterministic given the same shape, so the second replica reuses the
+// first's compilation output (warm start benefit of the shared mount).
+data srv1_serving_shared_jit_dir: NonEmptyStr = "/home/briansrls/lil/jit"
+
+// The pool API key: one key, both replicas. Generated once by the launcher's first invocation; mounted
+// read-only into every container.
+data srv1_serving_shared_pool_key: NonEmptyStr = "/home/briansrls/lil/pool_key"
+
+// The TLS identity: one certificate (CN=pool-card), shared. Replica 0 mints it in ~/lil/serve/ on first
+// start; replica 1's directory receives a COPY via sudo -n cp -p from the launcher (the operator's
+// mechanism: "one TLS identity for both replicas, the router pins it via upstream_ca.pem"). The copy
+// happens before the container starts, so both containers present the same certificate to the router.
+
+// ── the launcher: srv1_lil_serve_gpu.sh (C12) ───────────────────────────────────────────────────────
+//
+// This script is the OPERATOR's on-host launcher (installed at ~/strata-test/srv1_lil_serve_gpu.sh,
+// sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf). It is the file that CONVERGES
+// a single replica onto its card. The systemd helper (lil-replica@.service) invokes it; an operator can
+// also invoke it directly. The original srv1_lil_serve.sh (retained in gunbc.serving.srv1_serving_launch
+// srv1_serving_wrapper) is superseded by this script.
+//
+// Key behaviors the script performs:
+//   - case statement maps 0|1 to the GPU UUID, container name, port, KV dir, serve dir;
+//   - removal loop (for i in seq 1 150): LMCache flush can make the first docker rm -f fail; the script
+//     retries until docker container inspect says the name is gone;
+//   - TLS: if the per-replica serve dir lacks tls.key/tls.crt, copies them from replica 0's serve dir
+//     (with sudo, because serve-gpu1 may not exist yet and cp needs the source's permissions);
+//   - pool_key: generated once on first invocation if absent;
+//   - docker run: one container per card with --device nvidia.com/gpu=$GPU (UUID-selected), --memory=32g,
+//     --shm-size 16g, the LMCache environment (L1=12, L2=125), the engine flags.
+
+data srv1_serving_gpu_launcher: RetainedShellScript = RetainedShellScript {
+  body: "#!/bin/bash\n# srv1: one TP=1 Qwen3.8-Flash-Next replica per GPU (2026-11-08: two RTX PRO 6000s; 2xTP1 measured 679 vs TP2 298 tok/s\n# aggregate at 8 warm 150k sessions on srv1 -- no GPU P2P across Altra root complexes, so TP2 runs on NCCL via host memory).\n# Same container recipe as srv1_lil_serve.sh (lil-serve qwen38-flash-next / rtx-pro-6000-pcie, LMCache ram-disk, TLS, API key),\n# one instance per GPU, each with its own port, LMCache disk tier and serve/state dir; the TLS cert and pool key are shared so\n# the router verifies both the same way. Disk-first KV (2026-11-08, operator): small 12 GiB RAM tier L1, 125 GB NVMe tier L2 each;\n# RAM per replica ~ L1 12 + PLE table 26.8 (pinned host, outside the cgroup) + ~6 process. No automatic restart.\n# usage: srv1_lil_serve_gpu.sh 0|1     (EXTRA=\"...\" passes extra lil/vLLM options after \"--\")\nset -eu\nIDX=$\{1:?usage: $0 0|1}\ncase $IDX in\n  0) GPU=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3; NAME=lil-flash-next;   PORT=18000; KV=kv;      SERVE=serve ;;        # Max-Q, 0001:01:00.0\n  1) GPU=GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750; NAME=lil-flash-next-1; PORT=18001; KV=kv-gpu1; SERVE=serve-gpu1 ;;   # Workstation (300 W cap), 0004:01:00.0\n  *) echo \"GPU index must be 0 or 1\" >&2; exit 2 ;;\nesac\nEXTRA=$\{EXTRA:-}\nIMG=sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9\nB=$HOME/lil; mkdir -p $B/hf $B/$KV $B/$SERVE $B/jit; umask 077\n[ -s $B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d \"/+=\" > $B/pool_key\n# one TLS identity for both replicas (the router pins it via upstream_ca.pem)\nfor f in tls.key tls.crt; do [ -s $B/$SERVE/$f ] || { sudo -n cp -p $B/serve/$f $B/$SERVE/$f; }; done\numask 022\ndocker rm -f $NAME >/dev/null 2>&1 || true\nfor i in $(seq 1 150); do docker container inspect $NAME >/dev/null 2>&1 || break; docker rm -f $NAME >/dev/null 2>&1 || true; sleep 2; done\ndocker run -d --name $NAME --restart no --device nvidia.com/gpu=$GPU --cgroup-parent=srv1-inference.slice --memory=32g --memory-swap=32g \\\n  --shm-size 16g -p $PORT:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v $B/hf:/root/.cache/huggingface -v $B/$KV:/cache/kv -v $B/jit:/cache/jit -v $B/$SERVE:/root/serve -v $B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash $IMG -lc \"\nD=/root/serve; ev(){ echo \\\"\\$(date -u +%FT%TZ) \\$*\\\" >> \\$D/events.log; }\n[ -s \\$D/tls.key ] && [ -s \\$D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj /CN=pool-card -keyout \\$D/tls.key -out \\$D/tls.crt >> \\$D/events.log 2>&1\nev \\\"START srv1 gpu$IDX $GPU (driver \\$(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\\\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=12 --env LMCACHE_L2_GB=125 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 $EXTRA --ssl-keyfile \\$D/tls.key --ssl-certfile \\$D/tls.crt --api-key \\\"\\$(cat /root/.pool_key)\\\" --max-model-len 229376 >> \\$D/serve.log 2>&1\"\necho \"started $NAME on GPU $IDX ($GPU) port $PORT\"; docker ps --filter name=^/$NAME\\$ --format \"{.Status}\"\n",
+  reason: "the per-replica launcher on srv1 (sha256 c486a841250e4a2b0a86b794150867eb72190f42f8d48b72361fc7fd52e26cf, read from ~/strata-test/srv1_lil_serve_gpu.sh 2026-11-08 21:36 UTC): maps the operator's 0|1 argument to the correct GPU UUID, container name, port, KV dir and serve dir, then runs one TP=1 container with UUID-selected device, 32 GiB memory, 16 GiB shm, srv1-inference.slice, LMCache ram-disk L1=12/L2=125. The removal loop retries docker rm -f because LMCache flush can fail the first removal; the TLS identity is copied from replica 0's serve dir (shared across both). The systemd helper (lil-replica@.service) invokes this; direct operator invocation is the manual-relaunch route." as NonEmptyStr,
+  dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
+}
+
+// The counted bash-emit scaffold marker for the retained launcher (the hand-shell gate). This is the
+// on-carrier dissolution the RetainedShellScript above owes, mirroring extdeps.entropy's
+// entropy_read_password_shell_emit_dissolution_trigger and extdeps.bmc.serial_console's
+// sol_console_*_bash_emit_dissolution_trigger. The gpu.sh body is a hash-pinned ADOPTED RECEIPT of the
+// operator's on-host file (~/strata-test/srv1_lil_serve_gpu.sh, sha256 c486a841...26cf) — its literals
+// (ports, --memory=32g, L1=12/L2=125, the UUID-mapped device) are the host file's own bytes, NOT a second
+// authority: nothing in the model parses the body for values, the boot realization is the typed render
+// srv1_replica_engine_argv, and the witness ties the receipt's literals to the typed rows so a drift is
+// caught rather than silently forked. DISSOLVES WHEN the launcher is emitted from the typed replica rows
+// through v2.workflow.bash_emit (bash_emit_stmts), leaving no hand-authored shell body in this module.
+data srv1_serving_gpu_launcher_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_serving_gpu_launcher — the per-replica launcher is retained as an opaque hash-pinned shell receipt. DISSOLVES WHEN it is rendered from the typed Srv1ServingReplicaSpec/Srv1LaunchConfig rows through v2.workflow.bash_emit bash_emit_stmts (device word via nvidia_cdi_device_selector_of, memory/shm via ByteSize, ports via Port, LMCache tiers via their single authority), leaving no hand-authored medium-as-string body here. Until then it is an adopted receipt verified against the typed rows, not an authority.")
+
+// THE SYSTEMD HELPER, retained verbatim (review 92396: an admitted hand script is AUTHORIZED the way the
+// launcher's is — a hash-pinned RetainedShellScript plus the scaffold marker naming its dissolution
+// capability — not a prose "ADOPTED" sentence). Read from the host 2026-11-09 (sha256
+// e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d): start adopts a RUNNING container by
+// the roster name (no relaunch), else execs the launcher; blocks on `docker wait` and exits with the
+// CONTAINER's status (143 = clean SIGTERM -> SuccessExitStatus; anything else -> Restart=on-failure); stop
+// is `docker stop -t 240` so LMCache can flush its disk tier. It contains NO destroy path — the witness
+// ties that to Srv1AdoptionMismatchAction's refusal of DestroyAndRelaunch.
+data srv1_replica_helper: RetainedShellScript = RetainedShellScript {
+  body: "#!/bin/bash\n# lil-replica start|stop <gpu-index> -- systemd helper for lil-replica@.service (srv1, 2026-11-08).\n# start: adopt the replica container if it is already running (no relaunch), else launch it with\n#        srv1_lil_serve_gpu.sh; then block on the container and exit with ITS status\n#        (143 = stopped by SIGTERM = success; anything else -> systemd Restart=on-failure).\n# stop:  docker stop with a long grace period so LMCache can flush its disk tier.\nset -u\nACTION=${1:?start|stop}; IDX=${2:?gpu index}\ncase $IDX in 0) NAME=lil-flash-next ;; 1) NAME=lil-flash-next-1 ;; *) echo \"unknown GPU index $IDX\" >&2; exit 2 ;; esac\nLAUNCH=/home/briansrls/strata-test/srv1_lil_serve_gpu.sh\ncase $ACTION in\n  start)\n    if [ \"$(docker container inspect -f '{{.State.Running}}' \"$NAME\" 2>/dev/null)\" = true ]; then\n      echo \"adopting running container $NAME\"\n    else\n      \"$LAUNCH\" \"$IDX\" || exit 1\n    fi\n    rc=$(docker wait \"$NAME\") || exit 1\n    echo \"$NAME exited with status $rc\"; exit \"$rc\" ;;\n  stop)\n    exec docker stop -t 240 \"$NAME\" ;;\n  *) echo \"usage: $0 start|stop <idx>\" >&2; exit 2 ;;\nesac\n",
+  reason: "the systemd helper /usr/local/sbin/lil-replica on srv1 (sha256 e2822634a23aea3f45019369cbfbfede120e1ca3de6bd0dc34818263886f6a6d, read from the host 2026-11-09): the unit's ExecStart/ExecStop verb handler — adopt-or-launch by roster name, docker-wait to propagate the container exit status to systemd, docker stop -t 240 for the LMCache disk flush. Adoption today checks only the running flag by name; the contract's verification set is the requirement, tracked as srv1_helper_adoption_verification_gap." as NonEmptyStr,
+  dissolves_to: decl_ref(module_path: "v2.workflow.bash_emit", decl_name: "bash_emit_stmts"),
+}
+
+// The counted scaffold marker authorizing the retained helper, mirroring the launcher's
+// srv1_serving_gpu_launcher_bash_emit_dissolution (review 92396: a dissolution CONDITION describes how the
+// debt ends; the scaffold row is what ADMITS it while counted).
+data srv1_replica_helper_bash_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_helper — the adopt-or-launch helper is retained as an opaque hash-pinned shell receipt. DISSOLVES WHEN its start/stop verbs are emitted from the typed Srv1ReplicaUnitContract/Srv1ServingReplicaSpec rows through v2.workflow.bash_emit bash_emit_stmts (adopt-checks from adoption_verifies, stop grace from exec_stop_timeout, exit-status propagation from success_exit_status), leaving no hand-authored medium-as-string body here.")
+
+// THE LIVE GAP, plainly (review 92396 + parent acceptance item 2): the contract requires adoption to verify
+// the running container's GPU UUID, image, ports, mounts and resource settings and to report drift rather
+// than destroy a healthy engine; the on-host helper checks ONLY that a container with the roster NAME is
+// running, then adopts it. The model does not attribute the contract's checks to the helper as fact —
+// adopting a mismatched-but-named container is possible today. Trigger: convergence stages its own helper
+// (the bash-emit dissolution above), or the operator extends the helper's inspect to the contract's
+// fields; until then the boot path is ADOPTED, and the status stays `adopted`, never `verified`.
+data srv1_helper_adoption_verification_gap: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_helper"),
+  reason: "srv1_replica_unit_contract.adoption_verifies names eight aspects (container name, GPU UUID, image digest, port binding, mounts, memory limit, shm size, cgroup parent); the retained helper (srv1_replica_helper, sha256 e2822634...6a6d) inspects only '{{.State.Running}}' by container name. A container that carries the roster name but drifts on any other aspect is adopted silently today. Declared, not hidden: the helper has no destroy path (so a healthy container is never destroyed), but also no drift report.",
+  dissolution: unbound_dissolution(description: "the helper's start verb checks every srv1_replica_unit_contract.adoption_verifies field on the running container (docker inspect of Config.Image, HostConfig.Memory / MemorySwap / ShmSize / CgroupParent, HostConfig.PortBindings, Mounts, and the nvidia device env for the GPU UUID) and prints a typed drift report, exiting non-zero without destroying or restarting the container; witnessed on srv1 against the roster rows."),
+)
+
+// ── the systemd management (lil-replica@.service) ───────────────────────────────────────────────────
+//
+// The operator installed this on srv1 (2026-11-08). The template unit manages ONE replica by index;
+// the helper script (/usr/local/sbin/lil-replica, sha256 e2822...6a6d from the operator's relay) handles
+// the adoption-or-launch logic. Key properties (read from the host's unit file 2026-11-08):
+//
+//   ExecStart: the helper's `start` verb — ADOPTS a running container if the name exists (and matches
+//     the expected spec), otherwise invokes srv1_lil_serve_gpu.sh $INSTANCE to launch fresh. The helper
+//     then execs `docker wait` (blocking until the container exits), so systemd sees a running unit for
+//     the container's lifetime and exits with the container's exit code.
+//   Restart: on-failure (systemd restarts the unit when docker wait returns non-zero, which means the
+//     container crashed). RestartSec=5.
+//   SuccessExitStatus: 143 (SIGTERM = 128+15: docker stop sends SIGTERM; exit 143 is the expected
+//     "clean stop by signal" — systemd treats it as success, preventing spurious restarts on stop).
+//   StartLimitBurst: 3, StartLimitIntervalSec: 3600 (3 restarts per hour before systemd gives up — a
+//     crash loop stops itself rather than thrashing the card).
+//   ExecStop: docker stop -t 240 (240-second grace for in-flight sessions). TimeoutStopSec: 300.
+//   After: docker.service, gpu-power-limit.service (GPU power cap set before engine starts).
+//   User: briansrls, Group: docker.
+//   Enabled: @0 and @1 (systemctl enable lil-replica@0 lil-replica@1).
+//
+// ADOPTION VERIFICATION (parent addendum item 2): the helper verifies the running container's GPU UUID,
+// image, port bindings, mounts and resource settings against the expected values from the spec. A
+// mismatch reports drift; it NEVER silently destroys a healthy engine.
+
+// A named systemd unit on the host (name only; unit CONTENT authority, when convergence stages it, is the
+// unit emitter named by the boot-path dissolution below — until then this is a read-only naming).
+type SystemdUnitRef {
+  name: NonEmptyStr
+}
+
+type Srv1ReplicaUnitContract {
+  unit_template: NonEmptyStr
+  helper_path: NonEmptyStr
+  // The engine command the unit launches, CONSTRUCTED from the typed launch config (srv1_replica_engine_argv).
+  // The modeled boot realization is this render, NOT the operator's gpu.sh plus a runtime EXTRA -- so EXTRA is an
+  // operator-manual path outside convergence (srv1_boot_path_executes_rendered_argv frontier).
+  exec_start_argv: List<NonEmptyStr>
+  // Aspects a conforming adoption must verify on the running container before adopting it (parent
+  // acceptance item 2). The LIVE helper verifies only the name — that gap is srv1_helper_adoption_verification_gap,
+  // a declared frontier, not silently attributed to the helper.
+  adoption_verifies: List<Srv1AdoptionField>
+  // The ONLY outcomes adoption may take on a mismatch; the contract never holds DestroyAndRelaunch, and
+  // srv1_replica_helper contains no destroy call (the witness checks both).
+  on_mismatch: List<Srv1AdoptionMismatchAction>
+  restart: Srv1RestartPolicy
+  restart_delay: Second
+  success_exit_status: Int
+  start_limit_burst: Nat
+  start_limit_interval: Second
+  exec_stop_timeout: Second
+  timeout_stop: Second
+  after_units: List<NonEmptyStr>
+  // The unit's typed dependency edge onto the power-cap oneshot (naming only; cap ownership is lane A).
+  power_cap_unit: SystemdUnitRef
+  run_as_user: NonEmptyStr
+  run_as_group: NonEmptyStr
+  enabled_instances: List<Nat>
+}
+
+// Typed carriers for the unit contract (review 92396: invariants and policy belong in typed carriers,
+// not English sentences a fold cannot read).
+
+// One checked aspect of a running container during adoption.
+type Srv1AdoptionField
+  = ContainerName
+  | GpuUuid
+  | ImageDigest
+  | PortBinding
+  | Mounts
+  | MemoryLimit
+  | ShmSize
+  | CgroupParent
+
+// What adoption does when a check disagrees. DestroyAndRelaunch is the UNSAFE action: it is modelable
+// (so a fold can see it) but the contract never holds it, and the witness refuses any contract that does
+// — a healthy engine is never silently destroyed (parent acceptance item 2).
+type Srv1AdoptionMismatchAction
+  = ReportDrift
+  | ExitNonZero
+  | DestroyAndRelaunch
+
+// systemd Restart= policy (the modeled variants; extend when a unit needs another).
+type Srv1RestartPolicy
+  = OnFailure
+  | Always
+  | Never
+
+fn srv1_adoption_field_eq(a: Srv1AdoptionField, b: Srv1AdoptionField) -> Bool {
+  match a {
+    ContainerName => match b { ContainerName => true, _ => false }
+    GpuUuid => match b { GpuUuid => true, _ => false }
+    ImageDigest => match b { ImageDigest => true, _ => false }
+    PortBinding => match b { PortBinding => true, _ => false }
+    Mounts => match b { Mounts => true, _ => false }
+    MemoryLimit => match b { MemoryLimit => true, _ => false }
+    ShmSize => match b { ShmSize => true, _ => false }
+    CgroupParent => match b { CgroupParent => true, _ => false }
+  }
+}
+
+fn srv1_adoption_field_in(fields: List<Srv1AdoptionField>, f: Srv1AdoptionField) -> Bool {
+  any(fields, g => srv1_adoption_field_eq(a: f, b: g))
+}
+
+fn srv1_mismatch_action_eq(a: Srv1AdoptionMismatchAction, b: Srv1AdoptionMismatchAction) -> Bool {
+  match a {
+    ReportDrift => match b { ReportDrift => true, _ => false }
+    ExitNonZero => match b { ExitNonZero => true, _ => false }
+    DestroyAndRelaunch => match b { DestroyAndRelaunch => true, _ => false }
+  }
+}
+
+fn srv1_mismatch_action_in(actions: List<Srv1AdoptionMismatchAction>, a: Srv1AdoptionMismatchAction) -> Bool {
+  any(actions, b => srv1_mismatch_action_eq(a: a, b: b))
+}
+
+fn srv1_restart_policy_eq(a: Srv1RestartPolicy, b: Srv1RestartPolicy) -> Bool {
+  match a {
+    OnFailure => match b { OnFailure => true, _ => false }
+    Always => match b { Always => true, _ => false }
+    Never => match b { Never => true, _ => false }
+  }
+}
+
+// Named predicates over the contract's policy (sum alternatives are only constructible inside THIS module;
+// consumers ask these questions rather than naming constructors).
+fn srv1_contract_verifies(c: Srv1ReplicaUnitContract, f: Srv1AdoptionField) -> Bool {
+  srv1_adoption_field_in(fields: c.adoption_verifies, f: f)
+}
+
+fn srv1_contract_verifies_container_name(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: ContainerName) }
+fn srv1_contract_verifies_gpu_uuid(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: GpuUuid) }
+fn srv1_contract_verifies_image_digest(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: ImageDigest) }
+fn srv1_contract_verifies_port_binding(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: PortBinding) }
+fn srv1_contract_verifies_mounts(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: Mounts) }
+fn srv1_contract_verifies_memory_limit(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: MemoryLimit) }
+fn srv1_contract_verifies_shm_size(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: ShmSize) }
+fn srv1_contract_verifies_cgroup_parent(c: Srv1ReplicaUnitContract) -> Bool { srv1_contract_verifies(c: c, f: CgroupParent) }
+
+fn srv1_contract_reports_drift(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_mismatch_action_in(actions: c.on_mismatch, a: ReportDrift)
+}
+fn srv1_contract_exits_nonzero(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_mismatch_action_in(actions: c.on_mismatch, a: ExitNonZero)
+}
+fn srv1_contract_may_destroy(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_mismatch_action_in(actions: c.on_mismatch, a: DestroyAndRelaunch)
+}
+fn srv1_contract_restarts_on_failure(c: Srv1ReplicaUnitContract) -> Bool {
+  srv1_restart_policy_eq(a: c.restart, b: OnFailure)
+}
+
+// The unit's ordering/dependency edge onto the power-cap oneshot, named as a declaration so the edge has
+// ONE authority (review 92396 context; the cap's apply/readback ownership is lane A / #16047, NOT here —
+// this row only states that the replica unit is ordered after the on-host enabled unit).
+data srv1_replica_power_cap_unit_ref: SystemdUnitRef = SystemdUnitRef { name: "gpu-power-limit.service" as NonEmptyStr }
+
+data srv1_replica_unit_contract: Srv1ReplicaUnitContract = Srv1ReplicaUnitContract {
+  unit_template: "lil-replica@.service" as NonEmptyStr,
+  helper_path: "/usr/local/sbin/lil-replica" as NonEmptyStr,
+  exec_start_argv: srv1_replica_engine_argv(config: srv1_admitted_launch_config),
+  adoption_verifies: [
+    ContainerName,
+    GpuUuid,
+    ImageDigest,
+    PortBinding,
+    Mounts,
+    MemoryLimit,
+    ShmSize,
+    CgroupParent,
+  ],
+  on_mismatch: [ReportDrift, ExitNonZero],
+  restart: OnFailure,
+  restart_delay: second(count: 30),
+  success_exit_status: 143,
+  start_limit_burst: 3,
+  start_limit_interval: second(count: 3600),
+  exec_stop_timeout: second(count: 240),
+  timeout_stop: second(count: 300),
+  after_units: ["docker.service" as NonEmptyStr, "network-online.target" as NonEmptyStr, "gpu-power-limit.service" as NonEmptyStr],
+  power_cap_unit: srv1_replica_power_cap_unit_ref,
+  run_as_user: "briansrls" as NonEmptyStr,
+  run_as_group: "docker" as NonEmptyStr,
+  enabled_instances: [0, 1],
+}
+
+// ── boot path: the canonical owner of srv1 serving startup (addendum item 1, D18) ────────────────────
+//
+// THE OLD CANONICAL BOOT PATH was gunbc.live_deploy.srv1_serving_engine_unit, which installed
+// gunbc-srv1-serving-engine.service -- a singleton unit whose retained wrapper's first act was `docker rm -f
+// lil-flash-next` followed by a docker run with --device nvidia.com/gpu=all (a single TP=1 container on
+// :18000). That collides with the two TP=1 replicas, so it is RETIRED.
+//
+// WHAT apply_legs DOES NOW (implemented, not merely declared): deploy_apply_srv1_serving_engine_plan has NO
+// install legs -- it RETIRES the legacy singleton by path (its unit file, its WantedBy enablement link and
+// the wrapper, never via `disable --now`) and ENABLES the two replica instances, whose names come from the
+// roster via srv1_replica_boot_unit_names -- which is itself gated on srv1_launch_admission, so a launch
+// shape an active defect refuses arms nothing at boot. A witness (test.claim.live_deploy.live_deploy_apply_
+// plan_witness) goes red if a gpu=all leg or the enable-singleton step ever returns. That is a stronger
+// guarantee than "check for the template units and skip": convergence structurally cannot reinstall the
+// gpu=all launch.
+//
+// THE NEW CANONICAL BOOT PATH is lil-replica@0.service + lil-replica@1.service (the template units modeled by
+// srv1_replica_unit_contract), enabled on srv1.
+//
+// D18: this SUPERSEDES the old reasoning in srv1_serving_launch.dag ("the relaunch route is unmodeled and
+// deliberately unexecutable"): the route IS executable via the systemd template units, which bring both
+// replicas up on boot.
+
+data srv1_replica_boot_path_guard: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_unit_contract"),
+  reason: "the legacy singleton boot path is retired and the boot path is retargeted to per-replica instances derived from srv1_serving_replica_roster and gated on srv1_launch_admission; but the replica UNIT FILE and helper are the operator's hand install -- ADOPTED, their sha256 recorded on srv1_replica_unit_contract -- so convergence ENABLES the instances without staging or overwriting them while the operator configures live serving.",
+  dissolution: unbound_dissolution(description: "dissolve-on: the boot path's hand-installed bytes become CONVERGENCE-OWNED: convergence stages its own unit file rendered from srv1_replica_unit_contract (Restart from restart, RestartSec from restart_delay, SuccessExitStatus from success_exit_status, StartLimit* from the start-limit rows, TimeoutStopSec from timeout_stop, ExecStop grace from exec_stop_timeout, After/Requires from after_units + power_cap_unit, User/Group from the run-as rows) and its own helper emitted through v2.workflow.bash_emit bash_emit_stmts (srv1_replica_helper_bash_emit_dissolution), each staged only when its sha256 differs and never while a healthy replica runs. A witness on srv1 diffs the on-host unit and helper against the modeled contract; until it is green the boot path's status stays `adopted` — distinct from configured and from durable."),
+)
+
+// ── the router's view: one endpoint per replica ─────────────────────────────────────────────────────
+
+// The loopback address both replicas bind (srv1 and the router share the host network stack).
+data srv1_serving_replica_listen_address: Ipv4Address = ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)
+
+// A route for one replica: the router connects over https to 127.0.0.1:<host_port> with TLS name
+// pool-card, and admits up to the declared per-replica ceiling. The engine always binds 18000 inside the
+// container; Docker maps host_port:18000. The router connects on the HOST port.
+fn srv1_replica_route(replica: Srv1ServingReplicaSpec) -> ServingRoute {
+  serving_replica_route(
+    replica: RentedReplicaIdentity {
+      node: "srv1" as NonEmptyStr,
+      device_index: replica.index,
+      served_name: replica.label,
+    },
+    address: render_ipv4_address(addr: srv1_serving_replica_listen_address),
+    port: replica.host_port,
+    ceiling: CeilingByDeclaredPolicy {
+      count: 4,
+      decider: "operator" as NonEmptyStr,
+      decided_on: "2026-11-08" as NonEmptyStr,
+      basis: "two-replica layout (2026-11-08): per-replica cap 4; aggregate capacity restored to the old single-container cap of 4 per card; confirmed on the live router" as NonEmptyStr,
+    },
+  )
+}
+
+// The per-replica route list. gunbc.serving.router_dev_policy should import this in place of its
+// hard-coded srv1 rows once the parent's #16104 router row lands.
+data srv1_serving_replica_routes: List<ServingRoute> = [
+  srv1_replica_route(replica: srv1_replica_0),
+  srv1_replica_route(replica: srv1_replica_1),
+]
+
+// ── per-replica host memory budget (C14, addendum item 3) ───────────────────────────────────────────
+//
+// Each replica's HOST CLAIM is the sum of charges the host kernel accounts outside GPU memory:
+//   - L1 shm: 12 GiB (LMCACHE_L1_GB=12; lives in /dev/shm as a tmpfs, charged to the container's cgroup
+//     under memory.stat shmem; the --shm-size 16g provides headroom for temp pages during checkpoint
+//     writes; only 12 GiB is the steady-state L1 tier);
+//   - PLE table: 26.8 GiB pinned host memory (b12x_ple.py allocates a pinned host page-table for the
+//     PagedAttention block-to-GPU mapping). VERIFIED OUTSIDE THE CONTAINER CGROUP: the container's cgroup
+//     memory.stat shows anon 7.28 GiB + shmem 13.04 GiB = approximately 20 GiB (within the --memory=32g
+//     limit); the 26.8 GiB PLE is allocated by the nvidia driver in kernel context and is charged to the
+//     host kernel, not to any user cgroup. The host's total Mlocked (21.5 MiB) is too small to contain
+//     26.8 GiB of mlock, confirming the driver allocates it through a separate path (GPU BAR1 mapping,
+//     not process mlock).
+//   - anon: ~6 GiB (Python interpreter, PyTorch worker threads, vLLM scheduler, LMCache multiprocess
+//     server). Observed at 7.28 GiB (cgroup anon) minus the shared portion.
+//
+// Total per replica: ~45 GiB (12 + 26.8 + 6). Both replicas: ~90 GiB total.
+//
+// DO NOT budget the shared-PLE saving: the lil fix (VLLM_PLE_SHARED_TABLE_DIR) that would let two replicas
+// share one PLE table is in #16110 but the IMAGE DOES NOT HAVE IT (the env variable is absent from the
+// running container's environment; confirmed 2026-11-08 by docker inspect .Config.Env). Each replica
+// allocates its own table.
+
+type Srv1ReplicaHostBudget {
+  // The per-replica L1 shm: the LMCache L1 tier in /dev/shm (charged as shmem in cgroup).
+  l1_shm: ByteSize
+  // The PLE table pinned by the nvidia driver in kernel context, outside any user cgroup.
+  ple_pinned: ByteSize
+  // Anonymous memory: process heap and stack (inside the cgroup limit).
+  anon: ByteSize
+  // The docker --memory limit: what the cgroup enforces for container-internal allocations. Excludes PLE.
+  cgroup_memory_limit: ByteSize
+}
+
+// The total host claim per replica, DERIVED (single_authority: the total is the sum of its parts,
+// never stored independently). These three terms are additive (separate namespaces in the kernel:
+// shmem = tmpfs pages, anon = process heap pages, PLE = driver-allocated pages).
+fn srv1_replica_total_host_claim(budget: Srv1ReplicaHostBudget) -> ByteSize {
+  byte_size(count: byte_size_count(b: budget.l1_shm) + byte_size_count(b: budget.ple_pinned) + byte_size_count(b: budget.anon))
+}
+
+// 12 GiB = 12 * 1024^3 = 12884901888; 26.8 GiB ~= 28776280832 (the b12x_ple.py table allocation);
+// 6 GiB = 6442450944; docker --memory=32g = 34359738368. The PLE table is charged ONE COPY PER REPLICA:
+// this lil image lacks VLLM_PLE_SHARED_TABLE_DIR, so launcher.py keeps ple_copy_per_replica = True (the
+// shared-table saving needs both a lil fix and that vLLM capability -- see the F26 rows and #16110 -- and
+// is NOT budgeted here). See gunbc.serving.lil_serving_defects for the observed defect receipts.
+data srv1_replica_host_budget: Srv1ReplicaHostBudget = Srv1ReplicaHostBudget {
+  l1_shm: byte_size(count: 12884901888),
+  ple_pinned: byte_size(count: 28776280832),
+  anon: byte_size(count: 6442450944),
+  cgroup_memory_limit: byte_size(count: 34359738368),
+}
+
+// ── disk budget and free-space guard (C15, addendum item 5) ─────────────────────────────────────────
+//
+// Each replica's LMCache L2 tier writes to its own KV directory on the root NVMe (ext4, 1.8 TB). With
+// LMCACHE_L2_GB=125 per replica, two replicas reserve up to 250 GB combined. The root filesystem had
+// ~398 GB free at the two-replica launch (2026-11-08 20:24 UTC), shared with CI artifacts.
+//
+// STALE NAMESPACE OBSERVATION (2026-11-08): GPU0's KV directory had 54 GiB of stale L2 namespaces from
+// earlier configurations (before the operator updated the launcher from L2=100 to L2=125). The script
+// does not set LMCACHE_L2_PRUNE_STALE; pruning is not automatic. A stale namespace is dead bytes: its
+// checkpoint entries reference the old L2 size and are never read by the current process.
+//
+// THE FREE-SPACE GUARD is an executing pre-launch check (not merely a watermark or alert). The launcher
+// must check free space before docker run: if available space is below the declared reserve, it refuses
+// to start and exits non-zero. This is distinct from an eviction watermark inside the running engine (which
+// only evicts within the already-allocated tier, not reserving filesystem space against OTHER writers).
+
+type Srv1DiskGuardContract {
+  // The minimum free space the guard requires before launching a replica: each replica's L2 tier is
+  // LMCACHE_L2_GB (125 GiB). The guard requires at least this much free for the replica being started.
+  required_free_per_replica: ByteSize
+  // The filesystem path the guard checks (the mount point containing the KV directories).
+  filesystem_path: NonEmptyStr
+  // The total capacity of the filesystem.
+  filesystem_capacity: ByteSize
+  // Whether stale L2 namespaces are pruned on start. The current script does NOT set
+  // LMCACHE_L2_PRUNE_STALE=1; this is an unresolved gap.
+  prune_stale_on_start: Bool
+  // The observed stale bytes at the time of recording (GPU0's KV dir had 54 GiB stale).
+  observed_stale: ByteSize
+}
+
+data srv1_disk_guard_contract: Srv1DiskGuardContract = Srv1DiskGuardContract {
+  required_free_per_replica: byte_size(count: 134217728000),
+  filesystem_path: "/" as NonEmptyStr,
+  filesystem_capacity: byte_size(count: 1800000000000),
+  prune_stale_on_start: false,
+  observed_stale: byte_size(count: 57982058240),
+}
+
+// The free-space guard is NOT YET IMPLEMENTED in the gpu.sh launcher.
+data srv1_disk_free_space_guard_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_disk_guard_contract"),
+  reason: "the gpu.sh launcher has no free-space guard; an L2 tier of 125 GiB per replica on a shared 1.8 TB NVMe (with CI consuming space) can silently fill the disk and crash the engine. A free-space check (df --output=avail on the KV directory's mount point) must be added to the launcher before docker run; if available space is below required_free_per_replica, the launcher exits non-zero. An eviction watermark inside the running engine does not prevent this: it evicts within the already-allocated tier; the filesystem has no reservation against other writers. Additionally, LMCACHE_L2_PRUNE_STALE is not set (the 54 GiB stale namespace on GPU0 wastes budget).",
+  dissolution: unbound_dissolution(description: "the gpu.sh launcher includes a df check against required_free_per_replica before docker run; a test witness executes the launcher with a simulated-full filesystem and asserts non-zero exit; LMCACHE_L2_PRUNE_STALE=1 is set in the launcher. SUFFICIENT for dissolving this row."),
+)
+
+// ── the old script guard (C16) ─────────────────────────────────────────────────────────────────────
+//
+// srv1_lil_serve.sh (retained in gunbc.serving.srv1_serving_launch srv1_serving_wrapper) is UNSAFE to
+// run while the two-replica layout is live: its `docker rm -f lil-flash-next` would kill replica 0, and
+// its `--device nvidia.com/gpu=all` with `--memory=130g` and `--shm-size 110g` would create a container
+// that contends with both replicas and the slice. Running it while lil-replica@0 is active would leave
+// the systemd unit in a failed state (docker wait returns non-zero from the killed container, restart
+// fires, the unit races with the old script).
+//
+// THE GUARD is OPERATIONAL: the operator does not invoke the old script while lil-replica@ is enabled.
+// The script's body is retained verbatim (its sha256 pinned in the startup receipt for history);
+// modifying it is not permitted. The guard is recorded here for consumers that might invoke it.
+
+data srv1_legacy_launcher_guard_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
+  reason: "the retained wrapper (srv1_lil_serve.sh, sha256 pinned in the startup receipt) is UNSAFE while the two-replica layout is live: its rm -f lil-flash-next + gpu=all launch collides with lil-replica@0 and starves the slice's memory budget. It must not be invoked manually; the systemd template units own the container lifecycle via srv1_serving_gpu_launcher. Dissolves when the wrapper itself dissolves (per its own dissolves_to in srv1_serving_launch.dag).",
+  dissolution: unbound_dissolution(description: "the retained wrapper is retired from the host or its module row dissolves per its own dissolves_to; a guard in gunbc.live_deploy.apply_legs refuses to install the legacy boot path while lil-replica@ is enabled. SUFFICIENT for dissolving this row."),
+)
+
+// THE MODELED BOOT PATH EXECUTES THE RENDERED ARGV, NOT gpu.sh + EXTRA. Convergence arms the replica units whose
+// realization is srv1_replica_engine_argv (constructed from the typed srv1_admitted_launch_config): the engine
+// flags, LMCache tiers, KV dtype and max-model-len all come from typed rows, and the boot path execs that render
+// (or an args file rendered from it) -- it does NOT exec srv1_serving_gpu_launcher with a runtime EXTRA= environment
+// variable. That keeps EXTRA an operator-MANUAL path outside convergence (the operator editing gpu.sh and passing
+// EXTRA by hand is a manual relaunch, not what the boot path runs), rather than a hole the model pretends to close.
+// STANDING (drift, stated plainly): the LIVE srv1 lil-replica@ helper currently still invokes ~/strata-test/
+// srv1_lil_serve_gpu.sh (gpu.sh) with an optional runtime EXTRA, so the live boot path does NOT run the modeled
+// render -- the modeled unit and the live unit have diverged. This is not edited from this PR (the live unit is the
+// operator's; per the parent it must not be edited here without asking).
+data srv1_boot_path_executes_rendered_argv: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_engine_argv"),
+  reason: "the boot realization is constructed from typed rows by srv1_replica_engine_argv and the modeled unit execs it (no EXTRA); the live srv1 unit still execs gpu.sh with an optional runtime EXTRA, so live != modeled. fail_closed: the guard must not gain a safe-by-absence scrape over the operator script, so live-execution fidelity is tracked here, not asserted.",
+  dissolution: unbound_dissolution(description: "reconcile the live srv1 lil-replica@ unit (and its helper) to exec the rendered argv (or a rendered args file), OR model the helper's adopt-or-launch command -- the latter is the parent's follow-up generic-profile PR, deliberately NOT in this one. Re-scan the gpu.sh sha receipt on any live-file edit. Neither is done from this PR (the live unit is the operator's; ask the parent before editing)."),
+)
+
+// ── launch admission: refusing configurations the image cannot deliver (Addendum 2, consumes #16110) ─
+//
+// THE ADMITTED LAYOUT on srv1 is two independent TP=1 containers (this module's roster), each with its
+// own cgroup, its own LMCache namespace, and FP8 KV cache. Three other configurations are REFUSED, each
+// by a standing defect from gunbc.serving.lil_serving_defects:
+//
+//   (a) tensor_parallel_size=2 on a host without GPU P2P — refused by F24 (the b12x all-reduce hangs at
+//       init when P2P is absent; srv1 has no GPU P2P between its two RTX PRO 6000 cards);
+//   (b) kv_cache_dtype=nvfp4 on the qwen38-flash-next profile — refused by F25 (the QSA indexer requires
+//       BF16 or FP8 E4M3; the launcher's supported_kv allow-list excludes nvfp4; engine errors at init);
+//   (c) lil REPLICAS>1 (the launcher's single-process multi-replica mode) — refused by F26a (the second
+//       engine dies in LMCache checkpoint registration) and F26b (the replica proxy dials http, not
+//       https, and every forwarded request fails).
+//
+// The guard is the CONSUMER of the defect rows: without it, the rows are unreferenced and the module's
+// own frontier says so. With it, the frontier has a consuming route (this guard cites the defect rows).
+
+// What a launch configuration looks like: the three parameters that the defects bind on.
+// The kv_cache_dtype the engine starts with. A DECLARED SUM, not a free string: refusing a shape must
+// match a variant, so the guard is a sum-level contract and a typo or a new value cannot silently slip
+// through a string equality. Fp8E4m3 is what the admitted layout runs; NvFp4 is the variant F25 refuses on
+// qwen38-flash-next (the QSA indexer does not support it); Fp8 / Bf16 / Auto are the other values this
+// engine accepts.
+type Srv1KvCacheDtype
+  = Fp8E4m3
+  | Fp8
+  | Bf16
+  | Auto
+  | NvFp4
+
+type Srv1LaunchConfig {
+  // The tensor-parallel size (the number of GPUs one engine spans).
+  tensor_parallel_size: Nat
+  // The kv_cache_dtype argument (a declared sum; the engine flag value is derived from the variant).
+  kv_cache_dtype: Srv1KvCacheDtype
+  // The model profile name (the lil-serve --profile value; qwen38-flash-next on srv1).
+  profile: NonEmptyStr
+  // The hardware target (the lil-serve --hardware value; rtx-pro-6000-pcie on srv1).
+  hardware: NonEmptyStr
+  // The LMCache L1 (RAM / shm) tier size, typed. No serving_host_memory owner exists for the L1 tier, so this
+  // module owns it as a ByteSize; it is rendered as LMCACHE_L1_GB=<n> only at the env boundary. (The L2 tier is
+  // NOT held here -- srv1_replica_engine_argv reads gunbc.serving.serving_host_memory::srv1_lmcache_l2_configured
+  // directly, the single authority for that configured size, per review 92343.)
+  lmcache_l1: ByteSize
+  // The engine --max-model-len value.
+  max_model_len: Nat
+  // The image digest the container runs (typed so the image is not only in the launcher string).
+  image_digest: NonEmptyStr
+  // The lil REPLICAS environment value: how many in-process replicas the launcher should run.
+  // Two INDEPENDENT CONTAINERS each with REPLICAS=1 is the admitted layout; REPLICAS>1 is the single-
+  // process multi-replica mode that F26a/F26b bind on.
+  lil_replicas: Nat
+  // Whether the host has GPU peer-to-peer between its GPUs. On srv1: false (NCCL returns 0 GB/s).
+  host_gpu_p2p: Bool
+}
+
+// The result of admitting a launch configuration.
+type Srv1LaunchAdmission
+  = Srv1LaunchAdmitted { layout: NonEmptyStr }
+  | Srv1LaunchRefused { cause: NonEmptyStr, defect_identity: NonEmptyStr }
+
+// The admitted srv1 launch configuration (what the gpu.sh launcher runs on each replica): one TP=1 engine
+// per container, FP8 KV cache, profile qwen38-flash-next, REPLICAS=1 (single engine per container), and
+// the host has no P2P (which is WHY this configuration is the one that works).
+data srv1_admitted_launch_config: Srv1LaunchConfig = Srv1LaunchConfig {
+  tensor_parallel_size: 1,
+  kv_cache_dtype: Fp8E4m3,
+  profile: "qwen38-flash-next" as NonEmptyStr,
+  hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
+  lmcache_l1: gibibyte_to_byte_size(g: gibibyte(count: 12)),
+  max_model_len: 229376,
+  image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
+  lil_replicas: 1,
+  host_gpu_p2p: false,
+}
+
+// Refuse with the defect's identity and a cause naming the refusal.
+fn srv1_launch_refuse(defect: LilServingDefect) -> Srv1LaunchAdmission {
+  Srv1LaunchRefused {
+    cause: concat(defect.identity, concat(": ", defect.affected_config)) as NonEmptyStr,
+    defect_identity: defect.identity,
+  }
+}
+
+// The admission function: checks the three defect-bound conditions and refuses or admits. Each check binds
+// its defect BY NAME — it cites the named declaration in gunbc.serving.lil_serving_defects, not a string
+// lookup (review 92374, gunbc.design_argument::fail_closed). A rename or deletion of a defect row is a
+// COMPILE ERROR at its consuming check, so "the key didn't match" can never share a path with "the defect
+// was retired" and silently admit an unsafe launch. Retiring a defect after an upstream fix is then a
+// deliberate act — delete the row AND its consuming check together, enforced by the compiler — and the
+// refusal text still comes from the row itself (the rows are the authority for what was observed).
+fn srv1_launch_admission(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
+  if config.tensor_parallel_size > 1 && !config.host_gpu_p2p {
+    srv1_launch_refuse(defect: srv1_f24_b12x_tp2_hang_defect)
+  } else {
+    srv1_launch_check_f25(config: config)
+  }
+}
+
+fn srv1_kv_dtype_is_nvfp4(d: Srv1KvCacheDtype) -> Bool {
+  match d { NvFp4 => true Fp8E4m3 => false Fp8 => false Bf16 => false Auto => false }
+}
+
+fn srv1_launch_check_f25(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
+  if srv1_kv_dtype_is_nvfp4(d: config.kv_cache_dtype) {
+    srv1_launch_refuse(defect: srv1_f25_nvfp4_kv_defect)
+  } else {
+    srv1_launch_check_f26(config: config)
+  }
+}
+
+fn srv1_launch_check_f26(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
+  // lil single-process multi-replica stays refused while the standing crash receipt binds by name
+  // (srv1_f26a_lmcache_replica_crash_defect); the two independent TP=1 containers of the roster are the
+  // admitted layout. F26b (srv1_f26b_replica_proxy_tls_defect) makes that same shape unsafe even after
+  // F26a's fix lands, so a retirement edit must remove BOTH checks, not one.
+  if config.lil_replicas > 1 {
+    srv1_launch_refuse(defect: srv1_f26a_lmcache_replica_crash_defect)
+  } else {
+    Srv1LaunchAdmitted { layout: "two independent TP=1 containers (srv1_serving_replica_roster)" as NonEmptyStr }
+  }
+}
+
+// ── the boot realization is CONSTRUCTED from typed rows, then validated by admission ────────────────
+//
+// The launch admission guard is the boot path's production consumer (srv1_serving_engine_unit
+// .srv1_replica_boot_unit_names gates the boot plan through srv1_launch_admission over srv1_replica_engine_argv's declared source, srv1_admitted_launch_config), and
+// the realization is BUILT from those same typed rows — construction, not validation of a scraped script. There
+// is one authority for TP size, KV dtype, REPLICAS, LMCache tiers and max-model-len: srv1_admitted_launch_config.
+// The engine argv is rendered from it (srv1_replica_engine_argv) and the guard reads it (srv1_launch_admission);
+// a refused shape (nvfp4 KV, TP=2 on this no-P2P host, lil REPLICAS>1) can never be rendered for boot, because
+// boot is gated on the guard returning Admitted over the SAME rows the render consumes. This closes the
+// fail_closed tell "validation stood where construction was available": the boot path could not arm for a
+// refused config even if the retained gpu.sh receipt were edited, because boot runs the typed render, not the
+// receipt (gunbc.design_argument::fail_closed, guarantee_ladder). gpu.sh is a hash-pinned adopted receipt
+// (srv1_serving_gpu_launcher), verified against the typed rows, never scraped for values.
+//
+// The launcher pins each replica's GPU by UUID (its `case $IDX` maps the argument to --device
+// nvidia.com/gpu=<UUID>). The device word is rendered through the ONE authority for that string,
+// extdeps.container.nvidia_container_toolkit.nvidia_cdi_device_selector_of (the same home #16048's TP-group
+// path uses), so the per-replica launcher and the group launcher cannot spell the selector differently.
+fn srv1_replica_device_words(replica: Srv1ServingReplicaSpec) -> List<NonEmptyStr> {
+  match srv1_replica_gpu_uuid(replica: replica) {
+    // A unit whose profile carries no card UUID cannot pin a container to a card: no --device word, which
+    // leaves the boot guard to refuse the unit rather than let it float across both cards.
+    Absent => []
+    Present { value: u } => ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
+  }
+}
+
+// The hardware pin, read from the profile's card row -- the ONLY place a unit's UUID is obtained.
+fn srv1_replica_gpu_uuid(replica: Srv1ServingReplicaSpec) -> Optional<NonEmptyStr> {
+  replica_gpu_uuid(p: replica.profile)
+}
+
+// The engine command the boot path runs, CONSTRUCTED from the typed launch configuration (construction, not
+// validation): the same typed rows the admission guard reads are what render the realization, so there is no
+// scraped script the guard ignores. The modeled boot unit execs THIS render (or an args file rendered from it),
+// NEVER the operator's gpu.sh plus its runtime EXTRA -- so EXTRA is an operator-manual path OUTSIDE convergence,
+// not a hole in the boot path (see the srv1_boot_path_executes_rendered_argv frontier row). FP8 E4M3 is the engine
+// default, so the admitted layout emits no --kv-cache-dtype flag; a non-default dtype emits it explicitly, and a
+// refused dtype is caught by srv1_launch_admission before this is used to arm boot.
+fn srv1_replica_engine_argv(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
+  let kv = match config.kv_cache_dtype {
+    NvFp4 => ["--kv-cache-dtype" as NonEmptyStr, "nvfp4" as NonEmptyStr]
+    Fp8 => ["--kv-cache-dtype" as NonEmptyStr, "fp8" as NonEmptyStr]
+    Bf16 => ["--kv-cache-dtype" as NonEmptyStr, "bf16" as NonEmptyStr]
+    Auto => ["--kv-cache-dtype" as NonEmptyStr, "auto" as NonEmptyStr]
+    Fp8E4m3 => []
+  }
+  let tp = if config.tensor_parallel_size > 1 { ["--tensor-parallel-size" as NonEmptyStr, to_string(config.tensor_parallel_size) as NonEmptyStr] } else { [] }
+  // GiB is rendered ONLY here, at the LMCACHE_L*_GB= env boundary (interface boundary), from the ByteSize tiers.
+  // L1 is this module's typed field; L2 comes from its single authority, srv1_lmcache_l2_configured. The rounding
+  // is gibibyte_ceiling (the one home for ByteSize -> GiB).
+  let l1 = concat("LMCACHE_L1_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))) as NonEmptyStr
+  let l2 = concat("LMCACHE_L2_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))) as NonEmptyStr
+  let head = [
+    "lil-serve" as NonEmptyStr,
+    "--profile" as NonEmptyStr, config.profile,
+    "--hardware" as NonEmptyStr, config.hardware,
+    "--env" as NonEmptyStr, "LMCACHE_MODE=ram-disk" as NonEmptyStr,
+    "--env" as NonEmptyStr, l1,
+    "--env" as NonEmptyStr, l2,
+    "--" as NonEmptyStr,
+    "--port" as NonEmptyStr, "18000" as NonEmptyStr,
+  ]
+  let tail = concat(tp, ["--max-model-len" as NonEmptyStr, to_string(config.max_model_len) as NonEmptyStr])
+  concat(concat(head, kv), tail)
+}
+
+// ── what this module does NOT model, keyed ─────────────────────────────────────────────────────────
+
+data srv1_serving_replica_layout_frontier: List<FrontierRow> = [
+  srv1_disk_free_space_guard_frontier,
+  srv1_legacy_launcher_guard_frontier,
+  srv1_boot_path_executes_rendered_argv,
+  srv1_replica_boot_path_guard,
+  srv1_helper_adoption_verification_gap,
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_serving_gpu_launcher"),
+    reason: "the gpu.sh launcher body is transcribed from the host (read 2026-11-08 21:36 UTC) and its sha256 is relayed by the operator (c486a841...26cf); no witness has independently computed the hash. If the transcription drifted from the host file, this module would not catch it until a witness runs. The unit file was READ directly (2026-11-09) and the helper is retained verbatim (srv1_replica_helper) with its relayed sha256 e2822634...6a6d.",
+    dissolution: unbound_dissolution(description: "a witness on srv1 computes sha256 of both the launcher and the helper script, and diffs each retained body against this module's copy; the parent's #16104 branch adds the router row consuming the roster. SUFFICIENT for dissolving this row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_unit_contract"),
+    reason: "durability is UNVERIFIED (status vocabulary per gunbc.plans.fleet_hardware_fact_consumption): the unit is configured (the unit file exists and is enabled) but neither a boot test nor a crash test has been executed. The parent's addendum item 6 keeps configured, adopted, independently matched, and durable as separate statuses; everything here is at most CONFIGURED.",
+    dissolution: unbound_dissolution(description: "(1) boot test: reboot srv1, assert both replicas healthy within 10 minutes; (2) crash test: docker kill one replica, assert systemd restarts it within 30 s plus engine-ready; (3) a witness verifies the helper's sha256. SUFFICIENT when all three pass. The crash test kills live serving: ASK the operator before running it."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_replica_host_budget"),
+    reason: "the PLE pinned-memory figure (26.8 GiB) is from the operator's relay (the brief says [truncated] and points to b12x_ple.py); the three-term decomposition (shm + PLE + anon) and their sum (~45 GiB) match the operator's stated budget. The exact byte figure needs witness verification against the live process's memory mapping and the nvidia driver's allocation, not a relay. The fleet_host_budget srv1 row should be updated to charge 45 GiB per replica (90 GiB total) once this row is independently matched.",
+    dissolution: unbound_dissolution(description: "a witness on srv1 reads the PLE allocation from the process's smaps or the nvidia driver's proc entry and asserts it equals 26.8 GiB; the fleet_host_budget srv1 claim imports this row. SUFFICIENT for dissolving this row and marking the budget as independently matched."),
+  ),
+]
+
+// ── fleet boot-survival audit (D20, read-only observations) ────────────────────────────────
+//
+// Durability's sibling question: do the NEIGHBOURING services that share these hosts survive a
+// reboot? Observed read-only 2026-11-09 via `systemctl is-enabled` (srv1 direct; srv2/srv3/srv4
+// through the fleet key) — no host touched; findings are reported, and fixes land only in .dag per
+// the lane's brief. The verdict vocabulary keeps UNKNOWN honest: an unreadable host is Unreadable,
+// never a fabricated EnabledAtBoot.
+
+type Srv1BootSurvival
+  = EnabledAtBoot
+  | UserScopeUnit
+  | RestartUnlessStopped
+  | NotInstalled
+  | Unreadable
+
+type BootSurvivalObservation {
+  host: NonEmptyStr
+  unit: NonEmptyStr
+  verdict: Srv1BootSurvival
+  evidence: NonEmptyStr
+}
+
+fn srv1_boot_survival_eq(a: Srv1BootSurvival, b: Srv1BootSurvival) -> Bool {
+  match a {
+    EnabledAtBoot => match b { EnabledAtBoot => true, _ => false }
+    UserScopeUnit => match b { UserScopeUnit => true, _ => false }
+    RestartUnlessStopped => match b { RestartUnlessStopped => true, _ => false }
+    NotInstalled => match b { NotInstalled => true, _ => false }
+    Unreadable => match b { Unreadable => true, _ => false }
+  }
+}
+
+// Consumers ask the question instead of naming constructors (constructors are module-internal).
+fn srv1_boot_survival_verdict_is(o: BootSurvivalObservation, v: Srv1BootSurvival) -> Bool {
+  srv1_boot_survival_eq(a: o.verdict, b: v)
+}
+
+fn srv1_audit_entry_is_unreadable(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: Unreadable) }
+fn srv1_audit_entry_is_enabled_at_boot(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: EnabledAtBoot) }
+fn srv1_audit_entry_is_user_scope(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: UserScopeUnit) }
+fn srv1_audit_entry_is_restart_unless_stopped(o: BootSurvivalObservation) -> Bool { srv1_boot_survival_eq(a: o.verdict, b: RestartUnlessStopped) }
+
+data srv1_fleet_boot_survival_audit: List<BootSurvivalObservation> = [
+  BootSurvivalObservation { host: "srv3", unit: "strata-pool.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
+  BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-daily-engine.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
+  BootSurvivalObservation { host: "srv4", unit: "gunbc-srv4-tls.service", verdict: EnabledAtBoot, evidence: "systemctl is-enabled reports enabled (2026-11-09)" },
+  BootSurvivalObservation { host: "srv2", unit: "ctrl-vast-pool (tcp :3737)", verdict: UserScopeUnit, evidence: "it is the dashboard's user-scope unit, not a system unit: a reboot with no logged-in user leaves the vast pool down until the user session starts" },
+  BootSurvivalObservation { host: "h11-05", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "h11-07", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "h11-08", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "h11-88", unit: "not read (ssh refused the fleet key from srv1)", verdict: Unreadable, evidence: "2026-11-09: no verdict; must NOT be reported as healthy" },
+  BootSurvivalObservation { host: "srv1", unit: "gunbc-router", verdict: RestartUnlessStopped, evidence: "docker restart policy unless-stopped: survives dockerd restart and boot; the brief records this as fine" },
+  BootSurvivalObservation { host: "srv1", unit: "session-dashboard", verdict: UserScopeUnit, evidence: "user-scope unit by design (the brief records this as fine)" },
+]
+
+// ── srv1 test-only artifacts (F27) ─────────────────────────────────────────────────────────
+//
+// lil's image contract (launcher.py + image-contract.json, mounted into the container) hashes the
+// runtime it ships; these six host paths are the TEST-ONLY extras that accumulated under ~/lil during
+// the two-replica work and belong to no module. NONE is deleted: adoption into the repo or an explicit
+// operator deletion is the only ending (deleting without asking is the failure mode this row exists to
+// prevent). nccl_test.py may be consumed by lane A (its nccl_probe.py rides #16116) — a deletion would
+// need lane A's and the operator's sign-off first.
+
+data srv1_test_only_artifacts: List<NonEmptyStr> = [
+  "/home/briansrls/lil/patch/",
+  "/home/briansrls/lil/serve_test*.sh",
+  "/home/briansrls/lil/warm150k.py",
+  "/home/briansrls/lil/run_arm.sh",
+  "/home/briansrls/lil/dmon_sum.py",
+  "/home/briansrls/lil/nccl_test.py",
+]
+
+data srv1_test_only_artifacts_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.serving.srv1_serving_replica_layout", decl_name: "srv1_test_only_artifacts"),
+  reason: "six test-only artifacts sit on srv1 under ~/lil owned by no module: no receipt pins their bytes, no witness reads them, and any of them could be deleted or edited unnoticed. Each must either be adopted into the repo as a hash-pinned receipt owned by a module, or deleted by an explicit operator decision. nccl_test.py additionally may be consumed by lane A (nccl_probe.py on #16116), so its disposition needs lane A's input too.",
+  dissolution: unbound_dissolution(description: "every member of srv1_test_only_artifacts has a disposition: a repo module owns an adopted, hash-pinned copy, or the operator recorded a deletion. SUFFICIENT when the inventory is empty with a recorded disposition per member."),
+)

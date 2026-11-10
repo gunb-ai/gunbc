@@ -198,7 +198,7 @@ import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming
 import v1.compiler.infer_env {
   is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   type_reference_declaration_reading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, overlay_skips_kernel_name, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -1480,13 +1480,104 @@ fn type_param_is_collection_element_in_values(param_name: String, value_params: 
 // Honoring the sentinel is therefore right but is not the terminal fix: a per-file relation was
 // flattened into a global map, and the ambiguity is that flattening's artifact rather than a defect
 // in any declaration.
-fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
-  if generic_param_names |> any(g => g == name) {
-    false
+// THE TERMINAL REPAIR THE COMMENT ABOVE NAMES: ask the collapse per file, from the authority the
+// language already has. The constructor-binding authority (v1.compiler.infer `constructor_binding_authority`) rules that a file's
+// constructor namespace is its own declarations plus its DIRECT imports, and a name bound to two owners
+// in one file is a VariantCollision refused at env construction. v1.compiler.infer_env
+// bare_occurrence_binding reads exactly that namespace for ONE occurrence: the reference's own span
+// decides which file is asking, that file's own declarations answer first, then the modules it imports
+// BY PATH for this bare name, then the kernel, and only then is the name unbound. It is the same
+// authority collect_phantom_zst_markers consults when it decides whether an arm owes a ZST marker, so
+// the collapse and the marker can no longer disagree about who owns a name. The closure has no such
+// fact, and asking the closure is the defect. The corpus instance: HoldGraspKind::Edge
+// (dag/extdeps/climbing_holds/types.dag) in one file of an emission and the record `Edge`
+// (src/v2/std/node.dag) in another that never imports it - and the record's own file rendered `Rc<()>` at
+// 78 type positions while its declaration and its expression positions stayed correct.
+//
+// Undecided REFUSES, located: the render sites below emit `compile_error!` naming file, leaf and reason,
+// the way PhantomZstMarkerRefused does. Answering `true` there would keep the old collapse under a new
+// name; answering `false` at a name whose file cannot say would silently drop a marker the emitter may
+// still owe. The one arm that must NOT refuse is the unit-arm index's evidence-unavailable state: an
+// environment over which the index was never computed has witnessed no arm, and the closure-global map
+// answered that same spelling as unknown, so the leaf renders as it spells. Declining is never
+// fabricating - the sibling lookup_unit_variant_phantom_type declines the same way rather than minting.
+type TypeNodeUnitVariantOwnership
+  = TypeNodeHasUnitVariantArgument
+  | TypeNodeHasNoUnitVariantArgument
+  | TypeNodeUnitVariantOwnershipUndecided { cause_tag: String }
+
+// `owner` is the coproduct binding whose unit arm the leaf is. It is carried because
+// rust_qualify_type_leaf_name renders `Owner::Variant` and must say which owner it answered with.
+type TypeLeafVariantOwnership
+  = TypeLeafIsValueVariantOf { owner: String }
+  | TypeLeafIsNotValueVariant
+  | TypeLeafOwnershipUndecided { cause_tag: String }
+
+// THE WALL THE COLLAPSE MUST STOP AT. `n` is the type position the leaf sits in, so the file that asks is
+// read from the position's own span, and `name` is that position's authored leaf. A name that binds a
+// declaration HERE renders that declaration: the marker path already rules that an arm which binds a
+// declaration owes no marker, because the declaration stands in its place (phantom_marker_for_bound_arm),
+// and a type position is never both. Only a name that binds NOTHING in the file may be an arm, and then
+// only on positive evidence from the unit arms visible to it.
+fn type_leaf_variant_ownership(n: Node, name: String, env: TypeEnv) -> TypeLeafVariantOwnership {
+  // A kernel type name is a type, never an arm: a coproduct may spell `String` as an arm without making
+  // every `String` in the file that arm. This is asked FIRST, before the namespace, because
+  // bare_occurrence_binding reads a file's own declarations before the kernel and a kernel name can carry
+  // several index entries in one file - asking it second would report those as an unresolvable collision.
+  if overlay_skips_kernel_name(name: name) {
+    TypeLeafIsNotValueVariant
   } else {
-    match map_get(variant_to_enum, name) {
-      Present { value: owner } => owner != ""
-      Absent => false
+    match bare_occurrence_binding(index: env.symbol_index, name: name, reference: n) {
+      BareOccurrenceDeclaredInItsFile { declaration: _ } => TypeLeafIsNotValueVariant
+      BareOccurrenceImportedByName { module_path: _, declaration: _ } => TypeLeafIsNotValueVariant
+      BareOccurrenceIsKernelName => TypeLeafIsNotValueVariant
+      BareOccurrenceUnbound => type_leaf_ownership_from_visible_unit_arms(name: name, env: env)
+      // The file cannot say whose the name is. That is decisive only where something ALSO claims the name as
+      // a unit arm: with no claim the leaf renders as itself, which is what the closure map did with the same
+      // blind spot, and refusing here would turn an emission that built yesterday red over a name nobody
+      // claims. With a claim, two authorities disagree about a name this file cannot resolve - refused, located.
+      BareOccurrenceUndecided => type_leaf_ownership_conflict(name: name, env: env)
+    }
+  }
+}
+
+// The conflict worth a hard error: the unit-arm index claims the leaf for a coproduct visible to this file
+// while the file's own constructor namespace binds that same name ambiguously. Neither authority can be
+// trusted with it, and answering either way would be a guess - so the file says so instead.
+fn type_leaf_ownership_conflict(name: String, env: TypeEnv) -> TypeLeafVariantOwnership {
+  match type_leaf_ownership_from_visible_unit_arms(name: name, env: env) {
+    TypeLeafIsValueVariantOf { owner: owner } => TypeLeafOwnershipUndecided { cause_tag: concat(concat("the unit-arm index claims it as an arm of ", owner), " while this file's constructor namespace binds the name ambiguously") }
+    TypeLeafIsNotValueVariant => TypeLeafIsNotValueVariant
+    TypeLeafOwnershipUndecided { cause_tag: cause_tag } => TypeLeafIsNotValueVariant
+  }
+}
+
+// POSITIVE evidence only, and only from the scope this file can see: v1.compiler.infer_env
+// binding_unit_variant_contributions indexes, per coproduct binding visible to the env, the childless
+// arms it declares keyed by authored arm name. Exactly one visible coproduct declaring the arm makes the
+// leaf that coproduct's arm; zero make it an unknown name that renders as itself. Anything else - the
+// same coproduct declaring the arm twice, or two visible coproducts both claiming it - declines rather
+// than guessing, which is what lookup_unit_variant_phantom_type does with total != 1.
+fn type_leaf_ownership_from_visible_unit_arms(name: String, env: TypeEnv) -> TypeLeafVariantOwnership {
+  if !env.unit_variant_index_observed {
+    TypeLeafIsNotValueVariant
+  } else {
+    match map_get(env.unit_variant_index, name) {
+      Absent => TypeLeafIsNotValueVariant
+      Present { value: contribs } =>
+        let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
+        let owners = contribs |> map_keys |> filter(k => match map_get(contribs, k) {
+          Present { value: c } => c.count == 1
+          Absent => false
+        })
+        if total != 1 || (owners |> count) != 1 {
+          TypeLeafIsNotValueVariant
+        } else {
+          match owners |> first {
+            Present { value: owner } => TypeLeafIsValueVariantOf { owner: owner }
+            Absent => TypeLeafIsNotValueVariant
+          }
+        }
     }
   }
 }
@@ -1550,6 +1641,37 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
   }
 }
 
+// The head leaf of a type node, with the declaration's own generic parameters shadowing: a type VARIABLE
+// is owned by no coproduct, however its name spells. Below the shadow it is the same per-file question as
+// any other leaf.
+fn type_leaf_variant_ownership_at_type_arg(n: Node, generic_param_names: List<String>, env: TypeEnv, name: String) -> TypeLeafVariantOwnership {
+  if generic_param_names |> any(g => g == name) {
+    TypeLeafIsNotValueVariant
+  } else {
+    type_leaf_variant_ownership(n: n, name: name, env: env)
+  }
+}
+
+// ROUTING ONLY, never the collapse. These two are main's map-keyed predicate, kept verbatim for the one
+// job that is SOUND closure-wide: deciding whether a type node takes the NOMINAL rendering path at all.
+// The routing is conservative in the safe direction -- a name the closure map claims sends the node down
+// the nominal path, where the per-file answer below still decides what the leaf renders; a name the map
+// misses takes the structural path exactly as main did. The unsound half -- rendering a name as `()` --
+// is answered per file, never here (the class: gunbc.recurring_failure_mode
+// .emitter_keyed_container_lowering_is_keyed_by_leaf_spelling). Deleting these would change which path a
+// node takes, which is a second behaviour fused onto the collapse under one predicate; the census proves
+// the separation: only the `()` renderings move.
+fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
+  if generic_param_names |> any(g => g == name) {
+    false
+  } else {
+    match map_get(variant_to_enum, name) {
+      Present { value: owner } => owner != ""
+      Absent => false
+    }
+  }
+}
+
 fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if is_value_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) {
     true
@@ -1558,6 +1680,33 @@ fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, v
   } else {
     false
   }
+}
+
+fn type_node_unit_variant_ownership(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> TypeNodeUnitVariantOwnership {
+  let child_answers = n.children |> map(c => type_node_unit_variant_ownership(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+  if child_answers |> any(a => match a { TypeNodeHasUnitVariantArgument => true TypeNodeHasNoUnitVariantArgument => false TypeNodeUnitVariantOwnershipUndecided { cause_tag: _ } => false }) {
+    TypeNodeHasUnitVariantArgument
+  } else {
+    match child_answers |> filter(a => match a { TypeNodeHasUnitVariantArgument => false TypeNodeHasNoUnitVariantArgument => false TypeNodeUnitVariantOwnershipUndecided { cause_tag: _ } => true }) |> first {
+      // The argument's own position could not say; the refusal belongs to it, with its own reason.
+      Present { value: TypeNodeUnitVariantOwnershipUndecided { cause_tag: child_tag } } => TypeNodeUnitVariantOwnershipUndecided { cause_tag: child_tag }
+      _ => match type_leaf_variant_ownership_at_type_arg(n: n, generic_param_names: generic_param_names, env: env, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) {
+        TypeLeafIsValueVariantOf { owner: _ } => TypeNodeHasUnitVariantArgument
+        TypeLeafIsNotValueVariant => TypeNodeHasNoUnitVariantArgument
+        TypeLeafOwnershipUndecided { cause_tag: cause_tag } => TypeNodeUnitVariantOwnershipUndecided { cause_tag: cause_tag }
+      }
+    }
+  }
+}
+
+// THE RENDERED REFUSAL. `compile_error!` is legal in TYPE position -- rustc expands the macro there and
+// reports the message at the span (probe: `type T = compile_error!("x");` is `error: x`, not a syntax
+// error), and this file already puts it in type positions at the unit-variant marker identity arm and in
+// `Witness::<compile_error!(..)>` type arguments. So the refusal is the same spelling as its siblings, not
+// a second one: whatever scans an emitted crate for `compile_error!` finds this too. A green emission must
+// contain none of them.
+fn type_leaf_ownership_refusal_type(cause_tag: String, name: String, module_path: String) -> String {
+  emit_rust_compile_error_expr(message: concat("unit-variant ownership of ", name, " in ", module_path, " is undecidable: ", cause_tag))
 }
 
 fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, width_position: Bool) -> String {
@@ -1829,7 +1978,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   } else if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && set_contains(shared_types, name) {
-    let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    let rendered = rust_render_type_leaf_name(n: n, name: name, env: env)
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 {
     match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
@@ -1916,6 +2065,17 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   }
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
+  }
+  // The per-file unit-arm answer acts HERE only as a refusal guard: an ownership question the file
+  // cannot answer at all is refused before any rendering, with the argument's own reason. It never
+  // fabricates a rendering and never selects a path. Routing stays main's conservative map gate, which
+  // only ever chooses the NOMINAL path for a claimed spelling (the collapse itself is per-file, in the
+  // leaf renderer) -- so the renderings that move are exactly the `()` ones.
+  match type_node_unit_variant_ownership(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices) {
+    TypeNodeHasUnitVariantArgument => {}
+    TypeNodeHasNoUnitVariantArgument => {}
+    TypeNodeUnitVariantOwnershipUndecided { cause_tag: cause_tag } =>
+      return type_leaf_ownership_refusal_type(cause_tag: cause_tag, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices), module_path: env.module_path)
   }
   if type_node_has_value_variant_arg(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -2064,7 +2224,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
           match rust_scalar_checkpoint_reference_base(decision: type_reference_realization(n: n, dag_name: leaf, target: Rust)) {
             Present { value: scalar } => scalar
             Absent => {
-              let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
+              let rendered = rust_render_type_leaf_name(n: n, name: leaf, env: scope.type_env)
               render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
             }
           }
@@ -3298,23 +3458,28 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
   }
 }
 
-fn rust_qualify_type_leaf_name(name: String, variant_to_enum: Map<String, String>) -> String {
-  match map_get(variant_to_enum, name) {
-    Present { value: parent } =>
-      if parent != "" { rust_variant_path(parent: qualified_last_segment(name: parent), rust_name: name) } else { name }
-    Absent => name
+fn rust_qualify_type_leaf_name(n: Node, name: String, env: TypeEnv) -> String {
+  match type_leaf_variant_ownership(n: n, name: name, env: env) {
+    TypeLeafIsValueVariantOf { owner: owner } => rust_variant_path(parent: qualified_last_segment(name: owner), rust_name: name)
+    TypeLeafIsNotValueVariant => name
+    TypeLeafOwnershipUndecided { cause_tag: cause_tag } =>
+      type_leaf_ownership_refusal_type(cause_tag: cause_tag, name: name, module_path: env.module_path)
   }
 }
 
-fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>) -> String {
+fn rust_render_type_leaf_name(n: Node, name: String, env: TypeEnv) -> String {
   if name == "Unit" {
     "()"
-  } else if is_value_variant_type_arg(generic_param_names: [], variant_to_enum: variant_to_enum, name: name) {
-    "()"
   } else {
-    match rust_opaque_kernel_alias_carrier(name: name) {
-      Present { value: carrier } => carrier
-      Absent => rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    match type_leaf_variant_ownership(n: n, name: name, env: env) {
+      TypeLeafIsValueVariantOf { owner: _ } => "()"
+      TypeLeafIsNotValueVariant =>
+        match rust_opaque_kernel_alias_carrier(name: name) {
+          Present { value: carrier } => carrier
+          Absent => name
+        }
+      TypeLeafOwnershipUndecided { cause_tag: cause_tag } =>
+        type_leaf_ownership_refusal_type(cause_tag: cause_tag, name: name, module_path: env.module_path)
     }
   }
 }
@@ -11025,7 +11190,7 @@ fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, fie
 // all, so no caller of the pattern wall ever reaches it), emit_value_ref_ident and its rc-aware
 // sibling (VALUE position was declared walled, but only the LEAF half was: the parent came from
 // effective_variant_parent, i.e. authored_name_at, and rode out dotted),
-// rust_qualify_type_leaf_name (TYPE position, parent from derive_variant_to_enum),
+// rust_qualify_type_leaf_name (TYPE position, owner from the file's own unit arms),
 // emit_enum_shared_accessors (SYNTHESIZES the accessor match arms), and
 // rust_witness_variant_ctor_path (parent reduced, variant half not). A synthesizing producer is
 // invisible to a position census by construction, because the position it writes into has no

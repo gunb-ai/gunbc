@@ -23,7 +23,7 @@ import gunbc.auth.access_token_source {
 }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, github_wif_issuer_uri }
 import gunbc.auth.heal_publisher_federation {
-  HealPublisherFederation, public_heal_publisher_federation, private_heal_publisher_federation,
+  HealPublisherFederation, public_heal_publisher_federation,
   heal_publisher_wif_attribute_mapping, heal_publisher_federation_attribute_condition,
   heal_publisher_federation_principal_set, heal_publisher_federation_service_account_member
 }
@@ -113,10 +113,6 @@ fn publisher_dedicated_federation(label: String, f: HealPublisherFederation) -> 
 
 fn heal_publisher_dedicated_federation() -> DedicatedFederation {
   publisher_dedicated_federation(label: "heal publisher provision", f: public_heal_publisher_federation())
-}
-
-fn private_heal_publisher_dedicated_federation() -> DedicatedFederation {
-  publisher_dedicated_federation(label: "private heal publisher provision", f: private_heal_publisher_federation())
 }
 
 // THE ONE CELL THIS ENTRY OWNS on the service account's own policy: who may act as it.

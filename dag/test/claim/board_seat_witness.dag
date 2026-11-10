@@ -94,12 +94,12 @@ test fn a_refused_seat_refuses_the_assembly_and_the_interface_names_why() -> Boo
 }
 
 // The selected ResidentialCassette manifest names one revision, the one the geometry is: its revision field
-// and its readme both say r07 (review 5789347012), and neither says 06.
+// and its readme both say r08 (review 5789347012), and neither names an earlier revision.
 test fn the_selected_cassette_manifest_names_one_revision() -> Bool {
  match select_printable_assembly(root:ResidentialCassette) {
  PrintableAssemblyReady {assembly:a}=>{
   let revisions=map(filter(a.presentation,kv=>kv.key=="revision"),kv=>serialize_json(v:kv.value))
-  cassette_revision=="07" && count(revisions)==1 && all(revisions,r=>r=="\"07\"") && string_contains(s:a.readme,pattern:"Cassette r07 review package")
+  cassette_revision=="08" && count(revisions)==1 && all(revisions,r=>r=="\"08\"") && string_contains(s:a.readme,pattern:"Cassette r08 review package")
  }
  PrintableAssemblyRefused {reason:_}=>false
  }

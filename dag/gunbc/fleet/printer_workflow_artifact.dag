@@ -13,12 +13,12 @@ import gunbc.host_state_root { HostStateTree, host_state_tree_path, host_state_t
 data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 
 // THE PRINTER LAN HOST'S STATE TREE: the parent directory beneath which each printer store has its OWN member
-// directory (requests, claims, completions, execution-hold, cassette-inventory; each declared in the module
+// directory (requests, claims, completions, start-evidence, cassette-inventory; each declared in the module
 // that owns the store, never here). This module is the shared leaf: the parent's declaration, the path every
 // member derives from, the directory rows, and the one scan every store mint runs for entries a previous
 // layout left in the parent (printer_starts_legacy_entries). Until 2026-10-30 the parent was one flat
 // directory shared by five stores through three libraries; the stores are sealed per member now, and the
-// flat entries are moved by gunbc.fleet.printer_state_layout.
+// flat entries were removed by hand on srv1 on 2026-11-09 (see gunbc.fleet.printer_state_layout).
 //
 // THE PARENT IS ROOT-OWNED AND TRAVERSABLE, NOT FLEET-OWNED AND GROUP-WRITABLE (security ruling 2026-11-05,
 // model fix for the quick-newt-573 finding). It hosts a privileged `install -d -o gunbc-fleet -g gunbc-fleet

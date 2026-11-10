@@ -21,7 +21,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium, runner_host_running_os_of_up }
 import gunbc.host.running_os { RunningOsReading }
-import gunbc.host.running_os_receipt { RunningOsReceiptProducer, running_os_receipt_text }
+import gunbc.host.running_os_receipt { RunningOsReceiptProducer, running_os_receipt_text, RunningOsReceiptComposed, running_os_receipt_composition_text }
 import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_boot_running_os_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem, mtcollins1_census_image, census_served_check }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
@@ -121,6 +121,7 @@ import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationRe
 // census population, the console capture. The bundle stores the RAW records; the neutral BootRunRecord
 // is produced by megarac_boot_run_record(...) where a neutral consumer wants one.
 import gunbc.host.boot_attempt {
+  stale_override_clear_write_text,
   AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   // The reading the poll answers with, the pairing that turns it into an after-the-attempt state, and
   // the terminal that pairing needs. The row keeps no sum of its own for either decision (review 81601).
@@ -144,7 +145,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_param5_clear, megarac_override_release, megarac_stale_override_clearance,
   megarac_handoff_issued_set, boot_param5_owes_clear, boot_param5_clear_not_required_reason,
   boot_override_clears_not_required, boot_override_clears_none_found,
-  BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
+  BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParamReading, BootParamNotTaken, BootParamRead, BootParamUnread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
   EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release, megarac_boot_build_reading, megarac_build_reading_receipt_line,
   mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, pre_power_retention_receipt_line, mtcollins1_boot_mc_info_path, mtcollins1_boot_fru_print_path, MtCollins1PrePowerRetention,
 }
@@ -2126,8 +2127,8 @@ type MtCollins1BootActuation {
   admitted: BmcFirmwareReleaseIdentity?
   end_media: MegaRacEndMedia
   stage: MtCollins1BootActuationStage
-  override_before: BootParam5Reading
-  override_after: BootParam5Reading
+  override_before: BootParamReading
+  override_after: BootParamReading
   // WHAT THE ROUTE DID ABOUT THE TWO CLEARS IT OWES -- the override it found pending before its own set,
   // and the one it set itself -- each standing kept beside the reading it was reduced from. Recorded, not
   // implied: boot 5 (run 40258937016) refused with 'a boot override matching this attempt's was already
@@ -2149,8 +2150,8 @@ fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtColl
     admitted: none,
     end_media: MegaRacEndMediaNotTaken { reason: reason },
     stage: ActuationNotPoweredOn { reason: reason },
-    override_before: BootParam5NotTaken { reason: reason },
-    override_after: BootParam5NotTaken { reason: reason },
+    override_before: BootParamNotTaken { reason: reason },
+    override_after: BootParamNotTaken { reason: reason },
     override_clears: boot_override_clears_not_required(reason: reason),
     power_after: megarac_power_reading_not_taken(reason: reason),
     screen: kvm_observer_record_not_started(attempt: "", reason: reason),
@@ -2169,11 +2170,11 @@ fn exit_phase_result(outcome: ProcessExit) -> BootPhaseRunResult {
   }
 }
 
-fn param5_phase_result(r: BootParam5Reading) -> BootPhaseRunResult {
+fn param5_phase_result(r: BootParamReading) -> BootPhaseRunResult {
   match r {
-    BootParam5Read { readback: _, at: _ } => PhaseVerified
-    BootParam5Unread { cause: _ } => PhaseRefused { cause: "boot parameter 5 unread (cause in the run record)" }
-    BootParam5NotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
+    BootParamRead { readback: _, at: _ } => PhaseVerified
+    BootParamUnread { cause: _ } => PhaseRefused { cause: "boot parameter 5 unread (cause in the run record)" }
+    BootParamNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
   }
 }
 
@@ -2219,8 +2220,8 @@ fn actuation_after_watch(
   handoff_media: MegaRacHandoff,
   admitted: BmcFirmwareReleaseIdentity?,
   end_media: MegaRacEndMedia,
-  override_before: BootParam5Reading,
-  override_after: BootParam5Reading,
+  override_before: BootParamReading,
+  override_after: BootParamReading,
   override_clears: BootOverrideClears,
   power_after: HostPowerReading,
   outcome: ProcessExit,
@@ -2292,13 +2293,13 @@ type HandoffRun {
   live_at: String
 }
 
-fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
+fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParamReading
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match mtcollins1_bmc_username {
-    Absent => BootParam5NotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
+    Absent => BootParamNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
     Present { value: user } => megarac_boot_param5(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr)
   }
 }
@@ -2309,7 +2310,7 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
 // boot_param5_owes_clear and megarac_stale_override_clearance). Not clearing an unread standing is not a
 // skip: nothing is written on a standing nobody read, and the clearance says 'unread' rather than 'none
 // found' in the receipt.
-fn mtcollins1_boot_param5_clear_under_hold(password_file: String, before: BootParam5Reading) -> BootParam5Clear
+fn mtcollins1_boot_param5_clear_under_hold(password_file: String, before: BootParamReading) -> BootParam5Clear
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
@@ -2352,8 +2353,8 @@ fn mtcollins1_boot_param5_release(password_file: String, owed: Bool) -> BootPara
 // over is unknown, and an unknown standing is not evidence of a clear one.
 fn mtcollins1_boot_stale_clear_refusal(clearance: StaleOverrideClearance) -> String? {
   match clearance {
-    StaleOverrideWouldNotClear =>
-      Present { value: "mtcollins1 boot: handoff withheld: the override pending before this attempt would not clear; parameter 5 still reads it pending after the clear, and setting this attempt's override on top of bytes this attempt did not remove cannot attribute any consumption to it" }
+    StaleOverrideWouldNotClear { write: w } =>
+      Present { value: concat("mtcollins1 boot: handoff withheld: the override pending before this attempt would not clear; parameter 5 still reads it pending after the clear (", stale_override_clear_write_text(w: w), "), and setting this attempt's override on top of bytes this attempt did not remove cannot attribute any consumption to it") }
     StaleOverrideUnread { reason: r } =>
       Present { value: concat("mtcollins1 boot: handoff withheld: parameter 5's standing before this attempt was never established and the pre-power clear never read back as cleared (", r as String, "); the set is refused because the state it would go in over is unknown") }
     StaleOverrideNoneFound => Absent
@@ -2797,9 +2798,9 @@ fn mtcollins1_boot_actuate(
       let release_clear = mtcollins1_boot_param5_release(password_file: password_file, owed: megarac_handoff_issued_set(h: gated.media))
       let override_clears = BootOverrideClears {
         stale: stale_clearance,
-        stale_read: match stale_clear { BootParam5ClearIssued { write_answered: _, readback: rb } => rb BootParam5ClearNotIssued { reason: r } => BootParam5NotTaken { reason: r } },
+        stale_clear: stale_clear,
         released: megarac_override_release(clear: release_clear),
-        release_read: match release_clear { BootParam5ClearIssued { write_answered: _, readback: rb } => rb BootParam5ClearNotIssued { reason: r } => BootParam5NotTaken { reason: r } },
+        release_clear: release_clear,
       }
       // THE SOL RELEASE FOLLOWS THE POWER READING AND PRECEDES THE END MEDIA LOOK AND RELEASE, on every path
       // (merry-fox-82, 2026-10-24, over #12423's sixty-second teardown bound). The host's power is observed
@@ -3054,8 +3055,8 @@ type MtCollins1BootAttempt {
   end_media: MegaRacEndMedia
   bmc: MtCollins1BootBmcAccess
   stage: MtCollins1BootActuationStage
-  override_before: BootParam5Reading
-  override_after: BootParam5Reading
+  override_before: BootParamReading
+  override_after: BootParamReading
   override_clears: BootOverrideClears
   power_after: HostPowerReading
   timing: BootPhaseTiming
@@ -3113,8 +3114,8 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     end_media: MegaRacEndMediaNotTaken { reason: "the attempt ended before the unit hold" },
     bmc: BmcAccessNotReached { reason: concat("the attempt ended before the BMC credential was read (", mtcollins1_boot_exit_reason(outcome: outcome), ")") as NonEmptyStr },
     stage: ActuationNotPoweredOn { reason: "the attempt ended before the unit hold" },
-    override_before: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
-    override_after: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
+    override_before: BootParamNotTaken { reason: "the attempt ended before the unit hold" },
+    override_after: BootParamNotTaken { reason: "the attempt ended before the unit hold" },
     override_clears: boot_override_clears_not_required(reason: "the attempt ended before the unit hold" as NonEmptyStr),
     power_after: megarac_power_reading_not_taken(reason: "the attempt ended before the unit hold" as NonEmptyStr),
     timing: boot_phase_timing_not_taken(reason: "the attempt ended before the unit hold"),
@@ -3186,7 +3187,7 @@ fn mtcollins1_boot_terminal_of_stage(stage: MtCollins1BootActuationStage) -> Ter
   }
 }
 
-fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, clears: BootOverrideClears, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
+fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParamReading, after: BootParamReading, clears: BootOverrideClears, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MegaRacRunRecord {
@@ -3305,7 +3306,9 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
 }
 
 // THE RUNNING-OS RECEIPT (gunbc.host.running_os_receipt), written only when the runner host was accepted and its
-// running OS observed, naming THIS run and attempt as its producer. A runner host accepted with no receipt written
+// running OS observed, naming THIS run and attempt as its producer, and carrying the host key the accepted
+// runner-host-up read off the same console envelope (gunbc.runner.runner_host_medium RunnerHostUp host_key) -- the
+// per-boot pin every later job authenticates this host by. A runner host accepted with no receipt written
 // fails the run: a later job could not initialize the host, and a success would say otherwise. Returns the failure,
 // or none when there is nothing to write or it was written.
 fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> String? {
@@ -3317,12 +3320,12 @@ fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> S
       if run_id == "" || run_attempt == "" {
         Present { value: "the runner host was accepted but GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the running-OS receipt names no producer and is not written" }
       } else {
-        match running_os_receipt_text(producer: RunningOsReceiptProducer { run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr }, reading: terminal.running) {
-          Absent => Present { value: "the runner host was accepted but its running OS was not observed, so no running-OS receipt is written" }
-          Present { value: text } => {
+        match running_os_receipt_text(producer: RunningOsReceiptProducer { run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr }, reading: terminal.running, host_key: terminal.up.host_key) {
+          RunningOsReceiptComposed { text: text } => {
             let wrote = Filesystem.Write(path: mtcollins1_boot_running_os_receipt_path, content: text)
             if wrote.success { none } else { Present { value: concat("could not write the running-OS receipt: ", wrote.error) } }
           }
+          other => Present { value: concat("the runner host was accepted but no running-OS receipt is written: ", running_os_receipt_composition_text(c: other)) }
         }
       }
     }

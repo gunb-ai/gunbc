@@ -30,6 +30,13 @@ type DesignRuling {
   provenance: String
 }
 
+data thermal_runner_cap_lifted_2026_11_08: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "thermal_runner_cap_lifted_2026_11_08"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
+  provenance: "Operator, to bold-wren-111 on 2026-11-08, verbatim: \"could you please help me bring up the stopped urnners on srv3/4, and srv1 - i think we have a lot of stranded capacity right now.\" then \"we had heat concerns but this outweighs them\" and \"we'll also need to record that in convergence/allocation int he repo\". ENDS the 2026-11-05 incident override that held srv3 and srv4 at 12 runners per box (gunbc.plans.host_thermal_operating_point B0 and section 10 decision 1, which recommended keeping 12 until P5). The override was never a model row -- it lived only as hand drop-ins on the hosts -- so no allocation literal changes: the committed width stays the one gunbc.runner.runner_slot_allocation gunbc_runner_committed_width derives (18 on srv3 and srv4 at this revision), and the operator then directed an EMERGENCY HAND RESTORE (\"can we not run this by hand? its a bit of an emergency - you can get to srv3/srv4 thru srv1\"), overriding for this one action the 2026-08-07 ruling that host mutation goes through the apply workflow; the queued converge run 42534959803 was cancelled because its bracket would have drained the restored slots. Hand actions, 2026-11-08 ~23:30 UTC, mirroring runner_slot_actuation slot_activation_plan (unmask, enable, start) over the committed population 1..18 minus the fabric slots 6 and 7: srv4 unmask --runtime 01-05 and 08-14, enable and start 01-05 and 08-18; srv3 enable and start 15-18 and remove the hand drop-in 95-overnight-cap.conf (Restart=no) from 15-18. srv4 15-18 kept that drop-in until the operator answered (\"i'm not concerned about memory errors on these machines\"), after which it was removed from srv4 15-18 the same way; 19-21 on both hosts are outside the committed width and untouched. A later runner_host_file_converge apply is the route that reconciles the hosts to the model. srv4 CARRIES A SECOND, SEPARATE DRAIN this ruling does not lift by itself: 96-ecc-drain-note.conf on srv4 01-05 and 08-14 records a 2026-11-07 ECC drain (decision cool-badger-99 msg_ada8ac0b): a hard reset after 18,717 corrected DRAM ECC errors in one boot and a prior fatal hardware error on 10-30, undo after an operator DIMM/SEL check. Read at restore: EDAC mc0 ce_count 181 and ue_count 0 about 25 h into the current boot. The operator then judged corrected memory errors normal for these boards and kept srv4 in admission; the 96-ecc-drain-note.conf files remain as stale comments with no directive. srv1 needed no hand action: its actions-runner population (srv1-01 transitional, srv1-02 deploy) already equals the model, and its microVM slots 13 and 14 are a controller bring-up, not a unit start. Observed before the restore (runner names on in-progress jobs and systemctl, 2026-11-08 ~23:20 UTC): srv3 ran 12 slots, srv1 ran srv1-01 and srv1-02, srv4 ran none. STATED TENSION, NOT A WAIVER OF ANYTHING ELSE: the 2026-11-05 decision that DIMMs stay at or below 85 C is not restated or withdrawn by this ruling; the operator judged the throughput loss to outweigh the heat risk at full width, and the lasting operating point still comes from the plan's P5 selection."
+}
+
 data printer_start_gate_is_the_approval_not_the_ref: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_gate_is_the_approval_not_the_ref"),
   decided: "2026-11-05",
@@ -49,6 +56,13 @@ data machine_width_composition_has_an_intersection_carrier: DesignRuling = Desig
   decided: "2026-11-01",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
   provenance: "Operator CARRIER ruling relayed by quick-newt-573 to bold-dove-340, message msg_0cf79c9c-cc1f-4002-a6ed-79dae1ec7547; operator intersection intent relayed in msg_dcf2da48-1255-435d-b210-690732972a9f. Compose<A,C> denotes intersection: for Int/UInt and MachineWidth<N>, the carrier is the algebra value restricted to the machine interval, with the width retained in its type. This is NOT Compose<A,C> = A, the transparent alias rejected by the arithmetic ledger. Real crossings motivating the ruling are git.object_store, MAC qualified_octet_members, openssl, OIDC DER and roadmap auth hex. CORRECTION to the escalation: v2.std.node_minimal SpanRef.file_id was cited as a core-node example but is a declared scaffold outside the self-host and v2-native-cli import closures; it is not executed evidence. The ruling supersedes std.integer's no-inhabitant prescription for this integer-width intersection only, not arbitrary Compose applications. Model first; emitter changes follow only after model review. No current runtime or emitted-width guarantee is claimed by recording this ruling.",
+}
+
+data printer_execution_hold_deleted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_execution_hold_deleted"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "consumption"),
+  provenance: "Operator, direct to sleek-wren-619 on 2026-11-09, after the stale-hold release refused with permission_denied on the root-owned printer-starts parent: \"we need to make the prints idempotent - i would just delete the concept of the printer hold, it was well intended but not designed/implemented correctly, and clean up all of that state - its supposed to protect against duplicate prints on the same printer, but i'll just do that manually for now until it becomes an issue\". The printer execution hold (gunbc.fleet.printer_execution_hold), its operator-observation release route (the hold-release-request printer operation) and the flat-layout cutover step that depended on it (gunbc.fleet.printer_state_layout printer_state_move) are deleted, and the flat entries left in /var/lib/gunbc/printer-starts are removed by hand. A print start stays idempotent per attempt through the create-once start claim (gunbc.fleet.printer_actuation printer_start_claim_commit, ExpectSlotAbsent) and stays gated by the bed-clear approval; exclusion of two concurrent controllers on one printer is held by the operator by hand until it becomes an issue. Supersedes the release route named in printer_start_hold_lifted_2026_11_04.",
 }
 
 data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
@@ -686,6 +700,13 @@ data slot_memory_overrun_crashes_not_throttles: DesignRuling = DesignRuling {
 }
 
 
+data infrastructure_refusal_is_retried_to_a_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "infrastructure_refusal_is_retried_to_a_bound"),
+  decided: "2026-11-04",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator decision 2026-11-04, relayed by silent-bee-845 (msg_e83b8317), verbatim: 'a refused infrastructure verification is retried up to 3 times, then held for operator resume.' Supersedes the defaulted escalation msg_a35bb568 (which was approved by default, not by the operator). An acceptance stage refused because its ENVIRONMENT failed (compute refused_by_infrastructure) is retried by the belt on its existing wake events, to the bound of 3, each retry a recorded event with its cause; past the bound the lineage reaches a typed RetryExhausted terminal the operator sees and resumes. This amends the 2026-10-03 manual-resume ruling for infrastructure refusals only: a refusal about the candidate keeps manual resume, and a FAILED stage is a verdict and is never retried.",
+}
+
 data srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves"),
   decided: "2026-11-05",
@@ -698,6 +719,13 @@ data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling 
   decided: "2026-11-04",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "how_to_work"),
   provenance: "Operator, relayed by silent-bee-845 on the daily-workspace close/advance slice: \"I should be allowed to arbitrarily retire any work item\". The operator RETIRE route (gunbc.roadmap.roadmap_serve, POST /issue/\{node\}/retire) ends any work item in any state and is recorded honestly as retired by <principal>, never as accepted; its only refusals are unknown node, already terminal, unauthenticated, and stale revision — never a lineage-state precondition; the lab-only lineage-retire route's \"only a ContinuationEnded lineage\" admission dies with that route (deleted per the same-day dispatch ruling, START FRESH superseding it) and is not carried to main. A closed or retired NODE is terminal — and terminality is never a separate operator-facing lineage state: the operator ruling of the same day (dispatch collapses to CONTINUE and START FRESH, retire-LINEAGE deleted, START FRESH superseding it) keeps the standing node-level, while the belt computes terminality internally from the node's own standing and durable acceptance (gunbc.roadmap.roadmap_belt_obligation and gunbc.roadmap.roadmap_belt_actuate read that one rule: no further verify/review/re-delivery spawns, fail closed on unreadable). Dispatch verbs CONTINUE and START FRESH refuse on a retired node with that reason; retired does not satisfy dependents, and a child held by a retired parent surfaces the reason visibly as 'blocked by retired <id>' (derived from the blocker's standing, no new label type) — the same use-found defect class as a_write_control_renders_disabled_with_no_visible_reason.",
+}
+
+data dispatch_is_continue_or_start_fresh: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dispatch_is_continue_or_start_fresh"),
+  decided: "2026-11-04",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
+  provenance: "Operator words 2026-11-04, relayed by loyal-deer-449 (msg_4d8b28a9) with typos corrected, two points spliced and the operator's trailing 'let me know what you think' dropped (loyal-deer-449 correction msg_4f899d70): 'i think we need to simplify this stuff a bit - basically i would suggest a more idempotent continue from X where it just continues the last run, and start from scratch - the whole retire lineage stuff is weird - assigning should do the former by default - my goal is to collapse all of these states and not fork the business logic any more' and 'i dont think we should need to reassign for retry - i think that stuff is underdeveloped - assigning != continue/retry'. The operator approved loyal-deer-449 framing only by 'yes please' at 2026-11-04T13:26:01Z. The following is loyal-deer-449 restatement, not operator wording: ASSIGN is ownership only (the operator also said assigning should continue by default; loyal-deer-449 resolved that as two operations); CONTINUE is the single idempotent execution command over one normalization PriorExecutionObservation -> ContinuationPlan; a worktree is a reconstructible resource, not execution authority; START FROM SCRATCH admits a replacement generation and records the supersession before any cleanup is derived; retire-lineage is no longer a user operation. msg_8d6c1218 refinement is a third-party review the operator forwarded without comment: operator-forwarded, not operator-endorsed. This widens the by-name approval of msg_e623cf1e (pinned to attempt e5a42384) to the general restore rule.",
 }
 
 data seed_read_set_receipt_is_admitted: DesignRuling = DesignRuling {
@@ -756,9 +784,39 @@ data plans_reset_and_audit_recommendations_2026_11_08: DesignRuling = DesignRuli
   provenance: "Operator ruling 2026-11-08, direct to session bright-ibex-807, answering the decision list of gunb-ai/gunbc-private#289 (docs/plans/2026-11-08-planning-consistency-audit.md section 5). Operator words: \"For clean up yeah just clean anything up it's not sensitive we can always bring it back later but yes all your recommendations are fine for housekeeping yes everything is 0 your recommendations are fine but basically the same applies just do as much housekeeping as you can I think we should probably just bankrupt all of our plans\". Authorizes retiring or restating stale and contradicting planning carriers (roadmap nodes and notes, gunbc.plans carriers, docs/plans markdown, rung-drop triggers naming retired instruments) per the audit's edit list; git history keeps everything. Accepted as recommended: D5 (merge_group-bound triggers and the frontier roster mint rebind to the required job's push-on-main run; Q4 void); D7 (namespace waves admitted per shard with a bounded red; ACT-0 milestones dropped); D9 (length is the canonical size spelling; method forms on kernel receivers are respelled to free calls by generator; no new where clauses; namespace-resolution-design section 13 amended to admit declaration-time binder refusal); D11 (the unsigned emission-admission design is retired); D12 (the heal-publish and drift-watch jobs are approved explicitly); D13 (priority: N7 typed, then the names N7's closure needs, then the native CI step, then dogfood, then the whole-repo namespace program); D14 (dead and duplicate roadmap nodes retired, acceptance backlog drained); D8 of the audit (privileged_effect_census kept as a per-site registry, its every-site completeness claim dropped). Not decided here: N7 Phase B executor question (1) (D10).",
 }
 
+// srv1's two authored microVM slots (srv1-13 shakedown, srv1-14 revision-job) were charged against
+// srv1's runner memory envelope on AUTHORSHIP ALONE while nothing microVM was installed on the host --
+// no controller unit, no slot instance, only the network ruleset active -- reserving ~60-68 GiB for
+// slots that did not exist and holding srv1's committed width at 4. The operator's decision makes the
+// charge conditional on the slot's realization, modeled as
+// gunbc.runner.runner_slot_allocation::MicrovmSlotRealization: the width moves by derivation when the
+// slots are read not realized and returns by the same derivation when the lane goes live. Its Unobserved
+// arm keeps charging, so the release direction requires a positive read of absence (fail_closed).
+data srv1_microvm_slot_charge_waits_for_realization: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_microvm_slot_charge_waits_for_realization"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator decision 2026-11-09, to bold-wren-111, verbatim: \"yes please do A and then B\". A = start 3 more CI runners on srv1 by hand now (done: srv1-07, srv1-08 and srv1-09 unmasked, enabled and started as CI runners on labels self-hosted,linux,arm64,gunbc-heavy,srv1 from the shared template). B = in the repo, stop charging srv1's two authored microVM slots against its runner memory until their controller is actually installed and running, so the width derivation gives srv1 more CI slots on its own and takes them back when the microVM lane goes live. Carried into the model by still-otter-622; the live reading behind the rows (no controller, no slot units, only gunbc-microvm-nft.service active; 502 GiB total / 273 GiB available) is the operator's, 2026-11-09 ~01:20Z.",
+}
+
+// The fleet decision of 2026-11-09, recorded because it REMOVES a role two hosts were carrying and
+// every carrier that described those slots as fabric execution members is wrong from this date. The
+// two decisions it supersedes (2026-08-21, 2026-09-18) were recorded in the note beside
+// `srv3_fabric_first_slot` in `gunbc.runner.runner_slot_allocation`; that note is deleted with the
+// slots it described, so this row is where its content survives.
+data srv3_srv4_fabric_slots_serve_ci: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci"),
+  decided: "2026-11-09",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator decision (2026-11-09, to bold-wren-111, verbatim answer \"A is fine\" to: \"hand srv3's and srv4's fabric slots to CI in runner_slot_allocation, so 18 CI runners on each\"): srv3 and srv4 no longer carry fabric execution slots; all 18 committed slots on each serve GitHub Actions. This SUPERSEDES the operator rulings of 2026-08-21 / 2026-09-18 that made srv3-06/07 and srv4-06/07 fabric execution members. The live read that made those rulings unreasonable: bold-wren-111's 2026-11-09 read -- srv3-06/07 and srv4-06/07 are masked, have NO install trees under /opt/actions-runner, and no fabric cell or slice exists on either host; fabric runs nothing on either host.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    thermal_runner_cap_lifted_2026_11_08,
+    dispatch_is_continue_or_start_fresh,
     printer_start_gate_is_the_approval_not_the_ref,
+    printer_execution_hold_deleted,
     printer_credential_is_held_in_host_custody,
     slot_memory_overrun_crashes_not_throttles,
     srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves,
@@ -778,6 +836,7 @@ fn design_rulings() -> List<DesignRuling> {
     runner_listener_admission_is_mask_roster_and_no_worker,
     runner_host_sudoers_is_installed,
     flex_first_recipe_is_flash_next,
+    infrastructure_refusal_is_retried_to_a_bound,
     conformance_needs_attention,
     consumption_interrogated_separately,
     dependencies_are_admitted_by_their_consumer,
@@ -849,6 +908,8 @@ fn design_rulings() -> List<DesignRuling> {
     imports_are_the_terminal_name_mechanism,
     plans_reset_and_audit_recommendations_2026_11_08,
     seed_read_set_receipt_is_admitted,
+    srv1_microvm_slot_charge_waits_for_realization,
+    srv3_srv4_fabric_slots_serve_ci,
   ]
 }
 
