@@ -330,9 +330,7 @@ test fn the_desired_name_is_the_label_of_the_one_derivation_the_fleet_already_pr
     Present { value: domain } =>
       match tailscale_machine_name_desired(host: operator_host_srv4) {
         DerivedName { name: name } =>
-          name == "srv4"
-            && (tailnet_host_from(host: operator_host_srv4 as NonEmptyStr, domain: Present { value: domain })
-                as String) == "srv4.tailecbe08.ts.net"
+          name == "srv4" && join([name as String, ".", domain as String], "") == tailnet_host_from(host: operator_host_srv4 as NonEmptyStr, domain: Present { value: domain })
         _ => false
       }
   }
