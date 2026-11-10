@@ -706,20 +706,21 @@ fn declared_deployment_system_slice_row() -> DeclaredSliceMemoryMax {
   }
 }
 
-// THE census: the single answer to "which system slices are capped, and by how much". Both
-// gunbc.compute.unit_bounds recognized_system_slice and modeled_system_slice_memory_max below read it,
-// so they cannot disagree. It is the fleet-wide rows slice_bounds declares, plus the derived
-// deployment-slice row. A census that hand-typed the deployment slice would drift the moment the
-// deployment was renamed; composing it here keeps the name single-sourced.
+// THE census: the single answer to "which system slices are capped, and by how much". It is read
+// through modeled_system_slice_memory_max below, which gunbc.compute.unit_bounds recognized_system_slice
+// delegates to -- so the positive-cap rule is written in exactly one place. It is the fleet-wide rows
+// slice_bounds declares, plus the derived deployment-slice row. A census that hand-typed the deployment
+// slice would drift the moment the deployment was renamed; composing it here keeps the name single-sourced.
 fn declared_system_slice_memory_maxes_including_deployment() -> List<DeclaredSliceMemoryMax> {
   concat(declared_system_slice_memory_maxes(), [declared_deployment_system_slice_row()])
 }
 
-// THE lookup over THE census. This replaces the old slice_bounds-side lookup of the same name, which
-// read only the fleet roster and so answered Absent for the deployment slice -- a second, disagreeing
-// answer to "is this a capped system slice" (DESIGN single_authority). Read from here it sees the same
-// rows recognized_system_slice does. It lives in spec, not in the slice_bounds leaf, because the census
-// needs spec's deployment naming and slice_bounds cannot import spec (spec imports slice_bounds).
+// THE one positive-cap rule, over THE census. This replaces the old slice_bounds-side lookup of the same
+// name, which read only the fleet roster and so answered Absent for the deployment slice -- a second,
+// disagreeing answer to "is this a capped system slice" (DESIGN single_authority). recognized_system_slice
+// DELEGATES to this lookup (matching Present/Absent) rather than re-writing the predicate, so there is one
+// rule, and production exercises the same lookup the witnesses do. It lives in spec, not in the
+// slice_bounds leaf, because the census needs spec's deployment naming and slice_bounds cannot import spec.
 fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
   match (
     declared_system_slice_memory_maxes_including_deployment()
