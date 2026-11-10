@@ -1148,3 +1148,109 @@ fn serve_entry_realizes_the_host_declared_key_row() {
         .join()
         .unwrap();
 }
+
+// SERVE-SEED PROBE. The B-style acceptance at ad02b1cb (BB 8a787b61) refused at argv admission:
+//   error: run args: --arg `handler`: no declaration named 'roadmap_serve_handle_srv1_lab' in
+//   this run's graph
+// although dag/gunbc/roadmap/roadmap_serve.dag:2276 declares `fn roadmap_serve_handle_srv1_lab(`.
+// seed_declaration_ref_argv_keys matches `authored_name_at(item) == argv text` on
+// ModuleItemFunction items. This arm runs the EXACT seed call main.rs makes, on the real
+// roadmap_ingress graph, and prints every predicate it consulted: the roadmap_serve module's
+// presence, every srv1_lab item's kind and authored spelling, the entry item's discovery, each
+// param's name and DeclarationRef identity test, and the final Ok/Err. Decides whether the miss
+// is the module absent, the kind wrong, or the authored spelling qualified where bare was assumed.
+#[test]
+fn serve_seed_argv_probe() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, _intern, si, _modules, graph) =
+                graph_from("dag/gunbc/roadmap/roadmap_ingress.dag");
+            let srv_items: Vec<String> = graph
+                .modules
+                .iter()
+                .filter(|rm| {
+                    crate::v1_std_core::authored_name_at(si.clone(), rm.module.clone())
+                        .contains("roadmap_serve")
+                })
+                .flat_map(|rm| {
+                    rm.items.iter().filter(|item| {
+                        crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
+                            .contains("srv1_lab")
+                    })
+                })
+                .map(|item| {
+                    format!(
+                        "{}|{:?}|auth={}",
+                        item.name,
+                        item.module_item_kind,
+                        crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
+                    )
+                })
+                .collect();
+            let modules_with_serve: Vec<String> = graph
+                .modules
+                .iter()
+                .filter(|rm| {
+                    rm.items.iter().any(|item| {
+                        crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
+                            .contains("srv1_lab")
+                    })
+                })
+                .map(|rm| {
+                    crate::v1_std_core::authored_name_at(si.clone(), rm.module.clone())
+                })
+                .collect();
+            let entry_found = graph.modules.iter().any(|rm| {
+                rm.items.iter().any(|item| {
+                    item.module_item_kind
+                        == crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
+                        && crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
+                            == "roadmap_ingress"
+                })
+            });
+            let params_report: Vec<String> = graph
+                .modules
+                .iter()
+                .flat_map(|rm| rm.items.iter())
+                .find(|item| {
+                    item.module_item_kind
+                        == crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
+                        && crate::v1_std_core::authored_name_at(si.clone(), (*item).clone())
+                            == "roadmap_ingress"
+                })
+                .map(|item| {
+                    item.params
+                        .iter()
+                        .map(|p| {
+                            format!(
+                                "{}|ann={}",
+                                crate::v1_std_core::authored_name_at(si.clone(), p.clone()),
+                                p.type_annotation.is_some()
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let run_args: Vec<(String, String)> = vec![
+                ("handler".to_string(), "roadmap_serve_handle_srv1_lab".to_string()),
+                ("listener".to_string(), "tcp:127.0.0.1:18099".to_string()),
+                ("release_revision".to_string(), "1b32b284ff94c29f1dd962088663d0d04a0a90d4".to_string()),
+                ("cpu_limit_ms".to_string(), "30000".to_string()),
+                ("wall_limit_ms".to_string(), "120000".to_string()),
+            ];
+            let result = crate::cli_run::seed_declaration_ref_argv_keys(
+                &graph,
+                &si,
+                &["roadmap_ingress".to_string()],
+                &run_args,
+            );
+            eprintln!(
+                "SERVE_SEED modules_with_serve={:?} srv_items={:?} entry_found={} params={:?} result={:?}",
+                modules_with_serve, srv_items, entry_found, params_report, result
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
