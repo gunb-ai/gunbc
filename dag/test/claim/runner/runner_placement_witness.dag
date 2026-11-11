@@ -1,5 +1,26 @@
 module test.claim.runner.runner_placement_witness
 
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { nat_mul }
+import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count, hardware_thread_count_value, second }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.cpu { cpu_facts_threads }
+import gunbc.fabric.fabric_control_plane_charge { FabricControlPlanePlacement, FabricControlPlaneEnvelope, ControlPlaneUnplaced, ControlPlaneStaticPinned, ControlPlaneEnvelopeDeclared, ControlPlaneEnvelopeUnmeasured, host_fabric_control_plane_claim_under }
+import gunbc.live_deploy.served_slice_charge { ServedDeploymentNotPlaced }
+import gunbc.host.host_converge { fleet_converge_policy_from }
+import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
+import gunbc.ci.ci_fleet { ComputeOffer, fleet_intent_offers }
+import gunbc.ci.ci_runner_placement { evaluate_operating_point, host_cpu_allocation, host_deployment_refusal_text, host_usable_ram_or_refusal, operating_curve, plan_derived_deployments, plan_derived_run_total, plan_refused_hosts, RefusedHostDeployment, require_complete_fleet_plan, resolve_session_slice, runner_deployment_plan, RunnerDeploymentPlan, runner_deployment_plan_under_placement, RunnerHostDeployment, runner_host_deployment_for, runner_image_baked_deployment_plan, samples_covered, SessionHostReservation, session_reservation_plan, session_slice_of, workload_class_cpu_weight, HostRunnerDeploymentRefusal, HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused, ZeroRunnerWidth, SessionReservationUnestablished, HostCpuAllocationResolution, HostCpuAllocationRefused, SessionOperatingPointSet, Regime1WorstCase, BatchLatencyTolerant, InteractiveLatencySensitive }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_budget { host_allocation_verdict, host_cpu_reserve_threads, HostAllocationVerdict }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
+import gunbc.runner.runner_slot_allocation { committed_width_of, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width, gunbc_runner_slice_cap_for_width, host_cpu_admitted_width, host_memory_admitted_width, host_width_facts }
+import gunbc.runner.runner_deploy_emit { expected_runner_deploy_manifest, expected_runner_deploy_manifest_json, manifest_host_doc, manifest_host_fields, runner_deploy_drifted, runner_deploy_manifest_json_for, runner_deploy_protocol, session_host_doc }
+import std.serialize { serialize_record_doc }
+import std.languages { json_record_knobs }
+
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn live_plan() -> RunnerDeploymentPlan {
