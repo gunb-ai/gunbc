@@ -1,0 +1,48 @@
+module test.fixture.ipmi_retry_bound_probe
+
+// THE RED for the structural retry-bound claim in test.claim.bmc.ipmi_cipher_suite_argv_witness.
+// The claim derives over EVERY declared operation of dag/extdeps/bmc/ipmi.dag whose materialized
+// argv carries '-U' -- an authenticated lanplus invocation against a lockout-budgeted controller --
+// and requires '-R','1','-N','1' in the four positions IMMEDIATELY before it. A derived claim is
+// only as honest as its ability to fail: these two declaration-only probes are the same
+// authenticated template with and without the bound. AuthenticatedUnpinned IS the manager-ordered
+// red -- one template with the pin removed -- and the claim's predicate must reject it;
+// AuthenticatedPinned is the accept control on the same shape, so the rejection is about the
+// missing bound and not about the probe's shape. Neither is ever dispatched.
+//
+// WHY THE BOUND EXISTS AT ALL: ipmitool(1) retries lanplus sessions ('-R <count>: Specify the
+// number of retries. The default is 4'), and a lockout-budgeted BMC counts every FAILED
+// authentication toward a threshold that refuses further logins. An unbounded authenticated
+// invocation can therefore spend several failed attempts per call before the run even sees the
+// refusal; pinning '-R 1 -N 1' caps the worst case at 2 failed attempts per invocation (initial
+// plus one retry). The tradeoff, accepted by smart-crane-730 and recorded with the operator's
+// srv15 ruling: a transient packet loss refuses the run instead of retrying silently -- fail-closed
+// and re-dispatchable.
+
+import std.types { String }
+
+data ipmi_retry_bound_probe_note: String = "Declaration-only pair for the retry-bound structural claim: one authenticated lanplus template carrying '-R','1','-N','1' immediately before '-U', one omitting it. Read as DECLARATIONS by test.claim.bmc.ipmi_cipher_suite_argv_witness; never invoked."
+
+service IpmiRetryBoundProbe {
+  operation AuthenticatedPinned {
+    input { bmc_host: String, username: String, password_file: String }
+    output { stdout_text: String from "stdout" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-R", "1", "-N", "1", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+
+  operation AuthenticatedUnpinned {
+    input { bmc_host: String, username: String, password_file: String }
+    output { stdout_text: String from "stdout" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+}

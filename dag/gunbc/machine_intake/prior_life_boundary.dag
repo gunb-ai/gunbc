@@ -208,12 +208,19 @@ data asrock_altrad8ud_platform_ref: DeclarationRef = decl_ref(module_path: "extd
 data prior_life_platform_policies: List<PriorLifePolicy> = [
   PriorLifePolicy { platform: mt_collins_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
   PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
-  // THE ALTRAD8UD ROW (swift-ram-509 for the srv15 arrival lane, 2026-11-11, reported upward for veto). All
-  // eight carriers, for the same reason as the rows above: no evidence says any carrier is irrelevant. Its
-  // uncleared-boundary admission is NOTAdmitted, which is the fail-closed side of the choice the other two
-  // rows did not have to make: no platform-policy statement for this board is committed anywhere, and
-  // admitting the append-only cursor arm would assert one. Admitting it later is a new row with its reason.
-  PriorLifePolicy { platform: asrock_altrad8ud_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryNotAdmitted },
+  // THE ALTRAD8UD ROW. All eight carriers, for the same reason as the rows above: no evidence says any
+  // carrier is irrelevant. Its uncleared-boundary arm was first landed NOTAdmitted (swift-ram-509,
+  // 2026-11-11) -- fail-closed, because admitting the append-only cursor arm asserts a platform-policy
+  // statement and none had been made. This is that statement, made by the lane's manager rather than
+  // borrowed from a credential grant (an access ruling says nothing about leaving prior-life records
+  // uncleared, so the standing grant's text is deliberately NOT cited here). THE OPERATOR RULED IT
+  // (escalation msg_9a98f6c6-1d7e-431a-b4c7-91d632558be1, decided 2026-11-11, decision msg_9ed289f6),
+  // deciding option, verbatim: "Admit uncleared, archive only". The stated reason stands: ALTRAD8UD
+  // admits the uncleared baseline-cursor arm for the same reason Mt. Collins and Mt. Jade do. The archive
+  // preserves every required carrier, read back before the boundary is crossed. Clearing would destroy
+  // that evidence and needs a controller write srv15's standing grant does not cover -- and none is made:
+  // the archive reads only. Required set unchanged (all eight).
+  PriorLifePolicy { platform: asrock_altrad8ud_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
 ]
 
 fn prior_life_policy_for(platform: DeclarationRef) -> PriorLifePolicy? {
@@ -436,7 +443,7 @@ fn payload_json(p: CarrierPayload) -> JsonValue {
     LogServicesPayload { services: ss } => arm(name: "LogServices", members: [json_kv(key: "services", value: json_array(elements: map(ss, s => log_service_json(s: s))))])
     AccountEventsPayload { entries: es } => arm(name: "AccountEvents", members: [json_kv(key: "entries", value: json_array(elements: map(es, e => log_entry_json(e: e))))])
     BootOverridePayload { boot_override: o } =>
-      arm(name: "BootOverride", members: [json_kv(key: "boot_override", value: match o { BootOverrideNone => arm(name: "None", members: [])  BootOverrideCdromEfiNextBoot => arm(name: "CdromEfiNextBoot", members: []) })])
+      arm(name: "BootOverride", members: [json_kv(key: "boot_override", value: match o { BootOverrideNone => arm(name: "None", members: [])  BootOverrideCdromEfiNextBoot => arm(name: "CdromEfiNextBoot", members: [])  BootOverridePxeNextBoot => arm(name: "PxeNextBoot", members: []) })])
     VirtualMediaPayload { members: vs } => arm(name: "VirtualMedia", members: [json_kv(key: "members", value: json_array(elements: map(vs, v => virtual_media_json(v: v))))])
     PowerStatePayload { power: w } =>
       arm(name: "PowerState", members: [json_kv(key: "power", value: match w { BmcPowerOn => arm(name: "On", members: [])  BmcPowerOff => arm(name: "Off", members: []) })])

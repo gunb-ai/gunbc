@@ -1606,6 +1606,7 @@ fn controller_left_the_override_pending(w: MtCollins1BootWorld?) -> Bool {
     Present { value: world } => match world.bmc.boot_override {
       BootOverrideNone => false
       BootOverrideCdromEfiNextBoot => true
+      BootOverridePxeNextBoot => true
     }
   }
 }

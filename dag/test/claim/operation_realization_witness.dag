@@ -751,6 +751,7 @@ fn override_is_cleared(w: BmcWorld?) -> Bool {
     Present { value: world } => match world.boot_override {
       BootOverrideNone => true
       BootOverrideCdromEfiNextBoot => false
+      BootOverridePxeNextBoot => false
     }
     Absent => false
   }
