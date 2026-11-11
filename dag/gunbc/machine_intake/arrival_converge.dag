@@ -1534,7 +1534,7 @@ fn altrad8ud_identity_bind_inputs(unit: HostIdentity) -> IdentityBindInputs uses
 fn converge_arrival_unit_prefix(run: ConvergenceRunId, row: ArrivalUnitCaptureRow, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
   converge_arrival_prefix(
     run: run,
-    subject: row.unit as StepSubjectKey,
+    subject: row.subject_key,
     read: read_unit_manager_capture(row: row),
     inputs: unit_identity_bind_inputs(row: row),
     prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
@@ -1560,7 +1560,7 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
 fn converge_arrival_unit_through_bmc_secure(run: ConvergenceRunId, row: ArrivalUnitCaptureRow, prior_life: DryPriorLifeWorld, bmc: BmcSecureInputs) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
   converge_arrival_through_bmc_secure(
     run: run,
-    subject: row.unit as StepSubjectKey,
+    subject: row.subject_key,
     read: read_unit_manager_capture(row: row),
     inputs: unit_identity_bind_inputs(row: row),
     prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
@@ -1569,37 +1569,13 @@ fn converge_arrival_unit_through_bmc_secure(run: ConvergenceRunId, row: ArrivalU
   )
 }
 
-// A LIVE RUN'S FRU READ FEEDS THE SAME IDENTITY ARMS. The arrival door runs `ipmitool fru print 0` in-run,
-// commits the response to the content-addressed store and reads it back; the reader in
-// gunbc.machine_intake.mtjade1_access_observation (mint_committed_bmc_fru_capture, keyed by the capture row's
-// content digest) is what turns those bytes into a value. So this entry takes THAT value, and not a door-minted
-// IdentityBindInputs: the sealed bundle keeps one minting site per unit arm inside this authority, and the door
-// cannot assert a board area it did not obtain from the reader. Every other input -- the unit's Manager capture,
-// its in-band arm, its SMBIOS absence, the other bound units -- still comes from its rows. A run whose FRU read
-// the reader refuses reaches the same typed refusal as a missing capture; the fold does not degrade.
-fn unit_identity_bind_inputs_with_live_fru(row: ArrivalUnitCaptureRow, fru: IdentityFruSlot) -> IdentityBindInputs uses fs: std.resources.Filesystem {
-  match row.identity_arm {
-    CommittedInbandHostIdentityCapture => altrad8ud_identity_bind_inputs_with_fru(unit: row.unit, fru: fru)
-    // mtjade1's FRU is a committed capture, not a live read; the slot is replaced only so this entry has ONE
-    // shape for every row. Its witnesses stay the control on the committed path above.
-    CommittedBmcFruAndHostSmbiosCaptures => {
-      let base = mtjade1_identity_bind_inputs()
-      IdentityBindInputs { fru: fru, smbios: base.smbios, inband: base.inband, other_units: base.other_units }
-    }
-  }
-}
-
-fn converge_arrival_unit_through_bmc_secure_with_live_fru(run: ConvergenceRunId, row: ArrivalUnitCaptureRow, prior_life: DryPriorLifeWorld, bmc: BmcSecureInputs, fru_read: BmcFruCaptureRead) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
-  converge_arrival_through_bmc_secure(
-    run: run,
-    subject: row.unit as StepSubjectKey,
-    read: read_unit_manager_capture(row: row),
-    inputs: unit_identity_bind_inputs_with_live_fru(row: row, fru: identity_fru_slot_of(read: fru_read)),
-    prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
-    bmc: bmc,
-    locked: none,
-  )
-}
+// THE DOOR'S SEAM INTO THIS AUTHORITY is `altrad8ud_identity_bind_inputs_with_fru` above and
+// `identity_fru_slot_of`: a run that observed a unit's FRU in-run mints its slot with the reader in
+// gunbc.machine_intake.mtjade1_access_observation (mint_committed_bmc_fru_capture, whose digest gate is keyed by
+// the capture row's content digest) and passes the slot to the same inputs mint. No entry here takes a live read
+// on the row's behalf: the row's committed Manager capture is not what a live run observed for its AccessDiscover
+// reading, so a fold entry that paired a live FRU with a row-literal Manager read would ground the fold in the
+// wrong observation. Both functions are consumed in this module, by `altrad8ud_identity_bind_inputs`.
 
 // ── THE ONE DECLARED FORCED-CHANGE DIVERGENCE ROW ────────────────────────────────────────────────
 //

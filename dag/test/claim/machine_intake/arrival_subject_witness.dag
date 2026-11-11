@@ -15,6 +15,9 @@ import gunbc.machine_intake.arrival_subject {
   arrival_converge_population, arrival_population_row_in, arrival_row_grant_covers_the_door,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv15 }
+import gunbc.machine_intake.arrival_unit_captures {
+  arrival_unit_capture_row, arrival_unit_capture_rows, arrival_row_subject_names_its_unit,
+}
 
 // THE ADMIT FOLD IS GENERIC OVER ITS ROWS. Every per-unit fact is a row field, so a unit the production
 // population does not carry is admitted, refused or confused by exactly the rules mtjade1 is, with no
@@ -144,4 +147,20 @@ test fn srv15_s_row_is_granted_by_the_standing_grant_ruled_for_it_and_carries_no
         && standing_grant_covers(g: row.grant, scope: StandingGrantHost { host: operator_host_srv15 }, effect: StandingArrivalFirmwareQualification)
         && !standing_grant_covers(g: row.grant, scope: StandingGrantHost { host: operator_host_srv15 }, effect: StandingBmcSecureAccountWrite)
   }
+}
+
+// A ROW'S FOLD KEY AND ITS FLEET IDENTITY ARE ONE UNIT. The fold keys a step receipt by a branded subject string
+// and the captures hang off the fleet's identity for the machine; a row whose key drifted would key one
+// machine's receipts against another machine's captures. This walks the rowed units through the same lookup the
+// producers use, so it also holds for a unit rowed later.
+test fn every_rowed_arrival_unit_keys_its_fold_steps_under_its_own_identity() -> Bool {
+  length(arrival_unit_capture_rows) == 2
+    && match arrival_unit_capture_row(unit: operator_host_srv15) {
+      none => false
+      Present { value: row } => arrival_row_subject_names_its_unit(row: row) && (row.subject_key as String) == "srv15"
+    }
+    && match arrival_unit_capture_row(unit: operator_host_mtjade1) {
+      none => false
+      Present { value: row } => arrival_row_subject_names_its_unit(row: row) && (row.subject_key as String) == "mtjade1"
+    }
 }

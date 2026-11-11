@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_srv15 }
+import gunbc.fleet.convergence_fold { StepSubjectKey }
 import gunbc.machine_intake.prior_life_boundary { asrock_altrad8ud_platform_ref, mt_jade_platform_ref }
 import gunbc.machine_intake.mtjade1_factory_network {
   ObservedBmcNetwork,
@@ -52,6 +53,11 @@ type ArrivalUnitIdentityArm
 
 type ArrivalUnitCaptureRow {
   unit: HostIdentity
+  // THE KEY THE CONVERGENCE PLAN ADMITS THIS UNIT UNDER. A fold step is keyed by a branded subject string, and a
+  // brand cannot be cast out of another brand, so the row carries the key it was written for rather than the fold
+  // minting one from the fleet identity. Two fields, one machine: arrival_row_subject_names_its_unit is the claim
+  // that they have not drifted, and a witness exercises it over every row.
+  subject_key: StepSubjectKey
   manager_capture_path: NonEmptyStr
   manager_capture_sha256: NonEmptyStr
   manager_resource: NonEmptyStr
@@ -75,6 +81,7 @@ type ArrivalUnitCaptureRow {
 // capture carries against the link observed on that controller's own wire.
 data mtjade1_arrival_capture_row: ArrivalUnitCaptureRow = ArrivalUnitCaptureRow {
   unit: operator_host_mtjade1,
+  subject_key: "mtjade1" as StepSubjectKey,
   manager_capture_path: mtjade1_current_manager_capture_path,
   manager_capture_sha256: mtjade1_current_manager_capture_sha256,
   manager_resource: mtjade1_redfish_manager_resource,
@@ -96,6 +103,7 @@ data mtjade1_arrival_capture_row: ArrivalUnitCaptureRow = ArrivalUnitCaptureRow 
 // the same directory holds the rescue-OS host identity capture and no FRU print.
 data srv15_arrival_capture_row: ArrivalUnitCaptureRow = ArrivalUnitCaptureRow {
   unit: operator_host_srv15,
+  subject_key: "srv15" as StepSubjectKey,
   manager_capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Managers_bmc.json",
   manager_capture_sha256: "50a206b0d14f7c49d405f2a75161c23f2aab022c41b9ff252a40cc96987e283e",
   manager_resource: join(["/redfish/v1/Managers/", asrock_altrad8ud_redfish_manager_id], "") as NonEmptyStr,
@@ -113,6 +121,13 @@ data arrival_unit_capture_rows: List<ArrivalUnitCaptureRow> = [
   mtjade1_arrival_capture_row,
   srv15_arrival_capture_row,
 ]
+
+// THE ROW'S STEP SUBJECT AND ITS UNIT ARE ONE IDENTITY, stated twice because the fold needs the brand and the
+// captures need the fleet identity. A row whose key drifted from its unit would key fold receipts for one
+// machine against another's captures, so the check is here rather than in each fold.
+fn arrival_row_subject_names_its_unit(row: ArrivalUnitCaptureRow) -> Bool {
+  (row.subject_key as NonEmptyStr) == (row.unit as NonEmptyStr)
+}
 
 fn arrival_unit_capture_row(unit: HostIdentity) -> ArrivalUnitCaptureRow? {
   first_where(arrival_unit_capture_rows, e => host_identity_eq(a: e.unit, b: unit))
