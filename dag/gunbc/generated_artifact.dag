@@ -422,7 +422,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when
 // every_generated_artifact_producer_covered holds over the same pool roots its .dag-medium producer
 // folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that
-// gives the census a per-medium joined_media state (PR #10939, gunbc.instruments.v1_consumer_discovery); it is
+// gives the census a per-medium joined_media state (PR #10939, gunbc.instruments.v1_consumer_discovery, since deleted in the census retirement); it is
 // not authored here because the census on main carries no such state yet, and adding one beside
 // that in-flight change would be the second vocabulary gunbc.design_argument::single_authority forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
@@ -494,3 +494,12 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       dissolution: unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: each payload-carrying GeneratedArtifact arm declares the key that identifies it as a declared identity on its payload type, so equality is the derived == over that declared key and the hand fold deletes with this row. Until a key is declared the fold is the only place that decision lives"),
     },
 ]
+
+// THE ONE COMMAND AN AUTHOR RUNS TO REGENERATE EVERY COMMITTED PROJECTION. It is named here, beside
+// the artifacts it regenerates (moved out of gunbc.ci.ci_spec, gunbc.plans.closure_consolidation P1),
+// rather than in each consumer because three places tell an author to run it -- the merge driver's
+// refusal recipe, its two witnesses -- and a second spelling would drift from the entry the workflow
+// uses.
+// It was `ci_heal_author_commit_regen_command` while heal's author-commit arm was its only caller;
+// that arm is gone with the push, and the command is not heal's (gunbc#10958).
+data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"

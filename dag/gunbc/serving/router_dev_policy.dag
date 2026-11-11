@@ -895,10 +895,16 @@ type RouterDevUpstream {
   capacity_rests_on: List<CitedFigureStanding>
 }
 
-// WHAT CAPS A ROW'S ACTIVE TURNS. One integer read two ways was the meaning fork #15113 found: 0 meant "no
-// turns" on an owned row and "uncapped" on the rented one. The arms say it instead. An owned row's cap is its
-// ceiling, 0 included. A rented row is either capped (the pool's admission figure, which the scaler reads as
-// rented.cap) or uncapped, and uncapped renders NO cap on the wire.
+// WHAT CAPS A ROW'S ACTIVE TURNS: an owned card's ceiling, 0 included (no turns).
+//
+// One integer read two ways was the meaning fork #15113 found: 0 meant "no turns" on an owned row and
+// "uncapped" on a rented one, and only the row's billing told the two readings apart. The rented arms said it
+// instead of the integer; they are retired with the roster's last rented row (operator decision 2026-11-10: no
+// rented lane is in use), so a capacity in this model is an owned ceiling and a row with no ceiling cannot be
+// written. The proxy still carries the rented arm of its scoring and metering -- the wire is wider than the
+// roster, because upstreams.json is a hand-kept file the operator may hand a rented row into, and
+// gunbc.instruments.router_proxy_falsifier falsifies that arm from its own fixture rows -- so a row the model
+// cannot produce is still a row the instrument proves the proxy handles.
 //
 // Congestion never moves a bound session (operator 2026-10-28: one placement per conversation; deliberate moves
 // come only through the relocation operation). So no row's locality is a fact the router branches on: every
@@ -906,8 +912,6 @@ type RouterDevUpstream {
 // per-row cache_locality field, which only EngineLocal rows honoured, is gone.
 type RouterDevCapacity
   = OwnedCap { turns: Nat }
-  | RentedCapped { turns: Nat }
-  | RentedUncapped
 
 // HOW MANY CONVERSATIONS A ROW RETAINS. Every first-party row's count, and its active-turn cap, is DERIVED from
 // its deployment's capacity anchor (gunbc.serving.serving_capacity_anchor serving_capacity_shape: throughput at the
@@ -992,8 +996,6 @@ fn no_members() -> List<JsonKeyValue> { [] }
 fn router_dev_capacity_members(c: RouterDevCapacity) -> List<JsonKeyValue> {
   match c {
     OwnedCap { turns: n } => [json_kv(key: "overflow", value: json_bool(b: false)), json_kv(key: "cap", value: json_int(n: n as Int))]
-    RentedCapped { turns: n } => [json_kv(key: "overflow", value: json_bool(b: true)), json_kv(key: "cap", value: json_int(n: n as Int))]
-    RentedUncapped => [json_kv(key: "overflow", value: json_bool(b: true))]
   }
 }
 
@@ -1197,7 +1199,7 @@ type RouterDevFirstParty
   = RouterDevFirstPartyRows { rows: List<RouterDevUpstream> }
   | RouterDevFirstPartyRefused { reason: String }
 
-// THE FIRST-PARTY SET: the head, then every layout-projected host, then the tail. Each host is projected by the
+// THE FIRST-PARTY SET: the head, then every layout-projected host. Each host is projected by the
 // SAME rule from ITS OWN layout, and any one of them refusing refuses the whole set — a router can never be
 // rendered from a fleet that a layout does not grant.
 fn router_dev_first_party_for(h11: ServingLayoutResult, srv3: ServingLayoutResult, srv4: ServingLayoutResult) -> RouterDevFirstParty {
@@ -1209,7 +1211,7 @@ fn router_dev_first_party_for(h11: ServingLayoutResult, srv3: ServingLayoutResul
         RouterDevReplicaRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
         RouterDevReplicaProjected { rows: s4 } => match router_dev_first_party_head() {
           RouterDevFirstPartyRefused { reason: r } => RouterDevFirstPartyRefused { reason: r }
-          RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(head, concat(h, concat(s3, concat(s4, router_dev_first_party_tail())))) }
+          RouterDevFirstPartyRows { rows: head } => RouterDevFirstPartyRows { rows: concat(head, concat(h, concat(s3, s4))) }
         }
       }
     }
@@ -1222,7 +1224,7 @@ fn router_dev_first_party() -> RouterDevFirstParty {
 
 // THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31, and srv4's row added there
 // 2026-11-04; keys are joined at deploy and are in no row). The h11 engines follow the layout grant (four since
-// A-prime), srv1's vLLM, srv3's and srv4's Strata and the ctrl rented pool. Every owned row's cap and retain are
+// A-prime), srv1's vLLM, and srv3's and srv4's Strata. Every row's cap and retain are
 // its capacity shape (gunbc.serving.serving_capacity_anchor). Retiring names count old-worker turns during a
 // graceful rename.
 // router_dev_first_party() is the one reader: a refused projection is a refusal and never reads as no rows or
@@ -1246,14 +1248,6 @@ fn router_dev_first_party_head() -> RouterDevFirstParty {
         RouterDevShapedRow { row: u } => RouterDevFirstPartyRows { rows: concat(rs, [u]) }
       }
     })
-}
-
-fn router_dev_first_party_tail() -> List<RouterDevUpstream> {
-  [
-    // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router. The pool is
-    // capped at 4 turns (live; the figure the scaler reads as rented.cap), and renders as RentedCapped.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules(), capacity_rests_on: [] },
-  ]
 }
 
 fn router_dev_first_party_json(fp: RouterDevFirstParty) -> String? {

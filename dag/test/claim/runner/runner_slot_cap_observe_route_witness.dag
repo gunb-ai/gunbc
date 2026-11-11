@@ -111,8 +111,15 @@ fn desired_tasks_text() -> String { to_string(gunbc_runner_slot_desired().tasks_
 data pre_fix_memory_text: String = "8589934592"
 data pre_fix_swap_text: String = "4294967296"
 
+// THE HOST THIS WITNESS'S RECORDS ARE ABOUT, supplied once at its boundary: `cap_subject` is admitted
+// from it, and `observe_run_of` below maps the run's results over the cap files of the subject that
+// record carries -- one supplied value, read through the record it belongs to. (#15950 gave
+// runner_host_cap_files this parameter; its transitional drop-ins are a host's committed slots' -- and
+// srv1 is exactly the host that has one, srv1-01.)
+fn cap_host() -> HostIdentity { "srv1" as HostIdentity }
+
 fn cap_subject() -> RunnerHostFileSubject? {
-  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+  match runner_host_file_subject(host: cap_host()) {
     RunnerHostFileSubjectAdmitted { subject: s } => Present { value: s }
     RunnerHostFileSubjectRefused { cause: _ } => none
   }
@@ -734,7 +741,7 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
         subject: subject,
         mode: FleetHostFilesObserveOnly,
         privilege: AdministratorPrivilegeAvailable,
-        results: map(runner_host_cap_files(), f => FleetHostFileResult {
+        results: map(runner_host_cap_files(host: subject.host), f => FleetHostFileResult {
           planned: FleetHostFilePlanned {
             file: f,
             observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] },

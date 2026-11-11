@@ -3,7 +3,7 @@ module gunbc.compute.compute_seat_ensure
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.list { distinct_by_key }
-import std.measure { Kibibyte, kibibyte, measure_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.measure { Kibibyte, kibibyte, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.durable_cas_file_store { CasSlotKeysAbsent, slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.compute.compute_attempt_slots_root {
@@ -154,9 +154,13 @@ fn seat_granted_of(reading: AttemptSlotReading) -> Kibibyte {
 
 fn seat_fell_by(before: Kibibyte, after: Kibibyte, granted: Kibibyte) -> Bool {
   match measure_sub(a: before, b: after) {
-    // Kibibyte is a Measure<_,_,Nat>, on which structural '==' is refused by the equality plan (gunbc#15175);
-    // compare the magnitudes with the std.measure idiom, as gunbc.fleet.fleet_physical_inventory does.
-    MeasureDifference { value: d } => measure_count(m: d) == measure_count(m: granted)
+    // Structural '==' on Kibibyte = Measure<Memory, Kibi, Nat>. The rule judges the arguments written at
+    // that use (v1.compiler.infer::equality_argument_by_target) and admits them for the reason the emitted
+    // derive covers them: Memory and Kibi are unit-variant markers, which the emitter gives the full derive
+    // roster (v1.compiler.infer::is_unit_variant_phantom_argument), and Nat is a by-target scalar. The
+    // measure_count stopgap (gunbc#15175 interim, #16099) is gone; the discriminating controls are
+    // test.claim.self_host_equality_admission_witness.
+    MeasureDifference { value: d } => d == granted
     MeasureSubtrahendExceedsMinuend => false
   }
 }

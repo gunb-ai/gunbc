@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_physical_inventory
 
 import std.types { NonEmptyStr, String, List, Int }
-import std.measure { RackUnit, rack_unit, measure_add, measure_count }
+import std.measure { RackUnit, rack_unit, measure_add }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply {
   PhysicalAssetIdentity,
@@ -28,8 +28,8 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_01, chassis_02, chassis_03, chassis_04, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_01, cooler_02 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
@@ -110,7 +110,7 @@ data operator_switch_shelf_units: RackUnit = rack_unit(1)
 // an INDEX into this module's facts, never a fact this module establishes. That is why the repoint
 // is mechanical and why no verdict moves: nothing here reads a property OF the identity.
 data srv1_chassis_asset: PhysicalAsset = PhysicalAsset {
-  identity: chassis_srv1,
+  identity: chassis_01,
   catalog: DeclarationRef {
     module_path: "extdeps.chassis.rosewill",
     decl_name: "rosewill_rsv_r4000u_catalog",
@@ -197,7 +197,7 @@ data rack_01_unobserved_residence: RackResidence = RackResidenceUnobserved
 data fleet_host_spatial_facts: List<HostSpatialFacts> = [
   HostSpatialFacts {
     host: operator_host_srv1,
-    asset: chassis_srv1,
+    asset: chassis_01,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterAbsent,
     relay: RelayIncapable,
@@ -205,7 +205,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
   },
   HostSpatialFacts {
     host: operator_host_srv2,
-    asset: chassis_srv2,
+    asset: chassis_02,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
     relay: RelayUnprovisioned,
@@ -213,7 +213,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
   },
   HostSpatialFacts {
     host: operator_host_srv3,
-    asset: chassis_srv3,
+    asset: chassis_03,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
     relay: RelayUnprovisioned,
@@ -221,7 +221,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
   },
   HostSpatialFacts {
     host: operator_host_srv4,
-    asset: chassis_srv4,
+    asset: chassis_04,
     residence: rack_01_unobserved_residence,
     wireless: WirelessAdapterUnobserved,
     relay: RelayUnprovisioned,
@@ -242,7 +242,7 @@ data srv1_measured_wireless_note: String = "srv1 fleet controller measured Wirel
 // host may claim a thermally qualified fan configuration.
 
 data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
-  identity: cooler_srv3,
+  identity: cooler_01,
   catalog: DeclarationRef {
     module_path: "extdeps.cooling.dynatron",
     decl_name: "dynatron_w1_catalog",
@@ -253,7 +253,7 @@ data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
 }
 
 data srv4_cooler_asset: PhysicalAsset = PhysicalAsset {
-  identity: cooler_srv4,
+  identity: cooler_02,
   catalog: DeclarationRef {
     module_path: "extdeps.cooling.dynatron",
     decl_name: "dynatron_w1_catalog",
@@ -264,8 +264,8 @@ data srv4_cooler_asset: PhysicalAsset = PhysicalAsset {
 }
 
 data installed_cooler_containments: List<PhysicalContainment> = [
-  HostContainsComponent { host: operator_host_srv3, component: cooler_srv3 },
-  HostContainsComponent { host: operator_host_srv4, component: cooler_srv4 },
+  HostContainsComponent { host: operator_host_srv3, component: cooler_01 },
+  HostContainsComponent { host: operator_host_srv4, component: cooler_02 },
 ]
 
 // ---- GPU BOARDS (gunbc.plans.gpu_card_host_program (deleted 2026-11-08) row N6b, card residence, in its first form: a card
@@ -376,7 +376,63 @@ data gpu_board_06_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset, gpu_board_04_asset, gpu_board_05_asset, gpu_board_06_asset]
+// srv14/butch's four NVIDIA A2 cards, read on butch 2026-11-10 by the session over ssh (nvidia-smi,
+// driver 595.91.07; all four report name "NVIDIA A2", 15356 MiB, power limit 35 W with min 35 / max 60 /
+// default 60 W, current cap 35 W). The board model is cited to extdeps.gpu.nvidia_a2; the per-card
+// binding (UUID, PCI function, power-limit range) is the typed row in gunbc.fleet.gpu_device_observation,
+// not restated here. Physical slot (dmidecode -t 9 designation whose bus address is the card's upstream
+// Altra root port): gpu-board-07 in PCIE5, gpu-board-08 in PCIE4, gpu-board-09 in PCIE7, gpu-board-10 in
+// PCIE6. These four slots are exactly product.printed_chassis.card_installation a2_altra_installation's
+// "A2 row on the ALTRAD8UD" (PCIE4/5/6/7) -- that installation names the slots the duct is designed for
+// but carries no host; the host binding is the HostContainsComponent row below. HostContainsComponent has
+// no slot field, so the card<->slot association lives only across the two models (this asset + the duct
+// installation), joined by host = operator_host_srv14; the gap is stated, not papered over. Procurement
+// unrecorded (operator-owned cards already seated at install, 2026-10-30).
+data gpu_board_07_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_07,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_a2",
+    decl_name: "nvidia_a2_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1321522057289" },
+  procurement: none,
+}
+
+data gpu_board_08_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_08,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_a2",
+    decl_name: "nvidia_a2_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1321522058306" },
+  procurement: none,
+}
+
+data gpu_board_09_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_09,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_a2",
+    decl_name: "nvidia_a2_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1321522036087" },
+  procurement: none,
+}
+
+data gpu_board_10_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_10,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_a2",
+    decl_name: "nvidia_a2_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1321522057766" },
+  procurement: none,
+}
+
+data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset, gpu_board_04_asset, gpu_board_05_asset, gpu_board_06_asset, gpu_board_07_asset, gpu_board_08_asset, gpu_board_09_asset, gpu_board_10_asset]
 
 // Only installed cards are contained; an owned card with no row here is in inventory, not in a host.
 data installed_gpu_board_containments: List<PhysicalContainment> = [
@@ -384,6 +440,10 @@ data installed_gpu_board_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv1, component: gpu_board_04 },
   HostContainsComponent { host: operator_host_srv4, component: gpu_board_05 },
   HostContainsComponent { host: operator_host_srv4, component: gpu_board_06 },
+  HostContainsComponent { host: operator_host_srv14, component: gpu_board_07 },
+  HostContainsComponent { host: operator_host_srv14, component: gpu_board_08 },
+  HostContainsComponent { host: operator_host_srv14, component: gpu_board_09 },
+  HostContainsComponent { host: operator_host_srv14, component: gpu_board_10 },
 ]
 
 
@@ -394,14 +454,14 @@ data installed_gpu_board_containments: List<PhysicalContainment> = [
 data installed_cooling_realizations: List<InstalledCoolingRealization> = [
   InstalledCoolingRealization {
     host: operator_host_srv3,
-    cooler_asset: cooler_srv3,
+    cooler_asset: cooler_01,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
     baseboard_model: srv3_baseboard.catalog.model,
   },
   InstalledCoolingRealization {
     host: operator_host_srv4,
-    cooler_asset: cooler_srv4,
+    cooler_asset: cooler_02,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
     baseboard_model: srv4_baseboard.catalog.model,
@@ -429,10 +489,14 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
     ),
     b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
   )
-  // RackUnit is a Measure<_,_,Nat>, on which structural '==' is refused by the equality plan; compare the
-  // magnitudes with the std.measure idiom (as elsewhere, e.g. materialization_store). Semantics preserved.
-  measure_count(m: declared) == measure_count(m: nominal_rackmount_units_declared)
-    && measure_count(m: rack_01_catalog_units) == measure_count(m: navepoint_18u_open_frame_catalog.rack_units)
+  // Structural '==' on RackUnit = Measure<Length, RackUnitHeight, Nat>. The rule judges the arguments
+  // written at that use (v1.compiler.infer::equality_argument_by_target) and admits them for the reason the
+  // emitted derive covers them: Length and RackUnitHeight are unit-variant markers, which the emitter gives
+  // the full derive roster (v1.compiler.infer::is_unit_variant_phantom_argument), and Nat is a by-target
+  // scalar. The measure_count stopgap (gunbc#15175 interim, #16045) is gone; the discriminating controls are
+  // test.claim.self_host_equality_admission_witness.
+  declared == nominal_rackmount_units_declared
+    && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
 }
 
 // ---------------------------------------------------------------------------

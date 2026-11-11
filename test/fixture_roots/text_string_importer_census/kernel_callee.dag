@@ -1,0 +1,7 @@
+module fixture.text_string_importer_census.kernel_callee
+fn take_host(t: String) -> Int {
+  1
+}
+fn take_structural(t: FreeMonoid<Char>) -> Int {
+  1
+}

@@ -1,0 +1,5 @@
+module fixture.text_string_importer_census.nested_structural
+import v2.std.text { String, string_join, string_is_empty }
+fn joined_is_empty(xs: List<String>, sep: String) -> Bool {
+  string_is_empty(s: string_join(fields: xs, separator: sep))
+}

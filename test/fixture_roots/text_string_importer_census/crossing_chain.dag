@@ -1,0 +1,6 @@
+module fixture.text_string_importer_census.crossing_chain
+import v2.std.text { String }
+import fixture.text_string_importer_census.host_through_callee { width }
+fn f(s: String) -> Int {
+  width(t: s)
+}

@@ -130,3 +130,7 @@ fn ci_emitted_release_bins() -> List<EmittedReleaseBin> {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+
+// The release-bins archive file name, moved here from gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1)
+// beside the pack membership it names.
+data ci_release_bins_archive_name: String = "release-bins.tgz"

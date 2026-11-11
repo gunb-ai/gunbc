@@ -254,7 +254,7 @@ fn observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_m
 // so the guess would disarm the instrument it was feeding.
 //
 // THE ALLOCATION EXISTS, AND THIS COMMENT USED TO SAY IT DID NOT. An earlier version said
-// gunbc_fleet_hostname_allocations carried no Mt. Collins row and that the first attempt would refuse
+// fleet_machine_registry carried no Mt. Collins row and that the first attempt would refuse
 // here; that row is now authored in gunbc.hostname_allocation, so the arm is no longer what the first
 // attempt hits. Review 61747 caught the stale claim -- the same "a comment asserts a refusal that does
 // not happen" class this branch had already been caught by once, which is the argument for reading

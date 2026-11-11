@@ -1,0 +1,3 @@
+module fixture.tsil.string_type_importer
+import std.string_type { String }
+data s: String = "x"

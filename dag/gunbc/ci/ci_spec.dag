@@ -1,5 +1,7 @@
 module gunbc.ci.ci_spec
 
+import gunbc.fleet.branch_run_grant_broker_workflow { gunbc_ci_branch_run_grant_broker_target }
+import gunbc.heal_publisher_workflow { heal_publisher_cgroup_prelude }
 import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
   gunbc_ci_tier_o_drift_check_target,
@@ -8,7 +10,7 @@ import gunbc.ci.ci_run_step_target {
 }
 
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
-import gunbc.claim_executor_cli { claim_executor_relative_path }
+import gunbc.heal_workflow { gunbc_ci_heal_candidate_stage0_target }
 
 import gunbc.machine_intake.mtcollins1_boot_row {
   mtcollins1_kvm_observer_dir
@@ -87,12 +89,12 @@ import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_ho
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.realization_schedule { RunnableBatchClamp, ScheduleWitnessEntry }
+import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
 import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
-import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format, gunbc_ci_auth_header_file_write_command, gunbc_ci_auth_header_file_write_command_to }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_dir_for,
@@ -100,21 +102,10 @@ import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_name_for,
 }
 
-import gunbc.ci.ci_release_bins {
-  ci_floor_required_artifact_names, EmittedReleaseBin, ci_emitted_release_bins
-}
-import gunbc.repo.repo_self_emitted_build { repo_self_emitted_crate_build_command }
+import gunbc.ci.ci_release_build { ci_floor_build_verify_stmt }
+import gunbc.ci.ci_retry { ci_retry_body_run, ci_retry_step }
 
-import gunbc.ci.ci_gate {
-  Gate,
-  EmitHostGate, CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate
-}
-import gunbc.ci.ci_layer_roots {
-  witness_layer_roots,
-  witness_discovery_scan_dirs
-}
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.extdeps.languages.bash_build {
   bash_build_command_with_words,
   bash_build_word_concat_from_nodes,
@@ -131,12 +122,7 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_invoke_step_emit_pipeline,
   gunbc_invoke_step_orch_refused_poison,
 }
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  project_ci_floor_gates,
-  project_ci_floor_witness_entries
-}
-import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
+import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy }
 import gunbc.auth.heal_publisher_federation {
   HealPublisherFederation, public_heal_publisher_federation,
   heal_publisher_federation_installation_token_request_body,
@@ -145,7 +131,6 @@ import gunbc.auth.heal_publisher_federation {
 }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.fleet.organization_runner_roster_read_credential { organization_runner_roster_read_token_request_body }
-import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
@@ -160,24 +145,20 @@ import std.types { GitRef, Int, String, List, NonEmptyStr }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
-  EscalationLevel,
   Exit,
   FailFast,
   If,
   IntNe,
-  LogMatches,
   Pipeline,
   PipelineStep,
   Predicate,
-  Retry,
   Run,
 }
-import std.env_binding { EnvSet, EnvUnset }
+import std.env_binding { EnvUnset }
 import std.optional { Absent, Present }
-import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
-import extdeps.rust.cargo { cargo_default_release_dir }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -294,34 +275,7 @@ type DeployStage {
   runner: RunnerSpec
 }
 
-// witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared
-// CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in
-// gunbc.commit_workflow), projected as explicit entries. Since the discovery flip
-// (ci_spec_discovery_flip_note) the roster is no longer the only witness source:
-// discovery_scan_dirs re-admits the tree-wide corpus, WHOLE — the three ordinary corpus batches
-// carry SelectionOff as of 2026-08-13. That authority note lived at v2.workflow.ci_floor_plan
-// corpus_selection_off_note and was DELETED with the floor cut (2026-08-15); the citation is
-// retained as history, and the property it recorded now holds BY CONSTRUCTION in the replacement,
-// which has no selection flag to set (gunbc.witness.witness_floor_workflow, and the CI rung drop in
-// DESIGN). The roster remains the home for rows that must run as declared explicit entries
-// (execution-kind rows with their own resource profile). Empty witness_entries AND empty
-// discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's
-// shape).
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
-type CiSpec {
-  gates: List<Gate>
-  witness_entries: List<ScheduleWitnessEntry>
-  discovery_scan_dirs: List<String>
-  diff_policy: DiffPolicy
-  notice_title: String
-  deploy_stages: List<DeployStage>
-}
-
-data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
-
-data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
-
-data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
 
 data gunbc_ci_deploy_srv1_stage: DeployStage = {
   id: "deploy_dashboard_srv1",
@@ -331,39 +285,6 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   needs: ["ci"],
   access: ci_deploy_srv1_access,
   runner: gunbc_ci_deploy_srv1_runner_spec(),
-}
-
-data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
-
-data gunbc_ci_spec: CiSpec = {
-  gates: gunbc_ci_floor_gates,
-  witness_entries: gunbc_ci_floor_witness_entries,
-  discovery_scan_dirs: witness_discovery_scan_dirs,
-  diff_policy: gunbc_ci_diff_policy,
-  notice_title: "v2 claim corpus",
-  deploy_stages: gunbc_ci_deploy_stages,
-}
-
-fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
-  CiSpec {
-    gates: spec.gates,
-    witness_entries: entries,
-    discovery_scan_dirs: spec.discovery_scan_dirs,
-    diff_policy: spec.diff_policy,
-    notice_title: spec.notice_title,
-    deploy_stages: spec.deploy_stages,
-  }
-}
-
-fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec {
-  CiSpec {
-    gates: spec.gates,
-    witness_entries: spec.witness_entries,
-    discovery_scan_dirs: dirs,
-    diff_policy: spec.diff_policy,
-    notice_title: spec.notice_title,
-    deploy_stages: spec.deploy_stages,
-  }
 }
 
 data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived clamp gunbc_ci_floor_batch_clamp_note (Piece 3, 2026-07-24): the hand-set gunbc_ci_floor_batch_wall_budget_seconds list this note governed is deleted, replaced by overhead + units*rate computed at run time; this note is kept for the operator-signed static-era history (including the two 1320->1440->1680 raises below) and the raise discipline, which carries forward to the clamp constants. THE COST WALL (CI floor endgame D5, operator brief 2026-07-23 — the resolve-regression journey's section-3 finding made mechanism: nothing redded a merge that added floor minutes, so every recovered minute was re-spent by the next lane's enrollment, and the step timeout's own bounce history 30 -> 60 -> 90 -> 120 -> 180 -> 270 -> 55 is the record of the budget being raised to fit). Per-BATCH wall budgets for gunbc_ci_floor_plan (named gunbc_ci_floor_batches through the static era this note records), enforced by claim_executor at walk time: each batch's measured wall is recorded as a typed receipt row (target/floor-batch-wall-receipt.txt), and a batch over its budget is a typed, located refusal — FLOOR-BATCH-OVER-BUDGET naming the batch index, measured wall, budget row, and this carrier — that reds the walk. A failure arm refuses, never widens: over-budget never triggers a rerun, a wider scope, or a silent cap raise. Denominated PER-BATCH, never per-run, because plumbing PRs have a structurally different cost profile (attribution doc section 9.2: a PR touching host_prelude/cli_run legitimately runs 46 of 55 wet rows — a per-run wall would red every such PR spuriously; per-batch budgets absorb the profile where it lands). RULING RECONCILIATION (the operator dispatching the 2026-07-23 endgame brief is the sign-off on this reading): the standing rule 'no wall-clock term in any verdict' (ci_floor_materialization_receipt_note, operator ruling 2026-07-10) governs WITNESS VERDICTS — a witness's pass/fail must never depend on how long it took. Batch budgets do not touch witness verdicts: they are admission/scheduling facts at the walk grain, the same split the 5-second fast-lane eval law already uses (gunbc_ci_fast_lane_rule_note: the deadline is lane admission, not a verdict term), so a batch refusal names the BATCH, and every witness verdict inside it stands as evaluated. RAISE DISCIPLINE: raising any budget requires appending a dated receipt note here naming the run id and the enrollment that grew the batch — the same discipline as the timeout-note bounce history — never a silent number edit. Budget basis (run 30009199696, post-#7122, with the endgame fixes priced in): batch 1 cheap gates 185s measured -> 125s post-pool, budget 240; batch 2 receipt consume ~0s, budget 60; batch 3 discovery 1024s measured (corpus-denominated resolve wall, lever-1 re-diagnosis pending), budget 1320; batch 4 wet corpora 649s plumbing-profile measured -> ~175s post-re-home, budget 420; batch 5 emit-host 7s, budget 120; batch 6 ingest 414s measured (4 composed overlay children — the genuine mktemp constraint), budget 600; batch 7 reads-real-bytes 206s, budget 420. Sum 3180s = 53min under the 55min step cap. OPERATOR SIGNATURE (briansrls, 2026-07-23): the admission/verdict reading above is affirmed — per-batch wall budgets are scheduling-admission facts, not wall-clock terms in witness verdicts; this line is the declared human-signed exemption row the 2026-07-10 ruling requires. Raise discipline amended: RAISING any budget row requires a new dated operator-signed line here naming the run id and the enrollment that grew the batch; TIGHTENING may land by ordinary receipt note. The on-call remedy for FLOOR-BATCH-OVER-BUDGET is diagnose-or-signed-raise, never rerun. FOLLOW-UP ROWS (operator rework push, 2026-07-23): (a) PRELUDE COVERAGE HOLE — the ~5min before batch-1 arms (naming-hygiene walk, policy install, plan resolve/eval, governor arm, eager compile-clean install) sits OUTSIDE every batch budget and can only red at the 55min step cap; a prelude budget row lands when the phase_mark walls get their own receipt keys. (b) IDENTITY-KEYED BUDGETS — rows are keyed by batch INDEX today (the coverage witness pins length, so a schedule change reds loudly rather than misassigning); keying by batch content-identity dissolves the index coupling and rides the ComputationIdentity lane. (c) K-CAP UNION-RSS RECEIPT — cheap_gate_pool_max_claims_per_child=16 is provisional until the pooled child's union RSS is receipted (claim_batch already prints per-shard-peak-rss; the first CI runs' logs back or re-size the cap; local proxy receipt: the 4-gate outer child peaked 1.82GB with the 12-claim pool nested). OPERATOR-SIGNED RAISE (briansrls, 2026-07-24): batch 3 (row index [2]) 1320 -> 1440 seconds, +9.1 percent (operator: 'lets raise the budget slightly more to give it some room over main' / 'like 10%'; 24min keeps the row's whole-minute grain). RUN IDS: 30063268739 @ e7a9006f wall_ms=1629287, 30058048605 wall_ms=1344115, 30055079462 wall_ms=1380561 — all batch=3 against budget_ms=1320000 on PR #7137. THE ENROLLMENT THAT GREW THE BATCH: none, and that mismatch with this discipline's template IS the receipt. Batch 3 is the affected-set-selected discovery corpus, so its wall is denominated in the DIFF's affected entry count, not in a roster edit: #7137 touches gunbc.ci.ci_layer_roots (broadly imported) and src/v1/stage0/src/cli_run.rs, selecting 839-841 entries where a typical main push selects 600-601. Per-entry cost is at PARITY with green controls, so nothing regressed — #7137 1.602/1.609/1.646 s-per-entry vs main 1.574, clever-ram-110 1.756, clever-pike-49 1.504. The retired 1320 divided by 841 entries = 1.570 s-per-entry, BELOW main's own 1.574 measured rate: the row had zero headroom for any broad-touch diff and would red a no-op PR that merely touched a widely-imported carrier. 1440/841 = 1.712 s-per-entry, ~8.8 percent over main's rate — that is the 'room over main'. HONEST RESIDUAL: 1440 covers three of the four observed runs; the 1629287 outlier (run 30063268739, host peaked 9GB vs 16GB on the other three, 1.937 s-per-entry) still reds, and that is the wall working as designed — the remedy stays diagnose-or-signed-raise, never rerun. SUM ACCOUNTING (the one invariant this raise spends): the ceiling sum moves 3180 -> 3300 seconds = exactly 55min, so this note's original 'Sum 3180s = 53min under the 55min step cap' margin is now CONSUMED. Ceilings are per-batch maxima rather than a predicted run wall, but the sum was this note's stated safety argument and it no longer holds with margin, so it is recorded here rather than dropped. FOLLOW-UP (not landed here): restore margin by TIGHTENING the rows with the largest declared-vs-measured gap once post-merge receipts exist — batch 4 (budget 420, ~175s measured post-re-home) and batch 6 (budget 600, 414s measured) — which lands by ordinary receipt note under this same discipline. OPERATOR-SIGNED RAISE (briansrls, 2026-07-24, second): batch 3 (row index [2]) 1440 -> 1680 seconds, +16.7 percent (28min, whole-minute grain). Operator's word this raise: 'you may bump the budget to 1680 - we're redoing it completely anyway' — so 1680 is a STOPGAP to green this PR while the batch-budget mechanism itself is reworked (the FOLLOW-UP ROWS above: prelude coverage, identity-keyed budgets, k-cap union-RSS), not a claim that 1680 is the settled ceiling. WHY 1440 WAS UNDER-SIZED: the first raise sized off three observations (1344/1381/1629) where one landed on a fast host; five batch-3 walls are now observed on #7137 — 1344115, 1380561, 1558226 (run 30081341899 @ 06a1f2c, host srv4-03), 1581666 (run 30067149030 @ 93642bc, host srv4-03), 1629287 (run 30063268739) — and THREE of five exceed 1440, so 1440 reds the majority, not a lone outlier. This is host variance on the ~840-entry affected set, not a per-entry regression (per-entry stays at parity with green controls, ~1.6-1.9 s-per-entry across hosts). THE ENROLLMENT THAT GREW THE BATCH: still none — batch 3 is affected-set-denominated and #7137 touches broadly-imported carriers (gunbc.ci.ci_layer_roots, cli_run.rs), the same profile the FLOOR-BATCH-OVER-BUDGET template's 'enrollment' field does not capture. SIZING: 1680 clears all five observed walls (max 1629287) with ~3 percent margin. SUM ACCOUNTING CORRECTED: the prior line's 'sum = 55min, margin consumed' was over-conservative — per-batch maxima never co-occur, and run 30081341899's ACTUAL floor step wall was ~44min (b1 185s + b2 ~0s + b3 1558s + b4 175s + b5 7s + b6 414s + b7 206s), well under the 55min step timeout that is the real constraint; the ceiling-sum (now 3540s) is a paper figure nothing hits. The remedy stays diagnose-or-signed-raise, never rerun."
@@ -556,54 +477,6 @@ data gunbc_ci_compile_clean_clamp: RunnableBatchClamp = RunnableBatchClamp {
   ),
 }
 
-data ci_release_features: String = "text_lookup_work_counter,interp_test_witness,test_hooks"
-
-fn ci_release_build_line() -> String {
-  concat(
-    concat(
-      "\"$CARGO_BIN\" build -p v1-compiler --release --features ",
-      ci_release_features
-    ),
-    fold(
-      ci_floor_required_artifact_names(),
-      init: "",
-      f: (acc, name) => concat(acc, concat(" --bin ", name))
-    )
-  )
-}
-
-// THE BUILD OF ONE EMITTED RELEASE BIN (gunbc.ci.ci_release_bins EmittedReleaseBin), run after the
-// cargo bins exist because it needs the gunbc this job just built: emit the entry's Rust closure,
-// build the emitted crate under gunbc.repo.repo_self_emitted_build (the flag set the seed's probe
-// build also runs), and install the one executable at target/release/<name>. The executable's name
-// is read from the emitted crate's own manifest, never assumed to be the probe's package name.
-// The line is a shell-transport spelling, like ci_release_build_line beside it: it dissolves onto extdeps.rust.cargo_build
-// (and a typed read of cargo's own executable record in place of the sed over its JSON stream) when the ci emit seam can
-// bind a typed cargo operation instead of a hand-spelled argv line. Failure is loud on both uses: the job script runs each
-// bin as its own statement under the workflow's `set -e`, and an unreadable executable path leaves cp with an empty source.
-// ci_release_pack_build_line joins the lines with " ; " only as the TEXT the pack key names; it is never executed.
-fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
-  let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
-  let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
-  // The release dir comes from cargo's default-layout home, as in ci_release_artifact_word; with the
-  // shell var as build_root the emitted text is byte-identical, so the fleet pack key does not move.
-  let release_dir = cargo_default_release_dir(build_root: "$ROOT")
-  join([
-    "rm -rf ", dir, " && \"", release_dir, "/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
-    " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
-    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"", release_dir, "/", bin.name, "\"",
-  ], "")
-}
-
-// The whole build the fleet pack's key names: the cargo bins, then each emitted release bin.
-fn ci_release_pack_build_line() -> String {
-  fold(
-    ci_emitted_release_bins(),
-    init: ci_release_build_line(),
-    f: (acc, bin) => join([acc, " ; ", ci_emitted_release_build_line(bin: bin)], "")
-  )
-}
-
 data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (gunbc.design_argument::fail_closed) — and fmt was collateral damage of a gunbc.design_argument::single_authority fusion: gunbc.instruments.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (gunbc.design_argument::fail_closed: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.rust.cargo_build cargo.Build.Fmt (the same operation gunbc.instruments.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at gunbc.design_argument::self_hosting terminal collapse, when no .rs remains to format."
 
 fn ci_fmt_gate_line() -> String {
@@ -611,73 +484,6 @@ fn ci_fmt_gate_line() -> String {
 }
 
 data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
-
-fn ci_retry_body_run(command: String) -> Run {
-  Run {
-    command: command,
-    env: Empty,
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
-fn ci_retry_exhausted_pipeline() -> Pipeline {
-  Pipeline {
-    steps: [Do { run: Run { command: "exit 1", env: Empty, redirect: Absent, capture: Absent } }],
-    on_failure: FailFast
-  }
-}
-
-fn ci_retry_escalation_level1() -> EscalationLevel {
-  EscalationLevel {
-    detect: LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
-    },
-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
-  }
-}
-
-fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
-  Retry {
-    body: Pipeline {
-      steps: [Do { run: ci_retry_body_run(command: command) }],
-      on_failure: FailFast
-    },
-    escalations: [ci_retry_escalation_level1()],
-    on_exhausted: ci_retry_exhausted_pipeline()
-  }
-}
-
-// DERIVED pack membership — authority is gunbc.ci.ci_release_bins (ci_floor_invoked_bins ∪
-// witness_declared_release_bins). The hand List that lived here was deleted 2026-07-26: fan-out
-// (build --bin flags / pack / verify) still folds ci_floor_required_artifact_names(), but
-// MEMBERSHIP is no longer a free-floating hand list here. See
-// gunbc.ci.ci_release_bins.ci_release_bins_authority_note for the construction wall
-// (WitnessBinNotEnrolled) and the dissolve-on for witness_declared_release_bins. Operator job-split
-// ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control
-// (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of
-// scope: a same-run artifact is fresh by construction.
-fn ci_release_artifact_word(name: String) -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: "ROOT"),
-    // The literal is derived from cargo's default-layout home (extdeps.rust.cargo), not
-    // re-spelled: this word is where the CI release-artifact check reads its binaries from, so a
-    // hand-written join here is the one leaf that could compile green while pointing the floor's
-    // verify at a directory cargo no longer uses. The bash-word medium keeps ROOT as a var node;
-    // only the constant segment comes from the fn (empty build_root -> "/target").
-    bash_build_word_lit(text: concat(cargo_default_release_dir(build_root: ""), concat("/", name))),
-  ])
-}
-
-// claim_executor verifies every roster bin it was built beside, itself included.
-fn ci_floor_build_verify_stmt() -> Node {
-  bash_build_command_with_words(words: concat(
-    [ci_release_artifact_word(name: "claim_executor"), bash_build_word_lit(text: "--verify-build-artifacts")],
-    map(ci_floor_required_artifact_names(), name => ci_release_artifact_word(name: name))
-  ))
-}
 
 // A refused emission is a marker that is not valid workflow shell, so the committed-workflow drift
 // gate turns red. It is never a partial script (gunbc.design_argument::fail_closed: refuse, never widen).
@@ -689,8 +495,6 @@ fn ci_floor_build_verify_script() -> String {
     Rejected { diagnostics: _ } => ci_floor_build_verify_refused_poison
   }
 }
-
-data ci_release_bins_archive_name: String = "release-bins.tgz"
 
 fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
@@ -859,11 +663,6 @@ data gunbc_ci_branch_run_grant_apply_target: GunbcRunStepTarget = GunbcRunStepTa
 data gunbc_ci_branch_run_grant_await_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/branch_run_grant_await.dag",
   function: "await_grant",
-}
-
-data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/branch_run_grant_broker.dag",
-  function: "broker",
 }
 
 data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1199,6 +998,16 @@ data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget 
   function: "lost_boot_sweep_dry_run_wet",
 }
 
+data gunbc_ci_jit_dead_sweep_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_wet",
+}
+
+data gunbc_ci_jit_dead_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_jit_dead_sweep_run.dag",
+  function: "jit_dead_sweep_dry_run_wet",
+}
+
 data gunbc_ci_service_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_service_slot_start.dag",
   function: "service_slot_start_wet",
@@ -1478,11 +1287,6 @@ data gunbc_ci_heal_candidate_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "heal_candidate_produce_wet",
 }
 
-data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_candidate_stage0.dag",
-  function: "heal_tail_wet",
-}
-
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
 // why targets are declared here rather than inline: a new call site that re-inlines a literal pair
 // is outside the join.
@@ -1624,6 +1428,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_srv1_root_mutation_approval_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
     gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
+    gunbc_ci_jit_dead_sweep_target,
+    gunbc_ci_jit_dead_sweep_dry_run_target,
     gunbc_ci_service_slot_start_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
@@ -1651,8 +1457,6 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
 
 data gunbc_live_deploy_receipt_artifact_name: String = live_deploy_apply_receipt_artifact_name_for(instance_id: srv1_dashboard_live_id as String)
 data gunbc_live_deploy_receipt_artifact_dir: String = live_deploy_apply_receipt_dir_for(instance_id: srv1_dashboard_live_id as String)
-data gunbc_fleet_converge_apply_receipt_artifact_name: String = "fleet-converge-apply-receipt"
-data gunbc_fleet_converge_apply_receipt_artifact_dir: String = "/tmp/fleet-converge-apply"
 data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
 data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
 
@@ -1756,222 +1560,6 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
     function: gunbc_ci_multi_principal_probe_target.function,
     claim_run: false,
     receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
-  )
-}
-
-// A2 in-run key materialization (parent msg_72e2dcee): foreign-executor shell that exchanges
-// nothing itself — the WIF access token arrives from the google_auth_action step via env — and
-// turns Secret Manager versions/1 (PINNED, never `latest`) into a loaded ssh-agent identity. SECRET
-// HYGIENE, load-bearing: the payload flows curl -> python3 decode -> file mode 0600 -> ssh-add ->
-// rm; never echoed, never written under a durable HOME, no digest printed. The only stdout is the
-// identity NAME line. The agent socket/pid go to GITHUB_ENV so the probe step's ssh children
-// inherit them; the job's always() cleanup step kills the agent.
-//
-// THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, RECORDED BEFORE DELETING IT (parent-session
-// finding, 2026-08-21). It read "DISSOLVES WHEN the typed secret-materialization effect... lands on
-// host_effect_apply" — but host_effect_apply's HostEffectIntent.target is a NodeControlPlane. Fleet
-// effects use arms carrying ComputeHost; explicitly runner-local effects use RunnerLocalHost
-// without fabricating a fleet identity. An ephemeral GitHub Actions runner is not a ComputeHost the
-// fleet models, so no host_effect_apply arm could ever land this step and the named condition could
-// never occur — the same defect class as the trigger corrected alongside it
-// (gunbc_ci_spark_admin_credential_shell_emit_scaffold, PR #8777): a marker naming a condition that
-// sounds like progress but is unreachable from where the code runs.
-//
-// THE ACTUAL DEBT WAS NEVER ABOUT host_effect_apply: it was a hand-concatenated String where typed
-// orchestration emit belongs (gunbc.design_argument::source_annotations: prose the substrate can see, not program data
-// hidden in a joined literal), the same debt PR #8777 discharged for the spark credential. Repairs
-// #3 and #4 (operator scan of #8083, 2026-08-09) are preserved verbatim in the Do/Run steps that
-// replace the join:
-//
-//   #3 FAILURE-SAFE CLEANUP -- a `trap cleanup EXIT` is armed BEFORE the key touches disk, so any
-//      failure in curl/base64/chmod/keygen/agent/add removes the key file and kills the agent
-//      regardless of where set -e aborts. The outer always() step stays as defense in depth. The
-//      old ordering (rm only on the happy path, PID exported last) could leave the key on disk
-//      with no exported PID for the outer cleanup to find.
-//   #4 SECRET-IDENTITY VERIFICATION -- before ssh-add, derive the public key from the fetched
-//      private material (ssh-keygen -y) and its fingerprint (ssh-keygen -lf) and compare to the
-//      modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a located
-//      ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream host-auth
-//      failure. The comparison is against the repo's single fingerprint authority.
-//
-// UNLIKE THE SPARK CREDENTIAL, THIS STEP DOES NOT COLLAPSE INTO A SINGLE CONSUMER. The agent is
-// read by five mutually-exclusive mode-gated steps (spark_grants/observe/linger/reboot/durability,
-// all via fleet_multi_principal_probe), selected at workflow-dispatch runtime by
-// github.event.inputs.mode; plan/apply touch no SSH. Folding this script into all five would author
-// it five times (gunbc.design_argument::minimize_redundancy). What crosses the step boundary is the AGENT — a background
-// daemon plus socket path and pid, neither secret — via SSH_AUTH_SOCK/SSH_AGENT_PID over
-// GITHUB_ENV, as before. The private key file never crossed a step boundary (ssh-add then rm,
-// before the trap disarms): measured against this function's body and found correct, not a defect
-// this change fixes.
-//
-// The Scaffold and DissolutionCondition rows that stood here are deleted rather than corrected in
-// place: the typed-orchestration-emit condition they should have named is fulfilled by this same
-// change (gunbc_ci_fleet_key_agent_prelude below, emitted through
-// v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row would be
-// created and discharged in one diff — ceremony, not a standing obligation.
-//
-// THE TOKEN IS WRITTEN BY A SHELL BUILTIN, AND THAT IS THE WHOLE MECHANISM. Both preludes below
-// used `curl -H "Authorization: Bearer $WIF_ACCESS_TOKEN"`, which the shell expands BEFORE exec, so
-// the GCP access token became a word in curl's argv — readable by any unprivileged `ps` for the
-// life of the request. On these runners that audience is real: /proc carries no hidepid,
-// /proc/PID/cmdline is mode 0444, and runner slots are ordinary host systemd services in the host
-// pid namespace, so a job payload sees every process on the machine. curl reads a header from a
-// file with `-H @FILE` (>=7.55; the runners carry 7.88), moving the value out of curl's argv.
-// Writing the file with any EXTERNAL command would merely relocate the token into that command's
-// argv; `printf` is a bash BUILTIN, forks nothing and creates no command line, so the token exists
-// only in the shell's own memory and the file, never in any process table. The mode is set BEFORE
-// the content exists: both preludes run `umask 077`, so the redirect creates the file 0600 at
-// creation, with no window at a wider mode.
-//
-// THE TRAP IS NOT WHAT RETIRES THE TOKEN IN THE FLEET PRELUDE, and an earlier revision said it was
-// ("Each prelude's existing trap removes HDR_FILE on exit alongside the other credential material
-// it already cleans up"). That holds for the spark prelude, whose trap stays armed through step
-// exit. It is FALSE for the fleet prelude, which DISARMS its trap (`trap - EXIT`) so the ssh-agent
-// survives into later steps — after removing only KEY_FILE, so the bearer token was left in
-// RUNNER_TEMP for the rest of the job. Moving the token out of argv and leaving it on disk is the
-// same exposure at a different address; found in review of gunbc#9230 (review 56110).
-//
-// THE FIX IS LIFETIME, NOT CLEANUP. HDR_FILE is consumed by exactly one curl, so it is removed on
-// the line after that curl rather than added to a later rm — the credential ceases to exist the
-// moment its only consumer is done, a shorter window than any exit path offers and independent of
-// which trap is armed at step end. The trap still covers the failure arm between creation and that
-// removal, where the file can outlive the shell.
-//
-// WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
-// prelude that interpolates a credential into a command string — these bodies are hand-authored
-// shell text, not declared operation argv, so std.operation_argv's binding wall cannot see them.
-// The class stays mitigatable here; the trigger is the one extdeps.bmc.http names: credentials
-// modeled as declared inputs whose type the binder can refuse.
-//
-// WHY THIS PAYLOAD IS SHELL TEXT AND WHAT WOULD CHANGE THAT (review 55857 asked for a bash-emit
-// scaffold marker here; recorded rather than marked, because the marker would assert the wrong
-// thing). This prelude is NOT the unmigrated medium-as-string form the two scaffolds in this module
-// carry a dissolution trigger for — those mark *_script functions that concat-build a whole script,
-// and their trigger text says so. gunbc_ci_fleet_key_agent_script builds a typed Pipeline of
-// PipelineStep and emits it through v2.workflow.gunbc_invoke_step_emit, which IS the orchestration
-// emit those triggers name as their terminal state; gunbc.fleet.fleet_ssh_credential_verify
-// fleet_ssh_credential_shell_verification_supersession_note records that migration. Marking one
-// command payload as a scaffold while its twenty peers in the same function carry none would claim
-// this line is unmigrated debt when it sits in the migrated construction. The residue the review is
-// right about: a Run's `command` is still shell text, corpus-wide, tracked by bash-emit rather than
-// per line. No modeled actuator was available HERE because of a boundary, not a preference — this
-// prelude executes as raw shell in a FOREIGN EXECUTOR (GitHub Actions `run:`) before gunbc runs at
-// all, so Filesystem.WriteOwnerOnly, which this same change uses for the netrc on the BMC path, is
-// unreachable at this point in a job. Choosing printf is not declining a modeled route; there is
-// none on that side of the boundary yet, which is exactly what bash-emit would change.
-// The bearer-header format, one row for the string-built runners and the bash_build one.
-data gunbc_ci_auth_header_format: String = "Authorization: Bearer %s\\n"
-
-fn gunbc_ci_auth_header_file_write_command() -> String {
-  gunbc_ci_auth_header_file_write_command_to(header_file: "HDR_FILE")
-}
-
-/// The same write into a caller-named header file, so a step whose file is not `$HDR_FILE` still
-/// takes the header from `gunbc_ci_auth_header_format` rather than re-spelling it.
-fn gunbc_ci_auth_header_file_write_command_to(header_file: String) -> String {
-  join(["printf '", gunbc_ci_auth_header_format, "' \"$WIF_ACCESS_TOKEN\" > \"$", header_file, "\""], "")
-}
-
-// THE SAME RULE AS A NODE BUILDER, so a step assembled from bash_build nodes takes the same
-// authority as a string-built one: the header reaches its file through the shell's own printf
-// builtin — a builtin forks nothing, so the token never becomes an argv word of any process — and
-// the consumer reads it back with `-H @<file>`. A caller takes the pair: the write statement
-// before the consumer, and the argument pair where the consumer's '-H' word belongs. Removal is
-// the caller's, because only the caller knows both outcomes of its own fetch.
-fn gunbc_ci_auth_header_file_write_statement(header_path: Node, token_env: String) -> Node {
-  bash_build_with_redir_to_file(
-    inner: bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "printf"),
-      bash_build_word_lit(text: gunbc_ci_auth_header_format),
-      bash_build_word_var(name: token_env),
-    ]),
-    path: header_path,
-  )
-}
-
-fn gunbc_ci_auth_header_file_args(header_path: Node) -> List<Node> {
-  [
-    bash_build_word_lit(text: "-H"),
-    bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), header_path]),
-  ]
-}
-
-fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/fleet-automation-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "AGENT_STARTED=0") },
-    Do {
-      run: ci_retry_body_run(
-        command: "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }"
-      )
-    },
-    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "curl -sSf -H @\"$HDR_FILE\" \"",
-          fleet_automation_privkey_sm_access_url(),
-          "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\""
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join(["EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\""], "")
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\""
-      )
-    },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ",
-          fleet_automation_privkey_version_segment(),
-          " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "eval \"$(ssh-agent -s)\" >/dev/null") },
-    Do { run: ci_retry_body_run(command: "AGENT_STARTED=1") },
-    Do { run: ci_retry_body_run(command: "ssh-add \"$KEY_FILE\" 2>/dev/null") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "trap - EXIT") },
-    Do { run: ci_retry_body_run(command: "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"") },
-    Do { run: ci_retry_body_run(command: "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\""
-      )
-    }
-  ]
-}
-
-data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci.ci_spec",
-    decl_name: "gunbc_ci_fleet_key_agent_script",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
-
-fn gunbc_ci_fleet_key_agent_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n")),
-    gunbc_invoke_step_emit_pipeline(
-      p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
-    )
   )
 }
 
@@ -2395,14 +1983,6 @@ fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
   ], "")
 }
 
-// The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and must kill
-// its own agent; nothing is memoizable across jobs), named so the workflow step and the
-// materialization gate's fresh-effect list reference ONE authority (gunbc.design_argument::single_authority), rather than an inline
-// literal per job that the ladder would read as authored cross-job duplication.
-fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
-  "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n"
-}
-
 // THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions `run:`
 // step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`, and its own
 // comment recorded that the step existed because the self-install route otherwise "had zero
@@ -2415,8 +1995,6 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
 // concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges the
 // obligation instead of carrying it, and an unbound condition whose subject no longer exists can
 // never report itself fired.
-data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
-
 fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2638,9 +2216,6 @@ fn app_mint_export_commands(spec: AppInstallationTokenMint) -> List<String> {
   )
 }
 
-fn app_mint_step(command: String) -> PipelineStep {
-  Do { run: ci_retry_body_run(command: command) }
-}
 
 // THE OBSERVATION RECORD, for the one caller whose verdict is decided in .dag rather than by this
 // script's exit: the app-key version verifier (gunbc.auth.ci_app_key_rotation). Each line is what one
@@ -2653,7 +2228,7 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
   match spec.observation_record {
     Absent => []
     Present { value: path_expression } =>
-      [app_mint_step(command: join(["printf '", key, " %s\\n' ", value_expression, " >> ", path_expression], ""))]
+      [ci_retry_step(command: join(["printf '", key, " %s\\n' ", value_expression, " >> ", path_expression], ""))]
   }
 }
 
@@ -2670,104 +2245,31 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
 // THE APP JWT CAN MINT A TOKEN FOR EVERY INSTALLATION OF ITS APP, so it is strictly more powerful
 // than the installation token it buys; it is written to a 0600 file, spent once, and removed before
 // the token is read out of the response.
-// A HOSTED RUNNER BINDS NO CGROUP, AND gunbc REFUSES WITHOUT ONE.
-//
-// v1_compiler cli_run entry_resolve typed_module_cache_cap_derivation panics with
-// HostBudgetUnreadable when no cgroup memory.high or memory.max binds the process: the
-// typed-module cache cap bounds the memory used to RESOLVE the corpus, so an unknown budget
-// cannot be defaulted. That refusal is the repair for an absorbing fallback which previously
-// took the ceiling and OOM-killed the corpus (exit 137), so it is not to be worked around --
-// and its own note rules out GUNBC_MEMORY_BUDGET_BYTES explicitly, because an environment
-// declaration constrains no allocation.
-//
-// Self-hosted runners satisfy it for free: actions-runner@.service carries MemoryMax. The heal
-// publisher runs on a HOSTED runner, deliberately, so that an App installation token which can
-// write a protected branch never lands on runners shared with pull-request workloads. Measured
-// 2026-09-19, publisher run 35451964724: admission panicked before any credential was minted.
-//
-// So the job binds a real cgroup itself. The shell moves into a leaf with memory.max set, and
-// gunbc inherits it as a child -- a constraint that actually holds, not a declared number. This
-// is a prelude rather than a wrapper because the invocation words pass an unquoted-path
-// allowlist (gunbc_invoke_first_unsafe_word) that a `systemd-run --scope -p ...` prefix would
-// not survive; moving the shell leaves the invocation untouched.
-data heal_publisher_cgroup_name: String = "gunbc-publish"
-
-// THE HOSTED ubuntu-24.04-arm MEMORY BOUND, ONCE, for every caller of the bind below: 12 GiB
-// against the image's 4 vCPU / 16 GiB, leaving the runner agent its own room.
-fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
-  gibibyte(count: 12)
-}
-
-// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
-// tests in the clippy lane (gunbc.witness.compiler_gate_workflow). The callers differ in the leaf's name and
-// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
-// afterwards inherits a memory.max that gunbc.host.host_budget_source reads as an ordinary observation.
-// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
-// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
-data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings carried by the heal publisher prelude (the rust_unit_tests step stopped binding it when it moved to the fleet on 2026-09-30) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; the caller then consumes that op and this function is deleted")
-
-fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
-  [
-    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
-    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
-    "sudo mkdir -p \"$GUNBC_CG\"",
-    concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
-    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
-    "cat \"$GUNBC_CG/memory.max\"",
-  ]
-}
-
-fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
-  concat(
-    [app_mint_step(command: "set -euo pipefail")],
-    list_map(
-      xs: hosted_runner_memory_cgroup_bind_commands(
-        cgroup_name: heal_publisher_cgroup_name,
-        memory_max: hosted_arm_runner_cgroup_memory_max(),
-      ),
-      f: fn(c) { app_mint_step(command: c) },
-    )
-  )
-}
-
-// THE MEMORY CEILING ON ITS OWN, rendered for a phase that has a tail of its own between the ceiling and
-// the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
-// go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
-// commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
-fn heal_publisher_cgroup_prelude_script() -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
-      steps: heal_publisher_cgroup_prelude(),
-      on_failure: FailFast
-    }),
-    "\n"
-  )
-}
 
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
   concat(concat(concat(concat(concat(concat(concat(
     [
-      app_mint_step(command: "set -euo pipefail"),
-      app_mint_step(command: "umask 077"),
-      app_mint_step(command: concat("KEY_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-key"))),
-      app_mint_step(command: concat("HDR_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-auth-header"))),
-      app_mint_step(command: concat("JWT_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-jwt"))),
-      app_mint_step(command: concat("TOKEN_HEADERS=", app_mint_path(stem: spec.file_stem, suffix: "-token-headers"))),
-      app_mint_step(command: concat("TOKEN_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-token-body"))),
-      app_mint_step(command: app_mint_cleanup_command(spec: spec)),
-      app_mint_step(command: "trap cleanup EXIT"),
-      app_mint_step(command: gunbc_ci_auth_header_file_write_command()),
-      app_mint_step(command: concat("SM_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"))),
-      app_mint_step(command: join([
+      ci_retry_step(command: "set -euo pipefail"),
+      ci_retry_step(command: "umask 077"),
+      ci_retry_step(command: concat("KEY_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-key"))),
+      ci_retry_step(command: concat("HDR_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-auth-header"))),
+      ci_retry_step(command: concat("JWT_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-jwt"))),
+      ci_retry_step(command: concat("TOKEN_HEADERS=", app_mint_path(stem: spec.file_stem, suffix: "-token-headers"))),
+      ci_retry_step(command: concat("TOKEN_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-token-body"))),
+      ci_retry_step(command: app_mint_cleanup_command(spec: spec)),
+      ci_retry_step(command: "trap cleanup EXIT"),
+      ci_retry_step(command: gunbc_ci_auth_header_file_write_command()),
+      ci_retry_step(command: concat("SM_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"))),
+      ci_retry_step(command: join([
         "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
         secret_ref_access_url(ref: spec.key_secret),
         "\")\""
       ], "")),
-      app_mint_step(command: "rm -f \"$HDR_FILE\"")
+      ci_retry_step(command: "rm -f \"$HDR_FILE\"")
     ],
     app_mint_record_steps(spec: spec, key: app_key_record_key_status_key, value_expression: "\"$SM_CODE\"")),
     [
-      app_mint_step(command: join([
+      ci_retry_step(command: join([
         "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
         spec.key_unreadable_message,
         "\" >&2; exit 1; fi"
@@ -2779,13 +2281,13 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       value_expression: "\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"name\"])' \"$SM_BODY\")\""
     )),
     [
-      app_mint_step(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\""),
-      app_mint_step(command: "rm -f \"$SM_BODY\""),
-      app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
-      app_mint_step(command: "NOW=$(date +%s)"),
-      app_mint_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
-      app_mint_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | b64url)"], "")),
-      app_mint_step(command: join([
+      ci_retry_step(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\""),
+      ci_retry_step(command: "rm -f \"$SM_BODY\""),
+      ci_retry_step(command: "chmod 600 \"$KEY_FILE\""),
+      ci_retry_step(command: "NOW=$(date +%s)"),
+      ci_retry_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
+      ci_retry_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | b64url)"], "")),
+      ci_retry_step(command: join([
         "JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((NOW-",
         to_string(github_app_jwt_backdate_seconds),
         "))\" \"$((NOW+",
@@ -2794,11 +2296,11 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
         to_string(spec.app_id),
         "\" | b64url)"
       ], "")),
-      app_mint_step(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)"),
-      app_mint_step(command: "rm -f \"$KEY_FILE\""),
-      app_mint_step(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\""),
-      app_mint_step(command: app_mint_token_request_command(spec: spec)),
-      app_mint_step(command: "rm -f \"$JWT_FILE\"")
+      ci_retry_step(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)"),
+      ci_retry_step(command: "rm -f \"$KEY_FILE\""),
+      ci_retry_step(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\""),
+      ci_retry_step(command: app_mint_token_request_command(spec: spec)),
+      ci_retry_step(command: "rm -f \"$JWT_FILE\"")
     ]),
     app_mint_record_steps(
       spec: spec,
@@ -2806,20 +2308,20 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       value_expression: "\"$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')\""
     )),
     [
-      app_mint_step(command: join([
+      ci_retry_step(command: join([
         "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
         spec.token_refused_message,
         "\" >&2; exit 1; fi"
       ], "")),
-      app_mint_step(command: join([
+      ci_retry_step(command: join([
         spec.export_env_names.head,
         "=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\""
       ], "")),
-      app_mint_step(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"")
+      ci_retry_step(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"")
     ]),
     concat(
-      map(app_mint_export_commands(spec: spec), c => app_mint_step(command: c)),
-      [app_mint_step(command: join(["echo \"", spec.minted_message, "\""], ""))]
+      map(app_mint_export_commands(spec: spec), c => ci_retry_step(command: c)),
+      [ci_retry_step(command: join(["echo \"", spec.minted_message, "\""], ""))]
     )
   )
 }
@@ -2924,9 +2426,9 @@ fn gunbc_ci_app_key_version_verify_mint_script() -> String {
     p: Pipeline {
       steps: concat(
         [
-          app_mint_step(command: "set -euo pipefail"),
-          app_mint_step(command: join([": > \"$", app_key_verify_record_env_name as String, "\""], "")),
-          app_mint_step(command: join([
+          ci_retry_step(command: "set -euo pipefail"),
+          ci_retry_step(command: join([": > \"$", app_key_verify_record_env_name as String, "\""], "")),
+          ci_retry_step(command: join([
             "case \"$", app_key_version_env_name as String,
             "\" in ''|0*|*[!0-9]*) echo \"AppKeyVersionSelectorRefused: '$", app_key_version_env_name as String,
             "' is not a Secret Manager version number; the alias is refused rather than resolved. Reading NO key.\" >&2; exit 1;; esac"
@@ -3189,16 +2691,6 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_branch_run_grant_await_target.entry,
     function: gunbc_ci_branch_run_grant_await_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_broker_target.entry,
-    function: gunbc_ci_branch_run_grant_broker_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -4484,63 +3976,11 @@ fn gunbc_ci_heal_repair_declaration_invoke() -> String {
 // repair from the default branch under an App installation token whose pushes GitHub runs without
 // approval (gunbc#10958; the loss the old arm declared is gunbc.rung_drop
 // heal_healed_head_executed_verdict_without_human).
-// THE ONE COMMAND AN AUTHOR RUNS TO REGENERATE EVERY COMMITTED PROJECTION. It is named here rather
-// than in each consumer because three places tell an author to run it -- the merge driver's refusal
-// recipe, its two witnesses -- and a second spelling would drift from the entry the workflow uses.
-// It was `ci_heal_author_commit_regen_command` while heal's author-commit arm was its only caller;
-// that arm is gone with the push, and the command is not heal's (gunbc#10958).
-data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
-
 fn gunbc_ci_heal_candidate_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_candidate_target.entry,
     function: gunbc_ci_heal_candidate_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-// THE STAGE0 MIRRORS' PRODUCER IS THE SEED'S OWN PRICED ROUND, NOT A LOOP IN SHELL: --regen-round-cost
-// builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
-// restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
-// run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
-
-// THE HEAL ROUND'S INVOCATION. `--base-mirror` asks round 1 to compile the BASE commit's committed
-// stage0 mirror instead of this checkout's (gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
-// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963): the head's
-// mirror is what the PR's `.dag` edits exist to repair, so a head mirror already carrying that
-// refusal stops the round before the regenerated seed can replace it (PR #13936, run
-// 40064940799, job 120786085841, step 7 -- `stage seed build refused ... cargo build
-// (round.rebuild_from_installed) failed with exit status: 101`, over five rows of `shared layer
-// refused for 'Nat': TypeDeclNotDeclared` in the committed mirror at std_measure.rs:650:34 and
-// its siblings). The flag carries NO value: the base commit is this step's
-// `HEAL_BASE_MIRROR_COMMIT` environment value (gunbc.heal_workflow heal_round_base_mirror_env,
-// bound to the immutable github.event.pull_request.base.sha), never argv, because a
-// pull-request-controlled value spliced into a command line would be shell. A COMMIT and not the
-// branch name: a name resolves to whatever the checkout holds under it, and a local branch can sit
-// behind its remote-tracking ref, so seeding from "whichever name exists" and then recording the
-// pick as the base commit would fabricate the fact the receipt carries (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). It is passed unconditionally -- the round does not try the
-// head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
-// different invocation of the same producer with the flag absent, not a second path.
-//
-// SCOPED TO WHAT THE PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2b). `--regen-affected-scope`
-// asks a child for the scope (required_regen_host EmissionScopeReceipt) over the pull request's own change
-// from merge-base(base, HEAD), with what the base gained since that merge-base read apart as the generator
-// delta (gunbc.regen_affected_set regen_affected_set_over_diverged_change, P2c), after any interrupted round
-// is recovered; a change that reaches no committed mirror is a successful zero-work round, an added or
-// deleted module, an edited seed build input (gunbc.seed_build_inputs) or a generator change on the base
-// is the whole population, and a scope that cannot be computed refuses (operator decision 2026-11-10). Switched on only now that the base carries the scoped protocol (P2a):
-// round 1 re-execs into a seed built from the base commit's crate.
-fn gunbc_ci_stage0_round_invoke() -> String {
-  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2")
-}
-
-fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_candidate_stage0_target.entry,
-    function: gunbc_ci_heal_candidate_stage0_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -4647,6 +4087,26 @@ fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_jit_dead_sweep_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_target.entry,
+    function: gunbc_ci_jit_dead_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_jit_dead_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_jit_dead_sweep_dry_run_target.entry,
+    function: gunbc_ci_jit_dead_sweep_dry_run_target.function,
     claim_run: false,
     receipt_rel: none
   )

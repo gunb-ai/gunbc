@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_host_key_enrollment
 
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set, fleet_convergence_provider_resource }
-import std.algebra { trim, list_sort_by_key, string_total_order }
+import std.algebra { trim, list_sort_by_key, string_total_order, list_append }
 import std.list { first_duplicate_by_key }
 import std.optional { optional_is_absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -24,7 +24,10 @@ import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputA
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.mac { Eui48Address }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
-import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, render_network_host }
+import gunbc.fleet.fleet_intent_network { host_lan_address }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, host_by_ipv4, render_network_host, parse_network_host, NetworkHostParsed, NetworkHostRefused }
+import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privkey_version_segment, fleet_automation_ssh_privkey_secret }
@@ -140,7 +143,8 @@ fn fleet_name_at_ssh_port(labels: List<DnsLabel>) -> SocketAddress {
 // prefixes match exactly) — two independent observations from different positions agree,
 // which is what makes this TOFU scan an enrollment rather than a guess. Keys are
 // DISTINCT across all six hosts (the identical-factory-keys claim stays refuted).
-data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
+data fleet_host_key_enrollments: List<KnownHostKeyRow> = list_append(
+  left: [
   KnownHostKeyRow {
     host: "srv1" as HostIdentity,
     address: fleet_name_at_ssh_port(labels: ["srv1" as DnsLabel]),
@@ -181,7 +185,64 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
     provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as NonEmptyStr },
   },
+  ],
+  right: lan_endpoint_host_key_rows(),
+)
+
+// A KEY READ AT A HOST'S MODELED LAN ENDPOINT. Its address is not restated here: the row's SocketAddress
+// is derived from the host's HostOperatingSystem endpoint in gunbc.fleet.fleet_intent_network
+// (host_lan_address), so a re-addressed host moves this row with it. Used for a host whose bare identity
+// does not resolve in DNS (srv14 does not; butch.mynetworksettings.com does), where
+// fleet_name_at_ssh_port would name an address nothing answers at.
+type LanEndpointHostKey {
+  host: HostIdentity
+  key_type: String
+  public_key_base64: String
+  sha256_fingerprint: String
+  provenance: HostKeyEnrollmentProvenance
+}
+
+data lan_endpoint_host_keys: List<LanEndpointHostKey> = [
+  LanEndpointHostKey {
+    host: operator_host_srv14,
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICGsQWUBtO/2m0sIIe+nsQQHaeYwuAtW5P7qbY9dwvDT",
+    sha256_fingerprint: "SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc",
+    provenance: ScannedFirstContact { scanned_from: "2026-11-10: `cat /etc/ssh/ssh_host_ed25519_key.pub` and `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on 192.168.1.205 over ssh opened with StrictHostKeyChecking=accept-new (key material + fingerprint reproduced by that command). The ssh session proved who WE are to the host (fleet-automation key), not WHICH machine we reached -- whatever answered at .205 was trusted on first contact, so reading its own file reports what that machine says about itself. DHCP lease, not reserved; no cited external key authority." as NonEmptyStr },
+  },
 ]
+
+// THE ROW AT THE HOST'S LAN ENDPOINT, or Absent when the host has no HostOperatingSystem LAN endpoint or
+// that endpoint's address does not parse. An absent row is never replaced by a fabricated address; the
+// witness every_lan_endpoint_key_derives_its_row holds that every observation in lan_endpoint_host_keys
+// derives one, so a topology edit that strands a key goes red there.
+fn lan_endpoint_host_key_row(observation: LanEndpointHostKey) -> KnownHostKeyRow? {
+  match host_lan_address(host: observation.host) {
+    Absent => none
+    Present { value: a } =>
+      match parse_network_host(raw: a as String) {
+        NetworkHostRefused { refusal: _ } => none
+        NetworkHostParsed { host: h } =>
+          Present {
+            value: KnownHostKeyRow {
+              host: observation.host,
+              address: socket_address(host: h, port: openssh_standard_port),
+              key_type: observation.key_type,
+              public_key_base64: observation.public_key_base64,
+              sha256_fingerprint: observation.sha256_fingerprint,
+              provenance: observation.provenance,
+            },
+          }
+      }
+  }
+}
+
+fn lan_endpoint_host_key_rows() -> List<KnownHostKeyRow> {
+  flat_map(lan_endpoint_host_keys, o => match lan_endpoint_host_key_row(observation: o) {
+    Present { value: r } => [r]
+    Absent => []
+  })
+}
 
 fn enrolled_fingerprint_for(host: String) -> String? {
   fold(fleet_host_key_enrollments, init: none, f: fn(acc, k) {

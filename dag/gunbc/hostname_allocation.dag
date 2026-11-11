@@ -1,12 +1,13 @@
 module gunbc.hostname_allocation
 
 import std.types { List, Bool, String, Int, NonEmptyStr }
+import std.optional { Absent, Present }
 import std.allocation_roster {
   AllocationAdmission,
   AllocationAdmitted,
   AllocationPrimaryKeyRepeated,
   AllocationSecondaryKeyRepeated,
-  allocated_value,
+  allocation_lookup,
   build_allocation_roster,
 }
 import std.disposition { Disposition, Terminal }
@@ -18,10 +19,8 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv3,
   operator_host_srv4,
   operator_host_mtcollins1,
-  operator_host_srv13,
   operator_host_srv14,
   operator_host_srv15,
-  operator_host_srv16,
   operator_host_183527,
   operator_host_3dde7f,
   operator_host_6ce85c,
@@ -55,9 +54,15 @@ type AllocatedHostName
   = LegacyHostname { label: DnsLabel }
   | DrawnHumanName { name: HumanName, draw: HumanNameDraw }
 
+// THE FLEET MACHINE REGISTRY ROW (gunbc.plans.fleet_machine_authority 2.1). `fleet_slot` is the machine's
+// stable handle; `name` is its human name, the one root every projected name (hostname, runner label,
+// secret ids, DNS and tailnet names) derives from; `next_name` is an accepted draw not yet applied, so a
+// rename is the transition that moves next_name into name and nothing else. Board bindings are a
+// separate admission (gunbc.fleet.fleet_machine_unit_binding), keyed by the same handle.
 type HostnameAllocation {
   fleet_slot: HostIdentity
   name: AllocatedHostName
+  next_name: AllocatedHostName?
 }
 
 fn human_name_canonical_hostname(name: HumanName) -> DnsLabel {
@@ -97,11 +102,11 @@ fn allocation_selector_forms(allocation: HostnameAllocation) -> List<String> {
 }
 
 data gunbc_hostname_allocation_scope_disposition: Disposition = Terminal {
-  reason: "Single authority for the canonical hostname a fleet slot is allocated. A slot's HostIdentity is an internal placement identity; the hostname a machine answers to is a separate allocated fact governed by the DNS-label authority (extdeps.dns.domain_name — the DNS grammar is consumed here, never re-minted). Deriving one from the other by parsing the identity string is the gunbc.design_argument::single_authority nicknaming violation: it makes the hostname a coincidence of how the slot happens to be spelled, so an identity that is not a legal label silently has no hostname and an identity that is one silently claims a hostname nobody allocated. Here the mapping is explicit and the lookup fails closed: an unallocated slot yields Absent, never a name reconstructed from the identity. srv1-srv4 carry LEGACY allocations whose hostname equals the slot spelling — that coincidence is now a stated row rather than a derivation rule, so the four deployed intents stay byte-identical while a fifth slot must be allocated a hostname rather than inheriting one. ROLE INDEPENDENCE is structural rather than witnessed: no function here takes a role, a ComputeHost, or any placement fact, so a role change cannot reach a hostname — there is no argument by which it could, which is why no test asserts it."
+  reason: "Single authority for a fleet machine's human name, and the registry that holds it (gunbc.plans.fleet_machine_authority, operator rulings D1 and D12, 2026-11-10). A machine's HostIdentity is its stable handle; its human name is a separate, mutable, MODELED fact -- a drawn HumanName with its draw receipt, or a LegacyHostname -- and every name the machine answers to is derived from that human name at one site. What this module forbids is deriving a name by READING THE HANDLE'S SPELLING: that makes a hostname a coincidence of how a key was typed, so a handle that is not a legal label silently has no hostname and one that is silently claims a hostname nobody chose. The lookup therefore fails closed: an unregistered handle yields Absent, never a name reconstructed from it. srv1-srv4, mtcollins1 and the H11 carry LEGACY names that coincide with their handle's spelling; that coincidence is a stated row, not a derivation rule, and each is replaced by the transition that applies its next_name. ROLE INDEPENDENCE is structural: no function here takes a role, a ComputeHost or any placement fact, so a role change cannot reach a name."
 }
 
 data gunbc_hostname_allocation_injectivity_disposition: Disposition = Terminal {
-  reason: "A hostname is a JOIN KEY that consumers copy — SSH known_hosts, DNS records, runner registrations, Docker contexts, Tailscale, sccache endpoints, certificate SANs — so two fleet slots claiming one canonical hostname is not a tidiness defect, it is two machines answering to one join key and every consumer resolving to whichever converged last. Both directions are refused: a slot allocated twice is an ambiguous desired state, a hostname claimed twice is the collision above. THE RUNG CLIMBED WHEN std.allocation_roster LANDED, and this row is rewritten in the same change rather than left asserting the state it used to describe. It previously reported MECHANICALLY PREVENTABLE and named its next-rung trigger as a duplicate-refusing keyed roster carrier whose CONSTRUCTION cannot admit a repeated key — deferred then because std.occurrence_binding_candidates keys on ONE axis while this roster must stay injective on TWO. std.allocation_roster is that two-axis carrier: AllocationRoster is sole_constructor, its only producers are the empty roster and an allocate that returns AllocationPrimaryKeyRepeated or AllocationSecondaryKeyRepeated rather than a roster when either axis is claimed, so NO ACCEPTED PROGRAM HOLDS a roster with a slot allocated twice or a hostname claimed twice. The verdict machinery this row used to cite is deleted, not wrapped: there is no consistency question left for a production lookup to consult, because an inconsistent roster is not a value. RUNG NOW: STRUCTURALLY GUARANTEED at the carrier — the invalid state is describable in source but no accepted program contains it. It is NOT structurally impossible, and saying so would be the inflation gunbc.design_argument::guarantee_ladder names: the authored allocation list below is still an ordinary literal into which a person can write two colliding rows, and build_allocation_roster refuses it at ONE fallible ingress instead of every lookup guarding against it. ATTAINABLE CEILING is structural impossibility. NEXT-RUNG TRIGGER, stated as the capability and owned by std.allocation_roster rather than restated per consumer: a declaration form that builds a keyed carrier at authoring time, so rows never pass through an intermediate list in which a duplicate is expressible. EXECUTED EVIDENCE for the rung claimed here: the duplicate-refusal witnesses in test.claim.hostname_allocation_witness remain enrolled and now assert std.allocation_roster's arms — a slot allocated twice, a hostname claimed twice, and a colliding roster serving nothing rather than a winner."
+  reason: "A hostname is a JOIN KEY that consumers copy — SSH known_hosts, DNS records, runner registrations, Docker contexts, Tailscale, sccache endpoints, certificate SANs — so two fleet slots claiming one canonical hostname is not a tidiness defect, it is two machines answering to one join key and every consumer resolving to whichever converged last. Both directions are refused: a slot allocated twice is an ambiguous desired state, a hostname claimed twice is the collision above. THE RUNG CLIMBED WHEN std.allocation_roster LANDED, and this row is rewritten in the same change rather than left asserting the state it used to describe. It previously reported MECHANICALLY PREVENTABLE and named its next-rung trigger as a duplicate-refusing keyed roster carrier whose CONSTRUCTION cannot admit a repeated key — deferred then because std.occurrence_binding_candidates keys on ONE axis while this roster must stay injective on TWO. std.allocation_roster is that two-axis carrier: AllocationRoster is sole_constructor, its only producers are the empty roster and an allocate that returns AllocationPrimaryKeyRepeated or AllocationSecondaryKeyRepeated rather than a roster when either axis is claimed, so NO ACCEPTED PROGRAM HOLDS a roster with a slot allocated twice or a hostname claimed twice. The verdict machinery this row used to cite is deleted, not wrapped: there is no consistency question left for a production lookup to consult, because an inconsistent roster is not a value. RUNG NOW: STRUCTURALLY GUARANTEED at the carrier — the invalid state is describable in source but no accepted program contains it. It is NOT structurally impossible, and saying so would be the inflation gunbc.design_argument::guarantee_ladder names: the authored allocation list below is still an ordinary literal into which a person can write two colliding rows, and build_allocation_roster refuses it at ONE fallible ingress instead of every lookup guarding against it. ATTAINABLE CEILING is structural impossibility. NEXT-RUNG TRIGGER, stated as the capability and owned by std.allocation_roster rather than restated per consumer: a declaration form that builds a keyed carrier at authoring time, so rows never pass through an intermediate list in which a duplicate is expressible. THE PENDING AXIS (next_name, 2026-11-10) IS ADMITTED AT THE SAME INGRESS AND AT THE SAME RUNG: hostname_allocation_admission admits each machine's current and pending canonical names as claims through the same refusing carrier, so a pending name another machine answers to or awaits is AllocationSecondaryKeyRepeated, and every production lookup (canonical_hostname_in_roster, next_name_for_fleet_slot) answers from an admitted roster or not at all. EXECUTED EVIDENCE for the rung claimed here: the duplicate-refusal witnesses in test.claim.hostname_allocation_witness remain enrolled and now assert std.allocation_roster's arms — a slot allocated twice, a hostname claimed twice, a pending name claimed twice, and a colliding roster serving nothing rather than a winner."
 }
 
 // THE ALGEBRA MOVED TO std.allocation_roster, AND THAT MOVE FIRED THIS MODULE OWN DECLARED TRIGGER.
@@ -125,24 +130,59 @@ fn canonical_hostname_in_roster(
   allocations: List<HostnameAllocation>,
   fleet_slot: HostIdentity,
 ) -> DnsLabel? {
-  allocated_value(
-    rows: allocations,
-    wanted: fleet_slot as String,
-    primary: row => row.fleet_slot as String,
-    secondary: row => allocated_canonical_hostname(allocation: row) as String,
-    value: row => allocated_canonical_hostname(allocation: row),
+  match hostname_allocation_admission(allocations: allocations) {
+    AllocationAdmitted { roster: roster } => allocation_lookup(roster: roster, wanted: fleet_slot as String)
+    AllocationPrimaryKeyRepeated { key: _ } => Absent
+    AllocationSecondaryKeyRepeated { key: _ } => Absent
+  }
+}
+
+// A NAME A MACHINE ANSWERS TO OR AWAITS. The registry's exclusive name claims are each machine's current
+// canonical hostname and its pending one (gunbc.plans.fleet_machine_authority 2.5): no two claims may share a
+// spelling, whichever machine and whichever axis they come from. Short forms of a drawn name are not claims;
+// they are selector forms, and two machines sharing one is the resolver's HostSelectorAmbiguous, not a
+// collision.
+type HostNameClaim {
+  machine: HostIdentity
+  spelling: String
+}
+
+fn allocation_name_claims(allocation: HostnameAllocation) -> List<HostNameClaim> {
+  concat(
+    [HostNameClaim { machine: allocation.fleet_slot, spelling: allocated_canonical_hostname(allocation: allocation) as String }],
+    map(allocation_pending_forms(allocation: allocation), f => HostNameClaim { machine: allocation.fleet_slot, spelling: f }),
   )
 }
 
+// THE ONE INGRESS, ON BOTH AXES. The handle/current-name roster is built first (a handle twice is
+// AllocationPrimaryKeyRepeated, a current name twice AllocationSecondaryKeyRepeated); the name claims are then
+// admitted through the same refusing carrier keyed on the spelling, so a pending name another machine answers
+// to or also awaits refuses as AllocationSecondaryKeyRepeated naming it. Every production lookup here goes
+// through this admission, so a colliding registry serves no hostname rather than a winner. A next_name equal to
+// its own machine's current name is also refused: it names no rename.
 fn hostname_allocation_admission(
   allocations: List<HostnameAllocation>,
 ) -> AllocationAdmission<DnsLabel> {
-  build_allocation_roster(
+  match build_allocation_roster(
     rows: allocations,
     primary: row => row.fleet_slot as String,
     secondary: row => allocated_canonical_hostname(allocation: row) as String,
     value: row => allocated_canonical_hostname(allocation: row),
-  )
+  ) {
+    AllocationPrimaryKeyRepeated { key: k } => AllocationPrimaryKeyRepeated { key: k }
+    AllocationSecondaryKeyRepeated { key: k } => AllocationSecondaryKeyRepeated { key: k }
+    AllocationAdmitted { roster: roster } =>
+      match build_allocation_roster(
+        rows: flat_map(allocations, a => allocation_name_claims(allocation: a)),
+        primary: c => c.spelling,
+        secondary: c => c.spelling,
+        value: c => c.machine,
+      ) {
+        AllocationAdmitted { roster: _ } => AllocationAdmitted { roster: roster }
+        AllocationPrimaryKeyRepeated { key: k } => AllocationSecondaryKeyRepeated { key: k }
+        AllocationSecondaryKeyRepeated { key: k } => AllocationSecondaryKeyRepeated { key: k }
+      }
+  }
 }
 
 // THE FIFTH SLOT, AND IT IS ALLOCATED RATHER THAN INHERITED. This module's scope disposition states
@@ -167,26 +207,46 @@ fn hostname_allocation_admission(
 // 2026-11-05: host-94c81d named the same board as srv14, which already holds "butch", so the board had two
 // hostnames (gunbc.fleet.fleet_host_identity, the ONE BOARD, ONE SLOT note). The draw is in git before
 // that change.
-data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
+data fleet_machine_registry: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv1,
     name: LegacyHostname { label: "srv1" as DnsLabel },
+    next_name: Present { value: DrawnHumanName {
+      name: FirstOnly { first: "ricky" as DnsLabel },
+      draw: HumanNameDraw { entropy: 458621672034 },
+    } },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv2,
     name: LegacyHostname { label: "srv2" as DnsLabel },
+    next_name: Present { value: DrawnHumanName {
+      name: FirstOnly { first: "cubby" as DnsLabel },
+      draw: HumanNameDraw { entropy: 905841313466 },
+    } },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv3,
     name: LegacyHostname { label: "srv3" as DnsLabel },
+    next_name: Present { value: DrawnHumanName {
+      name: FirstOnly { first: "bruno" as DnsLabel },
+      draw: HumanNameDraw { entropy: 710002629885 },
+    } },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv4,
     name: LegacyHostname { label: "srv4" as DnsLabel },
+    next_name: Present { value: DrawnHumanName {
+      name: FirstOnly { first: "fox" as DnsLabel },
+      draw: HumanNameDraw { entropy: 615953933451 },
+    } },
   },
   HostnameAllocation {
     fleet_slot: operator_host_mtcollins1,
     name: LegacyHostname { label: "mtcollins1" as DnsLabel },
+    next_name: Present { value: DrawnHumanName {
+      name: FirstOnly { first: "connor" as DnsLabel },
+      draw: HumanNameDraw { entropy: 374329216198 },
+    } },
   },
   HostnameAllocation {
     fleet_slot: operator_host_183527,
@@ -194,6 +254,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "damien" as DnsLabel },
       draw: HumanNameDraw { entropy: 707054856316 },
     },
+    next_name: Absent,
   },
   HostnameAllocation {
     fleet_slot: operator_host_3dde7f,
@@ -201,10 +262,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "gus" as DnsLabel },
       draw: HumanNameDraw { entropy: 821771404468 },
     },
-  },
-  HostnameAllocation {
-    fleet_slot: operator_host_srv13,
-    name: LegacyHostname { label: "srv13" as DnsLabel },
+    next_name: Absent,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv14,
@@ -212,6 +270,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "butch" as DnsLabel },
       draw: HumanNameDraw { entropy: 155184575423 },
     },
+    next_name: Absent,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv15,
@@ -219,10 +278,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "bobo" as DnsLabel },
       draw: HumanNameDraw { entropy: 454684151172 },
     },
-  },
-  HostnameAllocation {
-    fleet_slot: operator_host_srv16,
-    name: LegacyHostname { label: "srv16" as DnsLabel },
+    next_name: Absent,
   },
   // H11SSL unit 1 (2026-10-30): the host already answers as h11-a16 on the LAN and in its own hostname,
   // and that is how the operator addresses it, so it keeps that spelling as a LEGACY name rather than a
@@ -230,6 +286,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_6ce85c,
     name: LegacyHostname { label: "h11-a16" as DnsLabel },
+    next_name: Absent,
   },
   // THE FIVE DRAWN ROWS (2026-10-27), drawn by the P2 model step of
   // gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08). srv9-srv12 keep their identity slot as a LEGACY spelling and
@@ -248,6 +305,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "eric" as DnsLabel },
       draw: HumanNameDraw { entropy: 282938336220 },
     },
+    next_name: Absent,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv9,
@@ -255,6 +313,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "francis" as DnsLabel },
       draw: HumanNameDraw { entropy: 507956931964 },
     },
+    next_name: Absent,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv10,
@@ -262,6 +321,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "emerson" as DnsLabel },
       draw: HumanNameDraw { entropy: 970743951946 },
     },
+    next_name: Absent,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv11,
@@ -269,6 +329,7 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "mil" as DnsLabel },
       draw: HumanNameDraw { entropy: 718614163883 },
     },
+    next_name: Absent,
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv12,
@@ -276,12 +337,97 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "bastien" as DnsLabel },
       draw: HumanNameDraw { entropy: 307940512393 },
     },
+    next_name: Absent,
   },
 ]
 
+// THE MACHINES, DERIVED FROM THE REGISTRY. A spelling resolves to a machine only by joining this
+// membership; there is no second roster list to keep in step (it used to be authored beside the rows in
+// gunbc.fleet.fleet_host_identity, a restatement of the kind
+// gunbc.recurring_failure_mode::a_target_roster_restates_the_labels_its_bindings_name records).
+// THE OPERATIONAL ROSTER IS THE ADMITTED REGISTRY, NOT ITS ROWS. Membership is read through
+// hostname_allocation_admission like every other read of the registry, so a registry with a colliding
+// handle, current name or pending name admits no machine -- not even one outside the collision -- and an
+// effect entry that asks for its host is told why (gunbc.design_argument::fail_closed).
+type OperatorHostLookup
+  = OperatorHostFound { host: HostIdentity }
+  | OperatorHostNotRegistered { label: String }
+  | OperatorHostRegistryRefused { key: String }
+
+fn operator_host_lookup_in(allocations: List<HostnameAllocation>, label: String) -> OperatorHostLookup {
+  match hostname_allocation_admission(allocations: allocations) {
+    AllocationPrimaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
+    AllocationSecondaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
+    AllocationAdmitted { roster: _ } =>
+      match filter(allocations, m => (m.fleet_slot as String) == label).first() {
+        Present { value: m } => OperatorHostFound { host: m.fleet_slot }
+        Absent => OperatorHostNotRegistered { label: label }
+      }
+  }
+}
+
+fn operator_host_lookup(label: String) -> OperatorHostLookup {
+  operator_host_lookup_in(allocations: fleet_machine_registry, label: label)
+}
+
+// WHAT AN EFFECT ENTRY SAYS WHEN IT ADMITS NO HOST, once, so each entry prefixes its own name and none
+// writes its own sentence about a refused registry.
+fn operator_host_lookup_refusal(lookup: OperatorHostLookup) -> String? {
+  match lookup {
+    OperatorHostFound { host: _ } => Absent
+    OperatorHostNotRegistered { label: l } => Present { value: concat("no operator host is named ", l) }
+    OperatorHostRegistryRefused { key: k } =>
+      Present { value: join(["the fleet machine registry is refused (", k, " is claimed twice), so no machine is admitted"], "") }
+  }
+}
+
+data operator_hosts: List<HostIdentity> = match hostname_allocation_admission(allocations: fleet_machine_registry) {
+  AllocationAdmitted { roster: _ } => map(fleet_machine_registry, m => m.fleet_slot)
+  AllocationPrimaryKeyRepeated { key: _ } => []
+  AllocationSecondaryKeyRepeated { key: _ } => []
+}
+
+fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
+  match operator_host_lookup(label: label as String) {
+    OperatorHostFound { host: h } => Present { value: h }
+    OperatorHostNotRegistered { label: _ } => Absent
+    OperatorHostRegistryRefused { key: _ } => Absent
+  }
+}
+
+// A PENDING NAME IS RESERVED BUT NOT ANSWERED TO. An accepted next_name must not be drawn again for
+// another machine, so a draw treats it as taken; it is not a selector form, because the machine does
+// not answer to it until the rename transition applies it.
+fn allocation_pending_forms(allocation: HostnameAllocation) -> List<String> {
+  match allocation.next_name {
+    Absent => []
+    Present { value: n } => match n {
+      LegacyHostname { label: l } => [l as String]
+      DrawnHumanName { name: h, draw: _ } => [human_name_canonical_hostname(name: h) as String]
+    }
+  }
+}
+
+fn allocation_reserved_forms(allocation: HostnameAllocation) -> List<String> {
+  append(allocation_selector_forms(allocation: allocation), allocation_pending_forms(allocation: allocation))
+}
+
+// A pending name is read only from an admitted registry, so a colliding one names no rename target.
+fn next_name_for_fleet_slot(fleet_slot: HostIdentity) -> AllocatedHostName? {
+  match hostname_allocation_admission(allocations: fleet_machine_registry) {
+    AllocationPrimaryKeyRepeated { key: _ } => Absent
+    AllocationSecondaryKeyRepeated { key: _ } => Absent
+    AllocationAdmitted { roster: _ } =>
+      match filter(fleet_machine_registry, m => (m.fleet_slot as String) == (fleet_slot as String)).first() {
+        Absent => Absent
+        Present { value: m } => m.next_name
+      }
+  }
+}
+
 fn canonical_hostname_for_fleet_slot(fleet_slot: HostIdentity) -> DnsLabel? {
   canonical_hostname_in_roster(
-    allocations: gunbc_fleet_hostname_allocations,
+    allocations: fleet_machine_registry,
     fleet_slot: fleet_slot,
   )
 }
@@ -320,7 +466,7 @@ fn draw_human_name(draw: HumanNameDraw, existing: List<HostnameAllocation>) -> H
   let given = host_name_first_parts
   let surnames = gen_z_last_parts
   let n = draw.entropy
-  let taken = flat_map(existing, a => allocation_selector_forms(allocation: a))
+  let taken = flat_map(existing, a => allocation_reserved_forms(allocation: a))
   if n < 0 {
     HumanNameDrawRefused { reason: "a name draw needs non-negative entropy; a negative value has no index into the corpus" }
   } else {
@@ -355,6 +501,7 @@ type HostSelectorResolution
   = HostSelectorResolved { host: HostIdentity }
   | HostSelectorAmbiguous { selector: String, candidates: List<DnsLabel> }
   | HostSelectorUnknown { selector: String }
+  | HostSelectorRegistryRefused { key: String }
 
 fn resolution_of_matches(selector: String, matches: List<HostnameAllocation>) -> HostSelectorResolution? {
   match matches.first() {
@@ -371,7 +518,18 @@ fn resolution_of_matches(selector: String, matches: List<HostnameAllocation>) ->
   }
 }
 
+// A SELECTOR RESOLVES ONLY AGAINST AN ADMITTED REGISTRY, like every other read of it: a registry that
+// hostname_allocation_admission refuses resolves nothing and names the colliding key, rather than
+// answering Unknown or picking a row by authoring order.
 fn resolve_host_selector_in(allocations: List<HostnameAllocation>, selector: String) -> HostSelectorResolution {
+  match hostname_allocation_admission(allocations: allocations) {
+    AllocationPrimaryKeyRepeated { key: k } => HostSelectorRegistryRefused { key: k }
+    AllocationSecondaryKeyRepeated { key: k } => HostSelectorRegistryRefused { key: k }
+    AllocationAdmitted { roster: _ } => resolve_host_selector_in_admitted(allocations: allocations, selector: selector)
+  }
+}
+
+fn resolve_host_selector_in_admitted(allocations: List<HostnameAllocation>, selector: String) -> HostSelectorResolution {
   let exact = filter(allocations, a =>
     (a.fleet_slot as String) == selector || (allocated_canonical_hostname(allocation: a) as String) == selector
   )
@@ -388,5 +546,5 @@ fn resolve_host_selector_in(allocations: List<HostnameAllocation>, selector: Str
 }
 
 fn resolve_host_selector(selector: String) -> HostSelectorResolution {
-  resolve_host_selector_in(allocations: gunbc_fleet_hostname_allocations, selector: selector)
+  resolve_host_selector_in(allocations: fleet_machine_registry, selector: selector)
 }

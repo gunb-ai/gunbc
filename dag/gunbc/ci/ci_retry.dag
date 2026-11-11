@@ -1,0 +1,59 @@
+module gunbc.ci.ci_retry
+
+import std.types { String }
+import std.algebra { Empty }
+import std.optional { Absent }
+import std.env_binding { EnvSet }
+import v2.std.diagnostic { EmitDirective, SeverityWarning }
+import v2.std.orchestration { Do, EscalationLevel, FailFast, LogMatches, Pipeline, PipelineStep, Retry, Run }
+import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
+
+// The cargo EAGAIN retry intent and the plain retry-body Run it wraps, moved out of
+// gunbc.ci.ci_spec unchanged (gunbc.plans.closure_consolidation P1). The bash realization is
+// v2.workflow.ci_retry_emit; gunbc.ci.ci_spec and gunbc.fleet.fleet_key_agent read
+// ci_retry_body_run from here.
+
+fn ci_retry_body_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: Empty,
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn ci_retry_exhausted_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [Do { run: Run { command: "exit 1", env: Empty, redirect: Absent, capture: Absent } }],
+    on_failure: FailFast
+  }
+}
+
+fn ci_retry_escalation_level1() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+    },
+    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
+  }
+}
+
+fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: [Do { run: ci_retry_body_run(command: command) }],
+      on_failure: FailFast
+    },
+    escalations: [ci_retry_escalation_level1()],
+    on_exhausted: ci_retry_exhausted_pipeline()
+  }
+}
+
+// ONE RETRYING STEP: a pipeline step whose body runs under ci_retry_body_run. It was spelled
+// app_mint_step in gunbc.ci.ci_spec, a second name for this constructor that every caller there used,
+// mint or not (gunbc.plans.closure_consolidation P1).
+fn ci_retry_step(command: String) -> PipelineStep {
+  Do { run: ci_retry_body_run(command: command) }
+}
