@@ -15,20 +15,22 @@ module test.claim.tailscale_machine_name_converge_witness
 //      Nothing here reads a name off the `HostIdentity`'s text: handles are opaque, a name is a modeled fact, and
 //      an unregistered slot has no target at all.
 //   2. Convergence is ONE question with ONE answer, asked by one function the plan and the read-back share: do
-//      BOTH names answer the target? Four answers, and they are not interchangeable --
-//        both halves at the target      -> converged, nothing owed
-//        tailnet half lags, OS at target -> the write closes it (the middle of the window step)
-//        neither half at the target     -> the ordinary pre-rename device, and it owes the write
-//        tailnet at target, OS behind   -> the unstable half-moved state: no write, never "converged", because
-//                                          upstream re-derives the tailnet name from the OS hostname at the next
-//                                          start, so a run that reported it converged handed the next change a
-//                                          host that reverts on its own.
+//      BOTH names answer the target? Three answers, and they are not interchangeable --
+//        both halves at the target       -> converged, nothing owed
+//        tailnet half lags, OS at target -> the write closes it (the middle of the window step, hostname half
+//                                          already landed) and it is the ONLY state the write can hold from
+//        OS half behind, tailnet either  -> no write, never "converged": either the pair is half-moved or the
+//                                          rename has not started. Upstream re-derives the tailnet name from the OS
+//                                          hostname at the next start, so a tailnet-only write from here leaves a
+//                                          device this mode's own read-back refuses, and the repair -- the window
+//                                          step's hostname half -- is the same for both.
 //   3. A write is attempted only inside the rename window. Observe-only is allowed anywhere; an apply is not.
 //   4. A read-back the device cannot answer is a refusal that says the name's state is now unknown, not a success
 //      and not a pending one.
 //   5. The words that leave the repository -- `status --json`, `set --hostname=`, the SSH route -- come from the
 //      extdeps emitters and the fleet reach model, and the entry admits its subject through the registry before
-//      any leg runs.
+//      any leg runs. The OS hostname VALUE comes from `gunbc.hostname_read`'s capture, the repository's one parser
+//      of that verb's stdout; the fixtures hand it the same bytes a real read prints and never a pre-parsed name.
 //
 // WHY THESE FIXTURES AND NOT A HOST. A claim-run has no tailscaled, and a wet write against a fleet host is
 // forbidden until srv4's rename window (gunbc.plans.fleet_machine_authority P9). So the fixtures are the bytes the
@@ -58,6 +60,7 @@ import gunbc.hostname_allocation {
   next_name_for_fleet_slot,
   operator_host_lookup_in,
 }
+import gunbc.hostname_read { HostnameShortCapture, hostname_short_value_from_stdout }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.tailscale_machine_name_converge {
   ApplyInsideWindow,
@@ -136,6 +139,17 @@ data witness_damien_status_document: String = "{\"Self\": {\"HostName\": \"damie
 
 data witness_os_name_damien: String = "damien\n"
 
+// THE OS HALF IS HANDED OVER AS gunbc.hostname_read'S CAPTURE, built by that module's own reader over the same
+// bytes the shipped leg would see, so nothing in this witness pre-parses the value the plan is asked about.
+fn witness_os_capture(stdout: String) -> HostnameShortCapture {
+  hostname_short_value_from_stdout(success: true, stdout: stdout)
+}
+
+// THE ARM THE FIXTURES USED TO BE ABLE TO MISS: the read itself failed. A parser of one's own that only trims and
+// checks for empty stdout has no such state; the authority's capture does, and this mode must not plan over it.
+data witness_os_capture_failed_read: HostnameShortCapture =
+  hostname_short_value_from_stdout(success: false, stdout: "damien\n")
+
 // A device whose tailnet name and FQDN point at different names: the name compared is `Self.HostName`, and a run
 // that reached for the FQDN instead would plan a different change from the same bytes.
 data witness_dns_name_document: String = "{\"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
@@ -165,7 +179,7 @@ data witness_srv1_outside_window: TailscaleMachineNamePlan = tailscale_machine_n
   host: operator_host_srv1,
   window: witness_prepare_window,
   mode: ObserveOnly,
-  names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
+  names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_capture: witness_os_capture(witness_os_name_srv1))
 )
 
 // A WINDOW ON A ROW WHOSE FLIP HAS NOT LANDED. srv4's row is canonical srv4 with `fox` still pending, so the
@@ -174,7 +188,7 @@ data witness_srv4_window_before_flip: TailscaleMachineNamePlan = tailscale_machi
   host: operator_host_srv4,
   window: witness_rename_window,
   mode: ApplyInsideWindow,
-  names: tailscale_machine_name_device_names_reading(status_document: witness_status_document_srv4, os_name_stdout: witness_os_name_srv4)
+  names: tailscale_machine_name_device_names_reading(status_document: witness_status_document_srv4, os_name_capture: witness_os_capture(witness_os_name_srv4))
 )
 
 // THE ROW AFTER ITS FLIP, MID-STEP. host-183527 is canonically `damien` with nothing pending, and the window step
@@ -187,7 +201,7 @@ data witness_183527_after_flip: TailscaleMachineNamePlan = tailscale_machine_nam
   mode: ApplyInsideWindow,
   names: tailscale_machine_name_device_names_reading(
     status_document: witness_slot_spelling_document,
-    os_name_stdout: witness_os_name_damien
+    os_name_capture: witness_os_capture(witness_os_name_damien)
   )
 )
 
@@ -199,7 +213,7 @@ data witness_183527_hostname_half_missing: TailscaleMachineNamePlan = tailscale_
   mode: ApplyInsideWindow,
   names: tailscale_machine_name_device_names_reading(
     status_document: witness_slot_spelling_document,
-    os_name_stdout: witness_os_name_slot_spelling
+    os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
   )
 )
 
@@ -268,7 +282,7 @@ test fn a_window_step_that_has_not_landed_the_os_hostname_half_writes_nothing() 
         requested: to_name,
         names: tailscale_machine_name_device_names_reading(
           status_document: witness_slot_spelling_document,
-          os_name_stdout: witness_os_name_slot_spelling
+          os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
         )
       ) {
         ReadBackOsHalfNotAtRequest { requested: requested, machine_name: back_name, os_name: back_os } =>
@@ -300,7 +314,7 @@ test fn a_window_with_nothing_pending_targets_the_rows_current_name() -> Bool {
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_damien_status_document,
-      os_name_stdout: witness_os_name_damien
+      os_name_capture: witness_os_capture(witness_os_name_damien)
     )
   ) {
     DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
@@ -322,7 +336,7 @@ test fn a_device_answering_a_pending_name_owes_a_write_back_outside_a_window() -
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: "{\"Self\": {\"HostName\": \"ricky\", \"DNSName\": \"ricky.tailecbe08.ts.net.\"}}",
-      os_name_stdout: "srv1\n"
+      os_name_capture: witness_os_capture("srv1\n")
     )
   ) {
     DeviceNameChangeOwed { from_name: _, to_name: _, os_name: _ } => true
@@ -337,7 +351,7 @@ test fn that_write_runs_from_the_pending_name_back_to_the_rows_canonical_name() 
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: "{\"Self\": {\"HostName\": \"ricky\", \"DNSName\": \"ricky.tailecbe08.ts.net.\"}}",
-      os_name_stdout: "srv1\n"
+      os_name_capture: witness_os_capture("srv1\n")
     )
   ) {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
@@ -361,7 +375,7 @@ test fn a_slot_the_registry_has_no_row_for_refuses_and_names_the_authority() -> 
     host: witness_unallocated_slot,
     window: witness_rename_window,
     mode: ObserveOnly,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
+    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_capture: witness_os_capture(witness_os_name_srv1))
   ) {
     PlanRefused { cause: reason } =>
       match reason {
@@ -389,7 +403,7 @@ test fn a_half_moved_pair_owes_no_write_and_is_never_reported_converged() -> Boo
     mode: ApplyInsideWindow,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_damien_status_document,
-      os_name_stdout: witness_os_name_slot_spelling
+      os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
     )
   ) {
     DeviceNameOsHalfNotAtTarget { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
@@ -408,7 +422,7 @@ test fn the_pair_the_plan_will_not_write_is_the_pair_the_read_back_will_not_conf
     mode: ApplyInsideWindow,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_damien_status_document,
-      os_name_stdout: witness_os_name_slot_spelling
+      os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
     )
   ) {
     DeviceNameOsHalfNotAtTarget { machine_name: plan_machine, os_name: plan_os, to_name: plan_to } =>
@@ -416,7 +430,7 @@ test fn the_pair_the_plan_will_not_write_is_the_pair_the_read_back_will_not_conf
         requested: plan_to,
         names: tailscale_machine_name_device_names_reading(
           status_document: witness_damien_status_document,
-          os_name_stdout: witness_os_name_slot_spelling
+          os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
         )
       ) {
         ReadBackOsHalfNotAtRequest { requested: requested, machine_name: machine_name, os_name: os_name } =>
@@ -438,7 +452,7 @@ test fn a_tailnet_name_lagging_the_os_hostname_owes_the_write_that_closes_the_wi
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_slot_spelling_document,
-      os_name_stdout: witness_os_name_damien
+      os_name_capture: witness_os_capture(witness_os_name_damien)
     )
   ) {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
@@ -450,6 +464,29 @@ test fn a_tailnet_name_lagging_the_os_hostname_owes_the_write_that_closes_the_wi
 // AN OS HOSTNAME THE DEVICE WILL NOT ANSWER IS ITS OWN CAUSE. `hostname -s` printing a bare newline is a device
 // with no configured short name; treating that as "no OS half to compare" would let a write report convergence on
 // one name only.
+// THE PARSE IS THE AUTHORITY'S, INCLUDING THE STATE THIS MODULE COULD NOT OTHERWISE SEE. `hostname -s` printed a
+// plausible name but exited unsuccessfully: `gunbc.hostname_read` refuses that capture, and the plan refuses with
+// the OS-half cause instead of planning a write from a name no read vouches for.
+test fn an_os_hostname_read_that_failed_to_exit_cleanly_refuses_before_any_plan() -> Bool {
+  match tailscale_machine_name_plan(
+    host: operator_host_183527,
+    window: witness_rename_window,
+    mode: ObserveOnly,
+    names: tailscale_machine_name_device_names_reading(
+      status_document: witness_slot_spelling_document,
+      os_name_capture: witness_os_capture_failed_read
+    )
+  ) {
+    PlanRefused { cause: reason } =>
+      match reason {
+        OsNameUnusable { detail: detail } =>
+          string_contains(s: detail, pattern: "exited unsuccessfully")
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn an_empty_os_hostname_answer_refuses_with_its_own_cause() -> Bool {
   match tailscale_machine_name_plan(
     host: operator_host_183527,
@@ -457,12 +494,13 @@ test fn an_empty_os_hostname_answer_refuses_with_its_own_cause() -> Bool {
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_slot_spelling_document,
-      os_name_stdout: "\n"
+      os_name_capture: witness_os_capture("\n")
     )
   ) {
     PlanRefused { cause: reason } =>
       match reason {
-        OsNameUnusable { detail: detail } => string_contains(s: detail, pattern: "no hostname to compare")
+        OsNameUnusable { detail: detail } =>
+          string_contains(s: detail, pattern: "hostname -s returned empty stdout")
         _ => false
       }
     _ => false
@@ -477,7 +515,7 @@ test fn an_apply_in_the_prepare_stage_is_refused_by_the_window_gate() -> Bool {
     host: operator_host_srv4,
     window: witness_prepare_window,
     mode: ApplyInsideWindow,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
+    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_capture: witness_os_capture(witness_os_name_srv1))
   ) {
     PlanRefused { cause: reason } =>
       match reason {
@@ -501,7 +539,7 @@ test fn an_apply_with_no_stage_claim_is_refused_and_says_so() -> Bool {
     mode: ApplyInsideWindow,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_slot_spelling_document,
-      os_name_stdout: witness_os_name_slot_spelling
+      os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
     )
   ) {
     PlanRefused { cause: reason } =>
@@ -536,7 +574,7 @@ test fn the_window_gate_receipt_quotes_the_claim_that_stopped_the_run() -> Bool 
     mode: ApplyInsideWindow,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_slot_spelling_document,
-      os_name_stdout: witness_os_name_slot_spelling
+      os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
     )
   ) {
     PlanRefused { cause: reason } =>
@@ -569,7 +607,7 @@ test fn an_unparseable_status_document_refuses_with_that_cause() -> Bool {
     host: operator_host_srv1,
     window: witness_prepare_window,
     mode: ObserveOnly,
-    names: tailscale_machine_name_device_names_reading(status_document: "not json at all", os_name_stdout: witness_os_name_srv1)
+    names: tailscale_machine_name_device_names_reading(status_document: "not json at all", os_name_capture: witness_os_capture(witness_os_name_srv1))
   ) {
     PlanRefused { cause: reason } =>
       match reason {
@@ -635,7 +673,7 @@ test fn the_name_compared_is_the_host_name_and_never_the_dns_name() -> Bool {
     host: operator_host_srv4,
     window: witness_prepare_window,
     mode: ObserveOnly,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_dns_name_document, os_name_stdout: witness_os_name_srv4)
+    names: tailscale_machine_name_device_names_reading(status_document: witness_dns_name_document, os_name_capture: witness_os_capture(witness_os_name_srv4))
   ) {
     DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
       machine_name == "srv4" && os_name == "srv4"
@@ -649,7 +687,7 @@ test fn a_read_back_where_both_names_answer_the_request_confirms_the_run() -> Bo
     requested: "damien" as DnsLabel,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_damien_status_document,
-      os_name_stdout: witness_os_name_damien
+      os_name_capture: witness_os_capture(witness_os_name_damien)
     )
   ) {
     ReadBackConfirmsRequested { machine_name: machine_name, os_name: os_name } =>
@@ -666,7 +704,7 @@ test fn a_read_back_where_neither_half_answers_the_request_refuses_on_the_tailne
     requested: "damien" as DnsLabel,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_slot_spelling_document,
-      os_name_stdout: witness_os_name_slot_spelling
+      os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
     )
   ) {
     ReadBackMachineNameContradicts { requested: requested, reported: reported, os_name: os_name } =>
@@ -681,7 +719,7 @@ test fn a_read_back_still_answering_the_old_tailnet_name_refuses_the_run() -> Bo
     requested: "damien" as DnsLabel,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_slot_spelling_document,
-      os_name_stdout: witness_os_name_damien
+      os_name_capture: witness_os_capture(witness_os_name_damien)
     )
   ) {
     ReadBackMachineNameContradicts { requested: requested, reported: reported, os_name: os_name } =>
@@ -696,7 +734,7 @@ test fn a_read_back_still_answering_the_old_tailnet_name_refuses_the_run() -> Bo
 test fn a_read_back_the_device_cannot_answer_refuses_with_its_own_cause() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "damien" as DnsLabel,
-    names: tailscale_machine_name_device_names_reading(status_document: "{\"Self\": {}}", os_name_stdout: witness_os_name_srv1)
+    names: tailscale_machine_name_device_names_reading(status_document: "{\"Self\": {}}", os_name_capture: witness_os_capture(witness_os_name_srv1))
   ) {
     ReadBackRefused { cause: cause } =>
       match cause {

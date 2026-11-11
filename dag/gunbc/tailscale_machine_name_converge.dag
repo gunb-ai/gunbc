@@ -123,6 +123,12 @@ import gunbc.hostname_allocation {
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.tools.hostname { hostname_short_read_command }
+import gunbc.hostname_read {
+  HostnameShortCapture,
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+  hostname_short_value_from_stdout,
+}
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
@@ -130,7 +136,6 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { Bool, Int, NonEmptyStr, String, string_non_empty }
@@ -424,41 +429,54 @@ fn tailscale_machine_name_mode_wire(mode: TailscaleMachineNameMode) -> String {
   }
 }
 
-// THE TWO READINGS, AS PURE FUNCTIONS, BEFORE ANY LEG RUNS THEM. The status document goes through the
-// extdeps parser, so an absent `Self`, a duplicated member and a non-string `HostName` each keep their own
-// cause all the way to the receipt. `hostname -s` prints the configured short name and a newline: the
-// newline is not part of the name, and an empty answer is not a name either -- which matters because the
-// read-back compares this value against the name the window asked for, and an empty name would match
-// nothing while looking like an answer.
-type TailscaleMachineNameOsNameReading
-  = OsNameRead { name: String }
-  | OsNameUnusableInReading { detail: String }
-
-fn tailscale_machine_name_os_name_reading(stdout: String) -> TailscaleMachineNameOsNameReading {
-  let name = trim(s: stdout)
-  if string_non_empty(value: name) {
-    OsNameRead { name: name }
-  } else {
-    OsNameUnusableInReading { detail: join(["`hostname -s` printed `", stdout, "`: no hostname to compare"], "") }
-  }
-}
+// THE TWO READINGS, AS PURE FUNCTIONS, BEFORE ANY LEG RUNS THEM. The status document goes through the extdeps
+// parser, so an absent `Self`, a duplicated member and a non-string `HostName` each keep their own cause all the
+// way to the receipt.
+//
+// THE OS HOSTNAME ARRIVES AS A VALUE WHOSE MEANING IS ALREADY DECIDED ELSEWHERE. `gunbc.hostname_read` is where
+// this repository reads the modeled `hostname -s` verb: the trailing newline is not part of the name, an empty
+// answer is not a name, and a read that exited unsuccessfully carries no name at all -- a two-armed
+// `HostnameShortCapture`, not a bare String (its header records why collapsing those arms is the state-space
+// conflation fail_closed names). This mode does not re-parse that stdout. Its OS half is the precondition that
+// admits a tailnet write, and the fleet's hostname-converge mode reads the same fact to decide its own write, so a
+// private parser here would be a second definition of "the OS name" in the middle of the one window the two modes
+// share: the day the authority tightens (rejects an FQDN, normalizes case, refuses embedded whitespace) this
+// precondition must tighten with it, in the same commit that changes what the verb's output means.
+//
+// ONE SEAM STAYS OPEN, AND IT IS NOT THIS FILE'S TO CLOSE. `gunbc.host.host_identity_observation` still trims the
+// same raw itself rather than handing over that capture, and the hostname-converge lane builds its OS half on that
+// carrier. Today both reduce to trim plus non-empty, so the two halves of the window step agree; that agreement is
+// a coincidence of two parsers until the carrier passes the capture through, which is the hostname lane's file to
+// change (@ref(gunbc.design_argument::single_authority)).
 
 fn tailscale_machine_name_device_names_reading(
   status_document: String,
-  os_name_stdout: String,
+  os_name_capture: HostnameShortCapture,
 ) -> TailscaleMachineNameDeviceNames {
   match tailscale_status_self_name(status_json: status_document) {
     ReadingRefused { cause: cause } =>
       NamesUnreadable { cause: StatusDocumentRefused { cause: cause } }
     SelfNameRead { self_name: self_name } =>
-      match tailscale_machine_name_os_name_reading(stdout: os_name_stdout) {
-        OsNameUnusableInReading { detail: detail } =>
-          NamesUnreadable { cause: OsNameUnusable { detail: detail } }
-        OsNameRead { name: os_name } =>
-          BothNamesReported {
-            machine_name: self_name.host_name,
-            dns_name: self_name.dns_name,
-            os_name: os_name,
+      match os_name_capture {
+        HostnameShortCaptureRefused { reason: reason } =>
+          NamesUnreadable {
+            cause: OsNameUnusable {
+              detail: join(["the OS hostname read is unusable: ", reason], ""),
+            },
+          }
+        HostnameShortCaptured { value: os_name } =>
+          if string_non_empty(value: os_name) {
+            BothNamesReported {
+              machine_name: self_name.host_name,
+              dns_name: self_name.dns_name,
+              os_name: os_name,
+            }
+          } else {
+            // Belt, not a parse: the authority has already refused an empty stdout, so this only says what a
+            // capture carrying an empty value would mean here. It states no rule about the verb's output.
+            NamesUnreadable {
+              cause: OsNameUnusable { detail: "the OS hostname read carried a value with nothing to compare" },
+            }
           }
       }
   }
@@ -575,6 +593,8 @@ fn tailscale_machine_name_device_names_leg(
           TypedArgvExecRefused { reason: reason } =>
             NamesUnreadable { cause: OsNameLegRefused { detail: reason } }
           TypedArgvExecConverged { result: os_result } =>
+            // The exit code and stderr are the LEG's facts and this arm is where they are still available; the
+            // meaning of a successful read's stdout is decided by gunbc.hostname_read, not here.
             if !os_result.success {
               NamesUnreadable {
                 cause: OsNameLegFailed { exit_code: os_result.exit_code, detail: os_result.stderr },
@@ -582,7 +602,8 @@ fn tailscale_machine_name_device_names_leg(
             } else {
               tailscale_machine_name_device_names_reading(
                 status_document: status_result.stdout,
-                os_name_stdout: os_result.stdout
+                os_name_capture:
+                  hostname_short_value_from_stdout(success: os_result.success, stdout: os_result.stdout)
               )
             }
         }
