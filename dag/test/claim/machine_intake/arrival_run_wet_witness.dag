@@ -42,6 +42,20 @@ import gunbc.machine_intake.mtjade1_access_observation {
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
+import gunbc.auth.arrival_federation_pair {
+  arrival_federation_pair_for_host,
+  arrival_lane_environment,
+  arrival_lane_wif_pool_id,
+  arrival_lane_wif_provider_id,
+  arrival_lane_service_account_id,
+}
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_arrival_environment_expression,
+  fleet_converge_arrival_pool_id_expression,
+  fleet_converge_arrival_provider_resource_expression,
+  fleet_converge_arrival_service_account_expression,
+  fleet_converge_arrival_dispatch_host,
+}
 
 // THE CENSUS STAND-IN. Structure copied byte-for-byte from the committed authenticated getaccess
 // table (machine_intake_bmc_account_state_live_witness.getaccess_capture); only the Name cells
@@ -199,4 +213,24 @@ test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
   let lan_text = "Channel 0x1 info:\n  Channel Medium Type   : 802.3 LAN\n  Channel Protocol Type : IPMB-1.0\n  Session Support       : multi-session\n  Active Session Count  : 1\n"
   let dead_text = "Unable to Get Channel Info Parameter: Invalid channel\n"
   ipmi_channel_info_is_lan(text: lan_text) && !ipmi_channel_info_is_lan(text: dead_text)
+}
+
+// THE DISPATCH TEMPLATE AND THE PAIR RULE ARE ONE RULE. The arrival job's emit
+// derives every per-unit name from the dispatch host through the workflow's
+// expression family; the pair module derives the same names from the population
+// row's grant. They must agree suffix-for-suffix -- mtjade1 is just a row of the
+// same shape, and no second naming rule is allowed to grow.
+test fn the_arrival_job_dispatch_names_follow_the_pair_rule_for_the_dispatch_host() -> Bool {
+  match arrival_federation_pair_for_host(host: operator_host_srv15) {
+    Present { value: pair } =>
+      (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "srv15-arrival"
+      && (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival"
+      && (arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival-oidc"
+      && (arrival_lane_service_account_id(pair: pair, lane: "install" as NonEmptyStr) as String) == "srv15-install"
+      && fleet_converge_arrival_environment_expression() == join([fleet_converge_arrival_dispatch_host, "-arrival"], "")
+      && fleet_converge_arrival_pool_id_expression() == join(["github-", fleet_converge_arrival_dispatch_host, "-arrival"], "")
+      && string_contains(s: fleet_converge_arrival_provider_resource_expression(), pattern: "-arrival-oidc")
+      && string_contains(s: fleet_converge_arrival_service_account_expression(), pattern: "-arrival@")
+    Absent => false
+  }
 }
