@@ -8,15 +8,16 @@ import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
-import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv2, operator_host_srv13, operator_host_srv15 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv2, operator_host_srv15 }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
 import gunbc.machine_intake.bmc_write_controller {
   BmcWriteRoute, ByStandingGrant, ByPerWriteApproval, UntilRunnerQualified,
   BmcWriteControllerSelected, BmcWriteControllerRefused,
   NoControllerRowForHost, ControllerRowIsAnotherEndpoint, ControllerRowIsAnotherBoard, ControllerWritesHeld, StandingGrantNotAdmittedForController,
-  mtjade1_bmc_write_controller, srv13_bmc_write_controller, srv15_bmc_write_controller, select_bmc_write_controller, hold_released,
+  mtjade1_bmc_write_controller, srv15_bmc_write_controller, select_bmc_write_controller, hold_released,
   bmc_write_controller_row,
 }
+import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { first_contact_capture_controller }
 import test.claim.runner.runner_throughput_qualification_witness { selection, good_run, assess_at_width, assess_unobserved }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,8 +66,14 @@ fn jade() -> BmcControllerEndpoint {
   mtjade1_bmc_write_controller.endpoint
 }
 
-fn srv13() -> BmcControllerEndpoint {
-  srv13_bmc_write_controller.endpoint
+fn box2() -> BmcControllerEndpoint {
+  srv15_bmc_write_controller.endpoint
+}
+
+// The controller srv15's board had when first contact read it (2026-10-07, 192.168.1.247). It is a
+// controller the board HAD, not one any row names now, so a write there is refused as another endpoint.
+fn box2_at_first_contact() -> BmcControllerEndpoint {
+  first_contact_capture_controller()
 }
 
 // mtjade1 IS HELD FOR BOTH ROUTES, and only the assessment its hold names releases it: a refused
@@ -86,36 +93,30 @@ test fn an_assessment_for_another_host_releases_nothing() -> Bool {
     && hold_released(until: UntilRunnerQualified { host: operator_host_mtcollins1 }, qualification: qualified())
 }
 
-// srv13 ADMITS ONLY A PER-WRITE APPROVAL (merry-fox-82, 2026-10-28). The standing-grant route is refused for
-// srv13 by its row. This is the RED that discriminates the row: on the arrival discharge the only standing
-// grant (mtjade1's) is scoped to mtjade1 and would refuse srv13 before the row is read.
-test fn srv13_admits_a_per_write_approval_and_refuses_the_standing_grant() -> Bool {
-  verdict(host: operator_host_srv13, target: srv13(), route: ByPerWriteApproval, qualification: no_release()) == "selected"
-    && verdict(host: operator_host_srv13, target: srv13(), route: ByStandingGrant, qualification: no_release()) == "standing-grant-not-admitted"
-}
-
-// srv15 (box 2) ADMITS ONLY A PER-WRITE APPROVAL, at its own controller and not at srv13's.
+// srv15 (box 2, formerly also named srv13) ADMITS ONLY A PER-WRITE APPROVAL (merry-fox-82, 2026-10-28), at its
+// own CURRENT controller and not at the one it had at first contact. The standing-grant route is refused by
+// its row: this is the RED that discriminates the row, since on the arrival discharge the only standing grant
+// (mtjade1's) is scoped to mtjade1 and would refuse srv15 before the row is read.
 test fn srv15_admits_a_per_write_approval_at_its_own_controller() -> Bool {
-  let box2 = srv15_bmc_write_controller.endpoint
-  verdict(host: operator_host_srv15, target: box2, route: ByPerWriteApproval, qualification: no_release()) == "selected"
-    && verdict(host: operator_host_srv15, target: box2, route: ByStandingGrant, qualification: no_release()) == "standing-grant-not-admitted"
-    && verdict(host: operator_host_srv15, target: srv13(), route: ByPerWriteApproval, qualification: no_release()) == "another-endpoint"
+  verdict(host: operator_host_srv15, target: box2(), route: ByPerWriteApproval, qualification: no_release()) == "selected"
+    && verdict(host: operator_host_srv15, target: box2(), route: ByStandingGrant, qualification: no_release()) == "standing-grant-not-admitted"
+    && verdict(host: operator_host_srv15, target: box2_at_first_contact(), route: ByPerWriteApproval, qualification: no_release()) == "another-endpoint"
 }
 
 // A HOST WITH NO ROW ADMITS NO WRITE, and a row admits writes only at its own controller's endpoint.
 test fn no_row_and_another_endpoint_refuse() -> Bool {
-  verdict(host: operator_host_srv2, target: srv13(), route: ByPerWriteApproval, qualification: no_release()) == "no-row"
-    && verdict(host: operator_host_srv13, target: jade(), route: ByPerWriteApproval, qualification: no_release()) == "another-endpoint"
+  verdict(host: operator_host_srv2, target: box2(), route: ByPerWriteApproval, qualification: no_release()) == "no-row"
+    && verdict(host: operator_host_srv15, target: jade(), route: ByPerWriteApproval, qualification: no_release()) == "another-endpoint"
 }
 
-// THE BOARD THE READING NAMES IS THE ROW'S (board join; review of gunbc#15317). srv13's row declares the
+// THE BOARD THE READING NAMES IS THE ROW'S (board join; review of gunbc#15317). srv15's row declares the
 // ALTRAD8UD board from its baseboard row: a reading naming another board, or none, is refused before any
 // route is considered, and so is a declared board at mtjade1, whose row declares none. The same selections
-// with the row's own board are selected above (srv13_admits_a_per_write_approval_and_refuses_the_standing_grant).
+// with the row's own board are selected above (srv15_admits_a_per_write_approval_at_its_own_controller).
 test fn a_reading_of_another_board_selects_no_controller() -> Bool {
   let other: BoardAuthorityRef? = Present { value: mt_collins_board_authority }
   let undeclared: BoardAuthorityRef? = none
-  verdict_on(host: operator_host_srv13, target: srv13(), board: other, route: ByPerWriteApproval, qualification: no_release()) == "another-board"
-    && verdict_on(host: operator_host_srv13, target: srv13(), board: undeclared, route: ByPerWriteApproval, qualification: no_release()) == "another-board"
-    && verdict_on(host: operator_host_mtjade1, target: jade(), board: srv13_bmc_write_controller.board, route: ByPerWriteApproval, qualification: qualified()) == "another-board"
+  verdict_on(host: operator_host_srv15, target: box2(), board: other, route: ByPerWriteApproval, qualification: no_release()) == "another-board"
+    && verdict_on(host: operator_host_srv15, target: box2(), board: undeclared, route: ByPerWriteApproval, qualification: no_release()) == "another-board"
+    && verdict_on(host: operator_host_mtjade1, target: jade(), board: srv15_bmc_write_controller.board, route: ByPerWriteApproval, qualification: qualified()) == "another-board"
 }

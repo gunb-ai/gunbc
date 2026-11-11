@@ -100,11 +100,32 @@ type NodeGrounding
 // sunny-crab-777, trigger: eval runs record constructors, acceptance
 // kpe_kinded_parameter_value_is_the_applied_literal), where eval would bind each kinded binder from
 // it and refuse a binder it does not hold or whose instance is not a literal.
+// REFINEMENT_CARRIER IS THE CARRIER THE CHECKER ALREADY READ FOR THIS NODE'S TYPE. When the node's
+// derived type is a refinement declaration, this is THAT declaration's declared carrier, read once by
+// infer through v2.compiler.infer refinement_declared_carrier, which is the only layer allowed to reach
+// it: the declaration lives behind the declaration index, and v2.compiler.eval's header states that eval
+// does not consult or resolve SymbolIndex. Any other node carries Absent.
+// WHY RECORDED RATHER THAN RE-READ. v2.compiler.eval's value-acceptance gate
+// (eval_runtime_value_acceptance_witness) compares the node's declared type with the type the
+// interpretation stamped on the value it produced, by node identity. A numeric refinement's values are
+// stamped with the carrier, not with the refinement (v2.extdeps.runtimes.v2_evaluator
+// v2_eval_int_runtime_value stamps v2.std.integer integer_int_type_node), so with only the two sides of
+// that comparison the gate refuses a value the checker had admitted one node earlier through
+// v2.std.coercion coercion_cast_crossing's Widened arm -- the v2 instance of
+// gunbc.recurring_failure_mode::the_checker_admits_a_cast_the_evaluator_refuses. The fact is written
+// where only the checker may read the index, and read where only the evaluator needs the answer.
+// THE GATE ADDS NO TEST OF ITS OWN: it reuses the one test that Widened arm uses
+// (v2.std.coercion coercion_cast_exact_witness), so a value crossing to a carrier is judged by the same
+// structural equality in both layers, because DESIGN gunbc.design_argument::single_authority says "a
+// second place that independently decides it is a fork". Absent is not "no carrier" — it is "the checker
+// never read one for this node" — and the gate refuses at it rather than guessing, per
+// gunbc.design_argument::fail_closed.
 type InferredFacts {
   grounding: NodeGrounding
   descent: Witness<TerminationProof>
   denotation: Optional<Node>
   type_instances: List<TypeVariableInstance>
+  refinement_carrier: Optional<Node>
 }
 
 type InferredTree {
