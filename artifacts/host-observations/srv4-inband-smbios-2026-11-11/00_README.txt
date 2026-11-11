@@ -89,9 +89,14 @@ WHY THE HOST THAT ANSWERED IS srv4 — AND WHAT THIS DOES NOT PROVE
   name refuses: HostAnsweredAsAnotherHost) and an out-of-band read catches the wrong-BOARD half. The BMC FRU read
   of the same board is the second source, and it is OWED, not agreed: no bmc-srv4-admin credential was reachable
   from this session (no gcloud / Secret Manager client here). A2 admits on one admitted reading, so the owed read
-  does not gate srv4's flip; it is recorded as a typed obligation
-  (gunbc.fleet.fleet_host_smbios_observation::srv4_bmc_fru_second_source_frontier), and if it ever contradicts
-  this serial, subject.bind_unit_key refuses with BoardSerialContradictory and srv4's cutover stops.
+  does not gate srv4's flip. The debt is carried by DATA rather than by this sentence:
+  gunbc.fleet.fleet_host_smbios_observation::srv4_bmc_fru_board_serial_observations is EMPTY, that emptiness is
+  what the frontier (srv4_bmc_fru_second_source_frontier, a BoundDissolution on DataNotEmpty of that list) waits
+  on, and srv4's A2 inputs are the fold of the in-band reading and that empty list. When the FRU read lands its
+  observation goes into the list, the frontier dissolves, and subject.bind_unit_key begins checking the two arms
+  against each other -- agreeing they corroborate, disagreeing they refuse with BoardSerialContradictory and
+  srv4's cutover stops. A witness asserts the list is empty today, that the frontier points at that list rather
+  than at a declaration that already exists, and that a planted FRU observation would in fact reach A2.
 
 FILES
   read_smbios.sh                        the script piped to the host, verbatim

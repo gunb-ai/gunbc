@@ -67,7 +67,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   filesystem_read_outcome,
 }
-import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_path }
+import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_path, dmi_id_directory }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.subject { BoardSerialObservation, HostSmbios, UnitIdentityInputs }
 import gunbc.machine_intake.receipt { EvidenceRef }
@@ -241,13 +241,27 @@ fn host_smbios_board_serial_observations(standing: HostSmbiosBoardSerialStanding
   }
 }
 
+// BOTH ARMS, JOINED ONCE. The in-band read this module takes and the out-of-band read the FRU lane owes are kept
+// apart as producers and joined here, in the one place that becomes A2's list — so a second source cannot arrive
+// without being folded, and cannot be folded without being recorded.
+fn board_serial_observations_from_both_sources(
+  in_band: List<BoardSerialObservation>,
+  out_of_band: List<BoardSerialObservation>,
+) -> List<BoardSerialObservation> {
+  fold(out_of_band, init: in_band, f: (acc, o) => append(acc, o))
+}
+
 fn host_smbios_unit_identity_inputs(
   standing: HostSmbiosBoardSerialStanding,
   bmc_endpoint: BmcEndpoint,
+  out_of_band: List<BoardSerialObservation>,
 ) -> UnitIdentityInputs {
   UnitIdentityInputs {
     bmc_endpoint: bmc_endpoint,
-    board_serial_observations: host_smbios_board_serial_observations(standing: standing),
+    board_serial_observations: board_serial_observations_from_both_sources(
+      in_band: host_smbios_board_serial_observations(standing: standing),
+      out_of_band: out_of_band,
+    ),
   }
 }
 
@@ -330,27 +344,44 @@ data srv4_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
   fleet_board_row: srv4_baseboard.catalog.model_label,
 )
 
+// THE OUT-OF-BAND ARM, EMPTY BECAUSE THE READ HAS NOT HAPPENED. This is srv4's BMC FRU reading — the second
+// source — as the list A2 folds. The emptiness IS the record: no bmc-srv4-admin credential was reachable from
+// the session that took the in-band read, so srv4 is admitted on the HostSmbios arm alone, and no prose here can
+// be read as the FRU arm agreeing with it. When the FRU read is taken its BoardSerialObservation goes INTO this
+// list, and three things follow mechanically rather than by editing prose: the frontier below dissolves, srv4's
+// A2 inputs carry both arms, and subject.bind_unit_key begins checking them against each other — agreeing they
+// corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover stops. An obligation
+// stated as a condition that is already true tracks nothing (the guarantee ladder asks a class below its ceiling
+// to name a next-rung trigger that can actually fail), so the debt is carried by an empty list instead.
+data srv4_bmc_fru_board_serial_observations: List<BoardSerialObservation> = []
+
+// THE SAME DEBT, IN THE SHAPE THE CORPUS WRITES DISSOLUTIONS IN: a forward reference. The trigger names a
+// declaration that does NOT exist yet — the row the FRU read will add — so the condition is false at the moment
+// it is written and can only be made true by taking the read. (Its sibling trigger, DeclarationRetires, is for
+// declarations whose disappearance is the retirement; neither shape is allowed to name a live declaration as
+// something still owed, which is the mistake this row first made: it pointed at
+// gunbc.machine_intake.arrival_converge::identity_bind_provisional, a function that has been on main since the
+// intake lane landed, so it would have fired on the day it was written and tracked nothing.) The witness
+// evaluates this condition against the live declarations it once pointed at and requires it to stay Pending.
+data srv4_bmc_fru_second_source_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears {
+    ref: DeclarationRef {
+      module_path: "gunbc.fleet.fleet_host_smbios_observation",
+      decl_name: "srv4_bmc_fru_board_serial_observation",
+      field: WholeDeclaration,
+    },
+  },
+}
+
 // WHAT A2 CONSUMES. gunbc.fleet.fleet_machine_unit_binding folds this into fleet_machine_unit_evidence; the
 // serial is not typed there — it arrives through this reading and its standing.
 data srv4_host_smbios_unit_identity_inputs: UnitIdentityInputs = host_smbios_unit_identity_inputs(
   standing: srv4_host_smbios_board_serial_standing,
   bmc_endpoint: srv4_baseboard.bmc,
+  out_of_band: srv4_bmc_fru_board_serial_observations,
 )
 
-// THE SECOND SOURCE srv4 OWES, recorded rather than claimed as agreement. The BMC FRU read of the same board is
-// the out-of-band producer's work (gunbc.machine_intake.arrival_converge identity_bind_provisional, consuming a
-// BMC access receipt); its credential — Secret Manager bmc-srv4-admin — was not reachable from the session that
-// took this read. The reading above admits srv4 on one source; this row says plainly which source is still
-// missing and what discharges it, so nobody later reads one arm as corroboration of the other.
-data srv4_bmc_fru_second_source_frontier: DissolutionCondition = BoundDissolution {
-  trigger: DeclarationAppears {
-    ref: DeclarationRef {
-      module_path: "gunbc.machine_intake.arrival_converge",
-      decl_name: "identity_bind_provisional",
-      field: WholeDeclaration,
-    },
-  },
-}
+
 
 // THE PARSE IS ONE QUESTION WITH TWO LANES, RECORDED RATHER THAN QUIETLY FORKED
 // (gunbc.design_argument::continuous_generalization). gunbc.machine_intake.inband_host_identity — landing in
@@ -379,14 +410,15 @@ data inband_smbios_board_parse_fork_dissolution: DissolutionCondition = BoundDis
 // ── the evidence, checked rather than cited ──────────────────────────────────────────────────────────────
 
 // WHERE THE TRANSCRIPT STANDS AGAINST THE RECORD. Digest drift, an unreadable file, or a transcript printing a
-// different serial or hostname than the row claims — each refuses with the pair that disagrees, so a reader
-// sees which of the two is lying instead of a check that passed.
+// different serial, hostname or board model than the row claims — each refuses with the pair that disagrees, so a
+// reader sees which of the two is lying instead of a check that passed.
 type HostSmbiosTranscriptStanding
   = TranscriptAgrees { sha256: NonEmptyStr }
   | TranscriptUnreadable { error: String }
   | TranscriptDigestDiffers { expected: NonEmptyStr, observed: String }
   | TranscriptSerialDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptHostnameDiffers { recorded: NonEmptyStr, printed: String }
+  | TranscriptBoardNameDiffers { recorded: NonEmptyStr, printed: String }
 
 // THE VALUE OF ONE `key=value` LINE IN THE TRANSCRIPT, or "" where the transcript has no such line.
 fn transcript_line_value(lines: List<String>, key: NonEmptyStr) -> String {
@@ -397,8 +429,37 @@ fn transcript_line_value(lines: List<String>, key: NonEmptyStr) -> String {
   }
 }
 
+// THE BOARD MODEL IS CORROBORATED ONLY WHEN THE RECORD CLAIMS ONE. A blank or unreadable model has nothing to
+// compare against, and host_smbios_board_serial_standing refuses those anyway — inventing a comparison for them
+// would turn a refusal into a pass. Where the record does claim a value, it has to come back from the host's own
+// bytes: the model is the field the standing cross-checks against the fleet's row and the field the flip's
+// discrimination between six identical ALTRAD8UD boards leans on, so it is the last one that should be allowed to
+// rest on something typed beside the capture. A missing line prints as "" and therefore disagrees.
+fn board_model_must_be_corroborated(reading: HostSmbiosReading) -> Bool {
+  match reading.board_name {
+    SmbiosFieldValue { value: _ } => true
+    SmbiosFieldUnreadable { detail: _ } => false
+    SmbiosFieldBlank => false
+  }
+}
+
+fn board_model_recorded(reading: HostSmbiosReading) -> NonEmptyStr {
+  match reading.board_name {
+    SmbiosFieldValue { value: v } => v
+    SmbiosFieldUnreadable { detail: d } => d
+    SmbiosFieldBlank => "<blank>"
+  }
+}
+
+fn board_model_disagrees(reading: HostSmbiosReading, lines: List<String>) -> Bool {
+  board_model_must_be_corroborated(reading: reading)
+    && (trim(s: transcript_line_value(lines: lines, key: "dmi.board_name")) != (board_model_recorded(reading: reading) as String))
+}
+
 // RE-READ THE COMMITTED TRANSCRIPT. The witness runs this; it is what makes the sha256 in the EvidenceRef do
-// work rather than decorate the row.
+// work rather than decorate the row. Digest first, then the serial, then the name the host answers to, then the
+// board model it reports — each refusal carrying the pair that disagrees, so a reader sees which of the two is
+// lying instead of getting a check that passed.
 fn verify_host_smbios_reading_transcript(reading: HostSmbiosReading) -> HostSmbiosTranscriptStanding
   uses fs: std.resources.Filesystem {
   let read = Filesystem.Read(path: reading.transcript.label as String)
@@ -423,6 +484,11 @@ fn verify_host_smbios_reading_transcript(reading: HostSmbiosReading) -> HostSmbi
           TranscriptSerialDiffers { recorded: recorded_serial as NonEmptyStr, printed: printed_serial }
         } else if printed_hostname != (reading.kernel_hostname as String) {
           TranscriptHostnameDiffers { recorded: reading.kernel_hostname, printed: printed_hostname }
+        } else if board_model_disagrees(reading: reading, lines: lines) {
+          TranscriptBoardNameDiffers {
+            recorded: board_model_recorded(reading: reading),
+            printed: trim(s: transcript_line_value(lines: lines, key: "dmi.board_name")),
+          }
         } else {
           TranscriptAgrees { sha256: sha256_hex_of_recorded_hash(hash: reading.transcript.digest) }
         }

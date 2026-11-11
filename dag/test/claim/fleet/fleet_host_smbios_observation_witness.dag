@@ -20,7 +20,8 @@ module test.claim.fleet.fleet_host_smbios_observation_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
-import std.dissolution { BoundDissolution, DeclarationAppears }
+import std.dissolution { BoundDissolution, DissolutionPending, dissolution_status, dissolution_trigger_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.linux.dmi_id { DmiBoardSerial, dmi_id_attribute_path }
 import gunbc.machine_intake.subject {
@@ -79,11 +80,14 @@ import gunbc.fleet.fleet_host_smbios_observation {
   SysfsDmiAttributePrint,
   SmbiosTableDecode,
   TranscriptAgrees,
+  TranscriptBoardNameDiffers,
   TranscriptDigestDiffers,
+  board_serial_observations_from_both_sources,
   host_smbios_board_serial_observations,
   host_smbios_board_serial_standing,
   smbios_read_is_an_identity_read,
   inband_smbios_board_parse_fork_dissolution,
+  srv4_bmc_fru_board_serial_observations,
   srv4_bmc_fru_second_source_frontier,
   srv4_host_smbios_board_serial_standing,
   srv4_host_smbios_reading,
@@ -460,18 +464,62 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
 
 // ── the two obligations, pointed at what would discharge them ──────────────────────────────────────────
 
-// THE OWED FRU SOURCE POINTS AT THE FOLD THAT ACTUALLY MAKES AN OUT-OF-BAND READING. srv4 is admitted on one
-// source, and the second is recorded as owed rather than assumed — but an obligation is only as good as the
-// declaration that discharges it. If gunbc.machine_intake.arrival_converge's provisional bind is renamed or
-// replaced, this frontier stops describing anything reachable and this claim is where that shows: a frontier
-// naming nothing is how an owed read becomes an unowed one.
-test fn the_owed_fru_source_names_the_fold_that_discharges_it() -> Bool {
-  match srv4_bmc_fru_second_source_frontier {
-    BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
-      ((r.module_path as String) == "gunbc.machine_intake.arrival_converge")
-        && ((r.decl_name as String) == "identity_bind_provisional")
+// THE OWED SECOND SOURCE IS OWED, NOT ALREADY DISCHARGED. srv4 is admitted on one source, and the corpus has to
+// be able to tell that from two sources agreeing — otherwise a reader of srv4's row takes the difference on faith.
+// Four things are checked together, and the last is what makes this a behaviour claim rather than a reading of the
+// row's text: the out-of-band list is EMPTY (the FRU read has not happened); srv4's A2 inputs therefore carry
+// exactly one arm; the frontier is a BoundDissolution and not an UnboundDissolution whose description no mechanism
+// can read; and evaluating it with the corpus's own evaluator against the declarations that are LIVE TODAY —
+// including gunbc.machine_intake.arrival_converge::identity_bind_provisional, which this row first wrongly pointed
+// at — still says Pending. A trigger that fires the day it is written tracks nothing; this is the claim that would
+// catch that happening again.
+test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
+  let nothing_read_out_of_band = (srv4_bmc_fru_board_serial_observations |> count) == 0
+  let inputs_carry_one_arm = (srv4_host_smbios_unit_identity_inputs.board_serial_observations |> count) == 1
+  let bound_and_pointing_forward = match srv4_bmc_fru_second_source_frontier {
+    BoundDissolution { trigger: t } => match dissolution_trigger_ref(trigger: t) {
+      DeclarationRef { module_path: m, decl_name: d, field: _ } =>
+        ((m as String) == "gunbc.fleet.fleet_host_smbios_observation")
+          && ((d as String) == "srv4_bmc_fru_board_serial_observation")
+    }
     _ => false
   }
+  let live_today = [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "identity_bind_provisional"),
+    decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "bind_unit_key"),
+    decl_ref(module_path: "gunbc.fleet.fleet_machine_unit_binding", decl_name: "admit_machine_units"),
+  ]
+  let still_pending = match dissolution_status(
+    condition: srv4_bmc_fru_second_source_frontier,
+    present_decls: live_today,
+  ) {
+    DissolutionPending => true
+    _ => false
+  }
+  nothing_read_out_of_band && inputs_carry_one_arm && bound_and_pointing_forward && still_pending
+}
+
+// ... AND THE DISCHARGE WOULD ACTUALLY REACH A2 WHEN THE READ LANDS. The other half of an obligation: putting a
+// BmcFru observation into the fold must produce a two-arm list that A2 then checks against itself, not a row that
+// sits beside the reading. Agreeing, both arms bind the one unit; the disagreeing case is
+// a_contradictory_fru_reading_refuses_at_a2_and_binds_nothing, and together they are why the list is the right
+// place to carry the debt.
+test fn the_fru_discharge_would_reach_a2_when_the_read_lands() -> Bool {
+  let both = board_serial_observations_from_both_sources(
+    in_band: host_smbios_board_serial_observations(standing: srv4_host_smbios_board_serial_standing),
+    out_of_band: [BoardSerialObservation { source: BmcFru, serial: srv4_observed_serial }],
+  )
+  let folded_two_arms = (both |> count) == 2
+  let a2_sees_both = match machine_unit_standing_in(admission: admit_machine_units(evidence: [
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+      bmc_endpoint: srv4_baseboard.bmc,
+      board_serial_observations: both,
+    } },
+  ]), machine: operator_host_srv4) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    _ => false
+  }
+  folded_two_arms && a2_sees_both
 }
 
 // THE RECORDED FORK POINTS AT THE PARSE IT WOULD RETIRE INTO, not at the captures around it. The register row
@@ -483,6 +531,24 @@ test fn the_recorded_fork_names_the_parse_it_retires_into() -> Bool {
     BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
       ((r.module_path as String) == "gunbc.machine_intake.inband_host_identity")
         && ((r.decl_name as String) == "inband_section_field")
+    _ => false
+  }
+}
+
+// THE BOARD MODEL COMES BACK OUT OF THE BYTES TOO. The standing refuses a reading whose board_name is not the
+// fleet's row for that machine; if the transcript check stopped at the serial, that cross-check would rest on a
+// value someone typed in beside the capture. Plant a model the host did not print: the digest still matches, the
+// serial still matches, and the check refuses, naming both.
+test fn a_board_model_the_transcript_does_not_print_refuses() -> Bool {
+  let planted = planted_reading(
+    board_serial: SmbiosFieldValue { value: srv4_observed_serial },
+    kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+    board_name: SmbiosFieldValue { value: "X11DPi-NST" },
+    invocations: srv4_reads(),
+  )
+  match verify_host_smbios_reading_transcript(reading: planted) {
+    TranscriptBoardNameDiffers { recorded: r, printed: p } =>
+      ((r as String) == "X11DPi-NST") && ((p as String) == "ALTRAD8UD-1L2T")
     _ => false
   }
 }
