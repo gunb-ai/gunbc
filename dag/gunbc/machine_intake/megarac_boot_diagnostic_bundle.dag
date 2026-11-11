@@ -24,6 +24,7 @@ import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_t
 import std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
@@ -354,10 +355,11 @@ fn bmc_curl_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, s
   }
 }
 
-// ipmitool's lanplus renderings, as its source prints them: "RAKP 2 HMAC is invalid" and
-// "Unauthorized name" come from the RAKP exchange rejecting the credential, and "Insufficient
-// privilege level" is completion code D4h. Anything that failed to set up a session without one
-// of those is BmcSessionUnestablished.
+// The session/auth half of this reading is classified ONCE in extdeps.bmc.ipmi_session
+// ipmi_session_failure -- a credential refusal vs. a session that never came up -- and this maps that
+// verdict to the read-cause types and adds the timeout case. The vendor lines themselves ("RAKP 2 HMAC is
+// invalid" / "Unauthorized name" rejecting the credential, "Insufficient privilege level" completion code
+// D4h, and "Unable to establish IPMI v2" for a session that never came up) are declared there, not here.
 fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> BmcReadCause {
   let detail = first_line(s: stderr)
   if exit_code == coreutils_timeout_expired_exit_code {
@@ -374,12 +376,10 @@ fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: In
 // (gunbc.machine_intake.sol_hold) has no exit status the workflow can read, only the lines it wrote.
 fn bmc_ipmitool_session_cause(endpoint: NonEmptyStr, at: NonEmptyStr, stderr: String) -> BmcReadCause? {
   let detail = first_line(s: stderr)
-  if string_contains(s: stderr, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: stderr, pattern: "Unauthorized name") || string_contains(s: stderr, pattern: "Insufficient privilege level") {
-    Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
-  } else if string_contains(s: stderr, pattern: "Unable to establish IPMI v2") {
-    Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
-  } else {
-    none
+  match ipmi_session_failure(output: stderr) {
+    Present { value: IpmiSessionAuthRefused } => Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
+    Present { value: IpmiSessionUnestablished } => Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
+    Absent => none
   }
 }
 

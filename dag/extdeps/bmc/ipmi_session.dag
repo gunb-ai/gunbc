@@ -1,0 +1,41 @@
+module extdeps.bmc.ipmi_session
+
+// THE ONE CLASSIFICATION of how an authenticated ipmitool lanplus read failed, by the vendor lines ipmitool
+// prints. This is the SINGLE declaration of that vocabulary (gunbc.design_argument::single_authority); both
+// the boot-diagnostic read cause (gunbc.machine_intake.megarac_boot_diagnostic_bundle
+// bmc_ipmitool_session_cause / bmc_ipmitool_read_cause) and the account-state census acceptance reading
+// (gunbc.machine_intake.bmc_account_state_parsers ipmi_authenticated_census_read) derive from here, so the
+// vendor strings cannot drift between the two consumers (review 93445).
+//
+// THE TWO WAYS ARE NOT THE SAME, and collapsing them is the bug this file exists to prevent:
+//   IpmiSessionAuthRefused     -- the RAKP exchange or a command completion REFUSED THE CREDENTIAL itself.
+//                                 This is evidence ABOUT the credential: the controller saw it and rejected it.
+//   IpmiSessionUnestablished   -- the RMCP+ session never came up at all. This says NOTHING about the
+//                                 credential: there was no session in which any credential was examined, so it
+//                                 is never read as the credential being refused (fail_closed -- an observation
+//                                 that never reached the credential is not a reading of the credential).
+// A caller that reads IpmiSessionUnestablished as a refused credential would report the managed credential as
+// rejected merely because the link was down -- a false negative off a read that never looked.
+import std.algebra { string_contains }
+import std.types { String }
+import std.optional { Present }
+
+type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished
+
+// Which way an authenticated read failed, from the vendor lines ipmitool prints -- its source, as the
+// boot-diagnostic classifier names them: "RAKP 2 HMAC is invalid" and "Unauthorized name" come from the RAKP
+// exchange rejecting the credential, and "Insufficient privilege level" is completion code D4h; those three
+// are a REFUSED CREDENTIAL. "Unable to establish IPMI v2" is the session never coming up, its own case.
+// Returns nothing when no such line is present -- the read failed for some other reason, or did not fail.
+// This is substring classification of a failed read's OUTPUT, on the whole vendor sentences: it is not a
+// structural table parse, and these sentences never appear as cells of a `user list` / `channel getaccess`
+// table, so a served census table never matches any arm here.
+fn ipmi_session_failure(output: String) -> IpmiSessionFailure? {
+  if string_contains(s: output, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: output, pattern: "Unauthorized name") || string_contains(s: output, pattern: "Insufficient privilege level") {
+    Present { value: IpmiSessionAuthRefused }
+  } else if string_contains(s: output, pattern: "Unable to establish IPMI v2") {
+    Present { value: IpmiSessionUnestablished }
+  } else {
+    none
+  }
+}

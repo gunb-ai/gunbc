@@ -105,6 +105,7 @@ fn assembled(captures: BmcAccountStateCaptures) -> BmcAccountStateCaptureOutcome
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_census"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_garbage_census_read_refuses_never_an_accepted_guess"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "an_empty_census_answer_refuses_never_a_defaulted_managed_acceptance"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "an_unestablished_session_census_read_refuses_never_a_defaulted_managed_rejection"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_plaintext_service_root_body_refuses_never_an_unfounded_surface"),
   ]
 {
@@ -166,16 +167,16 @@ test fn a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fab
   }
 }
 
-// RED (byte-vs-decoded discriminator, review 93420). An authenticated census read the CONTROLLER REFUSED at
-// authentication -- an ipmitool session-establishment failure, the same vendor line the repo's own
-// bmc_ipmitool_session_cause names -- must assemble managed_accepted: false. Never a defaulted true, and
-// never read as the empty census it might otherwise look like: the census carries the members the driver
-// read with NO user-access rows, because the refusal proves the managed credential was rejected.
+// RED (byte-vs-decoded discriminator, review 93420). An authenticated census read the CONTROLLER refused at
+// the CREDENTIAL -- "RAKP 2 HMAC is invalid" (a wrong managed password), the vendor line the repo's own
+// classifier names -- must assemble managed_accepted: false. Never a defaulted true, and never read as the
+// empty census it might otherwise look like: the census carries the members the driver read with NO
+// user-access rows, because the credential refusal proves the managed credential was rejected.
 test fn an_authentication_refused_census_read_assembles_managed_accepted_false() -> Bool {
   let c = faithful_captures()
   let refused = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    census_answer: committed("ipmi-user-list", "Error: Unable to establish IPMI v2 / RMCP+ session"),
+    census_answer: committed("ipmi-user-list", "Error (0): RAKP 2 HMAC is invalid"),
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
     lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
@@ -184,6 +185,25 @@ test fn an_authentication_refused_census_read_assembles_managed_accepted_false()
     CapturedTransportUndecodable { cause: _ } => false
     CapturedTransportAssembled { transport: t } =>
       !t.managed_accepted && t.census.user_access.length() == 0 && t.census.members.length() >= 1
+  }
+}
+
+// RED (fail_closed -- review 93445). A census read whose RMCP+ session never came up ("Unable to establish
+// IPMI v2") reached NO credential, so it says NOTHING about the managed credential: the assembler must REFUSE
+// (UserAccessRowsUndecodable), NOT mint managed_accepted:false. Minting a rejected probe off a link-down read
+// is the false negative a classifier that folds "session unestablished" into "credential refused" would ship.
+test fn an_unestablished_session_census_read_refuses_never_a_defaulted_managed_rejection() -> Bool {
+  let c = faithful_captures()
+  let down = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    census_answer: committed("ipmi-user-list", "Error: Unable to establish IPMI v2 / RMCP+ session"),
+    redfish_accounts_answer: c.redfish_accounts_answer,
+    redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
+    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: down) {
+    CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
+    _ => false
   }
 }
 

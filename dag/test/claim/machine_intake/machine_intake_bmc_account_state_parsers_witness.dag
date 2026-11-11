@@ -174,20 +174,38 @@ test fn an_authenticated_census_table_reads_as_accepted_with_its_rows() -> Bool 
   }
 }
 
-// THE REFUSED ARM (never malformed). An authenticated census read the controller refused -- the RMCP+
-// session never came up (also the RAKP-2-HMAC wrong-password line) -- is AuthenticationRefused with the
-// vendor line carried, NOT Malformed and NOT Accepted. This is the case the assembler turns into
-// managed_accepted: false; a permissive classifier that read it as an empty/malformed table would be a red.
-test fn a_refused_authenticated_census_is_read_as_refused_never_malformed() -> Bool {
-  let session = match ipmi_authenticated_census_read(text: "Error: Unable to establish IPMI v2 / RMCP+ session", channel: 8) {
-    IpmiCensusAuthenticationRefused { detail: d } => d == "Unable to establish IPMI v2 / RMCP+ session"
-    _ => false
-  }
+// THE CREDENTIAL-REFUSED ARM (never malformed, never accepted). A census read the controller refused at the
+// CREDENTIAL -- a wrong password ("RAKP 2 HMAC is invalid"), an unknown user ("Unauthorized name"), a denied
+// privilege -- is AuthenticationRefused. This is the case the assembler turns into managed_accepted:false; a
+// permissive classifier reading it as an empty/malformed table (or accepted) would be a red. The detail is the
+// classifier's, not a byte-exact vendor echo, so this asserts the ARM.
+test fn a_refused_authenticated_credential_is_read_as_refused_not_malformed() -> Bool {
   let rakp = match ipmi_authenticated_census_read(text: "Error (0): RAKP 2 HMAC is invalid", channel: 8) {
-    IpmiCensusAuthenticationRefused { detail: d } => d == "RAKP 2 HMAC is invalid"
+    IpmiCensusAuthenticationRefused { detail: _ } => true
     _ => false
   }
-  session && rakp
+  let unknown = match ipmi_authenticated_census_read(text: "Error: Unauthorized name", channel: 8) {
+    IpmiCensusAuthenticationRefused { detail: _ } => true
+    _ => false
+  }
+  let priv = match ipmi_authenticated_census_read(text: "Insufficient privilege level", channel: 8) {
+    IpmiCensusAuthenticationRefused { detail: _ } => true
+    _ => false
+  }
+  rakp && unknown && priv
+}
+
+// A SESSION THAT NEVER CAME UP IS NOT A REFUSED CREDENTIAL (review 93445). "Unable to establish IPMI v2" means
+// the RMCP+ session never came up -- no credential was ever reached -- so it must NOT be read as
+// managed_accepted:false. It is Unreadable (a read that refused, not a credential that was rejected): a
+// classifier that folded it into AuthenticationRefused would report the managed credential as rejected merely
+// because the link was down -- the false negative this red prevents.
+test fn an_unestablished_session_is_unreadable_never_a_refused_credential() -> Bool {
+  match ipmi_authenticated_census_read(text: "Error: Unable to establish IPMI v2 / RMCP+ session", channel: 8) {
+    IpmiCensusUnreadable { detail: _ } => true
+    IpmiCensusAuthenticationRefused { detail: _ } => false
+    _ => false
+  }
 }
 
 // EMPTY IS NEVER A REFUSAL. An absent read (empty body) is Unreadable, not AuthenticationRefused: a read that
