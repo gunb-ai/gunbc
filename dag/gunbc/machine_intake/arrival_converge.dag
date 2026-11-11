@@ -93,6 +93,7 @@ import gunbc.fleet.fleet_machine_unit_binding { fleet_bound_unit_keys_except }
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1 }
 import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.machine_intake.bmc_rotation_route {
+  admitted_forced_first_rotation_eq,
   BmcRotationRouteStanding,
   BmcAccountWriteRequest,
   ObservedSurfaceRead,
@@ -174,6 +175,7 @@ import gunbc.machine_intake.bmc_write_controller {
 }
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
+  step_instance_key_eq,
   StepSubjectKey,
   StepInstanceKey,
   ConvergenceStep,

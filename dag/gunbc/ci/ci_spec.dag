@@ -1,5 +1,7 @@
 module gunbc.ci.ci_spec
 
+import gunbc.fleet.branch_run_grant_broker_workflow { gunbc_ci_branch_run_grant_broker_target }
+import gunbc.heal_publisher_workflow { heal_publisher_cgroup_prelude }
 import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
   gunbc_ci_tier_o_drift_check_target,
@@ -101,7 +103,7 @@ import gunbc.live_deploy.apply_receipt {
 }
 
 import gunbc.ci.ci_release_build { ci_floor_build_verify_stmt }
-import gunbc.ci.ci_retry { ci_retry_body_run }
+import gunbc.ci.ci_retry { ci_retry_body_run, ci_retry_step }
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.extdeps.languages.bash_build {
@@ -661,11 +663,6 @@ data gunbc_ci_branch_run_grant_apply_target: GunbcRunStepTarget = GunbcRunStepTa
 data gunbc_ci_branch_run_grant_await_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/branch_run_grant_await.dag",
   function: "await_grant",
-}
-
-data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/branch_run_grant_broker.dag",
-  function: "broker",
 }
 
 data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -2207,9 +2204,6 @@ fn app_mint_export_commands(spec: AppInstallationTokenMint) -> List<String> {
   )
 }
 
-fn app_mint_step(command: String) -> PipelineStep {
-  Do { run: ci_retry_body_run(command: command) }
-}
 
 // THE OBSERVATION RECORD, for the one caller whose verdict is decided in .dag rather than by this
 // script's exit: the app-key version verifier (gunbc.auth.ci_app_key_rotation). Each line is what one
@@ -2222,7 +2216,7 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
   match spec.observation_record {
     Absent => []
     Present { value: path_expression } =>
-      [app_mint_step(command: join(["printf '", key, " %s\\n' ", value_expression, " >> ", path_expression], ""))]
+      [ci_retry_step(command: join(["printf '", key, " %s\\n' ", value_expression, " >> ", path_expression], ""))]
   }
 }
 
@@ -2239,104 +2233,31 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
 // THE APP JWT CAN MINT A TOKEN FOR EVERY INSTALLATION OF ITS APP, so it is strictly more powerful
 // than the installation token it buys; it is written to a 0600 file, spent once, and removed before
 // the token is read out of the response.
-// A HOSTED RUNNER BINDS NO CGROUP, AND gunbc REFUSES WITHOUT ONE.
-//
-// v1_compiler cli_run entry_resolve typed_module_cache_cap_derivation panics with
-// HostBudgetUnreadable when no cgroup memory.high or memory.max binds the process: the
-// typed-module cache cap bounds the memory used to RESOLVE the corpus, so an unknown budget
-// cannot be defaulted. That refusal is the repair for an absorbing fallback which previously
-// took the ceiling and OOM-killed the corpus (exit 137), so it is not to be worked around --
-// and its own note rules out GUNBC_MEMORY_BUDGET_BYTES explicitly, because an environment
-// declaration constrains no allocation.
-//
-// Self-hosted runners satisfy it for free: actions-runner@.service carries MemoryMax. The heal
-// publisher runs on a HOSTED runner, deliberately, so that an App installation token which can
-// write a protected branch never lands on runners shared with pull-request workloads. Measured
-// 2026-09-19, publisher run 35451964724: admission panicked before any credential was minted.
-//
-// So the job binds a real cgroup itself. The shell moves into a leaf with memory.max set, and
-// gunbc inherits it as a child -- a constraint that actually holds, not a declared number. This
-// is a prelude rather than a wrapper because the invocation words pass an unquoted-path
-// allowlist (gunbc_invoke_first_unsafe_word) that a `systemd-run --scope -p ...` prefix would
-// not survive; moving the shell leaves the invocation untouched.
-data heal_publisher_cgroup_name: String = "gunbc-publish"
-
-// THE HOSTED ubuntu-24.04-arm MEMORY BOUND, ONCE, for every caller of the bind below: 12 GiB
-// against the image's 4 vCPU / 16 GiB, leaving the runner agent its own room.
-fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
-  gibibyte(count: 12)
-}
-
-// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
-// tests in the clippy lane (gunbc.witness.compiler_gate_workflow). The callers differ in the leaf's name and
-// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
-// afterwards inherits a memory.max that gunbc.host.host_budget_source reads as an ordinary observation.
-// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
-// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
-data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings carried by the heal publisher prelude (the rust_unit_tests step stopped binding it when it moved to the fleet on 2026-09-30) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; the caller then consumes that op and this function is deleted")
-
-fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
-  [
-    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
-    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
-    "sudo mkdir -p \"$GUNBC_CG\"",
-    concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
-    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
-    "cat \"$GUNBC_CG/memory.max\"",
-  ]
-}
-
-fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
-  concat(
-    [app_mint_step(command: "set -euo pipefail")],
-    list_map(
-      xs: hosted_runner_memory_cgroup_bind_commands(
-        cgroup_name: heal_publisher_cgroup_name,
-        memory_max: hosted_arm_runner_cgroup_memory_max(),
-      ),
-      f: fn(c) { app_mint_step(command: c) },
-    )
-  )
-}
-
-// THE MEMORY CEILING ON ITS OWN, rendered for a phase that has a tail of its own between the ceiling and
-// the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
-// go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
-// commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
-fn heal_publisher_cgroup_prelude_script() -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
-      steps: heal_publisher_cgroup_prelude(),
-      on_failure: FailFast
-    }),
-    "\n"
-  )
-}
 
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
   concat(concat(concat(concat(concat(concat(concat(
     [
-      app_mint_step(command: "set -euo pipefail"),
-      app_mint_step(command: "umask 077"),
-      app_mint_step(command: concat("KEY_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-key"))),
-      app_mint_step(command: concat("HDR_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-auth-header"))),
-      app_mint_step(command: concat("JWT_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-jwt"))),
-      app_mint_step(command: concat("TOKEN_HEADERS=", app_mint_path(stem: spec.file_stem, suffix: "-token-headers"))),
-      app_mint_step(command: concat("TOKEN_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-token-body"))),
-      app_mint_step(command: app_mint_cleanup_command(spec: spec)),
-      app_mint_step(command: "trap cleanup EXIT"),
-      app_mint_step(command: gunbc_ci_auth_header_file_write_command()),
-      app_mint_step(command: concat("SM_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"))),
-      app_mint_step(command: join([
+      ci_retry_step(command: "set -euo pipefail"),
+      ci_retry_step(command: "umask 077"),
+      ci_retry_step(command: concat("KEY_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-key"))),
+      ci_retry_step(command: concat("HDR_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-auth-header"))),
+      ci_retry_step(command: concat("JWT_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-jwt"))),
+      ci_retry_step(command: concat("TOKEN_HEADERS=", app_mint_path(stem: spec.file_stem, suffix: "-token-headers"))),
+      ci_retry_step(command: concat("TOKEN_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-token-body"))),
+      ci_retry_step(command: app_mint_cleanup_command(spec: spec)),
+      ci_retry_step(command: "trap cleanup EXIT"),
+      ci_retry_step(command: gunbc_ci_auth_header_file_write_command()),
+      ci_retry_step(command: concat("SM_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"))),
+      ci_retry_step(command: join([
         "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
         secret_ref_access_url(ref: spec.key_secret),
         "\")\""
       ], "")),
-      app_mint_step(command: "rm -f \"$HDR_FILE\"")
+      ci_retry_step(command: "rm -f \"$HDR_FILE\"")
     ],
     app_mint_record_steps(spec: spec, key: app_key_record_key_status_key, value_expression: "\"$SM_CODE\"")),
     [
-      app_mint_step(command: join([
+      ci_retry_step(command: join([
         "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
         spec.key_unreadable_message,
         "\" >&2; exit 1; fi"
@@ -2348,13 +2269,13 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       value_expression: "\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"name\"])' \"$SM_BODY\")\""
     )),
     [
-      app_mint_step(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\""),
-      app_mint_step(command: "rm -f \"$SM_BODY\""),
-      app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
-      app_mint_step(command: "NOW=$(date +%s)"),
-      app_mint_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
-      app_mint_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | b64url)"], "")),
-      app_mint_step(command: join([
+      ci_retry_step(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\""),
+      ci_retry_step(command: "rm -f \"$SM_BODY\""),
+      ci_retry_step(command: "chmod 600 \"$KEY_FILE\""),
+      ci_retry_step(command: "NOW=$(date +%s)"),
+      ci_retry_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
+      ci_retry_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_protected_header_json(alg: JwsRs256, kid: none), "' | b64url)"], "")),
+      ci_retry_step(command: join([
         "JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((NOW-",
         to_string(github_app_jwt_backdate_seconds),
         "))\" \"$((NOW+",
@@ -2363,11 +2284,11 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
         to_string(spec.app_id),
         "\" | b64url)"
       ], "")),
-      app_mint_step(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)"),
-      app_mint_step(command: "rm -f \"$KEY_FILE\""),
-      app_mint_step(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\""),
-      app_mint_step(command: app_mint_token_request_command(spec: spec)),
-      app_mint_step(command: "rm -f \"$JWT_FILE\"")
+      ci_retry_step(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)"),
+      ci_retry_step(command: "rm -f \"$KEY_FILE\""),
+      ci_retry_step(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\""),
+      ci_retry_step(command: app_mint_token_request_command(spec: spec)),
+      ci_retry_step(command: "rm -f \"$JWT_FILE\"")
     ]),
     app_mint_record_steps(
       spec: spec,
@@ -2375,20 +2296,20 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       value_expression: "\"$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')\""
     )),
     [
-      app_mint_step(command: join([
+      ci_retry_step(command: join([
         "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
         spec.token_refused_message,
         "\" >&2; exit 1; fi"
       ], "")),
-      app_mint_step(command: join([
+      ci_retry_step(command: join([
         spec.export_env_names.head,
         "=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\""
       ], "")),
-      app_mint_step(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"")
+      ci_retry_step(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"")
     ]),
     concat(
-      map(app_mint_export_commands(spec: spec), c => app_mint_step(command: c)),
-      [app_mint_step(command: join(["echo \"", spec.minted_message, "\""], ""))]
+      map(app_mint_export_commands(spec: spec), c => ci_retry_step(command: c)),
+      [ci_retry_step(command: join(["echo \"", spec.minted_message, "\""], ""))]
     )
   )
 }
@@ -2493,9 +2414,9 @@ fn gunbc_ci_app_key_version_verify_mint_script() -> String {
     p: Pipeline {
       steps: concat(
         [
-          app_mint_step(command: "set -euo pipefail"),
-          app_mint_step(command: join([": > \"$", app_key_verify_record_env_name as String, "\""], "")),
-          app_mint_step(command: join([
+          ci_retry_step(command: "set -euo pipefail"),
+          ci_retry_step(command: join([": > \"$", app_key_verify_record_env_name as String, "\""], "")),
+          ci_retry_step(command: join([
             "case \"$", app_key_version_env_name as String,
             "\" in ''|0*|*[!0-9]*) echo \"AppKeyVersionSelectorRefused: '$", app_key_version_env_name as String,
             "' is not a Secret Manager version number; the alias is refused rather than resolved. Reading NO key.\" >&2; exit 1;; esac"
@@ -2758,16 +2679,6 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_branch_run_grant_await_target.entry,
     function: gunbc_ci_branch_run_grant_await_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_branch_run_grant_broker_target.entry,
-    function: gunbc_ci_branch_run_grant_broker_target.function,
     claim_run: false,
     receipt_rel: none
   )
