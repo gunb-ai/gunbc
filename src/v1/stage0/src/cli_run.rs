@@ -861,6 +861,9 @@ pub mod roadmap_acceptance_history_carrier;
 mod demanded_typecheck_equivalence;
 
 #[cfg(test)]
+mod fleet_roster_entry_resolve_witness;
+
+#[cfg(test)]
 /// The erasing projection `func_sig_if_resolved` was deleted from production in the
 /// callable-candidate cut: mapping `FuncSigAmbiguous` onto the same `None` that means "no such
 /// signature" is what kept the ambiguity arm unreachable for its consumers. These tests are the
