@@ -198,7 +198,7 @@ fn the_org_runner_roster_observe_entry_resolves_under_the_run_demand_grain() {
 
 /// A REST-ROUTE SIBLING OLDER THAN P8d. fleet-converge mode `lost_boot_registration_sweep`
 /// (dry-run arm; the route's original consumer, #14303) reads the roster through
-/// `organization_runner_roster_report_via_rest` in `sweep_and_deregister`, so the same
+/// `organization_runner_roster_report_via_rest` in `plan_without_deleting`, so the same
 /// refusal-site declarations hang on this entry too. RED on a main that carries #16156 without
 /// the carrier seed (same `ListOrganizationRunnersPage` refusal), GREEN at the seeded head —
 /// with the P8d arm and the connectivity arm this witnesses that the refusal belongs to the
