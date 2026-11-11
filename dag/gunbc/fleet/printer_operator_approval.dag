@@ -7,6 +7,7 @@ import extdeps.printing.bambu_lab_lan_protocol { BambuAmsTray }
 import std.process { ProcessExit, exit_failure }
 import std.measure { Second, second, second_count, Minute, minute }
 import std.integer { nat_to_int }
+import std.checked_arithmetic { nat_magnitude }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
 import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
@@ -67,20 +68,44 @@ data printer_approval_post_decision_allowance: Second = second(count: 300)
 // the window and this cadence and is never counted off independently.
 data printer_operator_approval_poll_cadence: Second = second(count: 10)
 
-// The credential ceiling on the window: the token's life, minus what is already spent before the poll
-// begins, what will be spent after the grant arrives, AND the reserve the poll is granted past its own
-// deadline -- one rule, in the module that owns the poll budget (gunbc.auth.approval_gate
-// approval_credential_bounded_window), so the ceiling and the tick budget cannot disagree about how late a
-// poll may still answer. The reserve belongs in the ceiling for the same reason it belongs in the ticks: an
-// answer that arrives inside it is answered after it. A ceiling that ignored it admitted a card whose
-// boundary YES reached actuation with an expired token -- 300 + 3000 + 300 filled the 3600 s lifetime
-// exactly and left the 40 s reserve nowhere to go. No absorbing default: a ceiling that computes to zero or
-// below stays zero, which turns the claim RED and stops the card rather than silently handing the operator
-// a window the credential cannot honour.
+// WHAT THE RUN SPENDS BEFORE IT EVEN ASKS, on the token's clock: CAD and slicing on this host. It needs no
+// Google identity, and it is lived entirely by the token that will be presented after the tap, because
+// fleet_converge_printer_job federates at its WIF auth step and the run step that follows prepares, files,
+// waits and then reads. MOVED HERE from gunbc.fleet.fleet_converge_workflow, which still reads it for the
+// step bound: it used to live where the ceiling could not see it, and that is how 1800 s of preparation got
+// a card's whole credential budget spent twice over (review 93521 on gunbc#16304). One row, one home; the
+// step bound and the ceiling both read it. 1800 s is the preparation share of the retired 45-minute budget,
+// SIZED from that budget rather than measured, and printer_preparation_timeout_minutes is the operation's
+// own bound.
+data printer_converge_preparation_allowance: Second = second(count: 1800)
+
+// WHAT THE TOKEN AGES THROUGH BEFORE THE OPERATOR ANSWERS: the preparation above, then the filing of the
+// card. Both are after the mint, so the ceiling pays for both.
+fn printer_approval_credential_pre_decision_spend() -> Second {
+  let before_the_ask = nat_to_int(n: second_count(s: printer_converge_preparation_allowance)) +
+    nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
+  second(count: nat_magnitude(a: before_the_ask))
+}
+
+// The credential ceiling on the window: the token's life, minus everything it ages through before the
+// operator answers (preparation, then the filing), minus what is spent after the grant arrives, AND minus
+// the reserve the poll is granted past its own deadline -- one rule, in the module that owns the poll budget
+// (gunbc.auth.approval_gate approval_credential_bounded_window), so the ceiling and the tick budget cannot
+// disagree about how late a poll may still answer. Each term has been omitted once and each omission is a
+// bug: without the reserve a boundary YES was answered 3640 s into a 3600 s token; without the preparation
+// the card assumed a token that had already spent half an hour slicing (review 93521). Today's honest
+// ceiling is 3600 - 1800 - 300 - 300 - 40 = 1,160 s, 19 min 20 s: 4 min 20 s LONGER than the hand-written
+// 900 s on main, and the first value this card has had that is bounded by the credential rather than by a
+// deadline someone typed. Main was not over its token -- 900 + 1800 + 300 + 300 + 40 = 3,340 of the 3,600
+// available -- so the over-budget card was introduced by this PR's first ceiling, which could not see the
+// preparation, and it is closed by this one. It is not hours, and it cannot be while the token is
+// federated at the top of the job: minting after the decision is what restores the policy row.
+// No absorbing default: a ceiling that computes to zero or below stays zero, which turns the claim RED and
+// stops the card rather than silently handing the operator a window the credential cannot honour.
 fn printer_approval_credential_ceiling() -> Second {
   approval_credential_bounded_window(
     lifetime: workload_identity_access_token_lifetime,
-    pre_decision_allowance: printer_approval_pre_decision_allowance,
+    pre_decision_allowance: printer_approval_credential_pre_decision_spend(),
     post_decision_allowance: printer_approval_post_decision_allowance,
     cadence: printer_operator_approval_poll_cadence,
     overrun_ticks: approval_poll_overrun_ticks
