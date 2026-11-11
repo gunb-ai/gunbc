@@ -27,6 +27,11 @@
 //! to a service-reachability rule that was unowned as of this writing). This witness is route
 //! coverage for the roster pair; it refuses to fix the resolver, so it is RED on a main that
 //! carries #16156 without the seed fix, and must be GREEN at the head that lands the seed.
+//!
+//! HAND-WRITTEN-RUST RECEIPT: this file is hand-written witness Rust beside the generated stage0
+//! mirror, deferred to the landing lane named by the tracking row
+//! gunbc.integration_concern::grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror
+//! (follow-up node adhoc-0eedbb6e-a35), same as demanded_typecheck_equivalence.rs.
 use std::rc::Rc;
 
 fn repo_root() -> std::path::PathBuf {
