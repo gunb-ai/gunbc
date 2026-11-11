@@ -28,9 +28,13 @@ import gunbc.host.host_hostname_converge {
   HostnameConvergePair,
   HostnameConvergePlan,
   NoopPlan,
+  PeerSelectorRefused,
+  PeerSelectorUnknown,
   Rollback,
   Admits,
   Declines,
+  TargetSelectorRefused,
+  TargetSelectorUnknown,
   hostname_converge_direction_of,
   hostname_converge_direction_wire,
   hostname_converge_pair,
@@ -39,7 +43,13 @@ import gunbc.host.host_hostname_converge {
   hostname_converge_plan_is_conflict,
   hostname_converge_plan_is_noop,
   hostname_converge_readopt_judge,
+  hostname_converge_refusal_reason,
+  hostname_converge_refusal_wire,
 }
+
+data colliding_key: String = "host-94c81d"
+data refused_target_selector: String = "srv2"
+data refused_peer_selector: String = "srv1"
 
 data stale_base: NonEmptyStr = "altrad8ud-1l2t-1"
 data desired_name: NonEmptyStr = "fox"
@@ -238,4 +248,49 @@ test fn srv2_after_readopt_still_noop() -> Bool {
     NoopPlan { live: l } => l == srv2_live_name
     _ => false
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE REFUSED REGISTRY IS A REFUSAL OF ITS OWN (gunbc.plans.fleet_machine_authority P2).
+// gunbc.hostname_allocation resolve_host_selector answers only against an ADMITTED registry: when two
+// rows claim one key it yields HostSelectorRegistryRefused naming that key, for every selector, so a
+// selector that would otherwise resolve answers with a refusal instead. The mode must not fold that into
+// the unknown-selector cause -- "nobody answers" invites a retry with a different spelling, which is the
+// wrong instruction when the registry itself is broken -- and must never let it become a resolved pair.
+// So: its own cause, its own wire, its own reason, and the colliding key carried in the cause where the
+// report can print it.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+test fn a_refused_registry_refuses_the_target_its_own_way() -> Bool {
+  let refused = TargetSelectorRefused { selector: refused_target_selector, key: colliding_key }
+  let unknown = TargetSelectorUnknown { selector: refused_target_selector }
+  hostname_converge_refusal_wire(cause: refused) == "target-selector-refused" as NonEmptyStr
+    && hostname_converge_refusal_wire(cause: refused) != hostname_converge_refusal_wire(cause: unknown)
+    && hostname_converge_refusal_reason(cause: refused) != hostname_converge_refusal_reason(cause: unknown)
+    && match refused {
+         TargetSelectorRefused { selector: s, key: k } => s == refused_target_selector && k == colliding_key
+         _ => false
+       }
+}
+
+test fn a_refused_registry_refuses_the_peer_its_own_way() -> Bool {
+  let refused = PeerSelectorRefused { selector: refused_peer_selector, key: colliding_key }
+  let unknown = PeerSelectorUnknown { selector: refused_peer_selector }
+  hostname_converge_refusal_wire(cause: refused) == "peer-selector-refused" as NonEmptyStr
+    && hostname_converge_refusal_wire(cause: refused) != hostname_converge_refusal_wire(cause: unknown)
+    && hostname_converge_refusal_reason(cause: refused) != hostname_converge_refusal_reason(cause: unknown)
+    && match refused {
+         PeerSelectorRefused { selector: s, key: k } => s == refused_peer_selector && k == colliding_key
+         _ => false
+       }
+}
+
+// A refusal is reported for one side only, and never reported as the other. A run whose TARGET selector
+// hit a refused registry is not a run that lacked a peer, and a receipt that conflated the two would send
+// the operator to fix the wrong gate.
+test fn the_two_registry_refusals_are_not_confusable() -> Bool {
+  let target = TargetSelectorRefused { selector: refused_target_selector, key: colliding_key }
+  let peer = PeerSelectorRefused { selector: refused_peer_selector, key: colliding_key }
+  hostname_converge_refusal_wire(cause: target) != hostname_converge_refusal_wire(cause: peer)
+    && hostname_converge_refusal_reason(cause: target) != hostname_converge_refusal_reason(cause: peer)
 }

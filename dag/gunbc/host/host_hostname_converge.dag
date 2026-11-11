@@ -9,9 +9,10 @@ import extdeps.dns.domain_name { DnsLabel }
 import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.hostname_allocation {
-  gunbc_fleet_hostname_allocations,
+  fleet_machine_registry,
   resolve_host_selector,
   HostSelectorAmbiguous,
+  HostSelectorRegistryRefused,
   HostSelectorResolved,
   HostSelectorUnknown,
   HostSelectorResolution,
@@ -252,8 +253,10 @@ fn hostname_converge_plan_detail(plan: HostnameConvergePlan) -> String {
 type HostnameConvergeRefusalCause
   = TargetSelectorUnknown { selector: String }
   | TargetSelectorAmbiguous { selector: String, candidates: List<DnsLabel> }
+  | TargetSelectorRefused { selector: String, key: String }
   | PeerSelectorUnknown { selector: String }
   | PeerSelectorAmbiguous { selector: String, candidates: List<DnsLabel> }
+  | PeerSelectorRefused { selector: String, key: String }
   | DirectionUnknown { raw: String }
   | PeerIsTarget { host: NonEmptyStr }
   | TargetHostUnbound { host: NonEmptyStr }
@@ -282,8 +285,10 @@ fn hostname_converge_refusal_wire(cause: HostnameConvergeRefusalCause) -> NonEmp
   match cause {
     TargetSelectorUnknown { selector: _ } => "target-selector-unknown" as NonEmptyStr
     TargetSelectorAmbiguous { selector: _, candidates: _ } => "target-selector-ambiguous" as NonEmptyStr
+    TargetSelectorRefused { selector: _, key: _ } => "target-selector-refused" as NonEmptyStr
     PeerSelectorUnknown { selector: _ } => "peer-selector-unknown" as NonEmptyStr
     PeerSelectorAmbiguous { selector: _, candidates: _ } => "peer-selector-ambiguous" as NonEmptyStr
+    PeerSelectorRefused { selector: _, key: _ } => "peer-selector-refused" as NonEmptyStr
     DirectionUnknown { raw: _ } => "direction-unknown" as NonEmptyStr
     PeerIsTarget { host: _ } => "peer-is-target" as NonEmptyStr
     TargetHostUnbound { host: _ } => "target-host-unbound" as NonEmptyStr
@@ -308,6 +313,15 @@ fn hostname_converge_refusal_reason(cause: HostnameConvergeRefusalCause) -> Stri
         ],
         "",
       )
+    TargetSelectorRefused { selector: s, key: k } =>
+      join(
+        [
+          "the machine registry refuses every read because two rows claim the key `", k, "`; the target selector `", s,
+          "` therefore resolves to no host at all -- it is not Unknown, and nothing is picked until the registry is fixed",
+          "",
+        ],
+        "",
+      )
     PeerSelectorUnknown { selector: s } =>
       join(["no fleet host answers the executing-peer selector `", s, "`", ""], "")
     PeerSelectorAmbiguous { selector: s, candidates: c } =>
@@ -315,6 +329,15 @@ fn hostname_converge_refusal_reason(cause: HostnameConvergeRefusalCause) -> Stri
         [
           "the executing-peer selector `", s, "` answers ", hostname_converge_candidate_count_text(candidates: c),
           " fleet hostnames, so no peer is picked",
+          "",
+        ],
+        "",
+      )
+    PeerSelectorRefused { selector: s, key: k } =>
+      join(
+        [
+          "the machine registry refuses every read because two rows claim the key `", k, "`; the executing-peer selector `", s,
+          "` therefore resolves to no peer at all -- it is not Unknown, and nothing is picked until the registry is fixed",
           "",
         ],
         "",
@@ -381,11 +404,15 @@ fn hostname_converge_resolve(
         HostSelectorUnknown { selector: s } => Refused { cause: TargetSelectorUnknown { selector: s } }
         HostSelectorAmbiguous { selector: s, candidates: c } =>
           Refused { cause: TargetSelectorAmbiguous { selector: s, candidates: c } }
+        HostSelectorRegistryRefused { key: k } =>
+          Refused { cause: TargetSelectorRefused { selector: target_selector, key: k } }
         HostSelectorResolved { host: target } =>
           match resolve_host_selector(selector: peer_selector) {
             HostSelectorUnknown { selector: s } => Refused { cause: PeerSelectorUnknown { selector: s } }
             HostSelectorAmbiguous { selector: s, candidates: c } =>
               Refused { cause: PeerSelectorAmbiguous { selector: s, candidates: c } }
+            HostSelectorRegistryRefused { key: k } =>
+              Refused { cause: PeerSelectorRefused { selector: peer_selector, key: k } }
             HostSelectorResolved { host: peer } =>
               hostname_converge_resolve_pair(
                 target: target,
@@ -934,13 +961,15 @@ fn hostname_converge_adopt_line(result: HostnameConvergeAdoptStep) -> String {
   }
 }
 
-// THE CHOICES THE DISPATCH OFFERS, all three derived from the authorities rather than typed out: the
-// peers are the hosts the hostname allocation knows, the direction is the two arms of the typed
-// direction, and the actuation gate and the re-adopt gate are closed choices. No option list names a
-// machine, so a host joins by gaining an allocation row instead of a workflow edit
-// (gunbc.design_argument::root_generalization).
+// THE CHOICES THE DISPATCH OFFERS, all derived from the authorities rather than typed out: the peers are
+// the machines the registry admits, the direction is the two arms of the typed direction, and the
+// actuation gate and the re-adopt gate are closed choices. No option list names a machine, so a host
+// joins by gaining a registry row instead of a workflow edit
+// (gunbc.design_argument::root_generalization). The list is a convenience over the registry, not a second
+// admission: a registry that hostname_allocation_admission refuses still refuses at resolve time, so a
+// colliding registry cannot be steered around by choosing from the list.
 fn hostname_converge_peer_options() -> List<String> {
-  map(gunbc_fleet_hostname_allocations, a => a.fleet_slot as String)
+  map(fleet_machine_registry, a => a.fleet_slot as String)
 }
 
 data hostname_converge_direction_options: List<String> = [
