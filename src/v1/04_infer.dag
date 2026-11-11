@@ -21767,7 +21767,55 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
 // The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
 // is built once over every module (build_symbol_index_census) and every module's type environment
 // carries the same one, so the first module's is the closure's.
-fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+// THE SINGLE IMPORT AUTHORITY. For each module, the leaf names it explicitly imports (`import path { a, b }`)
+// mapped to the ONE module path they were imported from -- but only where that path actually declares the
+// name in the closure-wide registry (an import of a name the owner does not declare is not a binding). A bare
+// value-reference resolves through this BEFORE consulting the closure-wide leaf-owner index, so a leaf whose
+// spelling two modules declare is NOT ambiguous for the module that imported it from a single named owner.
+// This is the fact the emitter's `lookup_item_for_declared_value_ref` was missing: it went qualifier -> own
+// declaration -> leaf-owner index, so an imported bare reference to a two-owner leaf fell through to
+// `LeafAmbiguous` -- the exact population #16155 patched at six call sites by hand-qualifying them. Glob
+// imports are deliberately EXCLUDED: a glob import names no owner, so a leaf pulled in only by a glob keeps no
+// single owner to resolve to and correctly remains in the ambiguous population (the importer never stated which
+// module it meant). This ONE function feeds BOTH the emitter (via emit_info.bare_import_owner_index) and the
+// resolution pass `ambiguous_leaf_value_ref_diagnostics`, so the two cannot drift on what an import resolves.
+fn bare_import_owner_index(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, Map<String, String>> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let si = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: si, node: tm.module)
+    let leaf_to_owner = module_imports(n: tm.module) |> fold(init: empty_map(), f: (inner, imp) =>
+      let import_path = authored_name_at(source_indices: si, node: imp)
+      import_specific_names_at(n: imp, source_indices: si)
+        |> fold(init: inner, f: (inner_names, imported_name) =>
+          match map_get(inner_names, imported_name) {
+            Present { value: _ } => inner_names
+            Absent =>
+              if map_get(registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: import_path, decl_name: imported_name })) != none {
+                map_insert(inner_names, imported_name, import_path)
+              } else {
+                inner_names
+              }
+          }
+        )
+    )
+    map_insert(acc, module_name, leaf_to_owner)
+  )
+}
+
+// The one owner a module's import binding gives a bare reference, if any. Read the SAME way by the emitter and
+// the resolution pass so "does the import resolve this" is one predicate, not two.
+fn imported_owner_of_bare_ref(import_index: Map<String, Map<String, String>>, module_name: String, leaf: String) -> String? {
+  match map_get(import_index, module_name) {
+    Present { value: leaf_to_owner } => map_get(leaf_to_owner, leaf)
+    Absent => none
+  }
+}
+
+// THE ONE FOLD OVER EVERY MODULE'S ITEMS INTO AN EmitInfoBuildState. build_emit_graph_info (the emitter's
+// full info) and build_value_ref_graph_info (the resolution pass's lean info) share this so neither re-types
+// the module/item walk (gunbc.design_argument::single_authority, minimize_redundancy). It is the only place
+// the per-item summary is computed.
+fn emit_graph_info_build_state(modules: List<TypedModule>) -> EmitInfoBuildState {
   let qualified_names = match modules |> first {
     Present { value: m } => m.type_env.symbol_index
     Absent => empty_symbol_index()
@@ -21790,7 +21838,62 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+}
+
+// THE RESOLUTION PASS'S LEAN EmitGraphInfo. ambiguous_leaf_value_ref_diagnostics runs on EVERY resolved
+// compile (a required-floor correctness gate), so it must NOT pay the full build_emit_graph_info: the 04_items
+// ResolvedGraph comment records that folding the whole info at resolve time cost ~4 GB at the required-floor
+// peak for callers that never emit. This builds ONLY what the pass's classify_value_ref path actually reads
+// -- type_summaries + variant_to_enum (effective_variant_parent) and the two registry projections
+// item_leaf_owner_modules + bare_import_owner_index -- reusing the SAME fold (emit_graph_info_build_state) and
+// the SAME leaf/import builders the emitter uses. The other EmitGraphInfo fields (the enum-variant-shape fold,
+// the recursive-type fold, the fn/type-decl identity indices) are the expensive, unread-at-refusal ones and are
+// left at empty_emit_graph_info's defaults. Verified: classify_value_ref and its lookup/effective_variant_parent
+// tree touch no field but these four, so the refusal decision here is identical to the emitter's. Required-floor
+// cost of the pass is therefore one type-summary fold plus two registry index passes, not the full emit info.
+fn build_value_ref_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  let built = emit_graph_info_build_state(modules)
+  let base = empty_emit_graph_info()
+  EmitGraphInfo {
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
+    bare_import_owner_index: bare_import_owner_index(modules: modules, registry: registry),
+    type_summaries: built.type_summaries,
+    variant_to_enum: derive_variant_to_enum(type_summaries: built.type_summaries),
+    type_decl_items: base.type_decl_items,
+    data_variant_wire_spellings: base.data_variant_wire_spellings,
+    fn_decl_items: base.fn_decl_items,
+    fn_decl_identity_items: base.fn_decl_identity_items,
+    fn_map_key_bounds: base.fn_map_key_bounds,
+    fn_equality_bounds: base.fn_equality_bounds,
+    recursive_type_set: base.recursive_type_set,
+    fielded_variants: base.fielded_variants,
+    positional_payload_variants: base.positional_payload_variants,
+    shared_types: base.shared_types,
+    ownership_index: base.ownership_index,
+    moved_argument_index: base.moved_argument_index,
+    movable: base.movable,
+    moved_argument_occurrences: base.moved_argument_occurrences,
+    owned_bindings: base.owned_bindings,
+    read_only_params_index: base.read_only_params_index,
+    read_only_params: base.read_only_params,
+    clone_bounded_type_params: base.clone_bounded_type_params,
+    map_key_required_type_names: base.map_key_required_type_names,
+    clone_impl_required_type_params: base.clone_impl_required_type_params,
+    map_key_bounded_type_params: base.map_key_bounded_type_params,
+    fn_generic_param_names: base.fn_generic_param_names,
+    fn_type_env: base.fn_type_env,
+    fn_return_type: base.fn_return_type,
+    expected_type: base.expected_type,
+    tco_cursor_params: base.tco_cursor_params,
+    tco_cursor_tails: base.tco_cursor_tails,
+    trmc_out: base.trmc_out,
+    dying_base_sites: base.dying_base_sites
+  }
+}
+
+fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  let built = emit_graph_info_build_state(modules)
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
@@ -21805,6 +21908,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
+    bare_import_owner_index: bare_import_owner_index(modules: modules, registry: registry),
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),

@@ -17,20 +17,18 @@ module test.claim.machine_intake.machine_intake_bmc_account_state_capture_witnes
 // decodes are a real controller's bytes, not a transcription this test invented.
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Absent, Optional, Present }
 import std.content_hash { content_hash_of_value }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.machine_intake.bmc_secure {
-  BmcSuppliedResponse, BreakGlassTested, BreakGlassUnmaterializable,
+  BmcSuppliedResponse, BreakGlassUnmaterializable,
   BmcRedfishAccountCensusReading, BmcRedfishCensusServed, BmcRedfishAccountCensusEntry,
 }
 import gunbc.machine_intake.bmc_account_state_capture {
   BmcAccountStateCaptures, BmcAccountStateCaptureOutcome, CapturedTransportAssembled, CapturedTransportUndecodable,
   UserAccessRowsUndecodable, AccountsCollectionUndecodableWhileServed, CensusNamesDisagreeWithCollection,
-  ServedCensusClaimedWithoutSurface, UserTestUndecodable, RedfishSurfaceUndecodable, assemble_account_state_transport,
+  ServedCensusClaimedWithoutSurface, RedfishSurfaceUndecodable, assemble_account_state_transport,
 }
 import gunbc.machine_intake.bmc_account_state_parsers {
-  ipmi_user_test_verdict_from_output, UserTestAccepted, UserTestRejected, UserTestUnrecognized,
   redfish_service_root_verdict_from_body, ServiceRootServed, ServiceRootNotServed, ServiceRootUnrecognized,
 }
 import extdeps.bmc.ipmi_channel {
@@ -89,7 +87,6 @@ fn faithful_captures() -> BmcAccountStateCaptures {
     redfish_surface_answer: committed("redfish-surface", surface_capture),
     account_service_answer: committed("redfish-account-service", account_service_capture),
     lan_config_answer: committed("ipmi-get-lan-config", lan_config_capture),
-    break_glass_answer: Present { value: committed("ipmi-user-test-break-glass", "Success") },
   }
 }
 
@@ -139,7 +136,9 @@ test fn the_assembled_transport_decodes_each_field_from_its_committed_bytes() ->
           _ => false
         }
         && match t.break_glass {
-          BreakGlassTested { accepted: accepted, answer: _ } => accepted
+          // srv15's break-glass IS the managed root: no separate user-test, so the reading is
+          // Unmaterializable (the reader fills the reference from the goal), never a substituted reference.
+          BreakGlassUnmaterializable { detail: _ } => true
           _ => false
         }
   }
@@ -156,7 +155,6 @@ test fn a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fab
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer,
     lan_config_answer: committed("ipmi-get-lan-config", "Set In Progress         : Set Complete\nAuth Type Support       : MD5\n"),
-    break_glass_answer: c.break_glass_answer,
   }
   match assembled(captures: bare) {
     CapturedTransportUndecodable { cause: _ } => false
@@ -179,7 +177,7 @@ test fn an_authentication_refused_census_read_assembles_managed_accepted_false()
     census_answer: committed("ipmi-user-list", "Error (0): RAKP 2 HMAC is invalid"),
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
-    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+    lan_config_answer: c.lan_config_answer,
   }
   match assembled(captures: refused) {
     CapturedTransportUndecodable { cause: _ } => false
@@ -199,7 +197,7 @@ test fn an_unestablished_session_census_read_refuses_never_a_defaulted_managed_r
     census_answer: committed("ipmi-user-list", "Error: Unable to establish IPMI v2 / RMCP+ session"),
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
-    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+    lan_config_answer: c.lan_config_answer,
   }
   match assembled(captures: down) {
     CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
@@ -220,7 +218,7 @@ test fn an_empty_census_answer_refuses_never_a_defaulted_managed_acceptance() ->
     census_answer: committed("ipmi-user-list", "   "),
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
-    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+    lan_config_answer: c.lan_config_answer,
   }
   match assembled(captures: empty) {
     CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
@@ -237,7 +235,7 @@ test fn a_served_redfish_with_an_unreadable_accounts_body_refuses_never_a_fabric
     census_answer: c.census_answer,
     redfish_accounts_answer: committed("redfish-accounts", "500 Internal Server Error"),
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
-    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+    lan_config_answer: c.lan_config_answer,
   }
   match assembled(captures: broken) {
     CapturedTransportUndecodable { cause: AccountsCollectionUndecodableWhileServed { detail: _ } } => true
@@ -256,7 +254,6 @@ test fn a_census_entry_the_collection_does_not_list_refuses() -> Bool {
     census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
-    break_glass_answer: c.break_glass_answer,
   }
   match assembled(captures: broken) {
     CapturedTransportUndecodable { cause: CensusNamesDisagreeWithCollection { detail: _ } } => true
@@ -264,19 +261,11 @@ test fn a_census_entry_the_collection_does_not_list_refuses() -> Bool {
   }
 }
 
-// RED (never invent a break-glass generation). With no break-glass user-test captured, the reading is
-// Unmaterializable -- the shared-account absence is carried in the type, not substituted with a plausible
-// reference or defaulted to an accepted test.
+// RED (never invent a break-glass generation). There is no break-glass capture at all (srv15's break-glass
+// IS the managed root), so the reading is Unmaterializable -- the reader fills the reference from the goal,
+// never a substituted reference and never a defaulted accepted test.
 test fn no_break_glass_answer_assembles_unmaterializable_never_a_substituted_reference() -> Bool {
-  let c = faithful_captures()
-  let none_bg = BmcAccountStateCaptures {
-    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    census_answer: c.census_answer,
-    redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
-    account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
-    break_glass_answer: Absent,
-  }
-  match assembled(captures: none_bg) {
+  match assembled(captures: faithful_captures()) {
     CapturedTransportUndecodable { cause: _ } => false
     CapturedTransportAssembled { transport: t } => match t.break_glass {
       BreakGlassUnmaterializable { detail: _ } => true
@@ -296,7 +285,6 @@ test fn a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_c
     census_answer: committed("ipmi-get-user-access", "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      false      SUPERVISOR\n"),
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
-    break_glass_answer: c.break_glass_answer,
   }
   match assembled(captures: broken) {
     CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
@@ -317,7 +305,6 @@ test fn a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_ce
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: committed("redfish-surface", "{\"error\":{\"code\":\"Base.1.19.GeneralError\",\"message\":\"denied\"}}"),
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
-    break_glass_answer: c.break_glass_answer,
   }
   match assembled(captures: broken) {
     CapturedTransportUndecodable { cause: ServedCensusClaimedWithoutSurface { detail: _ } } => true
@@ -337,7 +324,7 @@ test fn a_garbage_census_read_refuses_never_an_accepted_guess() -> Bool {
     census_answer: committed("ipmi-user-list", "check-password: ok token invoked lookup successful"),
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
-    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+    lan_config_answer: c.lan_config_answer,
   }
   match assembled(captures: broken) {
     CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
@@ -356,7 +343,6 @@ test fn a_plaintext_service_root_body_refuses_never_an_unfounded_surface() -> Bo
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: committed("redfish-surface", "<!DOCTYPE html><html><body>404 Not Found</body></html>"),
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
-    break_glass_answer: c.break_glass_answer,
   }
   match assembled(captures: broken) {
     CapturedTransportUndecodable { cause: RedfishSurfaceUndecodable { detail: _ } } => true
@@ -364,39 +350,23 @@ test fn a_plaintext_service_root_body_refuses_never_an_unfounded_surface() -> Bo
   }
 }
 
-// DECODER WITNESS (closed_grounded_substrate; single authority for the user-test verdict). ipmitool's whole
-// words Success / Failure are decoded; a session-failure line and a decoy body full of the letters that the
-// substring version read as success ("ok", "token", "invoked", "lookup", "successful") are all Unrecognized.
-// No substring can tip an acceptance -- only a whole-word Success or Failure token can.
-test fn the_user_test_words_are_decoded_not_guessed() -> Bool {
-  match ipmi_user_test_verdict_from_output(body: "Success") {
-    UserTestAccepted =>
-      match ipmi_user_test_verdict_from_output(body: "Failure: password incorrect") {
-        UserTestRejected =>
-          match ipmi_user_test_verdict_from_output(body: "Unable to establish IPMI v2 / RMCP+ session") {
-            UserTestUnrecognized { detail: _ } =>
-              match ipmi_user_test_verdict_from_output(body: "check-password: ok token invoked lookup successful") {
-                UserTestUnrecognized { detail: _ } => true
-                _ => false
-              }
-            _ => false
-          }
-        _ => false
-      }
-    _ => false
-  }
-}
-
 // DECODER WITNESS (single authority for the surface fact). A real ServiceRoot (@odata.type) is Served; a
 // bmcweb ERROR ENVELOPE -- even one whose message names Redfish -- is NotServed (the keyword does NOT make
-// it served); a non-JSON body (HTML) is Unrecognized. Structural, not keyword.
+// it served); a non-JSON body (HTML) is Unrecognized; and a body carrying the `error` member TWICE is
+// UNRECOGNIZED too -- a duplicated member is ambiguous, so it is refused rather than confidently read as a
+// not-served answer (the same treatment every other duplicated member in this parser gets). Structural, not
+// keyword, and fail-closed on the ambiguous body.
 test fn the_service_root_is_decoded_structurally_not_by_keyword() -> Bool {
   match redfish_service_root_verdict_from_body(body: surface_capture) {
     ServiceRootServed =>
       match redfish_service_root_verdict_from_body(body: "{\"error\":{\"code\":\"Base.1.19.GeneralError\",\"message\":\"Redfish service disabled\"}}") {
         ServiceRootNotServed { detail: _ } =>
           match redfish_service_root_verdict_from_body(body: "<!DOCTYPE html><html><body>404 Not Found</body></html>") {
-            ServiceRootUnrecognized { detail: _ } => true
+            ServiceRootUnrecognized { detail: _ } =>
+              match redfish_service_root_verdict_from_body(body: "{\"error\":{\"code\":\"A\"},\"error\":{\"code\":\"B\"}}") {
+                ServiceRootUnrecognized { detail: _ } => true
+                _ => false
+              }
             _ => false
           }
         _ => false

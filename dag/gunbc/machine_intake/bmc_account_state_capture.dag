@@ -48,10 +48,9 @@ module gunbc.machine_intake.bmc_account_state_capture
 // re-derived here) is stated in both live-read frontiers' LANDED text.
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Absent, Optional, Present }
 import gunbc.machine_intake.bmc_secure {
   BmcSuppliedAccountStateTransport, BmcSuppliedResponse, BmcBreakGlassReading,
-  BreakGlassTested, BreakGlassUnmaterializable,
+  BreakGlassUnmaterializable,
   BmcRedfishAccountCensusReading, BmcRedfishCensusServed, BmcRedfishCensusUnmodeled, BmcRedfishAccountCensusEntry,
 }
 import gunbc.machine_intake.bmc_account_state_parsers {
@@ -59,7 +58,6 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   redfish_account_names_from_collection, AccountsCollectionRead, AccountsCollectionUnreadable,
   redfish_account_service_lockout_from_body,
   ipmi_lan_threshold_from_print,
-  ipmi_user_test_verdict_from_output, UserTestAccepted, UserTestRejected, UserTestUnrecognized,
   redfish_service_root_verdict_from_body, ServiceRootServed, ServiceRootNotServed, ServiceRootUnrecognized,
 }
 import extdeps.bmc.ipmi_channel { IpmiChannelCensusMember, IpmiChannelNumber, IpmiUserChannelAccess, ipmi_controller_channel_census }
@@ -67,9 +65,11 @@ import extdeps.bmc.ipmi_channel { IpmiChannelCensusMember, IpmiChannelNumber, Ip
 // THE RAW CAPTURES THE WET DRIVER WRITES AS CONTENT-ADDRESSED EVIDENCE, one per read. Each already carries
 // the EvidenceRef the wet layer committed; this assembler NEVER reads a controller and NEVER mints a
 // response or an evidence ref -- it consumes what the wet layer wrote and derives the decoded value from
-// `response`. The break-glass answer is Optional because a shared-account board (root is both published and
-// managed) takes no separate break-glass user-test: absence is carried in the TYPE (Absent), which this
-// turns into a BreakGlassUnmaterializable reading -- never a substituted reference.
+// `response`. There is NO break-glass capture field: on the fleet's only board (srv15) the break-glass
+// credential IS the managed root (root is both published and managed), so no separate break-glass user
+// test runs; the assembler always yields a BreakGlassUnmaterializable reading and the reader fills the
+// reference from the goal -- never a substituted reference. A distinct-generation break-glass board is a
+// declared frontier (PR body of #16295) that would add its own capture, op and decoder together.
 type BmcAccountStateCaptures {
   // The LAN channel the user-access rows and the Get LAN Configuration Parameters read address.
   channel: IpmiChannelNumber
@@ -90,7 +90,6 @@ type BmcAccountStateCaptures {
   redfish_surface_answer: BmcSuppliedResponse
   account_service_answer: BmcSuppliedResponse
   lan_config_answer: BmcSuppliedResponse
-  break_glass_answer: Optional<BmcSuppliedResponse>
 }
 
 // WHICH capture could not be decoded into the field the transport requires -- a located cause, never a
@@ -100,9 +99,6 @@ type BmcAccountStateCaptureRefusal
   | AccountsCollectionUndecodableWhileServed { detail: NonEmptyStr }
   | CensusNamesDisagreeWithCollection { detail: NonEmptyStr }
   | ServedCensusClaimedWithoutSurface { detail: NonEmptyStr }
-  // A captured `user test` printed neither Success nor Failure (a session failure, a timeout, an empty
-  // or truncated body): it is NOT read as an acceptance; the assembly refuses rather than guessing.
-  | UserTestUndecodable { detail: NonEmptyStr }
   // The service-root body is neither a Redfish ServiceRoot nor an error envelope (an HTML page, plaintext,
   // a truncated read): the surface fact is not decodable, so the assembly refuses rather than defaulting
   // it served or un-served.
@@ -157,28 +153,20 @@ fn assemble_account_state_transport(captures: BmcAccountStateCaptures) -> BmcAcc
   }
 }
 
-// THE BREAK-GLASS user-test, decoded from its own committed bytes when a generation was captured. No
-// captured generation -> Unmaterializable (the reader fills the reference from the goal; nothing is
-// substituted here). An undecodable break-glass body refuses with the same typed cause as a user test.
-// The managed credential's acceptance is NOT proven here -- it is read from the authenticated census in
-// assemble_rows (review 93420). A captured break-glass generation is the distinct-generation case: srv15's
-// root is both managed and published so no board runs a separate break-glass test now, and the stdin-fed
-// break-glass user test that a distinct break-glass generation would need is a declared frontier (its
-// missing capture is named in the PR body), not built here.
+// THE BREAK-GLASS reading. On the fleet's only board (srv15) the break-glass credential IS the managed
+// root, so no separate break-glass user test runs and there is NOTHING to decode: this always yields
+// BreakGlassUnmaterializable, and the reader fills the break-glass reference from the goal (nothing is
+// substituted here). The managed credential's acceptance is NOT proven here -- it is read from the
+// authenticated census in assemble_rows (review 93420). A board whose break-glass is a DISTINCT generation
+// would carry its own captured user-test and decode it here; that case is a declared frontier (its missing
+// stdin capture is named in the PR body of #16295), not built -- and the user-test decoder that would
+// decode it was deleted with the user-test op, to be rebuilt WITH that frontier.
 fn assemble_break_glass(captures: BmcAccountStateCaptures, surface_served: Bool) -> BmcAccountStateCaptureOutcome {
-  match captures.break_glass_answer {
-    Absent =>
-      assemble_rows(captures: captures, surface_served: surface_served, bg: BreakGlassUnmaterializable { detail: "no break-glass user-test was captured for this controller" as NonEmptyStr })
-    Present { value: a } =>
-      match ipmi_user_test_verdict_from_output(body: a.response) {
-        UserTestUnrecognized { detail: d } =>
-          CapturedTransportUndecodable { cause: UserTestUndecodable { detail: d } }
-        UserTestAccepted =>
-          assemble_rows(captures: captures, surface_served: surface_served, bg: BreakGlassTested { accepted: true, answer: a })
-        UserTestRejected =>
-          assemble_rows(captures: captures, surface_served: surface_served, bg: BreakGlassTested { accepted: false, answer: a })
-      }
-  }
+  assemble_rows(
+    captures: captures,
+    surface_served: surface_served,
+    bg: BreakGlassUnmaterializable { detail: "break-glass is the managed generation on this board; no separate user-test was captured" as NonEmptyStr }
+  )
 }
 
 // THE USER-ACCESS TABLE, the managed account's acceptance, and the Redfish census tie, then the build.

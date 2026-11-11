@@ -2,30 +2,89 @@ module gunbc.auth.optional_impersonation
 
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
 import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.iam { AccessTokenLifetime, admit_token_lifetime, token_lifetime_wire }
+import std.measure { Second }
+import std.optional { Absent, Present }
 
 // The token a caller proceeds with, or the refusal of the impersonation it asked for. With no
 // service account the operator token is the answer and no call is made; with one, the token exists
 // only when GenerateAccessToken answered, and its refusal is carried as the transport reported it.
+// The third case is local, not upstream: a lifetime the API would not accept is refused before any
+// request is sent, so no bounded mint is ever planned with an illegal duration on the wire.
+//
+// `expire_time` is the mint's OWN observation, carried rather than dropped. DESIGN's worked example on
+// this very record names "returns the token while discarding `expire_time`" as part of the defect, and a
+// caller that cannot see when a credential dies cannot reason about whether it will still be alive at the
+// moment it is spent -- which is the class of failure that took out `heal-publish`: a token minted 456 s
+// before its first use against a 300 s lifetime. It is `Absent` exactly when no mint ran: the
+// unimpersonated arm hands back the caller's own token, whose expiry this pattern never observed, and
+// inventing one would present an unobserved fact as an observed one
+// (`gunbc.design_argument::epistemic_humility`).
 type OptionalImpersonation
-  = OptionalImpersonationToken { token: Secret }
+  = OptionalImpersonationToken { token: Secret, expire_time: String? }
   | OptionalImpersonationRefused { refusal: RestRefusal }
+  | OptionalImpersonationLifetimeRefused { lifetime: Second }
 
+// THE WORKFLOW CHOOSES THE REQUESTED LIFETIME; THE API MODEL RULES ON IT. This is DESIGN's worked example on
+// this very pattern carried out ("the workflow chooses a requested lifetime, the API model owns the legal range
+// and the encoding ... A checked constructor can refuse a request that breaks the modeled rule before sending").
+// It used to carry `lifetime_seconds: Int where range(min: 1, max: 3600)` -- a retired where-refinement
+// (gunbc.design_argument::closed_grounded_substrate) restating the ordinary maximum in the policy layer, on bare
+// Int seconds (gunbc.design_argument::minimize_redundancy) -- and to build the "Ns" wire spelling by hand here,
+// duplicating what extdeps.cloud.gcp.iam::token_lifetime_wire already owns. A caller now hands over a
+// std.measure::Second and the range is decided in exactly one place: extdeps.cloud.gcp.iam::admit_token_lifetime.
 pattern optional_impersonation(
   access_token: Secret,
   service_account: ServiceAccountEmail?,
-  lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
+  lifetime: Second
+) -> OptionalImpersonation {
+  return match admit_token_lifetime(s: lifetime) {
+    Absent => OptionalImpersonationLifetimeRefused { lifetime: lifetime }
+    Present { value: admitted } =>
+      optional_impersonation_admitted(
+        access_token: access_token,
+        service_account: service_account,
+        lifetime: admitted
+      )
+  }
+}
+
+// The admitted path: the duration has already been ruled on upstream's own terms, which is what lets the
+// bounded mint be planned at all -- an illegal lifetime never reaches it.
+//
+// THE PARAMETER IS WHAT MAKES THIS LEG ADMITTED, and since #16150's review the TYPE enforces that rather
+// than the name: `extdeps.cloud.gcp.iam::AccessTokenLifetime` is `sole_constructor`, so this module, or
+// any other, may receive an admitted lifetime, pass it on and read it, but cannot build one. A caller
+// standing outside the API model has exactly one way to produce this argument, and it runs the bound.
+// Before the seal the word "admitted" described an intention only: this pattern was public and the record
+// was public, so
+// `optional_impersonation_admitted(access_token: t, service_account: sa, lifetime: AccessTokenLifetime {
+// seconds: second(count: 43200) })` compiled, skipped `admit_token_lifetime` entirely, and minted a
+// twelve-hour credential -- the lifetime Google grants only under the organization-policy condition this
+// tree cannot observe. The wall is measured rather than narrated:
+// `test.claim.tailscale_acl_phase2_design_witness::the_admitted_lifetime_has_one_constructor` compiles
+// the forgery and the control through `gunbc.compile_census_probe`. The wire spelling stays the API
+// model's -- `token_lifetime_wire` over the admitted seconds -- so the value ruled on is the value sent.
+pattern optional_impersonation_admitted(
+  access_token: Secret,
+  service_account: ServiceAccountEmail?,
+  lifetime: AccessTokenLifetime
 ) -> OptionalImpersonation {
   impersonated = gcp.IAM.GenerateAccessToken(
     access_token: access_token,
     target_sa: service_account,
-    lifetime: concat(to_string(lifetime_seconds), "s")
+    lifetime: token_lifetime_wire(s: lifetime.seconds)
   ) [when service_account != none]
   return match service_account {
     Present { value: _sa } =>
       match impersonated {
-        RestAnswered { answer } => OptionalImpersonationToken { token: answer.access_token }
+        RestAnswered { answer } => OptionalImpersonationToken {
+          token: answer.access_token,
+          expire_time: Present { value: answer.expire_time }
+        }
         RestRefused { refusal } => OptionalImpersonationRefused { refusal: refusal }
       }
-    Absent => OptionalImpersonationToken { token: access_token }
+    // No mint ran on this arm, so no expiry was observed: the absence is reported, not guessed.
+    Absent => OptionalImpersonationToken { token: access_token, expire_time: Absent }
   }
 }
