@@ -1,0 +1,32 @@
+module gunbc.integration_concern.runner_connectivity_observe_admitted_by_no_controller_key_stager
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data runner_connectivity_observe_admitted_by_no_controller_key_stager: IntegrationConcern = IntegrationConcern {
+  identity: "runner_connectivity_observe_admitted_by_no_controller_key_stager",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    requirement: "gunbc.fleet.runner_connectivity_observe_wet::observe_under_staged_key calls gunbc.github_effect_perform::stage_controller_app_key (dag/gunbc/fleet/runner_connectivity_observe_wet.dag, the ControllerKeyStaging match), but stage_controller_app_key's admit_callers list names only the lost-boot, qualification, service-slot and jit-dead-sweep staged-key callers -- not this one. Under the run demand grain the entry therefore refuses ConstructorCallAdmissionRefused before any read: the entry is UNEXECUTABLE by gunbc run, and no lane dispatches it today (the mode's header says it is not bound to any timer or CI job), which is why main carried this unseen. It was sighted at revision 12480021961 as the sole failing arm of src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs on srv1 -- declared red there by gunbc.recurring_failure_mode::rest_service_carrier_row_unrealized_by_the_run_demand_grain_refuses_a_misattributed_no_method_surface, NOT as the carrier class: the ListOrganizationRunnersPage refusal is ABSENT from that entry's resolve, so the carrier repair reaches it too. TRIGGER: enroll observe_under_staged_key in stage_controller_app_key's admit_callers (or move the connectivity entry to a staging constructor it is admitted to), and the witness the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain goes green under `cargo test -p v1-compiler --lib fleet_roster_entry_resolve_witness`.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    tail: [decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key")],
+  },
+  question: "Who admits the connectivity observe entry to controller-key staging? The entry was written against stage_controller_app_key but never enrolled in its admit_callers, so it has never resolved under the run demand grain and no lane executes it. The fix is one allowlist row (or a move to an admitted stager) plus the witness going green; until then the witness is declared red with THIS cause, distinct from the carrier class the sibling failure-mode row tracks.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "12480021961",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key") }],
+      },
+      account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
+    },
+  },
+  disposition: Open,
+}
