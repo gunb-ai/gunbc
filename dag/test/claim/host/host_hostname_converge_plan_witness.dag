@@ -28,8 +28,14 @@ import gunbc.host.host_hostname_converge {
   HostnameConvergePair,
   HostnameConvergePlan,
   ConvergeNoop,
+  DispatchAdmitted,
+  DispatchNotThisMode,
+  DispatchPeerUnnamed,
+  DispatchPairRefused,
+  DispatchTargetUnnamed,
   PeerSelectorRefused,
   PeerSelectorUnknown,
+  ResolutionRefused,
   Rollback,
   Admits,
   Declines,
@@ -37,7 +43,11 @@ import gunbc.host.host_hostname_converge {
   TargetSelectorUnknown,
   hostname_converge_direction_of,
   hostname_converge_direction_wire,
+  hostname_converge_dispatch_admission,
+  hostname_converge_dispatch_admission_line,
+  hostname_converge_mode,
   hostname_converge_pair,
+  hostname_converge_peer_env_name,
   hostname_converge_plan,
   hostname_converge_plan_is_apply,
   hostname_converge_plan_is_conflict,
@@ -45,7 +55,11 @@ import gunbc.host.host_hostname_converge {
   hostname_converge_readopt_judge,
   hostname_converge_refusal_reason,
   hostname_converge_refusal_wire,
+  hostname_converge_resolve,
+  hostname_converge_target_env_name,
+  PeerIsTarget,
 }
+import std.algebra { string_contains }
 
 data colliding_key: String = "host-94c81d"
 data refused_target_selector: String = "srv2"
@@ -293,4 +307,160 @@ test fn the_two_registry_refusals_are_not_confusable() -> Bool {
   let peer = PeerSelectorRefused { selector: refused_peer_selector, key: colliding_key }
   hostname_converge_refusal_wire(cause: target) != hostname_converge_refusal_wire(cause: peer)
     && hostname_converge_refusal_reason(cause: target) != hostname_converge_refusal_reason(cause: peer)
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE DISPATCH GATE STANDS UNDER THE SAME LAW AS THE JOB.
+// The gate runs in the build job, BEFORE the converge job is queued, for one reason: an unresolvable peer
+// label is interpolated into that job's runs-on, so a bad pair asks for a label no runner carries and the
+// job queues to the backstop with no diagnostic -- a gate inside that job would be unreachable in exactly
+// the state it exists to diagnose. A gate written as its own little check drifts from the law it gates,
+// and a drift in that direction is a gate that waves through what the job later refuses. So the gate calls
+// `hostname_converge_select`, the same selection every step of the job calls, and these legs pin it: for
+// the pair, the gate's refusal and the job's refusal are THE SAME CAUSE, printed THE SAME WAY
+// (gunbc.design_argument::single_authority).
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+data gate_target: String = "srv2"
+data gate_peer: String = "srv1"
+data unallocated_peer: String = "no-such-fleet-host"
+data gate_attempt: String = "p8a-dispatch-gate"
+
+// Two distinct fleet hosts, both named: admitted, for the mode that asked.
+test fn the_gate_admits_a_pair_of_distinct_fleet_hosts() -> Bool {
+  match hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: gate_peer,
+  ) {
+    DispatchAdmitted { mode: m, target: _, peer: _ } => m == (hostname_converge_mode as String)
+    _ => false
+  }
+}
+
+// A dispatch for another mode is not this gate's business, and is REPORTED rather than refused: the build
+// job runs this step on every fleet-converge dispatch, so a gate that went red for other modes would
+// break them all.
+test fn the_gate_stays_out_of_another_mode_s_dispatch() -> Bool {
+  let other = hostname_converge_dispatch_admission(
+    mode_raw: "plan",
+    target_raw: gate_target,
+    peer_raw: gate_peer,
+  )
+  match other {
+    DispatchNotThisMode { mode: m } =>
+      m == "plan" && string_contains(s: hostname_converge_dispatch_admission_line(admission: other), pattern: "not this mode")
+    _ => false
+  }
+}
+
+// A peer that IS the target is refused by the gate, and refused for the reason the job would give -- the
+// same cause text, not a paraphrase of it. Two machines are being named and only one machine exists.
+test fn the_gate_refuses_a_peer_that_is_the_target_the_way_the_job_does() -> Bool {
+  let gate = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: gate_target,
+  )
+  let job = hostname_converge_resolve(
+    target_selector: gate_target,
+    peer_selector: gate_target,
+    direction_raw: hostname_converge_direction_wire(direction: Forward) as String,
+    attempt_raw: gate_attempt,
+  )
+  match gate {
+    DispatchPairRefused { mode: m, cause: gc } =>
+      m == (hostname_converge_mode as String)
+        && match job {
+             ResolutionRefused { cause: jc } =>
+               hostname_converge_refusal_reason(cause: gc) == hostname_converge_refusal_reason(cause: jc)
+                 && match gc {
+                      PeerIsTarget { host: _ } => true
+                      _ => false
+                    }
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// An unallocated peer is refused by the gate too -- it is the label that becomes runs-on -- and again with
+// the job's own cause, so the operator reading either report is sent to the same thing: the registry.
+test fn the_gate_refuses_an_unallocated_peer_the_way_the_job_does() -> Bool {
+  let gate = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: unallocated_peer,
+  )
+  let job = hostname_converge_resolve(
+    target_selector: gate_target,
+    peer_selector: unallocated_peer,
+    direction_raw: hostname_converge_direction_wire(direction: Forward) as String,
+    attempt_raw: gate_attempt,
+  )
+  match gate {
+    DispatchPairRefused { mode: _, cause: gc } =>
+      match job {
+        ResolutionRefused { cause: jc } =>
+          hostname_converge_refusal_reason(cause: gc) == hostname_converge_refusal_reason(cause: jc)
+            && string_contains(
+              s: hostname_converge_dispatch_admission_line(admission: gate),
+              pattern: unallocated_peer,
+            )
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The two refusals are not the same refusal: a peer that is the target is a dispatch that named one box
+// twice, and a peer nobody allocates is a dispatch that named a box that does not exist. Same step,
+// different instruction, and the lines must differ.
+test fn the_two_gate_refusals_are_not_confusable() -> Bool {
+  let is_target = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: gate_target,
+  )
+  let unallocated = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: unallocated_peer,
+  )
+  match is_target {
+    DispatchPairRefused { mode: _, cause: a } =>
+      match unallocated {
+        DispatchPairRefused { mode: _, cause: b } =>
+          hostname_converge_refusal_reason(cause: a) != hostname_converge_refusal_reason(cause: b)
+            && hostname_converge_refusal_wire(cause: a) != hostname_converge_refusal_wire(cause: b)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// An unnamed target or peer is refused BY THE VARIABLE THAT IS EMPTY, because a dispatch is fixed from the
+// GitHub UI and an operator staring at a form needs the field's name, not a theory. The two are distinct
+// states: the target is the workflow's host input and the peer is this mode's own.
+test fn an_unnamed_target_or_peer_names_the_variable_it_needs() -> Bool {
+  let no_target = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: "",
+    peer_raw: gate_peer,
+  )
+  let no_peer = hostname_converge_dispatch_admission(
+    mode_raw: hostname_converge_mode as String,
+    target_raw: gate_target,
+    peer_raw: "",
+  )
+  match no_target {
+    DispatchTargetUnnamed { mode: m, variable: v } =>
+      m == (hostname_converge_mode as String)
+        && v == (hostname_converge_target_env_name as String)
+        && match no_peer {
+             DispatchPeerUnnamed { variable: pv } => pv == (hostname_converge_peer_env_name as String) && pv != v
+             _ => false
+           }
+    _ => false
+  }
 }

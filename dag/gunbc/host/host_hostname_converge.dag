@@ -388,9 +388,44 @@ fn hostname_converge_candidate_count_text(candidates: List<DnsLabel>) -> String 
   }
 }
 
-// RESOLVE THE PAIR, then derive everything else from the two resolved identities. A refused selector is
-// named before anything is opened; the peer/target collision is refused before a route is opened; the
-// route is opened only for a host that has BOTH a committed baseline and a readable canonical name.
+// WHICH TWO MACHINES THIS DISPATCH IS ABOUT. One law, read twice: the dispatch gate that runs in `build`
+// and every step of the converge job both come through here, so a pair the gate waved through cannot be
+// refused later by the job it was queued for -- and a pair the gate refused never reaches a runs-on
+// expression that no runner satisfies (gunbc.design_argument::single_authority). A refused selector is
+// named before anything is opened, and a peer that is the target is refused here, not downstream.
+type HostnameConvergeSelection
+  = PairSelected { target: HostIdentity, peer: HostIdentity }
+  | PairUnresolved { cause: HostnameConvergeRefusalCause }
+
+fn hostname_converge_select(
+  target_selector: String,
+  peer_selector: String,
+) -> HostnameConvergeSelection {
+  match resolve_host_selector(selector: target_selector) {
+    HostSelectorUnknown { selector: s } => PairUnresolved { cause: TargetSelectorUnknown { selector: s } }
+    HostSelectorAmbiguous { selector: s, candidates: c } =>
+      PairUnresolved { cause: TargetSelectorAmbiguous { selector: s, candidates: c } }
+    HostSelectorRegistryRefused { key: k } =>
+      PairUnresolved { cause: TargetSelectorRefused { selector: target_selector, key: k } }
+    HostSelectorResolved { host: target } =>
+      match resolve_host_selector(selector: peer_selector) {
+        HostSelectorUnknown { selector: s } => PairUnresolved { cause: PeerSelectorUnknown { selector: s } }
+        HostSelectorAmbiguous { selector: s, candidates: c } =>
+          PairUnresolved { cause: PeerSelectorAmbiguous { selector: s, candidates: c } }
+        HostSelectorRegistryRefused { key: k } =>
+          PairUnresolved { cause: PeerSelectorRefused { selector: peer_selector, key: k } }
+        HostSelectorResolved { host: peer } =>
+          if target == peer {
+            PairUnresolved { cause: PeerIsTarget { host: target as NonEmptyStr } }
+          } else {
+            PairSelected { target: target, peer: peer }
+          }
+      }
+  }
+}
+
+// RESOLVE THE PAIR, then derive everything else from the two resolved identities: the route is opened
+// only for a host that has BOTH a committed baseline and a readable canonical name.
 fn hostname_converge_resolve(
   target_selector: String,
   peer_selector: String,
@@ -400,27 +435,15 @@ fn hostname_converge_resolve(
   match hostname_converge_direction_of(raw: direction_raw) {
     Absent => ResolutionRefused { cause: DirectionUnknown { raw: direction_raw } }
     Present { value: direction } =>
-      match resolve_host_selector(selector: target_selector) {
-        HostSelectorUnknown { selector: s } => ResolutionRefused { cause: TargetSelectorUnknown { selector: s } }
-        HostSelectorAmbiguous { selector: s, candidates: c } =>
-          ResolutionRefused { cause: TargetSelectorAmbiguous { selector: s, candidates: c } }
-        HostSelectorRegistryRefused { key: k } =>
-          ResolutionRefused { cause: TargetSelectorRefused { selector: target_selector, key: k } }
-        HostSelectorResolved { host: target } =>
-          match resolve_host_selector(selector: peer_selector) {
-            HostSelectorUnknown { selector: s } => ResolutionRefused { cause: PeerSelectorUnknown { selector: s } }
-            HostSelectorAmbiguous { selector: s, candidates: c } =>
-              ResolutionRefused { cause: PeerSelectorAmbiguous { selector: s, candidates: c } }
-            HostSelectorRegistryRefused { key: k } =>
-              ResolutionRefused { cause: PeerSelectorRefused { selector: peer_selector, key: k } }
-            HostSelectorResolved { host: peer } =>
-              hostname_converge_resolve_pair(
-                target: target,
-                peer: peer,
-                direction: direction,
-                attempt_raw: attempt_raw,
-              )
-          }
+      match hostname_converge_select(target_selector: target_selector, peer_selector: peer_selector) {
+        PairUnresolved { cause: c } => ResolutionRefused { cause: c }
+        PairSelected { target: target, peer: peer } =>
+          hostname_converge_resolve_pair(
+            target: target,
+            peer: peer,
+            direction: direction,
+            attempt_raw: attempt_raw,
+          )
       }
   }
 }
@@ -431,19 +454,15 @@ fn hostname_converge_resolve_pair(
   direction: HostnameConvergeDirection,
   attempt_raw: String,
 ) -> HostnameConvergeResolution {
-  if target == peer {
-    ResolutionRefused { cause: PeerIsTarget { host: target as NonEmptyStr } }
-  } else {
-    match fleet_compute_host_for_identity(identity: target) {
-      Absent => ResolutionRefused { cause: TargetHostUnbound { host: target as NonEmptyStr } }
-      Present { value: host } => hostname_converge_bind(
-        target: target,
-        peer: peer,
-        direction: direction,
-        host: host,
-        attempt_raw: attempt_raw,
-      )
-    }
+  match fleet_compute_host_for_identity(identity: target) {
+    Absent => ResolutionRefused { cause: TargetHostUnbound { host: target as NonEmptyStr } }
+    Present { value: host } => hostname_converge_bind(
+      target: target,
+      peer: peer,
+      direction: direction,
+      host: host,
+      attempt_raw: attempt_raw,
+    )
   }
 }
 
@@ -753,17 +772,31 @@ fn hostname_converge_settle_of(plan: HostnameConvergePlan) -> NonEmptyStr {
 // rather than declining quietly.
 type HostnameConvergeDispatchAdmission
   = DispatchNotThisMode { mode: String }
-  | DispatchAdmitted { mode: String, peer: String }
+  | DispatchAdmitted { mode: String, target: NonEmptyStr, peer: NonEmptyStr }
+  | DispatchTargetUnnamed { mode: String, variable: String }
   | DispatchPeerUnnamed { mode: String, variable: String }
+  | DispatchPairRefused { mode: String, cause: HostnameConvergeRefusalCause }
 
-fn hostname_converge_dispatch_admission(mode_raw: String, peer_raw: String) -> HostnameConvergeDispatchAdmission {
+fn hostname_converge_dispatch_admission(
+  mode_raw: String,
+  target_raw: String,
+  peer_raw: String,
+) -> HostnameConvergeDispatchAdmission {
   if mode_raw != (hostname_converge_mode as String) {
     DispatchNotThisMode { mode: mode_raw }
   } else {
-    if peer_raw == "" {
-      DispatchPeerUnnamed { mode: mode_raw, variable: hostname_converge_peer_env_name as String }
+    if target_raw == "" {
+      DispatchTargetUnnamed { mode: mode_raw, variable: hostname_converge_target_env_name as String }
     } else {
-      DispatchAdmitted { mode: mode_raw, peer: peer_raw }
+      if peer_raw == "" {
+        DispatchPeerUnnamed { mode: mode_raw, variable: hostname_converge_peer_env_name as String }
+      } else {
+        match hostname_converge_select(target_selector: target_raw, peer_selector: peer_raw) {
+          PairSelected { target: t, peer: p } =>
+            DispatchAdmitted { mode: mode_raw, target: t as NonEmptyStr, peer: p as NonEmptyStr }
+          PairUnresolved { cause: c } => DispatchPairRefused { mode: mode_raw, cause: c }
+        }
+      }
     }
   }
 }
@@ -771,8 +804,21 @@ fn hostname_converge_dispatch_admission(mode_raw: String, peer_raw: String) -> H
 fn hostname_converge_dispatch_admission_line(admission: HostnameConvergeDispatchAdmission) -> String {
   match admission {
     DispatchNotThisMode { mode: m } => join(["hostname_converge dispatch admission: mode `", m, "` is not this mode; nothing to gate\n"], "")
-    DispatchAdmitted { mode: m, peer: p } =>
-      join(["hostname_converge dispatch admission: mode `", m, "` names executing peer `", p, "`\n"], "")
+    DispatchAdmitted { mode: m, target: t, peer: p } =>
+      join(
+        [
+          "hostname_converge dispatch admission: mode `", m, "` converges target `", t, "` from executing peer `", p, "`\n",
+        ],
+        "",
+      )
+    DispatchTargetUnnamed { mode: m, variable: v } =>
+      join(
+        [
+          "hostname_converge dispatch admission refused: mode `", m, "` was dispatched without naming the target (`",
+          v, "` is empty). The mode converges ONE named fleet host and refuses to guess which\n",
+        ],
+        "",
+      )
     DispatchPeerUnnamed { mode: m, variable: v } =>
       join(
         [
@@ -780,6 +826,16 @@ fn hostname_converge_dispatch_admission_line(admission: HostnameConvergeDispatch
           v, "` is empty). The peer label is interpolated into this job's runs-on, so an unnamed peer asks",
           " for a label no runner carries and the job would queue to the backstop with no diagnostic; name a",
           " fleet host that is not the target\n",
+        ],
+        "",
+      )
+    DispatchPairRefused { mode: m, cause: c } =>
+      join(
+        [
+          "hostname_converge dispatch admission refused: mode `", m, "` -- ",
+          hostname_converge_refusal_reason(cause: c),
+          " The gate applies the same law the converge job applies to the pair, checked before any runs-on",
+          " expression is built; fix the dispatch, not the fleet\n",
         ],
         "",
       )

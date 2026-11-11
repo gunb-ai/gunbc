@@ -1062,14 +1062,18 @@ fn hostname_converge_refusal_exit(line: String, step: String) -> ProcessExit {
 fn fleet_converge_hostname_converge_dispatch_admission_wet() -> ProcessExit {
   let admission = hostname_converge_dispatch_admission(
     mode_raw: hostname_converge_env_value(name: hostname_converge_mode_env_name),
+    target_raw: hostname_converge_env_value(name: hostname_converge_target_env_name),
     peer_raw: hostname_converge_env_value(name: hostname_converge_peer_env_name),
   )
   let line = hostname_converge_dispatch_admission_line(admission: admission)
   match admission {
     DispatchNotThisMode { mode: _ } => hostname_converge_report_exit(line: line)
-    DispatchAdmitted { mode: _, peer: _ } => hostname_converge_report_exit(line: line)
+    DispatchAdmitted { mode: _, target: _, peer: _ } => hostname_converge_report_exit(line: line)
+    DispatchTargetUnnamed { mode: _, variable: _ } =>
+      hostname_converge_refusal_exit(line: line, step: "dispatch admission")
     DispatchPeerUnnamed { mode: _, variable: _ } =>
       hostname_converge_refusal_exit(line: line, step: "dispatch admission")
+    DispatchPairRefused { mode: _, cause: _ } => hostname_converge_refusal_exit(line: line, step: "dispatch admission")
   }
 }
 
