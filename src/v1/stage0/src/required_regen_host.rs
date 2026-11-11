@@ -253,6 +253,22 @@ pub enum RegenReceipt {
         changed_paths: Vec<String>,
         candidate_artifact: String,
         candidate_manifest: RegenCandidateManifest,
+        /// SURFACES THIS ROUND ADMITTED AS AUTHOR-INTRODUCED: emitted, absent from the committed
+        /// tree, and the projected filename of a module THIS CHANGE DECLARES. Listed, not folded
+        /// into `changed_paths` alone, because the two classes have different remedies (drift is
+        /// re-written; an admitted surface is installed where nothing was) and the orchestrator's
+        /// round record and the receipt reader must be able to say which was which. The carrier's
+        /// arm is `v2.workflow.required_regen` `AdmittedAuthorIntroducedMirror`.
+        ///
+        /// `#[serde(default)]` rather than required, and the reason is the mixed-version read this
+        /// host always lives under: the round that WRITES this receipt may be a child re-executed
+        /// into a seed image built from the BASE MIRROR, whose `validate_compared_populations` has
+        /// no admission at all. Such a receipt carries no list because nothing was admitted, which
+        /// is exactly what its own join decided -- it refused, so the round is not green and no
+        /// install is planned from an absent list. Required-without-a-default would instead turn a
+        /// predecessor's honest refusal into a parse failure at the reader.
+        #[serde(default)]
+        admitted_new_surfaces: Vec<AdmittedNewMirrorReceipt>,
         /// Required: a receipt without them does not parse, so an orchestrator can never plan a
         /// round from roles nobody derived.
         surface_roles: ConvergenceSurfaceRoles,
@@ -512,7 +528,7 @@ pub fn run_required_regen_scoped(
             basenames: Rc::new(selected.iter().cloned().collect()),
         },
     });
-    let (emitted, emitted_basenames) = match emit_generated_surface(&sources, &render_selection)? {
+    let (emitted, emitted_basenames, authority) = match emit_generated_surface(&sources, &render_selection)? {
         // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
         // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
         // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
@@ -525,8 +541,40 @@ pub fn run_required_regen_scoped(
         GeneratedSurfaceEmit::Emitted {
             emitted,
             emitted_basenames,
-        } => (emitted, emitted_basenames),
+            authority,
+        } => (emitted, emitted_basenames, authority),
     };
+
+    // WHICH EMITTED SURFACES ARE MISSING BECAUSE THE CHANGE IS NEW, not because the emitter
+    // invented something. Computed here, BEFORE the write, because the write is what has to include
+    // them: under the affected scope the writer restricts to `selected`, and `selected` is an
+    // intersection with the COMMITTED roster, so a brand-new mirror would never be written, the
+    // manifest could not name it, and the install stage would be handed a path with no candidate
+    // file at it. It is a pure filter over the three rosters the population join also reads
+    // (`emitted`, `committed`, the hand-maintained shadows) plus the authority, so this is the same
+    // decision taken once and read twice -- not a second classifier that could disagree with the
+    // join. The join's own verdict is what the round returns.
+    let admission_committed = committed_generated_basenames(&stage0_src)?;
+    let admission_shadows = hand_maintained_dir_shadows(&stage0_src)?;
+    let admitted = admitted_missing_mirrors(
+        &emitted_basenames,
+        &admission_committed,
+        &admission_shadows,
+        &authority,
+    );
+    let admitted_basenames: Vec<String> = admitted.iter().map(|a| a.basename.clone()).collect();
+    if !admitted_basenames.is_empty() {
+        eprintln!(
+            "required-regen: admitted {} author-introduced mirror(s) declared by this change's \
+             partition: {}",
+            admitted_basenames.len(),
+            admitted
+                .iter()
+                .map(|a| format!("{} <- {}", a.basename, a.module))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
 
     if candidate_dir.exists() {
         fs::remove_dir_all(&candidate_dir)
@@ -534,9 +582,16 @@ pub fn run_required_regen_scoped(
     }
     let fresh_src = candidate_dir.join("src");
     v1_rt::trace_mark("regen.mirror_write.begin".to_string());
+    // THE WRITE CARRIES THE ADMITTED SURFACES. The selection cannot name them -- it is intersected
+    // with the committed roster, which is exactly why they are missing -- so the candidate roster is
+    // the selection UNION the admitted, and that union is what this round writes and verifies.
+    let mut candidate_roster: BTreeSet<String> = selected.clone();
+    for basename in &admitted_basenames {
+        candidate_roster.insert(basename.clone());
+    }
     let restrict = match scope {
         RegenEmissionScope::WholePopulation => None,
-        _ => Some(&selected),
+        _ => Some(&candidate_roster),
     };
     write_emitted_tree(&formatter, &fresh_src, &emitted, restrict)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
@@ -551,16 +606,23 @@ pub fn run_required_regen_scoped(
     // the absence of files it deliberately did not write.
     let written: Vec<String> = match scope {
         RegenEmissionScope::WholePopulation => emitted_basenames.clone(),
-        _ => selected.iter().cloned().collect(),
+        _ => candidate_roster.iter().cloned().collect(),
     };
     verify_candidate_tree(&fresh_src, &written)?;
     v1_rt::trace_mark("regen.candidate_verify.done".to_string());
 
     v1_rt::trace_mark("regen.adjudicate.begin".to_string());
-    let adjudicated =
-        adjudicate_generated_surface(&formatter, &stage0_src, &emitted, &emitted_basenames, scope)?;
+    let adjudicated = adjudicate_generated_surface(
+        &formatter,
+        &stage0_src,
+        &emitted,
+        &emitted_basenames,
+        scope,
+        &authority,
+    )?;
     v1_rt::trace_mark("regen.adjudicate.done".to_string());
-    let (committed_basenames, selected_basenames, sync) = match adjudicated {
+    let (committed_basenames, selected_basenames, sync, adjudicated_admitted) = match adjudicated
+    {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             return regen_refusal_outcome(
                 &workspace,
@@ -578,8 +640,21 @@ pub fn run_required_regen_scoped(
             committed,
             selected,
             sync,
-        } => (committed, selected, sync),
+            admitted: adjudicated_admitted,
+        } => (committed, selected, sync, adjudicated_admitted),
     };
+    // THE JOIN IS THE AUTHORITY, so its list is the one that is recorded and installed. It is
+    // computed from the same inputs as the pre-write list above; agreeing is not a coincidence to
+    // rely on, so a disagreement is a bug in one of them and this refuses rather than picking.
+    if admitted != adjudicated_admitted {
+        return Err(
+            "refusal: the pre-write admission and the population join disagree about which \
+             surfaces are author-introduced"
+                .to_string(),
+        );
+    }
+    let admitted = adjudicated_admitted;
+    let admitted_basenames: Vec<String> = admitted.iter().map(|a| a.basename.clone()).collect();
 
     v1_rt::trace_mark("regen.hand_verify.begin".to_string());
     let hand = verify_hand_maintained(&formatter, &emitted, &stage0_src, &candidate_dir)?;
@@ -599,8 +674,23 @@ pub fn run_required_regen_scoped(
     v1_rt::trace_mark("regen.digest.done".to_string());
     report_cgroup_memory_diagnostic("child.after_digest");
 
-    let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
-    let changed_paths = sync.drifted_paths.clone();
+    // A SURFACE THE TREE DOES NOT YET CARRY IS NOT A CLEAN COMPARISON. Neither digest can name it:
+    // the committed side has no file to read, so `sync.matches` is silent about it by construction
+    // (the byte comparison is denominated in the selection, and the selection is an intersection
+    // with the committed roster). Claiming equality here would be a green resting on the absence of
+    // a question. The round reports unequal, the orchestrator installs, and the next round -- where
+    // the file exists on both sides and is inside the bound the edit itself projected -- is the one
+    // that may claim it.
+    let first_generation_equal =
+        sync.matches && hand.unverifiable.is_empty() && admitted_basenames.is_empty();
+    // DRIFT AND ADMISSION ARE BOTH "THE CANDIDATE DIFFERS FROM THE TREE", and the install stage is
+    // planned from one list; they stay distinguishable by `admitted_new_surfaces` beside it.
+    let mut changed_paths = sync.drifted_paths.clone();
+    for basename in &admitted_basenames {
+        if !changed_paths.contains(basename) {
+            changed_paths.push(basename.clone());
+        }
+    }
     let convergence_roots = [workspace.join("dag"), workspace.join("src/v2")]
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
@@ -623,9 +713,20 @@ pub fn run_required_regen_scoped(
         .keys()
         .map(|path| candidate_relative_emit_path(path))
         .collect::<Result<BTreeSet<_>, _>>()?;
+    // THE MANIFEST DENOMINATES THE CANDIDATE TREE, which now includes the admitted mirrors. Naming
+    // them here is what gives them a declaring module (the complete module index of THIS corpus,
+    // through `convergence_surface_roles`) and a content digest, so the install stage installs a
+    // manifested surface rather than a file it merely observed on disk.
+    let mut manifest_roster = selected_basenames.clone();
+    for basename in &admitted_basenames {
+        if !manifest_roster.contains(basename) {
+            manifest_roster.push(basename.clone());
+        }
+    }
+    manifest_roster.sort();
     let candidate_manifest = produce_candidate_manifest(
         &fresh_src,
-        &selected_basenames,
+        &manifest_roster,
         &emitted_artifact_paths,
         &basename_to_module,
         &producer_seed_digest,
@@ -643,6 +744,13 @@ pub fn run_required_regen_scoped(
         changed_paths: changed_paths.clone(),
         candidate_artifact: candidate_dir_rel.to_string(),
         candidate_manifest,
+        admitted_new_surfaces: admitted
+            .iter()
+            .map(|a| AdmittedNewMirrorReceipt {
+                basename: a.basename.clone(),
+                declared_module: a.module.clone(),
+            })
+            .collect(),
         surface_roles: ConvergenceSurfaceRoles::from_planning((
             basename_to_module,
             generation_modules,
@@ -774,6 +882,10 @@ enum GeneratedSurfaceEmit {
     Emitted {
         emitted: HashMap<String, String>,
         emitted_basenames: Vec<String>,
+        /// THE AUTHORITY FOR A MISSING MIRROR, resolved from the partition this run admitted. It
+        /// travels with the emit because that is where the partition is resolved; a reader wanting
+        /// it later would need a resolve of its own, with a staleness of its own.
+        authority: MissingMirrorAuthority,
     },
     /// Emit itself produced nothing. Distinct from a comparison that could not be taken: there is
     /// no candidate to have an opinion about, rather than an opinion that could not be formed.
@@ -790,6 +902,10 @@ enum GeneratedSurfaceAdjudicated {
         /// it otherwise. Both digests and the candidate write are denominated in this.
         selected: Vec<String>,
         sync: SyncReport,
+        /// Emitted surfaces the committed tree does not carry that the change's partition declares.
+        /// Not drift between two existing files: the tree LACKS them, so the round writes, manifests
+        /// and installs them instead of refusing.
+        admitted: Vec<AdmittedMissingMirror>,
     },
     /// Ignorance, never "no drift" -- same refusal semantics as `GeneratedSurfaceMeasured`.
     Refused { reason: String },
@@ -872,7 +988,7 @@ fn emit_generated_surface(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
 ) -> Result<GeneratedSurfaceEmit, String> {
-    let emitted = compile_stage0(sources, selection)?;
+    let (emitted, authority) = compile_stage0(sources, selection)?;
     if emitted.is_empty() {
         return Ok(GeneratedSurfaceEmit::EmitRefused {
             reason: "refusal: emit produced zero files".to_string(),
@@ -882,6 +998,7 @@ fn emit_generated_surface(
     Ok(GeneratedSurfaceEmit::Emitted {
         emitted,
         emitted_basenames,
+        authority,
     })
 }
 
@@ -891,6 +1008,7 @@ fn adjudicate_generated_surface(
     emitted: &HashMap<String, String>,
     emitted_basenames: &[String],
     scope: &RegenEmissionScope,
+    authority: &MissingMirrorAuthority,
 ) -> Result<GeneratedSurfaceAdjudicated, String> {
     let committed = committed_generated_basenames(stage0_src)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(stage0_src)?;
@@ -898,14 +1016,17 @@ fn adjudicate_generated_surface(
     // join that finds a surface the emitter produces and the tree does not carry, and a mirror
     // the tree carries and the emitter no longer produces. It reads no bytes, so there is
     // nothing here for a selection to save and everything for one to hide.
-    if let Some(reason) = validate_compared_populations(
+    let populations = validate_compared_populations(
         &committed,
         emitted_basenames,
         &hand_dir_shadows,
         SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
-    ) {
+        authority,
+    );
+    if let Some(reason) = populations.refusal {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
+    let admitted = populations.admitted;
     // BYTE ADJUDICATION IS SCOPED. This is the expensive half — a read, a normalization and a
     // comparison per member — and it is the half the affected-set bound is a bound ON.
     let selected = scope_selection(scope, &committed)?;
@@ -914,6 +1035,7 @@ fn adjudicate_generated_surface(
         committed,
         selected,
         sync,
+        admitted,
     })
 }
 
@@ -927,7 +1049,7 @@ fn measure_generated_surface(
     sources: &[(String, String)],
     stage0_src: &Path,
 ) -> Result<GeneratedSurfaceMeasured, String> {
-    let (emitted, emitted_basenames) = match emit_generated_surface(
+    let (emitted, emitted_basenames, authority) = match emit_generated_surface(
         sources,
         &Rc::new(RustModuleRenderSelection::RenderEveryModule),
     )? {
@@ -937,7 +1059,8 @@ fn measure_generated_surface(
         GeneratedSurfaceEmit::Emitted {
             emitted,
             emitted_basenames,
-        } => (emitted, emitted_basenames),
+            authority,
+        } => (emitted, emitted_basenames, authority),
     };
     // THE DRIFT GATE IS NEVER SCOPED. Its callers are the required CI phase and the behavioural
     // receipt, and a scoped answer there would be a gate that stopped looking at most of the tree.
@@ -948,6 +1071,7 @@ fn measure_generated_surface(
         &emitted,
         &emitted_basenames,
         &RegenEmissionScope::WholePopulation,
+        &authority,
     )? {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             Ok(GeneratedSurfaceMeasured::Refused { reason })
@@ -956,6 +1080,7 @@ fn measure_generated_surface(
             committed,
             selected: _,
             sync,
+            admitted: _,
         } => Ok(GeneratedSurfaceMeasured::Measured {
             emitted,
             committed,
@@ -1016,6 +1141,18 @@ struct SyncReport {
     drifted_paths: Vec<String>,
 }
 
+/// The receipt spelling of `AdmittedMissingMirror`, carrying both halves the carrier's
+/// `AdmittedAuthorIntroducedMirror` names: the surface, and the declared module that owns the name.
+/// The module is not decoration -- it is the evidence that the admission was granted by a
+/// declaration rather than by the shape of a file name, and a reader cannot re-derive it from the
+/// basename when several modules can project to one.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AdmittedNewMirrorReceipt {
+    pub basename: String,
+    pub declared_module: String,
+}
+
 struct HandVerifyReport {
     unverifiable: Vec<(String, String)>,
     /// Declared in `EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES` and measured divergent: the rung
@@ -1047,18 +1184,33 @@ fn is_declared_divergent(file_name: &str) -> bool {
 fn compile_stage0(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
-) -> Result<HashMap<String, String>, String> {
+) -> Result<(HashMap<String, String>, MissingMirrorAuthority), String> {
     // This is the one emission whose population IS the stage0 seed, so the host shell's module
     // roster is read from its lib.rs and the package graph from the emitted tree's own partition.
     let declared_shell_modules = super::emitted_closure_compile_host::closure_modules(
         &workspace_root().join("src/v1/stage0/src/lib.rs"),
     )?;
-    compile_stage0_admitted(
+    // RESOLVED ONCE, AND THE ONLY READER OF THE PARTITION IN THIS ROUND. The same resolved packages
+    // that admit the emission are the authority for which module owns which mirror name; the module
+    // names are read off them here so no later stage resolves the corpus again to ask. An empty
+    // declaration is `DeclaredPartitionUnavailable` -- a partition that declares no module is not an
+    // authority for anything, and there is no fallback to the copy compiled into this binary.
+    let packages = emitted_tree_packages(&workspace_root())?;
+    let names = declared_partition_module_names(&packages);
+    let authority = if names.is_empty() {
+        MissingMirrorAuthority::DeclaredPartitionUnavailable {
+            reason: "the partition this run resolved declares no module at all".to_string(),
+        }
+    } else {
+        MissingMirrorAuthority::DeclaredPartitionModules { names }
+    };
+    let emitted = compile_stage0_admitted(
         sources,
         selection,
         Rc::new(declared_shell_modules.into_iter().collect()),
-        emitted_tree_packages(&workspace_root())?,
-    )
+        packages,
+    )?;
+    Ok((emitted, authority))
 }
 
 /// THE EMISSION AND ITS EDGE ADMISSION, OVER A SUPPLIED PACKAGE GRAPH. `compile_stage0` supplies
@@ -1511,22 +1663,203 @@ fn collect_dir_shadows(
     Ok(())
 }
 
+/// THE AUTHORED DISCRIMINANT THE POPULATION JOIN COULD NOT FORM ON ITS OWN.
+///
+/// Authority: `v2.workflow.required_regen` `MissingMirrorAuthority`, `MissingMirrorAdmission` and
+/// `missing_mirror_admission`, whose note records why the two populations alone cannot decide this:
+/// "an author introduced a module" and "the emitter invented a surface nobody authored" have the
+/// SAME population signature. This is the realization half of that carrier, in the standing
+/// arrangement where the host realizes a modelled decision and the witness fleet checks the
+/// realization.
+///
+/// Two rules the carrier owns and this file does not contradict:
+///   * THE SPELLING IS THE PROJECTION. The basename a module owns is asked of the EMITTED MIRROR of
+///     `gunbc.rust_emitted_edge::rust_module_emit_filename` -- one call, one spelling source. A
+///     second file re-deriving `.` -> `_` would be a second authority over one fact, which is what
+///     made `lib.rs` membership a coin flip before #16310.
+///   * THE DECLARATION IS THE CHANGE'S OWN PARTITION. The names come from the rows this run resolved
+///     from the workspace (`emitted_tree_packages`), never from the copy compiled into this binary:
+///     the compiled copy belongs to the previous build and CANNOT contain the module the change is
+///     introducing. That is DEFECT 1 of
+///     `gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs`,
+///     read at the last surface that still consulted it.
+///
+/// THERE IS NO FALLBACK ARM. A partition that declares nothing arrives as
+/// `DeclaredPartitionUnavailable`, which admits nothing; falling back to the compiled copy would be
+/// the widening this file refuses everywhere else.
+enum MissingMirrorAuthority {
+    DeclaredPartitionModules { names: Vec<String> },
+    DeclaredPartitionUnavailable { reason: String },
+}
+
+/// One admitted surface: the file the emitter produced, and the DECLARED module that owns the name.
+struct AdmittedMissingMirror {
+    basename: String,
+    module: String,
+}
+
+/// The verdict of the carrier's `MissingMirrorAdmission`, arm for arm. Absence of an authority and
+/// absence of a declaration are kept apart because the remedies differ: one says the run could not
+/// tell, the other says the change did not declare the surface.
+enum MissingMirrorVerdict {
+    AdmittedAuthorIntroducedModule { module: String },
+    RefusedUndeclaredModuleBasename,
+    RefusedAmbiguousDerivation { modules: Vec<String> },
+    RefusedAuthorityUnavailable { reason: String },
+}
+
+impl MissingMirrorVerdict {
+    /// The clause the missing-mirror refusal carries for one surface: the arm that fired, and the
+    /// declared modules it is refusing between. A refusal that cannot say WHICH arm fired is how the
+    /// planner's `Refused` read empty payload in the first place (DEFECT 2 of the same row).
+    fn refusal_clause(&self, basename: &str) -> String {
+        match self {
+            MissingMirrorVerdict::AdmittedAuthorIntroducedModule { module } => {
+                format!("{basename} is admitted as an author-introduced mirror of {module}")
+            }
+            MissingMirrorVerdict::RefusedUndeclaredModuleBasename => format!(
+                "{basename} is not the mirror of any module declared in the change's partition"
+            ),
+            MissingMirrorVerdict::RefusedAmbiguousDerivation { modules } => format!(
+                "{basename} is the mirror of more than one declared module ({}); the projection is \
+                 not one-to-one for this name and the run will not choose",
+                modules.join(", ")
+            ),
+            MissingMirrorVerdict::RefusedAuthorityUnavailable { reason } => format!(
+                "the declared partition could not be read ({reason}), so nothing could be admitted \
+                 for {basename}"
+            ),
+        }
+    }
+}
+
+/// EVERY module declared by the partition this run resolved, in row order, deduplicated. Read off
+/// the SAME `emitted_tree_packages` resolve that admits the emission -- no second resolve, no second
+/// reader of the partition.
+fn declared_partition_module_names(
+    packages: &crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages,
+) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for row in packages.rows.iter() {
+        for module in row.modules.iter() {
+            if !names.contains(module) {
+                names.push(module.clone());
+            }
+        }
+    }
+    names
+}
+
+/// THE BASENAME A DECLARED MODULE OWNS, spelled by the projection and nothing else.
+fn declared_mirror_basename(module: &str) -> String {
+    format!(
+        "{}.rs",
+        crate::gunbc_rust_emitted_edge::rust_module_emit_filename(module.to_string())
+    )
+}
+
+/// EVERY declared module projecting to this basename -- not a first-match search, because the
+/// ambiguous case has to name the modules it is refusing between (`a.b_c` and `a.b.c` both spell
+/// `a_b.rs`).
+fn declared_modules_projecting_to(basename: &str, names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|module| declared_mirror_basename(module) == basename)
+        .cloned()
+        .collect()
+}
+
+fn missing_mirror_admission(
+    basename: &str,
+    authority: &MissingMirrorAuthority,
+) -> MissingMirrorVerdict {
+    match authority {
+        MissingMirrorAuthority::DeclaredPartitionUnavailable { reason } => {
+            MissingMirrorVerdict::RefusedAuthorityUnavailable {
+                reason: reason.clone(),
+            }
+        }
+        MissingMirrorAuthority::DeclaredPartitionModules { names } => {
+            let projecting = declared_modules_projecting_to(basename, names);
+            match projecting.len() {
+                0 => MissingMirrorVerdict::RefusedUndeclaredModuleBasename,
+                1 => MissingMirrorVerdict::AdmittedAuthorIntroducedModule {
+                    module: projecting[0].clone(),
+                },
+                _ => MissingMirrorVerdict::RefusedAmbiguousDerivation { modules: projecting },
+            }
+        }
+    }
+}
+
+/// The basenames the join treats as admitted rather than missing: emitted, not committed, not
+/// shadowing hand-maintained source, and spelled from a declared module. A FILTER over the emitted
+/// roster -- it can never add a surface the emitter did not produce -- reading the same three
+/// rosters `validate_compared_populations` reads, so the two agree by construction instead of being
+/// two decisions that can drift apart.
+fn admitted_missing_mirrors(
+    emitted: &[String],
+    committed: &[String],
+    hand_dir_shadows: &BTreeMap<String, Vec<String>>,
+    authority: &MissingMirrorAuthority,
+) -> Vec<AdmittedMissingMirror> {
+    let committed_set: BTreeSet<&str> = committed.iter().map(String::as_str).collect();
+    let mut admitted = Vec::new();
+    for name in emitted {
+        if committed_set.contains(name.as_str()) || hand_dir_shadows.contains_key(name) {
+            continue;
+        }
+        if let MissingMirrorVerdict::AdmittedAuthorIntroducedModule { module } =
+            missing_mirror_admission(name, authority)
+        {
+            admitted.push(AdmittedMissingMirror {
+                basename: name.clone(),
+                module,
+            });
+        }
+    }
+    admitted
+}
+
+/// What the population identity join decided. `refusal` is the arm the run returns; `admitted` is the
+/// class that is NOT a refusal, listed so the round can write, manifest and install those surfaces
+/// instead of refusing them.
+struct PopulationVerdict {
+    refusal: Option<String>,
+    admitted: Vec<AdmittedMissingMirror>,
+}
+
+impl PopulationVerdict {
+    /// The arm that stopped the round, for a caller with no use for the admitted class.
+    fn into_refusal(self) -> Option<String> {
+        self.refusal
+    }
+}
+
 fn validate_compared_populations(
     committed: &[String],
     emitted: &[String],
     hand_dir_shadows: &BTreeMap<String, Vec<String>>,
     seed_retained_top_level_src: &[&str],
-) -> Option<String> {
+    authority: &MissingMirrorAuthority,
+) -> PopulationVerdict {
     if committed.is_empty() {
-        return Some("refusal: committed generated population is empty".to_string());
+        return PopulationVerdict {
+            refusal: Some("refusal: committed generated population is empty".to_string()),
+            admitted: Vec::new(),
+        };
     }
     if emitted.is_empty() {
-        return Some("refusal: emit produced zero generated surfaces".to_string());
+        return PopulationVerdict {
+            refusal: Some("refusal: emit produced zero generated surfaces".to_string()),
+            admitted: Vec::new(),
+        };
     }
     let committed_set: BTreeSet<&str> = committed.iter().map(String::as_str).collect();
     let emitted_set: BTreeSet<&str> = emitted.iter().map(String::as_str).collect();
     let mut emitted_not_committed = Vec::new();
     let mut shadowing_hand_maintained = Vec::new();
+    let mut admitted: Vec<AdmittedMissingMirror> = Vec::new();
     for name in emitted {
         if committed_set.contains(name.as_str()) {
             continue;
@@ -1536,7 +1869,19 @@ fn validate_compared_populations(
                 "{name} (hand-maintained under {})",
                 homes.join(", ")
             )),
-            None => emitted_not_committed.push(name.clone()),
+            None => match missing_mirror_admission(name, authority) {
+                // ADMITTED. The change declares the module and the name is the projection of it, so
+                // the absence is the author's edit seen before its generated half exists -- not an
+                // emitter that invented a surface. It is a surface to install, not a refusal, and it
+                // stays OUT of this list so it cannot reach a remedy that does not apply to it.
+                MissingMirrorVerdict::AdmittedAuthorIntroducedModule { module } => {
+                    admitted.push(AdmittedMissingMirror {
+                        basename: name.clone(),
+                        module,
+                    });
+                }
+                verdict => emitted_not_committed.push(verdict.refusal_clause(name)),
+            },
         }
     }
     // A committed basename the emitter no longer produces is CommittedMirrorNoLongerEmitted
@@ -1561,16 +1906,20 @@ fn validate_compared_populations(
     // the split: `v2.workflow.required_regen` `MirrorMissingForEmittedSurface` and
     // `CommittedMirrorNoLongerEmitted`.
     //
-    // NEITHER IS ADMITTED, and the first is where that matters. "An author introduced a module"
-    // and "the emitter invented a surface nobody authored" produce the SAME population, and the
-    // second is what this check catches, so no arm computed from the populations can tell them
-    // apart -- admitting the first would be the same conflation the other way. The refusal names
-    // the fork and leaves the decision with the author; the install branch is now actionable
-    // because the ordering above wrote the bytes before this check ran.
+    // NEITHER CLASS IS ADMITTED FROM THE POPULATIONS ALONE, and the first is where that matters:
+    // "an author introduced a module" and "the emitter invented a surface nobody authored" produce
+    // the SAME population, and the second is what this check catches. So the discriminant comes from
+    // OUTSIDE the two rosters -- the partition this change declares, consulted through
+    // `missing_mirror_admission` above, which is the realization of
+    // `v2.workflow.required_regen` `missing_mirror_admission`. A basename with no declared module
+    // behind it is still refused here, in the same words with the arm named, and the hand-shadow and
+    // no-longer-emitted classes are untouched: their remedies damage files, so nothing about them
+    // is admittable by a naming rule. The install branch is actionable because the ordering above
+    // wrote the candidate bytes before this check ran.
     let mut reasons = Vec::new();
     if !emitted_not_committed.is_empty() {
         reasons.push(format!(
-            "refusal: emitted surface has no committed mirror — {emitted_not_committed:?}; if you introduced these modules, install the produced mirror(s) named below and commit them; if you did not, the emitter produced a surface nobody authored and installing it would launder that"
+            "refusal: emitted surface has no committed mirror — {emitted_not_committed:?}; a              surface whose module the change DECLARES is admitted and installed, so each name below              says why it was not: if the module is missing from the partition, add its row in              v2.workflow.rust_crate_partition; if the basename is not that module's projected              filename, the surface is one nobody authored and installing it would launder that"
         ));
     }
     if !committed_not_emitted.is_empty() {
@@ -1587,9 +1936,15 @@ fn validate_compared_populations(
         ));
     }
     if reasons.is_empty() {
-        None
+        PopulationVerdict {
+            refusal: None,
+            admitted,
+        }
     } else {
-        Some(reasons.join(" | "))
+        PopulationVerdict {
+            refusal: Some(reasons.join(" | ")),
+            admitted,
+        }
     }
 }
 
@@ -3216,17 +3571,29 @@ mod tests {
 
     #[test]
     fn empty_emit_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new(), &[])
-                .expect("expected refusal");
+        let reason = validate_compared_populations(
+            &["foo.rs".to_string()],
+            &[],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.foo"]),
+        )
+        .into_refusal()
+        .expect("expected refusal");
         assert!(reason.contains("zero generated surfaces"));
     }
 
     #[test]
     fn empty_committed_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new(), &[])
-                .expect("expected refusal");
+        let reason = validate_compared_populations(
+            &[],
+            &["foo.rs".to_string()],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.foo"]),
+        )
+        .into_refusal()
+        .expect("expected refusal");
         assert!(reason.contains("committed generated population is empty"));
     }
 
@@ -3237,7 +3604,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             &["retained.rs"],
-        );
+            &test_authority(&["v1.compiler.still"]),
+        )
+        .into_refusal();
         assert!(
             reason.is_none(),
             "a frontier-rostered basename that left emit is retained, not CommittedMirrorNoLongerEmitted: {reason:?}"
@@ -3251,7 +3620,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             &["retained.rs"],
+            &test_authority(&["v1.compiler.still"]),
         )
+        .into_refusal()
         .expect("expected refusal");
         assert!(
             reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
@@ -3292,7 +3663,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
-        );
+            &test_authority(&["v1.compiler.still"]),
+        )
+        .into_refusal();
         assert!(
             reason.is_none(),
             "std_logic.rs is SeedRetainedIntrinsic on the frontier; committed-not-emitted must not fire: {reason:?}"
@@ -3310,7 +3683,9 @@ mod tests {
             &["still.rs".to_string()],
             &BTreeMap::new(),
             SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+            &test_authority(&["v1.compiler.still"]),
         )
+        .into_refusal()
         .expect("expected refusal");
         assert!(
             reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
@@ -3320,6 +3695,169 @@ mod tests {
             !reason.contains("std_logic.rs"),
             "the retained oracle must not be named in the refusal: {reason}"
         );
+    }
+
+    // THE MISSING-MIRROR ADMISSION: the AUTHORED discriminant the two populations cannot form.
+    // Authority: `v2.workflow.required_regen` `MissingMirrorAuthority` /
+    // `MissingMirrorAdmission`, realized by `missing_mirror_admission` in this file. These are the
+    // off-the-merge-path unit discriminations for the join; the merge-path verdict is the srv1 heal
+    // receipt quoted on
+    // `gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs`.
+
+    fn test_authority(names: &[&str]) -> MissingMirrorAuthority {
+        MissingMirrorAuthority::DeclaredPartitionModules {
+            names: names.iter().map(|name| name.to_string()).collect(),
+        }
+    }
+
+    fn test_authority_unavailable() -> MissingMirrorAuthority {
+        MissingMirrorAuthority::DeclaredPartitionUnavailable {
+            reason: "test: the partition was not readable".to_string(),
+        }
+    }
+
+    #[test]
+    fn the_spelling_of_a_mirrors_name_has_exactly_one_source() {
+        // The admission is only as honest as this call: re-deriving `.` -> `_` here would put a
+        // second authority over one fact, which is the shape that made `lib.rs` membership a coin
+        // flip before #16310. Pinned against the projection's own declared behaviour, including the
+        // `main` -> `main_mod` collision the carrier names.
+        assert_eq!(declared_mirror_basename("v1.compiler.emit_rust"), "v1_compiler_emit_rust.rs");
+        assert_eq!(declared_mirror_basename("main"), "main_mod.rs");
+        assert_eq!(
+            declared_mirror_basename("a.b_c"),
+            declared_mirror_basename("a.b.c"),
+            "the projection is not injective, which is why the ambiguous arm exists"
+        );
+    }
+
+    #[test]
+    fn a_declared_module_admits_its_projected_first_mirror() {
+        // THE CAPABILITY: the module's row is the only thing the author wrote; the mirror is absent
+        // from the committed tree and present in the emit. The round must not refuse, and the
+        // admitted list must name the declaring module, not just the file.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &["still.rs".to_string(), "v1_compiler_a_new_cause.rs".to_string()],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]),
+        );
+        assert!(
+            verdict.refusal.is_none(),
+            "a declared module's missing mirror is drift to install, not a refusal: {:?}",
+            verdict.refusal
+        );
+        assert_eq!(
+            verdict.admitted,
+            vec![AdmittedMissingMirror {
+                basename: "v1_compiler_a_new_cause.rs".to_string(),
+                module: "v1.compiler.a_new_cause".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn an_invented_basename_is_still_refused_and_says_which_arm_fired() {
+        // THE OTHER HALF OF THE SAME RULE: nothing about the SHAPE of a name admits it. Emitted,
+        // absent from the tree, and no declared module projects to it.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &["still.rs".to_string(), "v1_compiler_never_authored.rs".to_string()],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["v1.compiler.still"]),
+        );
+        let reason = verdict.refusal.expect("an undeclared surface must still refuse");
+        assert!(
+            reason.contains("no committed mirror"),
+            "the class must still be named: {reason}"
+        );
+        assert!(
+            reason.contains("not the mirror of any module declared"),
+            "the refusal must name the arm, not just the file: {reason}"
+        );
+        assert!(verdict.admitted.is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_partition_admits_nothing() {
+        // NO FALLBACK ARM. A partition this run could not read is not an absence of declaration, and
+        // it certainly is not permission to consult the rows compiled into this binary -- those are
+        // the predecessor's and cannot contain the module being introduced.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &["still.rs".to_string(), "v1_compiler_a_new_cause.rs".to_string()],
+            &BTreeMap::new(),
+            &[],
+            &test_authority_unavailable(),
+        );
+        let reason = verdict.refusal.expect("no authority, no admission");
+        assert!(reason.contains("could not be read"), "{reason}");
+        assert!(verdict.admitted.is_empty());
+    }
+
+    #[test]
+    fn an_ambiguous_projection_refuses_and_names_every_module_it_is_refusing_between() {
+        // NOT A FIRST-MATCH SEARCH. Two declared modules spell one basename; the run does not
+        // choose, and the refusal has to say between what.
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &["still.rs".to_string(), "a_b_c.rs".to_string()],
+            &BTreeMap::new(),
+            &[],
+            &test_authority(&["still", "a.b_c", "a.b.c"]),
+        );
+        let reason = verdict.refusal.expect("an ambiguous name must refuse");
+        assert!(reason.contains("more than one declared module"), "{reason}");
+        assert!(reason.contains("a.b_c") && reason.contains("a.b.c"), "{reason}");
+        assert!(verdict.admitted.is_empty());
+    }
+
+    #[test]
+    fn a_declaration_does_not_launder_a_collision_with_hand_maintained_source() {
+        // THE SHADOW CLASS IS NOT ADMITTABLE BY A NAMING RULE: both remedies for a missing mirror
+        // damage a hand-authored file, so the declaration cannot outweigh the shadow.
+        let mut shadows = BTreeMap::new();
+        shadows.insert("v1_compiler_a_new_cause.rs".to_string(), vec!["cli_run".to_string()]);
+        let verdict = validate_compared_populations(
+            &["still.rs".to_string()],
+            &["still.rs".to_string(), "v1_compiler_a_new_cause.rs".to_string()],
+            &shadows,
+            &[],
+            &test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]),
+        );
+        let reason = verdict.refusal.expect("a shadowed surface must refuse");
+        assert!(
+            reason.contains("collides with hand-maintained source"),
+            "the shadow class must be the one that fires: {reason}"
+        );
+        assert!(verdict.admitted.is_empty(), "a declaration must not admit a shadowed file");
+    }
+
+    #[test]
+    fn the_pre_write_filter_and_the_join_admit_the_same_surfaces() {
+        // The run reads the decision twice -- once before the write, to know what to write, and once
+        // in the join, which is the authority. They agree by construction (same three rosters, same
+        // authority) and the round refuses if they ever do not, so this pins the construction.
+        let committed = ["still.rs".to_string()];
+        let emitted = [
+            "still.rs".to_string(),
+            "v1_compiler_a_new_cause.rs".to_string(),
+            "v1_compiler_never_authored.rs".to_string(),
+        ];
+        let authority = test_authority(&["v1.compiler.still", "v1.compiler.a_new_cause"]);
+        let filtered = admitted_missing_mirrors(&emitted, &committed, &BTreeMap::new(), &authority);
+        let joined = validate_compared_populations(
+            &committed,
+            &emitted,
+            &BTreeMap::new(),
+            &[],
+            &authority,
+        )
+        .admitted;
+        assert_eq!(filtered, joined);
+        assert_eq!(filtered.len(), 1, "only the declared name is admitted");
     }
 
     #[test]
@@ -13770,6 +14308,7 @@ mod surface_roles_receipt_tests {
                 aggregate_digest: "aggregate".to_string(),
                 surfaces: Vec::new(),
             },
+            admitted_new_surfaces: Vec::new(),
             surface_roles: ConvergenceSurfaceRoles::from_planning(roles()).unwrap(),
         })
         .unwrap();
