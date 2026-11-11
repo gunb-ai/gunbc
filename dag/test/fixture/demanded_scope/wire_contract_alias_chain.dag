@@ -2,12 +2,13 @@ module test.fixture.demanded_scope.wire_contract_alias_chain
 
 import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored, CoproductWireContract }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import test.fixture.demanded_scope.wire_contract_alias_chain_remote { alias_imported }
 
 // An entry so a realization exists. Everything that matters here is what this does NOT name.
 fn demanded_entry() -> Int { 1 }
 
-// A CoproductWireContract row, matched by the host census on shape. Nothing demanded names it; the
-// census must realize it anyway, because the interpreter's wire-contract index reads it without any
+// A CoproductWireContract row, matched by the read-row seed on shape. Nothing demanded names it; the
+// seed must realize it anyway, because the interpreter's wire-contract index reads it without any
 // demanded declaration spelling its name.
 data grain_row_wire_contract: CoproductWireContract = {
   coproduct: DeclarationRef { module_path: "test.fixture.demanded_scope.wire_contract_alias_chain", decl_name: "DemandedShape", field: WholeDeclaration },
@@ -16,17 +17,21 @@ data grain_row_wire_contract: CoproductWireContract = {
 
 type DemandedShape { side: Int }
 
-// THE ALIAS CHAIN. The host resolve_module_encoding follows `data x = other` aliases recursively
-// with fuel 32, so the census must seed EVERY link -- wire_contract, alias_left, alias_right -- and
-// not just the first hop. A census that seeded one hop would leave `alias_right` out of the realized
-// set and the host would refuse with "alias_left aliases alias_right, which resolves nowhere" for a
-// row that exists: the same silent miss dressed as a located error.
+// THE ALIAS CHAIN, ACROSS A MODULE BOUNDARY. The host resolve_module_encoding follows `data x = other`
+// aliases recursively with fuel 32, looking each name up among the DEFINING module's own data items
+// FIRST and only then in that module's SPECIFIC imports -- so the seed must walk the same scope
+// (the seed's own scope, v1.compiler.infer::realization_alias_chain_step): `alias_left` is found in this module, and
+// `alias_imported` only through the import above. A seed that stopped at the first hop would leave
+// `alias_right` out of the realized set and the host would refuse with "alias_left aliases alias_right,
+// which resolves nowhere" for a row that exists: the same silent miss dressed as a located error. A
+// seed that searched the whole closure by bare name would instead walk the homonym waiting in
+// ..._homonym (review 93386) -- see its comment and the witness that merges the two graphs.
 data wire_contract: VariantEncoding = alias_left
 
 data alias_left: VariantEncoding = alias_right
 
-data alias_right: VariantEncoding = StringVariant { naming: AsAuthored }
+data alias_right: VariantEncoding = alias_imported
 
-// NEGATIVE CONTROL. A data declaration no demanded declaration names and the census does not match
-// stays UNREALIZED -- the census is a census, not a blanket rule restored.
+// NEGATIVE CONTROL. A data declaration no demanded declaration names and the seed does not match
+// stays UNREALIZED -- the seed is a seed, not a blanket rule restored.
 data unreached_sidecar_note: DemandedShape = DemandedShape { side: 7 }

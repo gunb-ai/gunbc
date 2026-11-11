@@ -615,19 +615,34 @@ fn wire_contract_read_seed_body() {
     );
 }
 
-// THE ALIAS CHAIN, END TO END. v1_interpreter::resolve_module_encoding follows `data x = other`
-// aliases recursively (fuel 32). A seed that covered only wire_contract's first alias hop would
-// leave a later link unrealized, and the host would then refuse a row that EXISTS by blaming the
-// next link ("aliases ..., which resolves nowhere") -- the silent miss this seeding exists to
-// prevent, dressed as a located error. The fixture pairs the chain with an undemanded, uncharted
-// data declaration that must stay unrealized, so the seed stays a seed and not a blanket rule.
+// THE ALIAS CHAIN, END TO END, INSIDE THE HOST'S OWN SCOPE. v1_interpreter::resolve_module_encoding
+// looks a name up among the DEFINING module's data items first and only then falls through to that
+// module's SPECIFIC imports, following `data x = other` var bodies (fuel 32); the seed walks the same
+// scope (review 93386). Two shapes pin the walk's coverage:
+//   * the chain leaves the demanded module through a SPECIFIC import (`alias_imported` arrives from
+//     ..._remote); the host reads it there, so the seed must realize it there;
+//   * an unimported module spells its own `alias_left` with a var body (..._homonym) FIRST in the
+//     module list: a walk that searched the closure by bare name would take that branch instead of
+//     the demanded module's item. NOTE: this shape cannot serve as a refusal witness -- the realized
+//     set is keyed by BARE name and the demand wave expands every item sharing a realized name, so
+//     `homonym_body_owner` is over-realized regardless of the walk (cost, not unsoundness: a bare key
+//     the host can ask for is never missing). The discriminating negative is the name-UNIQUE sidecar
+//     below, which stays unrealized -- proof the seed is still a seed, not the old blanket rule.
 #[test]
-fn grain_seeds_every_link_of_a_wire_contract_alias_chain() {
-    let (_sources, _intern, si, modules) =
+fn grain_seeds_the_wire_contract_alias_chain_in_the_host_module_scope() {
+    let (_sources, _intern, si_real, modules_real) =
         graph_from("dag/test/fixture/demanded_scope/wire_contract_alias_chain.dag");
-    let census = infer::build_symbol_index_census(modules.clone(), si.clone());
+    let (_h_sources, _h_intern, si_hom, modules_hom) =
+        graph_from("dag/test/fixture/demanded_scope/wire_contract_alias_chain_homonym.dag");
+    // The homonym module FIRST: a seed that searched the closure by bare name in list order would
+    // take its `alias_left` and never walk the demanded module's real chain.
+    let mut merged: Vec<Rc<crate::v1_compiler_resolve::ResolvedModule>> =
+        modules_hom.iter().cloned().collect();
+    merged.extend(modules_real.iter().cloned());
+    let si = Rc::new((*si_hom).clone().union((*si_real).clone()));
+    let census = infer::build_symbol_index_census(Rc::new(merged.clone().into()), si.clone());
     let realization = infer::realization_of(
-        modules.clone(),
+        Rc::new(merged.into()),
         Rc::new(im::vector!["demanded_entry".to_string()]),
         census,
         si.clone(),
@@ -636,11 +651,12 @@ fn grain_seeds_every_link_of_a_wire_contract_alias_chain() {
         "wire_contract",
         "alias_left",
         "alias_right",
+        "alias_imported",
         "grain_row_wire_contract",
     ] {
         assert!(
             realization.realized.contains_key(link),
-            "{link} must be seeded by the read-row seed (alias chain and row), got {:?}",
+            "{link} must be seeded by the read-row seed (alias chain -- through the module's own items and its specific import -- and row), got {:?}",
             realization.realized.keys().collect::<Vec<_>>()
         );
     }
@@ -648,6 +664,6 @@ fn grain_seeds_every_link_of_a_wire_contract_alias_chain() {
         !realization
             .realized
             .contains_key("unreached_sidecar_note"),
-        "an undemanded, unread data declaration must stay unrealized: the seed is a seed, not the old blanket rule"
+        "an undemanded, unread data declaration with a name nothing shares must stay UNREALIZED: the seed is a seed, not the old blanket rule"
     );
 }

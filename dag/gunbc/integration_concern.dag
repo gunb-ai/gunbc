@@ -886,7 +886,7 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
         head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_wire_contract_read_names") },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_wire_contract_alias_chain") }],
       },
-      account: "The wire-contract alias-chain and read-row witnesses (grain_seeds_wire_contract_read_rows_so_the_decode_index_resolves_actor_spelling, grain_seeds_every_link_of_a_wire_contract_alias_chain; fixture dag/test/fixture/demanded_scope/wire_contract_alias_chain.dag) extend the same file by ~150 lines of hand-written Rust under this same deferral: at enrollment, node adhoc-0eedbb6e-a35 moves or admits the whole file, not just the #16156 block. Green in the release profile on the head they test; the earlier PR #16244 that first carried them was closed superseded by #16241 plus this delta.",
+      account: "The wire-contract alias-chain and read-row witnesses (grain_seeds_wire_contract_read_rows_so_the_decode_index_resolves_actor_spelling, grain_seeds_the_wire_contract_alias_chain_in_the_host_module_scope; fixtures dag/test/fixture/demanded_scope/wire_contract_alias_chain.dag and its _remote/_homonym partners) extend the same file by ~230 lines of hand-written Rust under this same deferral: at enrollment, node adhoc-0eedbb6e-a35 moves or admits the whole file, not just the #16156 block. Green in the release profile on the head they test; the earlier PR #16244 that first carried them was closed superseded by #16241 plus this delta.",
     }],
   },
   disposition: Open,
