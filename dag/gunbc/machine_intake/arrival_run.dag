@@ -470,7 +470,7 @@ fn arrival_wet_prefix_record(
                                         }
                                         let verdict = converge_arrival_through_bmc_secure(
                                           run: run_wire as ConvergenceRunId,
-                                          subject: (row.unit as NonEmptyStr) as StepSubjectKey,
+                                          subject: row.subject_key,
                                           read: manager_read,
                                           inputs: inputs,
                                           prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
