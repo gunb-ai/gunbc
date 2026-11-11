@@ -169,7 +169,18 @@ fn token_at(toks: List<String>, i: Int) -> String {
 
 // ONE ROW -> (channel, id, privilege), or the refusal detail. Row grammar:
 // <id> [name] <bool> <bool> <bool> <privilege-word> [<second privilege word "ACCESS"]
-fn ipmi_user_access_row(line: String, channel: IpmiChannelNumber) -> IpmiUserAccessRowVerdict {
+// THE ONE GRAMMAR for an `ipmitool` user-table row. Both readings of one table -- the committed
+// census (privileges only) and the door's named census (the accessor's account must be NAMED) --
+// are thin projections of THIS cell decision; neither re-decides how the table parses
+// (single_authority: a second place that independently decides it is a fork). The committed
+// reading drops the name cell; the named reading requires it; the cells decide id, the three flag
+// cells, the two-word NO ACCESS tail, and the name position exactly once.
+
+type IpmiUserRowCells
+  = UserRowCells { id: IpmiUserId, privilege: IpmiChannelPrivilegeLimit, name: NonEmptyStr? }
+  | UserRowCellsMalformed { detail: NonEmptyStr }
+
+fn ipmi_user_row_cells(line: String) -> IpmiUserRowCells {
   let toks = ws_tokens(rest: line, current: "", acc: [])
   let n = toks.length()
   // The privilege tail: "ACCESS" after "NO" is one privilege printed as two words.
@@ -177,17 +188,17 @@ fn ipmi_user_access_row(line: String, channel: IpmiChannelNumber) -> IpmiUserAcc
   let priv_word = if tail_access { token_at(toks: toks, i: n - 2) } else { token_at(toks: toks, i: n - 1) }
   let consumed = if tail_access { 2 } else { 1 }
   match parse_int(s: token_at(toks: toks, i: 0)) {
-    none => RowMalformed { detail: line }
+    none => UserRowCellsMalformed { detail: line }
     Present { value: id } =>
       if n < 1 + 3 + consumed {
-        RowMalformed { detail: line }
+        UserRowCellsMalformed { detail: line }
       } else {
         match ipmi_privilege_word(word: priv_word) {
-          none => RowMalformed { detail: line }
+          none => UserRowCellsMalformed { detail: line }
           Present { value: privilege } =>
             // If "NO ACCESS" was consumed but the word before ACCESS was not NO, the grammar is wrong.
             if tail_access && !word_equals_any(word: token_at(toks: toks, i: n - 2), forms: ["NO", "No", "no"]) {
-              RowMalformed { detail: line }
+              UserRowCellsMalformed { detail: line }
             } else {
               // The three flag cells sit immediately before the privilege tail.
               let flag_start = n - consumed - 3
@@ -196,18 +207,28 @@ fn ipmi_user_access_row(line: String, channel: IpmiChannelNumber) -> IpmiUserAcc
               let f3 = token_at(toks: toks, i: flag_start + 2)
               let name_cells = flag_start - 1
               if !is_ipmi_bool_word(word: f1) || !is_ipmi_bool_word(word: f2) || !is_ipmi_bool_word(word: f3) {
-                RowMalformed { detail: line }
+                UserRowCellsMalformed { detail: line }
               } else if id < 1 || id > 63 {
-                RowMalformed { detail: line }
+                UserRowCellsMalformed { detail: line }
               } else if name_cells > 1 {
                 // A name with whitespace is not what ipmitool's own user-name grammar accepts.
-                RowMalformed { detail: line }
+                UserRowCellsMalformed { detail: line }
+              } else if name_cells == 1 {
+                UserRowCells { id: id, privilege: privilege, name: Present { value: token_at(toks: toks, i: 1) as NonEmptyStr } }
               } else {
-                RowParsed { row: ipmi_user_channel_access(channel: channel, user: id, privilege: privilege) }
+                UserRowCells { id: id, privilege: privilege, name: Absent }
               }
             }
         }
       }
+  }
+}
+
+fn ipmi_user_access_row(line: String, channel: IpmiChannelNumber) -> IpmiUserAccessRowVerdict {
+  match ipmi_user_row_cells(line: line) {
+    UserRowCellsMalformed { detail: _detail } => RowMalformed { detail: line }
+    UserRowCells { id: id, privilege: privilege, name: _name } =>
+      RowParsed { row: ipmi_user_channel_access(channel: channel, user: id, privilege: privilege) }
   }
 }
 
@@ -646,12 +667,13 @@ fn redfish_service_root_verdict_from_body(body: String) -> RedfishServiceRootVer
 // arrival door must DERIVE the managed user id and the published (factory) user
 // id from this run's own census -- the ruling says those facts are derived from
 // the census, never rowed and never probed -- so it needs the name cell kept.
-// Same grammar authority, same session classifier: this read re-parses the
-// table with the committed row grammar's cell logic (ID, Name, three flag
-// cells, the NO ACCESS two-word privilege tail) and keeps the name. Drift
-// between the two readings is pinned claim-for-claim by the door's witness:
-// for every capture both readings must accept and the named rows must project
-// onto the committed rows exactly. Admitted to the arrival door and its
+// ONE GRAMMAR, TWO PROJECTIONS: both readings consume ipmi_user_row_cells --
+// the cells decide the ID, the three flag cells, the NO ACCESS two-word tail,
+// and the name position once; the committed reading drops the name, this one
+// requires it and SKIPS (never refuses) valid slots that name nothing. There
+// is no second place that decides how the table parses, so the readings cannot
+// drift at the grammar level; the door's witness still pins the projection
+// claim-for-claim over real captures. Admitted to the arrival door and its
 // witness only: a name-reading in wider hands is an invitation to branch on
 // account names where the committed reading deliberately does not.
 type ArrivalNamedUserAccessRow {
@@ -663,52 +685,19 @@ type ArrivalNamedUserAccessRow {
 
 type ArrivalNamedUserAccessRowVerdict
   = NamedRowParsed { row: ArrivalNamedUserAccessRow }
+  | NamedRowUnnamed
   | NamedRowMalformed { detail: NonEmptyStr }
 
 fn arrival_named_user_access_row(line: String, channel: IpmiChannelNumber) -> ArrivalNamedUserAccessRowVerdict {
-  let toks = ws_tokens(rest: line, current: "", acc: [])
-  let n = toks.length()
-  let tail_access = n >= 2 && word_equals_any(word: token_at(toks: toks, i: n - 1), forms: ["ACCESS", "Access", "access"])
-  let priv_word = if tail_access { token_at(toks: toks, i: n - 2) } else { token_at(toks: toks, i: n - 1) }
-  let consumed = if tail_access { 2 } else { 1 }
-  match parse_int(s: token_at(toks: toks, i: 0)) {
-    none => NamedRowMalformed { detail: line }
-    Present { value: id } =>
-      if n < 1 + 3 + consumed {
-        NamedRowMalformed { detail: line }
-      } else {
-        match ipmi_privilege_word(word: priv_word) {
-          none => NamedRowMalformed { detail: line }
-          Present { value: privilege } =>
-            if tail_access && !word_equals_any(word: token_at(toks: toks, i: n - 2), forms: ["NO", "No", "no"]) {
-              NamedRowMalformed { detail: line }
-            } else {
-              let flag_start = n - consumed - 3
-              let f1 = token_at(toks: toks, i: flag_start)
-              let f2 = token_at(toks: toks, i: flag_start + 1)
-              let f3 = token_at(toks: toks, i: flag_start + 2)
-              let name_cells = flag_start - 1
-              if !is_ipmi_bool_word(word: f1) || !is_ipmi_bool_word(word: f2) || !is_ipmi_bool_word(word: f3) {
-                NamedRowMalformed { detail: line }
-              } else if id < 1 || id > 63 {
-                NamedRowMalformed { detail: line }
-              } else if name_cells > 1 {
-                NamedRowMalformed { detail: line }
-              } else if name_cells != 1 {
-                // The name cell is PRESENT and EMPTY: the slot is enabled but carries no
-                // account. Such a row keeps its slot in the committed census but can name
-                // no account here, and a door that could not name it would only mis-derive.
-                NamedRowMalformed { detail: "the name cell is empty: an enabled slot with no account names nothing" }
-              } else {
-                NamedRowParsed { row: ArrivalNamedUserAccessRow { channel: channel, user: id, name: token_at(toks: toks, i: 1) as NonEmptyStr, privilege: privilege } }
-              }
-            }
-        }
-      }
+  match ipmi_user_row_cells(line: line) {
+    UserRowCellsMalformed { detail: _detail } => NamedRowMalformed { detail: line }
+    UserRowCells { id: _id, privilege: _privilege, name: Absent } => NamedRowUnnamed
+    UserRowCells { id: id, privilege: privilege, name: Present { value: name } } =>
+      NamedRowParsed { row: ArrivalNamedUserAccessRow { channel: channel, user: id, name: name, privilege: privilege } }
   }
 }
 
-fn arrival_named_user_access_rows_from_lines(lines: List<String>, channel: IpmiChannelNumber, acc: List<ArrivalNamedUserAccessRow>) -> IpmiUserAccessRowsVerdict2 {
+fn arrival_named_user_access_rows_from_lines(lines: List<String>, channel: IpmiChannelNumber, acc: List<ArrivalNamedUserAccessRow>) -> IpmiNamedUserAccessRowsVerdict {
   match first(lines) {
     none =>
       if acc.length() == 0 {
@@ -719,16 +708,17 @@ fn arrival_named_user_access_rows_from_lines(lines: List<String>, channel: IpmiC
     Present { value: line } =>
       match arrival_named_user_access_row(line: line, channel: channel) {
         NamedRowMalformed { detail: bad } => ArrivalNamedRowsMalformed { detail: bad }
+        NamedRowUnnamed => arrival_named_user_access_rows_from_lines(lines: lines.skip(n: 1), channel: channel, acc: acc)
         NamedRowParsed { row: row } => arrival_named_user_access_rows_from_lines(lines: lines.skip(n: 1), channel: channel, acc: list_push(xs: acc, item: row))
       }
   }
 }
 
-type IpmiUserAccessRowsVerdict2
+type IpmiNamedUserAccessRowsVerdict
   = ArrivalNamedRowsRead { rows: List<ArrivalNamedUserAccessRow> }
   | ArrivalNamedRowsMalformed { detail: NonEmptyStr }
 
-fn arrival_named_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAccessRowsVerdict2 {
+fn arrival_named_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiNamedUserAccessRowsVerdict {
   arrival_named_user_access_rows_from_lines(lines: split(s: text, delimiter: "\n"), channel: channel, acc: [])
 }
 

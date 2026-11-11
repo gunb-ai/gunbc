@@ -20,7 +20,7 @@ import gunbc.machine_intake.arrival_run {
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
-import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiPrivilegeNoAccess }
 import gunbc.machine_intake.bmc_account_state_parsers {
   arrival_named_census_read,
   IpmiNamedCensusAccepted,
@@ -29,6 +29,15 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   ipmi_authenticated_census_read,
   IpmiCensusAccepted,
   ipmi_channel_info_is_lan,
+  token_at,
+}
+import gunbc.ipmitool_fru_text {
+  FruCaptureUnreadable,
+  FruCaptureNotCommitted,
+  FruCaptureDigestMismatch,
+  FruFieldGapped,
+  FruSubjectLinkUnobserved,
+  FruBoundToAnotherLink,
 }
 import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
@@ -170,7 +179,19 @@ test fn the_named_census_projects_onto_the_committed_census() -> Bool {
   }
   // Same three named rows, same user ids in order; the named arm additionally carries the names
   // the committed reader drops.
-  length(named_rows) == 3 && length(committed_rows) == 3 && length(filter(named_rows, r => r.name == "admin" || r.name == "operator" || r.name == "OEM")) == 3
+  // ONE GRAMMAR, TWO PROJECTIONS: the named rows' user ids and privileges, in order, are exactly
+  // the committed reading's NON-NO-ACCESS rows -- the named census adds the name cell and nothing
+  // else. Valid slots that name nothing are skipped by the named reading and kept by the committed
+  // one (every real board has them), so the privilege filter is the projection.
+  let expected_users = map(filter(committed_rows, r => r.privilege != IpmiPrivilegeNoAccess), r => r.user)
+  let expected_privs = map(filter(committed_rows, r => r.privilege != IpmiPrivilegeNoAccess), r => r.privilege)
+  length(named_rows) == 3 && length(expected_users) == 3 && length(expected_privs) == 3 &&
+    token_at(toks: map(named_rows, r => r.user), i: 0) == token_at(toks: expected_users, i: 0) &&
+    token_at(toks: map(named_rows, r => r.user), i: 1) == token_at(toks: expected_users, i: 1) &&
+    token_at(toks: map(named_rows, r => r.user), i: 2) == token_at(toks: expected_users, i: 2) &&
+    token_at(toks: map(named_rows, r => r.privilege), i: 0) == token_at(toks: expected_privs, i: 0) &&
+    token_at(toks: map(named_rows, r => r.privilege), i: 2) == token_at(toks: expected_privs, i: 2) &&
+    (named_rows.first().name as String) == "admin" && (named_rows.skip(n: 1).first().name as String) == "operator" && (named_rows.skip(n: 2).first().name as String) == "OEM"
 }
 
 // THE DERIVATION IS THIS RUN'S CENSUS: the managed and published ids come from the census the run
@@ -197,8 +218,18 @@ test fn the_door_derives_managed_and_published_users_from_this_run_census() -> B
 // file, real digest path -- the identity the board row claims is what the store hands back.
 test fn the_real_fru_print_mints_the_identity_the_store_hands_back() -> Bool {
   match read_committed_bmc_fru_capture(unit: operator_host_mtjade1) {
+    // PROBE SHAPE (temporary): refusal arms are separated so a failure says WHICH stage of the
+    // store path refused; the mint arm pins the serial.
     BmcFruCaptureObserved { observation: observation } => (observation.board.board_serial as String) == "B810301000412080005AJ0C1"
-    BmcFruCaptureRefused { gap: _gap } => false
+    BmcFruCaptureRefused { gap: gap } =>
+      match gap {
+        FruSubjectLinkUnobserved => true
+        FruBoundToAnotherLink { board_extra: _board_extra } => true
+        FruCaptureUnreadable { error: _error } => false
+        FruCaptureNotCommitted { unit: _unit, read_that_would_ground_it: _read } => false
+        FruCaptureDigestMismatch { expected: _expected, observed: _observed } => false
+        FruFieldGapped { gap: _gap } => false
+      }
   }
 }
 
