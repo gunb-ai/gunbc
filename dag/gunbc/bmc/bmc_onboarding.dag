@@ -14,7 +14,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 import product.host_identity { HostIdentity }
 import std.algebra { collection_concat_shape, list_push }
 import std.optional { Absent, Present }
-import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot, HostnameAllocation, allocated_canonical_hostname }
 
 // QUARANTINED LEGACY LIFECYCLE (machine-intake ruling 2026-08-29, answer (b)).
 // FactoryDefault -> CredentialsRotated -> OsInstalled -> FabricJoined is a
@@ -251,6 +251,15 @@ fn bmc_admin_secret_id(machine: HostIdentity) -> NonEmptyStr? {
     Absent => Absent
     Present { value: name } => Present { value: concat("bmc-", name as String, "-admin") as NonEmptyStr }
   }
+}
+
+// THE TOTAL ROW FORM. A declarative fact about a REGISTERED machine (an admin-secret reference in the
+// WIF grant model) is keyed by the fleet_machine_registry row, not a bare handle string, so it reads the
+// machine's name through allocated_canonical_hostname -- total, no Optional, no fabricated default
+// (gunbc.plans.fleet_machine_authority 2.3, D12). The handle form above stays for run-time callers that
+// only hold a HostIdentity and may refuse on Absent.
+fn bmc_admin_secret_id_of(machine: HostnameAllocation) -> NonEmptyStr {
+  concat("bmc-", allocated_canonical_hostname(allocation: machine) as String, "-admin") as NonEmptyStr
 }
 
 // ONE HOST CARRIER, EVERY NAME DERIVED FROM IT. The plan carries the fleet host identity beside its
