@@ -759,13 +759,15 @@ type RoadmapMigrationRefusal
   | LogDoesNotReplay { detail: NonEmptyStr }
   | ManifestLineInvalid { line_index: Nat, detail: NonEmptyStr }
   | RetiredLaneUnorderable { detail: NonEmptyStr }
-  | ManifestDisagrees
-    { wanted: Int, held: Int, problems: List<String>, event_lines: List<String> }
+  | ManifestDisagrees {
+      wanted: Int, held: Int, problems: List<String>, event_lines: List<String>
+    }
 
 type RoadmapAcceptanceMigrationOutcome
-  = MigrationVerified
-    { manifest_events: Int, accepted_events: Int, revoked_events: Int,
-      retired_named: Int, held_events: Int, event_lines: List<String> }
+  = MigrationVerified {
+      manifest_events: Int, accepted_events: Int, revoked_events: Int,
+      retired_named: Int, held_events: Int, event_lines: List<String>
+    }
   | MigrationRefused { cause: RoadmapMigrationRefusal }
 
 fn roadmap_acceptance_migration_verify(

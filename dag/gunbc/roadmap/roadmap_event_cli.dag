@@ -400,8 +400,10 @@ fn roadmap_read_back_refusals(
             "acceptance history: the one event log refused its acceptance history — ", detail,
             "; the page that stands on this reader would be serving no accepted work at all"], "")]
         },
-        if wrote { [] } else { ["read-back document: the write to the report path did not succeed"] }))
-    })
+        if wrote { [] } else { ["read-back document: the write to the report path did not succeed"] }
+      )
+    )
+  )
 }
 
 fn roadmap_event_log_retired_report_cli() -> ProcessExit {
