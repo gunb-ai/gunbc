@@ -130,11 +130,12 @@ fn device_identification_last_is_space(rest: FreeMonoid<Char>) -> Bool {
 // destructive install is authorized. EITHER half may be absent, because a capture really can report one and
 // not the other: the 2026-10-16 srv14 capture ran `lsblk --output=NAME,SIZE,MODEL,TRAN,TYPE` and so reported
 // models and no serials at all. THIS SHAPE CARRIES NO POLICY ABOUT WHICH COMBINATIONS ARE ENOUGH to pin an
-// erasure to one disk — that is the consumer's rule
-// (gunbc.provisioning.install_target_disk install_target_disk_binding_key, which is upstream's
-// semantics, not a taste: a match key binds one device only when it names the device, so a model-only pair
-// narrows a class and authorizes nothing). An all-absent pair is still refused below, because a record that
-// reports neither field is not a record of an identity.
+// erasure to one disk — that is the consumer's rule, held by a type rather than a predicate
+// (gunbc.provisioning.install_target_disk's install_target_disk_pinned_match answers no pin at all unless a
+// serial was reported, because extdeps.os.ubuntu_autoinstall's AutoinstallDiskPin cannot be built without one,
+// and that is upstream's semantics rather than a taste: a match key binds one device only when it names the
+// device, so a model-only pair narrows a class and authorizes nothing). An all-absent pair is still refused
+// below, because a record that reports neither field is not a record of an identity.
 type ReportedDeviceIdentity sole_constructor {
   serial: Optional<DeviceIdentificationToken>
   model: Optional<DeviceIdentificationToken>
