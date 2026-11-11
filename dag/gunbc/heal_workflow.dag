@@ -35,10 +35,9 @@ import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.ci.repository_ci_profile { HealWorkflowPolicy, RepositoryCiProfile, repository_ci_profile_refusal }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
-import gunbc.ci.ci_spec {
-  gunbc_ci_stage0_round_invoke,
-  gunbc_ci_heal_candidate_stage0_invoke
-}
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.claim_executor_cli { claim_executor_relative_path }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.seed_build_artifact_emit { seed_build_artifacts }
 import gunbc.generated_artifact { artifact_path }
@@ -205,7 +204,7 @@ fn heal_checkout_step() -> Step {
 // `v1-stage0-std-core`) refused in round 1.
 //
 // ONE COMMIT IS BOTH THE BOOTSTRAP AND, ONCE SCOPED, THE COMPARISON (gunbc.plans.read_set_convergence P2):
-// a scoped round (switched on in P2b, gunbc.ci.ci_spec gunbc_ci_stage0_round_invoke) observes the pull
+// a scoped round (switched on in P2b, gunbc.heal_workflow gunbc_ci_stage0_round_invoke) observes the pull
 // request's change from merge-base(base, HEAD) and, separately, what the base commit bound below gained
 // since that merge-base (required_regen_host scoped_round_change), for a pull-request run and a manual
 // dispatch alike.
@@ -611,4 +610,57 @@ data heal_workflow_group_template: ExpressionTemplate = {
     LiteralText { text: heal_workflow_group_prefix },
     Interpolation { expression: heal_pull_number_fallback }
   ]
+}
+
+// The heal round's two invocations and the stage0 candidate target, moved out of gunbc.ci.ci_spec
+// unchanged (gunbc.plans.closure_consolidation P1): heal orchestration is their only consumer, and
+// gunbc.ci.ci_spec reads the target back for its run-step roster.
+data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_candidate_stage0.dag",
+  function: "heal_tail_wet",
+}
+
+// THE STAGE0 MIRRORS' PRODUCER IS THE SEED'S OWN PRICED ROUND, NOT A LOOP IN SHELL: --regen-round-cost
+// builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
+// restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
+// run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
+
+// THE HEAL ROUND'S INVOCATION. `--base-mirror` asks round 1 to compile the BASE commit's committed
+// stage0 mirror instead of this checkout's (gunbc.design_argument::fail_closed, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963): the head's
+// mirror is what the PR's `.dag` edits exist to repair, so a head mirror already carrying that
+// refusal stops the round before the regenerated seed can replace it (PR #13936, run
+// 40064940799, job 120786085841, step 7 -- `stage seed build refused ... cargo build
+// (round.rebuild_from_installed) failed with exit status: 101`, over five rows of `shared layer
+// refused for 'Nat': TypeDeclNotDeclared` in the committed mirror at std_measure.rs:650:34 and
+// its siblings). The flag carries NO value: the base commit is this step's
+// `HEAL_BASE_MIRROR_COMMIT` environment value (gunbc.heal_workflow heal_round_base_mirror_env,
+// bound to the immutable github.event.pull_request.base.sha), never argv, because a
+// pull-request-controlled value spliced into a command line would be shell. A COMMIT and not the
+// branch name: a name resolves to whatever the checkout holds under it, and a local branch can sit
+// behind its remote-tracking ref, so seeding from "whichever name exists" and then recording the
+// pick as the base commit would fabricate the fact the receipt carries (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). It is passed unconditionally -- the round does not try the
+// head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
+// different invocation of the same producer with the flag absent, not a second path.
+//
+// SCOPED TO WHAT THE PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2b). `--regen-affected-scope`
+// asks a child for the scope (required_regen_host EmissionScopeReceipt) over the pull request's own change
+// from merge-base(base, HEAD), with what the base gained since that merge-base read apart as the generator
+// delta (gunbc.regen_affected_set regen_affected_set_over_diverged_change, P2c), after any interrupted round
+// is recovered; a change that reaches no committed mirror is a successful zero-work round, an added or
+// deleted module, an edited seed build input (gunbc.seed_build_inputs) or a generator change on the base
+// is the whole population, and a scope that cannot be computed refuses (operator decision 2026-11-10). Switched on only now that the base carries the scoped protocol (P2a):
+// round 1 re-execs into a seed built from the base commit's crate.
+fn gunbc_ci_stage0_round_invoke() -> String {
+  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2")
+}
+
+fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_candidate_stage0_target.entry,
+    function: gunbc_ci_heal_candidate_stage0_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }

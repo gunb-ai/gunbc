@@ -205,6 +205,13 @@ data root_generalization_closes_breadth: DesignRuling = DesignRuling {
   provenance: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.",
 }
 
+data planning_is_one_source_for_every_repo: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_is_one_source_for_every_repo"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "planning_has_one_home"),
+  provenance: "Operator, 2026-11-08, on the planning rework: \"there needs to be a single source for all planning and all repos\"; the daily workspace and the repository \"should be the same plan ... the daily workspace should be downstream of the repo\"; \"we have to support quick merges to main that are planning only ... instant planning changes that don't need to wait 90 minutes\"; regeneration should \"skip if the PR doesn't touch any regenerable stuff ... correctly and not just like as a hack\"; and plans \"have no real deletion triggers right now -- so it endlessly accumulates -- we should basically ruthlessly delete until only things that are relevant are left\". Confirmed 2026-11-10 when the operator asked that the policy be stated in DESIGN.md and that everyone be on the same page.",
+}
+
 data continuous_generalization_is_two_sided: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "continuous_generalization_is_two_sided"),
   decided: "2026-11-02",
@@ -841,6 +848,7 @@ data run_realizes_only_demanded_declarations: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    planning_is_one_source_for_every_repo,
     gunbc_run_checks_only_what_its_entry_reaches,
     t6_fabric_storage_excluded_from_live_deploy_2026_11_10,
     thermal_runner_cap_lifted_2026_11_08,
