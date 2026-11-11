@@ -56,8 +56,10 @@ test fn an_agreed_host_is_admitted_under_its_resolved_identity() -> Bool {
   }
 }
 
-// TWO MACHINES, ONE RUN: a dispatch for srv14 on a kernel answering srv15's name refuses, and the refusal
-// names the machine the dispatch chose and the name this machine actually gave.
+// TWO MACHINES, ONE RUN. A dispatch for srv14 on a kernel answering srv15's name refuses -- and the refusal
+// names the two MACHINES, not the spellings: the resolved identity the dispatch chose and the resolved
+// identity this machine answered to, because those are what an operator has to reconcile. It also says what
+// did not happen, which is the point of refusing here at all.
 test fn a_local_apply_on_another_hosts_name_refuses_naming_both() -> Bool {
   match microvm_network_local_admission(
     host: "srv14",
@@ -68,7 +70,8 @@ test fn a_local_apply_on_another_hosts_name_refuses_naming_both() -> Bool {
   ) {
     MicrovmNetworkApplyAdmitted { subject: _ } => false
     MicrovmNetworkApplyRefused { cause: c } =>
-      c.contains("must name this host") && c.contains("srv14") && c.contains("bobo")
+      c.contains("must name this host") && c.contains("srv14") && c.contains("srv15")
+      && c.contains("NOTHING has been fetched, installed or written")
   }
 }
 
