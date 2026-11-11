@@ -6,6 +6,7 @@ import extdeps.tailscale.serve {
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
+import product.host_identity { HostIdentity }
 import gunbc.serve_liveness { serve_liveness_path }
 import extdeps.shell
 import std.optional { Present, Absent }
@@ -232,13 +233,19 @@ type ApprovalBrokerAddress
   = ApprovalBrokerAddressResolved { value: NonEmptyStr }
   | ApprovalBrokerAddressRefused { detail: NonEmptyStr }
 
-fn approval_broker_base_url_on(host: NonEmptyStr, domain: NonEmptyStr?) -> NonEmptyStr {
-  tailnet_base_url_from(host: host, domain: domain, port: approval_broker_public_port)
+fn approval_broker_base_url_on(machine: HostIdentity, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+  match tailnet_base_url_from(machine: machine, domain: domain, port: approval_broker_public_port) {
+    Present { value: url } => ApprovalBrokerAddressResolved { value: url }
+    Absent => ApprovalBrokerAddressRefused { detail: "approval broker base url unresolved: the machine has no canonical tailnet host for the configured domain" as NonEmptyStr }
+  }
 }
 
 // THE BARE HOST OF THAT SAME ADDRESS, for a client that composes scheme, host and path itself.
-fn approval_broker_public_host_on(host: NonEmptyStr, domain: NonEmptyStr?) -> NonEmptyStr {
-  tailnet_host_from(host: host, domain: domain)
+fn approval_broker_public_host_on(machine: HostIdentity, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+  match tailnet_host_from(machine: machine, domain: domain) {
+    Present { value: h } => ApprovalBrokerAddressResolved { value: h }
+    Absent => ApprovalBrokerAddressRefused { detail: "approval broker public host unresolved: the machine has no canonical tailnet host for the configured domain" as NonEmptyStr }
+  }
 }
 
 // THE SERVING BROKER'S OWN ADDRESS IS GIVEN, NOT DISCOVERED. Placement already knows which host the
