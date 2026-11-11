@@ -74,7 +74,6 @@ data jit_dead_sweep_key_file_name: String = "gunbai-ci-jit-sweep.pem"
 // jit_dead_sweep_no_current_observed), and an input no executing route reads is dangling
 // (gunbc.design_argument::consumption), so it is not declared here -- it returns with the P9 MainPID read.
 data jit_dead_sweep_host_env_name: String = "GUNBC_JIT_DEAD_SWEEP_HOST"
-data jit_dead_sweep_retired_prefix_env_name: String = "GUNBC_JIT_DEAD_SWEEP_RETIRED_PREFIX"
 
 data jit_dead_sweep_dry_run_receipt_path: String = "artifacts/jit-dead-registration-sweep-dry-run-receipt.txt"
 data jit_dead_sweep_wet_receipt_path: String = "artifacts/jit-dead-registration-sweep-receipt.txt"
@@ -377,15 +376,17 @@ type JitDeadSweepReadResult
 fn jit_dead_sweep_read_dispatch() -> JitDeadSweepReadResult {
   let raw = actions_variable_trimmed(name: jit_dead_sweep_host_env_name as NonEmptyStr)
   let parsed = jit_dead_sweep_parse_dispatch_input(raw: raw)
-  // A separate env (used by tests/CI) overrides the packed token when set. All lets are at body level: a statement
-  // in a match arm silently drops its continuation (recurring_failure_mode: match_arm_statement_body_lowers_to_its_first_expression).
-  let retired = actions_variable_trimmed(name: jit_dead_sweep_retired_prefix_env_name as NonEmptyStr)
+  // The retired prefix has EXACTLY ONE source: the token packed into the single dispatch input ("host:retired"),
+  // decoded once by jit_dead_sweep_parse_dispatch_input. An earlier separate-env override (GUNBC_JIT_DEAD_SWEEP_
+  // RETIRED_PREFIX) was removed: a second place that independently decided the retired prefix is a single_authority
+  // fork, and being settable by any stray runner env it could silently replace the operator's typed prefix in a
+  // DELETING sweep -- and no executing route ever set it (consumption). All lets are at body level: a statement in a
+  // match arm silently drops its continuation (recurring_failure_mode: match_arm_statement_body_lowers_to_its_first_expression).
   let temp = actions_variable_trimmed(name: "RUNNER_TEMP" as NonEmptyStr)
-  let token = match parsed {
+  let retired_prefix = match parsed {
     Parsed { host: _, retired_token: t } => t
     Malformed { reason: _ } => ""
   }
-  let retired_prefix = if retired == "" { token } else { retired }
   match parsed {
     Malformed { reason: reason } => Refused { reason: reason }
     Parsed { host: host, retired_token: _ } => Provided {
