@@ -7,6 +7,7 @@ import gunbc.ci.ci_deploy_target_host {
   deploy_target_host_apply_permitted,
   deploy_target_host_observed_hostname,
   deploy_target_ssh_proof_structurally_valid,
+  deploy_target_proof,
   gunbc_ci_deploy_srv1_runner_spec,
   host_pinned_runner_spec,
 }
@@ -16,6 +17,7 @@ import gunbc.ci.ci_deploy_access {
   deploy_target_proof_from_access,
 }
 import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_effect { SshShell }
 import gunbc.ci.ci_fleet { srv3_offer, srv4_offer }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1,
@@ -232,4 +234,36 @@ test fn host_without_a_compute_offer_refuses_registration_labels() -> Bool {
     RegistrationLabelsRefused { host: _, cause: _ } => true
     RegistrationLabelsResolved { labels: _ } => false
   }
+}
+
+// THE SSH DESTINATION IS RESOLVED, NOT EQUALLED. srv14's kernel answers "butch"; the proof built from an
+// SshShell aimed at "butch" used to be structurally INVALID, because the check asked whether the destination
+// character-for-character equalled the identity srv14. A machine with a name could not be deployed to over
+// ssh at all. The join accepts it now, and the two refusals below are why that is not a loosening: a
+// destination that belongs to somebody else, and one that belongs to nobody, both still refuse.
+test fn an_ssh_destination_naming_the_named_machine_proves_the_target() -> Bool {
+  deploy_target_ssh_proof_structurally_valid(
+    proof: deploy_target_proof(
+      host: operator_host_srv14,
+      transport: SshShell { ssh_host: "butch" as NonEmptyStr }
+    )
+  )
+}
+
+test fn an_ssh_destination_naming_another_machine_is_refused() -> Bool {
+  !deploy_target_ssh_proof_structurally_valid(
+    proof: deploy_target_proof(
+      host: operator_host_srv14,
+      transport: SshShell { ssh_host: "srv1" as NonEmptyStr }
+    )
+  )
+}
+
+test fn an_ssh_destination_that_is_nobody_s_is_refused() -> Bool {
+  !deploy_target_ssh_proof_structurally_valid(
+    proof: deploy_target_proof(
+      host: operator_host_srv14,
+      transport: SshShell { ssh_host: "srv-nobody" as NonEmptyStr }
+    )
+  )
 }

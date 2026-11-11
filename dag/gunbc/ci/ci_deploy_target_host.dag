@@ -136,9 +136,21 @@ fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> De
   }
 }
 
+// THE SSH DESTINATION IS A SPELLING AND IS RESOLVED LIKE ANY OTHER. This used to be `h == id`: an assertion
+// that the name the caller hands to ssh is character-for-character the machine's identity, which is the same
+// confusion this branch removes everywhere else. It holds only of the handful of machines whose kernel
+// hostname still equals their identity, and refused every SSH deploy aimed at a machine that has been given
+// a human name -- srv14 answers "butch", so a deploy to srv14 over ssh was structurally invalid while the
+// machine sat unconverged. Both sides now go through the join, so the destination is accepted exactly when
+// it names the machine the proof claims to deploy to, and a destination that is nobody's, or is somebody
+// else's, is refused with the registry's own reason rather than a bare false.
 fn deploy_target_ssh_proof_structurally_valid(proof: DeployTargetHostProof) -> Bool {
   match proof {
-    SshExplicitHost { host: id, ssh_host: h } => h == id
+    SshExplicitHost { host: id, ssh_host: h } =>
+      match observed_host_selector_join(expected: id, observed: h) {
+        ObservedHostSelectorAgreed { host: _ } => true
+        ObservedHostSelectorJoinRefused { cause: _ } => false
+      }
     RunnerIdentityOnHost { host: _ } => true
   }
 }
