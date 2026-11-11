@@ -118,6 +118,11 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
   }
   if !printer_mqtt_tool_ready() { return exit_failure(reason: "MQTT tool is not ready; nothing requested or sent") }
   let p = match select_printer(name: printer) { PrinterSelected { printer: x } => x PrinterSelectionRefused => return exit_failure(reason: "Unknown printer") }
+  // Pre-filing observation read: the operator must approve the state they are shown, so the
+  // live report is taken from a session read HERE, before the request is filed. Its result is
+  // used immediately and discarded: the report text and the derived state string go into the
+  // request, and no credential-bearing value (no GCP token, no access-code session) is carried
+  // across the approval wait -- start_authorized reads its own session after the grant.
   let session = match read_existing_printer_session(printer:p,version:version as NonEmptyStr,credential_source:credential_source) {
     PrinterSessionRefused {cause:c}=>return exit_failure(reason:c as String)
     PrinterSessionReady {session:s}=>s
@@ -144,7 +149,7 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
             PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
               GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
               GateAdmitted { authorization: authorization } =>
-                start_authorized(claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,session:session,authorization:authorization,request:request,ams_tray:ams_tray)
+                start_authorized(claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,authorization:authorization,request:request,ams_tray:ams_tray)
             }
           }
         }

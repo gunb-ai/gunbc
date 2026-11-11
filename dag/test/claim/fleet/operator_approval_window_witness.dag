@@ -29,6 +29,7 @@ module test.claim.fleet.operator_approval_window_witness
 import std.types { Bool }
 import std.measure { second_count, minute_count }
 import std.integer { nat_to_int }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions { max_job_timeout_minutes }
 import gunbc.auth.approval_gate { approval_request_window, approval_poll_overrun_ticks }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
@@ -107,6 +108,36 @@ test fn the_printers_mint_covers_only_the_post_decision_delivery() -> Bool {
   let window = nat_to_int(n: second_count(s: printer_operator_approval_window()))
   let policy = nat_to_int(n: second_count(s: approval_request_window))
   mint_seconds >= post && window == policy && mint_seconds < window
+}
+
+// NO CREDENTIAL CROSSES THE APPROVAL WAIT. The discriminating claim for the defect this branch
+// removes: a session fetched BEFORE the operator's decision being carried into start_authorized.
+// It reads this checkout's own source (the corpus idiom for structural facts -- see
+// test.claim.heal_publication_boundary_witness the_admit_observation_is_wired_credential_free) and
+// refuses on the hand-off form: start_authorized must not declare a session parameter, the caller
+// must not pass one, and the only session in the actuation module must be one start_authorized
+// READS ITSELF (via read_existing_printer_session) behind the gate, with the state re-check
+// (report_using_session) running on that fresh read. Regressions this turns red:
+//   - re-adding session:PrinterCredentialSession to start_authorized's signature;
+//   - passing any pre-fetched session into the call;
+//   - deleting the post-decision read (or the re-check) to "pass" the signature check.
+// The mint-lifetime rows above say the minted token is sized for the delivery only; this claim
+// says where the credential-bearing read is allowed to happen.
+test fn no_credential_crosses_the_approval_wait() -> Bool {
+  let actuation = Filesystem.Read(path: "dag/gunbc/fleet/printer_actuation.dag")
+  if !actuation.success { return false }
+  let approval = Filesystem.Read(path: "dag/gunbc/fleet/printer_operator_approval.dag")
+  if !approval.success { return false }
+  // The signature must exist (positive), and must not take a session (negative), both anchored to
+  // the fn definition so the ClaimedPrinterStart type's own session field cannot satisfy either.
+  actuation.content.contains("fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,authorization:ScopedAuthorization<String>")
+    && !actuation.content.contains("fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,credential_source:PrinterCredentialSource,session:")
+    && actuation.content.contains("read_existing_printer_session(printer:printer,version:version,credential_source:credential_source)")
+    && actuation.content.contains("report_using_session(session:session)")
+    && !approval.content.contains("credential_source:credential_source,session:")
+    && approval.content.contains("start_authorized(claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,credential_source:credential_source,authorization:authorization")
+    && approval.content.contains("GateAdmitted { authorization: authorization }")
+    && approval.content.contains("read_existing_printer_session(printer:p,")
 }
 
 // THE POLL COVERS ITS OWN WINDOW, FOR EVERY POLL THAT WAITS OUT ITS CARD. The tick budget is derived
