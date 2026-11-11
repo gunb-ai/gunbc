@@ -43,7 +43,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv10,
   operator_host_srv11,
   operator_host_srv12,
-  operator_host_srv13,
+  operator_host_srv14,
   operator_host_srv9,
 }
 import gunbc.fleet.fleet_enrollment {
@@ -118,6 +118,7 @@ import gunbc.fleet.fleet_naming {
   provider_endpoint_text,
 }
 import gunbc.fleet.fleet_endpoint {
+  service_endpoint_https_url,
   AdministerMember,
   ApprovalBroker,
   DeploymentRiskApi,
@@ -592,13 +593,13 @@ test fn witness_overlay_binding_records_a_desired_label_not_a_route() -> Bool {
   }
 }
 
-// A BINDING FOR ANOTHER MEMBER'S SLOT REFUSES. An attachment about srv1 handed srv13's allocation is the
+// A BINDING FOR ANOTHER MEMBER'S SLOT REFUSES. An attachment about srv1 handed srv14's allocation is the
 // plan's defect shape at the overlay layer -- one member's overlay fact recorded as evidence about another
 // -- and it refuses at its mint rather than being corrected downstream.
 test fn witness_binding_for_another_member_refuses() -> Bool {
   match row_for(slot: operator_host_srv1) {
     Absent => false
-    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
+    Present { value: srv1 } => match row_for(slot: operator_host_srv14) {
       Absent => false
       Present { value: other } => match attachment_of(subject: srv1.fleet_slot) {
         Absent => false
@@ -741,7 +742,7 @@ test fn witness_intake_without_a_boundary_refuses() -> Bool {
 test fn witness_incarnation_with_a_borrowed_label_refuses() -> Bool {
   match row_for(slot: operator_host_srv1) {
     Absent => false
-    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
+    Present { value: srv1 } => match row_for(slot: operator_host_srv14) {
       Absent => false
       Present { value: other } => match fleet_member_label(allocation: other) {
         Err { value: _ } => false
@@ -765,15 +766,15 @@ test fn witness_incarnation_with_a_borrowed_label_refuses() -> Bool {
   }
 }
 
-// A BINDING CANNOT CITE ANOTHER MACHINE'S LIFE. The attachment says srv1 and the incarnation says srv13;
-// the model refuses at the binding's mint instead of letting the census record srv13's overlay facts as
+// A BINDING CANNOT CITE ANOTHER MACHINE'S LIFE. The attachment says srv1 and the incarnation says srv14;
+// the model refuses at the binding's mint instead of letting the census record srv14's overlay facts as
 // evidence about srv1 -- the plan's defect, typed at the seam where it would actually be committed.
 test fn witness_binding_cannot_cite_another_machines_life() -> Bool {
   match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
       Absent => false
-      Present { value: attachment } => match incarnation_of(slot_text: operator_host_srv13) {
+      Present { value: attachment } => match incarnation_of(slot_text: operator_host_srv14) {
         Err { value: _ } => false
         Ok { value: other_life } => match overlay_member_binding(
           attachment: attachment,
@@ -784,7 +785,7 @@ test fn witness_binding_cannot_cite_another_machines_life() -> Bool {
           Ok { value: _ } => false
           Err { value: r } => match r {
             BindingIncarnationIsAnotherMachine { subject: s, other_slot: o, incarnation: _ } =>
-              s == srv1.fleet_slot && o == (operator_host_srv13 as HostIdentity)
+              s == srv1.fleet_slot && o == (operator_host_srv14 as HostIdentity)
             _ => false
           }
         }

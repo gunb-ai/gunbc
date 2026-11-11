@@ -18,7 +18,6 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv3,
   operator_host_srv4,
   operator_host_mtcollins1,
-  operator_host_srv13,
   operator_host_srv14,
   operator_host_srv15,
   operator_host_srv16,
@@ -201,10 +200,6 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "gus" as DnsLabel },
       draw: HumanNameDraw { entropy: 821771404468 },
     },
-  },
-  HostnameAllocation {
-    fleet_slot: operator_host_srv13,
-    name: LegacyHostname { label: "srv13" as DnsLabel },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv14,
