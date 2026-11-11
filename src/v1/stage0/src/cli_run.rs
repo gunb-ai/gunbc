@@ -5718,10 +5718,11 @@ impl UnlistedImportBindingSource {
 
 /// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
 /// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
-/// NOT the occurrence identity the Step 0 binding-provenance census
-/// (gunbc.namespace_cut.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
-/// edits: (file, position) locates the charge, but does not name the selected declaration, the
-/// producing rule, or the pre/post-edit targets.
+/// NOT an occurrence identity: (file, position) locates the charge, but does not name the
+/// selected declaration, the producing rule, or the pre/post-edit targets, so this worklist may
+/// count but not actuate edits. The Step 0 binding-provenance contract that would have admitted
+/// actuation (gunbc.namespace_cut.namespace_step0_binding_provenance_contract) was deleted on 2026-11-10 with the namespace-XL program's bankruptcy, and
+/// nothing replaced it: no route actuates edits from these rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnlistedImportCensusRow {
     pub file: String,

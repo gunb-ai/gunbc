@@ -5700,7 +5700,7 @@ fn reference_derived_disposition_name(disposition: ReferenceDerivedCandidateDisp
 
 // WHY THIS CARRIES NO COMPLETENESS ENVELOPE, checked against the one that exists rather than assumed.
 //
-// v2.workflow.legacy_binding_observation carries the corpus's completeness envelope for observation
+// v2.workflow.legacy_binding_observation (deleted 2026-11-10) carried the corpus's completeness envelope for observation
 // populations: a denominator DERIVED from the subject's own transport, a four-arm identity join
 // (LegacyObservationComplete / MissingExpected / ForeignObserved / RepeatedObserved), and a
 // sole_constructor admission so a downstream law cannot run over an unproven population. That shape

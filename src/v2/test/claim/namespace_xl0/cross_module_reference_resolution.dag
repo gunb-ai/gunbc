@@ -12,20 +12,9 @@ import v2.compiler.name_resolve {
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes, normalized_tree_roots_to_binding_sources}
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.repair_input_origin_roster {
-  RepairInputOriginRoster,
-  repair_input_origin_roster_is_total,
-  repair_input_origin_roster_over_roots
-}
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import std.repair_input_origin {
-  RenderedTargetVocabularyCarrier,
-  RepairInputDeclared,
-  SourceCarrierCandidate,
-  SourceDeclarationCarrier
-}
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
@@ -607,57 +596,3 @@ fn xl0r_carries_a_field_projection(root: Node) -> Bool {
   }
 }
 
-// XL-0'S OWN PRODUCER, EXECUTED ON THE PRODUCTION ROUTE -- AND WHAT ITS ANSWER IS MADE OF. These
-// rows execute repair_input_origin_roster_over_roots itself over the same normalized roots and
-// measure two facts: the roster is TOTAL (no unreadable root) and non-empty, and it carries the
-// cross-module mention as a SourceDeclarationCarrier whose provenance arm is RepairInputDeclared.
-// WHAT THAT ARM IS NOT (review 67708 on gunbc#11582): the compiler resolver's answer. The roster's
-// provenance comes from v2.compiler.resolution_provenance resolve_reference_provenance, which
-// confirms the index HIT and then derives the declaring identity from the authored SPELLING
-// (carrier_declaration_ref), while try_resolve_qualified_name_node refuses the very same reference
-// identity-unrepresentable. v2.compiler.repair_input_origin_roster's own frontier row
-// (repair_input_declared_binding_frontier_dissolve_on) says this spelling-derived identity becomes
-// a second authority the moment the roster produces on the production route -- which is now. So
-// these rows are MEASUREMENTS of a producer that answers, not a delivery of an exact declaring
-// identity from the resolver's binding, and the second row below reds when the roster's `declaring` is
-// derived from the resolver's binding rather than from spelling -- at which point it is re-stated
-// to assert the exact identity.
-fn xl0r_roster() -> RepairInputOriginRoster {
-  match xl0r_fixture_normalized() {
-    Accepted { value: roots, diagnostics: _ } =>
-      repair_input_origin_roster_over_roots(sources: normalized_tree_roots_to_binding_sources(roots: roots))
-    Rejected { diagnostics: _ } =>
-      RepairInputOriginRoster { carriers: Empty, unreadable_roots: Empty }
-  }
-}
-
-fn xl0r_roster_has_declared_carrier(roster: RepairInputOriginRoster, spelling: String) -> Bool {
-  fold_list(
-    xs: roster.carriers,
-    empty: false,
-    cons: fn(acc, c) {
-      acc || (match c {
-        SourceDeclarationCarrier { identity: id } =>
-          string_eq(a: id.authored_spelling, b: spelling)
-            && (match id.provenance {
-              RepairInputDeclared { declaring: _ } => true
-              _ => false
-            })
-        SourceCarrierCandidate { identity: _ } => false
-        RenderedTargetVocabularyCarrier { identity: _ } => false
-      })
-    }
-  )
-}
-
-test fn the_repair_input_origin_roster_is_total_and_non_empty_on_the_production_route_holds() -> Bool {
-  let roster = xl0r_roster()
-  repair_input_origin_roster_is_total(roster: roster) && length(xs: roster.carriers) > 0
-}
-
-test fn the_repair_input_origin_roster_carries_the_cross_module_mention_with_a_spelling_derived_declared_arm_today() -> Bool {
-  xl0r_roster_has_declared_carrier(
-    roster: xl0r_roster(),
-    spelling: "v2.test.xl0r_provider.xl0r_provided_fn"
-  )
-}
