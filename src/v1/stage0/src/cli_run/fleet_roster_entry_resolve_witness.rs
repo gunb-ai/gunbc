@@ -9,15 +9,22 @@
 //! `github.ActionsSelfHostedRunners.ListOrganizationRunnersPage` call inside
 //! `gunbc.fleet.organization_runner_roster_read::rest_roster_page` --
 //! `method 'ListOrganizationRunnersPage', receiver 'Primitive(github.ActionsSelfHostedRunners)'`
-//! -- before any network read, on the P8d dry-run entry `jit_dead_sweep_dry_run_wet` AND on the
-//! pre-existing fleet-converge mode `org_runner_roster_observe` (same route). P8d's witnesses
-//! passed because every claim in `test.claim.runner.runner_jit_dead_sweep_witness` supplies its
-//! own roster: none of them ever resolved a real entry, so no witness executed the route the
-//! production dry run executes (`gunbc.design_argument::witness_one_interface`: supplying inputs
-//! may never remove the last execution of the real path). These witnesses ARE that last
-//! execution: they drive the SAME call production `gunbc run --entry <file> --function <fn>`
-//! makes (`cli_run::resolve_entry_graph_demand_acquired_scoped`, main.rs's run path) and stop at
-//! resolve -- no eval, no network, no fleet effect.
+//! -- before any network read, on every entry that reaches the REST realization
+//! (`organization_runner_roster_report_via_rest`): the P8d dry-run entry
+//! `gunbc.runner.runner_jit_dead_sweep_run::jit_dead_sweep_dry_run_wet`, both entries of
+//! `gunbc.runner.runner_lost_boot_sweep_run` (the route's original consumer, #14303), and
+//! `gunbc.fleet.runner_connectivity_observe_wet::runner_connectivity_observe_wet`. The route's
+//! OTHER realization -- the gh shell route taken by the pre-existing fleet-converge mode
+//! `org_runner_roster_observe` (`organization_runner_roster_report` -> `gh_roster_transport` ->
+//! `github.CliOrgSelfHostedRunners.ListOrgRunnersPage`, transport shell) -- resolves GREEN: the
+//! asymmetry localizes the defect to the rest realization's synthesized carrier read. P8d's
+//! witnesses passed because every claim in `test.claim.runner.runner_jit_dead_sweep_witness`
+//! supplies its own roster: none of them ever resolved a real entry, so no witness executed the
+//! route the production dry run executes (`gunbc.design_argument::witness_one_interface`:
+//! supplying inputs may never remove the last execution of the real path). These witnesses ARE
+//! that last execution: they drive the SAME call production `gunbc run --entry <file> --function
+//! <fn>` makes (`cli_run::resolve_entry_graph_demand_acquired_scoped`, main.rs's run path) and
+//! stop at resolve -- no eval, no network, no fleet effect.
 //!
 //! SIBLING INSTANCES (root_generalization, gunbc.design_argument::root_generalization). The class
 //! is `github.<Service>.<Op>(` service-qualified calls whose declaring module is imported for
@@ -27,8 +34,10 @@
 //! `main_wet_one` `NoSuchVariable github.Pulls` (equivalence-harness main-wet arm), and
 //! `PullRequestPage/Observe` `MethodExistenceUndecided` (harness note at fd021fee54f, attributed
 //! to a service-reachability rule that was unowned as of this writing). This witness is route
-//! coverage for the roster pair; it refuses to fix the resolver, so it is RED on a main that
-//! carries #16156 without the seed fix, and must be GREEN at the head that lands the seed.
+//! coverage for the rest-route entry family (P8d dry run, lost-boot sweep dry/wet, connectivity
+//! observe) plus the green gh-route canary; it refuses to fix the resolver, so its rest-route
+//! arms are RED on a main that carries #16156 without the seed fix, and must be GREEN at the
+//! head that lands the seed.
 //!
 //! HAND-WRITTEN-RUST RECEIPT: this file is hand-written witness Rust beside the generated stage0
 //! mirror, deferred to the landing lane named by the tracking row
@@ -71,10 +80,11 @@ fn assert_run_resolves(entry_file: &str, function: &str) {
     }
 }
 
-/// THE PAIRING CONTROL (`witness_one_interface` inhabitance claim). The two witnesses above green
-/// by ABSENCE OF REFUSAL -- a route deleted from the entry would green them too. This control
-/// asserts the demanded grain genuinely reaches the REST roster route out of each real entry:
-/// deleting the integration (or letting the demanded set shrink below it) makes THIS fail.
+/// THE PAIRING CONTROLS (`witness_one_interface` inhabitance claim). The rest-route witnesses
+/// green by ABSENCE OF REFUSAL -- a route deleted from the entry would green them too. These
+/// controls assert the demanded grain genuinely reaches the named refusal-site route out of each
+/// real entry (and the shell route out of the canary): deleting an integration (or letting the
+/// demanded set shrink below it) makes THIS fail.
 /// Mirrors `demanded_typecheck_equivalence`'s grain helpers: the same census + realization the
 /// demanded typecheck threads, computed over the entry's real closure.
 fn assert_route_realized_from(entry_file: &str, seeds: &[&str], expected: &[&str]) {
@@ -161,13 +171,16 @@ fn the_jit_dead_sweep_dry_run_entry_resolves_under_the_run_demand_grain() {
         .unwrap();
 }
 
-/// THE OLDER SIBLING. fleet-converge mode `org_runner_roster_observe` predates P8d and reads the
-/// same route (`gunbc.fleet.organization_runner_roster_read::organization_runner_roster_observe_wet`
-/// down through `organization_runner_roster_report` to the same
-/// `github.ActionsSelfHostedRunners.ListOrganizationRunnersPage` call in `rest_roster_page`).
-/// Its entry resolve is the
-/// evidence that the defect is older than P8d, and the regression canary that P8d's witnesses
-/// were not.
+/// THE OLDER GREEN CANARY. fleet-converge mode `org_runner_roster_observe` predates P8d and reads
+/// the roster through the gh REALIZATION (`gunbc.fleet.organization_runner_roster_read::
+/// organization_runner_roster_observe_wet` down through `organization_runner_roster_report` ->
+/// `roster_walk_pump` -> `gh_roster_transport`, whose
+/// `github.CliOrgSelfHostedRunners.ListOrgRunnersPage` is a SHELL-transport operation declared in
+/// extdeps.github.ci_runner). It never reaches the rest realization's carrier read, so it resolves
+/// GREEN on every head -- and the asymmetry is itself the localizer: the module resolves, the
+/// shell route resolves, only the REST realization's synthesized carrier read refuses. Kept as the
+/// entry-level witness for the observe mode's interface and as a regression canary for the
+/// shell-transport service surface on the demanded grain.
 #[test]
 fn the_org_runner_roster_observe_entry_resolves_under_the_run_demand_grain() {
     std::thread::Builder::new()
@@ -176,6 +189,46 @@ fn the_org_runner_roster_observe_entry_resolves_under_the_run_demand_grain() {
             assert_run_resolves(
                 "dag/gunbc/fleet/organization_runner_roster_read.dag",
                 "organization_runner_roster_observe_wet",
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+/// A REST-ROUTE SIBLING OLDER THAN P8d. fleet-converge mode `lost_boot_registration_sweep`
+/// (dry-run arm; the route's original consumer, #14303) reads the roster through
+/// `organization_runner_roster_report_via_rest` in `sweep_and_deregister`, so the same
+/// refusal-site declarations hang on this entry too. RED on a main that carries #16156 without
+/// the carrier seed (same `ListOrganizationRunnersPage` refusal), GREEN at the seeded head —
+/// with the P8d arm and the connectivity arm this witnesses that the refusal belongs to the
+/// REST route and not to any one entry, which is what makes a line-874 patch the wrong fix.
+#[test]
+fn the_lost_boot_sweep_dry_run_entry_resolves_under_the_run_demand_grain() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            assert_run_resolves(
+                "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+                "lost_boot_sweep_dry_run_wet",
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+/// THE REST-ROUTE THIRD SIBLING, older than P8d: the runner-connectivity observe entry
+/// (`gunbc.fleet.runner_connectivity_observe_wet`, #14303 route family) reads the roster through
+/// the same REST realization from its own module. RED without the carrier seed, GREEN with it.
+#[test]
+fn the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            assert_run_resolves(
+                "dag/gunbc/fleet/runner_connectivity_observe_wet.dag",
+                "runner_connectivity_observe_wet",
             );
         })
         .unwrap()
@@ -229,10 +282,13 @@ fn the_unnamed_carrier_rest_consumer_fixture_resolves_under_the_run_demand_grain
         .unwrap();
 }
 
-/// The inhabitance control for both witnesses: the REST roster route is realized from each real
-/// entry's demanded grain, so the two witnesses cannot be greened by the route going unreachable.
+/// The inhabitance controls: no witness may be greened by its route going unreachable. Each
+/// refused (rest-route) witness gets a positive control that its refusal-site declarations are
+/// realized from that entry's demanded grain, and the green canary gets the same for its shell
+/// route — so the canary is green because the shell surface resolves, not because the test
+/// watched nothing.
 #[test]
-fn the_rest_roster_route_is_demanded_from_both_real_entries() {
+fn the_rest_roster_route_is_demanded_from_the_rest_route_entries() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
@@ -245,9 +301,39 @@ fn the_rest_roster_route_is_demanded_from_both_real_entries() {
                 ],
             );
             assert_route_realized_from(
+                "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+                &["lost_boot_sweep_dry_run_wet"],
+                &[
+                    "organization_runner_roster_report_via_rest",
+                    "rest_roster_page",
+                ],
+            );
+            assert_route_realized_from(
+                "dag/gunbc/fleet/runner_connectivity_observe_wet.dag",
+                &["runner_connectivity_observe_wet"],
+                &[
+                    "organization_runner_roster_report_via_rest",
+                    "rest_roster_page",
+                ],
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+/// The canary's inhabitance control: the observe entry demands its gh shell route, so its GREEN
+/// verdict means the shell service surface resolved under the demanded grain, not that the
+/// witness watched an empty grain.
+#[test]
+fn the_gh_shell_route_is_demanded_from_the_observe_entry() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            assert_route_realized_from(
                 "dag/gunbc/fleet/organization_runner_roster_read.dag",
                 &["organization_runner_roster_observe_wet"],
-                &["organization_runner_roster_report", "rest_roster_page"],
+                &["organization_runner_roster_report", "roster_walk_pump"],
             );
         })
         .unwrap()
