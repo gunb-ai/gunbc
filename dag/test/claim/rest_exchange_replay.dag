@@ -329,7 +329,12 @@ test fn rest_200_uninhabiting_root_refuses_instead_of_answering_with_null() -> B
     subject: fn(_scope) {
       match test.RestReplay.RootArray() {
         RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
-          status == 200 && string_contains(s: cause, pattern: "did not inhabit")
+          status == 200
+            && string_contains(s: cause, pattern: "did not inhabit")
+            // The member the body refused to inhabit is this operation's own declared output field, so
+            // the line names it. It used to print only how many members went uninhabited, and that is
+            // the sentence that made the 2026-11-10 heal-publish refusal need a human at the interpreter.
+            && string_contains(s: cause, pattern: "pulls")
         RestAnswered { answer: _ } => false
         _ => false
       }
@@ -355,6 +360,39 @@ test fn rest_200_missing_keyed_field_refuses_instead_of_answering_with_null() ->
       match test.RestReplay.Observe() {
         RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
           status == 200 && string_contains(s: cause, pattern: "did not inhabit")
+        RestAnswered { answer: _ } => false
+        _ => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+// THE TRUNCATED-200 DISCRIMINATOR. A body that stops mid-token and a complete body that does not fit the
+// declaration printed the SAME line, and a replay of the same bytes cannot tell them apart -- which is
+// why the 2026-11-10 heal-publish refusal never identified the arm that fired. The line now ends with how
+// many bytes arrived. That count is a number out of the transport's own buffer, not a byte of the body,
+// so it is publishable on a credential path while the serde_json message stays dropped. "e-acute" below
+// is two bytes and one character, so the count is bytes and not characters.
+test fn rest_200_truncated_json_body_reports_the_bytes_that_arrived() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "Observe",
+      observation: RestResponseObserved {
+        status: 200
+        body: RestBodyRead { body: "{\"message\":\"é" }
+      }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 200
+            && string_contains(s: cause, pattern: "is not JSON")
+            && string_contains(s: cause, pattern: "after 14 bytes received")
         RestAnswered { answer: _ } => false
         _ => false
       }

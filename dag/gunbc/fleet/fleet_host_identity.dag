@@ -61,12 +61,11 @@ data operator_host_srv11: HostIdentity = "srv11"
 // is its identity slot, assigned by the same ascending-address rule.
 data operator_host_srv12: HostIdentity = "srv12"
 
-// ALTRA-BATCH-1 (operator, 2026-10-07). Four ASRock ALTRAD8UD hosts, not yet racked, named srv13-srv16
+// ALTRA-BATCH-1 (operator, 2026-10-07). ASRock ALTRAD8UD hosts, not yet racked, named srv13-srv16
 // by the operator. srv16 was a reserved key with no board and is deleted (operator, D5 of
 // gunbc.plans.fleet_machine_authority, 2026-11-10). Naming is not enrollment: no address, BMC endpoint, MAC or hardware row exists
 // for them until first contact observes one, and every procedure refuses a host it cannot name a
-// fact for.
-data operator_host_srv13: HostIdentity = "srv13"
+// fact for. srv13 is retired (operator, 2026-11-10): it named the same board as srv15, below.
 data operator_host_srv14: HostIdentity = "srv14"
 data operator_host_srv15: HostIdentity = "srv15"
 
@@ -79,11 +78,11 @@ data operator_host_srv15: HostIdentity = "srv15"
 // controller at .250 still answers its unauthenticated Redfish root with that UUID. host-94c81d is deleted;
 // srv14 (butch) is the board.
 //
-// srv13 and srv15 ALSO NAME ONE BOARD (board serial BR80S6102300049, host NIC 9c:6b:00:e7:ca:63), and the
-// operator keeps srv15 (bobo). That merge is not done here, because srv13's 2026-10-07 captures at
-// 192.168.1.247 carry the machine-intake witnesses through srv13's own write-controller row. It is
-// recorded, with the obligations the merge must keep, as gunbc.integration_concern
-// srv13_and_srv15_name_one_board.
+// srv13 and srv15 ALSO NAMED ONE BOARD (board serial BR80S6102300049, host NIC 9c:6b:00:e7:ca:63); the
+// operator keeps srv15 (bobo) and srv13 is deleted. The board's 2026-10-07 first-contact captures keep
+// their provenance: they replay against the controller endpoint they were read at (192.168.1.247,
+// gunbc.machine_intake.mtjade1_factory_network srv13_bmc_observed_network), not against a fleet slot.
+// Closed as gunbc.integration_concern srv13_and_srv15_name_one_board.
 
 // OPAQUE IDENTITIES (2026-10-07). From here on a new fleet subject's identity carries no meaning in
 // its spelling -- not a provider, an architecture, a role or a rack position -- because every such

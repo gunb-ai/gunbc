@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_physical_inventory
 
 import std.types { NonEmptyStr, String, List, Int }
-import std.measure { RackUnit, rack_unit, measure_add, measure_count }
+import std.measure { RackUnit, rack_unit, measure_add }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply {
   PhysicalAssetIdentity,
@@ -489,10 +489,14 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
     ),
     b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
   )
-  // RackUnit is a Measure<_,_,Nat>, on which structural '==' is refused by the equality plan; compare the
-  // magnitudes with the std.measure idiom (as elsewhere, e.g. materialization_store). Semantics preserved.
-  measure_count(m: declared) == measure_count(m: nominal_rackmount_units_declared)
-    && measure_count(m: rack_01_catalog_units) == measure_count(m: navepoint_18u_open_frame_catalog.rack_units)
+  // Structural '==' on RackUnit = Measure<Length, RackUnitHeight, Nat>. The rule judges the arguments
+  // written at that use (v1.compiler.infer::equality_argument_by_target) and admits them for the reason the
+  // emitted derive covers them: Length and RackUnitHeight are unit-variant markers, which the emitter gives
+  // the full derive roster (v1.compiler.infer::is_unit_variant_phantom_argument), and Nat is a by-target
+  // scalar. The measure_count stopgap (gunbc#15175 interim, #16045) is gone; the discriminating controls are
+  // test.claim.self_host_equality_admission_witness.
+  declared == nominal_rackmount_units_declared
+    && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
 }
 
 // ---------------------------------------------------------------------------
