@@ -2328,9 +2328,9 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
     evidence: IntegrationEvidence {
       integrated_at: "41ce84841aa3",
       superseded: [
-        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", name: "runner_capacity_apply_wet_exit", revision: "26ba18c76e4a" },
-        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", name: "runner_capacity_apply_plan", revision: "26ba18c76e4a" },
-        HistoricalDeclaration { module_path: "test.claim.runner.runner_capacity_realize_witness", name: "converged_roster_plans_zero_additions_and_apply_succeeds", revision: "26ba18c76e4a" },
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit", at: "26ba18c76e4a" },
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_plan", at: "26ba18c76e4a" },
+        HistoricalDeclaration { module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds", at: "26ba18c76e4a" },
       ],
       replacement: FreeSemigroup {
         head: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
