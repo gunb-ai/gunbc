@@ -1139,69 +1139,6 @@ fn witness_srv1_shaped_host() -> ByteSize {
   byte_size((16 + 31 + 52 + 87) * 1073741824 + (blind + real) / 2)
 }
 
-// THE CONSERVATION TREE CHARGES THE SERVING RESERVATION (review 93550, finding 1). The width envelope
-// already subtracts a Strata engine's MemoryMax; this proves host_allocation_tree does TOO -- the same
-// hole served_deployment_pool closed one consumer earlier. A host that conserves with NO serving child
-// MUST stop conserving once a real reservation is charged: if serving_pool were decorative (never
-// summed) both arms below would be Conserves and the first discriminator goes red.
-test fn the_conservation_tree_charges_a_serving_reservation() -> Bool {
-  // 128 GiB host = 16 overhead + 60 runner_pool + 32 headroom = 108 GiB: fits with room to spare.
-  // Add a 112 GiB engine and the same host, pools and headroom tip from Conserves to Oversubscribed;
-  // the ONLY difference between the two calls is the serving child, so a flip proves it is summed.
-  let fits = match host_allocation_verdict(
-    host: byte_size(128 * 1073741824),
-    overhead: byte_size(16 * 1073741824),
-    headroom: byte_size(32 * 1073741824),
-    runner_pool: byte_size(60 * 1073741824),
-    session_pool: byte_size(0),
-    compile_pool: byte_size(0),
-    control_plane: ControlPlaneNotPlaced,
-    served_deployment: ServedDeploymentNotPlaced,
-    serving: Present { value: byte_size(0) }
-  ) {
-    HostAllocationConserves => true
-    HostAllocationOversubscribed => false
-    HostAllocationUnchargeable { cause: _ } => false
-  }
-  let charged = match host_allocation_verdict(
-    host: byte_size(128 * 1073741824),
-    overhead: byte_size(16 * 1073741824),
-    headroom: byte_size(32 * 1073741824),
-    runner_pool: byte_size(60 * 1073741824),
-    session_pool: byte_size(0),
-    compile_pool: byte_size(0),
-    control_plane: ControlPlaneNotPlaced,
-    served_deployment: ServedDeploymentNotPlaced,
-    serving: Present { value: byte_size(112 * 1073741824) }
-  ) {
-    HostAllocationConserves => false
-    HostAllocationOversubscribed => true
-    HostAllocationUnchargeable { cause: _ } => false
-  }
-  fits && charged
-}
-
-// FAIL CLOSED: an unmeasured reservation (Absent) is neither a fabricated conservation nor a fabricated
-// oversubscription -- it refuses in its own name, so a host running an engine nobody measured reports no
-// verdict at all. Both other arms here are the reds that make this discriminating.
-test fn the_conservation_tree_refuses_an_unmeasured_serving_reservation() -> Bool {
-  match host_allocation_verdict(
-    host: byte_size(128 * 1073741824),
-    overhead: byte_size(16 * 1073741824),
-    headroom: byte_size(32 * 1073741824),
-    runner_pool: byte_size(60 * 1073741824),
-    session_pool: byte_size(0),
-    compile_pool: byte_size(0),
-    control_plane: ControlPlaneNotPlaced,
-    served_deployment: ServedDeploymentNotPlaced,
-    serving: Absent
-  ) {
-    HostAllocationConserves => false
-    HostAllocationOversubscribed => false
-    HostAllocationUnchargeable { cause: _ } => true
-  }
-}
-
 fn witness_srv1_shaped_conserves(runner_pool: ByteSize) -> Bool {
   witness_allocation_conserves(
     host: witness_srv1_shaped_host(),

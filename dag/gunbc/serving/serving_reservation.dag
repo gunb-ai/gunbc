@@ -55,13 +55,13 @@ module gunbc.serving.serving_reservation
 // additive named terms (as fleet_host_budget already treats fabric_control_plane_pool and
 // served_deployment_pool), never one authority folding the other.
 
-import std.types { List, String }
+import std.types { List, String, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { ByteSize, byte_size_count, byte_size, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
-import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
+import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
@@ -117,49 +117,32 @@ fn cpu_reservation_excluded_cores(r: CpuReservation) -> Nat {
 // a zero, the least conservative figure there is -- dressed as data is exactly the fabricated default this
 // rule rejects. srv3/srv4 charge their engine's MEASURED cgroup ceiling, consumed from
 // gunbc.serving.serving_host_memory (that module's own frontier note says those rows exist to be charged as
-// claims); a host with no such read (butch) is Unmeasured, not zero.
-type ReplicaMemoryReservation
-  = MemoryMeasured { bytes: ByteSize, provenance: String }
-  | MemoryAssumed { bytes: ByteSize, read_obligation: String }
-  | MemoryUnmeasured { reason: String }
+// claims); a host with no such read (butch) is ServingMemoryUnread, not zero.
+//
+// THE RESERVATION IS NOT A NEW TYPE. A replica's memory reservation IS a
+// gunbc.serving.serving_host_memory::ServingMemoryReading -- Read (bytes WITH a provenance naming where they
+// were read), Assumed (a bet with its reason), or Unread (no figure). Minting a parallel Measured/Assumed/
+// Unmeasured here was nicknaming one concept (single_authority) and widened NonEmptyStr to String, so an
+// empty provenance could reach the width; holding the source type keeps the non-empty guarantee (review 93631).
 
-// THE BYTES a reservation COMMITS, as an Optional: a measured figure is Present; an unmeasured one is Absent --
-// NEVER a fabricated zero. A total reader that handed back 0 for the unmeasured arm would let any future caller
-// price an unmeasured engine at nothing; returning Absent makes that state unwritable at the type, and the fold
-// in host_memory_reserved refuses to sum when any replica is Absent, so the width fails closed rather than
-// charging a made-up figure (fail_closed).
+// THE BYTES a reservation COMMITS, as an Optional, as a function over the ONE memory type
+// (ServingMemoryReading): a measured read is Present; an assumed or unread figure is Absent -- NEVER a fabricated
+// zero. A total reader that handed back 0 for an unread arm would let any future caller price an unread engine at
+// nothing; returning Absent makes that state unwritable at the type, and the fold in host_memory_reserved refuses
+// to sum when any replica is Absent, so the width fails closed rather than charging a made-up figure (fail_closed).
 //
 // An ASSUMED figure is a BET, not a measurement (epistemic_humility: "an inference is a bet: typed as a bet,
-// neither deleted nor promoted"). Its magnitude is carried WITH the read obligation so the bet is not erased, but
-// the width NEVER books it as a committed charge -- an assumed figure returns Absent here, exactly like an unread
-// one, because silently narrowing CI width on a number nobody read is the defect. It is NOT promoted to measured
-// (the sibling consumer serving_capacity_anchor's cache_standings likewise keeps assumed as an uncited bet, not a
-// cited reading -- single_authority). A future consumer that legitimately wants the bet can read MemoryAssumed's
-// bytes + read_obligation; the width deliberately refuses to.
-fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> Optional<ByteSize> {
+// neither deleted nor promoted"). Its magnitude is carried WITH its reason inside ServingMemoryAssumed so the bet
+// is not erased, but the width NEVER books it as a committed charge -- an assumed figure returns Absent here,
+// exactly like an unread one, because silently narrowing CI width on a number nobody read is the defect. It is NOT
+// promoted to a read (the sibling consumer serving_capacity_anchor's cache_standings likewise keeps assumed as an
+// uncited bet, not a cited reading -- single_authority). A future consumer that legitimately wants the bet can read
+// ServingMemoryAssumed's bytes + reason; the width deliberately refuses to.
+fn memory_reservation_bytes(m: ServingMemoryReading) -> Optional<ByteSize> {
   match m {
-    MemoryMeasured { bytes: b, provenance: _ } => Present { value: b }
-    MemoryAssumed { bytes: _, read_obligation: _ } => Absent
-    MemoryUnmeasured { reason: _ } => Absent
-  }
-}
-
-// THE RESERVATION DERIVED FROM THE CEILING AUTHORITY (review 93375): srv3/srv4 charge the cgroup HARD ceiling
-// that gunbc.serving.serving_host_memory reads ONCE as ServingEngineMemory.memory_max -- serving_reservation
-// does NOT restate the ceiling figures (single_authority / minimize_redundancy: the ceiling has one home).
-// An unread ceiling is MemoryUnmeasured, so host_memory_reserved returns Absent and the width derivation fails
-// closed on that host rather than charging a fabricated number (fail_closed).
-// An UNREAD ceiling is MemoryUnmeasured and an ASSUMED ceiling stays a MemoryAssumed BET -- neither is promoted
-// to MemoryMeasured (review 93488, epistemic_humility). host_memory_reserved then returns Absent for that host
-// (memory_reservation_bytes fails both closed), so the width consumers REFUSE the host rather than certifying it:
-// host_runner_memory_envelope_resolution maps that Absent to RunnerMemoryEnvelopeUnestablished, so the host admits
-// no runner until the per-engine reservation is read (fail_closed -- charging zero for an unread engine would
-// understate the host and overbook CI). Today srv3/srv4 memory_max are ServingMemoryRead, so their charge is unchanged.
-fn reservation_from_engine_ceiling(e: ServingEngineMemory) -> ReplicaMemoryReservation {
-  match e.memory_max {
-    ServingMemoryRead { bytes: b, provenance: p } => MemoryMeasured { bytes: b, provenance: p }
-    ServingMemoryAssumed { bytes: b, reason: r } => MemoryAssumed { bytes: b, read_obligation: r }
-    ServingMemoryUnread { reason: r } => MemoryUnmeasured { reason: r }
+    ServingMemoryRead { bytes: b, provenance: _ } => Present { value: b }
+    ServingMemoryAssumed { bytes: _, reason: _ } => Absent
+    ServingMemoryUnread { reason: _ } => Absent
   }
 }
 
@@ -176,7 +159,7 @@ fn reservation_from_engine_ceiling(e: ServingEngineMemory) -> ReplicaMemoryReser
 // API key and Strata pin are B4b's, with the deploy that reads them (see the module header).
 type ReplicaReservation {
   cpu: Optional<CpuReservation>
-  memory: ReplicaMemoryReservation
+  memory: ServingMemoryReading
 }
 
 // ── THE WIDTH DERIVATION: EVERY SERVING HOST PAYS FOR THE RESERVATIONS IT RUNS ────────────────────────
@@ -218,7 +201,7 @@ data serving_host_reservations: List<ServingHostReservation> = [
         // The hard ceiling (not MemoryHigh) is what the cgroup enforces, so it is the fail-closed figure the
         // runner must never book. srv3's fixed_overhead (gunbc_ci_srv3_memavailable_high_water, 2026-07-16)
         // predates this engine (2026-11-09) and does NOT already subtract it, so this is the engine's only charge.
-        memory: reservation_from_engine_ceiling(srv3_strata_engine_memory),
+        memory: srv3_strata_engine_memory.memory_max,
       },
     ],
   },
@@ -236,7 +219,7 @@ data serving_host_reservations: List<ServingHostReservation> = [
         // The hard ceiling (not MemoryHigh) is what the cgroup enforces. srv4's fixed_overhead (the 2026-07-16
         // gunbc_ci_managed_host_fixed_overhead bound) predates this engine (2026-11-09) and does NOT already
         // subtract it, so this is the engine's only charge.
-        memory: reservation_from_engine_ceiling(srv4_serving_engine_memory),
+        memory: srv4_serving_engine_memory.memory_max,
       },
     ],
   },
@@ -246,7 +229,7 @@ data serving_host_reservations: List<ServingHostReservation> = [
   // cites rather than invents): 0-39 pins butch-a and 40-79 pins butch-b, and because they are AFFINITY they
   // leave the cores bookable, so butch gives the runner back no cores -- the N-per-host price the per-host code
   // could not express. Its per-engine MEMORY is HONESTLY UNMEASURED: the operator gave cpusets and cards but NOT
-  // a per-engine memory figure, so B4a refuses to invent one -- the row says MemoryUnmeasured and the width
+  // a per-engine memory figure, so B4a refuses to invent one -- the row says ServingMemoryUnread and the width
   // derivation FAILS CLOSED on butch until B4b reads the reservation from the box (correct: an unmeasured
   // reservation must not be charged as zero). Its GPU cards + 35 W cap, ports, router cap (2) and sticky count
   // (4) are NOT reservations this derivation folds -- the GPU/power facts re-enter with B4b's GPU-width consumer
@@ -257,12 +240,12 @@ data serving_host_reservations: List<ServingHostReservation> = [
       ReplicaReservation {
         // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
         cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] } } },
-        memory: MemoryUnmeasured { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" },
+        memory: ServingMemoryUnread { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
       },
       ReplicaReservation {
         // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
         cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, last: 79 } ] } } },
-        memory: MemoryUnmeasured { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" },
+        memory: ServingMemoryUnread { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
       },
     ],
   },

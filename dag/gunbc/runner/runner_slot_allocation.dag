@@ -453,7 +453,7 @@ type RunnerMemoryEnvelope
 // exclusive-withheld cores); a host with no reservation row is charged zero, so the prod-role host and every
 // non-serving host are unaffected. The GPU CI-width axis is NOT here yet -- serving_reservation carries no GPU
 // reservation and this file no longer imports a GPU fold, because no consumer reads one; B4b re-adds the GPU
-// cards/power-cap fact together with the GPU CI admission that stops counting a serving card as free. An EXPLICITLY unmeasured reservation (MemoryUnmeasured) returns Absent and
+// cards/power-cap fact together with the GPU CI admission that stops counting a serving card as free. An EXPLICITLY unmeasured reservation (ServingMemoryUnread) returns Absent and
 // the width FAILS CLOSED rather than charge a fabricated figure (fail_closed) -- charging zero for an
 // unmeasured engine would silently overbook CI. The _with_serving sibling lets the witness flip a charge on
 // and off to prove it is CONSUMED, not orphaned.
@@ -471,7 +471,7 @@ fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
   match host_memory_reserved(host: f.host) {
     Present { value: serving } => runner_memory_envelope_of_with_serving(f: f, serving: serving)
     Absent => RunnerMemoryEnvelopeUnestablished {
-      cause: "a serving replica on this host carries an unmeasured memory reservation: the runner width cannot be certified until the per-engine reservation is measured (gunbc.serving.serving_reservation MemoryUnmeasured); charging it a fabricated figure -- or nothing -- would understate the host and overbook CI"
+      cause: "a serving replica on this host carries an unmeasured memory reservation: the runner width cannot be certified until the per-engine reservation is measured (gunbc.serving.serving_reservation ServingMemoryUnread); charging it a fabricated figure -- or nothing -- would understate the host and overbook CI"
     }
   }
 }
