@@ -1173,7 +1173,7 @@ fn emitted_tree_packages(
     // the index" -- which is why the round peaked in a child while the orchestrator alone was
     // charged for the memory.
     report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.begin");
-    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy())
+    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy(), &[])
         .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
     report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.end");
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -3497,9 +3497,18 @@ struct RegenConvergenceModel {
 /// 10.69-10.70 GB at generation 0). A whole-tree index serving a handful of small entries is the
 /// duplication gunbc.design_argument::demand_before_materialization orders removed before any cache is considered; every orchestrator-side
 /// model load goes through here so none of them rebuilds it later, between generations.
+/// `demanded` is the set of model functions this consumer will actually evaluate. Empty means the
+/// whole-closure typecheck (`DeclarationScope::EveryDeclaration`), which is what a consumer that
+/// discovers its function names AFTER the resolve owes. Non-empty means the demanded typecheck
+/// `gunbc run` already runs: bodies are inferred only for those functions and what they reach, and
+/// every signature, import and name still resolves, so a missing name refuses exactly as before.
+/// `crate::cli_run::demanded_typecheck_equivalence` is the recorded equivalence: a demanded
+/// declaration gets the typed item and signature a full typecheck gives it, and nothing refuses that
+/// the full typecheck would not.
 fn resolve_orchestrator_model(
     source_roots: &[String],
     entry: &str,
+    demanded: &[&str],
 ) -> Result<
     (
         Rc<crate::v1_compiler_compile::ResolvedGraph>,
@@ -3515,8 +3524,22 @@ fn resolve_orchestrator_model(
     // closure size and resident cost a fact at the phase where it happens (the same instrument
     // `parent.emitted_tree.resolve.*` already carries), so the derivation of a refusal can be
     // falsified against measurements instead of inferred from a total.
-    report_cgroup_memory_diagnostic(&format!("parent.model_resolve.begin entry={entry}"));
-    let resolved = super::resolve_entry_graph_demand_acquired(source_roots, entry);
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.model_resolve.begin entry={entry} demanded={}",
+        if demanded.is_empty() {
+            "every-declaration".to_string()
+        } else {
+            demanded.join(",")
+        }
+    ));
+    let resolved = super::resolve_entry_graph_demand_acquired_scoped(
+        source_roots,
+        entry,
+        &demanded
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>(),
+    );
     match resolved.as_ref() {
         Ok((graph, _)) => report_cgroup_memory_diagnostic(&format!(
             "parent.model_resolve.end entry={entry} modules={} items={}",
@@ -3539,10 +3562,10 @@ impl RegenConvergenceModel {
             .ok_or_else(|| {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
-        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
-            .map_err(|e| {
-            format!("refusal: convergence transaction model did not resolve: {e}")
-        })?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry.to_string_lossy(), &[]).map_err(
+                |e| format!("refusal: convergence transaction model did not resolve: {e}"),
+            )?;
         Ok(Self { graph, indices })
     }
 
@@ -3580,12 +3603,34 @@ pub(crate) struct RegenRoundCostModel {
     indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
 }
 
+/// EVERY MODEL FUNCTION THE ROUND ASKS OF THIS AUTHORITY, AND NOTHING ELSE. A whole-closure
+/// typecheck of this entry settles 747 modules / 24,156 items and measured +4.89 GB resident in the
+/// orchestrator (#16251 base-mirror run 23857e8a, phase `parent.model_resolve.end
+/// entry=dag/gunbc/regen_round_cost.dag`), on its own past the 3 GiB the generation-begin bound
+/// allows -- so the ceiling is crossed by ONE honest read, not by repeating one. The round evaluates
+/// exactly these five functions of this model (every other call site names its own model), so the
+/// bodies of the rest are owed to no one: `gunbc run` already settles this same route with its `--function` set, and
+/// `cli_run::demanded_typecheck_equivalence` records that a demanded declaration gets the item and
+/// signature a full typecheck gives it and refuses nothing the full typecheck would not.
+const ROUND_COST_DEMANDED: &[&str] = &[
+    "regen_convergence_generation_bound",
+    "regen_convergence_bound_exceeded",
+    "stage0_stage_rebuild_is_whole_compiler",
+    "stage0_partition_rebuild_is_actuatable_today",
+    "regen_round_cost_render",
+];
+
+/// What the partition-move explanation child asks: one function, so one demanded body chain.
+const PARTITION_MOVE_EXPLANATION_DEMANDED: &[&str] =
+    &["stage0_partition_move_explained_by_affected_inputs"];
+
 impl RegenRoundCostModel {
-    fn load(source_roots: &[String]) -> Result<Self, String> {
+    fn load(source_roots: &[String], demanded: &[&str]) -> Result<Self, String> {
         let entry = round_cost_entry(source_roots)?;
-        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the round has no decider: {e}")
-        })?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry, demanded).map_err(|e| {
+                format!("refusal: {entry} did not resolve, so the round has no decider: {e}")
+            })?;
         Ok(Self {
             entry,
             graph,
@@ -3611,7 +3656,10 @@ fn round_cost_decider<'a>(
 ) -> Result<&'a RegenRoundCostModel, String> {
     if slot.is_none() {
         report_cgroup_memory_diagnostic("parent.decider_model.load.begin");
-        *slot = Some(RegenRoundCostModel::load(source_roots)?);
+        *slot = Some(RegenRoundCostModel::load(
+            source_roots,
+            ROUND_COST_DEMANDED,
+        )?);
         report_cgroup_memory_diagnostic("parent.decider_model.load.end");
     }
     slot.as_ref()
@@ -3639,10 +3687,10 @@ impl SupervisedSubjectModel {
                  is outside source roots"
                     .to_string()
             })?;
-        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
-            .map_err(|e| {
-            format!("refusal: the supervised-subject liveness model did not resolve: {e}")
-        })?;
+        let (graph, indices) =
+            resolve_orchestrator_model(source_roots, &entry.to_string_lossy(), &[]).map_err(
+                |e| format!("refusal: the supervised-subject liveness model did not resolve: {e}"),
+            )?;
         Ok(Self { graph, indices })
     }
 
@@ -5991,7 +6039,7 @@ fn partition_move_explained_by_this_change(
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
     match rebuild_scope_decision_with(
-        &RegenRoundCostModel::load(source_roots)?,
+        &RegenRoundCostModel::load(source_roots, PARTITION_MOVE_EXPLANATION_DEMANDED)?,
         "stage0_partition_move_explained_by_affected_inputs",
         |ctx| {
             let mut args = affected_set_model_args(
@@ -11141,7 +11189,7 @@ mod regen_round_cost_tests {
             workspace.join("src/v2").display().to_string(),
         ];
         let rendered = render_round_cost_receipt(
-            &RegenRoundCostModel::load(&roots).unwrap(),
+            &RegenRoundCostModel::load(&roots, ROUND_COST_DEMANDED).unwrap(),
             "h",
             "t",
             false,
@@ -14088,7 +14136,7 @@ mod route_projection_control {
         use crate::v1_interpreter::{self, ExecutionMode};
         let (roots, entry) = emitted_tree_site();
         let (graph, indices) = match route {
-            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry)
+            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry, &[])
                 .map_err(|e| format!("the demand-acquired route refused: {e:?}"))?,
             SHARED_ROUTE => {
                 let shared = super::super::process_shared_index_or_refuse(&roots);
@@ -14474,7 +14522,7 @@ mod orchestrator_model_load_tests {
         assert_eq!(reexecd, owned);
         let convergence = RegenConvergenceModel::load(&roots).expect("convergence model");
         let entry = round_cost_entry(&roots).unwrap();
-        let _decider = resolve_orchestrator_model(&roots, &entry).expect("round-cost decider");
+        let _decider = resolve_orchestrator_model(&roots, &entry, &[]).expect("round-cost decider");
         // The loaded model evaluates through the same bridge production uses.
         assert_eq!(
             admit_generation_begin_readings(&convergence, 1, 900_000_000, 900_000_000),
@@ -14658,7 +14706,7 @@ mod orchestrator_model_load_tests {
             // and it needs no memory budget. Building the ~10 GB shared index first meant an
             // environment without an enforceable limit refused before the shipped route was asked
             // anything, so the half that was answerable went unobserved.
-            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry)
+            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry, &[])
                 .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
             // The shared side indexes exactly what the demand side indexes, or the two sides are
             // answering two different questions and the comparison proves nothing.
@@ -14869,7 +14917,7 @@ mod orchestrator_model_load_tests {
         let _liveness = SupervisedSubjectModel::load(&roots).unwrap();
         let _convergence = RegenConvergenceModel::load(&roots).unwrap();
         let entry = round_cost_entry(&roots).unwrap();
-        let _decider = resolve_orchestrator_model(&roots, &entry).unwrap();
+        let _decider = resolve_orchestrator_model(&roots, &entry, &[]).unwrap();
         eprintln!(
             "MEASURE after the three orchestrator loads {:?} {}",
             t.elapsed(),
