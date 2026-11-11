@@ -23,6 +23,9 @@ import gunbc.fleet.fleet_show_effective_read {
 }
 import gunbc.runner.runner_capacity_operator_access {
   runner_capacity_executing_principal_for_host,
+  in_band_privilege_observation_for_host,
+  PrivilegeObserved,
+  PrivilegeUnobserved,
 }
 
 test fn fleet_hosts_get_a_real_answer_from_every_projection() -> Bool {
@@ -64,5 +67,23 @@ test fn a_host_outside_the_population_gets_a_typed_absent_not_a_default() -> Boo
     && match runner_capacity_executing_principal_for_host(host: operator_host_srv9) {
       Present { value: _ } => false
       Absent => true
+    }
+}
+
+// in_band_privilege_observation_for_host re-keyed from an == ladder to a handle-keyed row: srv1
+// keeps its dated observed grant, srv3 keeps its own not-yet-probed outcome, and a host with no row
+// is the typed not-enrolled outcome -- the ladder's three answers, now by lookup, never a borrow.
+test fn in_band_privilege_observation_is_keyed_by_handle() -> Bool {
+  match in_band_privilege_observation_for_host(host: operator_host_srv1) {
+    PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } => true
+    PrivilegeUnobserved { reason: _ } => false
+  }
+    && match in_band_privilege_observation_for_host(host: operator_host_srv3) {
+      PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } => false
+      PrivilegeUnobserved { reason: _ } => true
+    }
+    && match in_band_privilege_observation_for_host(host: operator_host_srv9) {
+      PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } => false
+      PrivilegeUnobserved { reason: _ } => true
     }
 }

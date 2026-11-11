@@ -193,19 +193,36 @@ data srv1_in_band_privilege_observation: InBandPrivilegeObservation = PrivilegeO
   sudo_grant_summary: "actions-runner units run as User=briansrls; sudo -n -l returns (ALL) NOPASSWD: ALL; sudo -n true succeeds (deep-badger-594 srv1 probe 2026-08-07)" as NonEmptyStr,
 }
 
+// A per-machine in-band privilege fact stays, but as a handle-keyed row rather than an
+// if/else-if ladder (R3 disposition, gunbc.plans.fleet_machine_authority 4.2: a branch that
+// selects a per-host fact becomes a lookup). srv1 carries its dated observed grant; srv3/srv4
+// carry their not-yet-probed outcome. A host with no row is a typed unobserved, never borrowed.
+type InBandPrivilegeObservationRow {
+  host: HostIdentity
+  observation: InBandPrivilegeObservation
+}
+
+fn in_band_privilege_not_probed(host: HostIdentity) -> InBandPrivilegeObservation {
+  PrivilegeUnobserved {
+    reason: concat(
+      "in-band privilege probe not yet executed on ",
+      concat(host as String, " — require ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe via LocalShell job labelled for host"),
+    ),
+  }
+}
+
+fn in_band_privilege_observation_rows() -> List<InBandPrivilegeObservationRow> {
+  [
+    InBandPrivilegeObservationRow { host: operator_host_srv1, observation: srv1_in_band_privilege_observation },
+    InBandPrivilegeObservationRow { host: operator_host_srv3, observation: in_band_privilege_not_probed(host: operator_host_srv3) },
+    InBandPrivilegeObservationRow { host: operator_host_srv4, observation: in_band_privilege_not_probed(host: operator_host_srv4) },
+  ]
+}
+
 fn in_band_privilege_observation_for_host(host: HostIdentity) -> InBandPrivilegeObservation {
-  if (host as String) == (operator_host_srv1 as String) {
-    srv1_in_band_privilege_observation
-  } else if (host as String) == (operator_host_srv3 as String)
-    || (host as String) == (operator_host_srv4 as String) {
-    PrivilegeUnobserved {
-      reason: concat(
-        "in-band privilege probe not yet executed on ",
-        concat(host as String, " — require ReadEffectivePosixPrincipal + SudoNopasswdGrantListProbe via LocalShell job labelled for host"),
-      ),
-    }
-  } else {
-    PrivilegeUnobserved {
+  match filter(in_band_privilege_observation_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => r.observation
+    Absent => PrivilegeUnobserved {
       reason: "host is not enrolled in runner_capacity_operator_access in-band admission",
     }
   }
