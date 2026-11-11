@@ -23,6 +23,7 @@ import gunbc.roadmap.roadmap_issue_command { IssueCommand, IssueCommandSubject, 
 import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_acceptance_parse_tail, RoadmapAcceptanceTailOk, RoadmapAcceptanceTailBad,
   roadmap_acceptance_migration_verify, roadmap_acceptance_migration_report,
+  roadmap_acceptance_migration_refusal_report,
   RoadmapAcceptanceMigrationOutcome, MigrationVerified, MigrationRefused, RoadmapMigrationRefusal,
 }
 // THE TWO LOADERS LIVE IN THE AUTHORITY, not in the carriers they read: they are the folds that resolve the

@@ -31,6 +31,7 @@ import gunbc.roadmap.roadmap_acceptance_inbox {
 import test.claim.roadmap.roadmap_receipt_continuity_acceptance_fixture {
   receipt_continuity_acceptance_carrier_fixture_text,
   receipt_continuity_acceptance_carrier_retired_ids,
+  receipt_continuity_acceptance_carrier_retired_node_ids,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
