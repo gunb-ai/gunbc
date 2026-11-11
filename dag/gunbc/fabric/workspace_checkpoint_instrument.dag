@@ -69,6 +69,7 @@ import gunbc.fabric.fabric_storage_r2_head {
   R2HeadCasAdmission, R2HeadCasAdmittedArm, R2HeadCasNotGrounded, R2HeadCasAdmitted, r2_head_cas_admission, r2_head_cas_ground,
 }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 
@@ -789,12 +790,25 @@ type WorkspaceRunSubject
   = WorkspaceRunAdmitted { run: NonEmptyStr, token_source: AccessTokenSource }
   | WorkspaceRunRefused { reason: String }
 
+// THE INSTRUMENT IS PINNED TO ONE HOST, AND BOTH THE PIN AND THE KERNEL'S ANSWER ARE NAMES
+// (gunbc.hostname_allocation::observed_host_selector_join; gunbc.plans.fleet_machine_authority
+// section 4.4 (b*)). Each resolves through the allocation's selector and the subject is admitted only
+// when both name the SAME HostIdentity -- so the instrument runs on the host that answers "butch" and
+// is srv14, and a name the roster does not resolve refuses by that name instead of being read as a
+// host.
 fn workspace_run_subject() -> WorkspaceRunSubject {
   let host = workspace_this_host()
   let run = workspace_run_identity()
-  if host != (workspace_checkpoint_host as String) {
-    WorkspaceRunRefused { reason: join(["the instrument is pinned to ", workspace_checkpoint_host as String, " but this job runs on '", host, "'"], "") }
-  } else if run == "" {
+  match observed_host_selector_join(expected: workspace_checkpoint_host as String, observed: host) {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      WorkspaceRunRefused { reason: join(["the instrument is pinned to ", workspace_checkpoint_host as String, ": ",
+                                          observed_host_join_refusal_text(cause: c)], "") }
+    ObservedHostSelectorAgreed { host: _ } => workspace_run_subject_identity(run: run)
+  }
+}
+
+fn workspace_run_subject_identity(run: String) -> WorkspaceRunSubject {
+  if run == "" {
     WorkspaceRunRefused { reason: "GITHUB_RUN_ID is not set; the workspace name is derived from the run and a run without one has no workspace" }
   } else {
     match select_access_token_source() {

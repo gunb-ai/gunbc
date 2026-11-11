@@ -35,8 +35,8 @@ test fn an_image_baked_host_never_resolves_to_a_deploy_or_joins_the_roster() -> 
 // THE CONTROL. Every spec-backed host's selected user is its spec row's runner_user, exactly as the service slot read
 // it before the selection existed; and there is at least one such host, so this is not vacuous.
 test fn every_spec_backed_host_keeps_its_spec_runner_user() -> Bool {
-  count(runner_host_spec_rows) > 0
-    && (runner_host_spec_rows |> all(r => match host_unit_slot_runner_user(host: r.host) {
+  count(runner_host_spec_rows()) > 0
+    && (runner_host_spec_rows() |> all(r => match host_unit_slot_runner_user(host: r.host) {
       RunnerUserSelected { user: u } => (u as String) == (r.spec.runner_user as String)
       RunnerUserUndeclared { host: _ } => false
     }))
