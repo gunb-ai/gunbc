@@ -107,6 +107,7 @@ fn presentation_text(p: BootPresentation) -> String {
 
 type StaleMediumPowerOff
   = StalePowerOffNotNeeded { reason: NonEmptyStr }
+  | StalePowerOffWithheld { reason: NonEmptyStr }
   | StalePowerOffObserved { stale_image: String, before: HostPowerState }
   | StalePowerOffCommandRefused { stale_image: String, before: HostPowerState }
   | StalePowerOffNotObserved { stale_image: String, before: HostPowerState, last: HostPowerState }
@@ -114,6 +115,7 @@ type StaleMediumPowerOff
 fn stale_power_off_text(record: StaleMediumPowerOff) -> String {
   match record {
     StalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
+    StalePowerOffWithheld { reason: r } => concat("power-off WITHHELD, the attempt refuses: ", r as String)
     StalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", host_power_text(state: b), ") to replace stale '", i, "', observed off"], "")
     StalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by the controller"], "")
     StalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", host_power_text(state: l)], "")

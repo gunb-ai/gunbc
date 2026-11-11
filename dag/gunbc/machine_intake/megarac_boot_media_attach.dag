@@ -15,7 +15,7 @@ import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmissi
 import gunbc.host.bmc_control_binding { bmc_control_route_endpoint, bmc_control_route_account, bmc_control_route_ipmi_cipher_suite }
 import gunbc.host.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
+  MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffWithheld, StalePowerOffWithheldCause, LookSessionNotReleased, LookSecretFileLeft, stale_power_off_withheld_cause_text, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { chassis_power_off_poll_settled, ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, chassis_observation_is_off, ipmi_chassis_control_verb }
@@ -33,6 +33,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacAttachResult, SecretFileRemoved, megarac_secret_file_left, megarac_secret_file_text,
   MegaRacSessionRefused,
   SessionReleaseNotAttempted,
+  SessionReleaseRefused,
   MegaRacShareBinding,
   SessionReleased,
   megarac_attach_remote_image,
@@ -223,8 +224,12 @@ fn megarac_detach_admission(power: ChassisPowerObservation) -> MegaRacDetachAdmi
 // OobPowerAction, review 5310234917 on gunbc#12247: power down cannot mean a boot handoff). This is a
 // different action for a different purpose -- making a stale medium safe to withdraw -- so it is its
 // own sealed route here, not a widening of that type.
+// THREE ANSWERS, NOT TWO. Not needed is a fact about the medium or the power; withheld is a failed
+// cleanup of the look itself, which says nothing about the medium, so the attempt refuses rather than
+// reading it as unneeded (side chat on gunbc#16247).
 type StalePowerOffNeed
   = PowerOffNotNeeded { reason: NonEmptyStr }
+  | PowerOffWithheld { cause: StalePowerOffWithheldCause }
   | PowerOffForStale { stale_image: String }
 
 fn stale_power_off_look_owed(before: ChassisPowerObservation) -> Bool {
@@ -239,11 +244,12 @@ fn stale_power_off_look_owed(before: ChassisPowerObservation) -> Bool {
 fn megarac_stale_power_off_need(look: MegaRacAttachResult, image_name: NonEmptyStr, firmware: BmcFirmwareReleaseIdentity, replaceable_seeded_stems: FreeSemigroup<NonEmptyStr>) -> StalePowerOffNeed {
   match look.session_release {
     SessionReleased => none
-    other => return PowerOffNotNeeded { reason: concat("the read-only look's session was ", session_release_text(standing: other)) as NonEmptyStr }
+    SessionReleaseNotAttempted => return PowerOffNotNeeded { reason: "the read-only look's session was never opened" }
+    SessionReleaseRefused { detail: d } => return PowerOffWithheld { cause: LookSessionNotReleased { detail: d } }
   }
-  // A LOOK THAT LEFT ITS BEARER FILE NEVER AUTHORIZES A POWER-OFF, for the reason a held session does not.
+  // A LOOK THAT LEFT ITS BEARER FILE NEVER AUTHORIZES A POWER-OFF, and is withheld for the reason a held session is.
   if megarac_secret_file_left(result: look) {
-    return PowerOffNotNeeded { reason: concat("the read-only look's CSRF header file was ", megarac_secret_file_text(standing: look.secret_file)) as NonEmptyStr }
+    return PowerOffWithheld { cause: LookSecretFileLeft }
   }
   return match look.outcome {
     MegaRacPresentationObserved { share: ShareBound, readiness: _, cd_error: cd, general: _, configurations: c } =>
@@ -312,6 +318,7 @@ fn megarac_stale_power_off(
   )
   return match megarac_stale_power_off_need(look: look, image_name: image_name, firmware: host.firmware, replaceable_seeded_stems: replaceable_seeded_stems) {
     PowerOffNotNeeded { reason: r } => MegaRacStalePowerOffNotNeeded { reason: r }
+    PowerOffWithheld { cause: c } => MegaRacStalePowerOffWithheld { cause: c }
     PowerOffForStale { stale_image: stale } => {
       let control = diagnostic.ipmi.Tool.ChassisPowerControl(
         bmc_host: bmc_control_route_endpoint(route: host.route).host,
@@ -369,6 +376,7 @@ fn megarac_power_after_stale_power_off(
   match off {
     MegaRacStalePowerOffObserved { stale_image: _, before: _ } => megarac_boot_media_chassis_power(host: host, account: account, password_file: password_file, bound: bound)
     MegaRacStalePowerOffNotNeeded { reason: _ } => before
+    MegaRacStalePowerOffWithheld { cause: _ } => before
     MegaRacStalePowerOffCommandRefused { stale_image: _, before: _ } => before
     MegaRacStalePowerOffNotObserved { stale_image: _, before: _, last: _ } => before
   }
@@ -382,6 +390,8 @@ fn megarac_detach_admission_after_power_off(power: ChassisPowerObservation, off:
       MegaRacDetachNotAdmitted { reason: concat("chassis power off to replace the stale image was refused: ", i) as NonEmptyStr }
     MegaRacStalePowerOffNotObserved { stale_image: i, before: _, last: l } =>
       MegaRacDetachNotAdmitted { reason: join(["chassis power off to replace the stale image ", i, " was never observed off; last read ", chassis_observation_text(observation: l) as String], "") as NonEmptyStr }
+    MegaRacStalePowerOffWithheld { cause: c } =>
+      MegaRacDetachNotAdmitted { reason: concat("the stale power-off was withheld: ", stale_power_off_withheld_cause_text(cause: c)) as NonEmptyStr }
     MegaRacStalePowerOffNotNeeded { reason: _ } => megarac_detach_admission(power: power)
     MegaRacStalePowerOffObserved { stale_image: _, before: _ } => megarac_detach_admission(power: power)
   }
@@ -400,7 +410,12 @@ type MegaRacBootMediaGate
 fn megarac_boot_media_gate(record: MegaRacMediaAttach) -> MegaRacBootMediaGate {
   match record {
     MegaRacMediaAttachNotAttempted { reason: r } => MediaGateWithheld { reason: concat("media attach: ", r as String) as NonEmptyStr }
-    MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
+    MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: off, result: res } =>
+      match off {
+        // A WITHHELD STALE POWER-OFF REFUSES THE HANDOFF, whatever the attach then answered.
+        MegaRacStalePowerOffWithheld { cause: c } =>
+          MediaGateWithheld { reason: concat("media attach: the stale power-off was withheld: ", stale_power_off_withheld_cause_text(cause: c)) as NonEmptyStr }
+        _ =>
       match res.outcome {
         MegaRacPresentationReady { route: _, evidence: e } =>
           match res.session_release {
@@ -417,6 +432,7 @@ fn megarac_boot_media_gate(record: MegaRacMediaAttach) -> MegaRacBootMediaGate {
             Present { value: why } => MediaGateWithheld { reason: concat("media attach: ", why) as NonEmptyStr }
             Absent => MediaGateWithheld { reason: "media attach: the outcome carries no ready presentation" }
           }
+      }
       }
   }
 }

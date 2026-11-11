@@ -193,7 +193,7 @@ import gunbc.host.boot_attempt {
   AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   HostPowerState, PowerOn, PowerOff, PowerUnread, host_power_text,
   BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
-  StaleMediumPowerOff, StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused,
+  StaleMediumPowerOff, StalePowerOffNotNeeded, StalePowerOffWithheld, StalePowerOffObserved, StalePowerOffCommandRefused,
   StalePowerOffNotObserved, MediaAttachRecord, MediaAttachNotAttempted, MediaAttachAttempted,
   media_attach_text, HandoffCallResult, HandoffConfirmed, HandoffAttemptedUnconfirmed,
   HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
@@ -551,6 +551,7 @@ fn megarac_look_presentation(r: MegaRacAttachResult) -> BootPresentation {
 fn megarac_stale_power_off_record(r: MegaRacStalePowerOff) -> StaleMediumPowerOff {
   match r {
     MegaRacStalePowerOffNotNeeded { reason: reason } => StalePowerOffNotNeeded { reason: reason }
+    MegaRacStalePowerOffWithheld { cause: c } => StalePowerOffWithheld { reason: stale_power_off_withheld_cause_text(cause: c) as NonEmptyStr }
     MegaRacStalePowerOffObserved { stale_image: i, before: b } =>
       StalePowerOffObserved { stale_image: i, before: megarac_host_power(o: b) }
     MegaRacStalePowerOffCommandRefused { stale_image: i, before: b } =>
@@ -787,8 +788,23 @@ type MegaRacMediaAttach
 // admission correctly refused). `power` above is then the FRESH reading taken after this power-off,
 // the one the admission was given; the reading before it is `before` here. Not needed carries why,
 // so an attempt that did not power off says which fact made it unnecessary.
+// WHY A STALE POWER-OFF WAS WITHHELD rather than found unneeded: the read-only look failed its own
+// cleanup, which says nothing about whether the medium is stale, so the line stops instead of
+// guessing (side chat on gunbc#16247). A session the look never opened is not here: nothing was owed.
+type StalePowerOffWithheldCause
+  = LookSessionNotReleased { detail: String }
+  | LookSecretFileLeft
+
+fn stale_power_off_withheld_cause_text(cause: StalePowerOffWithheldCause) -> String {
+  match cause {
+    LookSessionNotReleased { detail: d } => concat("the read-only look's session was NOT released, still allocated on the controller: ", d)
+    LookSecretFileLeft => "the read-only look's CSRF header file was LEFT ON THE RUNNER (its removal did not complete; the session token may remain on disk)"
+  }
+}
+
 type MegaRacStalePowerOff
   = MegaRacStalePowerOffNotNeeded { reason: NonEmptyStr }
+  | MegaRacStalePowerOffWithheld { cause: StalePowerOffWithheldCause }
   | MegaRacStalePowerOffObserved { stale_image: String, before: ChassisPowerObservation }
   | MegaRacStalePowerOffCommandRefused { stale_image: String, before: ChassisPowerObservation }
   | MegaRacStalePowerOffNotObserved { stale_image: String, before: ChassisPowerObservation, last: ChassisPowerObservation }
@@ -796,6 +812,7 @@ type MegaRacStalePowerOff
 fn megarac_stale_power_off_text(record: MegaRacStalePowerOff) -> String {
   match record {
     MegaRacStalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
+    MegaRacStalePowerOffWithheld { cause: c } => concat("power-off WITHHELD, the attempt refuses: ", stale_power_off_withheld_cause_text(cause: c))
     MegaRacStalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", chassis_observation_text(observation: b) as String, ") to replace stale '", i, "', observed off"], "")
     MegaRacStalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by ipmitool"], "")
     MegaRacStalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", chassis_observation_text(observation: l) as String], "")

@@ -28,7 +28,7 @@ import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerR
 import gunbc.host.boot_attempt {
   HostPowerState, PowerOn, PowerOff, PowerUnread,
   BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
-  StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused, StalePowerOffNotObserved,
+  StalePowerOffNotNeeded, StalePowerOffWithheld, StalePowerOffObserved, StalePowerOffCommandRefused, StalePowerOffNotObserved,
   MediaAttachNotAttempted, MediaAttachAttempted,
   HandoffConfirmed, HandoffAttemptedUnconfirmed,
   HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
@@ -108,7 +108,7 @@ import gunbc.host.smpro_platform_capability { SmproReading, SmproNotTaken }
 import gunbc.host.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   BmcChannelRead, BmcChannelStanding, BmcChannelFailed, BmcTimeout, HarnessFinding,
-  MegaRacStalePowerOff, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffObserved,
+  MegaRacStalePowerOff, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffWithheld, LookSecretFileLeft, MegaRacStalePowerOffObserved,
   MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotObserved,
   MegaRacMediaAttach, MegaRacMediaAttachNotAttempted, MegaRacMediaAttachAttempted,
   MegaRacHandoff, MegaRacHandoffNotReached, MegaRacHandoffWithheldAtRecheck, MegaRacHandoffAttempted,
@@ -333,11 +333,18 @@ test fn an_unanswered_look_is_unread_not_not_served() -> Bool {
   }
 }
 
-// ── STALE POWER OFF: all four arms, with the power readings classified too ───────────
+// ── STALE POWER OFF: all five arms, with the power readings classified too ───────────
 
 test fn stale_not_needed_carries_its_reason() -> Bool {
   match megarac_stale_power_off_record(r: MegaRacStalePowerOffNotNeeded { reason: "already off" }) {
     StalePowerOffNotNeeded { reason: r } => r == "already off"
+    _ => false
+  }
+}
+
+test fn stale_withheld_maps_to_the_neutral_withheld_with_its_cause() -> Bool {
+  match megarac_stale_power_off_record(r: MegaRacStalePowerOffWithheld { cause: LookSecretFileLeft }) {
+    StalePowerOffWithheld { reason: r } => string_contains(s: r as String, pattern: "CSRF header file was LEFT ON THE RUNNER")
     _ => false
   }
 }

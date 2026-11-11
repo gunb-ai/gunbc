@@ -120,7 +120,7 @@ import gunbc.machine_intake.megarac_media_attach {
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, megarac_handoff_media_text, megarac_standing_findings, MegaRacCsrfHeaderFileLeft, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, presentation_evidence_text, MegaRacMediaAttachNotAttempted,
+  EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffWithheld, LookSecretFileLeft, LookSessionNotReleased, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, megarac_handoff_media_text, megarac_standing_findings, MegaRacCsrfHeaderFileLeft, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, presentation_evidence_text, MegaRacMediaAttachNotAttempted,
 }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
@@ -427,6 +427,25 @@ test fn a_ready_released_attach_that_left_its_csrf_file_withholds_and_the_remove
     })
     && string_contains(s: megarac_media_attach_text(record: attempted(result: ready_with(secret_file: SecretFileResidueRemains))), pattern: "CSRF header file LEFT ON THE RUNNER")
     && string_contains(s: megarac_media_attach_text(record: attempted(result: ready_with(secret_file: SecretFileRemoved))), pattern: "CSRF header file removed")
+}
+
+// A WITHHELD STALE POWER-OFF REFUSES THE HANDOFF. The identical ready, released, clean attach that opens the
+// gate under a power-off found unneeded is withheld under one withheld for either failed-cleanup cause, and
+// the record's line says so.
+test fn a_withheld_stale_power_off_refuses_the_handoff_whatever_the_attach_answered() -> Bool {
+  let clean = ready_with(secret_file: SecretFileRemoved)
+  let residue = MegaRacMediaAttachAttempted { attempt: "36330382023", medium_image_name: desired_census, medium_image_sha256: "30ca88d43f891399", power: ChassisPowerRead { power_on: true }, stale_power_off: MegaRacStalePowerOffWithheld { cause: LookSecretFileLeft }, result: clean }
+  let leaked = MegaRacMediaAttachAttempted { attempt: "36330382023", medium_image_name: desired_census, medium_image_sha256: "30ca88d43f891399", power: ChassisPowerRead { power_on: true }, stale_power_off: MegaRacStalePowerOffWithheld { cause: LookSessionNotReleased { detail: "probe 000" } }, result: clean }
+  (match megarac_boot_media_gate(record: attempted(result: clean)) { MediaGateReady { evidence: _ } => true  MediaGateWithheld { reason: _ } => false })
+    && (match megarac_boot_media_gate(record: residue) {
+      MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "stale power-off was withheld") && string_contains(s: r as String, pattern: "CSRF header file was LEFT ON THE RUNNER")
+      MediaGateReady { evidence: _ } => false
+    })
+    && (match megarac_boot_media_gate(record: leaked) {
+      MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "session was NOT released")
+      MediaGateReady { evidence: _ } => false
+    })
+    && string_contains(s: megarac_media_attach_text(record: residue), pattern: "power-off WITHHELD, the attempt refuses")
 }
 
 // AND AT THE PRE-HANDOFF RECHECK: the same served look, differing only in its bearer file, is admitted when the
