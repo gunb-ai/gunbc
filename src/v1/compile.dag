@@ -1247,7 +1247,21 @@ fn emittable_graph_from_graph(typed: ResolvedGraph) -> EmittableGraph {
   EmittableGraph { graph: typed }
 }
 
-fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPlan, partition_rows: List<GeneratedPartitionCrateRow>) -> EmitResult {
+// A CALL SITE THAT KEEPS ITS COMPILED-IN POPULATION, AND WHY. Everything host-facing that can decide
+// crate-root membership reaches the emitter through emit_resolved_for_target_selected, which carries the run's
+// fresh partition down to lib_rs_module_is_partition_owned. This entry is not on that path any more: its only
+// caller is the seed's own profile-pipeline test, whose body is an interpreter-FOLDED literal inside the
+// running binary (src/v1/compiler_tests_rust.dag), so the population it can name is the one compiled into that
+// seed -- the same standing that keeps v1_compiler_stage0_crates' plan and boundary outcome reading
+// generated_partition_crate_rows(). It stays a two-argument call, exactly as it was before this change, for a
+// second reason: a folded literal only catches up with its carrier one generation later, so moving this call
+// would make heal's base-mirror round emit the OLD call back over the committed mirror and block convergence
+// on a surface that decides nothing. gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.
+fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+  emit_from_artifact_plan_with_partition_rows(emittable: emittable, artifact_plan: artifact_plan, partition_rows: generated_partition_crate_rows())
+}
+
+fn emit_from_artifact_plan_with_partition_rows(emittable: EmittableGraph, artifact_plan: ArtifactPlan, partition_rows: List<GeneratedPartitionCrateRow>) -> EmitResult {
   let typed = emittable.graph
   if artifact_plan.artifacts |> count == 0 {
     return EmitResult {
@@ -1747,7 +1761,7 @@ fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: R
         selection: selection
       )
       let _ = trace_mark("compile.emit.begin")
-      let emit_result = emit_from_artifact_plan(
+      let emit_result = emit_from_artifact_plan_with_partition_rows(
         emittable: emittable,
         artifact_plan: artifact_plan,
         partition_rows: partition_rows
