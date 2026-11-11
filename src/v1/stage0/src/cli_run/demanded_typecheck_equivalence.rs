@@ -1151,3 +1151,28 @@ fn the_host_by_name_call_sites_equal_the_declared_key_row() {
         "the host's by-name fold literals and the declared key row must be EQUAL as sets: host-only (crash-loop class, row must gain them) = {host_only:?}, row-only (dead weight, row must lose them) = {row_only:?}"
     );
 }
+
+/// RUNG HONESTY for the startup fail-fast (review 93623): the check must run BEFORE any fallible
+/// consult -- including the `http_ingress_handler_identity` consult whose absence is the srv1
+/// crash-loop it was written for -- or the loud refusal is unreachable for its own case. This is
+/// executed evidence of the ORDERING claim, read from the host's source: the FAIL FAST block and
+/// its reader-fold consult must precede the first `fold_text(ctx, "http_ingress_...` consult in
+/// the file.
+#[test]
+fn the_startup_key_set_check_precedes_the_first_fallible_consult() {
+    let host = std::fs::read_to_string("src/v1/stage0/src/cli_run/http_ingress_host.rs")
+        .expect("the ingress host source must exist");
+    let fail_fast = host
+        .find("FAIL FAST ON THE DECLARED KEY SET")
+        .expect("the declared-key fail-fast block must exist");
+    let reader_consult = host
+        .find("fold(ctx, \"http_ingress_host_read_folds_reader\"")
+        .expect("the fail-fast must read the key set through the declared reader fold");
+    let first_fallible_consult = host
+        .find("let handler = fold_text(")
+        .expect("the handler-identity consult must exist");
+    assert!(
+        fail_fast < first_fallible_consult && reader_consult < first_fallible_consult,
+        "the fail-fast (offset {fail_fast}) and its reader consult (offset {reader_consult}) must PRECEDE the first fallible consult (offset {first_fallible_consult}) -- otherwise the crash-loop case refuses with the single opaque loaded-index miss, not the loud refusal"
+    );
+}

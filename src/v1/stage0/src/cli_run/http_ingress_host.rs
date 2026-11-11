@@ -643,20 +643,17 @@ pub fn realize(ctx: &InterpContext, binding: Value) -> (i32, String) {
 
 fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
     let startup = || -> Result<_, String> {
-        let handler = fold_text(
-            ctx,
-            "http_ingress_handler_identity",
-            vec![("b", binding.clone())],
-        )?;
-        // FAIL FAST ON THE DECLARED KEY SET. The fold names this host consults by name are
-        // declared ONCE in .dag (gunbc.http_ingress `data http_ingress_host_read_folds` + its
-        // reader fold); the infer-side registry (src/v1/04_infer.dag `runtime_key_readers`,
-        // instance `loaded_index_keyed_call`) seeds them into the demanded realization -- and
-        // the host reads THE SAME ROW here, at the top of startup, before its first real consult
-        // (this replaced the srv1 crash-loop: the demanded grain realized none of these folds,
-        // and the first consult aborted the unit ~110s in with one opaque loaded-index miss).
-        // If this execution's loaded index is missing any declared key -- or the argv-carried
-        // handler -- refuse HERE, naming EVERY missing key.
+        // FAIL FAST ON THE DECLARED KEY SET -- FIRST, before ANY fallible consult, including
+        // `http_ingress_handler_identity` itself (which is one of the declared names, so this
+        // check covers the exact fold whose absence crash-looped the srv1 unit). The fold names
+        // this host consults by name are declared ONCE in .dag (gunbc.http_ingress
+        // `data http_ingress_host_read_folds` + its reader fold); the infer-side registry
+        // (src/v1/04_infer.dag `runtime_key_readers`, instance `loaded_index_keyed_call`) seeds
+        // them into the demanded realization -- and the host reads THE SAME ROW here. If this
+        // execution's loaded index is missing any declared key, refuse HERE, naming EVERY missing
+        // key -- never the single opaque loaded-index miss of the consult that happened to come
+        // first (the ordering the source-order test
+        // `the_startup_key_set_check_precedes_the_first_fallible_consult` pins).
         let mut missing: Vec<String> =
             match &fold(ctx, "http_ingress_host_read_folds_reader", vec![])? {
                 Value::List(items) => items
@@ -674,13 +671,20 @@ fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
                     ))
                 }
             };
-        if !v1_interpreter::qualified_function_exists(ctx, &handler) {
-            missing.push(handler.clone());
-        }
         if !missing.is_empty() {
             return Err(format!(
                 "runtime-keyed reads not realized by this execution's loaded index: {}",
                 missing.join(", ")
+            ));
+        }
+        let handler = fold_text(
+            ctx,
+            "http_ingress_handler_identity",
+            vec![("b", binding.clone())],
+        )?;
+        if !v1_interpreter::qualified_function_exists(ctx, &handler) {
+            return Err(format!(
+                "runtime-keyed reads not realized by this execution's loaded index: {handler}"
             ));
         }
         let limits = Limits {
