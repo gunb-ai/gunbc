@@ -91,7 +91,7 @@ import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_d
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
-import gunbc.fleet.printer_federation { printer_environment, printer_provider_resource, printer_service_account,printer_lan_host_identity }
+import gunbc.fleet.printer_federation { printer_environment, printer_lan_host_identity }
 import gunbc.fleet.printer_operator_approval {
   printer_approval_step_timeout_minutes, printer_converge_preparation_allowance
 }
@@ -8591,7 +8591,8 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 
 fn printer_converge_step_timeout_minutes() -> Duration {
   let preparation_minutes = (nat_to_int(n: second_count(s: printer_converge_preparation_allowance)) + 59) / 60
-  preparation_minutes + nat_to_int(n: minute_count(m: printer_approval_step_timeout_minutes()))
+  let checkout_allowance_minutes = 5
+  preparation_minutes + checkout_allowance_minutes + nat_to_int(n: minute_count(m: printer_approval_step_timeout_minutes()))
 }
 
 // THE JOB BACKSTOP IS THE PRELUDE ALLOWANCE PLUS EVERY STEP THE JOB DECLARES, folded -- the same
@@ -8601,12 +8602,10 @@ fn printer_converge_step_timeout_minutes() -> Duration {
 fn fleet_converge_printer_job_steps() -> List<Step> {
   [
       fleet_converge_event_sha_checkout_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(),
-      fleet_converge_printer_wif_auth_step(),
       RunStep {
         name: Present { value: "Printer: observe the credential or converge one print request" },
         id: Present { value: "printer" }, run: gunbc_ci_printer_workflow_invoke(), shell: none,
         env: Present { value: [
-          kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
           kv(key:approval_submission_mac_key_path_env as String,value:yaml_string(s:approval_submission_mac_key_path as String)),
           kv(key:approval_capability_mac_key_path_env as String,value:yaml_string(s:approval_mac_key_path as String)),
           kv(key:approval_store_receipt_mac_key_path_env as String,value:yaml_string(s:approval_store_receipt_mac_key_path as String)),
@@ -8633,16 +8632,10 @@ fn fleet_converge_printer_job_backstop_timeout_minutes() -> Duration {
   )
 }
 
-// THE PRINTER CREDENTIAL IS SIGNED IN ONLY ON REVIEWED MAIN (operator ruling 2026-10-25, design A).
-// A branch run may prepare and record a request, which needs no credential; the approval-and-start
-// pass is main's code (gunbc.fleet.print_converge print_pass_route), so off main the job holds no
-// printer token at all. The printer-lan pool is pinned to main as well; this keeps branch code from
-// ever asking.
-fn fleet_converge_printer_wif_auth_step() -> Step {
-  ci_wif_auth_step_with_condition(name: "WIF auth (dedicated printer credential reader; reviewed main only)", id: "wif_auth",
-    provider_resource: printer_provider_resource(), service_account: printer_service_account as String,
-    if_condition: Present { value: serialize_expression(expression: fleet_converge_github_ref_is_reviewed_main()) })
-}
+// RETIRED: the pre-poll WIF auth step is gone. The printer's GCP credential is now minted at use time
+// (gunbc.fleet.printer_credential_source printer_mint_at_use_token) after the operator's tap, so the token
+// lifetime covers only the post-decision delivery. The id_token: write permission on the job (below) stays:
+// the mint requests the OIDC assertion from the Actions sidecar at use time, not in a pre-poll step.
 
 fn fleet_converge_printer_job() -> Job {
   Job {

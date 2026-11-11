@@ -113,12 +113,7 @@ fn printer_approval_credential_ceiling() -> Second {
 }
 
 fn printer_operator_approval_window() -> Second {
-  if nat_to_int(n: second_count(s: approval_request_window))
-    <= nat_to_int(n: second_count(s: printer_approval_credential_ceiling())) {
-    approval_request_window
-  } else {
-    printer_approval_credential_ceiling()
-  }
+  approval_request_window
 }
 
 // THE RESERVE, and the rule that spends it, are the fleet's now, not this module's:

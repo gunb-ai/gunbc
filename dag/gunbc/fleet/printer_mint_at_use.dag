@@ -1,0 +1,67 @@
+module gunbc.fleet.printer_mint_at_use
+
+// THE MINT-AT-USE TOKEN IS ADMITTED AT THE PRESENTATION AND NEVER HELD.
+// printer_mint_at_use_token is the single caller of gcp_impersonated_presentation in the printer route.
+// It runs the three-legged federation, admits the result through the presentation check (which judges
+// the issuer's own expiry against the stated use requirement), and releases the Secret for exactly one
+// Secret Manager read by the caller that receives it. The admission requirement is the same 30-second
+// floor as the heal publisher: a credential that cannot survive the next read is refused before it is sent.
+//
+// WHY A SEPARATE MODULE: gcp_impersonated_presentation lives in extdeps.cloud.gcp.iam (the largest
+// module in the tree). Keeping it out of printer_credential_source (which is the type-owner and is
+// transitively imported by every printer claim) preserves the witness harness budget: the claim closure
+// stays narrow and the effect-heavy path is pulled only by the runtime consumers that actually mint.
+
+import std.types { Secret }
+import std.resources { Network }
+import std.measure { nanosecond }
+import std.credential_admission { CredentialPresented, CredentialPresentationRefused, CredentialUseRequirement }
+import extdeps.cloud.gcp.iam { gcp_impersonated_presentation }
+import gunbc.auth.federated_workload_credential {
+  FederatedWorkloadCredentialMint, FederatedWorkloadCredential,
+  FederatedWorkloadCredentialMinted, FederatedWorkloadCredentialLifetimeBeyondOrdinary,
+  FederatedWorkloadCredentialAssertionEndpointMissing, FederatedWorkloadCredentialAssertionAuthMissing,
+  FederatedWorkloadCredentialAssertionRefused, FederatedWorkloadCredentialExchangeRefused,
+  FederatedWorkloadCredentialClockUnread, FederatedWorkloadCredentialImpersonationRefused,
+  federated_workload_credential,
+}
+import gunbc.fleet.printer_federation { printer_provider_resource, printer_service_account, printer_federated_workload_token_lifetime }
+import extdeps.cloud.gcp.gcp { cloud_platform_scope }
+
+data printer_mint_at_use_requirement: CredentialUseRequirement = CredentialUseRequirement {
+  required_remaining: nanosecond(count: 30000000000),
+  skew_margin: nanosecond(count: 10000000000),
+}
+
+fn printer_mint_at_use_token(mint: FederatedWorkloadCredentialMint) -> Secret?
+  uses net: Network, clk: std.resources.Clock {
+  match federated_workload_credential(mint: mint) {
+    FederatedWorkloadCredentialMinted { credential: issued } =>
+      match gcp_impersonated_presentation(
+        credential: issued,
+        required_service_account: mint.service_account,
+        required_scopes: [mint.scope],
+        requirement: printer_mint_at_use_requirement,
+      ) {
+        CredentialPresented { secret_released_only_by_admission: token } => Present { value: token }
+        CredentialPresentationRefused { refusal: _ } => Absent
+      }
+    FederatedWorkloadCredentialLifetimeBeyondOrdinary => Absent
+    FederatedWorkloadCredentialAssertionEndpointMissing => Absent
+    FederatedWorkloadCredentialAssertionAuthMissing => Absent
+    FederatedWorkloadCredentialAssertionRefused { refusal: _ } => Absent
+    FederatedWorkloadCredentialExchangeRefused { refusal: _ } => Absent
+    FederatedWorkloadCredentialClockUnread { detail: _ } => Absent
+    FederatedWorkloadCredentialImpersonationRefused { refusal: _ } => Absent
+  }
+}
+
+fn printer_federated_workload_mint() -> FederatedWorkloadCredentialMint {
+  FederatedWorkloadCredentialMint {
+    assertion_audience: concat("https://iam.googleapis.com/", printer_provider_resource()) as NonEmptyStr,
+    exchange_audience: concat("//iam.googleapis.com/", printer_provider_resource()) as NonEmptyStr,
+    service_account: printer_service_account,
+    scope: cloud_platform_scope as String,
+    lifetime: printer_federated_workload_token_lifetime,
+  }
+}

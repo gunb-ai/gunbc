@@ -12,7 +12,7 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import gunbc.secret_provision { secret_ref_pin_version }
 import gunbc.auth.secret_ref_credential {
-  fetch_secret_ref_credential, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  fetch_secret_ref_credential, fetch_secret_ref_credential_with_token, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
   SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
 }
 import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
@@ -49,9 +49,11 @@ import product.printing.print_recipe { print_recipe_from_wire }
 import gunbc.fleet.printer_ams_loading { select_ams_tray, AmsTraySelected, AmsTrayRefused }
 import gunbc.fleet.printer_start_evidence_store { start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready }
 import gunbc.fleet.printer_receipt { write_receipt }
-import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource }
+import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, MintAtUseCredentialSource, HostCustodyCredentialSource }
+import gunbc.fleet.printer_mint_at_use { printer_mint_at_use_token }
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.fleet.printer_credential_source { read_printer_custody_version, PrinterCustodyVersionPresent, PrinterCustodyVersionRefused }
+import gunbc.auth.federated_workload_credential { FederatedWorkloadCredentialMint }
 import gunbc.fleet.print_request { completion_text, plate_plan_file,
   PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name,
   PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded, CompletionRecordMismatched,
@@ -122,6 +124,11 @@ fn resolve_credential_version(printer: PhysicalAssetIdentity, credential_source:
         Present { value: v } => CredentialVersionResolved { resolved_version: v }
         Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
       }
+    MintAtUseCredentialSource { mint: mint } =>
+      match resolve_secret_manager_credential_version_at_mint(printer: printer, mint: mint) {
+        Present { value: v } => CredentialVersionResolved { resolved_version: v }
+        Absent => CredentialVersionUnresolved { cause: "Printer credential version could not be resolved from the registry" }
+      }
     HostCustodyCredentialSource { run_id: _ } => match read_printer_custody_version(printer: printer) {
       PrinterCustodyVersionPresent { version: v, record: _ } => CredentialVersionResolved { resolved_version: v }
       PrinterCustodyVersionRefused { cause: c } => CredentialVersionUnresolved { cause: c }
@@ -154,6 +161,27 @@ fn resolve_secret_manager_credential_version(printer: PhysicalAssetIdentity, tok
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => none
         SecretCredentialFetchRefused { reason: _ } => none
         SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => none
+      }
+  }
+}
+
+fn resolve_secret_manager_credential_version_at_mint(printer: PhysicalAssetIdentity, mint: FederatedWorkloadCredentialMint) -> NonEmptyStr? {
+  match printer_access_code_locus(printer: printer) {
+    PrinterAccessCodeLocusUnknown { printer: _ } => none
+    PrinterAccessCodeLocusConflict { printer: _, matches: _ } => none
+    PrinterAccessCodeDesiredLocusFound { locus: locus } =>
+      match printer_mint_at_use_token(mint: mint) {
+        Present { value: token } =>
+          match fetch_secret_ref_credential_with_token(secret_ref: secret_ref_pin_version(ref: locus.secret, version: "latest"), access_token: token) {
+            SecretCredentialReady { credential: c, resolved_version: version } => if (c as String) == "" { none } else {
+              match sm_resolved_version_id(identity: version) { SmVersionIdProjected { version: v } => Present { value: v as NonEmptyStr } SmVersionIdNotAVersionResource { supplied: _ } => none }
+            }
+            SecretCredentialAccessUpsertRequired { plan: _ } => none
+            SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => none
+            SecretCredentialFetchRefused { reason: _ } => none
+            SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => none
+          }
+        Absent => none
       }
   }
 }
