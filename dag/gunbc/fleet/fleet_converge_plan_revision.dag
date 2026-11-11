@@ -23,7 +23,6 @@ import gunbc.actions_run_binding {
 }
 import gunbc.running_release_identity { release_revision_text_valid }
 import gunbc.live_deploy.apply_receipt { rlm_plan_artifact_hash_env_name }
-import gunbc.ci.ci_spec { gunbc_fleet_converge_plan_artifact_name, gunbc_fleet_converge_apply_receipt_artifact_name }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.fleet.fleet_converge_receipt {
   FleetConvergePlanReceipt,
@@ -425,3 +424,10 @@ fn admit_dashboard_deploy_dispatch_inputs() -> ProcessExit {
     ExitSuccess
   }
 }
+
+// THE TWO RUN ARTIFACTS THE POINTER ADMISSIONS ABOVE NAME, declared beside them (moved out of
+// gunbc.ci.ci_spec, gunbc.plans.closure_consolidation P1); gunbc.fleet.fleet_converge_workflow uploads
+// and downloads them under these names.
+data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
+data gunbc_fleet_converge_apply_receipt_artifact_name: String = "fleet-converge-apply-receipt"
+data gunbc_fleet_converge_apply_receipt_artifact_dir: String = "/tmp/fleet-converge-apply"

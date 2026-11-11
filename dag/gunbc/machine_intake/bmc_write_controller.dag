@@ -5,9 +5,9 @@ import std.optional { Absent, Present }
 import extdeps.board_authority { BoardAuthorityRef, board_authority_ref_eq }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, bmc_controller_of_endpoint }
-import gunbc.fleet.fleet_intent { srv13_baseboard, srv15_baseboard }
+import gunbc.fleet.fleet_intent { srv15_baseboard }
 import gunbc.machine_intake.mtjade1_access_observation { sol_session_controller, mtjade1_smbios_sol_attribution }
-import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv13, operator_host_srv15 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv15 }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment, assessment_holds }
 
 // ── WHICH CONTROLLERS A BMC ACCOUNT WRITE MAY TARGET, AND BY WHICH DISCHARGE ─────────────────────────
@@ -24,7 +24,8 @@ import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment
 // Constraints from merry-fox-82 (2026-10-28):
 // - mtjade1 is held, for both routes and in dry and wet runs alike, until mtcollins1 serves CI. The hold
 //   is released by a value, not by editing this file: see BmcWriteHoldRelease.
-// - srv13 has a standing write restriction: no write without an approval naming srv13. The per-write
+// - srv13 had a standing write restriction: no write without an approval naming it. srv13 was the board
+//   now named srv15 (operator, 2026-11-10), whose row carries the same restriction: the per-write
 //   approval's subject already names the controller, so the row refuses the standing-grant route for it.
 
 type BmcWriteDischarge
@@ -70,17 +71,9 @@ data mtjade1_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow
   },
 }
 
-// srv13 (bmc-altrad8ud-1l2t-5, gunbc.fleet.fleet_intent srv13_baseboard).
-data srv13_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
-  host: operator_host_srv13,
-  endpoint: bmc_controller_of_endpoint(endpoint: srv13_baseboard.bmc),
-  board: Present { value: srv13_baseboard.catalog.model },
-  admission: WritesAdmitted { discharge: PerWriteApprovalOnly },
-}
-
-// srv15 (box 2, bmc-altrad8ud-1l2t-7, gunbc.fleet.fleet_intent srv15_baseboard): factory state, first target
-// of the approval-app rotation. Only an unauthenticated read has landed, so nothing but the dry world
-// exercises this row until the live read does (merry-fox-82, 2026-10-28); no live write path exists yet.
+// srv15 (box 2, bmc-altrad8ud-1l2t-7, gunbc.fleet.fleet_intent srv15_baseboard): the board srv13's
+// 2026-10-07 first contact read at 192.168.1.247, now at 192.168.1.248. The row names its CURRENT controller
+// only; the 2026-10-07 captures replay against the endpoint they were read at, which no row claims.
 data srv15_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
   host: operator_host_srv15,
   endpoint: bmc_controller_of_endpoint(endpoint: srv15_baseboard.bmc),
@@ -90,7 +83,6 @@ data srv15_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
 
 data bmc_write_controllers: List<BmcWriteControllerRow> = [
   mtjade1_bmc_write_controller,
-  srv13_bmc_write_controller,
   srv15_bmc_write_controller,
 ]
 
