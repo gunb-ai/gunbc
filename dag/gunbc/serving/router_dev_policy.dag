@@ -4,7 +4,7 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
-import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused }
+import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ServingShapeRefusalReason, ShapeThroughputUnread, serving_shape_refusal_message }
 import gunbc.serving.serving_replica_profile { srv1_vllm_replica_shape, srv3_strata_shape, srv4_strata_shape, h11_strata_shape, replica_shape_named, ServingReplicaProfile }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
@@ -1034,7 +1034,7 @@ fn standings_obligations(ss: List<CitedFigureStanding>) -> List<String> {
 
 fn router_dev_shaped_under(shape: ServingCapacityShape, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
   match shape {
-    ServingShapeRefused { deployment: d, reason: r } => RouterDevShapeRefused { reason: concat("capacity shape refused for ", concat(d as String, concat(": ", r as String))) }
+    ServingShapeRefused { deployment: d, reason: r } => RouterDevShapeRefused { reason: concat("capacity shape refused for ", concat(d as String, concat(": ", serving_shape_refusal_message(reason: r)))) }
     ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, []) }
     ServingShapeEstimated { deployment: d, turns: t, held: h, bound: _, cold_reread: _, standings: ss } => match admission {
       AdmitEstimatedCapacity { directive: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, ss) }
@@ -1095,7 +1095,7 @@ fn router_dev_replica_shape(n: RouterDevReplicaNaming, admitted: Nat) -> Serving
     // A named replica whose throughput has never been read -- a host admitted but not yet serving. It carries the
     // very refusal `serving_capacity_shape` raises for ThroughputUnread, so the projection turns it into a named
     // not-in-service row rather than a refusal. `obligation` names whose job it is to produce the reading.
-    AnchorStrataUnread { obligation: _ } => ServingShapeRefused { deployment: n.name as String, reason: "the anchor's aggregate throughput is unread" }
+    AnchorStrataUnread { obligation: _ } => ServingShapeRefused { deployment: n.name as String, reason: ShapeThroughputUnread }
   }
 }
 
@@ -1114,14 +1114,14 @@ fn router_dev_replica_row(n: RouterDevReplicaNaming, admitted: Nat) -> RouterDev
 }
 
 // IS THIS SHAPE REFUSED *BECAUSE THE THROUGHPUT IS UNREAD*? A replica with no throughput reading is a host that
-// has never served -- not a broken host. This is the exact refusal `serving_capacity_shape` raises for
-// ThroughputUnread (serving_capacity_anchor), matched by the reason it carries rather than a fuzzy substring, so
-// the "named but not in service" arm fires for precisely that case and for nothing else: any OTHER shape refusal
-// (mutable model, batch-disabled store, unread build, too-slow swap) is still a hard refusal, because those are
-// faults, not absences of reading (fail_closed).
+// has never served -- not a broken host. It is caught by matching the typed `ShapeThroughputUnread` failure mode
+// (serving_capacity_anchor), so the "named but not in service" arm fires for precisely that case and for nothing
+// else: any OTHER shape refusal (mutable model, batch-disabled store, unread build, too-slow swap) is still a hard
+// refusal, because those are faults, not absences of reading (fail_closed). Matching the constructor, not a reason
+// string, is what keeps the router and the anchor from drifting apart (single_authority).
 fn router_dev_shape_is_throughput_unread(shape: ServingCapacityShape) -> Bool {
   match shape {
-    ServingShapeRefused { deployment: _, reason: r } => (r as String) == "the anchor's aggregate throughput is unread"
+    ServingShapeRefused { deployment: _, reason: ShapeThroughputUnread } => true
     _ => false
   }
 }

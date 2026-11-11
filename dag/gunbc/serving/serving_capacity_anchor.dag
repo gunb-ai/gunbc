@@ -251,10 +251,47 @@ type ServingHeldBound
 type ServingCapacityShape
   = ServingShapeDerived { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond }
   | ServingShapeEstimated { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond, standings: List<CitedFigureStanding> }
-  | ServingShapeRefused { deployment: NonEmptyStr, reason: NonEmptyStr }
+  | ServingShapeRefused { deployment: NonEmptyStr, reason: ServingShapeRefusalReason }
 
-fn shape_refused(a: ServingCapacityAnchor, reason: String) -> ServingCapacityShape {
-  ServingShapeRefused { deployment: a.deployment, reason: reason as NonEmptyStr }
+// WHY a shape was refused, as a FAILURE MODE rather than prose (fail_closed: "a wrong answer is a loud, typed,
+// located error, never a plausible fabrication"). A prose `reason` string let a reader RE-DECIDE a case by
+// comparing the string -- a second home for the fact (single_authority): the router once matched the exact text
+// "the anchor's aggregate throughput is unread" that this file minted, so the two could drift apart and the
+// router would silently stop naming unread replicas not-in-service. The unread-throughput case is its own
+// constructor, so the router names a never-read replica by matching THIS constructor; every other case is a
+// fault, carried with the detail that named it. The prose lives only in `serving_shape_refusal_message`, which
+// renders a refusal for a diagnostic -- it is not a second source of truth.
+type ServingShapeRefusalReason
+  = ShapeThroughputUnread
+  | ShapeAnchorContextShorterThanPolicy
+  | ShapeLeastStreamRateZero
+  | ShapeActiveShareOutsidePermille
+  | ShapeColdPrefillUnread
+  | ShapeColdPrefillZero
+  | ShapeLeastRateBelowPolicyAtConcurrency
+  | ShapeNoResumableConversation
+  | ShapeGrantRefused { detail: NonEmptyStr }
+  | ShapeOtherFault { detail: NonEmptyStr }
+
+// Render a refusal for a diagnostic. Total over the failure modes; each names its fault. This is the ONLY home
+// for the wording; callers decide a case by matching the constructors above, never this string.
+fn serving_shape_refusal_message(reason: ServingShapeRefusalReason) -> String {
+  match reason {
+    ShapeThroughputUnread => "the anchor's aggregate throughput is unread"
+    ShapeAnchorContextShorterThanPolicy => "the anchor was read at a shorter context than the policy's anchor context"
+    ShapeLeastStreamRateZero => "the policy's least stream rate is zero"
+    ShapeActiveShareOutsidePermille => "the policy's active share is outside 1..1000 permille"
+    ShapeColdPrefillUnread => "the anchor's cold prefill rate is unread"
+    ShapeColdPrefillZero => "the anchor's cold prefill rate is zero"
+    ShapeLeastRateBelowPolicyAtConcurrency => "at its measured concurrency the anchor gives each turn less than the policy's least stream rate, and no reading at a lower concurrency is supplied"
+    ShapeNoResumableConversation => "the deployment can keep no conversation of the anchor context resumable within the swap wait"
+    ShapeGrantRefused { detail: d } => concat("the grant refused: ", d as String)
+    ShapeOtherFault { detail: d } => d as String
+  }
+}
+
+fn shape_refused(a: ServingCapacityAnchor, reason: ServingShapeRefusalReason) -> ServingCapacityShape {
+  ServingShapeRefused { deployment: a.deployment, reason: reason }
 }
 
 // The figures serving_held settles on, and the standings of the inputs that decided them.
@@ -279,7 +316,7 @@ fn shape_of(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityS
 // The grant tightens what throughput and the warm store derived and never enlarges it.
 fn within_grant(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityShape {
   match a.grant {
-    GrantRefused { reason: r } => ServingShapeRefused { deployment: a.deployment, reason: r }
+    GrantRefused { reason: r } => ServingShapeRefused { deployment: a.deployment, reason: ShapeGrantRefused { detail: r } }
     GrantUnmodeled { obligation: o } => turns_within_held(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: o }]) })
     GrantAdmits { conversations: n } =>
       if n >= f.held { turns_within_held(a: a, f: f) }
@@ -294,7 +331,7 @@ fn within_grant(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapac
 // point. Held of zero resumes nothing and refuses.
 fn turns_within_held(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityShape {
   if f.held == 0 {
-    ServingShapeRefused { deployment: a.deployment, reason: "the deployment can keep no conversation of the anchor context resumable within the swap wait" as NonEmptyStr }
+    ServingShapeRefused { deployment: a.deployment, reason: ShapeNoResumableConversation }
   } else if f.held >= f.turns {
     shape_of(a: a, f: f)
   } else {
@@ -400,22 +437,22 @@ fn serving_capacity_shape(a: ServingCapacityAnchor, p: ServingConversationPolicy
   let stream = tokens_per_second_count(r: p.min_stream_rate)
   let share = permille_count(p: p.active_share)
   match a.throughput {
-    ThroughputUnread => shape_refused(a: a, reason: "the anchor's aggregate throughput is unread")
+    ThroughputUnread => shape_refused(a: a, reason: ShapeThroughputUnread)
     ThroughputOperatorReading { tokens_per_second: agg, at_concurrency: c, standing: st } =>
       if token_count_value(t: a.context) < token_count_value(t: p.anchor_context) {
-        shape_refused(a: a, reason: "the anchor was read at a shorter context than the policy's anchor context")
+        shape_refused(a: a, reason: ShapeAnchorContextShorterThanPolicy)
       } else if stream == 0 {
-        shape_refused(a: a, reason: "the policy's least stream rate is zero")
+        shape_refused(a: a, reason: ShapeLeastStreamRateZero)
       } else if share == 0 || share > 1000 {
-        shape_refused(a: a, reason: "the policy's active share is outside 1..1000 permille")
+        shape_refused(a: a, reason: ShapeActiveShareOutsidePermille)
       } else {
         match a.cold_prefill {
-          Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is unread")
+          Absent => shape_refused(a: a, reason: ShapeColdPrefillUnread)
           Present { value: rate } => match token_count_duration_at(tokens: p.anchor_context, rate: rate) {
-            Absent => shape_refused(a: a, reason: "the anchor's cold prefill rate is zero")
+            Absent => shape_refused(a: a, reason: ShapeColdPrefillZero)
             Present { value: cold } =>
               if c == 0 || tokens_per_second_count(r: agg) / c < stream {
-                shape_refused(a: a, reason: "at its measured concurrency the anchor gives each turn less than the policy's least stream rate, and no reading at a lower concurrency is supplied")
+                shape_refused(a: a, reason: ShapeLeastRateBelowPolicyAtConcurrency)
               } else {
                 let f = serving_held(turns: c, by_share: c * 1000 / share, cold: cold, a: a, p: p)
                 within_grant(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat([st, a.cold_prefill_standing], f.used) })

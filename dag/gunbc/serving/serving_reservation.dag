@@ -37,12 +37,13 @@ module gunbc.serving.serving_reservation
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { ByteSize, byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, Watt, watt, watt_count }
+import std.measure { ByteSize, byte_size_count, byte_size, Watt, watt }
 import std.algebra { FreeSemigroup, list_append }
 import std.content_hash { Sha1DigestHex, Sha256DigestHex }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import extdeps.network.ipv4 { Ipv4Address }
+import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
@@ -145,6 +146,19 @@ fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> Optional<ByteSize> {
   match m {
     MemoryMeasured { bytes: b, provenance: _ } => Present { value: b }
     MemoryUnmeasured { reason: _ } => Absent
+  }
+}
+
+// THE RESERVATION DERIVED FROM THE CEILING AUTHORITY (review 93375): srv3/srv4 charge the cgroup HARD ceiling
+// that gunbc.serving.serving_host_memory reads ONCE as ServingEngineMemory.memory_max -- serving_reservation
+// does NOT restate the 112/64 GiB figures (single_authority / minimize_redundancy: the ceiling has one home).
+// An unread ceiling is MemoryUnmeasured, so host_memory_reserved returns Absent and the width derivation fails
+// closed on that host rather than charging a fabricated number (fail_closed).
+fn reservation_from_engine_ceiling(e: ServingEngineMemory) -> ReplicaMemoryReservation {
+  match e.memory_max {
+    ServingMemoryRead { bytes: b, provenance: p } => MemoryMeasured { bytes: b, provenance: p }
+    ServingMemoryAssumed { bytes: b, reason: r } => MemoryMeasured { bytes: b, provenance: r }
+    ServingMemoryUnread { reason: r } => MemoryUnmeasured { reason: r }
   }
 }
 
@@ -285,7 +299,12 @@ data serving_host_reservations: List<ServingHostReservation> = [
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: MemoryMeasured { bytes: gibibyte_to_byte_size(gibibyte(count: 112)), provenance: "strata-pool.service cgroup MemoryMax = 112 GiB (drop-in /etc/systemd/system/strata-pool.service.d/60-expert-l1-cap.conf, MemoryHigh=96G / MemoryMax=112G, installed 2026-11-09; the cgroup caps are read into gunbc.serving.serving_host_memory srv3_strata_engine_memory). The HARD ceiling MemoryMax is charged, not MemoryHigh: it is what the cgroup enforces, so it is the fail-closed figure the runner must never book. srv3's fixed_overhead (gunbc_ci_srv3_memavailable_high_water, 2026-07-16) predates this engine (2026-11-09) and so does NOT already subtract it -- this is the engine's only charge." },
+        // srv3 charges its strata engine's cgroup HARD ceiling (MemoryMax), read ONCE into
+        // serving_host_memory.srv3_strata_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
+        // The hard ceiling (not MemoryHigh) is what the cgroup enforces, so it is the fail-closed figure the
+        // runner must never book. srv3's fixed_overhead (gunbc_ci_srv3_memavailable_high_water, 2026-07-16)
+        // predates this engine (2026-11-09) and does NOT already subtract it, so this is the engine's only charge.
+        memory: reservation_from_engine_ceiling(srv3_strata_engine_memory),
         gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
@@ -299,7 +318,12 @@ data serving_host_reservations: List<ServingHostReservation> = [
     replicas: [
       ReplicaReservation {
         cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
-        memory: MemoryMeasured { bytes: gibibyte_to_byte_size(gibibyte(count: 64)), provenance: "gunbc-srv4-daily-engine.service cgroup MemoryMax = 64 GiB (drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf, MemoryHigh=56G / MemoryMax=64G, raised 2026-11-09; the cgroup caps are read into gunbc.serving.serving_host_memory srv4_serving_engine_memory). The HARD ceiling MemoryMax is charged, not MemoryHigh: it is what the cgroup enforces, so it is the fail-closed figure the runner must never book. srv4's fixed_overhead (the 2026-07-16 gunbc_ci_managed_host_fixed_overhead bound) predates this engine (2026-11-09) and does NOT already subtract it." },
+        // srv4 charges its strata engine's cgroup HARD ceiling (MemoryMax), read ONCE into
+        // serving_host_memory.srv4_serving_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
+        // The hard ceiling (not MemoryHigh) is what the cgroup enforces. srv4's fixed_overhead (the 2026-07-16
+        // gunbc_ci_managed_host_fixed_overhead bound) predates this engine (2026-11-09) and does NOT already
+        // subtract it, so this is the engine's only charge.
+        memory: reservation_from_engine_ceiling(srv4_serving_engine_memory),
         gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
