@@ -254,6 +254,10 @@ for U in "${READERS[@]}" "$TIMER"; do
   [ "$ST" = inactive ] || { echo "STOP REFUSED: $U reports [$ST], not inactive — no migration write may follow"; exit 1; }
 done
 LIVE=$(ps -ef | grep -c "[/]opt/gunbc/bin/gunbc" || true)
+# This check is written to fail in the annoying direction, which is the safe one: the pattern is broad enough
+# that an unrelated gunbc process — a printer, a serve, someone's session — makes LIVE non-zero and the stop
+# refuses. A false refusal costs an operator a look at `ps`; a false clearance costs a migration racing a live
+# reader. Do not "fix" this by narrowing the pattern to the units' own names.
 [ "${LIVE:-0}" -eq 0 ] || { echo "STOP REFUSED: $LIVE gunbc process(es) still running"; exit 1; }
 echo "STOP ADMITTED: ${#READERS[@]} units and the timer report inactive, no gunbc process remains"
 ```
@@ -317,6 +321,20 @@ set -euo pipefail
 cd $TREE
 : "${D:?MIGRATION REFUSED: EXPORT_DIR is not set — run step 1 and use the path it echoed}"
 : "${OPERATOR:?MIGRATION REFUSED: the author is part of the fact; an empty author is a wrong fact}"
+# THE SEED IS RE-VERIFIED BY DIGEST, NOT BY COUNT, BEFORE ANYTHING IS APPENDED. Step 1 hashed the seed it
+# exported into $D/SHA256SUMS. A line count cannot see a rewrite — an approver named differently, a receipt tail
+# edited, one line swapped for another of the same length — and step 5 builds its expected manifest from the file
+# as it is HERE. So the digest recorded at export is re-checked against the file on disk, and a mismatch stops
+# the migration BEFORE the first append rather than after a whole history has been written to the carrier.
+[ -s "$D/SHA256SUMS" ] || { echo "MIGRATION REFUSED: step 1 recorded no SHA256SUMS to re-verify the seed against"; exit 1; }
+RECORDED_SEED_SHA=$(awk -v f="$D/seed.jsonl" '$2 == f { print $1 }' "$D/SHA256SUMS")
+[ -n "$RECORDED_SEED_SHA" ] \
+  || { echo "MIGRATION REFUSED: $D/SHA256SUMS carries no digest for $D/seed.jsonl — the export was never hashed"; exit 1; }
+[ "${#RECORDED_SEED_SHA}" -eq 64 ] \
+  || { echo "MIGRATION REFUSED: the recorded seed digest is ${#RECORDED_SEED_SHA} characters, expected a 64-character sha256"; exit 1; }
+[ "$(sha256sum "$D/seed.jsonl" | cut -d" " -f1)" = "$RECORDED_SEED_SHA" ] \
+  || { echo "MIGRATION REFUSED: $D/seed.jsonl no longer matches the digest step 1 recorded — same count, different content is exactly what a count cannot see"; exit 1; }
+echo "SEED RE-VERIFIED against the digest step 1 recorded, before any append"
 
 # INPUT PREPARATION IS ITS OWN CHECKED STEP, NOT A PROCESS SUBSTITUTION. `< <( … )` hides every failure from
 # `set -e`: a dead `sudo`, a jq error, or a missing seed line would simply produce fewer lines, the loop would
@@ -382,6 +400,18 @@ while IFS= read -r LINE; do
     || { echo "MIGRATION REFUSED: revocation $J of $NREV did not append — no further appends, and step 4 must not run"; exit 1; }
   echo "appended revocation $J/$NREV"
 done < "$D/migrate.revocation.lines"
+# THE COMPLETION RECEIPT IS WRITTEN ONLY WHEN EVERY APPEND WAS ADMITTED. The two line files are INPUTS, prepared
+# before the first append, so they survive an aborted migration sitting there full — their being non-empty is not
+# evidence that the carrier ever took them. This file is the only thing that records that the whole history
+# arrived: the counts, the seed digest the appends were made against, and a digest of the inputs themselves.
+# Nothing below it runs unless the loops above completed, so the file cannot exist for a partial migration.
+{
+  printf 'acceptances=%s\n' "$NFAB"
+  printf 'revocations=%s\n' "$NREV"
+  printf 'seed_sha256=%s\n' "$RECORDED_SEED_SHA"
+  printf 'inputs_sha256=%s\n' "$(cat "$D/migrate.acceptance.lines" "$D/migrate.revocation.lines" | sha256sum | cut -d" " -f1)"
+} > "$D/migrate.completion"
+echo "MIGRATION COMPLETE: $NFAB acceptance receipts (a seed of $NSEED lines + $NFB from the fabric tail) and $NREV revocation receipt admitted; completion recorded in $D/migrate.completion"
 ```
 
 Each append prints its own refusal, verbatim and located, if the line is not spelled exactly as the
@@ -392,6 +422,12 @@ What "an append succeeded" means: the CLIs return a `ProcessExit` (`ExitSuccess`
 reason: … }` whose reason the runtime prints, e.g. `append refused at <step>: <reason>`,
 `roadmap_event_cli.dag:256`). Success carries **no event id** — that is why step 5's verifier output, not the
 append output, is the per-line receipt.
+
+And what "step 3 finished" means, which is a different claim: `MIGRATION COMPLETE` plus
+`$D/migrate.completion`. It is written after the last admitted append and cannot exist for a partial migration,
+which is why step 4 requires it. The line files cannot stand in for it — they are written BEFORE the first
+append, precisely so that a refusal can be diagnosed against the input that was refused, and they therefore
+survive an aborted migration full.
 
 Order is not cosmetic: the seed holds an acceptance of `entry-graph-union-construction` followed by a
 revocation of that same receipt, and a revocation whose receipt is not yet live is REFUSED by
@@ -419,12 +455,28 @@ set -euo pipefail
 cd $TREE
 : "${D:?RETIREMENT REFUSED: EXPORT_DIR is not set — the step-3 admission files are the precondition for this block}"
 : "${OPERATOR:?RETIREMENT REFUSED: the author is part of the fact; an empty author is a wrong fact}"
-# step 3's admission is a PRECONDITION, checked here rather than trusted: its line files are what prove every
-# acceptance reached the carrier before the retirement became the newest fact on any node.
+# step 3's admission is a PRECONDITION, checked here rather than trusted. The LINE FILES are only half of it and
+# are the weaker half: they are prepared before the first append, so a migration that died at its third receipt
+# leaves both of them sitting here full. What proves the history arrived is step 3's COMPLETION RECEIPT — written
+# after the last admitted append, and required here in full: present, exactly the four fields step 3 writes,
+# counting the same number of receipts the inputs hold, and recorded against the seed that is actually on disk.
+# A receipt copied from another run, truncated, or written against a seed since changed cannot authorize a
+# retirement.
 [ -s "$D/migrate.acceptance.lines" ] \
   || { echo "RETIREMENT REFUSED: $D/migrate.acceptance.lines is missing or empty — step 3 did not admit its input"; exit 1; }
 [ -s "$D/migrate.revocation.lines" ] \
   || { echo "RETIREMENT REFUSED: $D/migrate.revocation.lines is missing or empty — step 3 did not admit its input"; exit 1; }
+[ -s "$D/migrate.completion" ] \
+  || { echo "RETIREMENT REFUSED: step 3 never wrote $D/migrate.completion — its appends did not all reach the carrier, so the acceptance history is incomplete"; exit 1; }
+[ "$(wc -l < "$D/migrate.completion")" -eq 4 ] \
+  || { echo "RETIREMENT REFUSED: $D/migrate.completion holds $(wc -l < "$D/migrate.completion") fields, expected 4 — that is not the receipt step 3 writes"; exit 1; }
+grep -q "^acceptances=$(wc -l < "$D/migrate.acceptance.lines")$" "$D/migrate.completion" \
+  || { echo "RETIREMENT REFUSED: the completion receipt counts a different number of acceptance receipts than the inputs hold"; exit 1; }
+grep -q "^revocations=$(wc -l < "$D/migrate.revocation.lines")$" "$D/migrate.completion" \
+  || { echo "RETIREMENT REFUSED: the completion receipt counts a different number of revocation receipts than the inputs hold"; exit 1; }
+grep -q "^seed_sha256=$(sha256sum "$D/seed.jsonl" | cut -d" " -f1)$" "$D/migrate.completion" \
+  || { echo "RETIREMENT REFUSED: the completion receipt was written against a different seed than the one on disk"; exit 1; }
+echo "COMPLETION RECEIPT ADMITTED: $(tr "\n" " " < "$D/migrate.completion")"
 
 # THE RETIREMENT TEXT AND AUTHOR TRAVEL AS ENVIRONMENT DATA, never spliced into the command string. The first
 # refusal aborts the loop: a half-retired floor is not a retired floor, and step 5 must not be told otherwise.
@@ -579,9 +631,10 @@ admitted doors are named, rather than a third invented:
 # ONE AUTHORIZED INVOCATION, BOUND TO THE EXACT REVISION, BEHIND AN EXECUTABLE GATE — and each stage's run is
 # POSITIVELY IDENTIFIED before its receipts are consumed. (1) The gate: five predicates, each refusing before
 # GitHub is contacted, and the verifier asked AGAIN on the spot, so a migration verified at 03:00 whose branch
-# moved at 03:05 cannot be activated on the 03:00 receipt. (2) The reference: gh workflow run takes a REF, and
-# a bare commit SHA is not what the CLI documents — so the transaction is dispatched against a TAG minted at
-# that revision, and the tag's remote resolution is checked against $SHA before anything is dispatched.
+# moved at 03:05 cannot be activated on the 03:00 receipt. # (2) The reference: gh workflow run takes a REF, and a bare commit SHA is not what the CLI documents — so each
+# stage is dispatched against its OWN TAG, minted by THIS invocation at this revision with a per-invocation
+# nonce, pushed, and verified to resolve to $SHA before anything is dispatched. The ref is what the poll then
+# correlates a run TO: see the minting block inside dispatch_stage.
 # (3) The runs: three sequential dispatches (plan -> apply -> dashboard_deploy); each waits for a run to
 # APPEAR that was not there before, then asserts that run's own declared mode and head_sha through the
 # Actions API, then watches it to a successful conclusion. Nothing consumes a receipt from a run that was not
@@ -599,7 +652,17 @@ RUNE "EXPECTED_MANIFEST=$MANIFEST" "EXPECTED_ROSTER=$ROSTER" >> "$D/read-back.dr
 # a typed OperatorLocalDeployDissolved — "the operator-local converge deploy route (gunbc converge --mode
 # deploy) is retired; the CI dashboard_deploy transaction is the ONE deploy path … Nothing was mutated."
 REPO=gunb-ai/gunbc
-TAG="t6-cutover-$SHA"
+# THE DISPATCH REFERENCE IS PER INVOCATION, NOT PER REVISION. A tag named after the revision (t6-cutover-$SHA)
+# identifies WHERE a run is, not WHO dispatched it: two invocations at one revision produce the same name, so
+# the name cannot carry authorship. This nonce — 64 bits from the kernel, minted once, before any stage — makes
+# the three stage refs names nobody else can produce, and each stage's adopted run must have been dispatched
+# from its own ref. The refs are kept as the audit trail (git tag -l 't6-cutover-*' lists them); the runs' own
+# head_branch is what GitHub keeps as the identity.
+T6_NONCE=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')
+: "${T6_NONCE:?NO DEPLOY: no per-invocation dispatch reference could be minted; refusing to dispatch runs that could not be attributed}"
+[ "${#T6_NONCE}" -eq 16 ] \
+  || { echo "NO DEPLOY: the per-invocation dispatch reference is ${#T6_NONCE} hex chars, expected 16 — entropy that is not there is not a nonce"; exit 1; }
+T6_REF_BASE=t6-cutover-$SHA-$T6_NONCE
 # The exclusive-dispatch fence. A FIXED path, not $TMPDIR: two operator shells have to contend on the same file
 # for the fence to be a fence. Held across check → dispatch → watch by dispatch_stage, released on success.
 STAGE_LOCK=/tmp/gunbc-t6-cutover-dispatch.lock
@@ -619,16 +682,45 @@ echo "PINNED REF tag=$TAG resolves=$RESOLVED"
 # workflow_dispatch inputs — there is no free-text `reason` input, so identity comes from the API, not a label.
 dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are extra -f inputs
   local want="$1"; shift
-  local raw live before run tries got_mode got_sha new nnew
+  local raw live before run tries got_mode got_sha got_ref new nnew ref resolved
   # AN EXCLUSIVE-DISPATCH BOUNDARY THAT IS ONE. The in-flight check and the dispatch are two GitHub calls, so a
   # second operator shell on this host can slip between them and both pass the check. The fence below is held
   # across the whole of check → dispatch → watch, so the second shell refuses AT THE FENCE instead of racing.
   # `flock -n` REFUSES rather than queueing — queueing would dispatch the instant the first concluded, which is
-  # the second run being prevented. A dispatch from ANOTHER host cannot take this fence; it is answered by the
-  # poll's uniqueness refusal below, where two new runs is a refusal and never a pick-one.
+  # the second run being prevented. A dispatch from ANOTHER host cannot take this fence — that case is answered
+  # by the ref minted below (a run is adopted only if GitHub says it ran from the ref THIS invocation created),
+  # and secondarily by the poll's uniqueness refusal, where two new runs is a refusal and never a pick-one.
   : "${STAGE_LOCK:?NO DEPLOY: STAGE_LOCK is unset; the exclusive-dispatch fence would have no path}"
+  # The fence is held on a FILE DESCRIPTOR, not by a lock file whose presence means "busy": `exec 9>` opens the
+  # descriptor, `flock -n 9` claims it, and the kernel drops the claim if this shell dies. A dispatch that
+  # crashes therefore leaves NO stale lock behind for the next operator to find and delete — there is nothing
+  # here to delete, which is why there is no cleanup path to get wrong.
   exec 9>"$STAGE_LOCK"
   flock -n 9 || { echo "NO DEPLOY: another dispatch for this cutover holds $STAGE_LOCK on this host; refusing to dispatch a second run"; exit 1; }
+  # THE IDENTITY IS CREATED HERE, BEFORE ANYTHING IS DISPATCHED, AND EVERY STEP OF ITS CREATION IS CHECKED.
+  # Why a ref and not just "the one new run at this SHA in this mode": another host can dispatch the same
+  # workflow at the same SHA and mode between this invocation's snapshot and its poll, and that run then agrees
+  # on everything the poll checks — mode, head_sha, event — because it genuinely is that revision in that mode.
+  # `flock` cannot answer it (it is a file on this host), and "only one new run appeared" cannot answer it (the
+  # other host's run can be the only one that has appeared yet). Authorship therefore comes from a name only
+  # this invocation can produce: it creates refs/tags/$ref itself, and adopts a run only if GitHub says the run
+  # was dispatched from that ref. An existing ref of the same name is a REFUSAL, never a reuse.
+  : "${T6_REF_BASE:?NO DEPLOY: the per-invocation dispatch reference was never minted; refusing to dispatch a run that could not be attributed}"
+  [ "${T6_REF_BASE#t6-cutover-$SHA-}" != "$T6_REF_BASE" ] \
+    || { echo "NO DEPLOY: the dispatch reference [$T6_REF_BASE] is not derived from this revision ($SHA); a ref that does not name the revision it claims cannot attribute a run"; exit 1; }
+  ref="$T6_REF_BASE-$want"
+  if [ -n "$(git -C /opt/gunbc/gunbc ls-remote origin "refs/tags/$ref")" ]; then
+    echo "NO DEPLOY: refs/tags/$ref already exists; this invocation refuses to share a dispatch identity with anyone"; exit 1; fi
+  git -C /opt/gunbc/gunbc rev-parse --verify "${SHA}^{commit}" >/dev/null \
+    || { echo "NO DEPLOY: $SHA is not a commit in this checkout; nothing is dispatched"; exit 1; }
+  git -C /opt/gunbc/gunbc tag "$ref" "$SHA" \
+    || { echo "NO DEPLOY: the dispatch ref $ref could not be created locally; nothing was dispatched, so no run is adopted"; exit 1; }
+  git -C /opt/gunbc/gunbc push origin "refs/tags/$ref" \
+    || { echo "NO DEPLOY: the dispatch ref $ref could not be pushed; nothing was dispatched, so no run is adopted"; exit 1; }
+  resolved=$(git -C /opt/gunbc/gunbc ls-remote origin "refs/tags/$ref" | cut -f1)
+  [ "$resolved" = "$SHA" ] \
+    || { echo "NO DEPLOY: refs/tags/$ref resolves to ${resolved:-nothing}, not $SHA — a run dispatched on it could not be attributed to this revision"; exit 1; }
+  echo "PINNED DISPATCH REF stage=$want ref=$ref resolves=$resolved"
   # THE SNAPSHOT IS FAIL-CLOSED, AND IT IS NOT A PIPELINE. `before=$(gh … | sort -u | tr …)` reports the status of
   # TR, which is zero when the GitHub call failed: an empty "before" then makes EVERY pre-existing run at this
   # revision look new, and the poll below adopts somebody else's run — with mode and head_sha both agreeing,
@@ -657,16 +749,20 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
   # THE DISPATCH ITSELF IS CHECKED. A gh that fails here dispatched NOTHING; polling on would find somebody
   # else's run at this revision and mode — head_sha and mode both agreeing, because it really is that revision
   # and that mode — and record it as this stage's run.
-  gh workflow run fleet-converge.yml --repo "$REPO" --ref "$TAG" -f host=srv1 -f mode="$want" "$@" \
+  gh workflow run fleet-converge.yml --repo "$REPO" --ref "$ref" -f host=srv1 -f mode="$want" "$@" \
     || { echo "NO DEPLOY: gh workflow run failed for mode=$want; nothing was dispatched, so no run is adopted"; exit 1; }
   run=''; tries=0
   while true; do
     tries=$((tries + 1))
     if [ "$tries" -gt 90 ]; then echo "NO DEPLOY: no run appeared for mode=$want within 15 minutes"; exit 1; fi
     sleep 10
+    # THE REF IS PART OF THE QUERY, not just a check afterwards: a run dispatched from another ref is not a
+    # candidate at all, so a staggered foreign dispatch at the same SHA and mode never enters the set the
+    # uniqueness rule counts. The identity check below then re-reads it from the API, so a stub or an API that
+    # ignored the query's filter cannot hand this invocation somebody else's run.
     if ! new=$(gh run list --repo "$REPO" --workflow fleet-converge.yml --limit 50 \
-                 --json databaseId,headSha,event \
-                 -q "[.[] | select(.headSha==\"$SHA\" and .event==\"workflow_dispatch\") | .databaseId] - [$(printf '%s,' $before | sed 's/,$//')] | .[]"); then
+                 --json databaseId,headSha,event,headBranch \
+                 -q "[.[] | select(.headSha==\"$SHA\" and .event==\"workflow_dispatch\" and .headBranch==\"$ref\") | .databaseId] - [$(printf '%s,' $before | sed 's/,$//')] | .[]"); then
       echo "NO DEPLOY: the poll for mode=$want failed"; exit 1; fi
     nnew=$(printf '%s\n' "$new" | grep -c . || true)
     # UNIQUENESS, NOT OPTIMISM. One new run is a correlation; two is a race, and taking the first of them proves
@@ -680,13 +776,18 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
   done
   got_mode=$(gh api "repos/$REPO/actions/runs/$run" -q '.inputs.mode // ""')
   got_sha=$(gh api "repos/$REPO/actions/runs/$run" -q '.head_sha')
+  got_ref=$(gh api "repos/$REPO/actions/runs/$run" -q '.head_branch // ""')
   [ "$got_mode" = "$want" ] || { echo "NO DEPLOY: run $run declares mode=$got_mode, expected $want"; exit 1; }
   [ "$got_sha" = "$SHA" ]   || { echo "NO DEPLOY: run $run is at $got_sha, expected $SHA"; exit 1; }
+  # AUTHORSHIP, NOT COINCIDENCE. Mode and revision say a run is at the right place in the right mode; only the
+  # ref says it was dispatched by THIS invocation. A run that arrived from any other ref — another host, another
+  # operator shell, a re-run of somebody else's dispatch — is refused here even if everything else agrees.
+  [ "$got_ref" = "$ref" ]   || { echo "NO DEPLOY: run $run ran from ref [$got_ref], not the ref this invocation created ($ref); it is not this dispatch's run"; exit 1; }
   gh run watch "$run" --repo "$REPO" --exit-status \
     || { echo "NO DEPLOY: the $want run ($run) did not complete successfully"; exit 1; }
   STAGE_RUN="$run"
   exec 9>&-   # the transaction is closed and positively identified; the next stage may take the fence
-  echo "STAGE $want run=$STAGE_RUN mode=$got_mode revision=$got_sha"
+  echo "STAGE $want run=$STAGE_RUN mode=$got_mode revision=$got_sha ref=$ref"
 }
 
 dispatch_stage plan
@@ -702,7 +803,7 @@ APPLY_RUN="$STAGE_RUN"
 dispatch_stage dashboard_deploy -f plan_artifact_hash="$PLAN_HASH" -f plan_workflow_run_id="$PLAN_RUN" \
                                  -f apply_workflow_run_id="$APPLY_RUN" -f expected_revision="$SHA"
 DEPLOY_RUN="$STAGE_RUN"
-echo "DEPLOYED tag=$TAG plan=$PLAN_RUN apply=$APPLY_RUN deploy=$DEPLOY_RUN plan_artifact_hash=$PLAN_HASH"
+echo "DEPLOYED ref_base=$T6_REF_BASE plan=$PLAN_RUN apply=$APPLY_RUN deploy=$DEPLOY_RUN plan_artifact_hash=$PLAN_HASH"
 ```
 
 **Which receipt admits what, precisely** — the two admissions are different and neither is a formality. The
@@ -1171,12 +1272,33 @@ loaded from the runbook: RUNE
     MIGRATION REFUSED: the seed must carry exactly one revocation, found 2; nothing is appended
   [step 4 with step 3's admission file missing] rc=1
     RETIREMENT REFUSED: $TMP/migrate-export/migrate.acceptance.lines is missing or empty — step 3 did not admit its input
+  [the seed was rewritten after step 1 hashed it, with its line count unchanged] rc=1 appends=0
+    MIGRATION REFUSED: $TMP/migrate-export/seed.jsonl no longer matches the digest step 1 recorded — same count, different content is exactly what a count cannot see
+  [step 4 attempted after the third append was refused] rc=1 retires=0
+    MIGRATION REFUSED: acceptance 3 of 17 did not append — no further appends, and step 4 must not run
+    RETIREMENT REFUSED: step 3 never wrote $TMP/migrate-export/migrate.completion — its appends did not all reach the carrier, so the acceptance history is incomplete
+  [the migration completes] rc=0
+    SEED RE-VERIFIED against the digest step 1 recorded, before any append
+    INPUT ADMITTED: 17 acceptance lines (17 from the seed, 0 from the fabric tail) and 1 revocation
+    MIGRATION COMPLETE: 17 acceptance receipts (a seed of 18 lines + 0 from the fabric tail) and 1 revocation receipt admitted
+  [step 4 after a completed migration] rc=0 retires=2
+    COMPLETION RECEIPT ADMITTED: acceptances=17 revocations=1 seed_sha256=<64 hex> inputs_sha256=<64 hex>
+  [step 4 with a truncated completion receipt] rc=1 retires=0
+    RETIREMENT REFUSED: $TMP/migrate-export/migrate.completion holds 3 fields, expected 4 — that is not the receipt step 3 writes
+  [step 4 with a receipt counting fewer receipts than the inputs hold] rc=1 retires=0
+    RETIREMENT REFUSED: the completion receipt counts a different number of acceptance receipts than the inputs hold
+  [step 4 with a receipt written against a seed that has since changed] rc=1 retires=0
+    RETIREMENT REFUSED: the completion receipt was written against a different seed than the one on disk
+
+<!-- The witnesses print their OWN counts (how many model rows, how many cases this file declares, the hand-shell
+line counts) and refuse on a mismatch. Those numbers are deliberately not copied here: a book of counts copied
+from a tree is a change detector, and it goes stale exactly when the thing it describes changes. -->
 
 ================ PART I: the hand-shell LOC rows agree with the carriers they describe ================
   [the three LOC rows agree with their carriers] OK
 
 ================ PART H: the cases this file declares are the model's rows, joined both ways ================
-model rows for this carrier: 33   declared here: 33
+both counts, and the refusal when they disagree in either direction, are printed by the witness as it runs
 
 ALL ASSERTIONS HOLD
 ```
@@ -1184,7 +1306,12 @@ ALL ASSERTIONS HOLD
 
 These are failure injection, not narration. G2 has the modeled CLI refuse the THIRD receipt and requires that
 nothing after it was appended — a loop that kept going would migrate a history with a hole in it and still print a
-completion line. G3 removes a seed line after step 1 counted it: the expectation is grounded in what the export
+completion line, and that it wrote NO completion receipt, because that file is what tells step 4 the history
+arrived. G8 rewrites the seed after step 1 hashed it, keeping the line count, which is the one thing a count
+cannot see. G9 runs step 4 after that aborted migration and requires that nothing is retired; G9b runs it after a
+completed one and requires that BOTH retirements go through. G10, G11 and G12 hand step 4 a receipt that is
+truncated, a receipt whose counts disagree with its inputs, and a receipt written against a seed that has since
+changed — each must refuse. G3 removes a seed line after step 1 counted it: the expectation is grounded in what the export
 measured, not in the shortened file, so a cut-short input cannot certify itself. G4 and G5 are the fabric object
 whose payload lost its line, and a second revocation hidden at the measured line count. G6 and G7 run step 4
 against step 3's missing admission files: a half-migrated history cannot be retired over.

@@ -547,7 +547,99 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
     must: "refuse"
     refusal_text: "the exclusive-dispatch fence would have no path"
   }
+,
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_at_the_same_revision_from_another_ref"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where the only run that appeared at this revision and mode was dispatched by someone else, from another ref (the staggered arrival the host-local fence cannot block)"
+    must: "refuse"
+    refusal_text: "no run appeared for mode=plan"
+  }
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_whose_record_names_another_ref"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where the poll hands over a run anyway (STUB_IGNORE_REF_FILTER), so only the identity read back from the API can catch that it was dispatched from a ref this invocation never created"
+    must: "refuse"
+    refusal_text: "not the ref this invocation created"
+  }
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_dispatch_ref_that_already_exists"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where a ref of the per-invocation name is already on the remote, so adopting a run dispatched on it could not prove this invocation dispatched anything"
+    must: "refuse"
+    refusal_text: "already exists"
+  }
+  CutoverWitnessCase {
+    name: "dispatch_refuses_when_the_dispatch_ref_cannot_be_pushed"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where pushing the per-invocation ref fails; nothing was dispatched, so no run may be adopted and no run list may even be issued"
+    must: "refuse"
+    refusal_text: "could not be pushed"
+  }
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_dispatch_ref_resolving_to_another_revision"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where the pushed ref resolves to a revision other than $SHA, so a run on it could not be attributed to the revision being activated"
+    must: "refuse"
+    refusal_text: "not $SHA"
+  }
+  CutoverWitnessCase {
+    name: "dispatch_refuses_without_a_per_invocation_reference"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage with the runbook's minting lines withheld (STUB_NO_NONCE), so the identity every run is matched against was never made"
+    must: "refuse"
+    refusal_text: "the per-invocation dispatch reference was never minted"
+  }
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_reference_that_does_not_name_this_revision"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where the per-invocation reference was minted against some other revision (STUB_REF_BASE), which would let a run be attributed to a revision it does not belong to"
+    must: "refuse"
+    refusal_text: "not derived from this revision"
+  }
 
+  CutoverWitnessCase {
+    name: "migration_refuses_a_seed_rewritten_after_it_was_hashed"
+    carrier: runbook_witness_carrier
+    feeds: "step 3 over an export whose seed was rewritten after step 1 hashed it — same number of lines, different bytes (an approver named differently, one receipt's tail edited)"
+    must: "refuse"
+    refusal_text: "same count, different content"
+  }
+  CutoverWitnessCase {
+    name: "retirement_refuses_without_a_completion_receipt"
+    carrier: runbook_witness_carrier
+    feeds: "step 4 after a migration whose third append was refused: both line files are still sitting there full, and only the receipt step 3 writes after its LAST admitted append can tell the two apart"
+    must: "refuse"
+    refusal_text: "did not all reach the carrier"
+  }
+  CutoverWitnessCase {
+    name: "retirement_admits_a_completed_migration"
+    carrier: runbook_witness_carrier
+    feeds: "step 4 after every append was admitted, so the receipt exists with its four fields and agrees with the inputs and the seed on disk"
+    must: "admit"
+    refusal_text: ""
+  }
+  CutoverWitnessCase {
+    name: "retirement_refuses_a_truncated_completion_receipt"
+    carrier: runbook_witness_carrier
+    feeds: "step 4 with the completion receipt cut to three of its four fields"
+    must: "refuse"
+    refusal_text: "expected 4"
+  }
+  CutoverWitnessCase {
+    name: "retirement_refuses_a_completion_receipt_whose_counts_disagree"
+    carrier: runbook_witness_carrier
+    feeds: "step 4 with a receipt whose acceptance count was rewritten to disagree with the input files it claims to have migrated"
+    must: "refuse"
+    refusal_text: "different number of acceptance receipts"
+  }
+  CutoverWitnessCase {
+    name: "retirement_refuses_a_completion_receipt_written_against_another_seed"
+    carrier: runbook_witness_carrier
+    feeds: "step 4 with a receipt that is intact and self-consistent but was written against a seed that has since changed underneath it"
+    must: "refuse"
+    refusal_text: "different seed than the one on disk"
+  }
 ]
 
 // A case that must refuse but does not name the diagnostic it expects is not a witness: any nonzero exit would
@@ -614,7 +706,7 @@ data runbook_scaffold: Disposition = Scaffold {
 
 data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
 
-data runbook_loc_delta_net: Int = 1265
+data runbook_loc_delta_net: Int = 1392
 data runbook_test_discriminator: String = "drop_in_round_trip_with_pre_existing_and_deploy_added"
 
 data runbook_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: TWO capabilities, because they retire DIFFERENT halves of tools/roadmap_cutover_runbook_witness.sh. (1) orch-emitted, for the residual shell (the sudo/systemd-run/systemctl stubs and the case assertions): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a function definition carrying a case statement over globs, a here-doc that writes a stub script, an array assignment read back as a whole-array expansion, or command substitution inside a test predicate — a missing target-language capability (class (b) of the hand-shell gate), not an unauthored migration. (2) modelled, for the witness process: its cases are the rows above (cutover_witness_case_rows) and its helpers are loaded from docs/runbooks/roadmap-event-log-cutover.md, never copied. When those rows run as a gunbc test row in gunbc.instrument_targets through the modelled filesystem and host-effect routes, this file is DELETED rather than emitted.")
@@ -626,8 +718,8 @@ data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissoluti
 // watch, so it lives where a claim can read it rather than in prose. Counting rule, so the number is checkable and
 // not prose that quietly rots: wc -l of each carrier, every line of which this PR adds (all three files are new in
 // it). Re-measure with: wc -l docs/runbooks/roadmap-event-log-cutover.md tools/roadmap_cutover_*.sh
-data runbook_witness_loc_delta_net: Int = 838
-data dispatch_witness_loc_delta_net: Int = 265
+data runbook_witness_loc_delta_net: Int = 917
+data dispatch_witness_loc_delta_net: Int = 362
 
 // Each carrier names the case that distinguishes it — the one that would pass on any nonzero exit if the witness
 // were weak, which is why it is the discriminator and not the admitting case.

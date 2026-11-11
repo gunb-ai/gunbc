@@ -85,6 +85,12 @@
 #   migration_refuses_a_second_revocation
 #   retirement_refuses_without_step_three_admission
 #   retirement_refuses_with_no_revocation_admitted
+#   migration_refuses_a_seed_rewritten_after_it_was_hashed
+#   retirement_refuses_without_a_completion_receipt
+#   retirement_admits_a_completed_migration
+#   retirement_refuses_a_truncated_completion_receipt
+#   retirement_refuses_a_completion_receipt_whose_counts_disagree
+#   retirement_refuses_a_completion_receipt_written_against_another_seed
 #
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
@@ -682,7 +688,8 @@ exit 0
 EOF
   chmod +x "$GB/gunbc"
   seed_export() { # 17 acceptances + 1 revocation, the fabric tail empty, unless $1 says otherwise
-    rm -f "$GEXP"/fabric/storage/*; : > "$GEXP/migrate.acceptance.lines"
+    rm -f "$GEXP"/fabric/storage/* "$GEXP/migrate.completion"
+    : > "$GEXP/migrate.acceptance.lines"
     : > "$GEXP/seed.jsonl"
     for i in $(seq 1 "${1:-17}"); do
       printf '%s\n' "{\"kind\":\"acceptance_recorded\",\"node\":\"roadmap-node-$i\",\"pr_url\":\"https://github.com/gunb-ai/gunbc/pull/16$i\",\"merged_at\":\"2026-11-0${i: -1}T09:00:00Z\",\"head_sha\":\"$(printf 'a%.0s' $(seq 1 40))\",\"author\":\"principal:google-oidc/accounts/116084671989231734979\"}" >> "$GEXP/seed.jsonl"
@@ -690,6 +697,9 @@ EOF
     printf '%s\n' '{"kind":"acceptance_revoked","node":"roadmap-node-9","reason":"operator revoked: it was the customer'"'"'s own row, not ours","author":"principal:google-oidc/accounts/116084671989231734979"}' >> "$GEXP/seed.jsonl"
     printf '0\n' > "$GEXP/fabric/acceptance.count"
     printf '18\n' > "$GEXP/seed.count"   # what step 1 measured; it does not move when a later edit changes the file
+    # step 1 hashes what it exported, and step 3 re-checks that digest before its first append — a fixture
+    # without it would only ever exercise the refusal, never the migration.
+    sha256sum "$GEXP/seed.jsonl" > "$GEXP/SHA256SUMS"
     [ "${2:-}" = withfabric ] || return 0
     printf '%s\n' 'fabric_storage.object;1731000000:{"payload":{"line":"roadmap-operator-acceptance;roadmap-node-18;https://github.com/gunb-ai/gunbc/pull/16200;2026-11-07T09:00:00Z;ffffffffffffffffffffffffffffffffffffffff"}}' \
       > "$GEXP/fabric/storage/obj-18"
@@ -701,6 +711,12 @@ EOF
       OPERATOR='principal:google-oidc/accounts/116084671989231734979' "$@" bash "$TMP/migleg.sh" 2>&1); rc=$?
     echo "  [$label] rc=$rc appends=$(wc -l < "$APPEND_LOG" | tr -d ' ')"; echo "$out" | sed 's/^/    /'
     LAST_OUT="$out"; LAST_RC=$rc; LAST_APPENDS=$(wc -l < "$APPEND_LOG" | tr -d ' ')
+  }
+  run_retire() { local label="$1"
+    : > "$TMP/appends.log"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
+    OUT=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+      OPERATOR='principal:google-oidc/accounts/116084671989231734979' bash "$TMP/retleg.sh" 2>&1); RC=$?
+    echo "  [$label] rc=$RC retires=$(wc -l < "$APPEND_LOG" | tr -d ' ')"; echo "$OUT" | sed 's/^/    /'
   }
   printf '%s\n' "$MIG_LEG" > "$TMP/migleg.sh"
   printf '%s\n' "$RET_LEG" > "$TMP/retleg.sh"
@@ -718,6 +734,8 @@ EOF
   echo "$LAST_OUT" | grep -qF 'MIGRATION REFUSED: acceptance 3 of 17' \
     || fail "G2: the refusal did not say WHICH append failed: [$LAST_OUT]"
   [ "$LAST_APPENDS" = 3 ] || fail "G2: it kept appending after the refusal — $LAST_APPENDS appends, expected the run to stop at 3"
+  [ ! -e "$GEXP/migrate.completion" ] \
+    || fail "G2: step 3 wrote a COMPLETION RECEIPT for a migration that was refused mid-way — step 4 could not have told the two apart"
 
   seed_export 16; run_migrate "the seed carries 16 acceptances where the export says 17"
   [ "$LAST_RC" -ne 0 ] || fail "G3: an input cut short was accepted; the migration would have appended 16 and reported success"
@@ -736,6 +754,9 @@ EOF
   # the count is taken from the export file, so the extra revocation is added the way an operator would: in the seed
   seed_export 16
   printf '%s\n' '{"kind":"acceptance_revoked","node":"roadmap-node-11","reason":"second","author":"principal:x"}' >> "$GEXP/seed.jsonl"
+  # re-hash, or the digest re-check fires first (and rightly so — it is a change after the export); this case is
+  # about what the CONTENT checks say once the seed is what step 1 actually exported.
+  sha256sum "$GEXP/seed.jsonl" > "$GEXP/SHA256SUMS"
   run_migrate "the seed carries two revocations"
   [ "$LAST_RC" -ne 0 ] || fail "G5: a second revocation was accepted without admission"
   echo "$LAST_OUT" | grep -qF 'exactly one revocation' || fail "G5: the refusal did not name the revocation count: [$LAST_OUT]"
@@ -756,6 +777,64 @@ EOF
     OPERATOR='principal:google-oidc/accounts/116084671989231734979' bash "$TMP/retleg.sh" 2>&1); RC=$?
   [ "$RC" -ne 0 ] || fail "G7: the retirements ran with an empty revocation file"
   [ ! -s "$APPEND_LOG" ] || fail "G7: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # ---- F6b (review 93394, round nine): the seed is admitted by DIGEST, not by count --------------------------
+  # Step 1 hashes the seed it exports; step 3 used to compare only line counts, so a seed rewritten between the
+  # export and the migration — an approver named differently, one receipt's tail edited, a line swapped for
+  # another of the same length — migrated unchanged, and step 5 then built its expected manifest from the wrong
+  # content. Same number of lines, different bytes: this is the case that tells a count from a digest.
+  seed_export
+  sed -i 's|roadmap-node-7|roadmap-node-seven|' "$GEXP/seed.jsonl"
+  run_migrate "the seed was rewritten after step 1 hashed it, with its line count unchanged"
+  [ "$LAST_RC" -ne 0 ] || fail "G8: a seed rewritten after it was hashed migrated anyway — a count cannot see it and step 5 would have certified the wrong content"
+  echo "$LAST_OUT" | grep -qF 'same count, different content' || fail "G8: the refusal did not name the digest mismatch: [$LAST_OUT]"
+  [ "$LAST_APPENDS" = 0 ] || fail "G8: it appended $LAST_APPENDS receipt(s) although the seed failed its digest"
+
+  # ---- F6a (review 93394, round nine): step 4 requires step 3's COMPLETION RECEIPT ---------------------------
+  # The two line files are prepared BEFORE the first append, so an aborted migration leaves them sitting there
+  # full. G2 proved the loop stops; this proves the NEXT step cannot be run separately over the wreckage.
+  seed_export; run_migrate "step 4 attempted after the third append was refused" STUB_FAIL_ON=3
+  [ "$LAST_RC" -ne 0 ] || fail "G9: the migration itself should have refused before step 4 was attempted"
+  run_retire "step 4 after an aborted migration"
+  [ "$RC" -ne 0 ] || fail "G9: the retirements ran over a history whose third receipt was never admitted"
+  echo "$OUT" | grep -qF 'did not all reach the carrier' || fail "G9: the refusal did not name the missing completion receipt: [$OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G9: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # AND the happy path, so the gate above is not a gate that simply never opens.
+  seed_export; run_migrate "the migration completes"
+  [ "$LAST_RC" -eq 0 ] || fail "G9b: a correct migration refused: [$LAST_OUT]"
+  [ -s "$GEXP/migrate.completion" ] || fail "G9b: a completed migration wrote no completion receipt"
+  [ "$(wc -l < "$GEXP/migrate.completion")" -eq 4 ] \
+    || fail "G9b: the completion receipt holds $(wc -l < "$GEXP/migrate.completion") fields, not the four step 3 promises"
+  run_retire "step 4 after a completed migration"
+  [ "$RC" -eq 0 ] || fail "G9b: step 4 refused a migration that completed: [$OUT]"
+  echo "$OUT" | grep -qF 'COMPLETION RECEIPT ADMITTED' || fail "G9b: step 4 never read the receipt it requires: [$OUT]"
+  [ "$(grep -c roadmap_event_record_cli "$APPEND_LOG")" = 2 ] \
+    || fail "G9b: $(grep -c roadmap_event_record_cli "$APPEND_LOG") retirement(s) went through roadmap_event_record_cli, expected the two nodes"
+
+  # The receipt is only worth having if step 4 really reads it. Three ways to have one that must not count.
+  seed_export; run_migrate "the migration completes, then the receipt is truncated"
+  head -3 "$GEXP/migrate.completion" > "$GEXP/migrate.completion.tmp" && mv "$GEXP/migrate.completion.tmp" "$GEXP/migrate.completion"
+  run_retire "step 4 with a truncated completion receipt"
+  [ "$RC" -ne 0 ] || fail "G10: a three-field receipt authorized a retirement"
+  echo "$OUT" | grep -qF 'expected 4' || fail "G10: the refusal did not name the field count: [$OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G10: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  seed_export; run_migrate "the migration completes, then the receipt's counts are rewritten"
+  REAL=$(grep '^acceptances=' "$GEXP/migrate.completion")
+  [ "$REAL" = "acceptances=17" ] || fail "G11: the receipt counts $REAL, not the 17 this fixture exports — the case would be testing nothing"
+  sed -i 's/^acceptances=17$/acceptances=9/' "$GEXP/migrate.completion"
+  run_retire "step 4 with a receipt counting fewer receipts than the inputs hold"
+  [ "$RC" -ne 0 ] || fail "G11: a receipt whose counts disagree with the inputs authorized a retirement"
+  echo "$OUT" | grep -qF 'different number of acceptance receipts' || fail "G11: the refusal did not name the disagreement: [$OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G11: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  seed_export; run_migrate "the migration completes, then the seed changes underneath the receipt"
+  printf '%s\n' '{"kind":"acceptance_recorded","node":"roadmap-node-19","pr_url":"https://github.com/gunb-ai/gunbc/pull/16199","merged_at":"2026-11-09T09:00:00Z","author":"principal:x","revoked":false}' >> "$GEXP/seed.jsonl"
+  run_retire "step 4 with a receipt written against a seed that has since changed"
+  [ "$RC" -ne 0 ] || fail "G12: a receipt written against a different seed authorized a retirement"
+  echo "$OUT" | grep -qF 'different seed than the one on disk' || fail "G12: the refusal did not name the seed: [$OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G12: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
 fi
 echo
 
