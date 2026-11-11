@@ -5915,7 +5915,8 @@ fn partition_move_explained_by_this_change(
              bound could not be derived, so the move cannot be explained: {e}"
         )
     };
-    let population = edited_population_from_diff(workspace, &diff_text);
+    let mut population = edited_population_from_diff(workspace, &diff_text);
+    classify_unnamed_departures(source_roots, &mut population).map_err(unexplainable)?;
     let (edges, modules) = regen_module_edges(workspace).map_err(unexplainable)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
@@ -11604,10 +11605,13 @@ pub struct EditedPopulation {
     pub edited_modules: Vec<String>,
     pub unlocatable: Vec<String>,
     pub non_dag_paths: Vec<String>,
-    /// Departed `.dag` paths under none of the regen's input roots (`src/v1`, and the layout's `dag`
-    /// and `src/v2`): no mirror can have read them, so they are not the selection's subject. They are
-    /// counted here, and each stays a population change below.
-    pub outside_regen_roots: Vec<String>,
+    /// Departed `.dag` paths no layout path names, before the model classifies them
+    /// (`classify_unnamed_departures`, which empties this list into the two below).
+    pub unnamed_departures: Vec<String>,
+    /// The departed `.dag` paths `gunbc.regen_affected_set` `regen_unnamed_departures_outside_inputs`
+    /// answers were never regen inputs: not the selection's subject, printed on the round's receipt,
+    /// and each still a population change below.
+    pub outside_regen_inputs: Vec<String>,
     /// The `.dag` files this change ADDS or DELETES: a change to the module population, which the
     /// model answers with the whole mirror population (`regen_affected_set_over_change`).
     pub population_changes: Vec<String>,
@@ -11635,7 +11639,7 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
     let mut edited_modules: BTreeSet<String> = BTreeSet::new();
     let mut unlocatable = Vec::new();
     let mut non_dag_paths = Vec::new();
-    let mut outside_regen_roots = Vec::new();
+    let mut unnamed_departures = Vec::new();
     for path in paths {
         if !path.ends_with(".dag") {
             non_dag_paths.push(path);
@@ -11644,20 +11648,15 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
         // A DEPARTED MODULE IS NAMED BY ITS PATH. The layout fixes where module `a.b.c` is stored
         // (`gunbc.source_layout`), so a deleted file's module name is known without the file; its
         // importers still name it, so the reverse closure reaches every mirror that read it. Only a
-        // departed path outside the layout is not named by its path. Under `src/v1` it may still be a
-        // v1 module (v1 names modules by their `module` line, not their path), so it stays
-        // unlocatable and the round refuses (gunbc.plans.read_set_convergence P2). Under none of the
-        // regen's input roots it was never a regen input -- a test fixture root, say -- so no mirror
-        // read it: it is outside the subject, counted, and still a population change.
+        // departed path outside the layout is not named by its path; whether it refuses is the model's
+        // decision (`gunbc.regen_affected_set` `regen_unnamed_departures_unlocatable`), taken in
+        // `classify_unnamed_departures`, so it is only collected here.
         if departed.contains(&path) {
             match super::native_lane_runner::dag_module_name_from_path(&path) {
                 Some(module) => {
                     edited_modules.insert(module);
                 }
-                None if path.starts_with("src/v1/") => unlocatable.push(format!(
-                    "{path} (departed, and outside the source layout: no module name derivable)"
-                )),
-                None => outside_regen_roots.push(path),
+                None => unnamed_departures.push(path),
             }
             continue;
         }
@@ -11675,9 +11674,82 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
         edited_modules: edited_modules.into_iter().collect(),
         unlocatable,
         non_dag_paths,
-        outside_regen_roots,
+        unnamed_departures,
+        outside_regen_inputs: Vec::new(),
         population_changes,
     }
+}
+
+/// The departed paths no layout path names, classified by the model: those
+/// `regen_unnamed_departures_unlocatable` answers join `unlocatable` (the refusal arm), and those
+/// `regen_unnamed_departures_outside_inputs` answers become `outside_regen_inputs`. The two must
+/// partition the input; a path in neither or both refuses, because the host may not guess.
+pub fn classify_unnamed_departures(
+    source_roots: &[String],
+    population: &mut EditedPopulation,
+) -> Result<(), String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    if population.unnamed_departures.is_empty() {
+        return Ok(());
+    }
+    let entry = affected_set_entry(source_roots)?;
+    let index = super::process_shared_index_or_refuse(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the departed paths cannot be classified: {e}")
+    })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let paths = Value::List(Rc::new(
+        population
+            .unnamed_departures
+            .iter()
+            .map(str_value)
+            .collect::<Vec<Value>>()
+            .into(),
+    ));
+    let ask = |function: &str| -> Result<Vec<String>, String> {
+        let args = vec![(Some("paths".to_string()), paths.clone())];
+        match v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+        })
+        .map_err(|e| format!("refusal: {function} did not answer: {e}"))?
+        {
+            Value::List(ref items) => items
+                .iter()
+                .map(|item| match item {
+                    Value::Str(s) => Ok(s.to_string()),
+                    other => Err(format!(
+                        "refusal: {function} holds a {} where a String was expected",
+                        other.type_label_public()
+                    )),
+                })
+                .collect(),
+            other => Err(format!(
+                "refusal: {function} returned {} where a List was expected",
+                other.type_label_public()
+            )),
+        }
+    };
+    let refusing = ask("regen_unnamed_departures_unlocatable")?;
+    let outside = ask("regen_unnamed_departures_outside_inputs")?;
+    let mut answered: Vec<&String> = refusing.iter().chain(outside.iter()).collect();
+    answered.sort();
+    let mut asked: Vec<&String> = population.unnamed_departures.iter().collect();
+    asked.sort();
+    if answered != asked {
+        return Err(format!(
+            "refusal: the model's classification of {} departed path(s) is not a partition of them \
+             (refusing {refusing:?}, outside {outside:?})",
+            asked.len()
+        ));
+    }
+    population
+        .unlocatable
+        .extend(refusing.into_iter().map(|path| {
+            format!("{path} (departed, and outside the source layout: no module name derivable)")
+        }));
+    population.outside_regen_inputs = outside;
+    population.unnamed_departures.clear();
+    Ok(())
 }
 
 /// The seed's closure edges, module to module, off the SAME edge index the regen's closure walk
@@ -12520,7 +12592,11 @@ pub fn regen_emission_scope_for_diff(
     // `v2.workflow.regen_scope_worktree` owns the predicate and the refusal text.
     regen_scope_worktree_admitted(source_roots)?;
     let change = scoped_round_change(workspace)?;
-    let population = edited_population_from_diff(workspace, &change.diff_text);
+    let mut population = edited_population_from_diff(workspace, &change.diff_text);
+    classify_unnamed_departures(source_roots, &mut population)?;
+    for path in &population.outside_regen_inputs {
+        eprintln!("regen-affected-set: outside-regen-inputs {path}");
+    }
     let bound = affected_set_bound_for(
         workspace,
         source_roots,
@@ -12581,7 +12657,8 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
     let change = scoped_round_change(&workspace)?;
-    let population = edited_population_from_diff(&workspace, &change.diff_text);
+    let mut population = edited_population_from_diff(&workspace, &change.diff_text);
+    classify_unnamed_departures(source_roots, &mut population)?;
     let bound = affected_set_bound_for(
         &workspace,
         source_roots,
@@ -12600,6 +12677,11 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
     }
     for path in &population.unlocatable {
         rendered.push_str(&format!("regen-affected-set: unlocatable {path}\n"));
+    }
+    for path in &population.outside_regen_inputs {
+        rendered.push_str(&format!(
+            "regen-affected-set: outside-regen-inputs {path}\n"
+        ));
     }
     rendered.push_str(&format!(
         "regen-affected-set: non_dag_paths={}\n",
@@ -12941,20 +13023,19 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
             population.edited_modules,
             vec![s("std.content_hash"), s("std.gone")]
         );
+        // The departed paths no layout path names are only collected; the model classifies them.
+        assert_eq!(
+            population.unnamed_departures,
+            vec![s("fixtures/stray/gone.dag"), s("src/v1/gone_v1.dag")]
+        );
         assert_eq!(
             population.unlocatable.len(),
-            2,
+            1,
             "{:?}",
             population.unlocatable
         );
         assert!(population.unlocatable[0].starts_with("dag/std/never_written.dag (unreadable"));
-        assert!(population.unlocatable[1]
-            .starts_with("src/v1/gone_v1.dag (departed, and outside the source layout"));
-        // A departed path under none of the regen's input roots is outside the subject, not a refusal.
-        assert_eq!(
-            population.outside_regen_roots,
-            vec![s("fixtures/stray/gone.dag")]
-        );
+        assert!(population.outside_regen_inputs.is_empty());
         assert_eq!(
             population.non_dag_paths,
             vec![s("src/v1/stage0/src/v1_rt.rs")]
@@ -12968,6 +13049,37 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
                 s("fixtures/stray/gone.dag"),
                 s("src/v1/gone_v1.dag")
             ]
+        );
+    }
+
+    /// The host consumes the model's classification of departed paths the layout cannot name: the
+    /// `src/v1` path joins the refusal arm and the fixture-root path is reported as outside the regen's
+    /// inputs. The classification's own discriminating RED is the `.dag` witness
+    /// `test.claim.self_host_regen_affected_set_witness` `an_unnamed_departure_refuses_only_under_src_v1`.
+    #[test]
+    #[ignore = "live-corpus: resolves gunbc.regen_affected_set off the shared source index"]
+    fn unnamed_departures_are_classified_by_the_model() {
+        let mut population = EditedPopulation {
+            edited_modules: Vec::new(),
+            unlocatable: Vec::new(),
+            non_dag_paths: Vec::new(),
+            unnamed_departures: vec![s("fixtures/stray/gone.dag"), s("src/v1/gone_v1.dag")],
+            outside_regen_inputs: Vec::new(),
+            population_changes: Vec::new(),
+        };
+        classify_unnamed_departures(&roots(), &mut population).expect("the model classifies");
+        assert!(population.unnamed_departures.is_empty());
+        assert_eq!(
+            population.unlocatable.len(),
+            1,
+            "{:?}",
+            population.unlocatable
+        );
+        assert!(population.unlocatable[0]
+            .starts_with("src/v1/gone_v1.dag (departed, and outside the source layout"));
+        assert_eq!(
+            population.outside_regen_inputs,
+            vec![s("fixtures/stray/gone.dag")]
         );
     }
 }
