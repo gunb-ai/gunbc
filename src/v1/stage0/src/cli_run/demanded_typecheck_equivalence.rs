@@ -838,7 +838,10 @@ fn main_wet_one_evaluates_service_surface_on_the_run_grain() {
                 .unwrap()
                 .to_path_buf();
             std::env::set_current_dir(&root).unwrap();
-            let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
+            // EXACT CLI argv (mgr's production command): every argument is load-bearing --
+            // the --source-root set drives acquisition scope and the --arg path VALUE enters
+            // the demand-acquired seed set, so a divergent argv witnesses a different fold.
+            let source_roots = vec!["dag".to_string(), "src/v1".to_string(), "src/v2".to_string()];
             let requested = vec!["main_wet_one".to_string()];
             let (graph, source_indices) =
                 match crate::cli_run::resolve_entry_graph_demand_acquired_scoped(
@@ -856,7 +859,7 @@ fn main_wet_one_evaluates_service_surface_on_the_run_grain() {
                 crate::cli_run::make_eval_context(graph.as_ref(), source_indices.clone(), mode);
             let run_args: Vec<(String, String)> = vec![(
                 "path".to_string(),
-                "dag/gunbc/stage0/stage0_crate_partition_generated.dag".to_string(),
+                "provisioning/srv1/gunbc-ghrunner.sudoers".to_string(),
             )];
             let bound = match crate::cli_run::bind_run_args_for_entry(
                 &ctx,
