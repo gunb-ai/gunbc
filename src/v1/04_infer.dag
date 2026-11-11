@@ -16984,21 +16984,6 @@ data runtime_key_readers: List<RuntimeKeyReader> = [
   RestCarrier { name: "rest_result_carrier" },
 ]
 
-// The one module-identity lookup of the reader family: a module in THIS graph by authored path.
-fn runtime_key_module_by_name(modules: List<ResolvedModule>, module_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == module_name) |> first {
-    Absent => none
-    Present { value: m } => Present { value: m.module }
-  }
-}
-
-fn rest_carrier_home_in_graph(modules: List<ResolvedModule>, reader_module: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match runtime_key_module_by_name(modules: modules, module_name: reader_module, source_indices: source_indices) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
 // THE SINGLE REST TEST FOR A DECLARED SERVICE: any operation the checker's own
 // service_operation_is_rest admits (op-level transport, else the service-level one).
 fn service_is_rest_declared(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -17028,10 +17013,14 @@ fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: 
       // THE REST CARRIER SEEDS ITS ONE DECLARATION IDENTITY: the reader is rest_operation_result_type
       // -> resolve_generic_use_decl(env: scope.type_env, n: carrier) with the synthesized carrier
       // Node named "RestResult"; that bare name is the ONE spelling looked up, so it is the ONE
-      // spelling demanded. The home-module AND rest-service gates keep a graph without either
-      // seeding nothing extra over main.
+      // spelling demanded. THE ONE GATE, shared with the edge arm below: the graph declares at least
+      // one rest-declared service (graph_has_rest_service folds service_is_rest_declared, the very
+      // predicate the edge arm tests per service), so an edge exists exactly when the seed exists --
+      // the seed cannot drift behind what the audit's edges refuse on. A graph with no rest service
+      // seeds nothing extra over main; when the carrier's home module is absent the carrier is
+      // absent from `declared` too, and realization_audit's declared-guard skips the edge.
       RestCarrier { name: _ } =>
-        if rest_carrier_home_in_graph(modules: modules, reader_module: rest_result_carrier_declaration.home_module, source_indices: source_indices) && graph_has_rest_service(modules: modules, source_indices: source_indices) {
+        if graph_has_rest_service(modules: modules, source_indices: source_indices) {
           concat(acc, [rest_result_carrier_declaration.type_name])
         } else {
           acc
