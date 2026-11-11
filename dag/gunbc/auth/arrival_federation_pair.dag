@@ -54,24 +54,65 @@ type ArrivalFederationPair {
 // "install", ...) is the only variable. The arrival names below are these with lane "arrival", so
 // mtjade1's and srv15's existing strings are carried unchanged (pinned by the pair witness).
 
+// THE ONE PRODUCER of every lane name is the _named family below: each takes the unit-name TEXT
+// and the lane, and nothing else. The pair-taking forms are these with the pair's own unit id; the
+// workflow's dispatch-time templates call the _named forms with the GHA host expression as the text,
+// so no second copy of "github-", "-oidc", the domain join, or the provider path exists downstream
+// (DESIGN.md single_authority: a second place that independently decides it is a fork).
+
+fn arrival_lane_environment_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
+  join([base as String, "-", lane as String], "") as NonEmptyStr
+}
+
+fn arrival_lane_wif_pool_id_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
+  join(["github-", base as String, "-", lane as String], "") as NonEmptyStr
+}
+
+fn arrival_lane_wif_provider_id_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
+  join([arrival_lane_wif_pool_id_named(base: base, lane: lane) as String, "-oidc"], "") as NonEmptyStr
+}
+
+fn arrival_lane_service_account_id_named(base: NonEmptyStr, lane: NonEmptyStr) -> NonEmptyStr {
+  join([base as String, "-", lane as String], "") as NonEmptyStr
+}
+
+fn arrival_lane_service_account_named(base: NonEmptyStr, lane: NonEmptyStr) -> ServiceAccountEmail {
+  join([arrival_lane_service_account_id_named(base: base, lane: lane) as String, "@", fleet_secrets_sa_domain as String], "") as ServiceAccountEmail
+}
+
+// Path projection only: wif_provider_resource consumes the provider's pool and name; the issuer,
+// mapping, and condition are not consulted on this path.
+fn arrival_lane_provider_resource_named(base: NonEmptyStr, lane: NonEmptyStr) -> String {
+  wif_provider_resource(
+    project_number: fleet_secrets_project_number,
+    provider: WifProvider {
+      name: arrival_lane_wif_provider_id_named(base: base, lane: lane)
+      pool: arrival_lane_wif_pool_id_named(base: base, lane: lane)
+      issuer_uri: github_wif_issuer_uri
+      attribute_mapping: none
+      attribute_condition: none
+    },
+  )
+}
+
 fn arrival_lane_wif_pool_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  join(["github-", pair.unit as String, "-", lane as String], "") as NonEmptyStr
+  arrival_lane_wif_pool_id_named(base: pair.unit, lane: lane)
 }
 
 fn arrival_lane_wif_provider_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  join([arrival_lane_wif_pool_id(pair: pair, lane: lane) as String, "-oidc"], "") as NonEmptyStr
+  arrival_lane_wif_provider_id_named(base: pair.unit, lane: lane)
 }
 
 fn arrival_lane_service_account_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  join([pair.unit as String, "-", lane as String], "") as NonEmptyStr
+  arrival_lane_service_account_id_named(base: pair.unit, lane: lane)
 }
 
 fn arrival_lane_environment(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
-  join([pair.unit as String, "-", lane as String], "") as NonEmptyStr
+  arrival_lane_environment_named(base: pair.unit, lane: lane)
 }
 
 fn arrival_lane_service_account(pair: ArrivalFederationPair, lane: NonEmptyStr) -> ServiceAccountEmail {
-  join([arrival_lane_service_account_id(pair: pair, lane: lane) as String, "@", fleet_secrets_sa_domain as String], "") as ServiceAccountEmail
+  arrival_lane_service_account_named(base: pair.unit, lane: lane)
 }
 
 fn arrival_wif_pool_id(pair: ArrivalFederationPair) -> NonEmptyStr {

@@ -64,7 +64,13 @@ import gunbc.fleet.printer_operator_approval {
 }
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
-import gunbc.auth.arrival_federation_pair { fleet_secrets_sa_domain }
+import gunbc.auth.arrival_federation_pair {
+  fleet_secrets_sa_domain,
+  arrival_lane_environment_named,
+  arrival_lane_wif_pool_id_named,
+  arrival_lane_provider_resource_named,
+  arrival_lane_service_account_named,
+}
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.review_sheet_federation {
   review_sheet_converge_environment, review_sheet_converge_provider_resource, review_sheet_converge_service_account,
@@ -8087,23 +8093,25 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
 // A mtjade1 dispatch resolves to the mtjade1-arrival environment, pool and SA byte-identically to
 // the pair module's derivation (pinned by the pair witness and the workflow witness); a srv15
 // dispatch resolves to srv15's -- the same unit-agnostic route mtcollins1_boot_wet already runs
-// for its live transports (fleet_converge_mtcollins1_boot_environment), no second path.
+// for its live transports (fleet_converge_mtcollins1_boot_environment), no second path. These are
+// the pair module's _named derivations with the dispatch-time host template as the unit-name TEXT:
+// no suffix, prefix, domain join, or provider path is spelled here at all (single_authority).
 data fleet_converge_arrival_dispatch_host: String = "${{ github.event.inputs.host }}"
 
 fn fleet_converge_arrival_environment_expression() -> String {
-  join([fleet_converge_arrival_dispatch_host, "-arrival"], "")
+  arrival_lane_environment_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival") as String
 }
 
 fn fleet_converge_arrival_pool_id_expression() -> String {
-  join(["github-", fleet_converge_arrival_dispatch_host, "-arrival"], "")
+  arrival_lane_wif_pool_id_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival") as String
 }
 
 fn fleet_converge_arrival_provider_resource_expression() -> String {
-  join(["projects/", fleet_secrets_project_number, "/locations/global/workloadIdentityPools/", fleet_converge_arrival_pool_id_expression(), "/providers/", fleet_converge_arrival_pool_id_expression(), "-oidc"], "")
+  arrival_lane_provider_resource_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival")
 }
 
 fn fleet_converge_arrival_service_account_expression() -> String {
-  join([fleet_converge_arrival_dispatch_host, "-arrival@", fleet_secrets_sa_domain as String], "")
+  arrival_lane_service_account_named(base: fleet_converge_arrival_dispatch_host as NonEmptyStr, lane: "arrival") as String
 }
 
 fn fleet_converge_arrival_converge_job() -> Job {

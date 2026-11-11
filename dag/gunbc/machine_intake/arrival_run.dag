@@ -214,7 +214,7 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
           // gunbc.host_state_root's ONE tree -- no literal is repeated here.
           root: unit_hold_store_path(tree: host_state_tree()),
           subject: subject,
-          owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
+          owner: join(["arrival/", subject.host as String, "/", run_id], "") as DurableHoldOwnerRef,
         ),
         body: fn() {
           arrival_run_wet_after_hold(subject: subject, run_wire: run_id as NonEmptyStr)
@@ -320,6 +320,8 @@ fn arrival_wet_prefix_record(
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_ambiguous_census_refuses_without_guessing"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_named_census_projects_onto_the_committed_census"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_door_derives_managed_and_published_users_from_this_run_census"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "ambiguous_check"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "unbound_check"),
   ]
 {
   match arrival_unit_capture_row(unit) {
@@ -867,8 +869,8 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
         concat("- roster channels committed: ", to_string(roster_paths.length())),
         concat("- managed user id: ", to_string(managed_user as Int)),
         concat("- published user id: ", to_string(published_user as Int)),
-        concat("- observed firmware: ", observation.observed_manager.firmware_version as String),
-        concat("- credential policy: ", board_model_label(board: policy.key.board) as String),
+        concat("- observed firmware: ", observation.firmware.raw_version as String),
+        concat("- managed account (row name, users derived this run): ", row.managed_account as String),
         concat("- evidence root: ", evidence_root as String),
         "FOLDED: stopped at the boundary, not converged",
         concat("- dissolution: ", dissolution_description(condition: dissolution) as String),
