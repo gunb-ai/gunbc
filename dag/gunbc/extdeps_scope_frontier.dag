@@ -663,6 +663,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/bmc/ipmi_boot_selection.dag",
   "dag/extdeps/bmc/openbmc_password_ssh_transport.dag",
   "dag/extdeps/tailscale/acl_api.dag",
+  "dag/extdeps/tailscale/machine_name.dag",
   "dag/extdeps/process/gnu_bash_exit.dag",
   "dag/extdeps/llm/openai_rest.dag",
   "dag/extdeps/llm/openai_compat_sse.dag",
