@@ -266,9 +266,10 @@ fn heal_publisher_admit_step_name(profile: RepositoryCiProfile) -> String {
   "Admit the candidate against this checkout's policy, with no publication credential"
 }
 
-// ONE RENDER FOR BOTH PUBLISHER PHASES. A phase is a `gunbc run` inside the memory ceiling. The ceiling and
-// the launcher are both imported - ci_spec's prelude, the same `--source-root` word list - so nothing here
-// re-spells a command line, and the roots come from the row rather than from a constant in this module.
+// ONE RENDER FOR BOTH PUBLISHER PHASES. A phase is a `gunbc run` inside the memory ceiling. The ceiling is
+// this module's own prelude (@ref(gunbc.heal_publisher_workflow::heal_publisher_cgroup_prelude)) and the
+// launcher is imported with the same `--source-root` word list, so nothing here re-spells a command line,
+// and the roots come from the row rather than from a constant in this module.
 // WHAT EACH PHASE ACTUALLY RUNS: this checkout's floor build, launched through the same memory-ceiling
 // prelude the roster uses. The composed-seed route (running the phase inside a composed root under a seed
 // compiler the row built) existed only for the private mirror, which now calls gunbc's gate as a caller
