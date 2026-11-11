@@ -15,7 +15,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.hostname_allocation {
-  HostnameAllocation, LegacyHostname, DrawnHumanName, HumanNameDraw, FirstOnly,
+  HostnameAllocation, LegacyHostname, DrawnHumanName, HumanNameDraw, FirstOnly, FirstLast,
   fleet_machine_registry,
   ObservedHostIdentity, ObservedHostIdentityResolved, ObservedHostIdentityRefused,
   ObservedHostUnnamed, ObservedHostAmbiguous, ObservedHostUnknown, ObservedHostRegistryRefused,
@@ -41,6 +41,22 @@ fn drawn_row(slot: String, first: String, entropy: Int) -> HostnameAllocation {
     fleet_slot: slot as HostIdentity,
     name: DrawnHumanName {
       name: FirstOnly { first: first as DnsLabel },
+      draw: HumanNameDraw { entropy: entropy },
+    },
+    next_name: Absent,
+  }
+}
+
+// TWO HOSTS THAT SHARE A SHORTER FORM NEED DISTINCT FULL NAMES. Two rows drawn with the same first name
+// alone have EQUAL canonical hostnames, and the admission then refuses the entire roster as a repeated
+// secondary key -- it resolves nothing at all, which is a different fault from the one under test. The
+// ambiguity a name can actually produce is one first name under two surnames: the canonical hostnames
+// differ (ada-smith, ada-jones) while the shorter form both answer to does not.
+fn drawn_pair_row(slot: String, first: String, last: String, entropy: Int) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: DrawnHumanName {
+      name: FirstLast { first: first as DnsLabel, last: last as DnsLabel },
       draw: HumanNameDraw { entropy: entropy },
     },
     next_name: Absent,
@@ -113,25 +129,36 @@ test fn witness_an_empty_answer_refuses_as_unnamed() -> Bool {
 
 // A SHORTER FORM TWO HOSTS ANSWER TO SELECTS NEITHER. The rule refuses rather than taking the first
 // match: a witness sees the refusal an operator would see, and a site that picked one would be
-// binding a machine on the order of a roster.
+// binding a machine on the order of a roster. AND THE FULL NAME STILL SELECTS ONE -- the surname that
+// is present resolves normally. Without that half, this claim could not tell "this shorter form is
+// shared" apart from "this roster resolves nothing", which is exactly the confusion the admission's
+// refused-registry arm exists to make loud.
 test fn witness_a_short_name_two_hosts_answer_to_refuses() -> Bool {
   let roster = [
-    drawn_row(slot: "host-twin-one", first: "damien", entropy: 707054856316),
-    drawn_row(slot: "host-twin-two", first: "damien", entropy: 707054856317),
+    drawn_pair_row(slot: "host-ada-smith", first: "ada", last: "smith", entropy: 707054856316),
+    drawn_pair_row(slot: "host-ada-jones", first: "ada", last: "jones", entropy: 707054856317),
   ]
-  match observed_host_identity_in(allocations: roster, observed: "damien") {
+  let ambiguous = match observed_host_identity_in(allocations: roster, observed: "ada") {
     ObservedHostIdentityRefused { refusal: r } =>
       match r {
         ObservedHostAmbiguous { observed: o, candidates: c } =>
-          o == "damien"
+          o == "ada"
             && c.length() == 2
-            && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "damien")
+            && any(c, x => (x as String) == "ada-smith")
+            && any(c, x => (x as String) == "ada-jones")
+            && string_contains(s: observed_host_identity_refusal_text(refusal: r),
+                               pattern: "answers to more than one host")
         ObservedHostUnknown { observed: _ } => false
         ObservedHostUnnamed { observed: _ } => false
         ObservedHostRegistryRefused { key: _ } => false
       }
     ObservedHostIdentityResolved { host: _ } => false
   }
+  let resolved = match observed_host_identity_in(allocations: roster, observed: "ada-jones") {
+    ObservedHostIdentityResolved { host: h } => (h as String) == "host-ada-jones"
+    ObservedHostIdentityRefused { refusal: _ } => false
+  }
+  ambiguous && resolved
 }
 
 // THE JOIN AGREES ACROSS THE TWO NAMES. This is the site shape the census found: a dispatch names a
