@@ -3,24 +3,15 @@ module gunbc.host.host_identity_assimilation
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.disposition { Disposition }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import std.change { KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
 import extdeps.dns.domain_name { DnsLabel }
 import product.host_identity { HostIdentity }
 import gunbc.ci.ci_deploy_access { DeployAccess }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, srv2_host }
-import gunbc.deployed_intent_v0 {
-  DeployedIntentV0,
-  deployed_intent_observed_differs_from_fleet_slot,
-  deployed_intent_observed_short_hostname,
-  gunbc_srv1_deployed_intent_v0_persisted,
-  gunbc_srv2_deployed_intent_v0_persisted,
-}
-import gunbc.deployed_intent_v1 { DeployedIntentV1, gunbc_srv1_deployed_intent_v1, gunbc_srv2_deployed_intent_v1 }
-import gunbc.host.host_effect { HostEffectTransport, NodeControlPlane, HostOs }
-import gunbc.host.host_identity_access { host_identity_srv1_access, host_identity_srv2_access }
+import gunbc.fleet.fleet_intent { ComputeHost }
+import gunbc.deployed_intent_v0 { DeployedIntentV0, deployed_intent_observed_short_hostname, gunbc_srv1_deployed_intent_v0_persisted, gunbc_srv2_deployed_intent_v0_persisted }
+import gunbc.deployed_intent_v1 { DeployedIntentV1 }
+import gunbc.host.host_effect { HostEffectTransport, NodeControlPlane }
 import gunbc.host.host_identity_knob { HostIdentityKnobKey, HostIdentityLeafVerdict, host_identity_knob_key }
 import gunbc.host.host_identity_observation { HostIdentityObservation }
 import gunbc.host.host_identity_converge {
@@ -33,13 +24,7 @@ import gunbc.host.host_identity_converge {
   host_identity_precondition_verdict,
   host_identity_read_back_matches,
 }
-import gunbc.host.host_identity_adopt {
-  host_identity_observed_probed_at,
-  host_identity_receipt_emit,
-  host_identity_transport_label,
-  srv1_host_identity_ssh_transport,
-  srv2_host_identity_ssh_transport,
-}
+import gunbc.host.host_identity_adopt { host_identity_transport_label }
 
 
 type HostIdentityAssimilationTarget {
@@ -104,16 +89,6 @@ fn host_identity_assimilation_receipt(
     transport_label: host_identity_transport_label(transport: target.transport),
     model_hash: host_identity_assimilation_model_hash(),
   }
-}
-
-fn host_identity_assimilation_receipt_is_valid(receipt: HostIdentityAssimilationReceipt) -> Bool {
-  receipt.read_back_converged
-    && receipt.reapply_noop
-    && (if receipt.apply_converged {
-      deployed_intent_observed_differs_from_fleet_slot(d: receipt.adopted_base)
-    } else {
-      true
-    })
 }
 
 fn host_identity_converge_with_observation(
@@ -226,28 +201,6 @@ fn host_identity_converge_from_base(
   }
 }
 
-fn host_identity_assimilation_receipt_message(receipt: HostIdentityAssimilationReceipt) -> String {
-  concat(
-    concat(
-      concat(
-        concat("host_identity_assimilation: PASS host=", receipt.host),
-        concat(" adopted=", deployed_intent_observed_short_hostname(d: receipt.adopted_base))
-      ),
-      concat(
-        concat(" desired=", receipt.desired_hostname_short),
-        concat(" precondition=", receipt.precondition_observed)
-      )
-    ),
-    concat(
-      concat(
-        concat(" read_back=", receipt.read_back_observed),
-        concat(" reapply_noop=", to_string(receipt.reapply_noop))
-      ),
-      concat(" transport=", receipt.transport_label)
-    )
-  )
-}
-
 // THE PER-HOST WET ENTRIES THAT WERE HERE ARE GONE. `host_identity_assimilation_target_srv1` / `_srv2`
 // and `host_identity_assimilate_srv1_wet` / `_srv2_wet` named a machine six times over — a fleet slot, a
 // compute host, a control-plane cell, an access row, a committed baseline and an entry each — so joining
@@ -258,26 +211,10 @@ fn host_identity_assimilation_receipt_message(receipt: HostIdentityAssimilationR
 // and the SSH route from the fleet's own reach model. An entry is now a ROW of that mode — a dispatch
 // naming a target and a peer — not a declaration per machine
 // (gunbc.design_argument::root_generalization). What remains here is the machine-shaped machinery the
-// closed loop shares with it: the fold, the gated apply, the read-back and the receipt.
-
-fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> ProcessExit {
-  match receipt {
-    Present { value: r } =>
-      if host_identity_assimilation_receipt_is_valid(receipt: r) {
-        let _announced = host_identity_receipt_emit(message: host_identity_assimilation_receipt_message(receipt: r))
-        ExitSuccess
-      } else {
-        exit_failure(
-          reason: concat(
-            "host_identity_assimilation: FAIL receipt invalid read_back=",
-            r.read_back_observed
-          )
-        )
-      }
-    Absent =>
-      exit_failure(
-        reason: "host_identity_assimilation: FAIL converge-from-base chain did not converge (observation failure or unresolved base/desired conflict)"
-      )
-  }
-}
-
+// closed loop shares with it: the fold, the gated apply, the read-back and the receipt the loop returns.
+// The per-host adoption wrappers beside them are gone with them — gunbc.host.host_identity_adopt's
+// host_identity_adopt_srv1_live / _srv2_live, the host-generic driver those two alone fed, and the entry
+// that could only ever be satisfied by passing one of them — because adopting a baseline is now the
+// generic mode's own typed step, gunbc.host.host_hostname_converge hostname_converge_readopt_step, which
+// is judged against the live name instead of hard-wired to a machine. A caller-less tail of a deleted
+// leaf is a second path too (gunbc.design_argument::consumption).
