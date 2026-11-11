@@ -16,6 +16,7 @@ module test.claim.fleet.srv1_root_mutation_workflow_witness
 // output, and never re-derives a gate decision -- the decisions themselves are witnessed at the fold, in the
 // other file, one interface apiece.
 
+import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import std.types { Bool, Int, NonEmptyStr, String, List, Timestamp }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
@@ -48,7 +49,6 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
 import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
 import std.decl_ref { declaration_ref_display_key }
-import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 // The family's own wire and job id, declared in gunbc.fleet.srv1_root_mutation_mode: the workflow module
 // DELEGATES to these, and a claim that compares the two must name the callee, or its effect summary
 // cannot be joined (stern's run at eab572a3).
