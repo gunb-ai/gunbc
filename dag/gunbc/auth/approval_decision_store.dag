@@ -501,8 +501,9 @@ fn claims_for(request: StoredApprovalRequest, decision: ProposedDecision) -> App
 // match; otherwise the decision is somebody else's and the grant is refused. A pending or absent
 // slot yields the request's own AuthorizationPending, so a workflow polling the store sees the
 // same value it would have declared by hand, and the srv3 source-declared grant
-// (gunbc.srv3.srv3_os_install_actuate_workflow srv3_boot_once_cd_source_declared_grant_dissolve_on)
-// dissolves into this fold.
+// (gunbc.srv3.srv3_os_install_actuate_workflow srv3_boot_once_cd_source_declared_grant_dissolve_on, at the
+// pre-PXE-2b revision — that workflow is deleted with the srv3 boot-once leaf, PXE 2b) used to dissolve into
+// this fold; with the leaf gone, this fold stands alone.
 type GrantDerivation<Subject>
   = GrantDerived { authorization: ScopedAuthorization<Subject> }
   | GrantStillPending { escalation_id: NonEmptyStr }

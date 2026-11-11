@@ -2,7 +2,7 @@ module test.claim.srv3.srv3_os_install_actuate_scope_witness
 
 import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliveryRefused }
 import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
-import gunbc.srv3.srv3_os_install_actuate_scope { SeedDeliveryAsked, SeedDeliveryPlanIncoherent, autoinstall_seed_delivery_standing_for, srv3_actuator_prep_binds_seeded_iso_path, srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses, srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref, srv3_os_install_actuate_credential_resolution_is_wired, srv3_os_install_actuate_is_actuator_prep_not_install_solved, srv3_seeded_plan_refuses_with_the_solve }
+import gunbc.srv3.srv3_os_install_actuate_scope { SeedDeliveryAsked, SeedDeliveryPlanIncoherent, autoinstall_seed_delivery_standing_for, srv3_actuator_prep_binds_seeded_iso_path, srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses, srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref, srv3_os_install_actuate_is_actuator_prep_not_install_solved, srv3_seeded_plan_refuses_with_the_solve }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool }
 import test.fixture.boot_delivery_plans { incoherent_pxe_solution, pxe_solution }
@@ -24,8 +24,7 @@ test fn srv3_autoinstall_seed_gap_is_unasked_while_the_mechanism_refuses() -> Bo
 }
 
 test fn srv3_os_install_actuate_credential_resolution_is_wired_in_scope() -> Bool {
-  srv3_os_install_actuate_credential_resolution_is_wired()
-    && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
+  srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
 }
 
 // The ISO-path binding is a prep fact and is unchanged; the delivery half now

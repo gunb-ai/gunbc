@@ -758,6 +758,7 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
         slots: cap_population(),
         cap_phase: phase,
         deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [],
         slot_trees: [],
         superseded: [],
         deploy_readings: [],

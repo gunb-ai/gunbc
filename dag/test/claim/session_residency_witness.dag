@@ -88,7 +88,8 @@ test fn managed_host_absence_is_declared_not_observed() -> Bool {
   host_absence_is_operator_declared(host: operator_host_srv3)
     && host_absence_is_operator_declared(host: operator_host_srv4)
     && host_absence_is_operator_declared(host: operator_host_mtcollins1)
+    && host_absence_is_operator_declared(host: operator_host_srv14)
     && !host_absence_is_operator_declared(host: operator_host_srv1)
     && !host_absence_is_operator_declared(host: operator_host_srv2)
-    && operator_declared_absent_host_count() == 3
+    && operator_declared_absent_host_count() == 4
 }
