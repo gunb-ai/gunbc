@@ -6407,7 +6407,7 @@ fn live_deploy_apply_orchestrate(
 //
 // THE RECEIPT IS INDEPENDENT READBACK. After the install the INSTALLED files under the release
 // directory are hashed on the host and compared, entry for entry, with the same hashes taken over
-// source_root's file set; sorting is bytewise (std.algebra list_sort_by_key over the canonical String
+// source_root's file set; sorting is bytewise (std.primitives::sort_by over the canonical String
 // order, which is LC_ALL=C sort). A single differing file refuses with step "readback", and the
 // receipt -- the completeness marker, written last -- is then NOT written. installed_digest is the
 // sha256 of the sorted `<hex>  <relative path>` lines, byte-for-byte what the retired shell receipt
