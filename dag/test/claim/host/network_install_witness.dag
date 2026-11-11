@@ -13,8 +13,14 @@
 // (PXE 1d-a), so no claim here reads the COMMITTED arrival population: every membership claim drives the
 // supplied-population form, which is the shape admit_arrival_subject_in was made public for. A claim that said
 // "the committed population refuses srv15" would be a claim about a date, and would flip under this file when
-// 1d-a lands. The BMC standings are the committed mtcollins1 rows (a real input, not a fixture), because
-// BmcSecureStanding is minted only by its own admission and no fixture of it belongs in this file.
+// 1d-a lands. The BMC standing these claims drive is srv15's, and it is MINTED RATHER THAN WRITTEN:
+// BmcSecureStanding has one admission (gunbc.machine_intake.bmc_secure.derive_bmc_secure), so the fixture
+// below builds a rotation observation for srv15's own controller endpoint and hands it to that admission,
+// which is the same shape machine_intake_bmc_secure_witness uses for its own unit. It is a supplied value,
+// not a committed fact — srv15 has no standing committed, because the account-state read that would mint
+// one is PXE 1d-c and has not run — and w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing
+// is the claim that keeps that distinction from rotting: the production entry reads committed inputs, and
+// they refuse srv15 today.
 module test.claim.host.network_install_witness
 
 import std.logic { Bool }
@@ -31,8 +37,27 @@ import extdeps.bmc.ipmi_boot_selection {
   IpmiBootPxe, ipmi_boot_flags_reading_of_bootparam_get, ipmi_boot_flags_parameter_hex,
   uefi_once_boot_selection,
 }
-import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessUnobserved }
-import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import extdeps.bmc.access_profile {
+  BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved,
+  BmcBootControlRouteObservation, BmcObservedIdentity, IpmiLanplusRoute,
+  SurfaceBootControl, SurfaceSystemInventory,
+}
+import gunbc.machine_intake.bmc_secure {
+  BmcSecureStanding,
+  BmcCredentialRotationObservation,
+  BmcSecureRefused,
+  BmcSecured,
+  CredentialAccepted,
+  CredentialProbeOutcome,
+  CredentialRejected,
+  ManagedCredentialReference,
+  PublishedCredentialAccountObservation,
+  PublishedCredentialLanProbe,
+  PublishedCredentialRetired,
+  RotationApplied,
+  derive_bmc_secure,
+  observed_bmc_credential_rotation,
+}
 import gunbc.host.managed_host { ManagedHost, managed_host_binding_for }
 import gunbc.host.bmc_control_binding { BmcControlStanding, bmc_control_binding }
 import gunbc.host.managed_host_boot_once {
@@ -101,7 +126,25 @@ import extdeps.bmc.capability {
   BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity,
   CapabilityPowerControl, CapabilityBootSourceOverride,
 }
-import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelCensusMember, IpmiChannelNumber, IpmiChannelPrivilegeLimit, IpmiControllerChannelCensus,
+  IpmiMedium8023Lan, IpmiMediumSerialAsync, IpmiPrivilegeAdministrator, IpmiPrivilegeNoAccess,
+  IpmiUserChannelAccess, IpmiUserId, ipmi_controller_channel_census, ipmi_lan_channel_member,
+  ipmi_non_lan_channel_member, ipmi_user_channel_access,
+}
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import extdeps.board_authority { BoardFruIdentity, BoardFruRead }
+import std.content_hash { content_hash_of_value }
+import gunbc.machine_intake.subject {
+  AssemblyManifest, FirmwareEntry, FirmwareManifest, IntakeAttemptId, MachineIntakeSubject,
+  QualificationSubject, UnitKey, qualification_subject_of,
+}
+import gunbc.deployment_risk { TestRisk }
+import gunbc.machine_intake.phase { machine_qualification_policy }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootPxe, uefi_once_boot_selection,
@@ -270,6 +313,246 @@ fn secured_standing() -> Optional<BmcSecureStanding> {
   }
 }
 
+// ── THE SUPPLIED srv15 BMC STANDING ─────────────────────────────────────────────────────────────
+//
+// WHY A SUPPLIED STANDING AND NOT A COMMITTED ONE. A BmcSecureStanding is minted only by its own
+// admission: it is the record that a managed credential was created on a named controller, that the
+// credential which shipped with the image was retired, and that every addressable LAN channel was probed
+// with that retired credential and refused it. srv15 has no such record committed — its BMC account-state
+// read is PXE 1d-c and has not run, and gunbc.machine_intake.bmc_secure keeps this unit's standing
+// frontier unbound until that read lands. So the PRODUCTION entry refuses srv15, and says so; that is the
+// claim named below, and it is not relaxed by anything here.
+//
+// What the admitted-path claims need is not a committed standing but an ADMITTED one: they test what the
+// install gates DO with a standing — bind it, check the endpoint against the controller they were told to
+// drive, name its account in the receipt — and for that a standing has to exist. It is therefore built the
+// only way it can be built, through derive_bmc_secure over a supplied rotation observation, exactly as
+// dag/test/claim/machine_intake/machine_intake_bmc_secure_witness.dag builds its own unit's.
+//
+// WHAT THIS BLOCK DOES NOT CLAIM. No probe was run against srv15's BMC; nothing here is a reading. The
+// credential epoch, channel numbers, LAN addresses and published user id are the SHAPE the admission
+// requires (an accepted bootstrap probe, an applied rotation, an accepted managed probe, a census with
+// addressable LAN members all refusing the published credential, and that account retired), not facts about
+// the unit. The one fact taken from the fleet is the ENDPOINT, and dispatch passes it in from srv15's
+// committed write-controller row rather than restating it, so the standing and the row can never end up
+// naming different controllers.
+
+// The unit label for the credential subject. srv15_baseboard carries a catalog row and a BMC endpoint but
+// no board serial, and the install gates carry the standing's unit without comparing it to anything, so
+// this is the witness's label for the unit rather than a claim about the silicon.
+data srv15_witness_unit_serial: NonEmptyStr = "ALTRAD8UD1L2T-000451"
+
+data srv15_witness_assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "SRV-1U-ASROCK-ALT" as NonEmptyStr,
+  components: [],
+}
+
+// What srv15's controller answers, per the standing frontier's own description of this unit
+// (ALTRAD8UD-1L2T under OpenBMC 3.22.00). It is carried because the admission's subject requires a
+// firmware manifest, not because any gate below reads it.
+data srv15_witness_firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc" as NonEmptyStr, version: "3.22.00" as NonEmptyStr }],
+  configuration_digests: [],
+}
+
+data srv15_witness_subject: QualificationSubject = qualification_subject_of(
+  unit_key: srv15_witness_unit_serial as UnitKey,
+  assembly: srv15_witness_assembly,
+  firmware: srv15_witness_firmware_manifest,
+)
+
+data srv15_witness_intake_subject: MachineIntakeSubject = MachineIntakeSubject {
+  subject: srv15_witness_subject,
+  attempt_id: "intake-srv15-20261110-0001" as IntakeAttemptId,
+}
+
+// A digest OF THE LABEL, so a refusal can name which reading was missing without a byte pretending to be
+// a capture. Same convention machine_intake_bmc_secure_witness uses for its supplied evidence.
+fn srv15_witness_evidence(label: NonEmptyStr) -> EvidenceRef {
+  EvidenceRef { label: label, digest: content_hash_of_value(value: label as String) }
+}
+
+data srv15_published_user: IpmiUserId = 3
+data srv15_lan_channel: IpmiChannelNumber = 1
+data srv15_serial_channel: IpmiChannelNumber = 2
+data srv15_lan_backup_channel: IpmiChannelNumber = 8
+data srv15_lan_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 248)
+data srv15_lan_backup_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 249)
+
+data srv15_bootstrap_probe: CredentialProbeOutcome = CredentialAccepted {
+  evidence: srv15_witness_evidence(label: "srv15-bootstrap-login"), observed_at: 1793200001000
+}
+
+data srv15_managed_probe: CredentialProbeOutcome = CredentialAccepted {
+  evidence: srv15_witness_evidence(label: "srv15-managed-login"), observed_at: 1793200006000
+}
+
+data srv15_published_rejected: CredentialProbeOutcome = CredentialRejected {
+  evidence: srv15_witness_evidence(label: "srv15-published-login-401"), observed_at: 1793200007000
+}
+
+data srv15_managed_secret: SecretRef = SecretRef {
+  project: "gunbai-secrets" as NonEmptyStr,
+  secret: "bmc-srv15-intake-admin" as NonEmptyStr,
+  version: "1" as NonEmptyStr,
+  hash_state: HashPending,
+}
+
+data srv15_managed_reference: ManagedCredentialReference = ManagedCredentialReference {
+  account: "intake-admin" as NonEmptyStr,
+  role: AccountRoleAdministrator,
+  secret: srv15_managed_secret,
+  credential_epoch: 1,
+}
+
+data srv15_rotation_applied_at: EpochMs = 1793200005000
+
+fn srv15_lan_member(channel: IpmiChannelNumber, address: Ipv4Address) -> IpmiChannelCensusMember {
+  ipmi_lan_channel_member(channel: channel, medium: IpmiMedium8023Lan, address: address)
+}
+
+fn srv15_published_access(channel: IpmiChannelNumber) -> IpmiUserChannelAccess {
+  ipmi_user_channel_access(channel: channel, user: srv15_published_user, privilege: IpmiPrivilegeAdministrator)
+}
+
+// The census the admission reads: two addressable LAN members (the controller answers on its one address,
+// reachable on both LAN channels) and the published user still carrying administrator on both — which is
+// the exposure, and the retirement plus the probes below are what close it.
+data srv15_channel_census: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    srv15_lan_member(channel: srv15_lan_channel, address: srv15_lan_address),
+    ipmi_non_lan_channel_member(channel: srv15_serial_channel, medium: IpmiMediumSerialAsync),
+    srv15_lan_member(channel: srv15_lan_backup_channel, address: srv15_lan_backup_address),
+  ],
+  user_access: [
+    srv15_published_access(channel: srv15_lan_channel),
+    ipmi_user_channel_access(
+      channel: srv15_serial_channel, user: srv15_published_user, privilege: IpmiPrivilegeNoAccess
+    ),
+    srv15_published_access(channel: srv15_lan_backup_channel),
+  ],
+)
+
+data srv15_published_retired: PublishedCredentialAccountObservation = PublishedCredentialRetired {
+  evidence: srv15_witness_evidence(label: "srv15-user-list-absent"), observed_at: 1793200009000
+}
+
+// THE STANDING, THROUGH ITS OWN ADMISSION. Nothing in this file writes a BmcSecureStanding record directly;
+// if derive_bmc_secure refuses, every admitted-path claim below goes red, which is the point.
+fn srv15_secured_standing(endpoint: BmcControllerEndpoint) -> BmcSecureStanding {
+  derive_bmc_secure(
+    subject: srv15_witness_intake_subject,
+    observation: observed_bmc_credential_rotation(
+      subject: srv15_witness_intake_subject,
+      endpoint: endpoint,
+      previous_credential_epoch: 0,
+      bootstrap_probe: srv15_bootstrap_probe,
+      rotation: RotationApplied {
+        reference: srv15_managed_reference,
+        applied_at: srv15_rotation_applied_at,
+        evidence: srv15_witness_evidence(label: "srv15-account-create-201"),
+      },
+      managed_probe: srv15_managed_probe,
+      channel_census: srv15_channel_census,
+      census_evidence: srv15_witness_evidence(label: "srv15-channel-census"),
+      census_observed_at: srv15_rotation_applied_at,
+      published_probes: [
+        PublishedCredentialLanProbe {
+          channel: srv15_lan_channel, address: srv15_lan_address, outcome: srv15_published_rejected
+        },
+        PublishedCredentialLanProbe {
+          channel: srv15_lan_backup_channel, address: srv15_lan_backup_address, outcome: srv15_published_rejected
+        },
+      ],
+      published_user: srv15_published_user,
+      published_account: srv15_published_retired,
+    ),
+    policy: machine_qualification_policy(admits: TestRisk),
+  )
+}
+
+// THE ACCESS OBSERVATION THE JOIN NEEDS BESIDE IT, for the same endpoint: bmc_control_binding joins an
+// observed endpoint to a secured one and refuses a pair that names two controllers, so an admitted dispatch
+// requires both halves. Only the endpoint is read by that join; what is written beside it here is the
+// minimum the type asks for, and — note this plainly — successful_write_surfaces is EMPTY, because no write
+// has been performed on srv15's controller. That is what the install run itself has to establish.
+data srv15_observed_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentity {
+  family: OpenBmc,
+  raw_version: "3.22.00" as NonEmptyStr,
+  semantic_version: none,
+}
+
+data srv15_observed_identity: BmcObservedIdentity = BmcObservedIdentity {
+  board: BoardFruRead { fru: BoardFruIdentity {
+    manufacturer: "ASRock Rack" as NonEmptyStr,
+    product: srv15_baseboard.catalog.model,
+    part_number: none,
+  } },
+  chassis_part_number: none,
+  firmware: srv15_observed_firmware,
+}
+
+data srv15_observed_boot_route: BmcBootControlRouteObservation = BmcBootControlRouteObservation {
+  route: IpmiLanplusRoute { cipher_suite: Absent },
+  raw_response: content_hash_of_value(value: "srv15-witness-lanplus-route"),
+  observed_at: srv15_rotation_applied_at,
+}
+
+fn srv15_access_observation(endpoint: BmcControllerEndpoint) -> BmcAccessObservationStanding {
+  BmcAccessObserved { observation: BmcAccessObservation {
+    endpoint: endpoint,
+    identity: srv15_observed_identity,
+    discovered_surfaces: [SurfaceSystemInventory, SurfaceBootControl],
+    boot_control_routes: [srv15_observed_boot_route],
+    redfish_virtual_media_probe: none,
+    successful_read_surfaces: [SurfaceSystemInventory, SurfaceBootControl],
+    successful_write_surfaces: [],
+    raw_response: content_hash_of_value(value: "srv15-witness-access-observation"),
+    observed_at: srv15_rotation_applied_at,
+  } }
+}
+
+// srv15's COMMITTED controller, read off the row the fleet authored rather than restated here. Its absence
+// would be a fleet-intent change, and dispatch below refuses loudly in that case rather than inventing one.
+fn srv15_install_controller() -> Optional<BmcControllerEndpoint> {
+  match bmc_write_controller_row(host: operator_host_srv15) {
+    Absent => Absent
+    Present { value: row } => Present { value: row.endpoint }
+  }
+}
+
+// The supplied standing, but only when its own admission admits it: a refusal there must surface as a
+// refusal in the claims below, never as a standing that was conjured into existence.
+fn srv15_admitted_standing_for(endpoint: BmcControllerEndpoint) -> Optional<BmcSecureStanding> {
+  match srv15_secured_standing(endpoint: endpoint).outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      Present { value: srv15_secured_standing(endpoint: endpoint) }
+    BmcSecureRefused { cause: _ } => Absent
+  }
+}
+
+// THE COMMITTED STANDING, which is what a production entry is allowed to read: it comes from the managed-host
+// row, and srv15 has none. Present would mean 1d-c had landed, and the claim below would then have to be
+// re-written to demand the live receipt rather than quietly kept.
+fn srv15_committed_standing() -> Optional<BmcSecureStanding> {
+  match srv15_committed_rows() {
+    Absent => Absent
+    Present { value: m } => Present { value: m.secure }
+  }
+}
+
+// srv15's managed-host rows as the fleet committed them — the same lookup the production entry performs.
+fn srv15_committed_rows() -> Optional<ManagedHost> {
+  match managed_host_binding_for(host: operator_host_srv15 as NonEmptyStr) {
+    ManagedHostFound { host: h, control: _ } => Present { value: h }
+    ManagedHostFoundUnderDeclaredDrop {
+      host: h, control: _, drop: _, standing_subject: _, current_subject: _
+    } =>
+      Present { value: h }
+    ManagedHostNotManaged { host: _ } => Absent
+  }
+}
+
 // ONE CALL, EVERY GATE. The gates this file drives are the first four, so the arguments past them are fixed at
 // their admitting values; what a claim varies is named.
 fn dispatch(
@@ -280,10 +563,13 @@ fn dispatch(
   reading: TargetDiskReading,
   decided_at: EpochMs
 ) -> NetworkInstallDispatch {
-  match mtcollins1_controller() {
-    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 BMC rows this witness drives are absent; see w_the_committed_controller_this_file_drives_is_bound" } }
-    Present { value: controller } => match secured_standing() {
-      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 secure standing this witness drives is absent; see w_the_committed_controller_this_file_drives_is_bound" } }
+  // srv15's controller endpoint is READ from its committed write-controller row, and the standing is minted
+  // for that same endpoint, so the pair the join checks cannot name two different controllers. A refused
+  // derivation shows up as a located refusal rather than an invented standing.
+  match srv15_install_controller() {
+    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "srv15's committed BMC write-controller row is absent, so there is no endpoint to mint the standing this witness drives against; see w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing" } }
+    Present { value: controller } => match srv15_admitted_standing_for(endpoint: controller) {
+      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "derive_bmc_secure refused the supplied srv15 rotation observation, so no admitted standing exists to drive these gates with" } }
       Present { value: secured } => network_install_dispatch_admission(
         population: population,
         managed: [],
@@ -291,7 +577,7 @@ fn dispatch(
         expected_serial: expected_serial,
         dispatch_owner: dispatch_owner,
         intended_controller: controller,
-        observed: mtcollins_access_or_unobserved(),
+        observed: srv15_access_observation(endpoint: controller),
         secured: secured,
         board: Present { value: srv15_baseboard.catalog.model },
         route: ByPerWriteApproval,
@@ -313,10 +599,13 @@ fn dispatch(
 // THE SAME DISPATCH, WITH ONLY THE OS OBSERVATION VARIED, so the positive/negative pair above compares one
 // fact against the same everything-else.
 fn dispatch_with_os(os_observation: NetworkInstallOsObservation) -> NetworkInstallDispatch {
-  match mtcollins1_controller() {
-    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 BMC rows this witness drives are absent; see w_the_committed_controller_this_file_drives_is_bound" } }
-    Present { value: controller } => match secured_standing() {
-      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 secure standing this witness drives is absent; see w_the_committed_controller_this_file_drives_is_bound" } }
+  // srv15's controller endpoint is READ from its committed write-controller row, and the standing is minted
+  // for that same endpoint, so the pair the join checks cannot name two different controllers. A refused
+  // derivation shows up as a located refusal rather than an invented standing.
+  match srv15_install_controller() {
+    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "srv15's committed BMC write-controller row is absent, so there is no endpoint to mint the standing this witness drives against; see w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing" } }
+    Present { value: controller } => match srv15_admitted_standing_for(endpoint: controller) {
+      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "derive_bmc_secure refused the supplied srv15 rotation observation, so no admitted standing exists to drive these gates with" } }
       Present { value: secured } => network_install_dispatch_admission(
         population: population_of(host: install_unit),
         managed: [],
@@ -324,7 +613,7 @@ fn dispatch_with_os(os_observation: NetworkInstallOsObservation) -> NetworkInsta
         expected_serial: expected_serial,
         dispatch_owner: dispatch_owner,
         intended_controller: controller,
-        observed: mtcollins_access_or_unobserved(),
+        observed: srv15_access_observation(endpoint: controller),
         secured: secured,
         board: Present { value: srv15_baseboard.catalog.model },
         route: ByPerWriteApproval,
@@ -793,7 +1082,9 @@ test fn w_a_wire_with_no_arrival_row_is_never_booted() -> Bool {
 }
 
 // THE COMMITTED BMC EVIDENCE IS READ, NOT INVENTED: mtcollins1's managed-host rows exist and its controller is
-// bound, which is where this file gets a BmcSecureStanding without minting one. If this ever flips, every
+// bound. The dispatch above drives srv15, whose standing is minted through its own admission; mtcollins1's
+// rows are what this file reads rather than writes, and they are the counter-example that keeps the minted
+// standing honest — a standing has a shape, and it comes from a real admission. If this ever flips, every
 // BMC-side claim above has silently changed meaning, so it is asserted rather than assumed.
 test fn w_the_committed_controller_this_file_drives_is_bound() -> Bool {
   match mtcollins1_standing() {
@@ -801,6 +1092,33 @@ test fn w_the_committed_controller_this_file_drives_is_bound() -> Bool {
     Present { value: standing } => match bound_controller_of(standing: standing) {
       BoundControllerFound { endpoint: _, account: _ } => true
       BoundControllerAbsent => false
+    }
+  }
+}
+
+// WHAT A PRODUCTION ENTRY ACTUALLY READS TODAY — and it is not the fixture above. srv15's BMC standing is
+// minted here because its account-state read (PXE 1d-c) has not run; an entry may not mint one, it may only
+// read the committed one, and there is none. So the honest wet path today REFUSES, naming the missing standing
+// and the dependency: that is gunbc.host.network_install_ci's job and its receipt, not this file's.
+//
+// DISCRIMINATING: it fails if srv15's write-controller row stops being committed (then the refusal below would
+// be about the wrong thing), if a committed standing for srv15 ever LANDS (then this claim's premise is gone
+// and the entry must be pointed at the committed row rather than this claim being edited green), or if the
+// minted standing is refused, or if it is minted for a controller other than the one the fleet committed.
+test fn w_srv15_is_refused_by_the_committed_inputs_for_want_of_a_standing() -> Bool {
+  match srv15_install_controller() {
+    Absent => false
+    Present { value: controller } => match srv15_committed_standing() {
+      Present { value: _ } => false
+      Absent => match srv15_admitted_standing_for(endpoint: controller) {
+        Absent => false
+        Present { value: standing } => match standing.outcome {
+          BmcSecured {
+            endpoint: endpoint, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _
+          } => (endpoint.host as String) == (controller.host as String)
+          BmcSecureRefused { cause: _ } => false
+        }
+      }
     }
   }
 }

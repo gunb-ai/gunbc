@@ -1600,3 +1600,17 @@ fn network_install_run_and_release(
     HoldUnreadable { detail: _ } => RunHoldReleaseRefused { outcome: outcome }
   }
 }
+
+
+// ══════════════════════════════════════════════════════════════════════
+// THE REGISTERED CI ENTRY
+// ══════════════════════════════════════════════════════════════════════
+
+// THE ENTRY dag/gunbc/ci/ci_spec.dag registers as this file's `network_install_ci_wet` target. It is a
+// delegator on purpose: everything it does opens an ssh agent, reads the workflow environment and writes a
+// receipt, and none of that belongs in the file that declares the install's gates, ports and journal. Read
+// gunbc.host.network_install_ci for what is resolved, in what order, and why srv15 cannot be dispatched today
+// (no committed BmcSecureStanding, no arrival row, no unit-key binding — each refused by name, never relaxed).
+fn network_install_ci_wet() -> ProcessExit {
+  network_install_ci_run()
+}
