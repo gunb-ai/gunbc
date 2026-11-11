@@ -19,7 +19,12 @@ import gunbc.auth.approval_request_submission {
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.hostname_allocation { observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused, observed_host_identity_refusal_text }
+import gunbc.hostname_allocation {
+  observed_host_selector_join, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
+  ObservedHostJoinRefusal, JoinObservedUnnamed, JoinObservedAmbiguous, JoinObservedUnknown,
+  JoinExpectedUnnamed, JoinExpectedAmbiguous, JoinExpectedUnknown, JoinHostsDisagree,
+  observed_host_join_refusal_text,
+}
 import gunbc.host.host_effect { LocalShell }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal,
@@ -105,12 +110,16 @@ type ApprovalOriginStanding
   | ApprovalOriginHostUnresolved { origin_host: NonEmptyStr, reason: String }
 
 // THE LOOPBACK ORIGIN IS ACTUATED AS A NAME AND THE EXECUTOR ANSWERS AS A NAME, AND NEITHER IS AN
-// IDENTITY UNTIL THE ALLOCATION'S SELECTOR SAYS IT IS (gunbc.hostname_allocation
-// ::observed_host_identity; gunbc.plans.fleet_machine_authority section 4.4 (b*)). The old form compared
-// the two strings, so an approval request raised on the host that answers "butch" was refused as
-// "not the origin host" forever -- and a rename moved the refusal to whichever host inherited the
-// name. Both sides now resolve, the comparison is between HostIdentities, and a spelling that resolves
-// to nothing refuses by that spelling instead of being read as an identity.
+// IDENTITY UNTIL THE ALLOCATION'S SELECTOR SAYS IT IS -- and the join that decides whether the two are
+// one machine is the ONE the fleet shares (gunbc.hostname_allocation::observed_host_selector_join), not
+// a second copy written here: a generalization beside a surviving leaf is a second path
+// (gunbc.design_argument::root_generalization). The old form compared the two strings, so an approval
+// request raised on the host that answers "butch" was refused as "not the origin host" forever -- and a
+// rename moved the refusal to whichever host inherited the name. The join's refusals are mapped onto this
+// file's standings by WHICH SIDE failed: the dispatch's word about the origin host (JoinExpected*) is an
+// origin the roster cannot name, and the kernel's answer (JoinObserved*) is an executor nobody observed;
+// the dispatch is judged first, as it is at every other site, because a dispatch that names no host has
+// no business asking whether this machine is it.
 fn classify_approval_origin(origin: ApprovalLoopbackOrigin, executor: HostnameShortCapture) -> ApprovalOriginStanding {
   match origin {
     ApprovalLoopbackOriginRefused { cause } => ApprovalOriginUnresolved { cause: cause }
@@ -118,23 +127,27 @@ fn classify_approval_origin(origin: ApprovalLoopbackOrigin, executor: HostnameSh
       match executor {
         HostnameShortCaptureRefused { reason } => ApprovalExecutorHostUnobserved { reason: reason }
         HostnameShortCaptured { value } =>
-          match observed_host_identity(observed: value) {
-            ObservedHostIdentityRefused { refusal: r } =>
-              ApprovalExecutorHostUnobserved { reason: observed_host_identity_refusal_text(refusal: r) }
-            ObservedHostIdentityResolved { host: executor_host } =>
-              match observed_host_identity(observed: host as String) {
-                ObservedHostIdentityRefused { refusal: r } =>
-                  ApprovalOriginHostUnresolved { origin_host: host,
-                    reason: observed_host_identity_refusal_text(refusal: r) }
-                ObservedHostIdentityResolved { host: origin_identity } =>
-                  if (executor_host as String) == (origin_identity as String) {
-                    ApprovalOriginWouldDial { host: host, origin: o }
-                  } else {
-                    ApprovalExecutorNotTheOriginHost { origin_host: host, executor_host: executor_host as NonEmptyStr }
-                  }
-              }
+          match observed_host_selector_join(expected: host as String, observed: value) {
+            ObservedHostSelectorAgreed { host: _ } => ApprovalOriginWouldDial { host: host, origin: o }
+            ObservedHostSelectorJoinRefused { cause: c } => approval_origin_refusal_of_join(host: host, cause: c)
           }
       }
+  }
+}
+
+// WHICH SIDE OF THE JOIN FAILED decides which standing an operator is told about: the two refusals send
+// them to different places -- the dispatch that named no such host, or the machine whose answer no roster
+// can place.
+fn approval_origin_refusal_of_join(host: NonEmptyStr, cause: ObservedHostJoinRefusal) -> ApprovalOriginStanding {
+  match cause {
+    JoinObservedUnnamed { observed: _ } => ApprovalExecutorHostUnobserved { reason: observed_host_join_refusal_text(cause: cause) }
+    JoinObservedAmbiguous { observed: _, candidates: _ } => ApprovalExecutorHostUnobserved { reason: observed_host_join_refusal_text(cause: cause) }
+    JoinObservedUnknown { observed: _ } => ApprovalExecutorHostUnobserved { reason: observed_host_join_refusal_text(cause: cause) }
+    JoinExpectedUnnamed { expected: _ } => ApprovalOriginHostUnresolved { origin_host: host, reason: observed_host_join_refusal_text(cause: cause) }
+    JoinExpectedAmbiguous { expected: _, candidates: _ } => ApprovalOriginHostUnresolved { origin_host: host, reason: observed_host_join_refusal_text(cause: cause) }
+    JoinExpectedUnknown { expected: _ } => ApprovalOriginHostUnresolved { origin_host: host, reason: observed_host_join_refusal_text(cause: cause) }
+    JoinHostsDisagree { expected: _, observed: answered } =>
+      ApprovalExecutorNotTheOriginHost { origin_host: host, executor_host: answered as String }
   }
 }
 

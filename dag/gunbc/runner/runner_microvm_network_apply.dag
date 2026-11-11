@@ -10,8 +10,8 @@ import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.live_deploy.candidate { CandidateCheckoutObservation, CandidateCheckoutClean, CandidateCheckoutDirty, CandidateCheckoutUnobservable, observe_candidate_checkout }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.hostname_allocation {
-  resolve_host_selector, HostSelectorResolved, HostSelectorAmbiguous, HostSelectorUnknown,
-  ObservedHostAmbiguous, ObservedHostUnknown, observed_host_identity_refusal_text,
+  observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused,
+  observed_host_identity_refusal_text,
   observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -198,16 +198,17 @@ fn microvm_network_apply_admission(
     MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: expected_revision ", trim(s: expected_revision), " is not the tree this job runs from (HEAD ", trim(s: checked_out_revision), "); the installed bytes must come from the named revision, not from whatever this checkout happens to be"], "") }
   } else {
     // THE DISPATCH'S WORD IS A NAME, AND A NAME BUYS NOTHING BUT WHAT THE ALLOCATION'S SELECTOR
-    // RESOLVES IT TO (gunbc.hostname_allocation::resolve_host_selector). srv14 is answered by
-    // "butch" and selected by "srv14"; both names resolve to one identity, and a name no roster
-    // answers to refuses by that name instead of being cast into an identity it was never given.
-    match resolve_host_selector(selector: trim(s: host)) {
-      HostSelectorResolved { host: identity } =>
+    // RESOLVES IT TO -- through the same observed-hostname rule every other site consumes
+    // (gunbc.hostname_allocation::observed_host_identity), not a mapping this file writes for itself.
+    // srv14 is answered by "butch" and selected by "srv14"; both names resolve to one identity, and a
+    // name no roster answers to refuses by that name instead of being cast into an identity it was never
+    // given -- and a blank dispatch word now refuses as the failed observation it is (ObservedHostUnnamed)
+    // rather than as a spelling no roster has, which is what the hand-written mapping this replaces said.
+    match observed_host_identity(observed: trim(s: host)) {
+      ObservedHostIdentityRefused { refusal: r } =>
+        MicrovmNetworkApplyRefused { cause: observed_host_identity_refusal_text(refusal: r) }
+      ObservedHostIdentityResolved { host: identity } =>
         microvm_network_apply_admission_for_deploy(host: identity, revision: trim(s: expected_revision))
-      HostSelectorAmbiguous { selector: s, candidates: c } =>
-        MicrovmNetworkApplyRefused { cause: observed_host_identity_refusal_text(refusal: ObservedHostAmbiguous { observed: s, candidates: c }) }
-      HostSelectorUnknown { selector: s } =>
-        MicrovmNetworkApplyRefused { cause: observed_host_identity_refusal_text(refusal: ObservedHostUnknown { observed: s }) }
     }
   }
 }
