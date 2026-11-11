@@ -1061,6 +1061,31 @@ fn wet_plant_unit_credential(instance: HostDashboardInstance) -> Bool {
     ))
 }
 
+// A FILE ONLY THIS CLAIM'S OWN GUEST TREE CARRIES, so the locus key that tree names belongs to it.
+// WHY THIS EXISTS, MEASURED AT d4a75519: the locus is named by CONTENT -- the digest over the installed
+// roots of the planted tree, plus the staged image -- and every claim plants the SAME tree, because
+// `wet_plant_guest_sources` copies `dag/` and `src/v2/` out of the runner's own checkout. So every claim
+// names ONE key, and over one run-keyed locus base the full host roster wrote six `claim-locus-reused`
+// records for that single key. That is the shared locus working as designed for READERS -- one fold, many
+// legs. It is not as designed for a claim that TAMPERS with a locus receipt: `an_unsealed_or_altered_
+// helper_locus_receipt_is_not_read_as_installed` hand-stages a receipt and asks whether it reads as
+// installed, and an earlier claim's installed roots answered yes on its behalf. That claim went RED in
+// the roster, GREEN alone over the same base, GREEN in the roster with the base unset -- its verdict was a
+// function of which other claims had run before it. A claim must not assert over state another claim
+// established, so a tampering claim plants content that is its own: the digest changes, the key is its
+// own, and the shared locus is left alone for the legs that legitimately share it.
+fn wet_plant_claim_own_marker(instance: HostDashboardInstance, marker: String) -> Bool {
+  let principal = wet_principal()
+  marker != ""
+    && wet_ok(command: install_empty_file_command(
+      path: join([instance.repo_root as String, "/dag/witness-claim-marker-", marker, ".txt"], "") as String,
+      octal_mode: "0644" as NonEmptyStr,
+      uid: principal.uid,
+      gid: principal.gid,
+    ))
+}
+
+
 // THE WAY OUT: the claim's own root is removed, and the removal is ANDed into the claim, so a
 // claim that leaves its tree behind is RED rather than tidy.
 fn wet_clean_claim_root(root: String) -> Bool {
@@ -3846,10 +3871,13 @@ test fn a_locus_whose_seal_cannot_be_written_is_not_read_as_installed() -> Bool 
   // A revision needs a committed guest tree -- the plant route commits one -- and the hand stage installs the
   // binary FROM the instance's release stage directory, so the image has to be staged there first.
   let planted = wet_plant_confined_tree(instance: inst)
+  // Content this claim alone carries: it tampers with the locus seal, so it may not share a locus key
+  // with the legs that only read the shared one. See `wet_plant_claim_own_marker`.
   let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
   let seal = witness_locus_receipt_seal_path(instance: inst, locus_key: key)
-  let verdict = planted
+  let marked = wet_plant_claim_own_marker(instance: inst, marker: "seal-unwritable" as NonEmptyStr)
+  let verdict = planted && marked
     && named != ""
     && revision != ""
     && wet_stage(stage: join(["seal-unwritable:image:", named], ""), ok: witness_stage_release_binary(instance: inst, image: named))
@@ -4176,8 +4204,13 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let named = wet_environment_value(name: wet_served_binary_env_var)
   let planted = wet_plant_confined_tree(instance: inst)
+  // Same reason as in `a_locus_whose_seal_cannot_be_written_is_not_read_as_installed`: this claim writes
+  // the locus receipt, so its key must be its own or another leg will answer its refusal arms.
+  // Measured: the roster over one shared base made its first refusal arm come back installed; alone
+  // over that base, and in the roster with the base unset, it is green.
   let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
+  let marked = wet_plant_claim_own_marker(instance: inst, marker: "locus-seal" as NonEmptyStr)
   let staged_tree = named != "" && revision != "" && key != ""
     && wet_stage_locus_by_hand(instance: inst, locus_key: key, image: named)
 
@@ -4190,7 +4223,7 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
   // multiply the cost.
   let s_premise = wet_stage(
     stage: "locus-seal-premise-image-key-revision-and-tree-staged-by-hand",
-    ok: planted && staged_tree && wet_path_exists(path: inst.instance_root as String),
+    ok: planted && marked && staged_tree && wet_path_exists(path: inst.instance_root as String),
   )
   // NO SEAL: the receipt the hand stage wrote is the right shape and is still refused.
   let s_no_seal_refused = wet_stage(
