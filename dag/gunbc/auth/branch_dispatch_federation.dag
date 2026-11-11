@@ -22,8 +22,6 @@ import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_enrollment {
-  HostEnrollmentIntent,
-  HostRunScopedFederation,
   NoRunScopedFederation,
   RunScopedFederationNames,
   host_run_scoped_federation,
