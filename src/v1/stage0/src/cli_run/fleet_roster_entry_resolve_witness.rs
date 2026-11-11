@@ -5,7 +5,9 @@
 //! made `gunbc run` typecheck only the declarations the demanded wave realizes, and a rest
 //! service-qualified call reads rows no authored lexeme spells (the operation surface keyed by the
 //! SERVICE name; the carrier `RestResult` synthesized at call time). The refusal surfaced as
-//! `MethodExistenceUndecided` at dag/gunbc/fleet/organization_runner_roster_read.dag:874 --
+//! `MethodExistenceUndecided` on the
+//! `github.ActionsSelfHostedRunners.ListOrganizationRunnersPage` call inside
+//! `gunbc.fleet.organization_runner_roster_read::rest_roster_page` --
 //! `method 'ListOrganizationRunnersPage', receiver 'Primitive(github.ActionsSelfHostedRunners)'`
 //! -- before any network read, on the P8d dry-run entry `jit_dead_sweep_dry_run_wet` AND on the
 //! pre-existing fleet-converge mode `org_runner_roster_observe` (same route). P8d's witnesses
@@ -136,10 +138,12 @@ fn assert_route_realized_from(entry_file: &str, seeds: &[&str], expected: &[&str
 }
 
 /// THE P8d WITNESS. The dry-run entry fleet-converge mode `jit_dead_registration_sweep_dry_run`
-/// runs (`runner_jit_dead_sweep_run.dag:410`) reads the org roster through the typed REST route
-/// (line 224 -> `organization_runner_roster_report_via_rest` -> `rest_roster_page` -> the
-/// `github.ActionsSelfHostedRunners.ListOrganizationRunnersPage` call at
-/// organization_runner_roster_read.dag:874). Resolve must settle with no blocking diagnostic.
+/// runs (`gunbc.runner.runner_jit_dead_sweep_run::jit_dead_sweep_dry_run_wet`) reads the org
+/// roster through the typed REST route (its call of
+/// `gunbc.fleet.organization_runner_roster_read::organization_runner_roster_report_via_rest`,
+/// which calls `rest_roster_page`, whose call of
+/// `github.ActionsSelfHostedRunners.ListOrganizationRunnersPage` is the refusal site). Resolve
+/// must settle with no blocking diagnostic.
 /// RED on main at 7e57510 (the refusal this node names); GREEN only with the demanded-grain seed
 /// fix landed.
 #[test]
@@ -158,7 +162,10 @@ fn the_jit_dead_sweep_dry_run_entry_resolves_under_the_run_demand_grain() {
 }
 
 /// THE OLDER SIBLING. fleet-converge mode `org_runner_roster_observe` predates P8d and reads the
-/// same route (organization_runner_roster_read.dag:1150 -> ... -> :874). Its entry resolve is the
+/// same route (`gunbc.fleet.organization_runner_roster_read::organization_runner_roster_observe_wet`
+/// down through `organization_runner_roster_report` to the same
+/// `github.ActionsSelfHostedRunners.ListOrganizationRunnersPage` call in `rest_roster_page`).
+/// Its entry resolve is the
 /// evidence that the defect is older than P8d, and the regression canary that P8d's witnesses
 /// were not.
 #[test]

@@ -2,8 +2,11 @@ module test.fixture.demanded_scope.rest_carrier_wire_rows_grain_consumer
 
 // THE CONSUMER SIDE OF THE WIRE-ROWS-ONLY VICTIM SHAPE (node adhoc-cf8a613a-843). It imports the
 // page wire row from the declaring module and the two arms of the carrier from the transport --
-// and NEVER the carrier `RestResult` itself, exactly like gunbc/fleet/organization_runner_roster_read.dag
-// (its line 20 imports wire rows only, its line 27 imports RestAnswered/RestRefused). The service
+// and NEVER the carrier `RestResult` itself, exactly like
+// gunbc.fleet.organization_runner_roster_read, whose imports name only the
+// OrganizationRunnerRosterEntryWire/OrganizationRunnerRosterPageWire wire rows from
+// extdeps.github.actions_self_hosted_runners and RestAnswered/RestRefused from
+// extdeps.transports.rest. The service
 // is service-qualified in a function BODY, never imported by name. This is the entry whose
 // demanded-grain resolve is witnessed in src/v1/stage0/src/cli_run/
 // fleet_roster_entry_resolve_witness.rs: red on main at 7e57510 (the refusal named in the node),
