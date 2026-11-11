@@ -17,17 +17,20 @@ import gunbc.build_cache.build_cache_instance {
   RunnerSlotIdentity,
   ProcessIdentity,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_enrollment {
+  runner_executor_hosts,
+  HostReachAdmission,
+  HostReachAdmitted,
+  HostReachRefused,
+  reach_admission_for_host,
+}
 import gunbc.runner.runner_broker_progress_watchdog {
   RunnerRemoteRegistration,
   RunnerRemoteOnline,
   RunnerRemoteOffline,
   RunnerRemoteAbsent,
   RunnerRemoteBusy,
-  HostReachAdmission,
-  HostReachAdmitted,
-  HostReachRefused,
   RunnerWatchdogInputs,
   RunnerWatchdogVerdict,
   WatchdogHealthy,
@@ -668,15 +671,19 @@ fn verify_incarnation_replace_postcondition(
   }
 }
 
+// THE HOST'S REACH ADMISSION, read from its own row's `reach_admission` column (R4,
+// gunbc.plans.fleet_machine_authority). This used to compare the host against srv3 and srv4 by name,
+// which answered every machine outside those two from an `else` nobody had asked about -- srv14 and the
+// CAX guests included. A host the roster does not carry is refused by name:
+// the fleet reaches no host it has not enrolled, and that is the answer, not a default.
 fn host_reach_admission_for_fleet_host(host: HostIdentity) -> HostReachAdmission {
-  if (host as String) == (operator_host_srv3 as String)
-    || (host as String) == (operator_host_srv4 as String) {
-    HostReachRefused {
-      host: host,
-      reason: "host key login unavailable; located reach refusal while siblings continue" as NonEmptyStr,
-    }
-  } else {
-    HostReachAdmitted
+  match reach_admission_for_host(host: host) {
+    Present { value: admission } => admission
+    Absent =>
+      HostReachRefused {
+        host: host,
+        reason: "not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollment_intents); the fleet reaches no host it has not enrolled" as NonEmptyStr,
+      }
   }
 }
 

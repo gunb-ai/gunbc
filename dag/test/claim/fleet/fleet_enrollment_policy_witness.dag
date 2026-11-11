@@ -1,0 +1,212 @@
+module test.claim.fleet.fleet_enrollment_policy_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+  operator_host_srv9, operator_host_srv14, operator_host_mtcollins1,
+}
+import gunbc.fleet.fleet_enrollment {
+  HostEnrollmentIntent,
+  HostReachAdmitted,
+  HostReachRefused,
+  FreshStandup,
+  ExistingHostQuiescentReload,
+  converge_apply_mode_label,
+  NoRunScopedFederation,
+  RunScopedFederationNames,
+  host_key_login_unavailable_reason,
+  fleet_enrollments,
+  apply_mode_for_host,
+  reach_admission_for_host,
+  host_run_scoped_federation,
+  hosts_with_run_scoped_federation,
+}
+import gunbc.runner.runner_connectivity_recovery { host_reach_admission_for_fleet_host }
+import gunbc.auth.branch_dispatch_federation {
+  host_run_scoped_boot_federation, host_run_scoped_federations, run_scoped_mode_named, run_scoped_account_id,
+}
+import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
+
+// R4 (gunbc.plans.fleet_machine_authority): the enrollment policy the fleet DECIDES about a host --
+// which reload mode its converge uses, whether recovery may reach it at all, and the names its
+// run-scoped branch federation is minted under -- is read from that host's own `HostEnrollmentIntent`
+// row. These are the falsifiers of the three claims that make that true:
+//   1. every machine is answered from ITS row, including machines the absorbed branches never asked about;
+//   2. a machine the roster does not carry is answered by a typed refusal, never a default;
+//   3. a run-scoped federation exists only because some row asked for it.
+
+fn is_host(a: HostIdentity, b: HostIdentity) -> Bool {
+  host_identity_eq(a: a, b: b)
+}
+
+// ── 1. REACH ADMISSION ────────────────────────────────────────────────────────────────────────
+// The absorbed arm refused srv3 and srv4 and ADMITTED everything else through an `else` that had never
+// been asked about srv14, the CAX guests, or a machine that is not enrolled at all.
+
+fn refused_naming(host: HostIdentity, expected: HostIdentity, reason: NonEmptyStr) -> Bool {
+  is_host(a: host, b: expected) && (reason as String) == (host_key_login_unavailable_reason as String)
+}
+
+test fn srv3_is_refused_by_its_own_row() -> Bool {
+  match host_reach_admission_for_fleet_host(host: operator_host_srv3) {
+    HostReachAdmitted => false
+    HostReachRefused { host: refused, reason: reason } => refused_naming(host: refused, expected: operator_host_srv3, reason: reason)
+  }
+}
+
+test fn srv4_is_refused_by_its_own_row() -> Bool {
+  match host_reach_admission_for_fleet_host(host: operator_host_srv4) {
+    HostReachAdmitted => false
+    HostReachRefused { host: refused, reason: reason } => refused_naming(host: refused, expected: operator_host_srv4, reason: reason)
+  }
+}
+
+test fn the_reachable_hosts_are_admitted_by_their_own_rows() -> Bool {
+  all([operator_host_srv1, operator_host_srv2, operator_host_srv14], h =>
+    match host_reach_admission_for_fleet_host(host: h) {
+      HostReachAdmitted => true
+      HostReachRefused { host: _, reason: _ } => false
+    }
+  )
+}
+
+// A fixture machine outside srv1-srv4 gets a REAL answer, not a borrowed one: srv14 became a fleet
+// host after the absorbed branch was written, and the branch never spoke about it.
+test fn a_machine_outside_srv1_to_srv4_is_answered_from_its_own_row() -> Bool {
+  match reach_admission_for_host(host: operator_host_srv14) {
+    Present { value: HostReachAdmitted } => true
+    Present { value: HostReachRefused { host: _, reason: _ } } => false
+    Absent => false
+  }
+}
+
+// And a machine the roster does not carry is not silently admitted: the answer names the roster it is
+// missing from. This is the claim an `else { HostReachAdmitted }` made unfalsifiable before.
+test fn a_machine_the_roster_does_not_carry_is_refused_by_name() -> Bool {
+  match host_reach_admission_for_fleet_host(host: operator_host_srv9) {
+    HostReachAdmitted => false
+    HostReachRefused { host: refused, reason: reason } =>
+      is_host(a: refused, b: operator_host_srv9)
+        && string_contains(s: reason as String, pattern: "not an enrolled fleet host")
+        && string_contains(s: reason as String, pattern: "fleet_enrollment_intents")
+  }
+}
+
+// ── 2. APPLY MODE ─────────────────────────────────────────────────────────────────────────────
+// The absorbed arm said srv3 stands up fresh and EVERY OTHER host reloads quiescently.
+
+fn stands_up_fresh(e: HostEnrollmentIntent) -> Bool {
+  match e.apply_mode {
+    FreshStandup => true
+    ExistingHostQuiescentReload => false
+  }
+}
+
+test fn srv3_is_the_only_host_the_roster_stands_up_fresh() -> Bool {
+  let fresh = filter(fleet_enrollments, e => stands_up_fresh(e: e))
+  length(fresh) == 1 && all(fresh, e => is_host(a: e.host, b: operator_host_srv3))
+}
+
+test fn every_other_row_reloads_quiescently() -> Bool {
+  all(fleet_enrollments, e => stands_up_fresh(e: e) == is_host(a: e.host, b: operator_host_srv3))
+}
+
+test fn the_srv3_mode_is_read_from_its_row() -> Bool {
+  match apply_mode_for_host(host: operator_host_srv3) {
+    Present { value: mode } => converge_apply_mode_label(m: mode) == "fresh_standup"
+    Absent => false
+  }
+}
+
+// Never a default: a host outside the roster has NO apply mode, and the converge that asks is refused
+// rather than handed a quiescent reload invented for it.
+test fn an_unenrolled_machine_has_no_apply_mode_to_claim() -> Bool {
+  match apply_mode_for_host(host: operator_host_srv9) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// ── 3. RUN-SCOPED FEDERATION NAMES ────────────────────────────────────────────────────────────
+// The absorbed declaration copied the generic mint and named the boot host in code. What remains is
+// minted BY the row: a row that declares none mints none, and the names that come out are the row's.
+
+fn declares_a_run_scoped_federation(e: HostEnrollmentIntent) -> Bool {
+  match e.run_scoped_federation {
+    NoRunScopedFederation => false
+    RunScopedFederationNames { mode: _, label: _, service_account_id: _, service_account: _, display_name: _ } =>
+      true
+  }
+}
+
+test fn only_the_boot_hosts_row_declares_a_run_scoped_federation() -> Bool {
+  all(fleet_enrollments, e => declares_a_run_scoped_federation(e: e) == is_host(a: e.host, b: operator_host_mtcollins1))
+    && length(hosts_with_run_scoped_federation()) == length(filter(fleet_enrollments, e => declares_a_run_scoped_federation(e: e)))
+}
+
+// The account the boot host's row names is the account the fleet mints, with the row's label and
+// display name, and its grants still come from the host's admitted boot federation -- so rotating a
+// pinned secret version stays one edit on gunbc.auth.managed_host_boot_federation.
+test fn the_minted_federation_carries_its_row_names() -> Bool {
+  match host_run_scoped_federation(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: NoRunScopedFederation } => false
+    Present { value: RunScopedFederationNames { mode: _, label: label, service_account_id: id, service_account: email, display_name: display } } =>
+      match host_run_scoped_boot_federation(host: operator_host_mtcollins1) {
+        Absent => false
+        Present { value: minted } =>
+          (minted.label as String) == (label as String)
+            && (minted.service_account_id as String) == (id as String)
+            && (minted.service_account as String) == (email as String)
+            && (minted.service_account_display_name as String) == (display as String)
+      }
+  }
+}
+
+test fn the_minted_federation_grants_are_the_admitted_ones() -> Bool {
+  match (
+    host_run_scoped_boot_federation(host: operator_host_mtcollins1),
+    provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)),
+  ) {
+    (Present { value: minted }, Present { value: admitted }) =>
+      length(minted.secret_grants) == length(admitted.secret_grants) && length(minted.secret_grants) > 0
+    _ => false
+  }
+}
+
+// A row that declares no run-scoped federation mints none: srv3 is enrolled, reachable and
+// fresh-standing, and it still has no run-scoped account to sign in as.
+test fn a_row_that_declares_none_mints_none() -> Bool {
+  match host_run_scoped_boot_federation(host: operator_host_srv3) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// And a machine outside the roster mints none either: the mint cannot be reached by a name the roster
+// does not carry.
+test fn a_machine_outside_the_roster_mints_none() -> Bool {
+  match host_run_scoped_boot_federation(host: operator_host_srv9) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The dispatch mode the boot lane runs under is stood up BY the row: the mode name and the account are
+// both the row's, and the roster folds to exactly one minted federation per declaring row.
+test fn the_boot_dispatch_mode_is_the_row_read() -> Bool {
+  match host_run_scoped_federation(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: NoRunScopedFederation } => false
+    Present { value: RunScopedFederationNames { mode: m, label: _, service_account_id: id, service_account: _, display_name: _ } } =>
+      match run_scoped_mode_named(mode: m) {
+        Absent => false
+        Present { value: row } =>
+          (run_scoped_account_id(m: row) as String) == (id as String)
+            && length(host_run_scoped_federations()) == length(hosts_with_run_scoped_federation())
+      }
+  }
+}

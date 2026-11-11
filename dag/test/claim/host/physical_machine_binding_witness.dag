@@ -76,6 +76,7 @@ data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
     provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
     unit: Present { value: UnitKeyBound { key: unit_b } },
   },
+  apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 // The SAME host enrolled with its allocation RESOLVED to the very unit being admitted: the RED2
@@ -87,6 +88,7 @@ data red2_enrollment_resolved_same: HostEnrollmentIntent = HostEnrollmentIntent 
     provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
     unit: Present { value: UnitKeyBound { key: unit_a } },
   },
+  apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 // RED1: a receipt bound to a superseded subject (changed firmware) refuses to apply to the
@@ -233,6 +235,7 @@ data srv_style_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
     provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
     unit: Absent,
   },
+  apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 // The frontier TRAVELS: admission on an unobserved allocation admits, and the sealed fleet axis

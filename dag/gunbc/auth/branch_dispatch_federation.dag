@@ -21,8 +21,17 @@ import gunbc.gcp.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_enrollment {
+  HostEnrollmentIntent,
+  HostRunScopedFederation,
+  NoRunScopedFederation,
+  RunScopedFederationNames,
+  host_run_scoped_federation,
+  hosts_with_run_scoped_federation,
+}
+import product.host_identity { HostIdentity }
 import gunbc.auth.managed_host_boot_federation {
-  ManagedHostBootFederation, provisioned_federation_of, boot_federation_for, boot_federation_service_account_member,
+  provisioned_federation_of, boot_federation_for, boot_federation_service_account_member,
 }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -166,8 +175,6 @@ fn run_scoped_account_id(m: RunScopedMode) -> NonEmptyStr {
   m.account_id
 }
 
-data mtcollins1_boot_mode_name: NonEmptyStr = "mtcollins1_boot"
-
 // THE RUNNER-HOST MODES RUN FROM A BRANCH ON ONE APPROVED RUN AT A TIME (operator, 2026-11-04: "i need to
 // be able to fleet converge from a branch, doing it from main is too slow/formal"; per-run approval chosen
 // over an approval-free branch identity). Without a row they kept the main-only sign-in, so a change to the
@@ -180,15 +187,39 @@ data mtcollins1_boot_mode_name: NonEmptyStr = "mtcollins1_boot"
 data runner_host_file_observe_mode_name: NonEmptyStr = "runner_host_file_observe"
 data runner_host_file_converge_mode_name: NonEmptyStr = "runner_host_file_converge"
 
+// THE DISPATCH MODES A HOST SIGNS IN UNDER FOR ONE APPROVED BRANCH RUN. The mode is one thing, not
+// two: which dispatch input a run carries and the account its credential is minted for are stated on
+// the same row, and that row is now the enrollment row -- so a row whose account has no boot
+// federation cannot mint this mode, and minting it for an account that cannot sign in is unwritable.
+// The rows the enrollment roster declares (its `run_scoped_federation` column) fold in first, so the
+// boot lane is stood up by its row and not by a row of code naming mtcollins1; the modes below are
+// the fleet-wide accounts that are not per-host.
+fn host_run_scoped_modes() -> List<RunScopedMode> {
+  fold(
+    hosts_with_run_scoped_federation(),
+    init: [],
+    f: (acc, intent) =>
+      match intent.run_scoped_federation {
+        NoRunScopedFederation => acc
+        RunScopedFederationNames { mode: m, label: _, service_account_id: id, service_account: _, display_name: _ } =>
+          concat(acc, [RunScopedMode { mode: m, account_id: id, main_route: MainUsesSelectedSource }])
+      }
+  )
+}
+
 fn run_scoped_modes() -> List<RunScopedMode> {
-  [
-    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id, main_route: MainUsesGrantedAccount },
-    RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: mtcollins1_boot_run_scoped_service_account_id, main_route: MainUsesSelectedSource },
-    RunScopedMode { mode: "plan", account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: "apply", account_id: fleet_apply_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: runner_host_file_observe_mode_name, account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: runner_host_file_converge_mode_name, account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
-  ]
+  concat(
+    [RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id, main_route: MainUsesGrantedAccount }],
+    concat(
+      host_run_scoped_modes(),
+      [
+        RunScopedMode { mode: "plan", account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+        RunScopedMode { mode: "apply", account_id: fleet_apply_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+        RunScopedMode { mode: runner_host_file_observe_mode_name, account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+        RunScopedMode { mode: runner_host_file_converge_mode_name, account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+      ],
+    ),
+  )
 }
 
 fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
@@ -312,41 +343,18 @@ fn hetzner_cloud_control_federation() -> DedicatedFederation {
   }
 }
 
-// THE MT. COLLINS BOOT'S RUN-SCOPED ACCOUNT: same pool as Hetzner, own account, grants taken from
-// the admitted boot federation's one secret_grants list (BMC published version and fleet key
-// version). A second pin on this account is unwritable because there is no second list. Rotation
-// of either version is one edit on ManagedHostBootFederation, one converge, both SAs.
-data mtcollins1_boot_run_scoped_service_account_id: NonEmptyStr = "mtcollins1-boot-run"
-
-data mtcollins1_boot_run_scoped_service_account: ServiceAccountEmail = "mtcollins1-boot-run@gunbai-secrets.iam.gserviceaccount.com"
-
-fn mtcollins1_boot_run_scoped_federation_for(f: ManagedHostBootFederation) -> DedicatedFederation {
-  DedicatedFederation {
-    label: "mtcollins1 boot (approved branch runs)",
-    pool_id: branch_dispatch_wif_pool_id,
-    pool_display_name: "Fleet converge (branch runs)",
-    provider_id: branch_dispatch_wif_provider_id,
-    attribute_mapping: branch_dispatch_attribute_mapping,
-    attribute_condition: branch_dispatch_attribute_condition(),
-    impersonation: RunScopedImpersonation,
-    service_account: mtcollins1_boot_run_scoped_service_account,
-    service_account_id: mtcollins1_boot_run_scoped_service_account_id,
-    service_account_display_name: "Mt. Collins boot (run-scoped, WIF-only, no keys)",
-    service_account_member: federated_service_account_member(email: mtcollins1_boot_run_scoped_service_account),
-    secret_grants: f.secret_grants,
-  }
-}
-
-fn mtcollins1_boot_run_scoped_federations() -> List<DedicatedFederation> {
-  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
-    Present { value: f } => [mtcollins1_boot_run_scoped_federation_for(f: f)]
-    Absent => []
-  }
-}
-
-fn mtcollins1_boot_run_scoped_federation() -> DedicatedFederation? {
-  mtcollins1_boot_run_scoped_federations().first()
-}
+// THE RUN-SCOPED FEDERATIONS THE ENROLLMENT ROSTER ASKS FOR, each minted by the ONE generic
+// constructor above from the names its host's own row carries (R4,
+// gunbc.plans.fleet_machine_authority). This replaces a copy of that constructor which named mtcollins1
+// in code, with its label, its display name and its two account declarations written out a second
+// time beside the row that already named the host. What is left here is what is genuinely
+// fleet-wide rather than per-host: the WIF pool, provider, attribute mapping and impersonation every
+// run-scoped federation shares, and the grants, which still come from the host's admitted boot
+// federation -- so rotation of either pinned secret version remains one edit on
+// gunbc.auth.managed_host_boot_federation, one converge, both service accounts. A row that carries
+// NoRunScopedFederation mints nothing, and a row whose boot federation is unread or unadmitted mints
+// nothing either: the run-scoped pair has to carry the same pinned grants, and with none admitted there
+// are none to carry.
 
 // THE FLEET-CONVERGE MODES THAT RUN AS THE FLEET'S OWN ACCOUNTS FROM A BRANCH (operator, relayed
 // 2026-10-17): plan reads through the existing fleet-cloud-convergence account, which holds no secret
@@ -376,6 +384,38 @@ fn fleet_run_scoped_federation(label: String, account_id: NonEmptyStr, email: Se
   }
 }
 
+fn host_run_scoped_federations() -> List<DedicatedFederation> {
+  fold(
+    hosts_with_run_scoped_federation(),
+    init: [],
+    f: (acc, intent) =>
+      match intent.run_scoped_federation {
+        NoRunScopedFederation => acc
+        RunScopedFederationNames { mode: _, label: label, service_account_id: id, service_account: email, display_name: display } =>
+          match provisioned_federation_of(s: boot_federation_for(host: intent.host)) {
+            Present { value: federation } =>
+              concat(
+                acc,
+                [fleet_run_scoped_federation(label: label, account_id: id, email: email, display: display, grants: federation.secret_grants)],
+              )
+            Absent => acc
+          }
+      }
+  )
+}
+
+// THE RUN-SCOPED FEDERATION ONE HOST'S ROW MINTS, or `Absent` when it mints none -- no row, a row that
+// declares none, or a boot federation that is unread or unadmitted. The fleet-converge boot job reads
+// its account through here, so the account it signs in as and the account IAM provisions are the same
+// row read; the emit site refuses (and the WIF step fails closed) when the row does not carry one.
+fn host_run_scoped_boot_federation(host: HostIdentity) -> DedicatedFederation? {
+  match host_run_scoped_federation(host: host) {
+    Present { value: RunScopedFederationNames { mode: _, label: _, service_account_id: id, service_account: _, display_name: _ } } =>
+      filter(host_run_scoped_federations(), minted => (minted.service_account_id as String) == (id as String)).first()
+    _ => Absent
+  }
+}
+
 // The plan row's account is the existing standing fleet account: its policy is already a converge
 // target (fleet_convergence_federation), so this federation only lets the grant planner derive a
 // per-run cell on it; it is not a second target.
@@ -393,7 +433,7 @@ fn fleet_run_scoped_new_federations() -> List<DedicatedFederation> {
 }
 
 fn run_scoped_federations() -> List<DedicatedFederation> {
-  concat(concat([hetzner_cloud_control_federation(), fleet_plan_run_scoped_federation()], fleet_run_scoped_new_federations()), mtcollins1_boot_run_scoped_federations())
+  concat(concat([hetzner_cloud_control_federation(), fleet_plan_run_scoped_federation()], fleet_run_scoped_new_federations()), host_run_scoped_federations())
 }
 
 fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {

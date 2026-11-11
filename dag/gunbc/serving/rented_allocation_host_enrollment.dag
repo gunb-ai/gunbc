@@ -84,6 +84,7 @@ fn rented_allocation_host_enrollment(a: RentedServingAllocation, host: VastAiOff
                   host: a.host.node as HostIdentity,
                   participation: inference_serving_enrollment_participation,
                   backing: ProviderGuest { route: offer.route, entitlement: e, resource: r },
+                  apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
                 },
               }
           }

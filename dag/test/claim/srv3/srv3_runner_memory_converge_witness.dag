@@ -94,8 +94,24 @@ test fn witness_srv3_memory_high_is_throttle_line_below_max() -> Bool {
     && byte_size_count(b: desired.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
+// srv3's converge reloads by standing up a fresh tree, and the claim now reads its OWN enrollment row
+// (R4, gunbc.plans.fleet_machine_authority): the apply mode is a column there, not a comparison in
+// gunbc.host.host_converge. An unenrolled host gets no mode and this claim says so rather than
+// defaulting it to quiescent.
 test fn witness_srv3_apply_mode_is_fresh_standup() -> Bool {
-  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
+  match apply_mode_for_host(host: operator_host_srv3) {
+    Present { value: mode } => converge_apply_mode_label(m: mode) == "fresh_standup"
+    Absent => false
+  }
+}
+
+// The same claim from the other side: a machine the enrollment roster does not carry is answered with
+// no mode at all, which is the typed outcome -- not the quiescent reload an `else` used to hand it.
+test fn witness_an_unenrolled_host_has_no_converge_apply_mode() -> Bool {
+  match apply_mode_for_host(host: operator_host_srv9) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 test fn witness_srv3_memory_knobs_precede_runner_width_widen() -> Bool {
