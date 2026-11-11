@@ -25,7 +25,9 @@ module test.claim.runner.install_fold_depth_shape_wet_witness
 // There is NO hand-written shell here. The plant, the staging, the dry-validation, the file counts and
 // the production tree copy all run through the typed route: Filesystem.Write / Filesystem.Read (the
 // file-transport operations) for bytes, host_command(LocalCommandHost, ...) over the typed argv builders
-// (mkdir_parents_command, rm_recursive_force_command, pwd_command, argv_command(find_program, ...)) for
+// (mkdir_parents_command, rm_recursive_force_command, pwd_command, and the sanctioned findutils wrapper
+// find_regular_file_size_mtime_command for listing/counting -- built inside findutils, which owns the
+// argv_command admission)
 // directory and listing effects, and the native fold for the per-entry loops. Nothing assembles a shell
 // program or runs bash -c (ctrl hand-shell gate; gunbc.design_argument::how_to_work: raw shell
 // implementing semantics expressible in .dag is a tell).
@@ -47,12 +49,13 @@ module test.claim.runner.install_fold_depth_shape_wet_witness
 // rather than passing vacuously (fail_closed).
 
 import std.types { Bool, String, List, NonEmptyStr, Int, CommitSha }
+import std.algebra { Cons }
 import std.integer { int_to_decimal_string }
 import std.algebra { trim, list_init }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { mkdir_parents_command, rm_recursive_force_command, pwd_command }
-import extdeps.tools.findutils { find_program }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.tools.findutils { find_regular_file_size_mtime_command }
+import extdeps.exec.command { ArgvCommand }
 import gunbc.host_command_binding { LocalCommandHost, HostCommandOutcome, HostCommandDone, host_command }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, approval_broker_release_locus_executables }
 import gunbc.host.host_effect_realize {
@@ -129,13 +132,16 @@ fn idx(n: Int, i: Int, acc: List<Int>) -> List<Int> {
   if i > n { reverse(acc) } else { idx(n: n, i: i + 1, acc: concat([i], acc)) }
 }
 
-// Count regular files under each root with a typed `find -type f`, counting non-empty stdout lines.
+// Count regular files under each root via the sanctioned findutils wrapper
+// find_regular_file_size_mtime_command (`find -type f -printf "%s\t%T@\t%P"`); every emitted line is one
+// regular file, so the count is the number of non-empty stdout lines. The command is built inside findutils
+// (which owns the argv_command admission), not here.
 fn count_regular_files_in(dirs: List<String>) -> Int {
   fold(
     dirs,
     init: 0,
     f: (n, r) =>
-      n + count(filter(split(s: host_run_stdout(command: argv_command(program: find_program(), arguments: [r, "-type", "f"])), delimiter: "\n"), e => trim(s: e) != ""))
+      n + count(filter(split(s: host_run_stdout(command: find_regular_file_size_mtime_command(root: r)), delimiter: "\n"), e => trim(s: e) != ""))
   )
 }
 
@@ -178,6 +184,16 @@ test fn dry_validation_plant_arrangement_ok() -> Bool {
   let observed = count_regular_files_in(dirs: [join([t, "/dag"], ""), join([t, "/src/v2"], "")])
   let _ = remove_tree(path: t)
   planted && observed == 50
+}
+
+// Extract the installed-file count the fold reports from a tree-install verdict, or -1 for any non-
+// converged outcome (fail closed: a refusal, or a refused elevation on a host without the seam, reads
+// false rather than passing vacuously).
+fn verdict_files_installed(verdict: ApprovalBrokerTreeInstallVerdict) -> Int {
+  match verdict {
+    TreeInstallConverged { installed_digest: _, files_installed: n } => n
+    TreeInstallRefused { step: _, reason: _ } => -1
+  }
 }
 
 fn install_planted_tree(count: Int) -> Int {
@@ -232,13 +248,33 @@ test fn plant_only_at_large_size() -> Bool {
   planted && observed == install_pair_large
 }
 
-// Copy a real subtree, typed: observe its regular files with a typed `find -type f -printf %P` (one
-// relative path per line, fixed depth -- the listing is observed, then walked by the native fold), then
-// for each file make its destination parent and copy the bytes via Filesystem.Read + Filesystem.Write.
-// No tar, no shell.
+// Parse one `%s\t%T@\t%P` record emitted by find_regular_file_size_mtime_command into its %P relative
+// path (everything after the size and mtime tab-separated fields). Mirrors the repo's canonical parse in
+// gunbc.fabric.workspace_transcript_rate.
+fn path_of_size_mtime_record(line: String) -> String {
+  match split(s: line, delimiter: "\t") {
+    Cons { head: _, tail: Cons { head: _, tail: Cons { head: first, tail: more } } } => join(Cons { head: first, tail: more }, "\t")
+    _ => ""
+  }
+}
+
+fn paths_from_size_mtime_listing(listing: String) -> List<String> {
+  fold(
+    split(s: listing, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => {
+      let rel = path_of_size_mtime_record(line: line)
+      if trim(s: rel) != "" { concat(acc, [rel]) } else { acc }
+    }
+  )
+}
+
+// Copy a real subtree, typed: observe its regular files with the sanctioned findutils wrapper
+// find_regular_file_size_mtime_command (fixed depth -- the listing is observed, then walked by the native
+// fold), then for each file make its destination parent and copy the bytes via Filesystem.Read +
+// Filesystem.Write. No tar, no shell, no direct argv_command.
 fn copy_subtree(from_root: String, to_root: String) -> Bool {
-  let listing = host_run_stdout(command: argv_command(program: find_program(), arguments: [from_root, "-type", "f", "-printf", "%P\\n"]))
-  let rels = filter(split(s: listing, delimiter: "\n"), e => trim(s: e) != "")
+  let rels = paths_from_size_mtime_listing(host_run_stdout(command: find_regular_file_size_mtime_command(root: from_root)))
   fold(
     rels,
     init: true,
