@@ -2140,7 +2140,44 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
+// The E0369 / generic-application equality line (#15992, re-landed by #16122 as the one equality-admissible
+// authority) exposed one residual that #16122 does NOT close: a fully qualified reference to a CORPUS
+// declaration is minted with a KernelMinted provenance, hiding that declaration's by-target entry. Main
+// fails CLOSED on it (no unsound raw '=='), so it is recorded as a gap not yet shown to bite, with the
+// walk-by-target-vs-close_fn_fields consistency control named as the reading that would decide it.
+data qualified_corpus_reference_minted_as_kernel: IntegrationConcern = IntegrationConcern {
+  identity: "qualified_corpus_reference_minted_as_kernel",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    requirement: "a qualified reference to a CORPUS declaration carries that declaration's own provenance, so equality admission reaches the declaration's by-target entry and judges the equality wherever it is written; type_reference_provenance instead classifies a fully qualified corpus spelling as KernelMinted (minting an identity of the form '<kernel:Module.Name>'), so equality_argument_by_target cannot read that reference's by-target entry",
+    standing: RequirementUnestablished { decided_by: "a self-host consistency control over the closed corpus: every type the equality walk records as EqualityByTarget must have close_fn_fields=false, and the disagreement set lists any type compared with a raw Rust '==' that transitively reaches an fn field; an empty disagreement at head shows the misclassification is failing closed rather than emitting an unsound equality, and the reading that would establish the requirement is a corpus member that legitimately needs a qualified equality and is refused for it" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+      decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields"),
+    ],
+  },
+  question: "Does a fully qualified cross-module corpus reference, admitted as a type argument, get refused an equality it should carry because its KernelMinted provenance hides the declaration's by-target entry -- and should the qualified-spelling mint route through the symbol index to the declaration's provenance (one authority) instead of minting '<kernel:Module.Name>' for a corpus name?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "94670a013bb7e8a14cd53c0ccf6e9e683c173aa2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields") },
+        ],
+      },
+      account: "Raised during the equality-admission work that became #16143, superseded by #16122 (one authority for the equality-admissible set). A probe during that work showed a QUALIFIED corpus spelling reached inside another module's field (for example 'v2.std.diagnostic.Outcome' inside a host_run record) is classified by type_reference_provenance as KernelMinted, so its type_reference_identity is the '<kernel:...>' form rather than the corpus declaration's. Under #16122 equality_argument_by_target then either finds the by-target table answers false for that key, or descends its Conj/Disj children and refuses at an fn or routed member -- in both cases FAIL-CLOSED, so no raw '==' is emitted over an unjudged member; this is the difference from the pre-#16122 state where the same opaque by-target produced a Rust '==' over a routed member (the E0369 / DemandEngine line #15992 re-lands). The only remaining cost is over-refusal: a program that legitimately needs equality on a type named by a fully qualified cross-module reference is refused it. Recorded as a gap not yet shown to bite: the consistency control in the standing decides whether any corpus member actually needs a qualified equality. A candidate fix, not yet designed, is to resolve a qualified corpus spelling to its declaration's provenance through the same symbol-index lookup the bare classifier already uses (one has-== authority), rather than minting a kernel identity for it.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
