@@ -68,12 +68,13 @@ import gunbc.runner.runner_jit_dead_sweep {
 data jit_dead_sweep_wif_access_token_env_name: String = "WIF_ACCESS_TOKEN"
 data jit_dead_sweep_key_file_name: String = "gunbai-ci-jit-sweep.pem"
 
-// THE DISPATCH-LOCAL INPUTS, all read from the mode's inputs (never baked literals): the host to sweep, its retired
-// name prefix (the name it was renamed away from, already carrying its trailing dash), and the observed per-slot
-// MainPIDs as "slot_index=pid" pairs. A slot absent from the current list reads MainPidUnreadable -> preserved.
+// THE DISPATCH-LOCAL INPUTS, read from the mode's env (never baked literals): the host to sweep and its retired name
+// prefix (the name it was renamed away from, normalised to the proper prefix in read_dispatch). There is deliberately
+// NO current-MainPID env: the dead-incarnation arm's per-slot unit-MainPID observation is its P9 named trigger (see
+// jit_dead_sweep_no_current_observed), and an input no executing route reads is dangling
+// (gunbc.design_argument::consumption), so it is not declared here -- it returns with the P9 MainPID read.
 data jit_dead_sweep_host_env_name: String = "GUNBC_JIT_DEAD_SWEEP_HOST"
 data jit_dead_sweep_retired_prefix_env_name: String = "GUNBC_JIT_DEAD_SWEEP_RETIRED_PREFIX"
-data jit_dead_sweep_current_env_name: String = "GUNBC_JIT_DEAD_SWEEP_CURRENT"
 
 data jit_dead_sweep_dry_run_receipt_path: String = "artifacts/jit-dead-registration-sweep-dry-run-receipt.txt"
 data jit_dead_sweep_wet_receipt_path: String = "artifacts/jit-dead-registration-sweep-receipt.txt"
@@ -354,8 +355,11 @@ fn jit_dead_sweep_wet_under_staged_key(
 }
 
 // THE DISPATCH INPUTS, read once. The host and the retired prefix are the plan's inputs (the rename's old name is an
-// input, never a literal). A host that cannot be named is a refusal. The observed MainPIDs are supplied separately by
-// the CI wiring (see jit_dead_sweep_no_current_observed); this dispatch carries none.
+// input, never a literal); a host that cannot be named is a refusal. `current` (the observed per-slot MainPIDs) is a
+// field so the pure plan/report/apply entry points can take it directly, but the DISPATCH SUPPLIES NONE -- see
+// jit_dead_sweep_no_current_observed: the dead-incarnation arm's live observation is its P9 named trigger, unbuilt in
+// P8d. Only a future caller that wires that host read fills this field; the executing dispatch route always leaves it
+// empty, so every offline non-current row reads MainPidUnreadable and is preserved as UNOBSERVED (never a clean zero).
 type JitDeadSweepDispatch {
   host: HostIdentity
   current: List<JitCurrentIncarnation>
