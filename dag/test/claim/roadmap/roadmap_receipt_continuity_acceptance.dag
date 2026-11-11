@@ -679,8 +679,7 @@ test fn the_migration_gate_admits_only_the_verified_outcome() -> Bool {
 // accident — one text carrying BOTH words, which the old grep had to refuse by hand — cannot be built at all.
 test fn each_outcome_renders_only_its_own_verdict() -> Bool {
   let verified_report = roadmap_acceptance_migration_report(outcome: migration_verified_outcome())
-  let disagreement = roadmap_acceptance_migration_report(outcome: migration_refused_by(cause:
-    ManifestDisagrees {
+  let disagreement = roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: ManifestDisagrees {
       wanted: 18, held: 17, problems: ["held log is missing the acceptance of node-a"], event_lines: []
     }))
   string_contains(s: verified_report, pattern: "MIGRATION VERIFIED: 18 manifest events (15 acceptances, 3 revocations), 2 retired node(s) named, all held; 18 acceptance events held in the log:")
@@ -688,20 +687,15 @@ test fn each_outcome_renders_only_its_own_verdict() -> Bool {
     && string_contains(s: disagreement, pattern: "MIGRATION REFUSED: 18 manifest events, 17 held, 1 disagreement(s):")
     && string_contains(s: disagreement, pattern: "  held log is missing the acceptance of node-a")
     && !string_contains(s: disagreement, pattern: "MIGRATION VERIFIED")
-    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause:
-        InstanceUnregistered { repo_root: "/no/such/instance" })),
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: InstanceUnregistered { repo_root: "/no/such/instance" })),
       pattern: "no dashboard instance is registered at /no/such/instance")
-    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause:
-        LogReadRefused { step: "list", reason: "the carrier directory is not opened" })),
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: LogReadRefused { step: "list", reason: "the carrier directory is not opened" })),
       pattern: "the event log read failed at list")
-    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause:
-        LogDoesNotReplay { detail: "an event references a node it never opened" as NonEmptyStr })),
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: LogDoesNotReplay { detail: "an event references a node it never opened" as NonEmptyStr })),
       pattern: "the event log does not replay")
-    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause:
-        ManifestLineInvalid { line_index: Zero, detail: "not a valid acceptance event" as NonEmptyStr })),
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: ManifestLineInvalid { line_index: Zero, detail: "not a valid acceptance event" as NonEmptyStr })),
       pattern: "is not a valid acceptance event")
-    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause:
-        RetiredLaneUnorderable { detail: "the retired lane reopens a closed node" as NonEmptyStr })),
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: RetiredLaneUnorderable { detail: "the retired lane reopens a closed node" as NonEmptyStr })),
       pattern: "the retired lane does not order")
 }
 
@@ -712,8 +706,7 @@ test fn each_outcome_renders_only_its_own_verdict() -> Bool {
 test fn the_read_back_refuses_when_any_single_part_refuses() -> Bool {
   let retired_refused = RetiredNodeIdsRefused { detail: "the event log directory is not opened" as NonEmptyStr }
   let history_refused = RoadmapAcceptanceEventHistoryLoadRefused { detail: "the event log could not be read" }
-  let migration_refused = migration_refused_by(cause:
-    RetiredLaneUnorderable { detail: "the retired lane reopens a closed node" as NonEmptyStr })
+  let migration_refused = migration_refused_by(cause: RetiredLaneUnorderable { detail: "the retired lane reopens a closed node" as NonEmptyStr })
   count(roadmap_read_back_refusals(
     migration: migration_verified_outcome(), retired: clean_retired_read(),
     history: clean_history_read(), wrote: true)) == 0
