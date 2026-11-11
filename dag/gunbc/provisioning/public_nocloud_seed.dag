@@ -89,8 +89,11 @@ data public_seed_user_data_schema: PublicSeedSchema = SeedMappingOf { fields: [
     // THE DISK THE INSTALL IS AUTHORIZED AGAINST (PXE 2a). The direct layout names one disk by the identity a
     // capture reported for it, and the schema admits exactly the reference's two identity keys and nothing else:
     // a serial is what names one disk, a model is the second check on it, and the reference's class-shaped keys
-    // (`ssd`, `size`) have no field here at all — a seed that selects a CLASS of disks to wipe is not admitted,
-    // which is the whole point. `model` may be absent: serial alone names one disk.
+    // (`ssd`, `size`, `path`) have no field here at all — a seed that selects a CLASS of disks to wipe is not
+    // admitted, which is the whole point. They have no type to be held in either: what is admitted into a
+    // layout's `match` is an extdeps.os.ubuntu_autoinstall AutoinstallDiskPin, whose serial cannot be left out,
+    // so the schema gate and the type refuse the same state and cannot drift. `model` may be absent: a serial
+    // alone names one disk.
     PublicSeedField { key: "storage", schema: SeedMappingOf { fields: [
       PublicSeedField { key: "layout", schema: SeedMappingOf { fields: [
         PublicSeedField { key: "name", schema: SeedStringOneOf { values: ["direct"] } },
@@ -150,6 +153,15 @@ fn seed_string_backstop(document: SeedDocument, path: String, text: String) -> L
 // A DEVICE IDENTIFICATION TOKEN, admitted by the shape its source defines (extdeps.storage.
 // device_identification): printable device-reported text, no fnmatch metacharacter, no edge padding. The
 // credential backstop still runs over it — a device is free to report anything as its model name.
+//
+// IT ANSWERS YES/NO ON PURPOSE, which is the one place a reader should pause. Elsewhere in this repository an
+// admitted spelling is a Final the caller must destructurate, because the CALLER decides what a refusal means.
+// Here the schema gate is the last thing between bytes and a booting machine, and every reason the token
+// admitter can give (empty, nothing reported, a metacharacter, edge padding) means the same single thing to
+// this gate: this value is not a device identification, so the seed does not ship and the finding is
+// SeedValueNotAdmitted { document, path }, which names where. A four-way cause would be carried to a caller
+// that cannot act differently on any of the four — the cause lives with the admitter, and an operator who
+// wants it re-runs the reading through admit_device_identification_token, which reports it.
 fn seed_device_identity_token(text: String) -> Bool {
   match admit_device_identification_token(spelling: text) {
     DeviceIdentificationAdmitted { token: _ } => true

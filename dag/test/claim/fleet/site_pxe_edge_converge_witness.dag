@@ -22,7 +22,7 @@ import gunbc.provisioning.install_target_disk {
   LsblkBlockReport,
   TargetDiskNeverRead,
   TargetDiskReadingStale,
-  TargetDiskMatchDoesNotBindOneDisk,
+  TargetDiskSerialNotReported,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
 import product.host_identity { HostIdentity }
@@ -1346,7 +1346,7 @@ test fn a_reading_that_names_no_single_disk_is_withheld_with_a_typed_cause() -> 
           Present { value: refusal } => match site_pxe_edge_refusal_target_disk_cause(refusal: refusal) {
             Absent => false
             Present { value: cause } => match cause {
-              TargetDiskMatchDoesNotBindOneDisk { host: h, source: _, reported: _ } => h == operator_host_srv14
+              TargetDiskSerialNotReported { host: h, source: _, reported: _ } => h == operator_host_srv14
               _ => false
             }
           }

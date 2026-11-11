@@ -2,12 +2,15 @@ module extdeps.os.ubuntu_autoinstall
 
 import std.types { Int, NonEmptyStr, Bool, List, String }
 import std.os.types { UbuntuDistribution }
-import std.algebra { FreeSemigroup, non_empty_to_list }
 import std.optional { Optional, Present, Absent }
 import extdeps.ssh.keys { SshPublicKey }
 import extdeps.uri { Uri, Https, uri_wire }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelKeyValue }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.storage.device_identification {
+  DeviceIdentificationToken,
+  device_identification_token_text,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -74,13 +77,10 @@ type CloudInitUserEntry {
 //         match:
 //           serial: CT*"
 // and, of the spec itself: "Every supplied key must match for the disk to be a match."
-// THE MODELED REVISION. The reference's `layout` + `match` form above is the one modeled here. Two things the
-// SAME reference documents are deliberately NOT modeled: the ordered-LIST match spec ("As of Subiquity
-// 24.08.1, match specs may be given as a list..."), because nothing here needs several candidate disks; and
-// the action-disk selection keys (`size: <bytes>` with `offset`/`gap`), which belong to a partition action's
-// `device` field and are a different upstream field from the layout's `match`. A layout's `size` match key is
-// the ENUM largest|smallest ("support for smallest added in version 20.06.1"), not a byte count, and is
-// spelled that way below for that reason.
+// THE MODELED REVISION. The reference's `layout` + `match` form above is the one modeled here. What the SAME
+// reference documents and is deliberately NOT modeled is listed on AutoinstallDiskPin below, so the two
+// statements of "what is and is not modeled" cannot drift: the list-form match spec, the action-disk keys,
+// and the class-selecting match keys including `size` (largest|smallest).
 type AutoinstallStoragePolicy
   = StoragePolicyAbsent
   | StoragePolicyDirectLayout { target: AutoinstallDirectLayoutTarget }
@@ -92,56 +92,62 @@ type AutoinstallStoragePolicy
 // (gunbc.provisioning.install_target_disk), and a fact that has no name is a fact no admission can refuse.
 type AutoinstallDirectLayoutTarget
   = InstallerChoosesDisk
-  | MatchedDisk { keys: FreeSemigroup<AutoinstallStorageMatchKey> }
+  | MatchedDisk { pin: AutoinstallDiskPin }
 
-// ONE KEY OF A MATCH SPEC, spelled exactly as the reference names it. The reference lists the supported keys
-// as model, vendor, path, id_path, devpath, serial, ssd, size, install-media; only the five below are
-// modeled, because they are the ones a consumer in this repository reads (gunbc.design_argument::
-// external_upstreams, "Model what you consume"). vendor, id_path, devpath and install-media are upstream-real
-// and unmodeled until something reads them.
+// THE MATCH SPEC, PINNED TO ONE DISK. Upstream's key list is model, vendor, path, id_path, devpath, serial,
+// ssd, size, install-media, and its rule over them is "Every supplied key must match for the disk to be a
+// match" — they are ANDed. Only `serial` names a single device: `ssd: true` is true of every SSD in the
+// chassis, and `size: largest` restates the default this arm exists to replace. An arm that could be built
+// WITHOUT a serial would therefore let a destructive network install authorize a CLASS of disks, which is the
+// exact failure this repository's install authorization exists to refuse — so the serial is a field this arm
+// cannot be built without, and there is no predicate beside it for a caller to forget to call
+// (gunbc.design_argument::fail_closed: "stronger than catching a wrong state is making it unwritable";
+// "A check restating a constraint the model already carries is a second representation of it").
+// `model` is optional because that is what a capture reports: lsblk's default columns print MODEL and not
+// SERIAL, and when it prints a serial it prints a model with it.
 //
-// serial matches udev's ID_SERIAL and model matches ID_MODEL — the reference says so, and says both "support
-// glob-style matching (as implemented by fnmatch)". That globbing is why a PINNED install must carry a value
-// with no metacharacters: `serial: CT*` is upstream's own example of a match spec that selects a CLASS of
-// disks, which is the exact thing a destructive install must not authorize. The shape rule lives with the
-// seed that serves it (gunbc.provisioning.public_nocloud_seed), where the bytes are checked before they ship.
-type AutoinstallStorageMatchKey
-  = MatchSerial { serial: NonEmptyStr }
-  | MatchModel { model: NonEmptyStr }
-  | MatchPath { path: NonEmptyStr }
-  | MatchSsd { ssd: Bool }
-  | MatchSize { size: AutoinstallMatchDiskSize }
-
-// The reference's `size` key: "largest|smallest". The real upstream spellings, kept.
-type AutoinstallMatchDiskSize = LargestDisk | SmallestDisk
-
-// THE ONE MATCH KEY THAT NAMES A SINGLE DISK. From the reference's own key descriptions: serial is "the
-// device's serial number", which no two shipped devices share, while model/vendor/path/ssd/size are true of
-// every disk of a kind. A match built only from the latter keys narrows the installer's choice; it does not
-// bind the install to one disk. This predicate is the upstream fact; the refusal that uses it is the domain
-// rule, and it lives in gunbc.provisioning.install_target_disk.
-fn autoinstall_match_key_names_one_disk(key: AutoinstallStorageMatchKey) -> Bool {
-  match key {
-    MatchSerial { serial: _ } => true
-    MatchModel { model: _ } => false
-    MatchPath { path: _ } => false
-    MatchSsd { ssd: _ } => false
-    MatchSize { size: _ } => false
-  }
+// The values are ADMITTED device-identification tokens, not free strings. Upstream tests these two keys
+// against udev's ID_SERIAL and ID_MODEL with fnmatch globs — `serial: CT*` is the reference's own example of
+// a match spec — and one metacharacter in a value meant to name ONE disk turns it back into a class selector.
+// The repertoire is extdeps.storage.device_identification's, checked in the one place, and this arm can hold
+// nothing that did not pass it.
+//
+// UNMODELED, deliberately: vendor, path, id_path, devpath, ssd, size and install-media (each upstream-real;
+// nothing here reads them, every one of them selects a class, and the seed that ships this document has no
+// field for a match key other than serial/model — gunbc.provisioning.public_nocloud_seed); the ordered-LIST
+// match spec (Subiquity 24.06.1+/24.08.1, needs several candidate disks); and the action-disk keys (`size:
+// <bytes>` with `offset`/`gap`), which belong to a partition action's `device` field and are a different
+// upstream field from a layout's `match`. The layout `size` key's own spellings (largest|smallest, "support
+// for smallest added in version 20.06.1") are gone with them: an arm that names the disk does not need to ask
+// for the biggest one, and asking for the biggest one is what InstallerChoosesDisk says out loud.
+type AutoinstallDiskPin sole_constructor {
+  serial: DeviceIdentificationToken
+  model: Optional<DeviceIdentificationToken>
 }
 
-// The key NAME upstream uses for this match key, verbatim from the reference's key list. The SHAPE lives
-// here, with the thing it is the shape of; the bytes are written by the adapter (gunbc.os_install_emit),
-// which is the only writer of an autoinstall document in this repository.
-fn autoinstall_match_key_field(key: AutoinstallStorageMatchKey) -> NonEmptyStr {
-  match key {
-    MatchSerial { serial: _ } => "serial"
-    MatchModel { model: _ } => "model"
-    MatchPath { path: _ } => "path"
-    MatchSsd { ssd: _ } => "ssd"
-    MatchSize { size: _ } => "size"
-  }
+// THE ONLY DOOR TO A PINNED MATCH: an already-admitted serial, plus the model if the capture reported one.
+// It takes tokens rather than strings on purpose — a constructor that took a String would put the repertoire
+// check back where the type just removed it. Its caller is gunbc.provisioning.install_target_disk's admission;
+// nothing else in the repository mints a pinned match.
+fn admit_autoinstall_disk_pin(
+  serial: DeviceIdentificationToken,
+  model: Optional<DeviceIdentificationToken>,
+) -> AutoinstallDiskPin {
+  AutoinstallDiskPin { serial: serial, model: model }
 }
+
+fn autoinstall_disk_pin_serial(pin: AutoinstallDiskPin) -> DeviceIdentificationToken {
+  match pin { AutoinstallDiskPin { serial: serial, model: _ } => serial }
+}
+
+fn autoinstall_disk_pin_model(pin: AutoinstallDiskPin) -> Optional<DeviceIdentificationToken> {
+  match pin { AutoinstallDiskPin { serial: _, model: model } => model }
+}
+
+// THE FIELD NAMES, verbatim from the reference's key list, kept here with the thing they are the names of.
+// The writer of an autoinstall document (gunbc.os_install_emit) asks for these instead of spelling them.
+fn autoinstall_match_field_serial() -> NonEmptyStr { "serial" }
+fn autoinstall_match_field_model() -> NonEmptyStr { "model" }
 
 data nocloud_datasource_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

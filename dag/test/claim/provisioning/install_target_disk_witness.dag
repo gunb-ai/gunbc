@@ -21,6 +21,10 @@ import extdeps.languages.yaml.types { YamlValue }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
 import extdeps.storage.device_identification {
+  ReportedDeviceIdentity,
+  admit_reported_device_identity,
+  ReportedDeviceIdentityAdmitted,
+  ReportedDeviceIdentityRefused,
   DeviceIdentificationRefusal,
   DeviceIdentificationRefused,
   DeviceIdentificationEmpty,
@@ -32,20 +36,12 @@ import extdeps.storage.device_identification {
   device_identification_token_text,
 }
 import extdeps.os.ubuntu_autoinstall {
-  AutoinstallStorageMatchKey,
-  AutoinstallMatchDiskSize,
-  MatchSerial,
-  MatchModel,
-  MatchPath,
-  MatchSsd,
-  MatchSize,
-  LargestDisk,
-  SmallestDisk,
-  autoinstall_match_key_field,
-  autoinstall_match_key_names_one_disk,
   AutoinstallDirectLayoutTarget,
+  AutoinstallDiskPin,
   MatchedDisk,
   InstallerChoosesDisk,
+  autoinstall_disk_pin_serial,
+  autoinstall_disk_pin_model,
 }
 import gunbc.provisioning.install_target_disk {
   DiskIdentitySource,
@@ -65,13 +61,13 @@ import gunbc.provisioning.install_target_disk {
   TargetDiskIdentityUnusable,
   TargetDiskReadingFromTheFuture,
   TargetDiskReadingStale,
-  TargetDiskMatchDoesNotBindOneDisk,
+  TargetDiskSerialNotReported,
   admit_install_target_disk,
   install_target_disk_host,
   install_target_disk_read_at,
-  install_target_disk_layout_match,
+  install_target_disk_pin,
+  install_target_disk_pinned_match,
   install_target_disk_direct_layout_target,
-  install_target_disk_binding_key,
   disk_identity_source_text,
   target_disk_reading_host,
 }
@@ -168,8 +164,32 @@ fn withheld_cause(reading: TargetDiskReading) -> Optional<InstallTargetDiskWithh
   }
 }
 
-fn match_keys(target: InstallTargetDisk) -> List<AutoinstallStorageMatchKey> {
-  non_empty_to_list(xs: install_target_disk_layout_match(disk: target))
+// THE SERIAL ON A CARRIER'S PIN. There is no match-key list to read any more: the pin holds the serial as a
+// field it cannot be built without (extdeps.os.ubuntu_autoinstall's AutoinstallDiskPin).
+fn pin_serial_text(target: InstallTargetDisk) -> String {
+  device_identification_token_text(
+    token: autoinstall_disk_pin_serial(pin: install_target_disk_pin(disk: target)),
+  ) as String
+}
+
+// THE MODEL ON A CARRIER'S PIN, or "" when the reading reported none — "" is not a model the admitter could
+// have accepted (extdeps.storage.device_identification refuses an empty token), so a claim comparing against a
+// real model cannot be satisfied by the absent case.
+fn pin_model_text(target: InstallTargetDisk) -> String {
+  match autoinstall_disk_pin_model(pin: install_target_disk_pin(disk: target)) {
+    Absent => ""
+    Present { value: token } => device_identification_token_text(token: token) as String
+  }
+}
+
+// AN IDENTITY, admitted the way the admitter admits one, so the pin builder is asked about the same values a
+// reading carries. Absent when the text is not a usable token: a claim then goes red rather than inventing an
+// identity to reason about.
+fn identity_of(serial: Optional<String>, model: Optional<String>) -> Optional<ReportedDeviceIdentity> {
+  match admit_reported_device_identity(serial: serial, model: model) {
+    ReportedDeviceIdentityAdmitted { identity: identity } => Present { value: identity }
+    ReportedDeviceIdentityRefused { cause: _ } => Absent
+  }
 }
 
 // THE SERIAL THE CARRIER WAS ADMITTED WITH, as text, or "" when it reported none — "" is not a serial the
@@ -195,56 +215,51 @@ test fn an_admitted_reading_carries_the_identity_and_both_instants() -> Bool {
   }
 }
 
-// 2. The match a carrier gives is the serial, then the model, in that order — the two keys the reference says
-// match a device's serial number and model name. The order is claimed because the block a reader eyeballs on a
-// console should lead with the key that names one disk.
-test fn the_match_names_the_serial_then_the_model() -> Bool {
+// 2. The pin a carrier holds is the serial the reading reported, and the model it reported with it — the two
+// values the reference says match udev's ID_SERIAL and ID_MODEL. There is no key LIST to inspect: the pin's
+// serial is a field a caller cannot leave out, which is why this claims the VALUES and leaves the order they
+// appear in to where the document is actually written (site_pxe_edge_converge_witness reads the rendered
+// `match:` block). RED: drop the reported model from the pin and the last line is red; take the serial from
+// somewhere other than the reading and the first is.
+test fn the_pin_names_the_serial_and_carries_the_reported_model() -> Bool {
   match admitted_target(reading: reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: decided)) {
     Absent => false
     Present { value: target } =>
-      let keys = match_keys(target)
-      length(keys) == 2
-        && key_field_at(keys: keys, at: 0) == "serial"
-        && key_field_at(keys: keys, at: 1) == "model"
-        && key_text_under_field(keys: keys, field: "serial") == witness_serial
-        && key_text_under_field(keys: keys, field: "model") == witness_model
+      pin_serial_text(target: target) == witness_serial
+        && pin_model_text(target: target) == witness_model
   }
 }
 
-fn key_field_at(keys: List<AutoinstallStorageMatchKey>, at: Int) -> String {
-  match get(xs: keys, index: at) {
-    Present { value: k } => autoinstall_match_key_field(key: k) as String
-    Absent => ""
-  }
-}
-
-// The text a match key carries under one of the reference's field names, or "" when no key carries that field.
-fn key_text_under_field(keys: List<AutoinstallStorageMatchKey>, field: String) -> String {
-  match first_where(xs: keys, keep: k => autoinstall_match_key_field(key: k) as String == field) {
-    Absent => ""
-    Present { value: k } => match k {
-      MatchSerial { serial: s } => s as String
-      MatchModel { model: m } => m as String
-      MatchPath { path: p } => p as String
-      _ => ""
+// 3. THE ONE BUILDER REPORTS AND ONLY REPORTS. With a serial and a model it hands back a pin holding both; with
+// a serial alone the pin's model is Absent — it invents no refinement the capture did not print, because
+// upstream ANDs the keys it is given ("Every supplied key must match for the disk to be a match") and an
+// invented `ssd`/`size`/model would be a constraint nobody observed, honoured anyway, erased on. The class keys
+// have no field to be invented INTO, which is the same safety property the old "a carrier never emits ssd"
+// claim asked for, held by the type instead of by a filter over a list.
+// RED: fill the model in when it was not reported and the second half is red; drop a reported one and the first is.
+test fn the_builder_invents_no_refinement_the_reading_did_not_report() -> Bool {
+  match identity_of(serial: Present { value: witness_serial }, model: Present { value: witness_model }) {
+    Absent => false
+    Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+      Absent => false
+      Present { value: pin } =>
+        device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+          && match autoinstall_disk_pin_model(pin: pin) {
+              Absent => false
+              Present { value: token } => device_identification_token_text(token: token) as String == witness_model
+            }
     }
   }
-}
-
-// 3. A carrier can never emit a class-shaped key. `ssd: true` or `size: largest` select a CLASS of disks — "the
-// largest SSD" is what the upstream default means — and an install authorization must not be able to say that.
-// RED: allow the class keys through and this is red with no other claim moving.
-test fn a_carrier_never_emits_a_class_shaped_match_key() -> Bool {
-  match admitted_target(reading: reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: decided)) {
-    Absent => false
-    Present { value: target } => length(filter(match_keys(target), k =>
-      match k {
-        MatchSsd { ssd: _ } => true
-        MatchSize { size: _ } => true
-        _ => false
+    && match identity_of(serial: Present { value: witness_serial }, model: Absent) {
+      Absent => false
+      Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+        Absent => false
+        Present { value: pin } => match autoinstall_disk_pin_model(pin: pin) {
+          Absent => device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+          Present { value: _ } => false
+        }
       }
-    )) == 0
-  }
+    }
 }
 
 // 4. A model whose disk has never been read is withheld, and the cause says so with the reason the fleet's own
@@ -371,15 +386,29 @@ fn is_withheld(reading: TargetDiskReading) -> Bool {
   !is_admitted(reading: reading)
 }
 
-// 11. ONLY A SERIAL NAMES ONE DISK. Two disks off the same production line carry the same model — this fleet
-// holds Samsung and Intel parts in quantity — and `ssd`/`size` name a class by construction. The rule is the
-// reason the match has to carry the serial, and the witness states it against the upstream keys themselves.
-test fn only_the_serial_key_names_one_disk() -> Bool {
-  autoinstall_match_key_names_one_disk(key: MatchSerial { serial: witness_serial as NonEmptyStr })
-    && !autoinstall_match_key_names_one_disk(key: MatchModel { model: witness_model as NonEmptyStr })
-    && !autoinstall_match_key_names_one_disk(key: MatchPath { path: "/dev/nvme0" as NonEmptyStr })
-    && !autoinstall_match_key_names_one_disk(key: MatchSsd { ssd: true })
-    && !autoinstall_match_key_names_one_disk(key: MatchSize { size: LargestDisk })
+// 11. ONLY A SERIAL GIVES THE BUILDER AN ANSWER. Two disks off the same production line carry the same model —
+// this fleet holds Samsung and Intel parts in quantity — and every class key (`ssd`, `size`, `path`, `model`)
+// is true of all of them, which is why extdeps.os.ubuntu_autoinstall's AutoinstallDiskPin takes the serial as a
+// field it cannot be built without and this module no longer keeps a list of match keys to search for the one
+// that binds. The witness states the rule against readings, not against a predicate: a serial in hand, the
+// builder has an answer; the same disk reported by model alone, it has none.
+// RED: make the builder answer for a model-only identity — the state the type exists to make unwritable — and
+// the second half is red; make it refuse a serial and the first is.
+test fn only_a_serial_gives_the_builder_an_answer() -> Bool {
+  match identity_of(serial: Present { value: witness_serial }, model: Present { value: witness_model }) {
+    Absent => false
+    Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
+    && match identity_of(serial: Absent, model: Present { value: "SAMSUNG MZVPV512HDGL-000H1" }) {
+      Absent => false
+      Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
 }
 
 // 12. THE LAYOUT TARGET A CARRIER GIVES IS A MATCHED DISK, never the installer's choice. This is the one line
@@ -392,65 +421,47 @@ test fn the_target_a_carrier_gives_is_a_matched_disk() -> Bool {
     Absent => false
     Present { value: target } =>
       match install_target_disk_direct_layout_target(disk: target) {
-        MatchedDisk { keys: keys } => match install_target_disk_binding_key(keys: keys) {
-          Present { value: key } => match key {
-            MatchSerial { serial: s } => s == (witness_serial as NonEmptyStr)
-            _ => false
-          }
-          Absent => false
-        }
+        MatchedDisk { pin: pin } =>
+          device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
         InstallerChoosesDisk => false
       }
   }
 }
 
-// 13. A CLASS-SHAPED MATCH, hand-built, does not bind one disk — and the rule answers with WHICH key binds, not
-// a yes/no the caller has to go rediscover. `ssd: true` alone, `size: smallest` alone, and the two together are
-// selectors, so the answer is no key at all; add a serial and the answer IS the serial. (Nothing mints these
-// matches from a carrier; they are built here precisely because the carrier cannot.) RED: make the rule answer
-// a serial for a class-shaped match and the first three go red; make it answer nothing for a serial and the
-// fourth does.
-test fn a_class_shaped_match_does_not_bind_one_disk() -> Bool {
-  match install_target_disk_binding_key(keys: non_empty_singleton_of(MatchSsd { ssd: true })) {
-    Absent => true
-    Present { value: _ } => false
+// 13. THERE IS NO CLASS-ONLY MATCH TO BUILD, AND EVERY PIN CAME FROM A SERIAL. The claim this file used to make
+// — hand-build a MatchedDisk from `ssd`/`size` and watch the rule refuse it — can no longer be written, and
+// that is the finding: the arm holds an AutoinstallDiskPin, whose serial a caller cannot omit, so the wrong
+// state has no spelling (gunbc.design_argument::fail_closed, "stronger than catching a wrong state is making
+// it unwritable"). What is still checkable is that the one door is really the only door: a reading with a serial
+// yields a pin carrying that serial and nothing the reading did not report, and a reading that reported nothing
+// yields no pin at all.
+// RED: answer with the model in the serial's field and the last half is red; answer with a pin when no serial
+// was reported and the first half's Absent-arm is; lose the serial and the first is.
+test fn a_pin_exists_only_for_a_reading_that_reported_a_serial() -> Bool {
+  match identity_of(serial: Present { value: witness_serial }, model: Absent) {
+    Absent => false
+    Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+      Absent => false
+      Present { value: pin } =>
+        device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+          && match autoinstall_disk_pin_model(pin: pin) {
+            Absent => true
+            Present { value: _ } => false
+          }
+    }
   }
-    && match install_target_disk_binding_key(keys: non_empty_singleton_of(MatchSize { size: SmallestDisk })) {
-        Absent => true
-        Present { value: _ } => false
-      }
-    && match install_target_disk_binding_key(
-        keys: non_empty_pair_of(
-          left: MatchSsd { ssd: true },
-          right: MatchSize { size: SmallestDisk },
-        ),
-      ) {
-        Absent => true
-        Present { value: _ } => false
-      }
-    && match install_target_disk_binding_key(
-        keys: non_empty_pair_of(
-          left: MatchSsd { ssd: true },
-          right: MatchSerial { serial: witness_serial as NonEmptyStr },
-        ),
-      ) {
-        Present { value: key } => match key {
-          MatchSerial { serial: s } => s == (witness_serial as NonEmptyStr)
-          _ => false
-        }
+    // And the two fields are not interchangeable: the serial goes in the serial's field. A builder that put the
+    // model there would still render a `match:` block, and the installer would test every WD Green against the
+    // model string and pick one — which is the defect, wearing the right key's name.
+    && match identity_of(serial: Present { value: witness_serial }, model: Present { value: witness_model }) {
+      Absent => false
+      Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
         Absent => false
+        Present { value: pin } =>
+          device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+            && witness_serial != witness_model
       }
-}
-
-// One-key match, spelled here because the carrier's own match always leads with the serial.
-fn non_empty_singleton_of(key: AutoinstallStorageMatchKey) -> FreeSemigroup<AutoinstallStorageMatchKey> {
-  FreeSemigroup { head: key, tail: [] }
-}
-
-// A two-key match, spelled the same way: the class-shaped pairs claim 13 needs, and the serial-plus-class match
-// that shows the rule still finds the key that binds.
-fn non_empty_pair_of(left: AutoinstallStorageMatchKey, right: AutoinstallStorageMatchKey) -> FreeSemigroup<AutoinstallStorageMatchKey> {
-  FreeSemigroup { head: left, tail: [ right ] }
+    }
 }
 
 // 14. THE ONE-DISK RULE IS APPLIED AT ADMISSION, NOT JUST STATED. The reading is srv14's real state: lsblk
@@ -464,7 +475,7 @@ test fn a_model_without_a_serial_is_refused_because_it_names_no_single_disk() ->
   match withheld_cause(reading: reading_model_only(model: "SAMSUNG MZVPV512HDGL-000H1", source: LsblkBlockReport, read_at: decided)) {
     Absent => false
     Present { value: cause } => match cause {
-      TargetDiskMatchDoesNotBindOneDisk { host: h, source: s, reported: reported } =>
+      TargetDiskSerialNotReported { host: h, source: s, reported: reported } =>
         h == operator_host_srv15
           && s == LsblkBlockReport
           && match reported_device_identity_serial(identity: reported) {
@@ -481,8 +492,8 @@ test fn a_model_without_a_serial_is_refused_because_it_names_no_single_disk() ->
     && match admitted_target(reading: reading(serial: "SAMSUNG PT02", model: reported_model("SAMSUNG MZVPV512HDGL-000H1"), source: LsblkBlockReport, read_at: decided)) {
       Absent => false
       Present { value: target } =>
-        length(match_keys(target: target)) == 2
-          && key_field_at(keys: match_keys(target: target), at: 0) == "serial"
+        pin_serial_text(target: target) == "SAMSUNG PT02"
+          && pin_model_text(target: target) == "SAMSUNG MZVPV512HDGL-000H1"
     }
 }
 

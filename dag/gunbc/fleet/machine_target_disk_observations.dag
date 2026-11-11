@@ -69,7 +69,7 @@ data srv14_lsblk_capture_instant: EpochMs = 1792108800000
 // been read, and what was read is a model with no serial — which is neither "never read" nor enough. Upstream
 // treats a match key as a test every candidate disk must pass, and a model is a CLASS test: every disk of that
 // model passes it, so a model-only match narrows the field and leaves the installer choosing.
-// admit_install_target_disk withholds this row with TargetDiskMatchDoesNotBindOneDisk, which carries the
+// admit_install_target_disk withholds this row with TargetDiskSerialNotReported, which carries the
 // reported pair so the operator is told WHICH field was missing rather than being told the identity was bad.
 // The serial is Absent because the tool had no SERIAL column, not because the disk has no serial — the
 // difference is what tells the operator to go re-run lsblk with SERIAL.

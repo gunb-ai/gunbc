@@ -2182,7 +2182,7 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConce
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
     tail: [
-      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_binding_key"),
+      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_pinned_match"),
       decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "TargetDiskSelector"),
       decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "BoundDiskEvidence"),
     ],
@@ -2210,7 +2210,7 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConce
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
         control: Absent,
-        statement: "a unification keeps what the carrier's admission refuses today: a reading never taken, a reader that reported no disk, an identity whose text is a glob, a match that names no single disk, a reading from after the decision, and a reading older than the caller's window — each still with its typed cause, and the site still withholding per host with the other hosts served",
+        statement: "a unification keeps what the carrier's admission refuses today: a reading never taken, a reader that reported no disk, an identity whose text is a glob, a reading whose fields hold no serial so no extdeps.os.ubuntu_autoinstall AutoinstallDiskPin can be built, a reading from after the decision, and a reading older than the caller's window — each still with its typed cause, and the site still withholding per host with the other hosts served",
       },
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),

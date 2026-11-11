@@ -3,7 +3,6 @@ module gunbc.os_install_emit
 import std.logic { Bool }
 import std.optional { Absent, Present }
 import std.types { List, NonEmptyStr, String }
-import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
@@ -23,19 +22,15 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallDirectLayoutTarget,
   InstallerChoosesDisk,
   MatchedDisk,
-  AutoinstallStorageMatchKey,
-  MatchSerial,
-  MatchModel,
-  MatchPath,
-  MatchSsd,
-  MatchSize,
-  AutoinstallMatchDiskSize,
-  LargestDisk,
-  SmallestDisk,
-  autoinstall_match_key_field,
+  AutoinstallDiskPin,
+  autoinstall_disk_pin_serial,
+  autoinstall_disk_pin_model,
+  autoinstall_match_field_serial,
+  autoinstall_match_field_model,
   UbuntuAutoinstallLiveCommands,
   AutoinstallSshServer,
 }
+import extdeps.storage.device_identification { device_identification_token_text }
 import extdeps.ssh.keys { SshPublicKey, ssh_public_key_canonical_line, ssh_public_key_line }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
@@ -207,42 +202,46 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
 // `match` is the conjunction the reference describes ("Every supplied key must match"), so the keys are
 // rendered in the order the payload carries them and no key is invented here.
 //
-// WHO DECIDES THAT A `match` IS ADMISSIBLE — not here. This is a renderer over the policy it is handed, and a
-// renderer that started refusing would be a second authority over the disk question. The rule that a destructive
-// install's match must name ONE disk is applied where the disk is authorized:
-// gunbc.provisioning.install_target_disk's admit_install_target_disk refuses with
-// TargetDiskMatchDoesNotBindOneDisk when the reported fields can only build class-shaped keys, and
-// install_target_disk_direct_layout_target is the only function that turns a disk reading into a MatchedDisk
-// target — so a MatchedDisk assembled by hand from `ssd`/`size` alone is not reachable through an install payload,
-// and the red for that rule lives with the admission (install_target_disk_witness
-// a_model_without_a_serial_is_refused_because_it_names_no_single_disk), not with this renderer.
+// WHO DECIDES THAT A `match` IS ADMISSIBLE — not here, and not by a check either. This is a renderer over the
+// policy it is handed, and a renderer that started refusing would be a second authority over the disk question.
+// The rule that a destructive install's match names ONE disk lives in the TYPE it renders: the arm carries an
+// extdeps.os.ubuntu_autoinstall AutoinstallDiskPin, which cannot be built without the serial that picks the one
+// device, and the only function that turns a disk FACT into that arm is
+// gunbc.provisioning.install_target_disk's install_target_disk_direct_layout_target, reachable only from
+// admit_install_target_disk. A match of `ssd`/`size` alone has no type to be held in and no renderer that would
+// write it; the claim that a reading with no serial yields no pin is at install_target_disk_witness
+// a_model_without_a_serial_is_refused_because_it_names_no_single_disk.
 fn autoinstall_direct_layout_entries(target: AutoinstallDirectLayoutTarget) -> List<YamlKeyValue> {
   let named = [kv(key: "name", value: yaml_string(s: "direct"))]
   match target {
     InstallerChoosesDisk => named
-    MatchedDisk { keys: keys } => append(named, items: [
-      kv(key: "match", value: yaml_mapping(entries: autoinstall_match_key_entries(keys: keys))),
+    MatchedDisk { pin: pin } => append(named, items: [
+      kv(key: "match", value: yaml_mapping(entries: autoinstall_match_entries(pin: pin))),
     ])
   }
 }
 
-// The `match` mapping itself: each key name comes from the reference through extdeps.os.ubuntu_autoinstall
-// (autoinstall_match_key_field), never from a string written here.
-fn autoinstall_match_key_entries(keys: FreeSemigroup<AutoinstallStorageMatchKey>) -> List<YamlKeyValue> {
-  map(non_empty_to_list(keys), key =>
-    kv(key: autoinstall_match_key_field(key) as String, value: autoinstall_match_key_value(key: key)))
-}
-
-// The value of one match key, in the type upstream gives it: ssd is a YAML boolean ("ssd: true"), size is one
-// of the two words the reference spells ("largest|smallest"), the rest are strings.
-fn autoinstall_match_key_value(key: AutoinstallStorageMatchKey) -> YamlValue {
-  match key {
-    MatchSerial { serial: s } => yaml_string(s: s as String)
-    MatchModel { model: m } => yaml_string(s: m as String)
-    MatchPath { path: p } => yaml_string(s: p as String)
-    MatchSsd { ssd: b } => yaml_bool(b: b)
-    MatchSize { size: LargestDisk } => yaml_string(s: "largest")
-    MatchSize { size: SmallestDisk } => yaml_string(s: "smallest")
+// THE `match` MAPPING: the serial, always — the pin cannot be held without it — and the model when the reading
+// reported one, in the order the reference's own example gives. Both field names come from the reference
+// through extdeps.os.ubuntu_autoinstall (autoinstall_match_field_serial / autoinstall_match_field_model), never
+// from a string written here, and both values are admitted device-identification tokens, so what can be
+// rendered is what extdeps.storage.device_identification said a disk serial may look like. There is no arm for
+// `ssd`/`size`/`path` here because there is no field to carry them: this renderer cannot write a match that
+// leaves the installer choosing a disk, which is the state the operator's 2026-11-10 review named — and it
+// cannot be asked to, rather than being checked before it is allowed to.
+fn autoinstall_match_entries(pin: AutoinstallDiskPin) -> List<YamlKeyValue> {
+  let serial_entry = kv(
+    key: autoinstall_match_field_serial() as String,
+    value: yaml_string(s: device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String),
+  )
+  match autoinstall_disk_pin_model(pin: pin) {
+    Absent => [ serial_entry ]
+    Present { value: model } => append(items: [ serial_entry ], items: [
+      kv(
+        key: autoinstall_match_field_model() as String,
+        value: yaml_string(s: device_identification_token_text(token: model) as String),
+      ),
+    ])
   }
 }
 
