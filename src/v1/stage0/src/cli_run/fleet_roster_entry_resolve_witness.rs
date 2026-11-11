@@ -40,8 +40,13 @@
 //! to a service-reachability rule that was unowned as of this writing). This witness is route
 //! coverage for the rest-route entry family (P8d dry run, lost-boot sweep dry/wet, connectivity
 //! observe) plus the green gh-route canary; it refuses to fix the resolver, so its rest-route
-//! arms were RED on the unseeded demanded-grain main and must be GREEN on seeded main
-//! (356cec0a347), the srv1 receipts appending to the ledger row above.
+//! arms were RED on the unseeded demanded-grain main and are GREEN on seeded main by EXECUTION:
+//! srv1 arm C at 12480021961 (cargo test -p v1-compiler --lib, both source roots) reports 7
+//! passed / 1 failed -- the one failure, `the_runner_connectivity_observe_entry_...`, refuses for
+//! a DIFFERENT main defect (constructor-call admission: `stage_controller_app_key` admits no
+//! connectivity staged-key caller), tracked apart as
+//! `gunbc.integration_concern::runner_connectivity_observe_admitted_by_no_controller_key_stager`,
+//! not by this class. Receipts recorded in the ledger row above.
 //!
 //! HAND-WRITTEN-RUST RECEIPT: this file is hand-written witness Rust beside the generated stage0
 //! mirror, deferred to the landing lane named by the tracking row
@@ -194,7 +199,14 @@ fn the_lost_boot_sweep_dry_run_entry_resolves_under_the_run_demand_grain() {
 
 /// THE REST-ROUTE THIRD SIBLING, older than P8d: the runner-connectivity observe entry
 /// (`gunbc.fleet.runner_connectivity_observe_wet`, #14303 route family) reads the roster through
-/// the same REST realization from its own module. RED without the carrier seed, GREEN with it.
+/// the same REST realization from its own module. DECLARED RED ON MAIN -- but by a DIFFERENT
+/// defect than this file's class: srv1 (arm C, 12480021961) resolves this entry with NO
+/// ListOrganizationRunnersPage refusal (the carrier repair reaches it) and refuses instead
+/// 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key
+/// refuses call from ...observe_under_staged_key' -- an admit_callers enrollment gap the entry has
+/// always had, tracked as gunbc.integration_concern::runner_connectivity_observe_admitted_by_no_
+/// controller_key_stager (the allowlist names only lost-boot/qualification/service-slot/jit
+/// staged-key callers). Do NOT fix the allowlist here; this arm greens when that enrollment lands.
 #[test]
 fn the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain() {
     std::thread::Builder::new()
