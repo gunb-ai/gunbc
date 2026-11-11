@@ -1247,6 +1247,12 @@ type RunnerWidthUnresolvedCause
   // CONTRADICTORY INPUT refused, not clamped: a host whose exclusive serving reservations exceed its threads.
   // Located (host) and quantitative (threads/withheld) so a downstream refusal QUOTES the shortfall (fail_closed).
   | WidthCpuOverCommitted { host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount }
+  // A SERVING REPLICA'S MEMORY RESERVATION IS UNMEASURED. Distinct from WidthMemoryDenominatorUnestablished (whose
+  // divisor is the session reservation): here the SUBTRAHEND -- bytes a serving engine holds -- was never read, so
+  // the width refuses rather than book the engines zero and hand the runner RAM they own (the butch/srv14 case; B4b
+  // lifts it by reading the per-engine reservation from the box). A DIFFERENT producer and meaning than the
+  // denominator, so its own arm rather than a relabel (single_authority, epistemic_humility).
+  | WidthServingMemoryUnestablished { host: HostIdentity, reason: NonEmptyStr }
 
 type RunnerWidthResolution
   = RunnerWidthDerived { slots: Int }
@@ -1280,6 +1286,12 @@ fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> Stri
         " cores from a machine of only ", to_string(hardware_thread_count_value(t: t)),
         " threads -- contradictory input, REFUSED rather than clamped to a plausible zero (fail_closed)",
       ], "")
+    WidthServingMemoryUnestablished { host: h, reason: r } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: a serving replica on this host carries an unmeasured memory reservation, so the width cannot be certified without handing the runner RAM the engines hold. Reason: ",
+        r as String,
+      ], "")
   }
 }
 
@@ -1305,27 +1317,44 @@ fn committed_width_of_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationR
         },
       }
     RunnerSlotShapeAdmitted =>
-      match memory_denominator_of(f: f) {
-        MemoryDenominatorUnestablished { cause: c } =>
+      // A SERVING REPLICA'S UNMEASURED MEMORY REFUSES THE WIDTH, for EVERY serving host (the general form of the
+      // butch/srv14 case). host_memory_reserved is Absent only when a serving replica's reservation is unread; a
+      // host with no serving row is Present{zero} and an all-measured host is Present{bytes}, so this gate fires for
+      // exactly the hosts whose engine RAM is unaccounted -- and NOT for srv2 (no serving row), leaving srv2's
+      // session-denominator refusal to the arm below. Refusing HERE is what keeps such a host out of the admitted
+      // set instead of booking it the fabricated zero that runner_memory_envelope_bytes_of's shim would otherwise
+      // hand back -- an unmeasured reservation is a refusal, not a width of zero (fail_closed, epistemic_humility).
+      match host_memory_reserved(host: f.host) {
+        Absent =>
           RunnerWidthUnresolved {
-            cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
+            cause: WidthServingMemoryUnestablished {
+              host: f.host,
+              reason: "a serving replica carries an unmeasured memory reservation (gunbc.serving.serving_reservation ServingMemoryUnread); the runner width REFUSES rather than book the engines a fabricated zero and hand the runner the RAM they hold. B4b lifts it by reading the per-engine reservation from the box." as NonEmptyStr,
+            },
           }
-        MemoryDenominatorEstablished =>
-          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host), rows: rows)) == 0 {
-            RunnerWidthUnresolved {
-              cause: WidthSlotShapeInadmissible {
-                reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
-              },
-            }
-          } else {
-          match f.cpu {
-            CpuWidthOfferAbsent { host: h } =>
-              RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
-            CpuWidthOverCommitted { host: h, threads: t, withheld: w } =>
-              RunnerWidthUnresolved { cause: WidthCpuOverCommitted { host: h, threads: t, withheld: w } }
-            CpuWidthDerived { slots: by_cpu } =>
-              RunnerWidthDerived { slots: derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: rows) }
-          }
+        Present { value: _ } =>
+          match memory_denominator_of(f: f) {
+            MemoryDenominatorUnestablished { cause: c } =>
+              RunnerWidthUnresolved {
+                cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
+              }
+            MemoryDenominatorEstablished =>
+              if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host), rows: rows)) == 0 {
+                RunnerWidthUnresolved {
+                  cause: WidthSlotShapeInadmissible {
+                    reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
+                  },
+                }
+              } else {
+              match f.cpu {
+                CpuWidthOfferAbsent { host: h } =>
+                  RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
+                CpuWidthOverCommitted { host: h, threads: t, withheld: w } =>
+                  RunnerWidthUnresolved { cause: WidthCpuOverCommitted { host: h, threads: t, withheld: w } }
+                CpuWidthDerived { slots: by_cpu } =>
+                  RunnerWidthDerived { slots: derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: rows) }
+              }
+              }
           }
       }
   }

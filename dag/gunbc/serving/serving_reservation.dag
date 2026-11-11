@@ -60,7 +60,7 @@ import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
@@ -228,13 +228,37 @@ data serving_host_reservations: List<ServingHostReservation> = [
       },
     ],
   },
-  // BUTCH (srv14) -- ITS PRODUCTION SERVING ROW IS B4b's, NOT B4a's (brief: "butch's own rows and live deploy
-  // are B4b (cool-lark-40); you provide the generic model"). srv14 is now ALSO a committed runner host (main
-  // #16313), and butch's per-engine memory is honestly UNMEASURED, so a production row here would make the width
-  // derivation fail closed on srv14 and break the runner-width conservation wall for a host #16313 booked as a
-  // plain runner. B4b lands butch's row once its per-engine memory is read from the box AND srv14's runner/serving
-  // split is reconciled. The N-replica / affinity-vs-exclusive / unread-fail-closed MECHANISM srv14 would witness
-  // is witnessed generically on a synthetic replica fixture (serving_butch_fixture_witness), not on a real host.
+  // BUTCH (srv14) -- A REAL SERVING ROW THAT FAILS THE WIDTH CLOSED, AND THAT IS THE POINT. srv14 is the operator's
+  // hand-deployed serving host (2026-11-10, operator facts msg_cc2ab16d): strata-pool@a (butch-a) and strata-pool@b
+  // (butch-b), one engine each -- the first host that runs TWO replicas, priced once per replica. Its cpusets are
+  // AFFINITY (the operator's word, cited not invented): 0-39 pins butch-a and 40-79 pins butch-b, and because they
+  // are AFFINITY they leave the cores bookable, so butch gives the runner back no cores. Its per-engine MEMORY is
+  // HONESTLY UNMEASURED, so the row says ServingMemoryUnread and the width derivation FAILS CLOSED on srv14.
+  //
+  // srv14 is ALSO a committed runner host (#16313). This is DELIBERATE and CORRECT, not a bug to remove: butch's two
+  // engines hold real RAM, so sizing srv14's runners as if they did not (by dropping the row) would be a SILENT
+  // OVER-OFFER -- a plausible width over RAM the engines own. A loud typed refusal (srv14 answers the unresolved
+  // arm, naming its unread engine memory, and is never given a width) is the fail_closed answer: the host is
+  // excluded from runner width until B4b reads the per-engine reservation from the box. runner_slot_allocation_wall_
+  // holds therefore asserts the conservation wall over the hosts whose width RESOLVES and separately asserts srv14
+  // refuses; B4b lifts the refusal by measuring the engines. GPU cards + 35 W cap, ports, router cap (2) and sticky
+  // count (4) are NOT reservations this derivation folds -- they re-enter with B4b's GPU-width consumer and the
+  // router's own rows (RouterDevReplicaNaming / RouterDevUpstream).
+  ServingHostReservation {
+    host: operator_host_srv14,
+    replicas: [
+      ReplicaReservation {
+        // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: 40 } ] } } },
+        memory: ServingMemoryUnread { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
+      },
+      ReplicaReservation {
+        // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: 40 } ] } } },
+        memory: ServingMemoryUnread { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
+      },
+    ],
+  },
 ]
 
 fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
