@@ -46,6 +46,13 @@ import gunbc.machine_intake.mtjade1_access_observation {
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
+import gunbc.secret_provision { srv15_bmc_gunbc_arrival_accessor_version }
+import gunbc.auth.srv15_arrival_federation_provision {
+  srv15_arrival_accessor_version_pin,
+  srv15_arrival_accessor_unread_sentinel,
+  PinUnread,
+  PinRead,
+}
 import gunbc.auth.arrival_federation_pair {
   arrival_federation_pair_for_host,
   arrival_lane_environment,
@@ -246,6 +253,18 @@ test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
 // expression family; the pair module derives the same names from the population
 // row's grant. They must agree suffix-for-suffix -- mtjade1 is just a row of the
 // same shape, and no second naming rule is allowed to grow.
+// THE ACCESSOR PIN IS A TYPED STATE, NOT A COMMENT (review 94066): the shipped figure is the
+// sentinel and refuses with the read obligation; the moment a real enabled version is pinned the
+// other arm carries it, and the sentinel can NEVER cross as a version.
+test fn the_accessor_version_pin_is_typed_never_a_silent_fact() -> Bool {
+  match srv15_arrival_accessor_version_pin() {
+    PinUnread { read_obligation: read_obligation } =>
+      string_contains(s: read_obligation as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
+      && srv15_bmc_gunbc_arrival_accessor_version == srv15_arrival_accessor_unread_sentinel
+    PinRead { version: version } => version != srv15_arrival_accessor_unread_sentinel
+  }
+}
+
 test fn the_arrival_job_dispatch_names_follow_the_pair_rule_for_the_dispatch_host() -> Bool {
   match arrival_federation_pair_for_host(host: operator_host_srv15) {
     Present { value: pair } =>

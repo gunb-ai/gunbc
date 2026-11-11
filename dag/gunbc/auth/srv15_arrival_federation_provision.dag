@@ -26,6 +26,9 @@ module gunbc.auth.srv15_arrival_federation_provision
 //           accessor names -- the pin is currently an unread TranscribedUncited figure and
 //           resolve_returned_version refuses a mismatch.
 
+import gunbc.secret_provision {
+  srv15_bmc_gunbc_arrival_accessor_version,
+}
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.auth.arrival_federation_pair {
   srv15_arrival_federation_pair,
@@ -49,5 +52,24 @@ fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
     service_account_display_name: arrival_pool_display_name(pair: srv15_arrival_federation_pair),
     service_account_member: arrival_principal_member(pair: srv15_arrival_federation_pair),
     secret_grants: arrival_secret_grants(pair: srv15_arrival_federation_pair),
+  }
+}
+
+
+// THE PIN IS A TYPED STATE, NOT A COMMENT (review 94066): the shipped figure is the sentinel
+// below until the operator performs the read obligation above and edits the pin. The door consults
+// THIS before touching Secret Manager, and an unread pin refuses the run with the obligation as its
+// reason -- the unread figure can never be fetched as if it were a fact.
+type Srv15AccessorVersionPin
+  = PinRead { version: NonEmptyStr }
+  | PinUnread { read_obligation: NonEmptyStr }
+
+data srv15_arrival_accessor_unread_sentinel: NonEmptyStr = "unread-operator-pin"
+
+fn srv15_arrival_accessor_version_pin() -> Srv15AccessorVersionPin {
+  if srv15_bmc_gunbc_arrival_accessor_version == srv15_arrival_accessor_unread_sentinel {
+    PinUnread { read_obligation: "operator must run gcloud secrets versions list bmc-srv15-admin and set gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version to the enabled version the accessor names" }
+  } else {
+    PinRead { version: srv15_bmc_gunbc_arrival_accessor_version }
   }
 }
