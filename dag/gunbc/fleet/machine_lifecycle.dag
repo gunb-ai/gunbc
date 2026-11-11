@@ -28,13 +28,20 @@ module gunbc.fleet.machine_lifecycle
 //
 // NOTHING IS APPLIED TO A LIVE MACHINE FROM HERE. An admission returns a typed effect (TransitionEffect)
 // and the route that would realize it; no effect is emitted and no transport is run. Each leg's live
-// realization is the mode or workflow the leg's producer names, and where that producer has not landed
-// (the hostname-set converge of P8a, the projected-name derivations of P4, the network-boot actuation of
-// P12) the leg says so AS A PLANNED PRODUCER WITH ITS PR -- an honest citation, not a green claim.
+// realization is the mode or workflow the leg's producer names, and a leg is one of three arms and no
+// other: a producer live in the corpus today (RealProducer), a producer a NAMED STEP OF THIS PLAN will
+// land (PlannedProducer, which carries the plan document as its own resolvable citation alongside the
+// future site), or no producer at all (UnmodeledLeg). The third arm is not a route that reads as modeled:
+// `route_is_modeled` reads it and reports the route unmodeled, so an unowned step can never be counted as
+// covered -- the inflation review 94062 found in the first version, where a leg whose pointer said
+// "unowned" still turned the population claim green. What a leg may NOT be is a hand step: no arm of
+// TransitionProducer expresses one, and the citations are read back through std.annotation_reference's
+// own segment tests, so a paraphrase cannot sit in a field that names a declaration.
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.annotation_reference { segment_is_identifier, segment_is_module_path }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.hostname_allocation {
   AllocatedHostName,
@@ -331,18 +338,38 @@ fn o4_transition_population(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// THE ROUTES. A leg names the producer that realizes the step: RealProducer for one live in the corpus
-// today -- cited as a DeclarationRef a checker can resolve, the same citation a witness uses to bind a claim
-// to the entry that ran -- or PlannedProducer, which carries the module, the declaration and the PR that
-// lands it. There is NO arm meaning "someone does this by hand", so P13's Done condition ("each O4 transition
-// has a modeled route; none is a hand step") is structural on the type and witnessed over the population: a
-// route is modeled when it has legs, and a leg is named when its producer's module, declaration and (for a
-// planned one) PR are all non-empty.
+// THE ROUTES. A leg names the producer that realizes the step, in one of three arms and no other:
+// RealProducer for a producer live in the corpus today, cited as a DeclarationRef the declaration index can
+// resolve; PlannedProducer for a producer a named step of this plan will land, carrying BOTH the future site
+// and the plan document's own citation, so "a plan step owns this" is answered by the index rather than by a
+// sentence; and UnmodeledLeg for a step with no producer at all, which reports the route UNMODELED. There is
+// NO arm meaning "someone does this by hand", so P13's Done condition ("each O4 transition has a modeled
+// route; none is a hand step") is structural on the type and witnessed over the population. And a gap is not
+// a route: `route_is_modeled` reads UnmodeledLeg and returns false. The first version had no third arm, so a
+// planned leg whose own pointer read "unowned: no provider re-image producer is modeled yet" still counted as
+// covered -- the rung inflation review 94062 caught (gunbc.design_argument::guarantee_ladder: an inflated
+// class never ranks for climbing). Citation shapes are checked where they are read, with the same segment
+// tests std.annotation_reference applies to a citation written in a comment, so a paraphrase cannot occupy a
+// field that names a declaration; which plan step really schedules a planned leg is the pointer a reviewer
+// reads, and the witness pins the planned set verbatim.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// THE PLAN DOCUMENT, CITED AS A DECLARATION THAT EXISTS TODAY: the plan module and the data declaration that
+// carries it. A planned leg points here, which is what makes its ownership claim resolvable.
+data fleet_machine_authority_plan_ref: DeclarationRef =
+  decl_ref(module_path: "gunbc.plans.fleet_machine_authority", decl_name: "fleet_machine_authority_plan")
+
+// WHERE A PLANNED LEG LANDS: the plan document, cited, and the step of it that lands the producer. The step
+// label is shape-checked here; that the step really schedules this producer is what a reviewer reads.
+type PlanLanding {
+  plan: DeclarationRef
+  step: NonEmptyStr
+}
 
 type TransitionProducer
   = RealProducer { ref: DeclarationRef, detail: NonEmptyStr }
-  | PlannedProducer { module_path: NonEmptyStr, decl: NonEmptyStr, lands_in: NonEmptyStr }
+  | PlannedProducer { site: DeclarationRef, lands_in: PlanLanding }
+  | UnmodeledLeg { gap: NonEmptyStr }
 
 type TransitionLeg {
   what: NonEmptyStr
@@ -357,15 +384,70 @@ fn real_producer(module_path: String, decl: String, detail: String) -> Transitio
   RealProducer { ref: decl_ref(module_path: module_path, decl_name: decl), detail: detail as NonEmptyStr }
 }
 
-fn planned_producer(module_path: String, decl: String, lands_in: String) -> TransitionProducer {
-  PlannedProducer { module_path: module_path as NonEmptyStr, decl: decl as NonEmptyStr, lands_in: lands_in as NonEmptyStr }
+// A planned leg cites the site the landing step will introduce (future by definition, so checked for shape)
+// and the plan that owns that step (a DeclarationRef into the plan document, resolvable today).
+fn planned_producer(module_path: String, decl: String, step: String) -> TransitionProducer {
+  PlannedProducer {
+    site: decl_ref(module_path: module_path, decl_name: decl),
+    lands_in: PlanLanding { plan: fleet_machine_authority_plan_ref, step: step as NonEmptyStr },
+  }
+}
+
+// A step with no producer says it has no producer. It is not coverage: a route carrying one is reported
+// unmodeled, and the witness pins the set of gaps that is allowed to be open.
+fn unmodeled_leg(what: String, gap: String) -> TransitionLeg {
+  TransitionLeg { what: what as NonEmptyStr, producer: UnmodeledLeg { gap: gap as NonEmptyStr } }
+}
+
+// THE CITATION SHAPE, read through the same segment tests the annotation scanner applies to a reference
+// written in a comment (v2.std.source_annotation: "<module path>::<declaration name>"). The first version
+// checked only that the strings were non-empty, which is how prose got into a declaration field.
+fn declaration_ref_is_well_formed(reference: DeclarationRef) -> Bool {
+  segment_is_module_path(segment: reference.module_path as String)
+    && segment_is_identifier(segment: reference.decl_name as String)
+}
+
+fn plan_landing_is_well_formed(landing: PlanLanding) -> Bool {
+  declaration_ref_is_well_formed(reference: landing.plan)
+    && segment_is_identifier(segment: landing.step as String)
 }
 
 fn leg_producer_is_named(leg: TransitionLeg) -> Bool {
   match leg.producer {
-    RealProducer { ref: _, detail: d } => (d as String) != ""
-    PlannedProducer { module_path: mp, decl: d, lands_in: p } => (mp as String) != "" && (d as String) != "" && (p as String) != ""
+    RealProducer { ref: r, detail: d } => declaration_ref_is_well_formed(reference: r) && (d as String) != ""
+    PlannedProducer { site: s, lands_in: l } =>
+      declaration_ref_is_well_formed(reference: s) && plan_landing_is_well_formed(landing: l)
+    UnmodeledLeg { gap: _ } => false
   }
+}
+
+// THE OPEN GAPS OF A ROUTE, carried rather than dropped: which steps have no producer. The witness pins
+// this set, so a new gap reddens a claim instead of being reported as coverage.
+fn leg_carries_no_producer(leg: TransitionLeg) -> Bool {
+  match leg.producer {
+    UnmodeledLeg { gap: _ } => true
+    RealProducer { ref: _, detail: _ } => false
+    PlannedProducer { site: _, lands_in: _ } => false
+  }
+}
+
+fn leg_gap_text(leg: TransitionLeg) -> NonEmptyStr {
+  match leg.producer {
+    UnmodeledLeg { gap: g } => g
+    RealProducer { ref: _, detail: _ } => "no gap"
+    PlannedProducer { site: _, lands_in: _ } => "no gap"
+  }
+}
+
+fn route_unmodeled_gaps(r: MachineTransitionRoute) -> List<NonEmptyStr> {
+  map(
+    xs: filter(xs: route_legs(r: r), predicate: leg => leg_carries_no_producer(leg: leg)),
+    f: leg => leg_gap_text(leg: leg),
+  )
+}
+
+fn transition_unmodeled_gaps(t: MachineTransition) -> List<NonEmptyStr> {
+  route_unmodeled_gaps(r: machine_transition_route(t: t))
 }
 
 fn route_is_modeled(r: MachineTransitionRoute) -> Bool {
@@ -422,7 +504,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
           },
           TransitionLeg {
             what: "converge the Tailscale machine name inside the window the pending field opens",
-            producer: real_producer(module_path: "gunbc.tailscale_machine_name_converge", decl: "tailscale_machine_name_plan_for", detail: "P8c, live; the window gate is this transition's pending field"),
+            producer: real_producer(module_path: "gunbc.tailscale_machine_name_converge", decl: "tailscale_machine_name_plan", detail: "P8c, live; the window gate is this transition's pending field"),
           },
           TransitionLeg {
             what: "re-derive the member spelling and the provider endpoint from the renamed row",
@@ -430,7 +512,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
           },
           TransitionLeg {
             what: "re-derive the remaining projected names of 2.3 (secret ids, per-host paths, tailnet name) that are still literal per host",
-            producer: planned_producer(module_path: "gunbc.fleet.fleet_naming", decl: "the projected names of 2.3", lands_in: "P4 (one derivation site per projected name)"),
+            producer: planned_producer(module_path: "gunbc.fleet.fleet_naming", decl: "projected_name_derivations", step: "P4"),
           },
         ],
       }
@@ -543,14 +625,16 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
 }
 
 // WHICH LEGS A REPROVISION RUNS IS DECIDED BY THE BACKING THE MACHINE ACTUALLY HAS: a RAM-image machine
-// re-boots its image, a virtual-media or appliance machine re-runs its provisioning arm, a provider guest
-// re-images through its provider. The network-boot arm is cited once, as the leg P12 lands -- the arm does
-// not exist in OwnedOsDelivery yet (O2), and naming the PR is how this module says so without pretending the
-// route is complete.
+// re-bakes and re-boots its image, a virtual-media or appliance machine re-runs its provisioning arm. The
+// network-boot arm is cited once, as the leg P12 lands -- the arm does not exist in OwnedOsDelivery yet
+// (O2) -- and a provider guest's re-image is an UnmodeledLeg, because 2.5 defines reprovision over the
+// machine's ADMITTED delivery and OwnedOsDelivery has no provider arm: there is no producer and no step of
+// this plan owns one, so the route says so and `route_is_modeled` reports it unmodeled rather than counting
+// a leg nobody can run.
 fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
   let network_boot_leg = TransitionLeg {
     what: "the network-boot delivery arm, which OwnedOsDelivery does not have yet (O2)",
-    producer: planned_producer(module_path: "gunbc.provisioning.network_boot_actuation", decl: "network_boot_actuation", lands_in: "P12 (network-boot reprovision, exercised live on srv4)"),
+    producer: planned_producer(module_path: "gunbc.provisioning.network_boot_actuation", decl: "network_boot_actuation", step: "P12"),
   }
   match admitted_enrollment_for(machine: machine) {
     Absent => [
@@ -566,8 +650,12 @@ fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
             match p.delivery {
               RamImageBoot => [
                 TransitionLeg {
-                  what: "re-bake and boot the RAM image for the same unit",
-                  producer: real_producer(module_path: "gunbc.machine_intake.ram_image_arrival", decl: "ram_image_arrival_plan", detail: "the RAM-image arrival route"),
+                  what: "re-bake the RAM image the backing admits and boot it on the same unit",
+                  producer: real_producer(module_path: "gunbc.fleet.fleet_host_backing", decl: "admit_owned_provisioning", detail: "the admission that owns this delivery: RamImageBoot is an admitted owned provisioning"),
+                },
+                TransitionLeg {
+                  what: "the slots and knobs go to the image build, not to an in-place converge",
+                  producer: real_producer(module_path: "gunbc.fleet.fleet_host_backing", decl: "backing_converge_realization", detail: "RamImageBoot realizes as ImageBaked, which is what makes a reprovision a re-bake"),
                 },
               ]
               InstalledViaVirtualMedia => [
@@ -586,10 +674,10 @@ fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
             [network_boot_leg],
           )
         ProviderGuest { route: _, entitlement: _, resource: _ } => [
-          TransitionLeg {
+          unmodeled_leg(
             what: "re-image through the provider API the guest's backing names",
-            producer: planned_producer(module_path: "extdeps.cloud.hetzner", decl: "server_rebuild", lands_in: "unowned: no provider re-image producer is modeled yet"),
-          },
+            gap: "no provider re-image producer exists, and no step of gunbc.plans.fleet_machine_authority owns one: 2.5 defines reprovision over the machine's admitted delivery, and OwnedOsDelivery has no provider arm",
+          ),
         ]
       }
   }

@@ -25,6 +25,8 @@ module test.claim.fleet.machine_lifecycle_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.algebra { string_concat_join }
+import v2.std.decl_index { DeclFact, decl_facts }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.machine_intake.subject {
@@ -46,6 +48,7 @@ import gunbc.host.physical_machine_binding {
 }
 import gunbc.fleet.fleet_machine_unit_binding { machine_unit_standing }
 import gunbc.fleet.fleet_host_identity {
+  operator_host_183527,
   operator_host_mtcollins1,
   operator_host_srv1,
   operator_host_srv3,
@@ -72,6 +75,7 @@ import gunbc.fleet.machine_lifecycle {
   MachineRetired,
   MachineRetirement,
   MachineStanding,
+  ModeledRoute,
   NameAdvanced,
   ParticipationAltered,
   ParticipationUnchanged,
@@ -87,26 +91,42 @@ import gunbc.fleet.machine_lifecycle {
   Rename,
   RenameWithoutPendingName,
   ReplaceRetiredMachine,
+  Reprovision,
   Retired,
   RetiredHandleReissued,
   Retire,
   RunnerRegistration,
   TailscaleMachineName,
+  PlanLanding,
   TransitionAdmitted,
   TransitionLeg,
   TransitionRefused,
+  UnmodeledLeg,
   UnitRebound,
   UnregisteredMachine,
   admit_machine_transition,
   admit_machine_transition_in,
+  declaration_ref_is_well_formed,
   every_o4_transition_is_modeled,
+  fleet_machine_authority_plan_ref,
+  leg_carries_no_producer,
+  leg_producer_is_named,
+  plan_landing_is_well_formed,
   fixture_board_swap_evidence,
   machine_lifecycle_standing,
   machine_lifecycle_standing_in,
   machine_lifecycle_standings,
   machine_registry_row,
   machine_transition_route,
+  o4_transition_population,
+  real_producer,
+  planned_producer,
   registry_reissue_admission,
+  route_is_modeled,
+  route_unmodeled_gaps,
+  transition_is_modeled,
+  transition_unmodeled_gaps,
+  unmodeled_leg,
   retired_ledger_with,
   route_legs,
   undeclared_retirement_artifact_kind_names,
@@ -513,7 +533,7 @@ test fn every_o4_transition_has_a_modeled_route_and_none_is_a_hand_step() -> Boo
     machine: operator_host_mtcollins1,
     replacement: swap,
     held_receipts: [receipt_for(unit: current_unit_key())],
-    successor: machine(label: "fixture-successor"),
+    successor: operator_host_srv14,
   )
 }
 
@@ -527,7 +547,7 @@ test fn the_rename_and_rebind_routes_cite_their_real_producers() -> Bool {
   all(rename_legs, leg => leg_names_a_resolvable_producer(leg: leg))
     && all(rebind_legs, leg => leg_names_a_resolvable_producer(leg: leg))
     && any(rename_legs, leg => leg_cites(module_path: "gunbc.hostname_allocation", decl: "hostname_allocation_admission", leg: leg))
-    && any(rename_legs, leg => leg_cites(module_path: "gunbc.tailscale_machine_name_converge", decl: "tailscale_machine_name_plan_for", leg: leg))
+    && any(rename_legs, leg => leg_cites(module_path: "gunbc.tailscale_machine_name_converge", decl: "tailscale_machine_name_plan", leg: leg))
     && any(rebind_legs, leg => leg_cites(module_path: "gunbc.fleet.fleet_machine_unit_binding", decl: "admit_machine_units", leg: leg))
     && any(rebind_legs, leg => leg_cites(module_path: "gunbc.host.physical_machine_binding", decl: "physical_machine_admission", leg: leg))
     && any(route_legs(r: machine_transition_route(t: ChangeParticipation { machine: operator_host_srv3, to: [InferenceServingParticipation] })),
@@ -564,9 +584,13 @@ test fn the_rename_effect_promotes_the_drawn_name_and_holds_the_handle() -> Bool
 
 fn leg_names_a_resolvable_producer(leg: TransitionLeg) -> Bool {
   match leg.producer {
-    RealProducer { ref: r, detail: d } => declaration_ref_display_key(ref: r) != "" && (d as String) != ""
-    PlannedProducer { module_path: mp, decl: d, lands_in: p } =>
-      (mp as String) != "" && (d as String) != "" && (p as String) != ""
+    RealProducer { ref: r, detail: d } =>
+      declaration_ref_display_key(ref: r) != "" && declaration_ref_is_well_formed(reference: r) && (d as String) != ""
+    PlannedProducer { site: s, lands_in: l } =>
+      declaration_ref_display_key(ref: s) != ""
+        && declaration_ref_is_well_formed(reference: s)
+        && plan_landing_is_well_formed(landing: l)
+    UnmodeledLeg { gap: _ } => false
   }
 }
 
@@ -574,6 +598,146 @@ fn leg_cites(module_path: String, decl: String, leg: TransitionLeg) -> Bool {
   match leg.producer {
     RealProducer { ref: r, detail: _ } =>
       declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: real_ref(module_path: module_path, decl: decl))
-    PlannedProducer { module_path: mp, decl: d, lands_in: _ } => (mp as String) == module_path && (d as String) == decl
+    PlannedProducer { site: s, lands_in: _ } =>
+      declaration_ref_display_key(ref: s) == declaration_ref_display_key(ref: real_ref(module_path: module_path, decl: decl))
+    UnmodeledLeg { gap: _ } => false
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE ROUTES ARE CITED, NOT PARAPHRASED. Review 94062 found the first version counting a leg as modeled
+// while its own pointer read "unowned: no provider re-image producer is modeled yet", because a leg was
+// "named" by checking that three strings were non-empty. These claims are the anti-inflation pair the
+// finding needs: the real citations are answered by the declaration index rather than by this file's
+// opinion, and the planned set is pinned, so a leg that drifts from "a named step of this plan lands it"
+// into "nobody owns this" reddens a claim instead of passing as coverage
+// (gunbc.design_argument::guarantee_ladder: an inflated class never ranks for climbing;
+// gunbc.design_argument::fail_closed: a plausible output is never fabricated).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// ONE WALK OF THE POOL, shared by the claims that answer citations. A keyed read per citation would re-walk
+// it once per citation, which is the cost v2.std.decl_index warns about; this is one walk for the whole
+// file. The pool root is `gunbc`, which is where every cited producer lives.
+data route_citation_pool_roots: List<String> = ["gunbc"]
+data route_citation_facts: List<DeclFact> = decl_facts(pool_roots: route_citation_pool_roots)
+
+fn route_citation_key(reference: DeclarationRef) -> String {
+  string_concat_join(
+    fields: [reference.module_path as String, ".", reference.decl_name as String],
+    separator: "",
+  )
+}
+
+fn route_citation_is_declared(reference: DeclarationRef) -> Bool {
+  let key = route_citation_key(reference: reference)
+  any(route_citation_facts, f => (f.qualified_name as String) == key)
+}
+
+fn planned_leg_key(leg: TransitionLeg) -> String {
+  match leg.producer {
+    PlannedProducer { site: s, lands_in: l } => string_concat_join(
+      fields: [s.module_path as String, "::", s.decl_name as String, "::", l.step as String],
+      separator: "",
+    )
+    RealProducer { ref: _, detail: _ } => "not a planned leg"
+    UnmodeledLeg { gap: _ } => "not a planned leg"
+  }
+}
+
+// EVERY REAL CITATION IS A DECLARATION THE CORPUS DECLARES, answered by the index and not by this file: a
+// leg that cites a producer which never landed can no longer be read as coverage. Planned legs are checked
+// for shape (their site is future by definition) and their PLAN citation is held to the same standard as a
+// real one, because the plan document is a declaration that exists today.
+test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool {
+  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  all(
+    o4_transition_population(
+      machine: operator_host_mtcollins1,
+      replacement: swap,
+      held_receipts: [receipt_for(unit: current_unit_key())],
+      successor: operator_host_srv14,
+    ),
+    t =>
+      all(route_legs(r: machine_transition_route(t: t)), leg =>
+        match leg.producer {
+          RealProducer { ref: r, detail: _ } => route_citation_is_declared(reference: r)
+          PlannedProducer { site: s, lands_in: l } =>
+            declaration_ref_is_well_formed(reference: s)
+              && plan_landing_is_well_formed(landing: l)
+              && route_citation_is_declared(reference: l.plan)
+          UnmodeledLeg { gap: g } => (g as String) != ""
+        },
+      ),
+  )
+}
+
+// THE PLANNED SET IS PINNED, both ways: no leg may call itself planned outside the two sites this plan
+// really schedules, and both of those still appear. The pair is the projected-name derivation sites P4 owns
+// (2.3's secret ids and per-host paths are literal per host until P4's sites land) and the network-boot
+// delivery arm P12 lands (O2, exercised live on srv4) -- the two the module's own text names.
+data pinned_planned_route_sites: List<String> = [
+  "gunbc.fleet.fleet_naming::projected_name_derivations::P4",
+  "gunbc.provisioning.network_boot_actuation::network_boot_actuation::P12",
+]
+
+test fn the_planned_route_legs_are_exactly_the_pinned_two() -> Bool {
+  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let transitions = o4_transition_population(
+    machine: operator_host_mtcollins1,
+    replacement: swap,
+    held_receipts: [receipt_for(unit: current_unit_key())],
+    successor: operator_host_srv14,
+  )
+  // no unplanned leg, over either machine, ...
+  all(transitions, t =>
+    all(route_legs(r: machine_transition_route(t: t)), leg =>
+      match leg.producer {
+        PlannedProducer { site: _, lands_in: _ } =>
+          any(pinned_planned_route_sites, pinned => (pinned as String) == planned_leg_key(leg: leg))
+        RealProducer { ref: _, detail: _ } => true
+        UnmodeledLeg { gap: _ } => true
+      },
+    ))
+    // ... and neither pinned site has gone missing.
+    && all(pinned_planned_route_sites, pinned =>
+      any(transitions, t => any(route_legs(r: machine_transition_route(t: t)), leg =>
+        (planned_leg_key(leg: leg) as String) == (pinned as String))))
+}
+
+// A GAP IS NOT A ROUTE. The smallest case the finding turns on, asserted directly: a route whose only leg
+// announces that it has no producer is NOT a modeled route. Before this arm existed the leg read as one.
+test fn a_route_whose_only_leg_is_an_unmodeled_gap_is_not_a_modeled_route() -> Bool {
+  let gapped = ModeledRoute {
+    legs: [unmodeled_leg(what: "a step with no producer", gap: "the step says so, in the gap field")],
+  }
+  route_is_modeled(r: gapped) == false
+    && route_legs(r: gapped).length() == 1
+    && route_unmodeled_gaps(r: gapped).length() == 1
+    && all(route_legs(r: gapped), leg => leg_carries_no_producer(leg: leg))
+}
+
+// THE GAP THAT IS REALLY OPEN, said out loud: the plan defines reprovision over the machine's admitted
+// delivery (2.5), and OwnedOsDelivery has no provider arm, so a provider guest's reprovision has no
+// producer and its route reports unmodeled -- exactly the leg the first version passed off as a planned
+// producer. Every other O4 transition for that same machine is still modeled, so the claim says which hole
+// is open rather than declaring the whole map blank.
+test fn a_provider_guest_reprovision_reports_its_gap_instead_of_counting_as_modeled() -> Bool {
+  let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let guest = operator_host_183527
+  let reprovision = Reprovision { machine: guest }
+  transition_is_modeled(t: reprovision) == false
+    && transition_unmodeled_gaps(t: reprovision).length() == 1
+    // the strict population claim is false for this machine, and honestly so: a route with an open gap is
+    // not coverage. It is true for the machine the fleet drives over its BMC.
+    && every_o4_transition_is_modeled(
+      machine: operator_host_mtcollins1,
+      replacement: swap,
+      held_receipts: [receipt_for(unit: current_unit_key())],
+      successor: operator_host_srv14,
+    )
+    && all(o4_transition_population(machine: guest, replacement: swap, held_receipts: [], successor: operator_host_srv15),
+      t => match t {
+        Reprovision { machine: m } => transition_is_modeled(t: t) == false && host_identity_eq(a: m, b: guest)
+        _ => transition_is_modeled(t: t)
+      })
 }
