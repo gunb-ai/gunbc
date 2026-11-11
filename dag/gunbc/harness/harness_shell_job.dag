@@ -301,8 +301,11 @@ type HarnessJobText
   | JobTextUnreadable { path: String, cause: String }
 
 fn harness_read_job_text(job: HarnessShellJob) -> HarnessJobText {
-  let out = Filesystem.Read(path: job.stdout_file as String)
-  let err = Filesystem.Read(path: job.stderr_file as String)
+  // Qualified to the filesystem module's service: a bare `Filesystem` is ambiguous with std.resources'
+  // `resource Filesystem` (a capability resource, whose verbs are lowercase), which reaches this scope
+  // through `import extdeps.shell`. The service is the one that answers a Read with success/error.
+  let out = filesystem_io.Filesystem.Read(path: job.stdout_file as String)
+  let err = filesystem_io.Filesystem.Read(path: job.stderr_file as String)
   if !out.success {
     JobTextUnreadable { path: job.stdout_file as String, cause: out.error }
   } else if !err.success {

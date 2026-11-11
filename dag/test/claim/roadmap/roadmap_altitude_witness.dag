@@ -15,6 +15,9 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+// The page fold returns the html module's own emit result; naming the callee here is what gives the
+// call at doc_html an identity (the pre-existing call site carried no import).
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

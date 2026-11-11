@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
   EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
   VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
   GoalAuditWorkflowSegment,
-  workflow_segment_detail_bounded,
+  workflow_segment_detail_bounded, workflow_segment_state_key,
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessExited, WorkerProcessRunning,
