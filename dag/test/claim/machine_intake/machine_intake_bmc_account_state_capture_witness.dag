@@ -10,7 +10,8 @@ module test.claim.machine_intake.machine_intake_bmc_account_state_capture_witnes
 // faithful committed capture set the assembler decodes each field from its body (and the result is the
 // transport the sibling supplied-transport witness already proves mints the dry observation), and four
 // discriminating reds fire exactly when a decoded value would disagree with its bytes -- a missing
-// threshold, a rejecting user-test, an unreadable Accounts body, a census the collection does not list --
+// threshold, an authentication-refused census read (managed_accepted false, never defaulted), an unreadable
+// Accounts body, a census the collection does not list --
 // plus the break-glass absence carried in the type. Every capture body here is one the shared parsers accept
 // (the committed srv13 Accounts collection, the h11ssl LAN print, the mtjade1 get-access table), so the
 // decodes are a real controller's bytes, not a transcription this test invented.
@@ -83,7 +84,6 @@ fn faithful_captures() -> BmcAccountStateCaptures {
     channel: 1,
     channel_members: members(),
     redfish_census: root_census(),
-    managed_answer: committed("ipmi-user-test-managed", "Success"),
     census_answer: committed("ipmi-get-user-access", getaccess_capture),
     redfish_accounts_answer: committed("redfish-accounts", accounts_capture),
     redfish_surface_answer: committed("redfish-surface", surface_capture),
@@ -97,21 +97,22 @@ fn assembled(captures: BmcAccountStateCaptures) -> BmcAccountStateCaptureOutcome
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "the_assembled_transport_decodes_each_field_from_its_committed_bytes"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fabricated_read"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_rejecting_managed_user_test_assembles_managed_accepted_false"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "an_authentication_refused_census_read_assembles_managed_accepted_false"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_served_redfish_with_an_unreadable_accounts_body_refuses_never_a_fabricated_census"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_census_entry_the_collection_does_not_list_refuses"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "no_break_glass_answer_assembles_unmaterializable_never_a_substituted_reference"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_census"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_census"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_managed_user_test_with_neither_success_nor_failure_word_refuses_never_an_accepted_guess"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_garbage_census_read_refuses_never_an_accepted_guess"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "an_empty_census_answer_refuses_never_a_defaulted_managed_acceptance"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_plaintext_service_root_body_refuses_never_an_unfounded_surface"),
   ]
 {
   assemble_account_state_transport(captures: captures)
 }
 
-// GREEN. Over a faithful committed capture set the assembler decodes each field FROM ITS BYTES: the managed
-// user-test marker yields accepted; the fifteen-row get-access table yields fifteen decoded rows (not a
+// GREEN. Over a faithful committed capture set the assembler decodes each field FROM ITS BYTES: the
+// authenticated census table yields managed acceptance; the fifteen-row get-access table yields fifteen decoded rows (not a
 // hand-authored census); the LAN print that carries the threshold yields a Read; the AccountService body
 // yields a served lockout; the Redfish surface body yields served and the census survives the collection
 // tie; the break-glass answer yields an accepted test. This is the transport the sibling supplied-transport
@@ -150,7 +151,7 @@ test fn a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fab
   let c = faithful_captures()
   let bare = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer,
     lan_config_answer: committed("ipmi-get-lan-config", "Set In Progress         : Set Complete\nAuth Type Support       : MD5\n"),
@@ -165,21 +166,45 @@ test fn a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fab
   }
 }
 
-// RED (byte-vs-decoded discriminator). A managed user-test whose committed bytes record a refusal must
-// assemble managed_accepted: false -- never the caller's preferred true. The exact failure a forked
-// decoded-value/bytes pair produces.
-test fn a_rejecting_managed_user_test_assembles_managed_accepted_false() -> Bool {
+// RED (byte-vs-decoded discriminator, review 93420). An authenticated census read the CONTROLLER REFUSED at
+// authentication -- an ipmitool session-establishment failure, the same vendor line the repo's own
+// bmc_ipmitool_session_cause names -- must assemble managed_accepted: false. Never a defaulted true, and
+// never read as the empty census it might otherwise look like: the census carries the members the driver
+// read with NO user-access rows, because the refusal proves the managed credential was rejected.
+test fn an_authentication_refused_census_read_assembles_managed_accepted_false() -> Bool {
   let c = faithful_captures()
-  let rejected = BmcAccountStateCaptures {
+  let refused = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: committed("ipmi-user-test-managed", "Failure: password incorrect"),
-    census_answer: c.census_answer, redfish_accounts_answer: c.redfish_accounts_answer,
+    census_answer: committed("ipmi-user-list", "Error: Unable to establish IPMI v2 / RMCP+ session"),
+    redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
     lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
   }
-  match assembled(captures: rejected) {
+  match assembled(captures: refused) {
     CapturedTransportUndecodable { cause: _ } => false
-    CapturedTransportAssembled { transport: t } => !t.managed_accepted
+    CapturedTransportAssembled { transport: t } =>
+      !t.managed_accepted && t.census.user_access.length() == 0 && t.census.members.length() >= 1
+  }
+}
+
+// RED (fail_closed -- a blank read is NEVER a refusal, and never a defaulted true). A census read whose body
+// carries no table -- blank whitespace, no user row and none of the authentication-refusal vendor lines -- is
+// not the controller refusing the credential; it is a read that produced nothing to read. The assembler must
+// REFUSE with UserAccessRowsUndecodable -- it must not mint managed_accepted:false on an empty reading any
+// more than it mints managed_accepted:true. This is the arm that keeps AuthenticationRefused honest: refusal
+// is a specific vendor line, not the absence of a table.
+test fn an_empty_census_answer_refuses_never_a_defaulted_managed_acceptance() -> Bool {
+  let c = faithful_captures()
+  let empty = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    census_answer: committed("ipmi-user-list", "   "),
+    redfish_accounts_answer: c.redfish_accounts_answer,
+    redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
+    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: empty) {
+    CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
+    _ => false
   }
 }
 
@@ -189,7 +214,7 @@ test fn a_served_redfish_with_an_unreadable_accounts_body_refuses_never_a_fabric
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    census_answer: c.census_answer,
     redfish_accounts_answer: committed("redfish-accounts", "500 Internal Server Error"),
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
     lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
@@ -208,7 +233,7 @@ test fn a_census_entry_the_collection_does_not_list_refuses() -> Bool {
   let stranger = BmcRedfishCensusServed { accounts: [BmcRedfishAccountCensusEntry { name: "intruder", enabled: true, is_managed_account: true }] }
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: stranger,
-    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
     break_glass_answer: c.break_glass_answer,
@@ -226,7 +251,7 @@ test fn no_break_glass_answer_assembles_unmaterializable_never_a_substituted_ref
   let c = faithful_captures()
   let none_bg = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
     break_glass_answer: Absent,
@@ -248,7 +273,6 @@ test fn a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_c
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: c.managed_answer,
     census_answer: committed("ipmi-get-user-access", "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      false      SUPERVISOR\n"),
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
@@ -269,7 +293,7 @@ test fn a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_ce
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: committed("redfish-surface", "{\"error\":{\"code\":\"Base.1.19.GeneralError\",\"message\":\"denied\"}}"),
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
@@ -281,21 +305,22 @@ test fn a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_ce
   }
 }
 
-// RED (fail_closed -- the review-93366 discriminator). A managed user-test body that carries the letters
-// "ok" but prints NEITHER a whole-word Success NOR Failure ("check-password: ok") is the EXACT body the
-// substring version minted ObservedCredentialAccepted on. Now it REFUSES with UserTestUndecodable: an
-// unrecognizable probe is never read as an acceptance. This is the single discriminating red for the fix.
-test fn a_managed_user_test_with_neither_success_nor_failure_word_refuses_never_an_accepted_guess() -> Bool {
+// RED (fail_closed -- review 93420, the census analogue of the old substring discriminator). A census read
+// that is NEITHER a well-formed user-access table NOR one of the recognized authentication-refusal lines
+// (here: the letters "ok", the decoy the substring version minted an acceptance on) must REFUSE with
+// UserAccessRowsUndecodable. managed_accepted is never guessed from bytes that do not clearly serve a table
+// or clearly refuse one -- no plausible acceptance is fabricated.
+test fn a_garbage_census_read_refuses_never_an_accepted_guess() -> Bool {
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: committed("ipmi-user-test-managed", "check-password: ok"),
-    census_answer: c.census_answer, redfish_accounts_answer: c.redfish_accounts_answer,
+    census_answer: committed("ipmi-user-list", "check-password: ok token invoked lookup successful"),
+    redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
     lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
   }
   match assembled(captures: broken) {
-    CapturedTransportUndecodable { cause: UserTestUndecodable { detail: _ } } => true
+    CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: _ } } => true
     _ => false
   }
 }
@@ -307,7 +332,7 @@ test fn a_plaintext_service_root_body_refuses_never_an_unfounded_surface() -> Bo
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: committed("redfish-surface", "<!DOCTYPE html><html><body>404 Not Found</body></html>"),
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,

@@ -20,7 +20,7 @@ module gunbc.machine_intake.bmc_account_state_parsers
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
-import std.algebra { list_at_optional, list_push, trim }
+import std.algebra { list_at_optional, list_push, string_contains, trim }
 import extdeps.languages.json.parse {
   JsonArray,
   JsonBool,
@@ -234,6 +234,7 @@ fn ipmi_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAc
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_malformed_privilege_word_refuses_never_a_defaulted_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_flag_column_of_garbage_refuses_though_the_carrier_drops_the_flags"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_parsers", decl_name: "ipmi_authenticated_census_read"),
   ]
 {
   let lines = filter(split(s: text, delimiter: "\n"), l => {
@@ -241,6 +242,86 @@ fn ipmi_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAc
     string_length(s: t) > 0 && !(starts_with(s: t, prefix: "ID") || starts_with(s: t, prefix: "###"))
   })
   ipmi_user_access_rows_from_lines(lines: lines, channel: channel, acc: [])
+}
+
+// ── The authenticated census read: the managed credential's acceptance, read from the census ──────
+//
+// WHY THIS EXISTS (PXE 1c rework, review 93420). The managed account's acceptance used to be proven
+// by a SEPARATE `ipmitool user test`, which put the tested BMC password on ARGV as a positional word
+// -- readable by anyone from /proc/<pid>/cmdline and ps. It is deleted. The evidence the controller
+// ACCEPTS the managed credential is already carried by the authenticated census reads: `ipmitool ...
+// -U <managed> -f <password_file> user list <channel>` and `channel getaccess <ch> <uid>` only print
+// a table if the RMCP+ session authenticated AS the managed account. So a census read that served a
+// well-formed user-access table IS the proof the managed credential was accepted; a read the
+// controller refused at authentication is proof it was NOT. This function is THE SINGLE AUTHORITY for
+// that reading; the assembler maps its three arms onto managed_accepted. It is never a defaulted true.
+//
+// THE THREE ARMS, and why each is what it is:
+//   Accepted          -- the body decoded to a well-formed user-access table. The managed account
+//                        authenticated and the controller served the census. managed_accepted := true.
+//   AuthenticationRefused -- the body is one of ipmitool's OWN documented authentication/session
+//                        refusal lines and carries no table. The managed credential was refused.
+//                        managed_accepted := false -- NEVER defaulted, NEVER silently accepted.
+//   Unreadable        -- the body is empty, truncated, or garbage: it is neither a served table nor a
+//                        recognized refusal. The read did not happen or cannot be trusted; the caller
+//                        REFUSES rather than minting a census or defaulting managed_accepted. The
+//                        empty/never-looked case is deliberately kept DISTINCT from AuthenticationRefused:
+//                        an absent read is not a controller that refused (fail_closed -- a reading that
+//                        cannot look is never reported as a refusal, just as it is never a reading).
+//
+// THE GROUNDING of AuthenticationRefused is the repo's OWN authoritative classifier of a refused
+// authenticated ipmitool read, gunbc.machine_intake.megarac_boot_diagnostic_bundle
+// bmc_ipmitool_session_cause, which names these vendor lines: "RAKP 2 HMAC is invalid" (wrong
+// password), "Unauthorized name" (unknown user), "Insufficient privilege level" (accepted then
+// denied) => authentication refused; and "Unable to establish IPMI v2" (the RMCP+ session never came
+// up) => session unestablished. Same vendor strings, same authority. It is NOT a keyword guess over a
+// table: a well-formed table is tried FIRST and can never carry a refusal line, and a refusal body
+// carries no table, so the two arms are disjoint by construction. A body that is neither refuses.
+type IpmiAuthenticatedCensusVerdict
+  = IpmiCensusAccepted { rows: List<IpmiUserChannelAccess> }
+  | IpmiCensusAuthenticationRefused { detail: NonEmptyStr }
+  | IpmiCensusUnreadable { detail: NonEmptyStr }
+
+// The documented vendor refusal line this body carries, or nothing. The patterns are the whole vendor
+// sentences, matched exactly as bmc_ipmitool_session_cause matches them -- never a substring that a
+// legitimate table cell or user name could contain (no cell in the getaccess/user-list format is a
+// sentence carrying these).
+fn ipmi_authentication_refusal_line(text: String) -> NonEmptyStr? {
+  if string_contains(s: text, pattern: "RAKP 2 HMAC is invalid") {
+    Present { value: "RAKP 2 HMAC is invalid" as NonEmptyStr }
+  } else if string_contains(s: text, pattern: "Unauthorized name") {
+    Present { value: "Unauthorized name" as NonEmptyStr }
+  } else if string_contains(s: text, pattern: "Insufficient privilege level") {
+    Present { value: "Insufficient privilege level" as NonEmptyStr }
+  } else if string_contains(s: text, pattern: "Unable to establish IPMI v2") {
+    Present { value: "Unable to establish IPMI v2 / RMCP+ session" as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+// THE AUTHENTICATED CENSUS READING, in one call. A table is tried first; only a body that is not a
+// table and carries a vendor refusal line is a refusal; anything else is Unreadable and refuses.
+fn ipmi_authenticated_census_read(text: String, channel: IpmiChannelNumber) -> IpmiAuthenticatedCensusVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_authenticated_census_table_reads_as_accepted_with_its_rows"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_refused_authenticated_census_is_read_as_refused_never_malformed"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_empty_census_is_unreadable_never_a_refused_reading"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_garbage_census_is_unreadable_never_a_defaulted_acceptance"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
+  ]
+{
+  if string_contains(s: text, pattern: "Unable to establish IPMI v2") || string_contains(s: text, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: text, pattern: "Unauthorized name") || string_contains(s: text, pattern: "Insufficient privilege level") {
+    match ipmi_authentication_refusal_line(text: text) {
+      Present { value: line } => IpmiCensusAuthenticationRefused { detail: line }
+      Absent => IpmiCensusUnreadable { detail: "the census read carried no user row and no recognized refusal" as NonEmptyStr }
+    }
+  } else {
+    match ipmi_user_access_rows(text: text, channel: channel) {
+      IpmiUserAccessRowsRead { rows: rows } => IpmiCensusAccepted { rows: rows }
+      IpmiUserAccessRowsMalformed { detail: d } => IpmiCensusUnreadable { detail: d }
+    }
+  }
 }
 
 
@@ -490,7 +571,7 @@ fn redfish_account_service_lockout_from_body(body: String) -> RedfishAccountServ
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_openbmc_account_service_body_decodes_the_lockout_props"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_account_service_without_a_threshold_is_unreadable_never_zero"),
-    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_build"),
   ]
 {
   match json_root_object(body: body) {
@@ -539,7 +620,6 @@ fn any_token_starts_with(toks: List<String>, prefix: String) -> Bool {
 fn ipmi_user_test_verdict_from_output(body: String) -> IpmiUserTestVerdict
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "the_user_test_words_are_decoded_not_guessed"),
-    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_managed_test"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_break_glass"),
   ]
 {

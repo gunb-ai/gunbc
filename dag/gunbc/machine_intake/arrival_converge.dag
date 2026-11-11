@@ -89,9 +89,11 @@ import gunbc.machine_intake.mtjade1_access_observation {
   read_mtjade1_fru,
   read_mtjade1_smbios_type2,
 }
-import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+import gunbc.fleet.fleet_machine_unit_binding { fleet_bound_unit_keys_except }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1 }
 import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.machine_intake.bmc_rotation_route {
+  admitted_forced_first_rotation_eq,
   BmcRotationRouteStanding,
   BmcAccountWriteRequest,
   ObservedSurfaceRead,
@@ -166,13 +168,14 @@ import gunbc.auth.standing_operator_grant {
 }
 import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_named }
+import gunbc.hostname_allocation { operator_host_named }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
 import gunbc.machine_intake.bmc_write_controller {
   BmcWriteRoute, ByStandingGrant, ByPerWriteApproval, BmcWriteControllerSelected, BmcWriteControllerRefused, select_bmc_write_controller,
 }
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
+  step_instance_key_eq,
   StepSubjectKey,
   StepInstanceKey,
   ConvergenceStep,
@@ -1305,12 +1308,11 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
 
 // ── mtjade1 ────────────────────────────────────────────────────────────────────────────────────
 
-// The unit keys already bound in this fleet, so a duplicated board serial refuses across units.
-fn arrival_bound_unit_keys() -> List<UnitKey> {
-  match mtcollins1_unit_key_standing {
-    UnitKeyBound { key: k } => [k]
-    UnitKeyRefused { cause: _ } => []
-  }
+// The unit keys OTHER machines hold in this fleet, so a board serial another machine holds refuses across
+// units while the subject's own admitted serial does not. Read from the fleet's one physical-binding
+// admission (gunbc.fleet.fleet_machine_unit_binding), never per machine.
+fn arrival_bound_unit_keys(subject: HostIdentity) -> List<UnitKey> {
+  fleet_bound_unit_keys_except(machine: subject)
 }
 
 // mtjade1 FROM ITS COMMITTED EVIDENCE AND NOTHING ELSE (all 2026-10-04, at 192.168.1.246):
@@ -1341,7 +1343,7 @@ fn witness_identity_bind_inputs(fru: FruRead, smbios: SmbiosRead, other_units: L
 }
 
 fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
-  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys() }
+  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys(subject: operator_host_mtjade1) }
 }
 
 fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {

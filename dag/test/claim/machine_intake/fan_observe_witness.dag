@@ -31,9 +31,9 @@ import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_probe_rendered,
-  gunbc_ci_auth_header_format,
   gunbc_ci_sm_max_time,
 }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_command_with_words,
   bash_build_assign, bash_build_with_redir_to_file,

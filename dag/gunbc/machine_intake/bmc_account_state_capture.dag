@@ -34,9 +34,10 @@ module gunbc.machine_intake.bmc_account_state_capture
 // controller facts (the LAN channel, the managed account name, the channel-members the driver already read)
 // are INPUTS. Host-specific data is supplied by the caller as rows, never named here.
 //
-// WHAT IS DERIVED FROM BYTES vs. WHAT IS A TYPED INPUT, and why. The four reads whose whole verdict a
-// single captured body settles are derived here from those bytes: the managed user-test acceptance, the
-// Redfish service-root surface fact, and the two lockout reads (whose decoders return their OWN verdict
+// WHAT IS DERIVED FROM BYTES vs. WHAT IS A TYPED INPUT, and why. The reads whose whole verdict a
+// single captured body settles are derived here from those bytes: the managed account's acceptance (read
+// from the authenticated census table -- see ipmi_authenticated_census_read; a separate `user test` that
+// put the tested password on argv was removed per review 93420), the Redfish service-root surface fact, and the two lockout reads (whose decoders return their OWN verdict
 // type including Unreadable / NotAvailable / NotAuthenticated arms -- passed through UNCHANGED, because
 // "the controller serves no such threshold" is an honest read result the DECODER decides from the bytes,
 // not a caller boolean). The channel-members table and the Redfish census ENTRIES are typed inputs: their
@@ -54,14 +55,14 @@ import gunbc.machine_intake.bmc_secure {
   BmcRedfishAccountCensusReading, BmcRedfishCensusServed, BmcRedfishCensusUnmodeled, BmcRedfishAccountCensusEntry,
 }
 import gunbc.machine_intake.bmc_account_state_parsers {
-  ipmi_user_access_rows, IpmiUserAccessRowsRead, IpmiUserAccessRowsMalformed,
+  ipmi_authenticated_census_read, IpmiCensusAccepted, IpmiCensusAuthenticationRefused, IpmiCensusUnreadable,
   redfish_account_names_from_collection, AccountsCollectionRead, AccountsCollectionUnreadable,
   redfish_account_service_lockout_from_body,
   ipmi_lan_threshold_from_print,
   ipmi_user_test_verdict_from_output, UserTestAccepted, UserTestRejected, UserTestUnrecognized,
   redfish_service_root_verdict_from_body, ServiceRootServed, ServiceRootNotServed, ServiceRootUnrecognized,
 }
-import extdeps.bmc.ipmi_channel { IpmiChannelCensusMember, IpmiChannelNumber, ipmi_controller_channel_census }
+import extdeps.bmc.ipmi_channel { IpmiChannelCensusMember, IpmiChannelNumber, IpmiUserChannelAccess, ipmi_controller_channel_census }
 
 // THE RAW CAPTURES THE WET DRIVER WRITES AS CONTENT-ADDRESSED EVIDENCE, one per read. Each already carries
 // the EvidenceRef the wet layer committed; this assembler NEVER reads a controller and NEVER mints a
@@ -79,7 +80,11 @@ type BmcAccountStateCaptures {
   // must match the collection body exactly (checked below); `enabled` is decoded upstream by
   // redfish_account_entry_from_body -- that upstream decode is the single authority, not re-run here.
   redfish_census: BmcRedfishAccountCensusReading
-  managed_answer: BmcSuppliedResponse
+  // The authenticated census read -- `ipmitool ... -U <managed> -f <password_file> user list <ch>` /
+  // `channel getaccess <ch> <uid>` output. Because it authenticates AS the managed account, this single
+  // body is now BOTH the user-access table AND the evidence of the managed credential's acceptance: the
+  // assembler reads managed_accepted from it (see gunbc.machine_intake.bmc_account_state_parsers
+  // ipmi_authenticated_census_read) and uses these same committed bytes as the transport's managed-answer.
   census_answer: BmcSuppliedResponse
   redfish_accounts_answer: BmcSuppliedResponse
   redfish_surface_answer: BmcSuppliedResponse
@@ -132,9 +137,10 @@ fn entry_named_present(entries: List<BmcRedfishAccountCensusEntry>, target: Stri
 
 // THE ASSEMBLER. Raw committed captures in; a transport out whose decoded fields are produced from the
 // capture bytes through the cited decoders. Refuses with a located cause when a capture cannot be decoded
-// into a required field, never a plausible default. The service-root surface fact and the two user-test
-// verdicts come from the STRUCTURAL / whole-word decoders in bmc_account_state_parsers -- no substring
-// guess stands between a committed capture and an ObservedCredentialAccepted (review 93366).
+// into a required field, never a plausible default. The service-root surface fact, the managed account's
+// acceptance (read from the authenticated census), and the break-glass test verdict come from the STRUCTURAL
+// / whole-word decoders in bmc_account_state_parsers -- no substring guess stands between a committed capture
+// and an ObservedCredentialAccepted (review 93366; managed acceptance re-sourced per review 93420).
 fn assemble_account_state_transport(captures: BmcAccountStateCaptures) -> BmcAccountStateCaptureOutcome
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "assembled"),
@@ -146,70 +152,82 @@ fn assemble_account_state_transport(captures: BmcAccountStateCaptures) -> BmcAcc
   match redfish_service_root_verdict_from_body(body: captures.redfish_surface_answer.response) {
     ServiceRootUnrecognized { detail: d } =>
       CapturedTransportUndecodable { cause: RedfishSurfaceUndecodable { detail: d } }
-    ServiceRootServed => assemble_managed_test(captures: captures, surface_served: true)
-    ServiceRootNotServed { detail: _ } => assemble_managed_test(captures: captures, surface_served: false)
-  }
-}
-
-// THE MANAGED ACCOUNT user-test verdict, decoded from the committed managed-answer bytes. A body that
-// prints neither Success nor Failure refuses (never accepted); Success -> accepted, Failure -> rejected.
-fn assemble_managed_test(captures: BmcAccountStateCaptures, surface_served: Bool) -> BmcAccountStateCaptureOutcome {
-  match ipmi_user_test_verdict_from_output(body: captures.managed_answer.response) {
-    UserTestUnrecognized { detail: d } =>
-      CapturedTransportUndecodable { cause: UserTestUndecodable { detail: d } }
-    UserTestAccepted => assemble_break_glass(captures: captures, surface_served: surface_served, managed_accepted: true)
-    UserTestRejected => assemble_break_glass(captures: captures, surface_served: surface_served, managed_accepted: false)
+    ServiceRootServed => assemble_break_glass(captures: captures, surface_served: true)
+    ServiceRootNotServed { detail: _ } => assemble_break_glass(captures: captures, surface_served: false)
   }
 }
 
 // THE BREAK-GLASS user-test, decoded from its own committed bytes when a generation was captured. No
 // captured generation -> Unmaterializable (the reader fills the reference from the goal; nothing is
-// substituted here). An undecodable break-glass body refuses with the same typed cause as the managed probe.
-fn assemble_break_glass(captures: BmcAccountStateCaptures, surface_served: Bool, managed_accepted: Bool) -> BmcAccountStateCaptureOutcome {
+// substituted here). An undecodable break-glass body refuses with the same typed cause as a user test.
+// The managed credential's acceptance is NOT proven here -- it is read from the authenticated census in
+// assemble_rows (review 93420). A captured break-glass generation is the distinct-generation case: srv15's
+// root is both managed and published so no board runs a separate break-glass test now, and the stdin-fed
+// break-glass user test that a distinct break-glass generation would need is a declared frontier (its
+// missing capture is named in the PR body), not built here.
+fn assemble_break_glass(captures: BmcAccountStateCaptures, surface_served: Bool) -> BmcAccountStateCaptureOutcome {
   match captures.break_glass_answer {
     Absent =>
-      assemble_rows(captures: captures, surface_served: surface_served, managed_accepted: managed_accepted, bg: BreakGlassUnmaterializable { detail: "no break-glass user-test was captured for this controller" as NonEmptyStr })
+      assemble_rows(captures: captures, surface_served: surface_served, bg: BreakGlassUnmaterializable { detail: "no break-glass user-test was captured for this controller" as NonEmptyStr })
     Present { value: a } =>
       match ipmi_user_test_verdict_from_output(body: a.response) {
         UserTestUnrecognized { detail: d } =>
           CapturedTransportUndecodable { cause: UserTestUndecodable { detail: d } }
         UserTestAccepted =>
-          assemble_rows(captures: captures, surface_served: surface_served, managed_accepted: managed_accepted, bg: BreakGlassTested { accepted: true, answer: a })
+          assemble_rows(captures: captures, surface_served: surface_served, bg: BreakGlassTested { accepted: true, answer: a })
         UserTestRejected =>
-          assemble_rows(captures: captures, surface_served: surface_served, managed_accepted: managed_accepted, bg: BreakGlassTested { accepted: false, answer: a })
+          assemble_rows(captures: captures, surface_served: surface_served, bg: BreakGlassTested { accepted: false, answer: a })
       }
   }
 }
 
-// THE USER-ACCESS TABLE and the Redfish census tie, then the build. The account-service lockout and the
-// LAN threshold are the parsers' OWN verdicts, passed through unchanged (their NotAuthenticated /
-// Unreadable / NotAvailable / ReadFailed arms are decided from the bytes by the single decoder).
-fn assemble_rows(captures: BmcAccountStateCaptures, surface_served: Bool, managed_accepted: Bool, bg: BmcBreakGlassReading) -> BmcAccountStateCaptureOutcome {
-  match ipmi_user_access_rows(text: captures.census_answer.response, channel: captures.channel) {
-    IpmiUserAccessRowsMalformed { detail: d } =>
+// THE USER-ACCESS TABLE, the managed account's acceptance, and the Redfish census tie, then the build.
+// managed_accepted is read from the authenticated census body -- the SAME body that supplies the table and
+// the transport's managed-answer (captures.census_answer). A served well-formed table proves the managed
+// account authenticated (managed_accepted true); a body the controller refused at authentication is managed
+// accepted FALSE -- never a defaulted true; a body that is neither (empty / truncated / garbage) refuses.
+// The account-service lockout and the LAN threshold are the parsers' OWN verdicts, passed through unchanged
+// (their NotAuthenticated / Unreadable / NotAvailable / ReadFailed arms are decided from the bytes).
+fn assemble_rows(captures: BmcAccountStateCaptures, surface_served: Bool, bg: BmcBreakGlassReading) -> BmcAccountStateCaptureOutcome {
+  match ipmi_authenticated_census_read(text: captures.census_answer.response, channel: captures.channel) {
+    IpmiCensusUnreadable { detail: d } =>
       CapturedTransportUndecodable { cause: UserAccessRowsUndecodable { detail: d } }
-    IpmiUserAccessRowsRead { rows: rows } =>
-      match census_for(body: captures.redfish_accounts_answer.response, surface_served: surface_served, supplied: captures.redfish_census) {
-        CensusRefused { cause: c } => CapturedTransportUndecodable { cause: c }
-        CensusBuilt { reading: reading } =>
-          CapturedTransportAssembled {
-            transport: BmcSuppliedAccountStateTransport {
-              // user_access comes from the rows the parser decoded; members from the driver's channel-info read.
-              census: ipmi_controller_channel_census(members: captures.channel_members, user_access: rows),
-              census_answer: captures.census_answer,
-              redfish_census_answer: captures.redfish_accounts_answer,
-              account_service_answer: captures.account_service_answer,
-              lan_threshold_answer: captures.lan_config_answer,
-              managed_accepted: managed_accepted,
-              managed_answer: captures.managed_answer,
-              redfish_census: reading,
-              redfish_surface_served: surface_served,
-              redfish_surface_answer: captures.redfish_surface_answer,
-              account_service: redfish_account_service_lockout_from_body(body: captures.account_service_answer.response),
-              lan_threshold: ipmi_lan_threshold_from_print(text: captures.lan_config_answer.response, channel: captures.channel),
-              break_glass: bg,
-            }
-          }
+    IpmiCensusAccepted { rows: rows } =>
+      assemble_build(captures: captures, surface_served: surface_served, bg: bg, managed_accepted: true, user_access: rows)
+    IpmiCensusAuthenticationRefused { detail: _ } =>
+      // The controller refused the managed account's authenticated census read: that refusal IS the evidence
+      // the managed credential is not accepted. No user-access rows were served, so the census carries the
+      // members the driver read with NO user-access rows; the managed probe the reader seals is rejected.
+      assemble_build(captures: captures, surface_served: surface_served, bg: bg, managed_accepted: false, user_access: [])
+  }
+}
+
+// The build, shared by both authenticated-census arms. `user_access` is the rows the census read served (empty
+// when authentication was refused); managed_answer is the authenticated census body itself -- the read that
+// proves (or refuses) the managed credential -- keeping the merged reader's managed_answer + managed_accepted
+// contract (gunbc.machine_intake.bmc_secure supplied_transport_read_bmc_account_state) untouched.
+fn assemble_build(captures: BmcAccountStateCaptures, surface_served: Bool, bg: BmcBreakGlassReading, managed_accepted: Bool, user_access: List<IpmiUserChannelAccess>) -> BmcAccountStateCaptureOutcome {
+  match census_for(body: captures.redfish_accounts_answer.response, surface_served: surface_served, supplied: captures.redfish_census) {
+    CensusRefused { cause: c } => CapturedTransportUndecodable { cause: c }
+    CensusBuilt { reading: reading } =>
+      CapturedTransportAssembled {
+        transport: BmcSuppliedAccountStateTransport {
+          // user_access comes from the rows the authenticated census read served (empty on refusal); members
+          // from the driver's channel-info read.
+          census: ipmi_controller_channel_census(members: captures.channel_members, user_access: user_access),
+          census_answer: captures.census_answer,
+          redfish_census_answer: captures.redfish_accounts_answer,
+          account_service_answer: captures.account_service_answer,
+          lan_threshold_answer: captures.lan_config_answer,
+          managed_accepted: managed_accepted,
+          managed_answer: captures.census_answer,
+          redfish_census: reading,
+          redfish_surface_served: surface_served,
+          redfish_surface_answer: captures.redfish_surface_answer,
+          account_service: redfish_account_service_lockout_from_body(body: captures.account_service_answer.response),
+          lan_threshold: ipmi_lan_threshold_from_print(text: captures.lan_config_answer.response, channel: captures.channel),
+          break_glass: bg,
+        }
       }
   }
 }

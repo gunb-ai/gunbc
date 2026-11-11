@@ -25,7 +25,7 @@ import extdeps.cpu.types {
   cpu_socket_eq,
 }
 import gunbc.fleet.fleet_physical_inventory {
-  cooler_srv3,
+  cooler_01,
   installed_cooling_realizations,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
@@ -49,7 +49,7 @@ import product.cooling_qualification {
 // each mutation below perturbs exactly one field and leaves the rest at their real values.
 data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingRealization {
   host: operator_host_srv3,
-  cooler_asset: cooler_srv3,
+  cooler_asset: cooler_01,
   cooler: dynatron_w1_catalog,
   processor: altra_max_m12830_catalog,
   baseboard_model: asrock_altrad8ud_board_authority,
@@ -271,7 +271,7 @@ data cooling_catalog_carries_no_runtime_evidence_note: Bool = true
 test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
     CoolingCatalogCompatible { host: host, cooler_asset: asset, design_power_authority: _ } =>
-      host == operator_host_srv3 && asset == cooler_srv3
+      host == operator_host_srv3 && asset == cooler_01
     CoolingCatalogRefused { host: _, cause: _ } => false
     CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
@@ -291,7 +291,7 @@ data duplicate_cooling_ab: List<InstalledCoolingRealization> = [
   srv3_installed_cooling,
   InstalledCoolingRealization {
     host: operator_host_srv3,
-    cooler_asset: cooler_srv3,
+    cooler_asset: cooler_01,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
     baseboard_model: asrock_altrad8ud_board_authority,
@@ -301,7 +301,7 @@ data duplicate_cooling_ab: List<InstalledCoolingRealization> = [
 data duplicate_cooling_ba: List<InstalledCoolingRealization> = [
   InstalledCoolingRealization {
     host: operator_host_srv3,
-    cooler_asset: cooler_srv3,
+    cooler_asset: cooler_01,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
     baseboard_model: asrock_altrad8ud_board_authority,

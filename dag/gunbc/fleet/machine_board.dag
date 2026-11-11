@@ -10,13 +10,13 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
   operator_host_mtcollins1, operator_host_mtjade1,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-  operator_host_srv14, operator_host_srv15, operator_host_srv16,
+  operator_host_srv14, operator_host_srv15,
   operator_host_183527, operator_host_3dde7f, operator_host_6ce85c,
 }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv14_baseboard, srv15_baseboard }
 
 // WHICH BOARD EACH MACHINE IN THE ROSTER CARRIES, for every member of
-// gunbc.fleet.fleet_host_identity operator_hosts, enrolled or not. Naming is not enrollment, and
+// gunbc.hostname_allocation operator_hosts, enrolled or not. Naming is not enrollment, and
 // neither is this: a row here licenses nothing, and it does not widen fleet_intent_known_hosts or any
 // other operational population. It exists so that the board-function plans (gunbc.fleet.
 // board_function_admission) can say, for every machine the operator holds, what its board admits and
@@ -79,7 +79,6 @@ data machine_board_rows: List<MachineBoardRow> = [
   uncatalogued(host: operator_host_srv12, board: "NVIDIA DGX Spark"),
   fleet_intent_board(host: operator_host_srv14, decl_name: "srv14_baseboard", catalog: srv14_baseboard.catalog),
   fleet_intent_board(host: operator_host_srv15, decl_name: "srv15_baseboard", catalog: srv15_baseboard.catalog),
-  identity_stated_board(host: operator_host_srv16, decl_name: "operator_host_srv16", catalog: asrock_altrad8ud_1l2t_catalog),
   provider_owned(host: operator_host_183527),
   provider_owned(host: operator_host_3dde7f),
   identity_stated_board(host: operator_host_6ce85c, decl_name: "operator_host_6ce85c", catalog: supermicro_h11ssl_catalog),
