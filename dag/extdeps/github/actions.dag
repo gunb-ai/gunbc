@@ -497,7 +497,7 @@ data workflow_file_size_max: ByteSize = byte_size(count: 500000)
 // Whether `content`, committed as one workflow file, is within `max`. The measure is UTF-8 octets, not
 // characters: GitHub counts the file's bytes, and a generated workflow carries multi-byte characters.
 fn workflow_file_within(content: String, max: ByteSize) -> Bool {
-  length(xs: bytes_octets(b: utf8_encode_bytes(s: content))) <= byte_size_count(max)
+  workflow_file_octets(content: content) <= byte_size_count(max)
 }
 
 fn workflow_file_octets(content: String) -> Int {
