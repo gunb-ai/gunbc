@@ -1,0 +1,11 @@
+module fixture.text_string_importer_census.mini_text
+type String = FreeMonoid<Char>
+type Folder {
+  step: fn(Char) -> String
+}
+fn text_join(fields: FreeMonoid<String>, separator: String) -> String {
+  separator
+}
+fn text_is_empty(s: String) -> Bool {
+  true
+}

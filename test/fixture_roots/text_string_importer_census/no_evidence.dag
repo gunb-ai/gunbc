@@ -1,0 +1,5 @@
+module fixture.text_string_importer_census.no_evidence
+import v2.std.text { String }
+fn same(s: String) -> String {
+  s
+}

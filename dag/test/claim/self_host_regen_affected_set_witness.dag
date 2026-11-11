@@ -4,8 +4,7 @@ import std.types { Bool, String, List }
 import gunbc.regen_affected_set {
   DependencyEdge, MirrorRow, BootstrapEdge, AffectedSetBound, AffectedMirrors, WholePopulation, EditedSetUnlocatable,
   regen_affected_set, regen_reverse_closure, regen_affected_set_members, regen_affected_set_bound_line,
-  regen_affected_set_over_change, regen_affected_set_over_diverged_change,
-  regen_unnamed_departures_unlocatable, regen_unnamed_departures_outside_inputs
+  regen_affected_set_over_change, regen_affected_set_over_diverged_change
 }
 
 // WHAT THIS WITNESS COVERS: the bound's three arms and the reverse walk, on a fixture graph
@@ -220,14 +219,4 @@ test fn a_base_change_outside_the_generator_keeps_the_change_bound() -> Bool {
     a: mirrors_of(bound: diverged_bound(base_delta_paths: ["dag/std/x.dag", "src/v1/stage0/src/instrument_registry_generated.rs"], base_delta_modules: ["gunbc.c", "std.x"], edited: ["gunbc.d"])),
     b: ["gunbc_d.rs"]
   )
-}
-
-// A DEPARTED .dag THE LAYOUT CANNOT NAME (gunbc.design_ruling departed_dag_outside_regen_inputs_is_not_unlocatable):
-// under src/v1 it refuses, anywhere else it is outside the regen's inputs, and the two answers partition
-// the paths. RED if the refusing root widens (the fixture path would refuse) or narrows (the v1 path would
-// pass as outside the subject).
-test fn an_unnamed_departure_refuses_only_under_src_v1() -> Bool {
-  let paths = ["test/fixture_roots/gone.dag", "src/v1/gone_v1.dag"]
-  same_members(a: regen_unnamed_departures_unlocatable(paths: paths), b: ["src/v1/gone_v1.dag"])
-    && same_members(a: regen_unnamed_departures_outside_inputs(paths: paths), b: ["test/fixture_roots/gone.dag"])
 }

@@ -43,8 +43,7 @@ import v2.std.read_set { read_set_member_covers }
 //
 // REFUSAL, NEVER WIDENING. When an edited path cannot be located as a module -- a departed .dag
 // whose module name is no longer readable from the tree, or a .dag under no source root -- the
-// answer is EditedSetUnlocatable naming the paths; regen_unnamed_departures_unlocatable below decides
-// which departed paths the layout cannot name still refuse. It does not fall back to WholePopulation:
+// answer is EditedSetUnlocatable naming the paths. It does not fall back to WholePopulation:
 // "whole rebuild required" and "the selection could not answer" are different states, and
 // collapsing them would erase the only signal that the locator has a deficit (gunbc.design_argument::fail_closed,
 // the absorbing fallback; operator ruling 2026-08-30).
@@ -158,28 +157,6 @@ data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwn
 ]
 
 data regen_generation_input_prefixes: List<String> = ["v1.compiler.", "extdeps.languages."]
-
-// A DEPARTED .dag THE LAYOUT CANNOT NAME. A departed module is named by its layout path
-// (gunbc.source_layout), so the host hands this module only the departed .dag paths no layout path names,
-// and this module decides which of them refuse
-// (@ref(gunbc.design_ruling::departed_dag_outside_regen_inputs_is_not_unlocatable)). Under a refusing
-// root the path may still have been a regen input -- v1 names a module by its `module` line, not its
-// path -- so it is unlocatable and the round refuses. Anywhere else it was never a regen input (a test
-// fixture root, say): no mirror can have read it, so it is outside the selection's subject. It is reported
-// on the round's receipt, and it stays a population change, which answers the whole population.
-data regen_unnamed_departure_refusing_roots: List<String> = ["src/v1/"]
-
-fn regen_unnamed_departure_refuses(path: String) -> Bool {
-  regen_unnamed_departure_refusing_roots |> any(root => starts_with(s: path, prefix: root))
-}
-
-fn regen_unnamed_departures_unlocatable(paths: List<String>) -> List<String> {
-  paths |> filter(p => regen_unnamed_departure_refuses(path: p))
-}
-
-fn regen_unnamed_departures_outside_inputs(paths: List<String>) -> List<String> {
-  paths |> filter(p => !regen_unnamed_departure_refuses(path: p))
-}
 
 type AffectedSetBound
   = AffectedMirrors { edited: List<String>, mirrors: List<String>, bootstrap_products: List<String> }
