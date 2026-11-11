@@ -222,7 +222,7 @@ fn graph_from(
 // PRODUCTION-ROUTE EQUIVALENCE. `gunbc run` types an entry through v1.compiler.infer
 // `typecheck_scoped` (src/v1/04_infer.dag @22042) with `DeclarationScope::ReachableFrom { requested }`;
 // the demanded realization AND the service census both come from the graph the pass is handed
-// (@21898, build_symbol_index_census over graph.modules -- the same reason a hand-assembled
+// (@22047, build_symbol_index_census over graph.modules -- the same reason a hand-assembled
 // empty-symbol-index pass could see a registry the production pass does not). Handing BOTH scopes the
 // SAME graph isolates the scope itself: any diagnostic the demanded pass adds that the
 // EveryDeclaration pass does not is a read the realization wave dropped, not a graph difference.
