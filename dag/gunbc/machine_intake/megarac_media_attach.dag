@@ -17,7 +17,7 @@ import gunbc.auth.private_secret_file {
   PrivateSecretFileNotEntered,
   PrivateSecretFileNotEnteredResidueRemains,
 }
-import std.algebra { FreeSemigroup, non_empty_to_list }
+import std.algebra { FreeSemigroup, non_empty_to_list, string_contains }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -686,6 +686,11 @@ fn megarac_close_and_reobserve(
 // THE SESSION REPLY'S DECODER, a pure function of the body so a claim supplies the body at this
 // interface: the one member read is CSRFToken, and a body that is not a JSON document or lacks it
 // reads as absent, which the caller refuses as MegaRacSessionTokenUnreadable.
+// A TOKEN WITH A LINE BREAK IS NOT A TOKEN THIS MODULE CAN PRESENT. It is staged as ONE header line that curl
+// reads with `-H @FILE`, and curl takes each line of that file as its own header, so a CR or LF inside the
+// value would inject a second header into every authenticated call. It reads as unreadable -- the session is
+// still closed under the sentinel header and refused -- rather than being sent (reviews 93423/93443 on
+// gunbc#16247).
 fn megarac_session_csrf(session_body: String) -> String? {
   let session_doc = match parse_json_document(s: session_body) {
     JsonDocumentParsed { value: v } => some_json_value(v)
@@ -693,7 +698,12 @@ fn megarac_session_csrf(session_body: String) -> String? {
   }
   return match session_doc {
     Absent => none
-    Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
+    Present { value: doc } =>
+      match json_string_member(doc: doc, key: "CSRFToken") {
+        Absent => none
+        Present { value: t } =>
+          if string_contains(s: t, pattern: "\n") || string_contains(s: t, pattern: "\r") { none } else { Present { value: t } }
+      }
   }
 }
 

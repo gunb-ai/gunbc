@@ -23,6 +23,7 @@ module test.claim.bmc.megarac_csrf_header_argv_witness
 import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_snoc_item }
+import gunbc.machine_intake.megarac_media_attach { megarac_session_csrf }
 import std.list { first_where }
 import std.resources { Network }
 import std.measure { Second, second }
@@ -125,6 +126,14 @@ test fn the_header_file_holds_exactly_the_token_line() -> Bool {
 // RED: the old argv, materialized over the SAME planted token, prints it as its own word. If the materializer
 // were silently dropping header words, the absence claim above would be vacuously green; this is what makes it
 // mean something.
+// A TOKEN CARRYING A LINE BREAK NEVER REACHES THE HEADER FILE: the decoder reads it as unreadable, so it can
+// not become a second header line. The same document with a plain token decodes to that token.
+test fn a_session_token_with_a_line_break_reads_as_unreadable() -> Bool {
+  (match megarac_session_csrf(session_body: "{\"CSRFToken\": \"abc123\"}") { Present { value: t } => t == "abc123"  Absent => false })
+    && (match megarac_session_csrf(session_body: "{\"CSRFToken\": \"abc\\nX-Injected: 1\"}") { Present { value: _ } => false  Absent => true })
+    && (match megarac_session_csrf(session_body: "{\"CSRFToken\": \"abc\\rdef\"}") { Present { value: _ } => false  Absent => true })
+}
+
 test fn the_legacy_argv_form_put_the_planted_token_on_argv_as_its_own_word() -> Bool {
   let binds = [bind(name: "bmc_host", text: "bmc.test.invalid"), bind(name: "cookie_jar", text: "/tmp/megarac-cookies"), bind(name: "csrf_token", text: planted_csrf_token), bind(name: "max_time", text: "30")]
   match shell_materialize_operation_argv(legacy_close_session_operation.path, legacy_close_session_operation.service, legacy_close_session_operation.operation, binds) {
