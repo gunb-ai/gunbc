@@ -7375,12 +7375,17 @@ pub fn emit_rust_reference_derived_census(typed: Rc<ResolvedGraph>) -> Reference
 }
 
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
-    emit_rust_selected(typed, Rc::new(RustModuleRenderSelection::RenderEveryModule))
+    emit_rust_selected(
+        typed,
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
+    )
 }
 
 pub fn emit_rust_selected(
     typed: Rc<ResolvedGraph>,
     selection: Rc<RustModuleRenderSelection>,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<EmitResult> {
     {
         let ctx = build_emit_rust_context(typed.clone());
@@ -7774,7 +7779,8 @@ pub fn emit_rust_selected(
                 __result
             }),
         );
-        let lib_file = emit_lib_rs_from_paths(all_mod_paths.clone(), has_pipeline.clone());
+        let lib_file =
+            emit_lib_rs_from_paths(all_mod_paths.clone(), has_pipeline.clone(), partition_rows);
         let emitted_paths = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -8362,10 +8368,13 @@ pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<Stri
     )
 }
 
-pub fn lib_rs_module_is_partition_owned(mod_name: String) -> bool {
+pub fn lib_rs_module_is_partition_owned(
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    mod_name: String,
+) -> bool {
     {
         let mut __found = false;
-        for row in generated_partition_crate_rows().iter().cloned() {
+        for row in partition_rows.iter().cloned() {
             if (crate::gunbc_stage0_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == mod_name.clone()) { __found = true; break; } } __found }) { __found = true; break; }
         }
         __found
@@ -8399,6 +8408,7 @@ pub fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
 pub fn emit_lib_rs_from_paths(
     all_module_paths: Rc<Vec<String>>,
     has_compiler_tests: bool,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<TextFile> {
     {
         let file_derived_names = Rc::new(
@@ -8412,7 +8422,7 @@ pub fn emit_lib_rs_from_paths(
             Rc::new({
                 let mut __result = Vec::new();
                 for n in file_derived_names.iter().cloned() {
-                    if !lib_rs_module_is_partition_owned(n.clone()) {
+                    if !lib_rs_module_is_partition_owned(partition_rows.clone(), n.clone()) {
                         __result.push(n);
                     }
                 }
