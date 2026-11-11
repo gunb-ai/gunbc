@@ -357,29 +357,32 @@ fn roadmap_acceptance_pr_evidence_cutoff() -> String { "2026-11-01" }
 // four-digit year, a month the ONE day-in-month rule admits, and a day inside that month; days are then ordered by
 // iso8601_days_from_civil, never by collation. A malformed day is not a day: the door refuses rather than guessing,
 // and the reader refuses the whole event rather than folding an acceptance whose date was never established.
+// It does NOT trim. A day that is a day only after whitespace is stripped is a record whose stored field is
+// not a day — the writer of this field is the log itself, so a leading space is not author sloppiness being
+// tolerated, it is a malformed field being kept and re-emitted, hashed into the event id as written. The
+// reader therefore refuses it and the operator retypes it, which is the unwritable side of fail_closed.
 fn roadmap_acceptance_day(text: String) -> Iso8601CivilDate? {
-  let t = trim(s: text)
-  if string_length(s: t) != 10 { none }
-  else if substring(s: t, start: 4, end: 5) != "-" || substring(s: t, start: 7, end: 8) != "-" { none }
+  if string_length(s: text) != 10 { none }
+  else if substring(s: text, start: 4, end: 5) != "-" || substring(s: text, start: 7, end: 8) != "-" { none }
   else {
-    match parse_int(s: substring(s: t, start: 0, end: 4)) {
+    match parse_int(s: substring(s: text, start: 0, end: 4)) {
       Absent => none
       Present { value: year } =>
         // Four digits, no sign, no space: parse_int would happily read "+2026" or "-026" as a number, and a
         // number is not this form.
         if year < 1000 || year > 9999 { none }
         else {
-          match parse_int(s: substring(s: t, start: 5, end: 7)) {
+          match parse_int(s: substring(s: text, start: 5, end: 7)) {
             Absent => none
             Present { value: month } =>
               // Round-tripped through the calendar authority's own renderer, so "1", "+1" and " 1" are not months:
               // only the two digits that render that month back ARE the month.
-              if iso8601_two_digits(n: month) != substring(s: t, start: 5, end: 7) { none }
+              if iso8601_two_digits(n: month) != substring(s: text, start: 5, end: 7) { none }
               else {
-                match parse_int(s: substring(s: t, start: 8, end: 10)) {
+                match parse_int(s: substring(s: text, start: 8, end: 10)) {
                   Absent => none
                   Present { value: day } =>
-                    if iso8601_two_digits(n: day) != substring(s: t, start: 8, end: 10) { none }
+                    if iso8601_two_digits(n: day) != substring(s: text, start: 8, end: 10) { none }
                     // The ONE day-in-month rule, over a midnight clock face: 2026-02-30 and 2026-13-01 are refused
                     // here exactly as the instant reader refuses them, so no second calendar is written beside it.
                     else if !iso8601_utc_instant_parts_are_valid(year: year, month: month, day: day, hour: 0, minute: 0, second: 0) { none }

@@ -761,23 +761,40 @@ test fn a_revocations_disposition_decides_whether_the_node_returns() -> Bool {
   let accepted_standing = roadmap_node_standing(envs: [accepted])
   let stays_standing = roadmap_node_standing(envs: [accepted, stays])
   let reopened_standing = roadmap_node_standing(envs: [accepted, reopened])
+  let reopened_then_work = roadmap_node_standing(envs: [accepted, reopened, open_lane])
   // POSITIVE CONTROLS FOR BOTH DISPOSITIONS (review of gunb-ai/gunbc#16189, finding 1): the word the
   // operator wrote is what moves the node — remains-superseded keeps it closed, reopens-active-frontier
   // returns it to the frontier. Neither disposition is inferred, defaulted, or read from the standing.
-  // The Progress event is ABSORBED on both arms and re-decides nothing: on the reopened arm it leaves the
-  // standing identical to the lane without it, and identical does not mean accepted — a node the log
-  // returned to the frontier is open work, and only an acceptance event can make it accepted again. (The
-  // first draft of this claim asserted the acceptance hand directly and was red, which is what
-  // proved the arm was stating the wrong law. The acceptance hand is asked for as the pair the log owns —
-  // terminal, and not the retired hand — because roadmap_standing_is_terminal is the one match over the sum
-  // and those are its only two true arms (review 93664 on gunb-ai/gunbc#16189).)
+  //
+  // The two arms differ in how they treat later work, and that asymmetry is what proves the disposition was
+  // honoured rather than ignored: after a TERMINAL standing the fold's guard absorbs the Progress
+  // (roadmap_standing_step_acc, `_ => acc`), so the lane with it is identical to the lane without it; on a
+  // node the revocation RETURNED to the frontier the same Progress is RECORDED, which is only possible
+  // because the node is open work again. Recorded is not accepted: it leaves the node non-terminal and
+  // un-retired, so an acceptance event — and nothing else — is what closes it again.
+  //
+  // (The first draft asserted that second equality as `reopened_then_work == reopened_standing` and srv1 ran
+  // it RED, which is what proved the arm was stating the wrong law: a node back on the frontier is not
+  // frozen, and Progress on an open node is the ordinary work signal, not an absorbed one. It is asserted
+  // positively here instead of being skipped, because a claim that passed by asserting nothing about the
+  // reopened arm's later work would also have passed if the reopen had done nothing at all.
+  // roadmap_standing_is_terminal is the one match over the sum and NodeAccepted / NodeRetired are its only
+  // two true arms, which is why "terminal and not retired" is the acceptance hand (review 93664).)
   roadmap_standing_is_terminal(standing: accepted_standing)
     && !roadmap_standing_is_retired(standing: accepted_standing)
     && roadmap_standing_is_terminal(standing: stays_standing)
     && !roadmap_standing_is_retired(standing: stays_standing)
+    // The reopened arm is the OPEN standing exactly, not merely "not terminal" — anything else that is
+    // non-terminal (claimed, blocked, in progress) would pass a bare negation and would not be the frontier.
+    && reopened_standing == NodeOpen
     && !roadmap_standing_is_terminal(standing: reopened_standing)
-    && roadmap_node_standing(envs: [accepted, reopened, open_lane]) == reopened_standing
-    && !roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted, reopened, open_lane]))
+    && !roadmap_standing_is_retired(standing: reopened_standing)
+    // The closed arm absorbs the later work...
+    && roadmap_node_standing(envs: [accepted, stays, open_lane]) == stays_standing
+    // ...and the reopened arm records it, by the author who wrote it, with the note it carried.
+    && reopened_then_work == NodeInProgress { by: human_principal(), last_note: "work continues" as NonEmptyStr }
+    && !roadmap_standing_is_terminal(standing: reopened_then_work)
+    && !roadmap_standing_is_retired(standing: reopened_then_work)
 }
 
 // THE SEED'S OWN HISTORY, END TO END (review finding 2): acceptance, then the revocation that took it

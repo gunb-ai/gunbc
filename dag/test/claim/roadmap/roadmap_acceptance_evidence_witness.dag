@@ -390,6 +390,35 @@ test fn the_pull_request_arm_still_requires_a_real_day() -> Bool {
       match good { none => true, Present { value: _ } => false })
 }
 
+// WHERE THE LINE FALLS, EXACTLY. A rule stated as "before a cutoff" is only known by which side the boundary
+// cases land on, so each of these pins one: the cutoff day itself is on the REFUSING side (an acceptance
+// recorded on 2026-11-01 with no pull request is not the migration's, because the migration's records all
+// predate the switch — the whole case for the door), the day before it is on the admitting side, and the
+// shape checks are strict about what a human may type. The constructor does not trim, so surrounding space
+// refuses: the log is the writer of this field, so a stored space is a malformed field kept, re-emitted and
+// hashed into the event id as written — refused here rather than tolerated (see the comment on
+// gunbc.roadmap.roadmap_event_log roadmap_acceptance_day).
+//
+// A note on why no claim compares text order to calendar order: once the constructor admits only the
+// fixed-width canonical form, the collation order and the day-count order of any two admitted days are the
+// same order, so no input can tell those implementations apart. The day count is kept because a comparison
+// that CANNOT be won by a string is a better place to stand than one that merely has not lost yet.
+test fn the_cutoff_boundary_and_what_a_human_may_type_are_both_pinned() -> Bool {
+  claim("the day before the cutoff is admitted, so the eighteen recorded acceptances still pass the door",
+    absence_admits(day: "2026-10-31"))
+    && claim("the cutoff day ITSELF refuses: the door is strictly before, not on-or-before",
+      absence_refuses(day: "2026-11-01"))
+    && claim("the day after the cutoff refuses", absence_refuses(day: "2026-11-02"))
+    && claim("'19999-11-03' refuses: a five-digit year is not this form, even though it reads early as text",
+      absence_refuses(day: "19999-11-03"))
+    && claim("surrounding space refuses: the field is stored as written, so a day valid only after trimming is refused",
+      absence_refuses(day: " 2026-10-31") && absence_refuses(day: "2026-10-31 "))
+    && claim("the same day typed without the space is admitted, so those two refusals are the space and nothing else",
+      absence_admits(day: "2026-10-31"))
+    && claim("an interior space refuses: ten characters with a dash in one right place is not enough",
+      absence_refuses(day: "2026-1 031"))
+}
+
 
 // THE MIGRATION VERIFIER, facet by facet. Each check is its own named claim, because a single Bool over
 // seven assertions says only that something is wrong; the refusal the runbook prints has to say WHICH.
