@@ -1,6 +1,7 @@
 module gunbc.witness.roadmap_cutover
 
 import std.types { String, Int, Bool, List }
+import std.algebra { string_contains }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -27,74 +28,108 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 // dissolution conditions; the text of each marker is what those two files' first comment block says, so the model
 // is the authority for the promise and the carriers are checked against it by review, not by folklore.
 
-// THE SEQUENCE, AS DATA. One row per step of the runbook, in order. `actuation` is the MODELLED route the step is
-// allowed to invoke — or "read-only" for a step that only observes — and `admission` is the predicate that must
-// hold before any further state change. A step with no route and no predicate is not a step; it is a paragraph,
-// and paragraphs do not stop a migration.
+// THE SEQUENCE, AS DATA. One row per step of the runbook, in order, and the runbook's numbered steps are these
+// rows rendered: `modeled_entry` is the graph route the step must go through when it changes a roadmap fact (a
+// roadmap fact may only change through a route the graph can name), `host_effect` is what the step does to the
+// host — named even when the honest answer is "none" — and `admission` is the predicate that must hold before any
+// further state change. A step with no predicate is not a step; it is a paragraph, and paragraphs do not stop a
+// migration.
 type CutoverStep {
   ordinal: Int
+  section: String
   id: String
-  actuation: String
+  modeled_entry: String
+  host_effect: String
+  writes_roadmap_state: Bool
   admission: String
-  changes_state: Bool
 }
 
+// Nine rows, one per numbered step of the runbook, in the order the operator runs them. The order is not
+// interchangeable and the runbook says why: the acceptance history is appended FIRST (step 3) because a receipt's
+// own history must exist before anything can revoke it, and the two retirements go LAST (step 4) because a
+// retirement is the newest fact about a node and must sit on top of its history. Staging (2b) copies and activates
+// nothing; the deploy (5b) is the first activation of any new reader and is the operator's call.
 data cutover_step_rows: List<CutoverStep> = [
   CutoverStep {
     ordinal: 1
+    section: "1"
     id: "export"
-    actuation: "read-only: git clone --branch roadmap-events of origin's tip, systemctl cat, ls -l, sha256sums"
-    admission: "the export directory is an absolute path and the remote URL is non-empty; the checksums verify"
-    changes_state: false
+    modeled_entry: ""
+    host_effect: "writes only its own artifact tree under the export directory: a clone of origin's roadmap-events tip, the unit catalog and drop-in inventories, the release identity, the seed digest listing; production state untouched"
+    writes_roadmap_state: false
+    admission: "the export directory arrives as an absolute path, the remote URL resolves non-empty, and the recorded checksums verify against the exported file"
   },
   CutoverStep {
     ordinal: 2
+    section: "2"
     id: "stop"
-    actuation: "systemctl stop of the five gunbc-roadmap* units, with their observers"
-    admission: "each is active or inactive-tolerant BEFORE the stop, and the event log's remote tip is recorded"
-    changes_state: true
+    modeled_entry: ""
+    host_effect: "systemctl stop of the five gunbc-roadmap readers and their timers, so nothing writes the fabric partitions while the migration runs"
+    writes_roadmap_state: false
+    admission: "the authoritative remote tip is recorded first, and each unit is either active or already inactive before the stop"
   },
   CutoverStep {
     ordinal: 3
-    id: "migrate-retired"
-    actuation: "gunbc.roadmap.roadmap_event_cli append (Retired events for the two retired nodes)"
-    admission: "each node id is named by the operator's ruling and is absent from the plan after the append"
-    changes_state: true
+    section: "2b"
+    id: "stage"
+    modeled_entry: ""
+    host_effect: "a copy and nothing else: a checkout at the release path for the staged revision and its binary under the bin path. No unit file, no fragment, no symlink moves, so staging activates nothing"
+    writes_roadmap_state: false
+    admission: "the staged tree and binary exist at the revision under deployment, and no unit has been started by this step"
   },
   CutoverStep {
     ordinal: 4
+    section: "3"
     id: "migrate-accepted"
-    actuation: "gunbc.roadmap.issue_command_apply (the eighteen seeded receipts and the fabric operator tail)"
-    admission: "every replayed receipt's digest matches the exported digest, and the count is eighteen"
-    changes_state: true
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli::roadmap_acceptance_record_cli (the receipt line, in the exported manifest's recorded order) and gunbc.roadmap.issue_command_apply (the operator tail)"
+    host_effect: "appends the eighteen acceptance chains and the operator-tail revocations to the authoritative event-log branch"
+    writes_roadmap_state: true
+    admission: "every replayed receipt's digest matches the digest exported in step 1, the chains replayed number the eighteen recorded there, and each revocation names a receipt that is live at that moment"
   },
   CutoverStep {
     ordinal: 5
-    id: "verify"
-    actuation: "gunbc.roadmap.roadmap_event_cli::roadmap_event_log_read_back_cli (verifier + retired read + history reader + standings, written to the export)"
-    admission: "the entry exits 0, having written the document; a refusal here blocks every step below it"
-    changes_state: false
+    section: "4"
+    id: "migrate-retired"
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli (the append entry, which writes through the event-log carrier to origin's roadmap-events branch)"
+    host_effect: "appends the two Retired events, last, so the retirement is the newest fact about each node"
+    writes_roadmap_state: true
+    admission: "each node id is named by the operator's ruling, and after the append the retired-set reader answers it as retired while the plan no longer contains it"
   },
   CutoverStep {
     ordinal: 6
-    id: "activate"
-    actuation: "fleet-converge.yml dashboard_deploy, dispatched against a tag resolving to $SHA, behind the step-5 gate"
-    admission: "verification passed, the tag resolves to $SHA, and each stage's run is positively identified at $SHA with the mode it was dispatched for"
-    changes_state: true
+    section: "5"
+    id: "verify"
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli::roadmap_event_log_read_back_cli (the composed migration verifier, retired-set read, acceptance-history read and per-node standings)"
+    host_effect: "writes the read-back document and the verified marker into the export directory"
+    writes_roadmap_state: false
+    admission: "the entry exits zero having written its document; a refusal here stops every step below it"
   },
   CutoverStep {
     ordinal: 7
-    id: "observe"
-    actuation: "roadmap_event_log_retired_report_cli, roadmap_event_log_acceptance_report_cli, roadmap_event_log_read_back_cli"
-    admission: "each door exits 0; an unreachable log or an unwritable document is a refusal, not an empty verdict"
-    changes_state: false
+    section: "5b"
+    id: "activate"
+    modeled_entry: "gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs (admission) behind the fleet-converge workflow's dashboard_dispatch_run (dispatch)"
+    host_effect: "installs and starts the staged build on the host through the modeled deploy, and pushes the cutover tag it was dispatched against"
+    writes_roadmap_state: false
+    admission: "verification passed, the dispatched reference resolves to the staged revision, and each stage's run is positively identified at that revision declaring the mode it was dispatched for"
   },
   CutoverStep {
     ordinal: 8
+    section: "6"
+    id: "observe"
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli::roadmap_event_log_retired_report_cli, ::roadmap_event_log_acceptance_report_cli and ::roadmap_event_log_read_back_cli"
+    host_effect: "writes its three reports into the export directory; production reads nothing from this step"
+    writes_roadmap_state: false
+    admission: "each door exits zero; an unreachable log or an unwritable document is a refusal, never an empty verdict"
+  },
+  CutoverStep {
+    ordinal: 9
+    section: "7"
     id: "rollback"
-    actuation: "systemctl start of the exported units, only under disposition 7A; 7B rolls forward onto the staged build"
-    admission: "every predicate in the same script holds — tip unchanged for 7A, unit definitions matching the export, expected release identity, and all five readers inactive before any start"
-    changes_state: true
+    modeled_entry: ""
+    host_effect: "systemctl start of the exported units under disposition 7A only, after daemon-reload; disposition 7B leaves the staged build serving instead"
+    writes_roadmap_state: false
+    admission: "every predicate in the same script holds before any start: the remote tip unchanged for 7A, the effective unit definitions equal to the export, the expected release identity, and all five readers inactive"
   }
 ]
 
@@ -103,7 +138,7 @@ fn cutover_steps_without_a_route(rows: List<CutoverStep>) -> List<String> {
   match rows.first() {
     Absent => []
     Present { value: hd } =>
-      if (hd.actuation == "") || (hd.admission == "") {
+      if cutover_step_lacks_authority(hd) {
         concat([hd.id], cutover_steps_without_a_route(rows.skip(n: 1)))
       } else {
         cutover_steps_without_a_route(rows.skip(n: 1))
@@ -111,12 +146,33 @@ fn cutover_steps_without_a_route(rows: List<CutoverStep>) -> List<String> {
   }
 }
 
-fn cutover_step_count(rows: List<CutoverStep>) -> Int {
-  match rows.first() {
-    Absent => 0
-    Present { _ } => 1 + cutover_step_count(rows.skip(n: 1))
+// WHAT MAKES A STEP AUTHORIZED TO ACT. Four obligations, each decidable from the row alone:
+//  - it names the predicate that admits the next state change;
+//  - it names what it does to the host, even when the honest answer is "none" (no secret host effects);
+//  - if it writes ROADMAP state, that write goes through a modelled entry — spelled module::declaration — because
+//    a roadmap fact may only change through a route the graph can name;
+// A step whose host effect is "none" is a claim a reviewer can check by reading the step; a step that names none is
+// a step that has not thought about what it does.
+fn cutover_step_lacks_authority(step: CutoverStep) -> Bool {
+  (step.admission == "")
+    || (step.host_effect == "")
+    || (step.writes_roadmap_state && !string_contains(s: step.modeled_entry, pattern: "::"))
+}
+
+// The four obligations above are the claim's whole content; this spells out which one a row failed, so a red claim
+// locates the defect instead of naming a suspect list.
+fn cutover_step_refusal(step: CutoverStep) -> String {
+  if step.admission == "" {
+    "no admission predicate"
+  } else if step.host_effect == "" {
+    "acts on the host without naming the effect"
+  } else if step.writes_roadmap_state && !string_contains(s: step.modeled_entry, pattern: "::") {
+    "writes roadmap state without a modelled entry spelled module::declaration"
+  } else {
+    ""
   }
 }
+
 
 // THE WITNESS CASES, AS DATA. Each row is one case the shell witnesses run: what it feeds, and the disposition it
 // must earn. `refusal_text` is the located diagnostic the case must see when the answer is refusal — a case that
@@ -266,6 +322,26 @@ data dispatch_witness_scaffold: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
+// THE RUNBOOK CARRIER ITSELF. The reviewer's point at review 93382 is the right one: modelling only the witness
+// cases leaves the shell that ACTS on the host — the stop, the append loop, the dispatch, the activation — as
+// markdown with no marker. Its authority is cutover_step_rows: the sequence, per-step route, host effect and
+// admission predicate are declared above, and the numbered steps of the runbook are those rows rendered in order.
+// The residual shell that remains (transient-unit invocation, here-docs, the case statements the witnesses drive)
+// is still hand-written, so the carrier is marked scaffold against the same emitter as its witnesses.
+data runbook_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.witness.roadmap_cutover",
+    decl_name: "cutover_step_rows",
+    field: WholeDeclaration
+  }
+}
+
+data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
+
+data runbook_loc_delta_net: Int = 917
+data runbook_test_discriminator: String = "drop_in_round_trip_with_pre_existing_and_deploy_added"
 
 data runbook_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: TWO capabilities, because they retire DIFFERENT halves of tools/roadmap_cutover_runbook_witness.sh. (1) orch-emitted, for the residual shell (the sudo/systemd-run/systemctl stubs and the case assertions): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a function definition carrying a case statement over globs, a here-doc that writes a stub script, an array assignment read back as a whole-array expansion, or command substitution inside a test predicate — a missing target-language capability (class (b) of the hand-shell gate), not an unauthored migration. (2) modelled, for the witness process: its cases are the rows above (cutover_witness_case_rows) and its helpers are loaded from docs/runbooks/roadmap-event-log-cutover.md, never copied. When those rows run as a gunbc test row in gunbc.instrument_targets through the modelled filesystem and host-effect routes, this file is DELETED rather than emitted.")
 

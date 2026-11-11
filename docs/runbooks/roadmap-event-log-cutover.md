@@ -1,5 +1,15 @@
 # Roadmap event-log cutover — export → stop → migrate → verify → start
 
+> **Scaffold status of the shell in this file.** The nine numbered steps below are `cutover_step_rows` rendered —
+> each heading names its row, and each row declares the modelled entry that step must go through when it changes a
+> roadmap fact, what the step does to the host, and the predicate that admits the next change. The commands
+> themselves are hand-written and marked scaffold against the orchestration-to-shell bash-emit target, as
+> `gunbc.witness.roadmap_cutover::runbook_dissolve_trigger`; the two witnesses beside it carry
+> `::runbook_witness_dissolve_trigger` and `::dispatch_witness_dissolve_trigger`. When the modelled host-effect and
+> instrument routes (`gunbc.instrument_targets`, `gunbc.live_deploy`, `gunbc.fleet`) can carry the steps themselves,
+> these commands are emitted from the rows and this file shrinks to what an operator actually reads: prerequisites,
+> readback, dispositions.
+
 **What this is.** The one authorized sequence that moves `retired` and `accepted` in the roadmap from their old
 homes (an authored `SupersededLine` list, a JSONL history file, a fabric partition watched by an observation
 module) to their single home: the roadmap event log. It is run by the operator (or their delegate) on srv1, not
@@ -84,7 +94,7 @@ RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done
 RUNF() { sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash -s -- "$@"; }
 ```
 
-## 1. Read-only export of everything touched, immediately before any write
+## 1. Read-only export of everything touched, immediately before any write — row `export`
 
 One script, one transient unit, one log. It travels through `RUNF` (above) so that every `$(…)`, every
 `$D` and every nested quote is expanded **remotely, in order, in one shell** — the reviewer reproduced the
@@ -215,7 +225,7 @@ they are what put the 503 on the live page (step 2b), and they are exactly the k
 (The unit files are exported inside the same script because they are part of what is touched: step 5b's
 deploy repoints them, so a rollback needs both the files and the effective definitions from the same instant.)
 
-## 2. Stop every reader of this carrier — timers first
+## 2. Stop every reader of this carrier — timers first — row `stop`
 
 The operator ruled (relayed 2026-11-10): all five roadmap units move together to the staged release, and
 `gunbc-roadmap-fabric-storage.service` is not touched at all. Stop the timer before the units it drives, so
@@ -240,7 +250,7 @@ Nothing else on srv1 reads this carrier; the enumeration, with each unit file, i
 this carrier" below, and the lab instance `gunbc-srv1-lab-codex-feedback-v0*` keeps its own carrier at
 `/opt/gunbc-lab/codex-provider-feedback-v0/roadmap-events`.
 
-## 2b. Stage only — the release is copied; the deploy is NOT run here, and not at this point
+## 2b. Stage only — the release is copied; the deploy is NOT run here, and not at this point — row `stage`
 
 Staging is a copy and nothing else: a checkout at `/opt/gunbc/releases/<SHA>` and a binary at
 `/opt/gunbc/bin/gunbc-<SHA>`, which the parent already put on srv1 (both still there after his rolled-back
@@ -251,7 +261,7 @@ staging activates nothing. **The deploy is step 5b, after `MIGRATION VERIFIED`.*
 it needs #16256 merged first, so that it leaves `gunbc-roadmap-fabric-storage.service` alone, and it needs the
 operator's go-ahead.
 
-## 3. Append the history first, in its recorded order — through the modeled route only
+## 3. Append the history first, in its recorded order — through the modeled route only — row `migrate-accepted`
 
 The manifest is the exported text of the two old carriers. Build the list of lines to replay
 (`$D/seed.jsonl` for the 18 committed seed events, then the fabric tail's own lines in their recorded
@@ -347,7 +357,7 @@ against a temp carrier:
 The CLI answers `ExitSuccess`/`ExitFailure` (a `ProcessExit`), so its exit is NOT the receipt. The receipts
 are the identities printed by step 4, read out of the carrier through the production reader.
 
-## 4. Then the two retirements (step 1(a)) — the retirement is the newest fact, so it goes last
+## 4. Then the two retirements (step 1(a)) — the retirement is the newest fact, so it goes last — row `migrate-retired`
 
 ```bash
 cd $TREE
@@ -364,7 +374,7 @@ An already-retired node answers idempotently; a duplicate of an acceptance alrea
 chain (`EventAlreadyPresent`) or at the operation record (the operation identity is the fact, not the node
 — see `roadmap_acceptance_operation_identity`), which is the retry-safe answer, not a lost write.
 
-## 5. Verify — the activation gate, and the source of the receipts
+## 5. Verify — the activation gate, and the source of the receipts — row `verify`
 
 `roadmap_acceptance_migration_verify` is the activation gate, and every one of its comparisons lives in ONE
 pure function — `roadmap_acceptance_migration_problems` (`roadmap_operator_acceptance.dag`) — so each
@@ -454,7 +464,7 @@ registered at …`.
 Any `MIGRATION REFUSED` means **do not start the service**: fix the append (the same commands resume,
 step 3), or restore the carrier from `$D` (step 7) and report.
 
-## 5b. The deploy — the FIRST activation of any new reader; NOT executed here; the operator's call
+## 5b. The deploy — the FIRST activation of any new reader; NOT executed here; the operator's call — row `activate`
 
 Why this step sits here and not at 2b (PR finding 7): the modeled deploy does not merely
 repoint dormant unit files: `gunbc.live_deploy.apply_legs deploy_apply_unit_lifecycle_legs` stages the unit,
@@ -634,7 +644,7 @@ fact about the model or about #16256 not being in effect — it is reported, wit
 (`srv1:/tmp/t6-live2.tar.gz` and `$D`), and never patched by writing a unit file by hand.
 
 
-## 6. Read back through the reader production uses — step 5b's deploy is what brought the group up
+## 6. Read back through the reader production uses — step 5b's deploy is what brought the group up — row `observe`
 
 The last thing a user stands on is the HTTP page, and its own read-back is the one the parent already knows
 how to take: the live roadmap page answered **503 since 2026-11-08** because the deployed build cannot decode
@@ -682,7 +692,7 @@ throwaway fixture can be a dashboard instance (`dashboard_instance_for_repo_root
 `public_builtin_dashboard_instances`, and a fixture is not registered in it) — the positive path is what
 steps 5 and 6 measure on the registered instance, and the receipts in this PR are that measurement.
 
-## 7. Rollback, if verification refuses
+## 7. Rollback, if verification refuses — row `rollback`
 
 One script, and **every check is an admission predicate**: the first that fails exits 1 and leaves every reader
 stopped. The first pass found the rollback starting services after a check that only printed (PR finding 12); the
@@ -890,8 +900,10 @@ ALL DISPATCH-IDENTIFICATION CASES HOLD
 
 ### The model behind this file
 
-`gunbc.witness.roadmap_cutover` holds the sequence as data (`cutover_step_rows`: ordinal, id, the modelled route it
-invokes, the predicate that admits the next change) and the witness cases as data
+`gunbc.witness.roadmap_cutover` holds the sequence as data — `cutover_step_rows`, nine rows, one per numbered step
+above: its `section`, its `modeled_entry` (the route a roadmap fact must change through, spelled
+`module::declaration`), its `host_effect` (named even when the answer is "none"), and the `admission` predicate that
+admits the next change — and the witness cases as data
 (`cutover_witness_case_rows`: what each feeds, whether it must admit or refuse, and the located diagnostic a
 refusing case must print). Its claims, run on the runner:
 
@@ -903,6 +915,10 @@ a_refusing_case_with_no_refusal_text_is_reported
 the_scaffold_promises_name_the_emitter_that_would_retire_them
 a_scaffold_discriminator_naming_an_undeclared_case_is_rejected
 ```
+
+The claims are deliberately free of change-detectors: none of them asserts how many steps or cases exist. Each
+states an obligation (a predicate, a named host effect, a modelled entry where a roadmap fact changes, a refusal
+text a refusing case must print) and proves it can go red by carrying a row or case that meets it wrongly.
 
 ### Also checked, at this revision
 

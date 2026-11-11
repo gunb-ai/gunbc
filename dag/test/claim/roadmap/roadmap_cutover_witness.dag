@@ -1,51 +1,92 @@
 module test.claim.roadmap.roadmap_cutover_witness
 
-// DISCRIMINATING CLAIMS FOR THE CUTOVER MODEL (gunbc.witness.roadmap_cutover). The runbook and the two shell
-// witnesses exist because an operator has to run this migration; these claims are what stops the shell from
-// quietly becoming the authority. Each one fails on a specific edit a later author could make: dropping a step's
-// predicate, adding a case that "refuses" without naming the refusal, or pointing a scaffold marker at a case
-// nobody declared.
+// DISCRIMINATING CLAIMS FOR THE CUTOVER MODEL (gunbc.witness.roadmap_cutover).
+//
+// The runbook and the two shell witnesses exist because an operator has to run this migration. These claims are
+// what stops the shell from quietly becoming the authority. None of them compares the tree against a number copied
+// from the tree — each names an obligation a step or a case can FAIL to meet, and every one carries a fixture that
+// meets it wrongly, so the claim is known to be able to go red. Where a claim would naturally have said "there are
+// eight steps", it instead says what a step owes and proves the check catches a step that does not pay.
 
 import std.types { Bool }
 import std.algebra { string_contains }
 import std.dissolution { dissolution_description }
 import gunbc.witness.roadmap_cutover {
   CutoverStep, CutoverWitnessCase,
-  cutover_step_rows, cutover_steps_without_a_route, cutover_step_count,
+  cutover_step_rows, cutover_steps_without_a_route, cutover_step_lacks_authority, cutover_step_refusal,
   cutover_witness_case_rows, cutover_refuse_cases_missing_refusal_text, cutover_case_is_declared,
-  runbook_witness_test_discriminator, dispatch_witness_test_discriminator,
-  runbook_witness_dissolve_trigger, dispatch_witness_dissolve_trigger,
+  runbook_test_discriminator, runbook_witness_test_discriminator, dispatch_witness_test_discriminator,
+  runbook_dissolve_trigger, runbook_witness_dissolve_trigger, dispatch_witness_dissolve_trigger,
 }
 
-// EVERY STEP IS ALLOWED TO ACT, OR IT DOES NOT ACT. A step with no modelled route and no admission predicate is a
-// paragraph, and paragraphs do not stop a migration. Discriminating in both directions: a row emptied of its
-// predicate must show up in the refusal list, and the shipped sequence must show nothing.
-test fn every_cutover_step_names_a_modelled_route_and_an_admission() -> Bool {
-  match cutover_steps_without_a_route(cutover_step_rows) {
-    Absent => cutover_step_count(cutover_step_rows) == 8
+// EVERY STEP IS AUTHORIZED TO ACT: an admission predicate, a named host effect, and — if it writes a roadmap
+// fact — a modelled entry spelled module::declaration. Shipped rows owe all three.
+test fn every_cutover_step_is_authorized_to_act() -> Bool {
+  match cutover_steps_without_a_route(cutover_step_rows).first() {
+    Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn a_step_missing_its_admission_is_caught_by_the_same_check() -> Bool {
-  let hole = [CutoverStep {
-    ordinal: 99
+// A step with no predicate is a paragraph, and the check says so rather than merely listing the step.
+test fn a_step_without_an_admission_is_reported_and_located() -> Bool {
+  let hole = CutoverStep {
+    ordinal: 901
     id: "step-without-an-admission"
-    actuation: "read-only"
+    modeled_entry: "gunbc.roadmap.roadmap_event_cli"
+    host_effect: "none"
+    writes_roadmap_state: false
     admission: ""
-    changes_state: false
-  }]
-  match cutover_steps_without_a_route(hole) {
+  }
+  match cutover_steps_without_a_route([hole]).first() {
     Absent => false
-    Present { value: hd } => hd == "step-without-an-admission"
+    Present { value: hd } => (hd == "step-without-an-admission")
+      && (cutover_step_refusal(hole) == "no admission predicate")
+      && cutover_step_lacks_authority(hole)
   }
 }
 
-// A CASE THAT MUST REFUSE HAS TO NAME THE DIAGNOSTIC, or any nonzero exit satisfies it — including the one the
-// case was never about. Shipped rows are clean; an injected row without a refusal text must be reported.
+// A roadmap fact may only change through a route the graph can name. A step that writes roadmap state without one
+// is the exact shape this cutover exists to eliminate, so it must not be declarable even by accident.
+test fn a_roadmap_write_without_a_modelled_entry_is_reported() -> Bool {
+  let unmodeled = CutoverStep {
+    ordinal: 902
+    id: "roadmap-write-without-a-route"
+    modeled_entry: ""
+    host_effect: "appends an event to the authoritative branch"
+    writes_roadmap_state: true
+    admission: "the read-back answers through production's own readers"
+  }
+  match cutover_steps_without_a_route([unmodeled]).first() {
+    Absent => false
+    Present { value: hd } => (hd == "roadmap-write-without-a-route")
+      && string_contains(s: cutover_step_refusal(unmodeled), pattern: "modelled entry")
+  }
+}
+
+// A step that touches the host has to say so. "none" is a legitimate answer; silence is not.
+test fn an_unnamed_host_effect_is_reported() -> Bool {
+  let silent = CutoverStep {
+    ordinal: 903
+    id: "step-with-an-unnamed-host-effect"
+    modeled_entry: ""
+    host_effect: ""
+    writes_roadmap_state: false
+    admission: "the readers are stopped"
+  }
+  match cutover_steps_without_a_route([silent]).first() {
+    Absent => false
+    Present { value: hd } => (hd == "step-with-an-unnamed-host-effect")
+      && string_contains(s: cutover_step_refusal(silent), pattern: "host")
+  }
+}
+
+// A case that must refuse has to name the diagnostic, or any nonzero exit satisfies it — including the one the case
+// was never about. Shipped cases do name it, and each carrier's discriminator is a case the model actually has.
 test fn every_refusing_witness_case_names_the_diagnostic_it_expects() -> Bool {
-  match cutover_refuse_cases_missing_refusal_text(cutover_witness_case_rows) {
-    Absent => cutover_case_is_declared(runbook_witness_test_discriminator)
+  match cutover_refuse_cases_missing_refusal_text(cutover_witness_case_rows).first() {
+    Absent => cutover_case_is_declared(runbook_test_discriminator)
+      && cutover_case_is_declared(runbook_witness_test_discriminator)
       && cutover_case_is_declared(dispatch_witness_test_discriminator)
     Present { value: _ } => false
   }
@@ -59,18 +100,20 @@ test fn a_refusing_case_with_no_refusal_text_is_reported() -> Bool {
     must: "refuse"
     refusal_text: ""
   }]
-  match cutover_refuse_cases_missing_refusal_text(weak) {
+  match cutover_refuse_cases_missing_refusal_text(weak).first() {
     Absent => false
     Present { value: hd } => hd.name == "a_case_that_accepts_any_nonzero_exit"
   }
 }
 
-// THE SCAFFOLD PROMISE POINTS AT THE CAPABILITY THAT WOULD RETIRE IT — the orchestration-to-shell bash-emit
-// target — and at a discriminator that actually exists in the model. A marker that names a case nobody declared
-// is a promise to dissolve into nothing.
+// THE THREE SHELL CARRIERS ARE PROMISED AWAY TO THE SAME EMITTER. The runbook's own actuation shell is marked
+// against cutover_step_rows as well as its witnesses against the case rows; a marker that names no emitter, or a
+// discriminator that names no case, is a promise to dissolve into nothing.
 test fn the_scaffold_promises_name_the_emitter_that_would_retire_them() -> Bool {
-  string_contains(s: dissolution_description(condition: runbook_witness_dissolve_trigger), pattern: "bash_emit")
+  string_contains(s: dissolution_description(condition: runbook_dissolve_trigger), pattern: "bash_emit")
+    && string_contains(s: dissolution_description(condition: runbook_witness_dissolve_trigger), pattern: "bash_emit")
     && string_contains(s: dissolution_description(condition: dispatch_witness_dissolve_trigger), pattern: "bash_emit")
+    && string_contains(s: dissolution_description(condition: runbook_dissolve_trigger), pattern: "gunbc.instrument_targets")
     && string_contains(s: dissolution_description(condition: runbook_witness_dissolve_trigger), pattern: "gunbc.instrument_targets")
     && string_contains(s: dissolution_description(condition: dispatch_witness_dissolve_trigger), pattern: "fleet_converge_plan_revision")
 }
