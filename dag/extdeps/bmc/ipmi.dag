@@ -309,6 +309,96 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  // ── THE BMC ACCOUNT-STATE READS (PXE 1c (B), sharp-crane-14) ──────────────────────────────────
+  // The four controller reads the live account-state read commits as content-addressed evidence and feeds
+  // to gunbc.machine_intake.bmc_account_state_capture assemble_account_state_transport. They are the generic
+  // ipmitool subcommands the account-state census needs; every per-host fact (host, channel, user id, the
+  // managed username/password-file) is an INPUT, never baked in here (operator ruling D2). All credentialed
+  // with the MANAGED account and guarded by a timeout, the way SelListAuthenticated is.
+  //
+  // LOCKOUT SAFETY (the reason there is NO published-credential user-test operation): OpenBMC 3.22.00 on
+  // ALTRAD8UD-1L2T has a tight lockout budget. The published (factory) retirement is DERIVED on the managed
+  // account under the credential-policy row (gunbc.machine_intake.bmc_credential_policy; the shared-store
+  // retirement route in gunbc.machine_intake.bmc_secure), NEVER probed. UserTestManaged is the ONLY user-test
+  // operation and the driver must invoke it with the managed credential only; a published login is never spent.
+
+  // The user list on a channel: `ipmitool user list <channel>` -- feeds the get-access rows the parser decodes.
+  operation UserList {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, channel: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "user", "list", "{channel}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool user list failed"
+    }
+  }
+
+  // The Get User Access census on a channel: `ipmitool channel getaccess <channel>`.
+  operation ChannelGetAccess {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, channel: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "channel", "getaccess", "{channel}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool channel getaccess failed"
+    }
+  }
+
+  // The Get LAN Configuration Parameters print: `ipmitool lan print <channel>` -- carries the four lockout
+  // parameters the served-lockout decoder reads (Bad Password Threshold / Invalid password disable /
+  // Attempt Count Reset Int. / User Lockout Interval).
+  operation LanPrint {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, channel: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "lan", "print", "{channel}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool lan print failed"
+    }
+  }
+
+  // The managed account's IPMI user test: `ipmitool user test <user_id>`. THE ONLY user-test operation --
+  // it is for the MANAGED account; the driver must pass the managed username/password_file and the managed
+  // user id, never the published credential. Its exit status is the acceptance signal the wet driver folds
+  // into the committed body.
+  operation UserTestManaged {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, user_id: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "user", "test", "{user_id}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool user test failed"
+    }
+  }
+
   operation SdrTypeList {
     requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sensor_type: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
