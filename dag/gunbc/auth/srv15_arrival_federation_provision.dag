@@ -21,10 +21,11 @@ module gunbc.auth.srv15_arrival_federation_provision
 //           service account srv15-arrival@gunbai-secrets.iam.gserviceaccount.com, and binds the
 //           pinned-version roles/secretmanager.secretAccessor on bmc-srv15-admin. No hand IAM.
 //   precondition (before the LIVE arrival run, not before this row): the operator runs
-//           `gcloud secrets versions list bmc-srv15-admin` and sets
-//           gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version to the enabled version the
-//           accessor names -- the pin is currently an unread TranscribedUncited figure and
-//           resolve_returned_version refuses a mismatch.
+//           `gcloud secrets versions list bmc-srv15-admin` and re-cites
+//           gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version as
+//           CitedToAuthority { authority: ExternalAuthority { uri: uri_https(...) } } whose locator
+//           ends versions/<enabled> -- until then the standing is TranscribedUncited and the
+//           accessor ref gate yields Absent (no ref, no grant, door refuses closed).
 
 import gunbc.secret_provision {
   srv15_bmc_gunbc_arrival_accessor_version,
@@ -56,20 +57,8 @@ fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
 }
 
 
-// THE PIN IS A TYPED STATE, NOT A COMMENT (review 94066): the shipped figure is the sentinel
-// below until the operator performs the read obligation above and edits the pin. The door consults
-// THIS before touching Secret Manager, and an unread pin refuses the run with the obligation as its
-// reason -- the unread figure can never be fetched as if it were a fact.
-type Srv15AccessorVersionPin
-  = PinRead { version: NonEmptyStr }
-  | PinUnread { read_obligation: NonEmptyStr }
-
-data srv15_arrival_accessor_unread_sentinel: NonEmptyStr = "unread-operator-pin"
-
-fn srv15_arrival_accessor_version_pin() -> Srv15AccessorVersionPin {
-  if srv15_bmc_gunbc_arrival_accessor_version == srv15_arrival_accessor_unread_sentinel {
-    PinUnread { read_obligation: "operator must run gcloud secrets versions list bmc-srv15-admin and set gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version to the enabled version the accessor names" }
-  } else {
-    PinRead { version: srv15_bmc_gunbc_arrival_accessor_version }
-  }
-}
+// THE PIN'S STANDING IS THE COMMITTED CitedFigureStanding TYPE, not a per-host sum (review 94085):
+// gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version is TranscribedUncited until the
+// operator read lands, and srv15_bmc_gunbc_arrival_accessor_ref() is the ONLY gate -- while uncited
+// it yields Absent, so no SecretRef, no secret grant, and no fetch can exist for srv15. The door
+// refuses citing srv15_bmc_gunbc_arrival_accessor_read_obligation() before any secret traffic.

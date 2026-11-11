@@ -46,13 +46,12 @@ import gunbc.machine_intake.mtjade1_access_observation {
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
-import gunbc.secret_provision { srv15_bmc_gunbc_arrival_accessor_version }
-import gunbc.auth.srv15_arrival_federation_provision {
-  srv15_arrival_accessor_version_pin,
-  srv15_arrival_accessor_unread_sentinel,
-  PinUnread,
-  PinRead,
+import gunbc.secret_provision {
+  srv15_bmc_gunbc_arrival_accessor_ref,
+  srv15_bmc_gunbc_arrival_accessor_read_obligation,
+  mtjade1_bmc_gunbc_arrival_accessor_ref,
 }
+import std.optional { Present, Absent }
 import gunbc.auth.arrival_federation_pair {
   arrival_federation_pair_for_host,
   arrival_lane_environment,
@@ -192,13 +191,15 @@ test fn the_named_census_projects_onto_the_committed_census() -> Bool {
   // one (every real board has them), so the privilege filter is the projection.
   let expected_users = map(filter(committed_rows, r => r.privilege != IpmiPrivilegeNoAccess), r => r.user)
   let expected_privs = map(filter(committed_rows, r => r.privilege != IpmiPrivilegeNoAccess), r => r.privilege)
+  let named_users = map(named_rows, r => r.user)
+  let named_privs = map(named_rows, r => r.privilege)
+  let named_names = map(named_rows, r => r.name as String)
   length(named_rows) == 3 && length(expected_users) == 3 && length(expected_privs) == 3 &&
-    token_at(toks: map(named_rows, r => r.user), i: 0) == token_at(toks: expected_users, i: 0) &&
-    token_at(toks: map(named_rows, r => r.user), i: 1) == token_at(toks: expected_users, i: 1) &&
-    token_at(toks: map(named_rows, r => r.user), i: 2) == token_at(toks: expected_users, i: 2) &&
-    token_at(toks: map(named_rows, r => r.privilege), i: 0) == token_at(toks: expected_privs, i: 0) &&
-    token_at(toks: map(named_rows, r => r.privilege), i: 2) == token_at(toks: expected_privs, i: 2) &&
-    (named_rows.first().name as String) == "admin" && (named_rows.skip(n: 1).first().name as String) == "operator" && (named_rows.skip(n: 2).first().name as String) == "OEM"
+    named_users == expected_users &&
+    named_privs == expected_privs &&
+    token_at(toks: named_names, i: 0) == "admin" &&
+    token_at(toks: named_names, i: 1) == "operator" &&
+    token_at(toks: named_names, i: 2) == "OEM"
 }
 
 // THE DERIVATION IS THIS RUN'S CENSUS: the managed and published ids come from the census the run
@@ -253,15 +254,17 @@ test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
 // expression family; the pair module derives the same names from the population
 // row's grant. They must agree suffix-for-suffix -- mtjade1 is just a row of the
 // same shape, and no second naming rule is allowed to grow.
-// THE ACCESSOR PIN IS A TYPED STATE, NOT A COMMENT (review 94066): the shipped figure is the
-// sentinel and refuses with the read obligation; the moment a real enabled version is pinned the
-// other arm carries it, and the sentinel can NEVER cross as a version.
-test fn the_accessor_version_pin_is_typed_never_a_silent_fact() -> Bool {
-  match srv15_arrival_accessor_version_pin() {
-    PinUnread { read_obligation: read_obligation } =>
-      string_contains(s: read_obligation as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
-      && srv15_bmc_gunbc_arrival_accessor_version == srv15_arrival_accessor_unread_sentinel
-    PinRead { version: version } => version != srv15_arrival_accessor_unread_sentinel
+// THE ACCESSOR PIN'S STANDING IS TYPED, NOT A COMMENT (reviews 94066, 94085): while the figure is
+// TranscribedUncited there is NO SecretRef to fetch and NO grant to bind -- only the obligation;
+// a cited read yields a ref naming the real enabled version. mtjade1's cited figure always yields
+// its signed-off version through the same gate.
+test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
+  match srv15_bmc_gunbc_arrival_accessor_ref() {
+    Absent => string_contains(s: srv15_bmc_gunbc_arrival_accessor_read_obligation() as String, pattern: "gcloud secrets versions list bmc-srv15-admin")
+    Present { value: accessor } => accessor.secret as String == "bmc-srv15-admin" && length(accessor.version as String) >= 1
+  } && match mtjade1_bmc_gunbc_arrival_accessor_ref() {
+    Present { value: accessor } => accessor.secret as String == "bmc-mtjade1-gunbc" && accessor.version as String == "1"
+    Absent => false
   }
 }
 

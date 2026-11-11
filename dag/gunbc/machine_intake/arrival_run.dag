@@ -166,13 +166,8 @@ import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCre
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
 import gunbc.auth.private_secret_file { with_private_secret_file, PrivateSecretFileBracket, PrivateSecretFileCompleted }
 import gunbc.auth.netrc_binding { with_private_netrc_binding, NetrcBinding }
-import gunbc.secret_provision { SecretRef }
+import gunbc.secret_provision { SecretRef, srv15_bmc_gunbc_arrival_accessor_read_obligation }
 import gunbc.auth.arrival_federation_pair { arrival_federation_pair_for_host, arrival_secret_grants, ArrivalFederationPair }
-import gunbc.auth.srv15_arrival_federation_provision {
-  srv15_arrival_accessor_version_pin,
-  PinUnread,
-  PinRead,
-}
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
   match arrival_admit_executor() {
@@ -629,15 +624,17 @@ fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmpt
             Absent => exit_failure(reason: "ARRIVAL WET NO FEDERATION PAIR: no arrival lane carries this unit's accessor grant")
             Present { value: pair } => {
               let host = binding.bmc.host
-              // THE PIN GUARD BEFORE ANY SECRET TRAFFIC: an accessor version nobody has read is a
-              // typed refusal naming the obligation, never a fetch of the sentinel (review 94066).
-              match srv15_arrival_accessor_version_pin() {
-                PinUnread { read_obligation: read_obligation } => exit_failure(reason: concat("ARRIVAL WET ACCESSOR PIN UNREAD: ", read_obligation as String))
-                PinRead { version: _version } =>
+              // THE PIN GUARD BEFORE ANY SECRET TRAFFIC: while the accessor version's standing is
+              // not CitedToAuthority, gunbc.secret_provision's gate yields no ref at all -- the run
+              // refuses naming the obligation; a fabricated version is never fetched (reviews 94066,
+              // 94085). The same gate feeds the pair, so guard and fetch can never disagree.
+              match pair.accessor_ref {
+                Absent => exit_failure(reason: concat("ARRIVAL WET ACCESSOR PIN NOT CITED: ", srv15_bmc_gunbc_arrival_accessor_read_obligation() as String))
+                Present { value: accessor } =>
               match select_access_token_source() {
                 AccessTokenSourceUnavailable { cause: cause } => exit_failure(reason: concat("ARRIVAL WET WIF UNAVAILABLE: ", cause as String))
                 AccessTokenSourceSelected { source: source } => {
-                  match fetch_secret_ref_credential(secret_ref: pair.accessor_ref, token_source: source) {
+                  match fetch_secret_ref_credential(secret_ref: accessor, token_source: source) {
                     SecretCredentialReady { credential: credential, resolved_version: resolved_version } => {
                       match sm_resolved_version_id(identity: resolved_version) {
                         SmVersionIdProjected { version: version } => {
