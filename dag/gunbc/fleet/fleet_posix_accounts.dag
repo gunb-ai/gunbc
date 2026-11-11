@@ -79,11 +79,11 @@ type DeployRunnerPrincipal {
 //
 // THE PRINCIPAL IS NO LONGER A SINGLE srv1 DATUM. It was `srv1_ci_deploy_runner_principal { unit_user:
 // root, job_user: ghrunner }` -- a per-host named declaration, which operator ruling D2 forbids (per-host
-// declarations are mini forks). It is now ROWS keyed by the HostIdentity handle, in
-// gunbc.runner.runner_host_deploy (deploy_runner_principal_rows / deploy_runner_principal_for). srv1-srv4
-// keep their current listener (root) until each host's own B3d cutover; butch (srv14) names gunbc-runner
-// (fleet_posix_runner_listener_login, below, which the runner module re-exports). fleet_deploy_job_principal
-// below still resolves a job_user to a roster principal, unchanged.
+// declarations are mini forks). It now lives in each host's RunnerHostSpec (gunbc.runner.runner_host_deploy),
+// the single storage the deploy reads; the converge reads the SAME spec through runner_host_spec_for, so there
+// is no second place that could drift. srv1-srv4 keep their current listener (root) until each host's own B3d
+// cutover; butch (srv14) names gunbc-runner (fleet_posix_runner_listener_login, below, which the runner module
+// re-exports). fleet_deploy_job_principal below still resolves a job_user to a roster principal, unchanged.
 
 // ONE semantic principal population. The two new arms are PRINCIPAL IDENTITIES, not accounts:
 // they carry policy and no operating-system label, because fleet-automation@gunbc is an SSH key
@@ -138,8 +138,12 @@ fn fleet_account_key_label(key: FleetPosixAccountKey) -> String {
   }
 }
 
+// ACCOUNT-KEY EQUALITY IS DIRECT VARIANT COMPARISON, not a comparison of rendered labels. Two distinct
+// variants are never equal, so a key can never silently merge into or vanish from an account because two
+// labels collided or one was mis-spelled (gunbc.design_argument::fail_closed: making the wrong state
+// unwritable, not just catching it). The label fn (fleet_account_key_label) is for reporting, not matching.
 fn fleet_account_key_matches(a: FleetPosixAccountKey, b: FleetPosixAccountKey) -> Bool {
-  fleet_account_key_label(key: a) == fleet_account_key_label(key: b)
+  a == b
 }
 
 // THE RUNNER LISTENER'S LOGIN, ONE LITERAL IN THE ACCOUNT MODEL'S HOME. gunbc-runner is the systemd User= of

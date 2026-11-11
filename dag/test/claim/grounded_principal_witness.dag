@@ -178,10 +178,9 @@ test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
 }
 
 fn witness_srv1_job_principal_resolves_from_runner() -> Bool {
-  // The srv1 runner principal (unit_user root, job_user ghrunner) -- the same shape the generalized
-  // deploy_runner_principal_rows carry for srv1 (the row itself is witnessed in
-  // test.claim.fleet.fleet_access_template_witness). Here we only pin that fleet_deploy_job_principal
-  // resolves the job_user to the roster's ghrunner, never to a fabricated principal.
+  // The srv1 runner principal (unit_user root, job_user ghrunner) -- the same shape srv1's RunnerHostSpec
+  // carries (the spec itself is witnessed in test.claim.fleet.fleet_access_template_witness). Here we only
+  // pin that fleet_deploy_job_principal resolves the job_user to the roster's ghrunner, never a fabricated principal.
   let srv1 = DeployRunnerPrincipal { unit_user: "root", job_user: "ghrunner" }
   match fleet_deploy_job_principal(runner: srv1) {
     Present { value: p } => grounded_posix_principal_name(p: p) == "ghrunner"

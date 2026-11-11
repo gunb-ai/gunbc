@@ -18,7 +18,7 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_ci_runner_user,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14 }
-import gunbc.runner.runner_host_deploy { deploy_runner_principal_for }
+import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import gunbc.host.host_authorized_keys_reconcile {
   host_authorized_keys_reconcile,
   srv3_observed_briansrls_srv1_key,
@@ -126,21 +126,21 @@ test fn node_orch_reaches_host_administrator_and_not_root() -> Bool {
 
 // ---- 3. a host the fleet describes ONLY as rows resolves, with no code change ----
 
-// THE DISCRIMINATING PAIR for "adding the next machine is rows, not code": the SAME fold
-// (deploy_runner_principal_for) resolves a host the fleet added purely as a data row -- srv14 (butch), which
+// THE DISCRIMINATING PAIR for "adding the next machine is rows, not code": the SAME lookup
+// (runner_host_spec_for) resolves a host the fleet added purely as a data row -- srv14 (butch), which
 // has no per-host code and no `host == srv14` branch anywhere -- and refuses a host the fleet never described
 // (it returns Absent, borrowing no neighbour's row). A model that special-cased srv14, or that let an
-// unmodeled host borrow a neighbour's listener, fails one half of this pair. The per-host account set is
-// therefore carried by rows alone; creating the OS accounts from them is B3b/B3d (declared consumers).
+// unmodeled host borrow a neighbour's listener, fails one half of this pair. The per-host principal set is
+// therefore carried by spec rows alone; creating the OS accounts from them is B3b/B3d (declared consumers).
 test fn the_runner_principal_fold_is_general_not_per_host() -> Bool {
-  let butch_resolves = match deploy_runner_principal_for(host: operator_host_srv14) {
-    Present { value: p } =>
-      p.unit_user == fleet_posix_runner_listener_login && p.job_user == fleet_posix_ci_runner_user.name
-    Absent => false
+  let butch_resolves = match runner_host_spec_for(host: operator_host_srv14) {
+    RunnerHostSpecFound { spec: s } =>
+      s.unit_user == fleet_posix_runner_listener_login && s.job_user == fleet_posix_ci_runner_user.name
+    RunnerHostSpecAbsent { host: _ } => false
   }
-  let fixture_refused = match deploy_runner_principal_for(host: "srv-fixture-5" as HostIdentity) {
-    Present { value: _ } => false
-    Absent => true
+  let fixture_refused = match runner_host_spec_for(host: "srv-fixture-5" as HostIdentity) {
+    RunnerHostSpecFound { spec: _ } => false
+    RunnerHostSpecAbsent { host: _ } => true
   }
   butch_resolves && fixture_refused
 }
@@ -148,26 +148,26 @@ test fn the_runner_principal_fold_is_general_not_per_host() -> Bool {
 // ---- 4. srv1 still renders root as its listener; butch renders gunbc-runner ----
 
 test fn srv1_listener_is_still_root_until_its_b3d_cutover() -> Bool {
-  match deploy_runner_principal_for(host: operator_host_srv1) {
-    Present { value: p } => p.unit_user == "root" && p.job_user == "ghrunner"
-    Absent => false
+  match runner_host_spec_for(host: operator_host_srv1) {
+    RunnerHostSpecFound { spec: s } => s.unit_user == "root" && s.job_user == "ghrunner"
+    RunnerHostSpecAbsent { host: _ } => false
   }
 }
 
 test fn butch_listener_is_the_gunbc_runner_account() -> Bool {
-  match deploy_runner_principal_for(host: operator_host_srv14) {
+  match runner_host_spec_for(host: operator_host_srv14) {
     // The listener login is the account model's single authority (fleet_posix_runner_listener_login),
-    // reused by the row -- never a re-spelled literal.
-    Present { value: p } => p.unit_user == fleet_posix_runner_listener_login && p.job_user == "ghrunner"
-    Absent => false
+    // referenced by butch's spec -- never a re-spelled literal.
+    RunnerHostSpecFound { spec: s } => s.unit_user == fleet_posix_runner_listener_login && s.job_user == "ghrunner"
+    RunnerHostSpecAbsent { host: _ } => false
   }
 }
 
-// A host with no runner-principal row has NO listener -- the lookup refuses rather than borrowing a
+// A host with no runner spec row has NO listener -- the lookup refuses rather than borrowing a
 // neighbour's row, so a runner is never deployed onto a machine the fleet never described.
 test fn an_unmodeled_host_has_no_runner_principal() -> Bool {
-  match deploy_runner_principal_for(host: "srv-fixture-5" as HostIdentity) {
-    Present { value: _ } => false
-    Absent => true
+  match runner_host_spec_for(host: "srv-fixture-5" as HostIdentity) {
+    RunnerHostSpecFound { spec: _ } => false
+    RunnerHostSpecAbsent { host: _ } => true
   }
 }
