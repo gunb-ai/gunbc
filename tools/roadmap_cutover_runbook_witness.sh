@@ -101,6 +101,10 @@
 #   verification_admits_and_writes_both_admission_receipts
 #   verification_refuses_when_the_read_back_produced_no_document
 #   observation_refuses_when_the_read_back_produced_no_document
+#   migration_refuses_when_the_stale_receipt_cannot_be_destroyed
+#   verification_refuses_when_the_stale_admission_cannot_be_destroyed
+#   observation_refuses_when_the_stale_report_cannot_be_destroyed
+#   retirement_refuses_a_receipt_that_names_an_earlier_attempt
 #
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
@@ -701,6 +705,25 @@ esac
 printf 'stub git: unexpected call: %s\n' "$*" >&2; exit 1
 GITSTUB
   chmod +x "$GB/git"
+  # A DELETION THAT CAN BE REFUSED. The invalidations in steps 3, 5 and 6 are admission predicates now, so a case
+  # has to be able to make one fail: STUB_RM_FAIL_ON=<substring> makes `rm` refuse for a matching target — the
+  # shape of a read-only mount, an immutable file, or a file owned by someone else — and every other delete goes
+  # to the real /bin/rm. Without this the strongest claim a deletion case can make is "the file was gone", which
+  # is also what a deletion that failed would look like if the check behind it were missing.
+  cat > "$GB/rm" <<'RMSTUB'
+#!/usr/bin/env bash
+targets=()
+for a in "$@"; do case "$a" in -*) ;; *) targets+=("$a") ;; esac; done
+if [ -n "${STUB_RM_FAIL_ON:-}" ]; then
+  for p in "${targets[@]}"; do
+    case "$p" in
+      *"$STUB_RM_FAIL_ON"*) printf 'stub rm: cannot remove %s: Operation not permitted\n' "$p" >&2; exit 1 ;;
+    esac
+  done
+fi
+exec /bin/rm "$@"
+RMSTUB
+  chmod +x "$GB/rm"
 
   cat > "$GB/gunbc" <<'EOF'
 #!/usr/bin/env bash
@@ -890,8 +913,12 @@ EOF
   seed_export; run_migrate "the migration completes"
   [ "$LAST_RC" -eq 0 ] || fail "G9b: a correct migration refused: [$LAST_OUT]"
   [ -s "$GEXP/migrate.completion" ] || fail "G9b: a completed migration wrote no completion receipt"
-  [ "$(wc -l < "$GEXP/migrate.completion")" -eq 4 ] \
-    || fail "G9b: the completion receipt holds $(wc -l < "$GEXP/migrate.completion") fields, not the four step 3 promises"
+  [ "$(wc -l < "$GEXP/migrate.completion")" -eq 5 ] \
+    || fail "G9b: the completion receipt holds $(wc -l < "$GEXP/migrate.completion") fields, not the five step 3 promises"
+  # and the fifth field is not decoration: it must be the attempt step 3 recorded before it did anything else
+  [ -s "$GEXP/migrate.attempt" ] || fail "G9b: step 3 completed without recording its attempt — nothing can then tell this receipt from an earlier one"
+  grep -q "^attempt=$(head -n1 "$GEXP/migrate.attempt")$" "$GEXP/migrate.completion" \
+    || fail "G9b: the receipt does not name the attempt in $GEXP/migrate.attempt: [$(tr '\n' ' ' < "$GEXP/migrate.completion")]"
   run_retire "step 4 after a completed migration"
   [ "$RC" -eq 0 ] || fail "G9b: step 4 refused a migration that completed: [$OUT]"
   echo "$OUT" | grep -qF 'COMPLETION RECEIPT ADMITTED' || fail "G9b: step 4 never read the receipt it requires: [$OUT]"
@@ -903,7 +930,7 @@ EOF
   head -3 "$GEXP/migrate.completion" > "$GEXP/migrate.completion.tmp" && mv "$GEXP/migrate.completion.tmp" "$GEXP/migrate.completion"
   run_retire "step 4 with a truncated completion receipt"
   [ "$RC" -ne 0 ] || fail "G10: a three-field receipt authorized a retirement"
-  echo "$OUT" | grep -qF 'expected 4' || fail "G10: the refusal did not name the field count: [$OUT]"
+  echo "$OUT" | grep -qF 'expected 5' || fail "G10: the refusal did not name the field count: [$OUT]"
   [ ! -s "$APPEND_LOG" ] || fail "G10: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
 
   seed_export; run_migrate "the migration completes, then the receipt's counts are rewritten"
@@ -989,8 +1016,11 @@ EOF
   [ "$LAST_RC" -ne 0 ] || fail "G19: the retry should have refused at its third append: [$LAST_OUT]"
   run_retire "step 4 after a FAILED retry that left an earlier attempt's receipt standing"
   [ "$LAST_RC" -ne 0 ] || fail "G19: step 4 retired over an acceptance history the failed replay never wrote — the earlier attempt's receipt was trusted"
-  echo "$LAST_OUT" | grep -qF 'migrate.completion' \
-    || fail "G19: the refusal did not name the missing completion receipt: [$LAST_OUT]"
+  # 'never wrote' is the MISSING-receipt gate. Naming the path alone would also be satisfied by the attempt-binding
+  # refusal, so if step 3's own invalidation were deleted this case would still pass — which is exactly the kind of
+  # case that certifies a gate it never reaches. Two mechanisms, two distinct assertions.
+  echo "$LAST_OUT" | grep -qF 'never wrote' \
+    || fail "G19: the refusal was not the missing-receipt gate, so step 3's invalidation is what this case is (not) proving: [$LAST_OUT]"
   [ ! -s "$APPEND_LOG" ] || fail "G19: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
 
   # The same class, one step later: step 5b's gate reads $D/read-back.out and $D/migration.verified as ADMISSION
@@ -1023,6 +1053,77 @@ EOF
     || fail "G22: the re-run left the previous attempt's report standing for the next reader to count"
 fi
 echo
+
+  # ---- G23 / G24 / G25: a deletion that CANNOT be completed must stop the step, not be shrugged off. ----
+  # These are the reviewer's failure-injection cases: "an unwritable or immutable target, or a stubbed rm that
+  # fails", with the requirement that the previous artefact cannot then authorize the next step. Each case runs the
+  # step SUCCESSFULLY FIRST, so the stale artefact it must destroy really exists — a case whose deletion target was
+  # never there proves nothing about what happens when the deletion fails.
+  # G23: step 3 restarts and the previous attempt's receipt cannot be destroyed
+  seed_export; run_migrate "the first migration completes"
+  [ "$LAST_RC" -eq 0 ] || fail "G23: the first migration should have completed: [$LAST_OUT]"
+  [ -s "$GEXP/migrate.completion" ] || fail "G23: nothing stale to leave behind, so the case would test nothing"
+  STALE_ATTEMPT=$(sed -n 's/^attempt=//p' "$GEXP/migrate.completion")
+  [ "${#STALE_ATTEMPT}" = 16 ] || fail "G23: the completed migration's receipt names attempt [$STALE_ATTEMPT]"
+  # NO RE-EXPORT HERE, on purpose. The state this case must reproduce is a retry that restarted against the SAME
+  # export: the inputs the stale receipt digests have to still be on disk, or step 4 refuses at its input gate and
+  # the case certifies the input gate instead of the attempt binding.
+  run_migrate "a retry whose previous receipt cannot be destroyed" STUB_RM_FAIL_ON=migrate.completion
+  [ "$LAST_RC" -ne 0 ] || fail "G23: step 3 continued after it could not destroy the previous attempt's receipt"
+  echo "$LAST_OUT" | grep -qF 'could not destroy' \
+    || fail "G23: the refusal did not name the failed deletion: [$LAST_OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G23: it appended anyway: $(wc -l < "$APPEND_LOG") line(s)"
+  # …and the surviving receipt must not authorize step 4. It is intact, self-consistent and digests the right
+  # bytes; the ONLY thing that distinguishes it from a fresh one is the attempt it names, which step 3 rewrote
+  # before it hit the failed deletion. This is the assertion the field-count and digest checks cannot make.
+  run_retire "step 4 attempted over the receipt that survived the refused deletion"
+  [ "$LAST_RC" -ne 0 ] || fail "G23: step 4 retired over a receipt left by an attempt this run never completed"
+  echo "$LAST_OUT" | grep -qF 'does not name THIS attempt' \
+    || fail "G23: the refusal did not name the attempt binding: [$LAST_OUT]"
+  echo "$LAST_OUT" | grep -qF "the receipt names $STALE_ATTEMPT" \
+    || fail "G23: the refusal did not show WHICH attempt the receipt came from, so an operator could not tell a stale receipt from a mis-set attempt file: [$LAST_OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G23: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # The attempt name has to be load-bearing on its own — not only the tail of a failed deletion. Same export, same
+  # completion receipt, five fields, counts that match the inputs, digests that match the bytes, seed that matches
+  # the disk: only the NAME differs, and the run that would be authorized without it is a retirement over a history
+  # this process never wrote.
+  # G23b: step 4 refuses a receipt naming an earlier attempt
+  seed_export; run_migrate "the migration completes"
+  [ "$LAST_RC" -eq 0 ] || fail "G23b: the migration should have completed: [$LAST_OUT]"
+  NOW=$(head -n1 "$GEXP/migrate.attempt"); [ "${#NOW}" = 16 ] \
+    || fail "G23b: the attempt step 3 recorded is [$NOW], not the 16 characters it promises"
+  sed -i "s/^attempt=$NOW\$/attempt=$(printf 'a%.0s' {1..16})/" "$GEXP/migrate.completion"
+  [ "$(wc -l < "$GEXP/migrate.completion")" -eq 5 ] \
+    || fail "G23b: the rewritten receipt is no longer five fields, so the case would test the count and not the name"
+  run_retire "step 4 handed a completion receipt from an earlier attempt"
+  [ "$LAST_RC" -ne 0 ] || fail "G23b: a receipt naming another attempt authorized a retirement"
+  echo "$LAST_OUT" | grep -qF 'does not name THIS attempt' \
+    || fail "G23b: the refusal did not name the attempt binding (so the other checks are what stopped it, and this case proves nothing): [$LAST_OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G23b: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # G24: step 5 restarts and the previous attempt's admission cannot be destroyed
+  seed_export; run_migrate "the migration completes"; run_verify "step 5 admits the migration"
+  [ "$LAST_RC" -eq 0 ] || fail "G24: step 5 should have admitted: [$LAST_OUT]"
+  [ -s "$GEXP/migration.verified" ] || fail "G24: step 5 left no admission, so the case would test nothing"
+  run_verify "step 5 re-run, where the previous admission cannot be destroyed" STUB_RM_FAIL_ON=read-back.out STUB_READBACK_NOWRITE=1
+  [ "$LAST_RC" -ne 0 ] || fail "G24: step 5 certified activation on a document it could not clear and did not rewrite"
+  echo "$LAST_OUT" | grep -qF 'could not destroy' \
+    || fail "G24: the refusal did not name the failed deletion: [$LAST_OUT]"
+  echo "$LAST_OUT" | grep -vF 'could not destroy' | grep -qF 'MIGRATION VERIFIED' \
+    && fail "G24: it printed the activation admission after a refused deletion"
+
+  # G25: step 6 restarts and the previous attempt's report cannot be destroyed
+  seed_export; run_migrate "the migration completes"; run_retire "step 4 retires the two nodes"
+  run_observe "step 6 admits the standing"
+  [ "$LAST_RC" -eq 0 ] || fail "G25: step 6 should have admitted: [$LAST_OUT]"
+  [ -s "$GEXP/read-back.after.out" ] || fail "G25: step 6 left no report, so the case would test nothing"
+  run_observe "step 6 re-run, where the previous report cannot be destroyed" STUB_RM_FAIL_ON=read-back.after.out STUB_READBACK_NOWRITE=1
+  [ "$LAST_RC" -ne 0 ] || fail "G25: step 6 measured the previous attempt's report as this run's standing"
+  echo "$LAST_OUT" | grep -qF 'could not destroy' \
+    || fail "G25: the refusal did not name the failed deletion: [$LAST_OUT]"
+  echo "$LAST_OUT" | grep -qF 'STANDING ADMITTED' \
+    && fail "G25: it published a standing count after a refused deletion"
 
 echo "================ PART I: the hand-shell LOC rows agree with the carriers they describe ================"
 # The LOC rows are the scaffold's own account of how much temporary shell it introduces — F5's admission is about

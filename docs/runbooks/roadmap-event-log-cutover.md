@@ -318,16 +318,34 @@ byte for byte.
 
 ```bash
 set -euo pipefail
-cd $TREE
 : "${D:?MIGRATION REFUSED: EXPORT_DIR is not set — run step 1 and use the path it echoed}"
 : "${OPERATOR:?MIGRATION REFUSED: the author is part of the fact; an empty author is a wrong fact}"
+# THE ATTEMPT IS NAMED BEFORE ANYTHING CAN FAIL, and the completion receipt at the end of this step carries that
+# name; step 4 compares them. Counts and digests cannot do this job: a receipt left by an EARLIER attempt — over a
+# branch that may since have been restored — is byte-for-byte indistinguishable from a fresh one, because the
+# inputs are re-prepared from the same export. Only a name mints per attempt and cannot be inherited.
+ATTEMPT=$(printf '%s-%s-%s' "$(date -u +%FT%TZ)" "$$" "${RANDOM}${RANDOM}" | sha256sum | cut -c1-16)
+printf '%s\n' "$ATTEMPT" > "$D/migrate.attempt" \
+  || { echo "MIGRATION REFUSED: this attempt could not be recorded in $D/migrate.attempt — an unrecorded attempt cannot be told from an earlier one, which is the hole step 4 would then fall into"; exit 1; }
 # ONE COMPLETION PER ATTEMPT. The receipt written at the end of this step is the ONLY thing step 4 demands before
 # it retires anything, and this step writes it only after the LAST admitted append — so when a retry begins, the
 # PREVIOUS attempt's receipt is still standing on disk. A replay that dies on its third append would leave step 4
 # holding a receipt that is intact, self-consistent, and describes a history the failed replay never wrote: the
 # inputs are re-prepared from the same export, so the counts, the seed digest and the input digest ALL match it.
-# Nothing downstream can tell that receipt from a fresh one, so it is destroyed here, before anything can fail.
-rm -f "$D/migrate.completion"
+# Nothing downstream can tell that receipt from a fresh one, so it is destroyed below — by a predicate, not a hope.
+# THE DELETION IS AN ADMISSION PREDICATE, NOT A HOPE. Its status is checked and its EFFECT is re-checked after it:
+# `rm -f` reports success for a file it never touched and failure for one it could not remove (a read-only mount, an
+# immutable file, another user's ownership), and a deletion that fails silently leaves the previous attempt's
+# receipt sitting on the exact path step 4 reads. It also comes BEFORE `cd "$TREE"`: a checkout that cannot be
+# entered must not be able to fail after an old receipt has been left standing to be trusted.
+if [ -e "$D/migrate.completion" ]; then
+  rm -f -- "$D/migrate.completion" \
+    || { echo "MIGRATION REFUSED: could not destroy $D/migrate.completion — a previous attempt's receipt must not survive to authorize step 4"; exit 1; }
+  [ ! -e "$D/migrate.completion" ] \
+    || { echo "MIGRATION REFUSED: $D/migrate.completion still exists although the delete reported success — treat it as live and refuse"; exit 1; }
+  echo "STALE INVALIDATED: $D/migrate.completion (this attempt is $ATTEMPT)"
+fi
+cd "$TREE"
 
 # THE SEED IS RE-VERIFIED BY DIGEST, NOT BY COUNT, BEFORE ANYTHING IS APPENDED. Step 1 hashed the seed it
 # exported into $D/SHA256SUMS. A line count cannot see a rewrite — an approver named differently, a receipt tail
@@ -418,6 +436,7 @@ done < "$D/migrate.revocation.lines"
   printf 'revocations=%s\n' "$NREV"
   printf 'seed_sha256=%s\n' "$RECORDED_SEED_SHA"
   printf 'inputs_sha256=%s\n' "$(cat "$D/migrate.acceptance.lines" "$D/migrate.revocation.lines" | sha256sum | cut -d" " -f1)"
+  printf 'attempt=%s\n' "$ATTEMPT"
 } > "$D/migrate.completion"
 echo "MIGRATION COMPLETE: $NFAB acceptance receipts (a seed of $NSEED lines + $NFB from the fabric tail) and $NREV revocation receipt admitted; completion recorded in $D/migrate.completion"
 ```
@@ -466,18 +485,19 @@ cd $TREE
 # step 3's admission is a PRECONDITION, checked here rather than trusted. The LINE FILES are only half of it and
 # are the weaker half: they are prepared before the first append, so a migration that died at its third receipt
 # leaves both of them sitting here full. What proves the history arrived is step 3's COMPLETION RECEIPT — written
-# after the last admitted append, and required here in full: present, exactly the four fields step 3 writes,
-# counting the same number of receipts the inputs hold, digesting the same input bytes, and recorded against the
-# seed that is actually on disk. A receipt copied from another run, truncated, rewritten to agree with itself, or
-# written against a seed since changed cannot authorize a retirement.
+# after the last admitted append, and required here in full: present, exactly the five fields step 3 writes,
+# counting the same number of receipts the inputs hold, digesting the same input bytes, recorded against the
+# seed that is actually on disk, and NAMING THE ATTEMPT that is running now. A receipt copied from another run,
+# truncated, rewritten to agree with itself, written against a seed since changed, or left over from a migration
+# this process never completed cannot authorize a retirement.
 [ -s "$D/migrate.acceptance.lines" ] \
   || { echo "RETIREMENT REFUSED: $D/migrate.acceptance.lines is missing or empty — step 3 did not admit its input"; exit 1; }
 [ -s "$D/migrate.revocation.lines" ] \
   || { echo "RETIREMENT REFUSED: $D/migrate.revocation.lines is missing or empty — step 3 did not admit its input"; exit 1; }
 [ -s "$D/migrate.completion" ] \
   || { echo "RETIREMENT REFUSED: step 3 never wrote $D/migrate.completion — its appends did not all reach the carrier, so the acceptance history is incomplete"; exit 1; }
-[ "$(wc -l < "$D/migrate.completion")" -eq 4 ] \
-  || { echo "RETIREMENT REFUSED: $D/migrate.completion holds $(wc -l < "$D/migrate.completion") fields, expected 4 — that is not the receipt step 3 writes"; exit 1; }
+[ "$(wc -l < "$D/migrate.completion")" -eq 5 ] \
+  || { echo "RETIREMENT REFUSED: $D/migrate.completion holds $(wc -l < "$D/migrate.completion") fields, expected 5 — that is not the receipt step 3 writes"; exit 1; }
 grep -q "^acceptances=$(wc -l < "$D/migrate.acceptance.lines")$" "$D/migrate.completion" \
   || { echo "RETIREMENT REFUSED: the completion receipt counts a different number of acceptance receipts than the inputs hold"; exit 1; }
 grep -q "^revocations=$(wc -l < "$D/migrate.revocation.lines")$" "$D/migrate.completion" \
@@ -490,6 +510,19 @@ grep -q "^seed_sha256=$(sha256sum "$D/seed.jsonl" | cut -d" " -f1)$" "$D/migrate
 # exactly what step 3 digested — both files, in that order — before a single retirement is attempted.
 grep -q "^inputs_sha256=$(cat "$D/migrate.acceptance.lines" "$D/migrate.revocation.lines" | sha256sum | cut -d" " -f1)$" "$D/migrate.completion" \
   || { echo "RETIREMENT REFUSED: the completion receipt digests different input lines than the ones on disk"; exit 1; }
+# AND IT MUST NAME THIS ATTEMPT. Field count, counts and digests can ALL be satisfied by a receipt an earlier
+# attempt wrote — including one whose destruction this run could not complete, and one written before a carrier
+# was restored from step 7. The attempt name is the only field that ties a receipt to the migration happening NOW,
+# and it is the only one that cannot be inherited: step 3 mints a fresh one per run and records it in
+# $D/migrate.attempt before anything can fail.
+[ -s "$D/migrate.attempt" ] \
+  || { echo "RETIREMENT REFUSED: $D/migrate.attempt is missing — no attempt was recorded, so no receipt can be shown to belong to this run"; exit 1; }
+ATTEMPT_NOW=$(head -n1 "$D/migrate.attempt")
+[ "${#ATTEMPT_NOW}" -eq 16 ] \
+  || { echo "RETIREMENT REFUSED: the recorded attempt is [$ATTEMPT_NOW], which is not the 16-character name step 3 mints"; exit 1; }
+RECEIPT_ATTEMPT=$(sed -n 's/^attempt=//p' "$D/migrate.completion")
+[ "$RECEIPT_ATTEMPT" = "$ATTEMPT_NOW" ] \
+  || { echo "RETIREMENT REFUSED: $D/migrate.completion does not name THIS attempt — the receipt names ${RECEIPT_ATTEMPT:-<nothing>} and this run recorded $ATTEMPT_NOW, so it is a receipt from an earlier migration and cannot authorize retiring over a history this run did not write"; exit 1; }
 echo "COMPLETION RECEIPT ADMITTED: $(tr "\n" " " < "$D/migrate.completion")"
 
 # THE RETIREMENT TEXT AND AUTHOR TRAVEL AS ENVIRONMENT DATA, never spliced into the command string. The first
@@ -553,7 +586,21 @@ instead of certifying.
 # leaves the PREVIOUS attempt's documents standing: the `grep '^MIGRATION VERIFIED'` below is satisfied by the stale
 # document, the digest it records is the digest of that stale document, and activation is certified by a read-back
 # that never happened in this attempt. Both go together — an admission missing half its evidence is no admission.
-rm -f "$D/read-back.out" "$D/migration.verified"
+# THE DELETION IS AN ADMISSION PREDICATE. This fence does not run under `set -e` (it cannot: its job is to inspect
+# a failing read-back and print its refusal), so a bare `rm -f` whose status nobody reads is not a gate — a
+# deletion that fails (read-only mount, immutable file, another user's ownership) leaves the PREVIOUS attempt's
+# document on the exact path the check below reads, and `grep '^MIGRATION VERIFIED'` is then satisfied by a
+# read-back that never ran in this attempt. Status checked, absence re-checked, and it happens BEFORE the
+# read-back is issued, so nothing can be measured against a document this run did not produce.
+for stale in "$D/read-back.out" "$D/migration.verified"; do
+  if [ -e "$stale" ]; then
+    rm -f -- "$stale" \
+      || { echo "MIGRATION REFUSED: could not destroy $stale — an admission document from a previous attempt must not survive to authorize this one"; exit 1; }
+    [ ! -e "$stale" ] \
+      || { echo "MIGRATION REFUSED: $stale still exists although the delete reported success — treat it as live and refuse"; exit 1; }
+    echo "STALE INVALIDATED: $stale"
+  fi
+done
 
 MANIFEST="$(cat "$D/seed.jsonl")"   # the fabric store contributes nothing today (verified at step 1: acceptance.count is 0);
                                     # if acceptance.before is not empty, append each object's payload.line as step 3 derives them
@@ -902,7 +949,18 @@ beside them that decide nothing and only report:
 # THE REPORT IS REBUILT OR ABSENT. The standing count at the end of this fence reads $D/read-back.after.out, which
 # the read-back entry writes through the modeled Filesystem.Write; a re-run whose read-back produced nothing would
 # otherwise be measured against the PREVIOUS attempt's document and report a retirement that is not in the log.
-rm -f "$D/read-back.after.out"
+# AS IN STEP 5, AND FOR THE SAME REASON, in a fence that explicitly cannot rely on `set -e`: the standing count
+# below is a `grep -c` over this one document, so a deletion that fails silently measures the PREVIOUS attempt's
+# retirements as this run's. Status checked, absence re-checked, refusal in this step's own vocabulary.
+for stale in "$D/read-back.after.out"; do
+  if [ -e "$stale" ]; then
+    rm -f -- "$stale" \
+      || { echo "OBSERVATION REFUSED: could not destroy $stale — a report from a previous attempt must not be measured as this run's standing"; exit 1; }
+    [ ! -e "$stale" ] \
+      || { echo "OBSERVATION REFUSED: $stale still exists although the delete reported success — treat it as live and refuse"; exit 1; }
+    echo "STALE INVALIDATED: $stale"
+  fi
+done
 # exit 0 = the fail-closed retired read ADMITTED the set (a log it cannot read exits 1 naming the reason, and
 # is never served as an empty retired set); the reason the runtime prints IS the diagnostic. An admission nobody
 # consumes is a comment: this fence has no `set -e`, so the status is CAPTURED and a refusal stops the step here,
@@ -1314,13 +1372,31 @@ loaded from the runbook: RUNE
     INPUT ADMITTED: 17 acceptance lines (17 from the seed, 0 from the fabric tail) and 1 revocation
     MIGRATION COMPLETE: 17 acceptance receipts (a seed of 18 lines + 0 from the fabric tail) and 1 revocation receipt admitted
   [step 4 after a completed migration] rc=0 retires=2
-    COMPLETION RECEIPT ADMITTED: acceptances=17 revocations=1 seed_sha256=<64 hex> inputs_sha256=<64 hex>
+    COMPLETION RECEIPT ADMITTED: acceptances=17 revocations=1 seed_sha256=<64 hex> inputs_sha256=<64 hex> attempt=<16 hex>
   [step 4 with a truncated completion receipt] rc=1 retires=0
-    RETIREMENT REFUSED: $TMP/migrate-export/migrate.completion holds 3 fields, expected 4 — that is not the receipt step 3 writes
+    RETIREMENT REFUSED: $TMP/migrate-export/migrate.completion holds 3 fields, expected 5 — that is not the receipt step 3 writes
   [step 4 with a receipt counting fewer receipts than the inputs hold] rc=1 retires=0
     RETIREMENT REFUSED: the completion receipt counts a different number of acceptance receipts than the inputs hold
   [step 4 with a receipt written against a seed that has since changed] rc=1 retires=0
     RETIREMENT REFUSED: the completion receipt was written against a different seed than the one on disk
+  # THE DELETIONS ARE PREDICATES TOO (the round that made them so). Each entry is the witness's own line: the
+  # fixture runs the step SUCCESSFULLY FIRST, so the artefact the step must destroy really exists, then makes the
+  # delete itself fail — a stubbed `rm` refusing that one target, which is the shape of a read-only mount, an
+  # immutable file, or a file owned by someone else. The refusal must name the deletion, and the surviving
+  # artefact must not be able to authorize the next step.
+  [a retry whose previous receipt cannot be destroyed] rc=1 appends=0
+    stub rm: cannot remove $TMP/migrate-export/migrate.completion: Operation not permitted
+    MIGRATION REFUSED: could not destroy $TMP/migrate-export/migrate.completion — a previous attempt's receipt must not survive to authorize step 4
+  [step 4 attempted over the receipt that survived the refused deletion] rc=1 retires=0
+    RETIREMENT REFUSED: $TMP/migrate-export/migrate.completion does not name THIS attempt — the receipt names 85a13c81f49e77c3 and this run recorded a57b611fda056a35, so it is a receipt from an earlier migration and cannot authorize retiring over a history this run did not write
+  [step 4 handed a completion receipt from an earlier attempt] rc=1 retires=0
+    RETIREMENT REFUSED: $TMP/migrate-export/migrate.completion does not name THIS attempt — the receipt names aaaaaaaaaaaaaaaa and this run recorded 023c1c99c730ccb9, so it is a receipt from an earlier migration and cannot authorize retiring over a history this run did not write
+  [step 5 re-run, where the previous admission cannot be destroyed] rc=1
+    stub rm: cannot remove $TMP/migrate-export/read-back.out: Operation not permitted
+    MIGRATION REFUSED: could not destroy $TMP/migrate-export/read-back.out — an admission document from a previous attempt must not survive to authorize this one
+  [step 6 re-run, where the previous report cannot be destroyed] rc=1 appends=0
+    stub rm: cannot remove $TMP/migrate-export/read-back.after.out: Operation not permitted
+    OBSERVATION REFUSED: could not destroy $TMP/migrate-export/read-back.after.out — a report from a previous attempt must not be measured as this run's standing
 
 <!-- The witnesses print their OWN counts (how many model rows, how many cases this file declares, the hand-shell
 line counts) and refuse on a mismatch. Those numbers are deliberately not copied here: a book of counts copied

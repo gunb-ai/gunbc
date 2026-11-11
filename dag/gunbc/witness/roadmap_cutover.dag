@@ -637,7 +637,7 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
     carrier: runbook_witness_carrier
     feeds: "step 4 with the completion receipt cut to three of its four fields"
     must: "refuse"
-    refusal_text: "expected 4"
+    refusal_text: "expected 5"
   }
   CutoverWitnessCase {
     name: "retirement_refuses_a_completion_receipt_whose_counts_disagree"
@@ -717,6 +717,34 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
     refusal_text: "ACTIVATION BLOCKED"
   }
   CutoverWitnessCase {
+    name: "migration_refuses_when_the_stale_receipt_cannot_be_destroyed"
+    carrier: runbook_witness_carrier
+    feeds: "step 3 restarts after a completed migration with the delete of the previous attempt's receipt made to fail (a stubbed rm refusing the target, the shape of a read-only mount or an immutable file); the appends must not start, and the receipt that survives — intact, self-consistent, right digests — must not authorize step 4 either, which only the attempt name it carries can rule out"
+    must: "refuse"
+    refusal_text: "could not destroy"
+  }
+  CutoverWitnessCase {
+    name: "retirement_refuses_a_receipt_that_names_an_earlier_attempt"
+    carrier: runbook_witness_carrier
+    feeds: "step 4 handed a completion receipt that is five fields, counts its inputs correctly, digests the bytes on disk and matches the seed — and names an attempt other than the one recorded in $D/migrate.attempt"
+    must: "refuse"
+    refusal_text: "does not name THIS attempt"
+  }
+  CutoverWitnessCase {
+    name: "verification_refuses_when_the_stale_admission_cannot_be_destroyed"
+    carrier: runbook_witness_carrier
+    feeds: "step 5 re-run after a success, where the delete of the previous read-back.out is made to fail and the read-back itself writes no document; the previous attempt's MIGRATION VERIFIED must not stand as this attempt's admission, and step 5b must not be reachable from it"
+    must: "refuse"
+    refusal_text: "could not destroy"
+  }
+  CutoverWitnessCase {
+    name: "observation_refuses_when_the_stale_report_cannot_be_destroyed"
+    carrier: runbook_witness_carrier
+    feeds: "step 6 re-run after a success, where the delete of the previous read-back.after.out is made to fail and the read-back writes no report; the standing count is a grep over exactly that path, so a deletion that fails silently would publish the previous attempt's retirements as this run's standing"
+    must: "refuse"
+    refusal_text: "could not destroy"
+  }
+  CutoverWitnessCase {
     name: "observation_refuses_when_the_read_back_produced_no_document"
     carrier: runbook_witness_carrier
     feeds: "step 6 re-run after a success, where the read-back entry exits 0 having written no report — the standing count would otherwise be taken from the previous attempt's document"
@@ -789,7 +817,7 @@ data runbook_scaffold: Disposition = Scaffold {
 
 data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
 
-data runbook_loc_delta_net: Int = 1424
+data runbook_loc_delta_net: Int = 1500
 data runbook_test_discriminator: String = "drop_in_round_trip_with_pre_existing_and_deploy_added"
 
 data runbook_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: TWO capabilities, because they retire DIFFERENT halves of tools/roadmap_cutover_runbook_witness.sh. (1) orch-emitted, for the residual shell (the sudo/systemd-run/systemctl stubs and the case assertions): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a function definition carrying a case statement over globs, a here-doc that writes a stub script, an array assignment read back as a whole-array expansion, or command substitution inside a test predicate — a missing target-language capability (class (b) of the hand-shell gate), not an unauthored migration. (2) modelled, for the witness process: its cases are the rows above (cutover_witness_case_rows) and its helpers are loaded from docs/runbooks/roadmap-event-log-cutover.md, never copied. When those rows run as a gunbc test row in gunbc.instrument_targets through the modelled filesystem and host-effect routes, this file is DELETED rather than emitted.")
@@ -801,7 +829,7 @@ data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissoluti
 // watch, so it lives where a claim can read it rather than in prose. Counting rule, so the number is checkable and
 // not prose that quietly rots: wc -l of each carrier, every line of which this PR adds (all three files are new in
 // it). Re-measure with: wc -l docs/runbooks/roadmap-event-log-cutover.md tools/roadmap_cutover_*.sh
-data runbook_witness_loc_delta_net: Int = 1103
+data runbook_witness_loc_delta_net: Int = 1204
 data dispatch_witness_loc_delta_net: Int = 558
 
 // Each carrier names the case that distinguishes it — the one that would pass on any nonzero exit if the witness
