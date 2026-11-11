@@ -51,7 +51,7 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_mode_env, release_bins_key_script_dispatch, release_bins_outcome_script_dispatch,
   release_bins_pack_script_dispatch, release_bins_consumer_script_dispatch, release_bins_build_script_dispatch,
   release_bins_key_script, release_bins_lookup_script, release_bins_dispatch_scope_ref_env, release_bins_dispatch_scope_ref_expression, release_bins_outcome_script,
-  release_bins_pack_manifest_script, release_bins_consumer_key_check_script,
+  release_bins_pack_manifest_script,
   release_bins_key_expression, release_bins_consumer_key_expression,
   release_bins_lookup_standing_expression, release_bins_lookup_entry_expression,
   release_bins_cache_hit_expression,
@@ -60,6 +60,7 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_manifest_name, release_bins_staging_dir, release_bins_download_path_expression,
 }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
+import gunbc.ci.release_bins_consumer_check_location { release_bins_consumer_check_script_directory, release_bins_consumer_check_script_name }
 import gunbc.fleet.fleet_key_agent { gunbc_ci_fleet_key_agent_script, gunbc_ci_fleet_key_agent_cleanup_script }
 import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_ssh_multiplex_directory_name, fleet_ssh_multiplex_runner_temp_env }
@@ -567,11 +568,18 @@ fn ci_release_bins_download_step() -> Step {
   }
 }
 
+// THE CHECK IS ONE COMMITTED FILE, NOT TWELVE INLINE COPIES. Twelve fleet-converge jobs run the same
+// consumer check; inlined, it was about 9 KB per job and brought the workflow file to the size GitHub will
+// start (extdeps.github.actions workflow_file_size_max). The body is the generated artifact
+// gunbc.generated_artifact ReleaseBinsConsumerCheckScriptArtifact, produced from the same
+// release_bins_consumer_key_check_script; the step runs it from the job's checkout with the default run-step
+// shell flags (bash -e), so its semantics are the inline step's. Every consuming job checks the repository out
+// at the workspace root before this step.
 fn ci_release_bins_unpack_verify_step() -> Step {
   RunStep {
     name: Present { value: "Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)" },
     id: Present { value: "release_bins" },
-    run: release_bins_consumer_key_check_script(),
+    run: release_bins_consumer_check_invocation,
     shell: none,
     env: Present { value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_consumer_key_expression()))] },
     working_directory: none,
@@ -1203,3 +1211,6 @@ fn ci_isolate_toolchain_script(build_jobs_count: Int) -> String {
   ci_workflow_run_emit_pipeline(p: ci_isolate_toolchain_intent(build_jobs_count: build_jobs_count))
 }
 
+data release_bins_consumer_check_invocation: String = join([
+  "bash -e \"$GITHUB_WORKSPACE\"/", release_bins_consumer_check_script_directory, "/", release_bins_consumer_check_script_name,
+], "")
