@@ -220,6 +220,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerSpecAccountCreated,
   RunnerSpecAccountMissing,
   RunnerSpecAccountPresent,
+  fleet_host_file_write_admission,
   runner_slot_expectation_with_roles,
   runner_host_role_environments,
   dropins_that_could_override,
