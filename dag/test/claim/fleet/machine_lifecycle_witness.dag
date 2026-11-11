@@ -75,7 +75,6 @@ import gunbc.fleet.machine_lifecycle {
   MachineRetired,
   MachineRetirement,
   MachineStanding,
-  ModeledRoute,
   NameAdvanced,
   ParticipationAltered,
   ParticipationUnchanged,
@@ -123,13 +122,21 @@ import gunbc.fleet.machine_lifecycle {
   planned_producer,
   registry_reissue_admission,
   route_is_modeled,
-  route_unmodeled_gaps,
+  route_gaps,
   transition_is_modeled,
   transition_unmodeled_gaps,
   unmodeled_leg,
   retired_ledger_with,
   route_legs,
-  undeclared_retirement_artifact_kind_names,
+  undeclared_retirement_artifact_kind_rows,
+  retirement_deficits_declared,
+  retirement_list_carries_owned_kind,
+  consumer_step_names_this_plan,
+  machine_lifecycle_consumer_steps,
+  deficit_is_owned_by_step,
+  deficit_has_no_owning_step,
+  UndeclaredArtifactKind,
+  NoStepOfThisPlanOwnsIt,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -433,14 +440,28 @@ test fn retiring_a_machine_lists_its_artifacts_for_retirement() -> Bool {
 // artifact kinds nobody has a derivation site for is the misleading value the rung ladder names. The count is
 // pinned, so an arm that gets a real producer and is silently dropped from the gap list reds here.
 test fn the_retirement_list_carries_the_undeclared_kinds() -> Bool {
-  let kinds = undeclared_retirement_artifact_kind_names
+  let rows = undeclared_retirement_artifact_kind_rows
   match admit_machine_transition(t: Retire { machine: operator_host_mtcollins1 }) {
     TransitionAdmitted { transition: _, effect: e, route: _ } =>
       match e {
         MachineRetired { machine: _, artifacts: artifacts } =>
           kinds.length() == 4
             && artifacts.length() >= kinds.length()
-            && all(kinds, k => any(artifacts, a => artifact_carries_kind(a: a, kind: k)))
+            && all(rows, r =>
+              retirement_list_carries_owned_kind(
+                machine: operator_host_mtcollins1,
+                name: r.name as String,
+                step: owned_step_of_kind(kind: r),
+              ))
+            // and every row CLASSIFIES its owner: the no-owner standing belongs to a route gap, so a row
+            // that stopped saying who lands it fails here instead of riding along unclassified.
+            && all(rows, r => deficit_is_owned_by_step(standing: r.standing, step: owned_step_of_kind(kind: r)))
+            && rows.length() == 4
+            // read a second way, off the artifact rather than the row: whatever deficit an artifact really
+            // carries must be a deficit the plan says a step lands.
+            && all(artifacts, a =>
+              all(retirement_deficits_declared(a: a), d =>
+                deficit_is_owned_by_step(standing: d.standing, step: owned_step_of_kind(kind: d))))
         _ => false
       }
     TransitionRefused { transition: _, cause: _ } => false
@@ -449,10 +470,21 @@ test fn the_retirement_list_carries_the_undeclared_kinds() -> Bool {
 
 // THE UNDECLARED KINDS, READ BY KIND: an artifact kind that gets a real producer must leave the gap list AND
 // appear as a derived artifact, which is the pair of facts that reds here if only one of them happens.
-fn artifact_carries_kind(a: RetirementArtifact, kind: NonEmptyStr) -> Bool {
-  match a {
-    ArtifactKindUndeclared { machine: _, kind: k } => (k as String) == (kind as String)
-    _ => false
+// The witness's OWN expectation of who lands each undeclared kind, read off gunbc.plans.fleet_machine_authority:
+// P4 owns the naming-owned deficits, P10 the OAuth redirect URI, P8d the offline runner registration. The
+// module's rows are compared against this table, so a row that lost its owner cannot keep the claim green.
+fn owned_step_of_kind(kind: UndeclaredArtifactKind) -> String {
+  let name = kind.name as String
+  if name == "bmc-admin-secret-id" {
+    "P4"
+  } else if name == "etc-gunbc-machine-path" {
+    "P4"
+  } else if name == "oauth-redirect-uri" {
+    "P10"
+  } else if name == "offline-runner-registration" {
+    "P8d"
+  } else {
+    "no step is pinned for this kind"
   }
 }
 
@@ -590,7 +622,7 @@ fn leg_names_a_resolvable_producer(leg: TransitionLeg) -> Bool {
       declaration_ref_display_key(ref: s) != ""
         && declaration_ref_is_well_formed(reference: s)
         && plan_landing_is_well_formed(landing: l)
-    UnmodeledLeg { gap: _ } => false
+    UnmodeledLeg { reason: _ } => false
   }
 }
 
@@ -600,7 +632,7 @@ fn leg_cites(module_path: String, decl: String, leg: TransitionLeg) -> Bool {
       declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: real_ref(module_path: module_path, decl: decl))
     PlannedProducer { site: s, lands_in: _ } =>
       declaration_ref_display_key(ref: s) == declaration_ref_display_key(ref: real_ref(module_path: module_path, decl: decl))
-    UnmodeledLeg { gap: _ } => false
+    UnmodeledLeg { reason: _ } => false
   }
 }
 
@@ -669,7 +701,7 @@ fn planned_leg_key(leg: TransitionLeg) -> String {
       separator: "",
     )
     RealProducer { ref: _, detail: _ } => "not a planned leg"
-    UnmodeledLeg { gap: _ } => "not a planned leg"
+    UnmodeledLeg { reason: _ } => "not a planned leg"
   }
 }
 
@@ -696,7 +728,7 @@ test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool
             declaration_ref_is_well_formed(reference: s)
               && plan_landing_is_well_formed(landing: l)
               && row_declares(rows: rows, key: route_citation_key(reference: l.plan))
-          UnmodeledLeg { gap: g } => (g as String) != ""
+          UnmodeledLeg { reason: r } => deficit_has_no_owning_step(standing: r)
         },
       )
       // every leg of every transition was asked about: a citation outside the pinned key list cannot be
@@ -707,7 +739,7 @@ test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool
             any(route_citation_keys, k => (k as String) == route_citation_key(reference: r))
           PlannedProducer { site: _, lands_in: l } =>
             any(route_citation_keys, k => (k as String) == route_citation_key(reference: l.plan))
-          UnmodeledLeg { gap: _ } => true
+          UnmodeledLeg { reason: _ } => true
         },
       ),
   )
@@ -738,7 +770,7 @@ test fn the_planned_route_legs_are_exactly_the_pinned_two() -> Bool {
         PlannedProducer { site: _, lands_in: _ } =>
           any(pinned_planned_route_sites, pinned => (pinned as String) == planned_leg_key(leg: leg))
         RealProducer { ref: _, detail: _ } => true
-        UnmodeledLeg { gap: _ } => true
+        UnmodeledLeg { reason: _ } => true
       },
     ))
     // ... and neither pinned site has gone missing.
@@ -750,12 +782,13 @@ test fn the_planned_route_legs_are_exactly_the_pinned_two() -> Bool {
 // A GAP IS NOT A ROUTE. The smallest case the finding turns on, asserted directly: a route whose only leg
 // announces that it has no producer is NOT a modeled route. Before this arm existed the leg read as one.
 test fn a_route_whose_only_leg_is_an_unmodeled_gap_is_not_a_modeled_route() -> Bool {
-  let gapped = ModeledRoute {
-    legs: [unmodeled_leg(what: "a step with no producer", gap: "the step says so, in the gap field")],
+  let gapped = MachineTransitionRoute {
+    legs: [unmodeled_leg(what: "a step with no producer", standing: NoStepOfThisPlanOwnsIt)],
   }
   route_is_modeled(r: gapped) == false
     && route_legs(r: gapped).length() == 1
-    && route_unmodeled_gaps(r: gapped).length() == 1
+    && route_gaps(r: gapped).length() == 1
+    && all(route_gaps(r: gapped), standing => deficit_has_no_owning_step(standing: standing))
     && all(route_legs(r: gapped), leg => leg_carries_no_producer(leg: leg))
 }
 
@@ -770,6 +803,7 @@ test fn a_provider_guest_reprovision_reports_its_gap_instead_of_counting_as_mode
   let reprovision = Reprovision { machine: guest }
   transition_is_modeled(t: reprovision) == false
     && transition_unmodeled_gaps(t: reprovision).length() == 1
+    && all(transition_unmodeled_gaps(t: reprovision), standing => deficit_has_no_owning_step(standing: standing))
     // the strict population claim is false for this machine, and honestly so: a route with an open gap is
     // not coverage. It is true for the machine the fleet drives over its BMC.
     && every_o4_transition_is_modeled(
@@ -779,8 +813,27 @@ test fn a_provider_guest_reprovision_reports_its_gap_instead_of_counting_as_mode
       successor: operator_host_srv14,
     )
     && all(o4_transition_population(machine: guest, replacement: swap, held_receipts: [], successor: operator_host_srv15),
-      t => match t {
-        Reprovision { machine: m } => transition_is_modeled(t: t) == false && host_identity_eq(a: m, b: guest)
-        _ => transition_is_modeled(t: t)
-      })
+      t => guest_route_except_reprovision_is_modeled(t: t, guest: guest),
+    )
+}
+
+// The provider guest's reprovision is the ONE route this module reports unmodeled, and it is the machine's
+// own backing that makes it so; every other transition for that same machine stays fully modeled.
+fn guest_route_except_reprovision_is_modeled(t: MachineTransition, guest: HostIdentity) -> Bool {
+  match t {
+    Reprovision { machine: m } => transition_is_modeled(t: t) == false && host_identity_eq(a: m, b: guest)
+    _ => transition_is_modeled(t: t)
+  }
+}
+
+// THE MODEL IS NOT A DECORATION. The module names the steps of this plan that take it up -- P11.x, which
+// mints the retirement ledger and consumes the per-host retirement list, and P12, which exercises
+// reprovision live (P13's own scope line defers that exercise to P12). Both must cite the plan document,
+// and neither may be dropped in silence.
+test fn the_model_names_the_changes_that_take_it_up() -> Bool {
+  let steps = machine_lifecycle_consumer_steps
+  steps.length() == 2
+    && all(steps, landing => consumer_step_names_this_plan(landing: landing))
+    && any(steps, landing => plan_landing_is_well_formed(landing: landing) && (landing.step as String) == "P11")
+    && any(steps, landing => plan_landing_is_well_formed(landing: landing) && (landing.step as String) == "P12")
 }

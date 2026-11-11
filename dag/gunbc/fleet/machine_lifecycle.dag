@@ -37,10 +37,21 @@ module gunbc.fleet.machine_lifecycle
 // "unowned" still turned the population claim green. What a leg may NOT be is a hand step: no arm of
 // TransitionProducer expresses one, and the citations are read back through std.annotation_reference's
 // own segment tests, so a paraphrase cannot sit in a field that names a declaration.
+//
+// WHO TAKES THIS UP, named rather than implied. This module is the model P13 owes; the changes that RUN its
+// routes are the steps listed in `machine_lifecycle_consumer_steps` and claimed there one by one: P11.x
+// retires each host, which mints the ledger through `retired_ledger_with` and consumes
+// `retirement_artifacts` (its acceptance is each artifact's own consumer running green after the artifact is
+// removed), and P12 accepts a new machine, which is where reprovision is exercised live -- P13's own scope
+// line defers that exercise to P12. `machine_retirement_ledger` is `[]` for the honest reason: the fleet has
+// no retired machine today and the only writer is P11.x. A witness that minted a fake retirement to look
+// exercised would be the misleading value this plan exists to remove, so instead the ledger is admitted to
+// empty, its mint is the only way in, and every read in this module is exercised against the fleet's real
+// rows and receipts.
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.annotation_reference { segment_is_identifier, segment_is_module_path }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.hostname_allocation {
@@ -206,23 +217,92 @@ type RetirementArtifact
   | BmcHealthReaderSecret { machine: HostIdentity, secret_id: NonEmptyStr }
   | RunnerRegistration { machine: HostIdentity, label: NonEmptyStr }
   | TailscaleMachineName { machine: HostIdentity, name: NonEmptyStr }
-  | ArtifactKindUndeclared { machine: HostIdentity, kind: NonEmptyStr }
+  | ArtifactKindUndeclared { machine: HostIdentity, kind: UndeclaredArtifactKind }
 
-// THE KINDS S4 NAMES THAT HAVE NO DERIVATION SITE YET, each carrying the PR that lands the derivation or the
-// fact that no PR owns it. They ride in the SAME list as the derived ones rather than in a comment: an
-// operator retiring a machine reads one list, and an undeclared kind is as visible in it as a derived one.
-// P4 lands the projected-name derivations of 2.3 (the BMC admin secret id, the per-host /etc/gunbc path, the
-// tailnet name); the OAuth redirect URI and the offline runner registration name no owner, and saying so
-// here IS the gap report -- a hand-maintained row for them would be the thing this plan forbids.
-data undeclared_retirement_artifact_kind_names: List<NonEmptyStr> = [
-  "bmc-admin-secret-id: literal per host today, derived from the human name by P4",
-  "etc-gunbc-machine-path: no derivation site yet, P4 owns the projected paths of 2.3",
-  "oauth-redirect-uri: S4 gap, no derivation site and no owning PR",
-  "offline-runner-registration: S4 gap, no derivation site and no owning PR",
+// WHO OWNS CLOSING A DEFICIT, as a type rather than as a sentence about it
+// (gunbc.design_argument::source_annotations: "An invariant, receipt, event, ruling, citation, status,
+// count or dissolution condition belongs in a typed carrier"; "Prose is not forbidden; unclassified prose
+// is."). Either a named step of this plan lands the producer -- cited, through PlanLanding, so the claim is
+// resolvable rather than plausible -- or no step of this plan owns it. Review 94095 found the first version
+// packing the kind identity, its status and its owner into one String row
+// ("oauth-redirect-uri: S4 gap, no derivation site and no owning PR"), which no checker can read and whose
+// ownership claim no reader could verify.
+type DeficitStanding
+  = OwnedByPlanStep { lands_in: PlanLanding }
+  | NoStepOfThisPlanOwnsIt
+
+// AN ARTIFACT KIND THE FLEET DOES NOT YET CARRY AS A TYPED ARM: its identity is a name and its disposition
+// is a typed standing. Both standing arms are inhabited in this module -- the rows below by OwnedByPlanStep,
+// the provider re-image route leg by NoStepOfThisPlanOwnsIt -- so neither is decoration.
+type UndeclaredArtifactKind {
+  name: NonEmptyStr
+  standing: DeficitStanding
+}
+
+// THE KINDS S4 NAMES THAT HAVE NO TYPED ARM YET. They ride in the SAME list as the derived ones rather than
+// in a comment: an operator retiring a machine reads one list, and an undeclared kind is as visible in it as
+// a derived one. Each row names the step of this plan that owns closing it. P4 lands the projected-name
+// derivations of 2.3, and the plan says its BMC secret refs and per-host /etc/gunbc paths are exactly the
+// literals that remain for it; P8d is the JIT offline-registration sweep the plan requires before the first
+// S4; the OAuth redirect URIs are registered and read back at the flips, which is P10.x (the plan's S3 step
+// adds them beside the old ones, and P11.x retires the old ones per host). The first version of this data
+// called two of the four "no owning PR" -- the plan says otherwise, and a gap report that misnames its owner
+// is worse than no gap report.
+data undeclared_retirement_artifact_kind_rows: List<UndeclaredArtifactKind> = [
+  UndeclaredArtifactKind { name: "bmc-admin-secret-id", standing: OwnedByPlanStep { lands_in: plan_step(step: "P4") } },
+  UndeclaredArtifactKind { name: "etc-gunbc-machine-path", standing: OwnedByPlanStep { lands_in: plan_step(step: "P4") } },
+  UndeclaredArtifactKind { name: "oauth-redirect-uri", standing: OwnedByPlanStep { lands_in: plan_step(step: "P10") } },
+  UndeclaredArtifactKind { name: "offline-runner-registration", standing: OwnedByPlanStep { lands_in: plan_step(step: "P8d") } },
 ]
 
+// A step OF THIS PLAN, cited. Every "a later change owns this" claim in the module goes through here, so
+// none of them can drift into an uncited sentence.
+fn plan_step(step: String) -> PlanLanding {
+  PlanLanding { plan: fleet_machine_authority_plan_ref, step: step as NonEmptyStr }
+}
+
+fn deficit_is_owned_by_step(standing: DeficitStanding, step: String) -> Bool {
+  match standing {
+    OwnedByPlanStep { lands_in: l } => plan_landing_is_well_formed(landing: l) && (l.step as String) == step
+    NoStepOfThisPlanOwnsIt => false
+  }
+}
+
+fn deficit_has_no_owning_step(standing: DeficitStanding) -> Bool {
+  match standing {
+    OwnedByPlanStep { lands_in: _ } => false
+    NoStepOfThisPlanOwnsIt => true
+  }
+}
+
+// THE GAP REPORT, readable: does this machine's retirement list carry the named undeclared kind, owned by
+// the named step? A row whose standing went unclassified, or whose owner drifted, fails here.
+fn retirement_list_carries_owned_kind(
+  machine: HostIdentity,
+  name: String,
+  step: String,
+) -> Bool {
+  any(
+    retirement_artifacts(machine: machine),
+    a => match a {
+      ArtifactKindUndeclared { machine: _, kind: k } =>
+        (k.name as String) == name && deficit_is_owned_by_step(standing: k.standing, step: step)
+      _ => false
+    },
+  )
+}
+
+// THE DEFICITS AN ARTIFACT LIST CARRIES, as the arm instances they are: a reader pairs a kind with its
+// standing from the same value, instead of reading a name from one place and trusting an owner from another.
+fn retirement_deficits_declared(a: RetirementArtifact) -> List<UndeclaredArtifactKind> {
+  match a {
+    ArtifactKindUndeclared { machine: _, kind: k } => [k]
+    _ => []
+  }
+}
+
 fn undeclared_retirement_artifact_kinds(machine: HostIdentity) -> List<RetirementArtifact> {
-  map(undeclared_retirement_artifact_kind_names, k => ArtifactKindUndeclared { machine: machine, kind: k })
+  map(undeclared_retirement_artifact_kind_rows, k => ArtifactKindUndeclared { machine: machine, kind: k })
 }
 
 // ONE MACHINE'S RETIREMENT LIST. The pending name is read from the same field the rename route consumes, so
@@ -359,6 +439,24 @@ fn o4_transition_population(
 data fleet_machine_authority_plan_ref: DeclarationRef =
   decl_ref(module_path: "gunbc.plans.fleet_machine_authority", decl_name: "fleet_machine_authority_plan")
 
+// WHO TAKES THIS MODULE UP, cited to the steps of the plan that land them. This module is the model of the
+// O4 transitions; the changes that RUN them are P11.x (retire per host: it mints the retirement ledger with
+// `retired_ledger_with` and consumes `retirement_artifacts`, and its acceptance is a green run of each
+// artifact's consumer after the artifact is removed) and P12 (the new-machine acceptance, which exercises
+// reprovision live -- P13's own scope line says reprovision is exercised with P12, not here). Naming them is
+// what keeps a model from becoming a decoration: `machine_retirement_ledger` is empty and stays empty until
+// P11.x writes it, and that is the honest state of a fleet with nothing retired, not a gap in this module.
+data machine_lifecycle_consumer_steps: List<PlanLanding> = [
+  plan_step(step: "P11"),
+  plan_step(step: "P12"),
+]
+
+fn consumer_step_names_this_plan(landing: PlanLanding) -> Bool {
+  plan_landing_is_well_formed(landing: landing)
+    && declaration_ref_display_key(ref: landing.plan)
+      == declaration_ref_display_key(ref: fleet_machine_authority_plan_ref)
+}
+
 // WHERE A PLANNED LEG LANDS: the plan document, cited, and the step of it that lands the producer. The step
 // label is shape-checked here; that the step really schedules this producer is what a reviewer reads.
 type PlanLanding {
@@ -369,16 +467,19 @@ type PlanLanding {
 type TransitionProducer
   = RealProducer { ref: DeclarationRef, detail: NonEmptyStr }
   | PlannedProducer { site: DeclarationRef, lands_in: PlanLanding }
-  | UnmodeledLeg { gap: NonEmptyStr }
+  | UnmodeledLeg { reason: DeficitStanding }
 
 type TransitionLeg {
   what: NonEmptyStr
   producer: TransitionProducer
 }
 
-type MachineTransitionRoute
-  = ModeledRoute { legs: List<TransitionLeg> }
-  | NoModeledRoute { gap: NonEmptyStr }
+// A ROUTE IS ITS LEGS. There is no second arm saying "there is no route": a step with no producer is an
+// UnmodeledLeg inside the list, which is where a reader and a checker both find it -- an arm nobody can
+// inhabit would be the decoration this plan's fail-closed rule exists to keep out.
+type MachineTransitionRoute {
+  legs: List<TransitionLeg>
+}
 
 fn real_producer(module_path: String, decl: String, detail: String) -> TransitionProducer {
   RealProducer { ref: decl_ref(module_path: module_path, decl_name: decl), detail: detail as NonEmptyStr }
@@ -387,16 +488,13 @@ fn real_producer(module_path: String, decl: String, detail: String) -> Transitio
 // A planned leg cites the site the landing step will introduce (future by definition, so checked for shape)
 // and the plan that owns that step (a DeclarationRef into the plan document, resolvable today).
 fn planned_producer(module_path: String, decl: String, step: String) -> TransitionProducer {
-  PlannedProducer {
-    site: decl_ref(module_path: module_path, decl_name: decl),
-    lands_in: PlanLanding { plan: fleet_machine_authority_plan_ref, step: step as NonEmptyStr },
-  }
+  PlannedProducer { site: decl_ref(module_path: module_path, decl_name: decl), lands_in: plan_step(step: step) }
 }
 
-// A step with no producer says it has no producer. It is not coverage: a route carrying one is reported
-// unmodeled, and the witness pins the set of gaps that is allowed to be open.
-fn unmodeled_leg(what: String, gap: String) -> TransitionLeg {
-  TransitionLeg { what: what as NonEmptyStr, producer: UnmodeledLeg { gap: gap as NonEmptyStr } }
+// A step with no producer says who owns closing it -- usually nobody in this plan -- and it is not coverage:
+// a route carrying one reports unmodeled, and the witness pins the gaps that are allowed to be open.
+fn unmodeled_leg(what: String, standing: DeficitStanding) -> TransitionLeg {
+  TransitionLeg { what: what as NonEmptyStr, producer: UnmodeledLeg { reason: standing } }
 }
 
 // THE CITATION SHAPE, read through the same segment tests the annotation scanner applies to a reference
@@ -417,7 +515,7 @@ fn leg_producer_is_named(leg: TransitionLeg) -> Bool {
     RealProducer { ref: r, detail: d } => declaration_ref_is_well_formed(reference: r) && (d as String) != ""
     PlannedProducer { site: s, lands_in: l } =>
       declaration_ref_is_well_formed(reference: s) && plan_landing_is_well_formed(landing: l)
-    UnmodeledLeg { gap: _ } => false
+    UnmodeledLeg { reason: _ } => false
   }
 }
 
@@ -425,43 +523,39 @@ fn leg_producer_is_named(leg: TransitionLeg) -> Bool {
 // this set, so a new gap reddens a claim instead of being reported as coverage.
 fn leg_carries_no_producer(leg: TransitionLeg) -> Bool {
   match leg.producer {
-    UnmodeledLeg { gap: _ } => true
+    UnmodeledLeg { reason: _ } => true
     RealProducer { ref: _, detail: _ } => false
     PlannedProducer { site: _, lands_in: _ } => false
   }
 }
 
-fn leg_gap_text(leg: TransitionLeg) -> NonEmptyStr {
+// THE STANDING A GAP CARRIES. Only read on a leg `leg_carries_no_producer` has reported; the other two arms
+// answer with the no-owner standing so nothing pretends an owned deficit is unowned.
+fn leg_deficit_standing(leg: TransitionLeg) -> DeficitStanding {
   match leg.producer {
-    UnmodeledLeg { gap: g } => g
-    RealProducer { ref: _, detail: _ } => "no gap"
-    PlannedProducer { site: _, lands_in: _ } => "no gap"
+    UnmodeledLeg { reason: r } => r
+    RealProducer { ref: _, detail: _ } => NoStepOfThisPlanOwnsIt
+    PlannedProducer { site: _, lands_in: _ } => NoStepOfThisPlanOwnsIt
   }
 }
 
-fn route_unmodeled_gaps(r: MachineTransitionRoute) -> List<NonEmptyStr> {
+fn route_gaps(r: MachineTransitionRoute) -> List<DeficitStanding> {
   map(
     xs: filter(xs: route_legs(r: r), predicate: leg => leg_carries_no_producer(leg: leg)),
-    f: leg => leg_gap_text(leg: leg),
+    f: leg => leg_deficit_standing(leg: leg),
   )
 }
 
-fn transition_unmodeled_gaps(t: MachineTransition) -> List<NonEmptyStr> {
-  route_unmodeled_gaps(r: machine_transition_route(t: t))
+fn transition_unmodeled_gaps(t: MachineTransition) -> List<DeficitStanding> {
+  route_gaps(r: machine_transition_route(t: t))
 }
 
 fn route_is_modeled(r: MachineTransitionRoute) -> Bool {
-  match r {
-    ModeledRoute { legs: ls } => ls.length() > 0 && all(ls, leg => leg_producer_is_named(leg: leg))
-    NoModeledRoute { gap: _ } => false
-  }
+  r.legs.length() > 0 && all(r.legs, leg => leg_producer_is_named(leg: leg))
 }
 
 fn route_legs(r: MachineTransitionRoute) -> List<TransitionLeg> {
-  match r {
-    ModeledRoute { legs: ls } => ls
-    NoModeledRoute { gap: _ } => []
-  }
+  r.legs
 }
 
 fn transition_is_modeled(t: MachineTransition) -> Bool {
@@ -488,7 +582,7 @@ fn every_o4_transition_is_modeled(
 fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
   match t {
     Rename { machine: _ } =>
-      ModeledRoute {
+      MachineTransitionRoute {
         legs: [
           TransitionLeg {
             what: "read the row's pending name: a name nobody drew cannot be promoted",
@@ -517,7 +611,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
         ],
       }
     ReleaseName { machine: _ } =>
-      ModeledRoute {
+      MachineTransitionRoute {
         legs: [
           TransitionLeg {
             what: "read the name the row holds, so what is released is what was issued",
@@ -534,7 +628,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
         ],
       }
     RebindAfterBoardSwap { machine: _, replacement: _, held_receipts: _ } =>
-      ModeledRoute {
+      MachineTransitionRoute {
         legs: [
           TransitionLeg {
             what: "read the replacement board and mint its key against every other unit the fleet has claimed",
@@ -551,7 +645,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
         ],
       }
     Reprovision { machine: m } =>
-      ModeledRoute {
+      MachineTransitionRoute {
         legs: concat(
           [
             TransitionLeg {
@@ -567,7 +661,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
         ),
       }
     ChangeParticipation { machine: _, to: _ } =>
-      ModeledRoute {
+      MachineTransitionRoute {
         legs: [
           TransitionLeg {
             what: "edit the handle-keyed participation row; 2.5: no code changes",
@@ -588,7 +682,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
         ],
       }
     Retire { machine: _ } =>
-      ModeledRoute {
+      MachineTransitionRoute {
         legs: [
           TransitionLeg {
             what: "enter the handle in the retirement ledger, which is what makes it never reissuable",
@@ -605,7 +699,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
         ],
       }
     ReplaceRetiredMachine { retired: _, replacement: _ } =>
-      ModeledRoute {
+      MachineTransitionRoute {
         legs: [
           TransitionLeg {
             what: "confirm the retired handle is retired, so a replacement never reissues it",
@@ -675,8 +769,8 @@ fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
           )
         ProviderGuest { route: _, entitlement: _, resource: _ } => [
           unmodeled_leg(
-            what: "re-image through the provider API the guest's backing names",
-            gap: "no provider re-image producer exists, and no step of gunbc.plans.fleet_machine_authority owns one: 2.5 defines reprovision over the machine's admitted delivery, and OwnedOsDelivery has no provider arm",
+            what: "re-image through the provider API the guest's backing names: 2.5 defines reprovision over the machine's admitted delivery, and OwnedOsDelivery has no provider arm",
+            standing: NoStepOfThisPlanOwnsIt,
           ),
         ]
       }
