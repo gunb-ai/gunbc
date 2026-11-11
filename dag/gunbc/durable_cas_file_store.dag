@@ -798,9 +798,10 @@ data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-address
 // So what is owed is a limitation with a restoration trigger, which is what this is. Caught by
 // external review of the drop row itself.
 //
-// THE POPULATION IS TWO CALLERS, AND THEY ARE NAMED. `gunbc.srv3.srv3_boot_once_cd` and
-// `gunbc.machine_intake.mtcollins1_boot_run` publish authorization claim state under
-// `authorization_claim_store_root`, and that root is a bare path constant: no
+// THE POPULATION IS ONE CALLER, AND IT IS NAMED. `gunbc.machine_intake.mtcollins1_boot_run` publishes
+// authorization claim state under
+// `authorization_claim_store_root` (the second former caller, `gunbc.srv3.srv3_boot_once_cd`, was deleted
+// with the srv3 boot-once leaf, PXE 2b), and that root is a bare path constant: no
 // modeled directory ownership or mode authority stands beside it. Mode 0600 on the generation file is
 // therefore the ONLY confidentiality that state has, including for free-form abort-cause text, so
 // flipping it to the atomic binding would trade a durable-state hazard for a real privacy regression.
