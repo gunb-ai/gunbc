@@ -2237,7 +2237,7 @@ data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = Integr
     authorities: DistinctAuthorities {
       first: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "boot_once_step"),
       second: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "ActuatorBootOnce"),
-      rest: [decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_for_managed_host")],
+      rest: [decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_plan_for_managed_host")],
     },
   },
   affected: FreeSemigroup {
@@ -2255,7 +2255,7 @@ data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = Integr
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "boot_once_step") },
         tail: [
           CitesDeclaration { declaration: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "ActuatorBootOnce") },
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_for_managed_host") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_plan_for_managed_host") },
         ],
       },
       account: "The install actuator has no managed-host identity: os_install_actuator_steps is keyed on (arm, boot_control, export) only, its sole production callers are internal to gunbc.nbd_proxy_virtual_media_install, and network_boot_actuation/network_boot_arm_actuator_steps/ProvisioningArm carry boot_control+boot_target+arm shape with no host, so the boot-once controller is hard-coded to srv3_host in the realization. The host-generic managed-host boot-once derives the controller from the managed-host row and its BMC binding, never an address passed in, and gates its reset on a read-back before the boot. They serve different concerns (an OS-install sequence step vs a managed-fleet one-shot boot), which is why the deletion did not merge them here, but the srv3 hard-code is a defect either way: a second managed host cannot get a boot-once from its own rows over the install actuator.",

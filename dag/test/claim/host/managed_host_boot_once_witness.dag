@@ -11,19 +11,20 @@ import gunbc.host.managed_host {
 }
 import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.managed_host_boot_once {
-  BootOncePlan, BootOncePlanned, BootOnceRefused, BootOnceHaltedBeforeReset,
+  BootOncePlan, BootOnceStaged, BootOnceRefused, BootOnceResetAdmitted, BootOnceResetRefused,
   BootOnceReadback, BootOnceReadbackObserved, BootOnceReadbackAbsent, BootOnceSetting,
-  boot_once_intended_setting, plan_boot_once_on_standing, boot_once_for_managed_host,
-  boot_once_read_back_precedes_reset, boot_once_has_reset, boot_once_issued_set,
+  boot_once_intended_setting, plan_boot_once_on_standing, boot_once_plan_for_managed_host,
+  settle_boot_once_read_back, boot_once_read_back_precedes_reset, boot_once_has_reset, boot_once_issued_set,
 }
 
 // ── WITNESSES FOR THE HOST-GENERIC BOOT-ONCE (PXE 2b) ────────────────────────────────────────────
-// Each obligation is a discriminating red PLUS a positive control that must hold, so a planner that always
-// refused (or always planned) cannot pass the whole set. The read-back is observed AFTER the set: a controller
-// that does not already carry the override is the normal pre-boot-once state and is never refused for it.
+// Each obligation is a discriminating red PLUS a positive control, so a planner that always refused (or
+// always admitted a reset) cannot pass. The read-back is OBSERVED AFTER the set, never handed to the planner:
+// the pure planner only STAGES a reset; settle_boot_once_read_back, fed the controller's report, is the only
+// path that admits one.
 
 // A matching read-back: the controller, once asked, reports exactly the setting a boot-once drives to
-// (Pxe, Once, UEFI). This is what a successful Set makes the subsequent ReadBack observe.
+// (Pxe, Once, UEFI) — the result of executing the Read-Back step after the Set.
 fn a_matching_readback() -> BootOnceReadback {
   BootOnceReadbackObserved { setting: boot_once_intended_setting(target: BootTargetPxe) }
 }
@@ -44,124 +45,138 @@ fn mtcollins1_row() -> ManagedHost {
   match managed_membership_for(host: operator_host_mtcollins1) {
     Present { value: OrdinaryMember { host: h } } => h
     Present { value: MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } } => h
-    // No member under the real roster: there is no positive case to witness, so re-derive (never reached
-    // in the evaluated tree, where mtcollins1 is a member).
     Absent => mtcollins1_row()
   }
 }
 
 // ── OBLIGATION 1: a host that is not a managed member refuses. ────────────────────────────────────
-// RED: srv1 is not a managed member — it has no row and no bound controller, so the boot-once refuses at
-// the membership, before any controller is named and before any Set is issued.
+// RED: srv1 has no row and no bound controller — the boot-once refuses at the membership, before any
+// controller is named and before any Set is issued (never even staged).
 test fn w_a_host_that_is_not_a_managed_member_is_refused() -> Bool {
-  match boot_once_for_managed_host(
+  match boot_once_plan_for_managed_host(
     host: "srv1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeUefi,
-    readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => true
-    BootOncePlanned { account: _, steps: _ } => false
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetAdmitted { account: _, steps: _ } => false
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => false
   }
 }
 
-// POSITIVE CONTROL: the one managed member (Mt. Collins unit 1) is planned, not refused.
+// POSITIVE CONTROL: the one managed member (Mt. Collins unit 1), staged then settled against a matching
+// read-back, gets a reset.
 test fn w_the_managed_member_gets_a_boot_once() -> Bool {
-  match boot_once_for_managed_host(
+  let staged = boot_once_plan_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeUefi,
-    readback: a_matching_readback(),
-  ) {
+  )
+  match settle_boot_once_read_back(plan: staged, observed: a_matching_readback()) {
+    BootOnceResetAdmitted { account: _, steps: _ } => true
     BootOnceRefused { cause: _ } => false
-    BootOncePlanned { account: _, steps: _ } => true
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => false
   }
 }
 
 // ── OBLIGATION 2: Legacy mode refuses. ────────────────────────────────────────────────────────────
-// RED: a Legacy boot-once request is refused outright (the arm64 fleet boots UEFI only), before the controller.
+// RED: a Legacy request is refused outright (the arm64 fleet boots UEFI only), before the controller.
 test fn w_a_legacy_boot_once_is_refused() -> Bool {
-  match boot_once_for_managed_host(
+  match boot_once_plan_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeLegacy,
-    readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => true
-    BootOncePlanned { account: _, steps: _ } => false
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetAdmitted { account: _, steps: _ } => false
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => false
   }
 }
 
-// POSITIVE CONTROL: the same request with UEFI is planned (the refusal is specifically Legacy).
-test fn w_the_uefi_boot_once_is_planned() -> Bool {
-  match boot_once_for_managed_host(
+// POSITIVE CONTROL: the same request with UEFI stages (the refusal is specifically Legacy).
+test fn w_the_uefi_boot_once_is_staged() -> Bool {
+  match boot_once_plan_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeUefi,
-    readback: a_matching_readback(),
   ) {
+    BootOnceStaged { account: _, controller: _, setting: _ } => true
     BootOnceRefused { cause: _ } => false
-    BootOncePlanned { account: _, steps: _ } => true
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } => false
+    BootOnceResetAdmitted { account: _, steps: _ } => false
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => false
   }
 }
 
-// ── OBLIGATION 3: the read-back precedes the reset; a mismatch HALTS before the reset. ────────────
-// POSITIVE CONTROL: on a matching read-back the plan carries a reset and its own data has the read-back
-// before that reset.
+// ── THE PLANNER NEVER ADMITS A RESET WITHOUT THE OBSERVATION (review 93511 fix). ──────────────────
+// The pure planner takes no read-back and returns a STAGED plan that resets NOTHING and issues NOTHING —
+// a caller cannot fabricate a match to reach a reset. Only settling with the controller's report admits one.
+test fn w_the_planner_alone_resets_nothing_before_the_observation() -> Bool {
+  let staged = boot_once_plan_for_managed_host(
+    host: "mtcollins1" as NonEmptyStr,
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
+  )
+  !boot_once_has_reset(plan: staged) && !boot_once_issued_set(plan: staged)
+}
+
+// ── OBLIGATION 3: the read-back precedes the reset; a mismatch drops the reset. ───────────────────
+// POSITIVE CONTROL: on a matching read-back the settled plan carries a reset and its own data has the
+// read-back before that reset.
 test fn w_the_read_back_precedes_the_reset() -> Bool {
-  let planned = boot_once_for_managed_host(
+  let staged = boot_once_plan_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeUefi,
-    readback: a_matching_readback(),
   )
-  boot_once_has_reset(plan: planned) && boot_once_read_back_precedes_reset(plan: planned)
+  let settled = settle_boot_once_read_back(plan: staged, observed: a_matching_readback())
+  boot_once_has_reset(plan: settled) && boot_once_read_back_precedes_reset(plan: settled)
 }
 
-// RED: a mismatched read-back (override still Continuous after the set) issues no reset. The controller was
-// still SET and READ BACK (it was touched), but the boot is refused — so it is Halted, not a pre-touch Refused.
+// RED: a mismatched read-back (override still Continuous after the set) drops the reset. The controller was
+// still SET and READ BACK (issued_set true), but the boot is refused — a ResetRefused, not a pre-touch Refused.
 test fn w_a_mismatched_read_back_resets_nothing() -> Bool {
-  let stuck = boot_once_for_managed_host(
+  let staged = boot_once_plan_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeUefi,
-    readback: a_stuck_readback(),
   )
-  match stuck {
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } =>
-      !boot_once_has_reset(plan: stuck) && boot_once_issued_set(plan: stuck)
-        && boot_once_read_back_precedes_reset(plan: stuck)
+  let settled = settle_boot_once_read_back(plan: staged, observed: a_stuck_readback())
+  match settled {
+    BootOnceResetRefused { account: _, steps: _, cause: _ } =>
+      !boot_once_has_reset(plan: settled) && boot_once_issued_set(plan: settled)
+        && boot_once_read_back_precedes_reset(plan: settled)
     BootOnceRefused { cause: _ } => false
-    BootOncePlanned { account: _, steps: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetAdmitted { account: _, steps: _ } => false
   }
 }
 
-// An absent read-back (the control never answered after the set) halts too: the reset is refused, nothing boots.
+// An absent read-back (the control never answered after the set) drops the reset too.
 test fn w_an_absent_read_back_resets_nothing() -> Bool {
-  let unanswered = boot_once_for_managed_host(
+  let staged = boot_once_plan_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeUefi,
-    readback: BootOnceReadbackAbsent,
   )
-  match unanswered {
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } =>
-      !boot_once_has_reset(plan: unanswered) && boot_once_issued_set(plan: unanswered)
-        && boot_once_read_back_precedes_reset(plan: unanswered)
+  let settled = settle_boot_once_read_back(plan: staged, observed: BootOnceReadbackAbsent)
+  match settled {
+    BootOnceResetRefused { account: _, steps: _, cause: _ } =>
+      !boot_once_has_reset(plan: settled) && boot_once_issued_set(plan: settled)
+        && boot_once_read_back_precedes_reset(plan: settled)
     BootOnceRefused { cause: _ } => false
-    BootOncePlanned { account: _, steps: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetAdmitted { account: _, steps: _ } => false
   }
 }
 
-// ── OBLIGATION 4: a second managed host gets a boot-once from ITS rows, no code change. ────────────
-// The planner is keyed by the ROW's bound control standing, never by a host name, so a second row that
-// carries a binding flows through the SAME code. A second identity (srv1) is given a row through the
-// witness fixture carrying a bound access + secure reading; the row planner derives the controller from
-// that binding — an address the caller never supplied.
+// ── OBLIGATION 4: a second managed host gets a boot-once from ITS rows, no code change. ───────────
+// The planner is keyed by the ROW's bound control standing, never a host name, so a second row with a
+// binding flows through the SAME code; the controller is derived from that binding — an address the caller
+// never supplied. A second identity (srv1) is given a row through the witness fixture carrying a bound
+// access + secure reading.
 test fn w_a_second_managed_host_gets_a_boot_once_from_its_rows() -> Bool {
   let source = mtcollins1_row()
   let second = managed_host_fixture(
@@ -171,31 +186,28 @@ test fn w_a_second_managed_host_gets_a_boot_once_from_its_rows() -> Bool {
     smpro: source.smpro,
   )
   let control = bmc_control_binding(observed: second.access, secured: second.secure)
-  let planned = plan_boot_once_on_standing(
-    control: control,
-    target: BootTargetPxe,
-    mode: BootOverrideModeUefi,
-    readback: a_matching_readback(),
-  )
-  match planned {
-    BootOncePlanned { account: _, steps: _ } =>
-      boot_once_has_reset(plan: planned) && boot_once_read_back_precedes_reset(plan: planned)
+  let staged = plan_boot_once_on_standing(control: control, target: BootTargetPxe, mode: BootOverrideModeUefi)
+  let settled = settle_boot_once_read_back(plan: staged, observed: a_matching_readback())
+  match settled {
+    BootOnceResetAdmitted { account: _, steps: _ } =>
+      boot_once_has_reset(plan: settled) && boot_once_read_back_precedes_reset(plan: settled)
     BootOnceRefused { cause: _ } => false
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => false
   }
 }
 
 // RED companion: the same second identity through the MEMBER entry is refused, because it is not a member —
 // the row's binding is what carries the boot-once, and only a real member row reaches a plan by name.
 test fn w_a_second_host_is_planned_only_from_a_bound_row_not_a_name() -> Bool {
-  match boot_once_for_managed_host(
+  match boot_once_plan_for_managed_host(
     host: "srv1" as NonEmptyStr,
     target: BootTargetPxe,
     mode: BootOverrideModeUefi,
-    readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => true
-    BootOncePlanned { account: _, steps: _ } => false
-    BootOnceHaltedBeforeReset { account: _, steps: _, cause: _ } => false
+    BootOnceStaged { account: _, controller: _, setting: _ } => false
+    BootOnceResetAdmitted { account: _, steps: _ } => false
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => false
   }
 }
