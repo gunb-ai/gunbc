@@ -306,7 +306,7 @@ fn cap_realization(legs: List<ScriptedCommand>) -> OperationRealization<Int> {
     bindings: [
       OperationBinding {
         at: ssh_session_exec_portable_words_operation,
-        handler: fn(state, call) {
+        handler: fn(state: Int, call) {
           let cmd = remote_command_of(call: call)
           match first(filter(legs, l => l.remote_command == cmd)) {
             Present { value: m } =>
