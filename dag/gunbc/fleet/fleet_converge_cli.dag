@@ -87,18 +87,17 @@ import gunbc.host.host_hostname_converge {
   hostname_converge_apply_step,
   hostname_converge_plan_step,
   hostname_converge_refusal_line,
-  hostname_converge_resolve,
+  hostname_converge_act_env_name,
+  hostname_converge_act_is_adopt,
+  hostname_converge_act_is_actuation,
+  hostname_converge_apply_lock_line,
   hostname_converge_attempt_env_name,
-  hostname_converge_confirm_env_name,
-  hostname_converge_confirm_lock_line,
-  hostname_converge_dispatch_confirms_actuation,
-  hostname_converge_direction_env_name,
   hostname_converge_mode,
   hostname_converge_mode_env_name,
   hostname_converge_peer_env_name,
-  hostname_converge_readopt_dispatched,
-  hostname_converge_readopt_env_name,
   hostname_converge_readopt_lock_line,
+  hostname_converge_resolve_apply,
+  hostname_converge_resolve_plan,
   hostname_converge_target_env_name,
 }
 
@@ -1024,11 +1023,35 @@ fn hostname_converge_env_value(name: NonEmptyStr) -> String {
 // peer that IS the target, a host with no committed baseline or no bound compute host, and a route the
 // fleet's own reach model declines all arrive as a typed cause the step refuses with — never as a
 // default, a fallback route, or a name guessed from the executor's own hostname.
-fn hostname_converge_resolution_from_env() -> HostnameConvergeResolution {
-  hostname_converge_resolve(
+//
+// THREE SHAPES, because the dispatched word means different things to them and only one of them may write.
+// The apply parses the act word strictly (`converge`/`rollback`, nothing else); the read-only steps read an
+// absent word as the forward question; the re-adopt judges the baseline against the desired name and has no
+// direction to be told, so it resolves with no word at all. Each entry names the shape it wants -- there is
+// no flag for a caller to pass wrongly, and no step can borrow another step's reading of the word.
+fn hostname_converge_plan_resolution_from_env() -> HostnameConvergeResolution {
+  hostname_converge_resolve_plan(
     target_selector: hostname_converge_env_value(name: hostname_converge_target_env_name),
     peer_selector: hostname_converge_env_value(name: hostname_converge_peer_env_name),
-    direction_raw: hostname_converge_env_value(name: hostname_converge_direction_env_name),
+    act: hostname_converge_env_value(name: hostname_converge_act_env_name),
+    attempt_raw: hostname_converge_env_value(name: hostname_converge_attempt_env_name),
+  )
+}
+
+fn hostname_converge_apply_resolution_from_env() -> HostnameConvergeResolution {
+  hostname_converge_resolve_apply(
+    target_selector: hostname_converge_env_value(name: hostname_converge_target_env_name),
+    peer_selector: hostname_converge_env_value(name: hostname_converge_peer_env_name),
+    act: hostname_converge_env_value(name: hostname_converge_act_env_name),
+    attempt_raw: hostname_converge_env_value(name: hostname_converge_attempt_env_name),
+  )
+}
+
+fn hostname_converge_readopt_resolution_from_env() -> HostnameConvergeResolution {
+  hostname_converge_resolve_plan(
+    target_selector: hostname_converge_env_value(name: hostname_converge_target_env_name),
+    peer_selector: hostname_converge_env_value(name: hostname_converge_peer_env_name),
+    act: "",
     attempt_raw: hostname_converge_env_value(name: hostname_converge_attempt_env_name),
   )
 }
@@ -1086,7 +1109,7 @@ fn fleet_converge_hostname_converge_dispatch_admission_wet() -> ProcessExit {
 // desired name. Where a conflict turns the job red is the step that would have acted. The one failure
 // here is a live name nobody could read — a plan folded over a state no one read is not a plan.
 fn fleet_converge_hostname_converge_plan_wet() -> ProcessExit {
-  match hostname_converge_resolution_from_env() {
+  match hostname_converge_plan_resolution_from_env() {
     ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "plan")
     PairResolved { request: request } => hostname_converge_plan_exit(request: request)
@@ -1102,23 +1125,21 @@ fn hostname_converge_plan_exit(request: HostnameConvergeRequest) -> ProcessExit 
   }
 }
 
-// STEP TWO — THE WET APPLY, behind the dispatch's own confirmation. The confirmation is checked here as
-// well as in the emitted `if:`, so the entry is safe to invoke by hand; an unconfirmed dispatch that
-// reaches this code refuses without touching a machine. Both readings ask the same question --
-// `hostname_converge_dispatch_confirms_actuation`, over the word the operator actually picks from -- so
-// the gate in YAML and the gate in code cannot disagree about what the word is.
+// STEP TWO — THE WET APPLY, behind the dispatch's own act word. The word is checked here as well as in the
+// emitted `if:`, so the entry is safe to invoke by hand; a dispatch that did not say `converge` or
+// `rollback` refuses without touching a machine. The gate in YAML and this one read the same predicate over
+// the same data -- `hostname_converge_act_is_actuation`, on the value of the one field -- so they cannot
+// disagree about what the word is. And because the word also carries the DIRECTION, an apply cannot be
+// unlocked as a forward converge and executed as a rollback: the resolver parses the identical string.
 fn fleet_converge_hostname_converge_apply_wet() -> ProcessExit {
-  if !hostname_converge_dispatch_confirms_actuation(
-    value: hostname_converge_env_value(name: hostname_converge_confirm_env_name),
-  ) {
+  let act = hostname_converge_env_value(name: hostname_converge_act_env_name)
+  if !hostname_converge_act_is_actuation(value: act) {
     return hostname_converge_refusal_exit(
-      line: hostname_converge_confirm_lock_line(
-        value: hostname_converge_env_value(name: hostname_converge_confirm_env_name),
-      ),
+      line: hostname_converge_apply_lock_line(value: act),
       step: "apply",
     )
   }
-  match hostname_converge_resolution_from_env() {
+  match hostname_converge_apply_resolution_from_env() {
     ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "apply")
     PairResolved { request: request } => hostname_converge_apply_exit(request: request)
@@ -1146,10 +1167,10 @@ fn hostname_converge_apply_exit(request: HostnameConvergeRequest) -> ProcessExit
 // must not go green having not. Without a confirmed apply a mismatch is the stated plan outcome (a
 // baseline the operator has not re-adopted yet), so it is reported rather than dressed up as a failure.
 fn fleet_converge_hostname_converge_read_back_wet() -> ProcessExit {
-  let actuation_confirmed = hostname_converge_dispatch_confirms_actuation(
-    value: hostname_converge_env_value(name: hostname_converge_confirm_env_name),
+  let actuation_confirmed = hostname_converge_act_is_actuation(
+    value: hostname_converge_env_value(name: hostname_converge_act_env_name),
   )
-  match hostname_converge_resolution_from_env() {
+  match hostname_converge_plan_resolution_from_env() {
     ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "read-back")
     PairResolved { request: request } => hostname_converge_read_back_exit(request: request, actuation_confirmed: actuation_confirmed)
@@ -1181,17 +1202,14 @@ fn hostname_converge_read_back_exit(request: HostnameConvergeRequest, actuation_
 // existed that read only the pair and never asked the question -- the `if:` was the only lock on the
 // baseline, and the comment here claimed otherwise.
 fn fleet_converge_hostname_converge_readopt_wet() -> ProcessExit {
-  if !hostname_converge_readopt_dispatched(
-    value: hostname_converge_env_value(name: hostname_converge_readopt_env_name),
-  ) {
+  let act = hostname_converge_env_value(name: hostname_converge_act_env_name)
+  if !hostname_converge_act_is_adopt(value: act) {
     return hostname_converge_refusal_exit(
-      line: hostname_converge_readopt_lock_line(
-        value: hostname_converge_env_value(name: hostname_converge_readopt_env_name),
-      ),
+      line: hostname_converge_readopt_lock_line(value: act),
       step: "re-adopt",
     )
   }
-  match hostname_converge_resolution_from_env() {
+  match hostname_converge_readopt_resolution_from_env() {
     ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "re-adopt")
     PairResolved { request: request } => hostname_converge_readopt_exit(request: request)

@@ -9,7 +9,6 @@ import extdeps.dns.domain_name { DnsLabel }
 import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.hostname_allocation {
-  fleet_machine_registry,
   resolve_host_selector,
   HostSelectorAmbiguous,
   HostSelectorRegistryRefused,
@@ -68,61 +67,105 @@ data gunbc_host_hostname_converge_scope_disposition: Disposition = std.dispositi
 // this string; no arm spells the mode name independently.
 data hostname_converge_mode: NonEmptyStr = "hostname_converge"
 
-// THE INPUTS ARE ENVIRONMENT INPUTS OF THE PEER JOB, named once here so the emitted step and the
-// entry cannot drift apart (single authority). The executing peer is read from the dispatch, NEVER
-// from the executor's own `hostname -s`: a runner reused across machines would otherwise report
-// whichever box it happens to sit on rather than the box it was dispatched to run on.
+// THE INPUTS ARE ENVIRONMENT INPUTS OF THE PEER JOB, named once here so the emitted step and the entry
+// cannot drift apart (single authority). The executing peer is read from the dispatch, NEVER from the
+// executor's own `hostname -s`: a runner reused across machines would otherwise report whichever box it
+// happens to sit on rather than the box it was dispatched to run on.
+//
+// THREE VALUES, NOT FIVE. GitHub caps workflow_dispatch at 25 inputs and the fleet-converge file sits AT
+// that cap (extdeps.github.actions workflow_dispatch_max_inputs, which cites GitHub's own documentation), so this mode declares none of
+// its own: the two hosts arrive on the fields the file already has -- `host`, the executor, which is the
+// PEER here, and `subject_host`, the host acted on, which is the TARGET -- and the intent arrives as one
+// word on a free-text field the mode reuses. A fifth field would have been a 26th input, and a 26th input
+// does not quietly go missing: GitHub refuses the whole file and every mode in it stops being dispatchable.
 data hostname_converge_target_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_TARGET"
 data hostname_converge_peer_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_PEER"
-data hostname_converge_direction_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_DIRECTION"
-data hostname_converge_readopt_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_READOPT"
+data hostname_converge_act_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_ACT"
 data hostname_converge_attempt_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_ATTEMPT"
-
-// THE TWO GATES TRAVEL AS ENVIRONMENT NAMES TOO, so the emitted step and the entry read the same
-// spelling. `confirm` is what separates a dry plan from a hostnamectl write, and `mode` is what the
-// build job's dispatch gate reads before anything is scheduled.
-data hostname_converge_confirm_env_name: NonEmptyStr = "FLEET_CONVERGE_HOSTNAME_CONFIRM"
 data hostname_converge_mode_env_name: NonEmptyStr = "GUNBC_HOSTNAME_CONVERGE_MODE"
 
-// THE DISPATCH FORM'S FIELD NAMES, held beside the environment names each is carried into. The input
-// declaration, the emitted step that reads it, and the `if:` that gates that step all come through here,
-// so renaming a field moves all three together. The alternative is a lock whose field name is a second
-// copy of the text: rename the field and the `if:` stops matching without a type error anywhere, and the
-// step it existed to guard either runs ungated or -- for a lock -- never runs and says nothing.
-data hostname_converge_peer_input_name: NonEmptyStr = "hostname_converge_peer"
-data hostname_converge_direction_input_name: NonEmptyStr = "hostname_converge_direction"
-data hostname_converge_readopt_input_name: NonEmptyStr = "hostname_converge_readopt"
-data hostname_converge_confirm_input_name: NonEmptyStr = "hostname_converge_confirm"
+// WHICH DISPATCH FIELD CARRIES WHICH VALUE, held beside the environment name each becomes. The input
+// declaration, the emitted step env and the `if:` that gates a step all read these, so renaming a field
+// moves all three together; a lock whose field name is a second copy of the text simply stops matching,
+// with no type error anywhere, and the step it existed to guard either runs ungated or never runs at all.
+data hostname_converge_target_input_name: NonEmptyStr = "subject_host"
+data hostname_converge_peer_input_name: NonEmptyStr = "host"
+data hostname_converge_act_input_name: NonEmptyStr = "transaction_nonce"
 
-// THE WORDS THE TWO LOCKS ANSWER TO, held by the subject rather than by the emitter or the entry. The
-// closed choice an operator picks from, the emitted `if:`, and the entry's own re-check are all built
-// from these, so the word an operator can choose and the word that actuates cannot drift apart -- and a
-// drift in that direction is a lock nobody can open, or one anybody can.
-data hostname_converge_plan_value: NonEmptyStr = "plan"
-data hostname_converge_confirm_value: NonEmptyStr = "converge"
-data hostname_converge_readopt_refuse_value: NonEmptyStr = "refuse"
-data hostname_converge_readopt_adopt_value: NonEmptyStr = "adopt"
+// THE WORD IS THE WHOLE INTENT, so no dispatch can mean two things at once. `converge` moves the live
+// name to the registry's name; `rollback` puts the previous name back; `adopt` re-adopts the baseline.
+// Anything else -- the empty field above all -- is a dry plan and nothing more, which is why an operator
+// who touches nothing cannot move a hostname or a baseline. These words are the closed choice the form
+// offers, the words the emitted `if:` compares, and the words the entries re-check for themselves: one
+// source, so the word an operator can pick and the word that actuates cannot drift apart.
+data hostname_converge_act_converge_value: NonEmptyStr = "converge"
+data hostname_converge_act_rollback_value: NonEmptyStr = "rollback"
+data hostname_converge_act_adopt_value: NonEmptyStr = "adopt"
 
-// EACH LOCK IS ONE WORD, EXACTLY, and the reading is a function so the entry, the emitted gate and a
-// witness all ask the same question of it (gunbc.design_argument::witness_one_interface). Anything else
-// -- absent, a paraphrase, a different case -- is not the word. Both locks default to the refusing half
-// of their closed choice, which is what a leg, and not a paragraph, has to keep true.
-fn hostname_converge_dispatch_confirms_actuation(value: String) -> Bool {
-  value == (hostname_converge_confirm_value as String)
+data hostname_converge_act_options: List<String> = [
+  "" as String,
+  hostname_converge_act_converge_value as String,
+  hostname_converge_act_rollback_value as String,
+  hostname_converge_act_adopt_value as String,
+]
+
+fn hostname_converge_act_is_converge(value: String) -> Bool {
+  value == (hostname_converge_act_converge_value as String)
 }
 
-fn hostname_converge_readopt_dispatched(value: String) -> Bool {
-  value == (hostname_converge_readopt_adopt_value as String)
+fn hostname_converge_act_is_rollback(value: String) -> Bool {
+  value == (hostname_converge_act_rollback_value as String)
 }
 
-// THE TWO REFUSALS THE LOCKS PRODUCE, written once. An operator staring at a red step needs the word that
-// was missing and the field that carries it; a step that says only "not confirmed" sends them to read the
+fn hostname_converge_act_is_adopt(value: String) -> Bool {
+  value == (hostname_converge_act_adopt_value as String)
+}
+
+// AN ACTUATING WORD is one that may write a hostname. Re-adopt writes a BASELINE, not a hostname, so it
+// is deliberately NOT an actuation here: the read-back step reports an unchanged name as success only
+// while no actuating word was given, and this is the predicate it asks (gunbc.design_argument::fail_closed
+// -- a mode that claims to converge must not go green having not).
+fn hostname_converge_act_is_actuation(value: String) -> Bool {
+  hostname_converge_act_is_converge(value: value) || hostname_converge_act_is_rollback(value: value)
+}
+
+// THE WORD DECIDES WHICH WAY THE FOLD IS READ, so there is no separate direction field that could
+// contradict it: `converge` is forward, `rollback` is back. A dispatch that carried a direction AND a
+// lock word could ask for a rollback apply behind a forward gate -- two authorities over one intent.
+fn hostname_converge_direction_of_act(value: String) -> HostnameConvergeDirection? {
+  if hostname_converge_act_is_converge(value: value) {
+    Present { value: Forward }
+  } else {
+    if hostname_converge_act_is_rollback(value: value) {
+      Present { value: Rollback }
+    } else {
+      none
+    }
+  }
+}
+
+// THE READ-ONLY STEPS (dry plan, independent read-back) ask the FORWARD question when the dispatch carries
+// no act word at all -- that is the default dispatch, and "would this converge, and to what" is the question
+// it is asking. It is a DERIVATION of the same parser, not a second one: an empty word means forward, and a
+// word that is neither of the two write words still refuses rather than being defaulted. A dispatch that
+// says `rollback` gets to see what a rollback would do before it commits to one.
+fn hostname_converge_planned_direction(value: String) -> HostnameConvergeDirection? {
+  if value == "" {
+    Present { value: Forward }
+  } else {
+    hostname_converge_direction_of_act(value: value)
+  }
+}
+
+// THE REFUSALS THE LOCKS PRODUCE, written once. An operator staring at a red step needs the word that was
+// missing and the field that carries it; a step that says only "not confirmed" sends them to read the
 // workflow instead of the form.
-fn hostname_converge_confirm_lock_line(value: String) -> String {
+fn hostname_converge_apply_lock_line(value: String) -> String {
   join(
     [
-      "hostname_converge refused: the apply step requires `", hostname_converge_confirm_value as String,
-      "` in `", hostname_converge_confirm_env_name as String, "` and this dispatch carried `", value,
+      "hostname_converge refused: the apply step requires `", hostname_converge_act_converge_value as String,
+      "` or `", hostname_converge_act_rollback_value as String, "` in `", hostname_converge_act_env_name as String,
+      "` (the dispatch input `", hostname_converge_act_input_name as String, "`) and this dispatch carried `", value,
       "`, so no hostnamectl write was attempted on any host\n",
     ],
     "",
@@ -132,18 +175,23 @@ fn hostname_converge_confirm_lock_line(value: String) -> String {
 fn hostname_converge_readopt_lock_line(value: String) -> String {
   join(
     [
-      "hostname_converge refused: the re-adopt step requires `", hostname_converge_readopt_adopt_value as String,
-      "` in `", hostname_converge_readopt_env_name as String, "` and this dispatch carried `", value,
+      "hostname_converge refused: the re-adopt step requires `", hostname_converge_act_adopt_value as String,
+      "` in `", hostname_converge_act_env_name as String, "` (the dispatch input `",
+      hostname_converge_act_input_name as String, "`) and this dispatch carried `", value,
       "`, so the committed baseline is untouched\n",
     ],
     "",
   )
 }
 
-// THE DIRECTION IS TYPED, not a name a dispatch may carry: the rename window's rollback is "put the
+// THE DIRECTION IS TYPED, not a name a dispatch may carry, and it is not even a field of its own: it is read
+// out of the dispatched act word by `hostname_converge_direction_of_act` -- the one parser, so the workflow's
+// lock and the write cannot be reading two different strings. The rename window's rollback is "put the
 // previous name back", and the only previous name this code may write is the committed baseline. A
 // free-string rollback target would let a dispatch name ANY hostname — the exact failure the
-// opaque-handle regime retires (gunbc.design_argument::fail_closed).
+// opaque-handle regime retires (gunbc.design_argument::fail_closed). The wire spelling here is for receipts,
+// not for dispatches: the word an operator picks is `converge`/`rollback`, and `forward` is no longer a word
+// the mode admits at all.
 type HostnameConvergeDirection
   = Forward
   | Rollback
@@ -152,18 +200,6 @@ fn hostname_converge_direction_wire(direction: HostnameConvergeDirection) -> Non
   match direction {
     Forward => "forward" as NonEmptyStr
     Rollback => "rollback" as NonEmptyStr
-  }
-}
-
-fn hostname_converge_direction_of(raw: String) -> HostnameConvergeDirection? {
-  if raw == "forward" {
-    Present { value: Forward }
-  } else {
-    if raw == "rollback" {
-      Present { value: Rollback }
-    } else {
-      none
-    }
   }
 }
 
@@ -313,7 +349,7 @@ type HostnameConvergeRefusalCause
   | PeerSelectorUnknown { selector: String }
   | PeerSelectorAmbiguous { selector: String, candidates: List<DnsLabel> }
   | PeerSelectorRefused { selector: String, key: String }
-  | DirectionUnknown { raw: String }
+  | ActWordUnknown { raw: String }
   | PeerIsTarget { host: NonEmptyStr }
   | TargetHostUnbound { host: NonEmptyStr }
   | NoCommittedBaseline { host: NonEmptyStr }
@@ -345,7 +381,7 @@ fn hostname_converge_refusal_wire(cause: HostnameConvergeRefusalCause) -> NonEmp
     PeerSelectorUnknown { selector: _ } => "peer-selector-unknown" as NonEmptyStr
     PeerSelectorAmbiguous { selector: _, candidates: _ } => "peer-selector-ambiguous" as NonEmptyStr
     PeerSelectorRefused { selector: _, key: _ } => "peer-selector-refused" as NonEmptyStr
-    DirectionUnknown { raw: _ } => "direction-unknown" as NonEmptyStr
+    ActWordUnknown { raw: _ } => "act-word-unknown" as NonEmptyStr
     PeerIsTarget { host: _ } => "peer-is-target" as NonEmptyStr
     TargetHostUnbound { host: _ } => "target-host-unbound" as NonEmptyStr
     NoCommittedBaseline { host: _ } => "no-committed-baseline" as NonEmptyStr
@@ -398,8 +434,17 @@ fn hostname_converge_refusal_reason(cause: HostnameConvergeRefusalCause) -> Stri
         ],
         "",
       )
-    DirectionUnknown { raw: r } =>
-      join(["`", r, "` is not a direction; the mode is run forward or rolled back, never named freely", ""], "")
+    ActWordUnknown { raw: r } =>
+      join(
+        [
+          "`", r, "` is not an act word: `", hostname_converge_act_input_name as String, "` admits `",
+          hostname_converge_act_converge_value as String, "` (write the canonical name), `",
+          hostname_converge_act_rollback_value as String, "` (write the committed baseline back) or `",
+          hostname_converge_act_adopt_value as String, "` (re-adopt the baseline), and the mode writes nothing",
+          " to a hostname on a word it does not have", "",
+        ],
+        "",
+      )
     PeerIsTarget { host: h } =>
       join(
         [
@@ -481,15 +526,50 @@ fn hostname_converge_select(
 }
 
 // RESOLVE THE PAIR, then derive everything else from the two resolved identities: the route is opened
-// only for a host that has BOTH a committed baseline and a readable canonical name.
-fn hostname_converge_resolve(
+// only for a host that has BOTH a committed baseline and a readable canonical name. There are two entry
+// shapes and they differ in ONE thing -- how much they let the dispatched word decide. The apply may only be
+// reached with an actuating word, so its resolver parses strictly; the read-only steps may be reached with no
+// word and read that as forward. Splitting them by name, rather than by a flag some caller could pass wrong,
+// keeps "the apply ran on a defaulted direction" off the table, and both shapes land on the same parser.
+fn hostname_converge_resolve_apply(
   target_selector: String,
   peer_selector: String,
-  direction_raw: String,
+  act: String,
   attempt_raw: String,
 ) -> HostnameConvergeResolution {
-  match hostname_converge_direction_of(raw: direction_raw) {
-    Absent => ResolutionRefused { cause: DirectionUnknown { raw: direction_raw } }
+  hostname_converge_resolve_with_direction(
+    direction_of: hostname_converge_direction_of_act(value: act),
+    act: act,
+    target_selector: target_selector,
+    peer_selector: peer_selector,
+    attempt_raw: attempt_raw,
+  )
+}
+
+fn hostname_converge_resolve_plan(
+  target_selector: String,
+  peer_selector: String,
+  act: String,
+  attempt_raw: String,
+) -> HostnameConvergeResolution {
+  hostname_converge_resolve_with_direction(
+    direction_of: hostname_converge_planned_direction(value: act),
+    act: act,
+    target_selector: target_selector,
+    peer_selector: peer_selector,
+    attempt_raw: attempt_raw,
+  )
+}
+
+fn hostname_converge_resolve_with_direction(
+  direction_of: HostnameConvergeDirection?,
+  act: String,
+  target_selector: String,
+  peer_selector: String,
+  attempt_raw: String,
+) -> HostnameConvergeResolution {
+  match direction_of {
+    Absent => ResolutionRefused { cause: ActWordUnknown { raw: act } }
     Present { value: direction } =>
       match hostname_converge_select(target_selector: target_selector, peer_selector: peer_selector) {
         PairUnresolved { cause: c } => ResolutionRefused { cause: c }
@@ -1073,37 +1153,9 @@ fn hostname_converge_adopt_line(result: HostnameConvergeAdoptStep) -> String {
   }
 }
 
-// THE CHOICES THE DISPATCH OFFERS, all derived from the authorities rather than typed out: the peers are
-// the machines the registry admits, the direction is the two arms of the typed direction, and the
-// actuation gate and the re-adopt gate are closed choices. No option list names a machine, so a host
-// joins by gaining a registry row instead of a workflow edit
-// (gunbc.design_argument::root_generalization). The list is a convenience over the registry, not a second
-// admission: a registry that hostname_allocation_admission refuses still refuses at resolve time, so a
-// colliding registry cannot be steered around by choosing from the list.
-fn hostname_converge_peer_options() -> List<String> {
-  map(fleet_machine_registry, a => a.fleet_slot as String)
-}
+// THE CLOSED CHOICE THE FORM OFFERS FOR THE INTENT is `hostname_converge_act_options`, built from the
+// words themselves above: the empty value is the dry plan, and the three actuating words are the only
+// ways to move a hostname or a baseline. It rides a free-text dispatch field rather than an InputChoice,
+// because the field it reuses is shared with other modes -- which is why the ENTRIES re-check the word
+// instead of trusting the form, and why the emitted `if:` compares the same words.
 
-data hostname_converge_direction_options: List<String> = [
-  hostname_converge_direction_wire(direction: Forward) as String,
-  hostname_converge_direction_wire(direction: Rollback) as String,
-]
-
-// THE ACTUATION GATE IS A CLOSED CHOICE, and `plan` is the default: a dispatch that does not say
-// `converge` plans and reads back without writing. That is what makes a dry run against a real host the
-// safe thing it looks like, and what makes the first wet use a decision somebody typed rather than a
-// side effect of choosing a mode (gunbc.design_argument::fail_closed).
-data hostname_converge_confirm_options: List<String> = [
-  hostname_converge_plan_value as String,
-  hostname_converge_confirm_value as String,
-]
-data hostname_converge_confirm_default: String = hostname_converge_plan_value as String
-
-// THE RE-ADOPT GATE IS ITS OWN CLOSED CHOICE, separate from actuation: re-adopting a baseline and
-// writing a hostname are different authorities over different data, and one dispatch should not be able
-// to reach both by meaning one of them.
-data hostname_converge_readopt_options: List<String> = [
-  hostname_converge_readopt_refuse_value as String,
-  hostname_converge_readopt_adopt_value as String,
-]
-data hostname_converge_readopt_default: String = hostname_converge_readopt_refuse_value as String

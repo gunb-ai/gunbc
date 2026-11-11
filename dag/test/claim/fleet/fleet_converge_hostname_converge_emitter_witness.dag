@@ -17,11 +17,16 @@ module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
+import extdeps.languages.yaml.types { YamlString }
 import extdeps.github.actions {
-  DispatchInputType, InputChoice, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
+  DispatchInput, DispatchInputType, InputChoice, InputString, Job, RunsOnExpression, SelfHosted, HostedRunner,
+  Step, RunStep, workflow_dispatch_max_inputs,
 }
 import gunbc.fleet.fleet_converge_workflow {
+  FleetConvergeYamlGenerated,
+  FleetConvergeYamlGenerationRefused,
   HostnameConverge,
+  fleet_converge_host_runner_expression,
   fleet_converge_dispatch_inputs,
   fleet_converge_jobs,
   fleet_converge_hostname_converge_apply_step,
@@ -33,18 +38,21 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_mode_job_id,
   fleet_converge_workflow_mode_wire,
   fleet_converge_workflow_modes,
+  fleet_converge_yml_after_dispatch_input_capacity,
 }
 import gunbc.host.host_hostname_converge {
+  hostname_converge_act_adopt_value,
+  hostname_converge_act_converge_value,
+  hostname_converge_act_env_name,
+  hostname_converge_act_input_name,
+  hostname_converge_act_options,
+  hostname_converge_act_rollback_value,
   hostname_converge_attempt_env_name,
-  hostname_converge_confirm_env_name,
-  hostname_converge_confirm_options,
-  hostname_converge_direction_env_name,
-  hostname_converge_direction_options,
   hostname_converge_mode,
   hostname_converge_peer_env_name,
-  hostname_converge_readopt_env_name,
-  hostname_converge_readopt_options,
+  hostname_converge_peer_input_name,
   hostname_converge_target_env_name,
+  hostname_converge_target_input_name,
 }
 
 data hostname_converge_job_id: String = "hostname-converge"
@@ -104,6 +112,10 @@ fn dispatch_input_options(name: String) -> List<String> {
   }
 }
 
+fn dispatch_row_exists(name: String) -> Bool {
+  any(fleet_converge_dispatch_inputs, r => r.name == name)
+}
+
 fn dispatch_input_default(name: String) -> String {
   match filter(fleet_converge_dispatch_inputs, r => r.name == name).first() {
     Absent => ""
@@ -138,8 +150,23 @@ test fn the_job_runs_on_the_executing_peer_not_on_the_target() -> Bool {
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
-      string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.hostname_converge_peer")
-        && !string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.host)")
+      // For this mode the dispatch's `host` field IS the peer -- the machine the job runs on. So the pin must
+      // read that field and must NOT read `subject_host`, which is the machine being renamed. Swap the two and
+      // the mode renames the peer it was sent to run from, a machine nobody asked it to touch.
+      string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.host")
+        && !string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.subject_host")
+        && string_contains(s: runs_on_text(job: job), pattern: hostname_converge_peer_input_name as String)
+  }
+}
+
+// THE PEER PIN IS THIS WORKFLOW'S STANDARD HOST PIN, not a scheduling expression of the mode's own: the peer
+// is the `host` field, so the mode needs no new runner data either. If the mode ever grows its own runner
+// expression this leg says so, and someone has to justify why the standard pin no longer describes where the
+// job runs.
+test fn the_peer_pin_is_the_standard_host_pin() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } => runs_on_text(job: job) == fleet_converge_host_runner_expression
   }
 }
 
@@ -182,13 +209,39 @@ test fn the_plan_and_read_back_steps_run_with_the_mode_and_the_apply_does_not() 
   }
 }
 
-// THE APPLY IS DOUBLY GATED: the mode, and the dispatch having chosen `converge`. A mode selection alone
-// must not be enough to rename a machine.
-test fn the_apply_step_is_locked_behind_the_confirm_choice() -> Bool {
+// THE APPLY IS DOUBLY GATED: the mode, AND an actuating word on the one shared act field. A mode selection
+// alone must not be enough to rename a machine -- and neither half may be dropped: a gate that lost the mode
+// half would run an apply on any dispatch that happened to send `converge` for some other mode's form.
+test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
   match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
     Absent => false
     Present { value: apply } =>
-      string_contains(s: step_if_text(step: apply), pattern: "github.event.inputs.hostname_converge_confirm == 'converge'")
+      string_contains(
+        s: step_if_text(step: apply),
+        pattern: join(
+          [
+            "github.event.inputs.",
+            hostname_converge_act_input_name as String,
+            " == '",
+            hostname_converge_act_converge_value as String,
+            "'",
+          ],
+          "",
+        ),
+      )
+        && string_contains(
+          s: step_if_text(step: apply),
+          pattern: join(
+            [
+              "github.event.inputs.",
+              hostname_converge_act_input_name as String,
+              " == '",
+              hostname_converge_act_rollback_value as String,
+              "'",
+            ],
+            "",
+          ),
+        )
         && string_contains(s: step_if_text(step: apply), pattern: hostname_converge_mode as String)
   }
 }
@@ -199,20 +252,95 @@ test fn the_readopt_step_is_locked_behind_its_own_choice() -> Bool {
   match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
     Absent => false
     Present { value: readopt } =>
-      string_contains(s: step_if_text(step: readopt), pattern: "github.event.inputs.hostname_converge_readopt == 'adopt'")
-        && !string_contains(s: step_if_text(step: readopt), pattern: "confirm ==")
+      string_contains(
+        s: step_if_text(step: readopt),
+        pattern: join(
+          [
+            "github.event.inputs.",
+            hostname_converge_act_input_name as String,
+            " == '",
+            hostname_converge_act_adopt_value as String,
+            "'",
+          ],
+          "",
+        ),
+      )
+        // ONE FIELD, THREE WORDS, TWO LOCKS. The re-adopt's condition must not be reachable by the words that
+        // unlock the hostname write: an operator who meant to re-adopt a baseline would rename a machine as
+        // well, and the whole reason the two are separate locks is that they are separate authorities.
+        && !string_contains(
+          s: step_if_text(step: readopt),
+          pattern: join(
+            [
+              "github.event.inputs.",
+              hostname_converge_act_input_name as String,
+              " == '",
+              hostname_converge_act_converge_value as String,
+              "'",
+            ],
+            "",
+          ),
+        )
   }
 }
 
-// THE DISPATCH INPUTS ARE CLOSED CHOICES DERIVED FROM THE AUTHORITIES. A peer that could be typed freely
-// is a target being hand-spelled through the back door, and the two gates default to the safe arm.
-test fn the_dispatch_inputs_are_closed_and_default_safe() -> Bool {
-  any(dispatch_input_options(name: "hostname_converge_peer"), o => o == "srv2")
-    && dispatch_input_options(name: "hostname_converge_direction") == hostname_converge_direction_options
-    && dispatch_input_options(name: "hostname_converge_confirm") == hostname_converge_confirm_options
-    && dispatch_input_options(name: "hostname_converge_readopt") == hostname_converge_readopt_options
-    && dispatch_input_default(name: "hostname_converge_confirm") == "plan"
-    && dispatch_input_default(name: "hostname_converge_readopt") == "refuse"
+// THE MODE DECLARES NO DISPATCH INPUT OF ITS OWN. That is a ceiling, not a style: GitHub admits at most
+// extdeps.github.actions workflow_dispatch_max_inputs inputs on one workflow_dispatch, and past it GitHub
+// refuses to register the FILE, so every mode in fleet-converge stops being dispatchable rather than just
+// this one. The roster was already at that number when P8a arrived, so the mode's four rows (peer, direction,
+// confirm, readopt) had to become reads of fields the workflow already declares for the same roles. This leg
+// goes red if the old rows come back, if a field the mode reads is renamed out from under it, or if the
+// roster leaves the ceiling.
+test fn the_mode_adds_no_input_and_the_roster_stays_inside_the_ceiling() -> Bool {
+  !dispatch_row_exists(name: "hostname_converge_peer")
+    && !dispatch_row_exists(name: "hostname_converge_direction")
+    && !dispatch_row_exists(name: "hostname_converge_confirm")
+    && !dispatch_row_exists(name: "hostname_converge_readopt")
+    && dispatch_row_exists(name: hostname_converge_target_input_name as String)
+    && dispatch_row_exists(name: hostname_converge_peer_input_name as String)
+    && dispatch_row_exists(name: hostname_converge_act_input_name as String)
+    && count(fleet_converge_dispatch_inputs) <= workflow_dispatch_max_inputs
+}
+
+// A ROSTER OVER THE CEILING IS A BUILD FAILURE, NOT A BROKEN DISPATCH (the RED control). The refusal used to
+// compare this module's own roster inline, which sits exactly on the limit -- so no input could ever reach
+// the refusing branch, and loosening the comparison could not be made red. A roster now comes in as a
+// parameter: hand it one row more than GitHub admits and the emitter must refuse, naming the rows it was
+// given and the authority that owns the number.
+test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> Bool {
+  let over = concat(
+    fleet_converge_dispatch_inputs,
+    [
+      DispatchInput {
+        name: "the_row_that_broke_the_file" as String,
+        description: none,
+        required: false,
+        default: none,
+        type: InputString,
+      },
+    ],
+  )
+  match fleet_converge_yml_after_dispatch_input_capacity(inputs: over) {
+    FleetConvergeYamlGenerationRefused { reason: r } =>
+      string_contains(s: r, pattern: "the_row_that_broke_the_file")
+        && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
+        && string_contains(s: r, pattern: "EVERY mode")
+    FleetConvergeYamlGenerated { content: _ } => false
+  }
+}
+
+// ...and the roster the workflow actually declares is the POSITIVE CONTROL: the same call and the same
+// authority, no refusal, and the emitted file still carries this mode's job. Without it the RED leg above
+// would prove only that the function refuses everything. The boundary is taken RELATIVE to the real roster
+// (one row more than it has today, one row less than GitHub admits), so the control keeps testing the
+// boundary if the roster changes size -- and the roster sits exactly ON the cap today, which is the whole
+// reason this mode declares no input of its own.
+test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
+  match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs) {
+      FleetConvergeYamlGenerationRefused { reason: _ } => false
+      FleetConvergeYamlGenerated { content: c } =>
+        string_contains(s: c, pattern: "hostname-converge")
+    }
 }
 
 // THE JOB WAITS ON THE RELEASE BINS, which is what lets it run on a peer that has no checkout of its own
@@ -261,11 +389,36 @@ fn hostname_converge_env_contract() -> List<String> {
   [
     hostname_converge_target_env_name as String,
     hostname_converge_peer_env_name as String,
-    hostname_converge_direction_env_name as String,
-    hostname_converge_readopt_env_name as String,
-    hostname_converge_confirm_env_name as String,
+    hostname_converge_act_env_name as String,
     hostname_converge_attempt_env_name as String,
   ]
+}
+
+// THE VALUE, NOT JUST THE NAME. Which dispatch field a role reads is a safety property once the roles share
+// a form with every other mode, so it is asserted here rather than trusted to the emitter's comment.
+fn step_env_value(step: Step, key: String) -> String {
+  match step {
+    RunStep {
+      name: _,
+      id: _,
+      run: _,
+      shell: _,
+      env: Present { value: entries },
+      working_directory: _,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: _,
+    } =>
+      match filter(entries, e => e.key == key).first() {
+        Absent => ""
+        Present { value: e } =>
+          match e.value {
+            YamlString { value: v } => v
+            _ => ""
+          }
+      }
+    _ => ""
+  }
 }
 
 fn mode_steps(job: Job) -> List<Step> {
@@ -276,9 +429,9 @@ fn env_carries_all(keys: List<String>) -> Bool {
   all(hostname_converge_env_contract(), n => any(keys, k => k == n))
 }
 
-// THE APPLY STEP AND THE READ-BACK STEP CARRY THE CONFIRM GATE. These are the two steps whose behaviour
-// changes on it, and the two the review found running without it.
-test fn the_apply_and_read_back_steps_carry_the_confirm_gate() -> Bool {
+// THE APPLY STEP AND THE READ-BACK STEP CARRY THE ACT WORD. These are the two steps whose behaviour changes
+// on it, and the two review 93449 found running without it.
+test fn the_apply_and_read_back_steps_carry_the_act_word() -> Bool {
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
@@ -292,8 +445,32 @@ test fn the_apply_and_read_back_steps_carry_the_confirm_gate() -> Bool {
       length(actuating) == 2
         && all(
           actuating,
-          s => any(step_env_keys(step: s), k => k == (hostname_converge_confirm_env_name as String)),
+          s => any(step_env_keys(step: s), k => k == (hostname_converge_act_env_name as String)),
         )
+  }
+}
+
+// WHICH FIELD EACH ROLE READS, asserted from the emitted env rather than from the emitter's own reading.
+// TARGET comes from `subject_host` and PEER from `host`: while both were spelled from the same helper the
+// mode read its TARGET out of the peer's field, which would have renamed the machine the job was dispatched
+// to run on. A mode that collapses the two fields is red here.
+test fn the_target_and_the_peer_are_read_from_different_declared_fields() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+        Absent => false
+        Present { value: plan } =>
+          let target = step_env_value(step: plan, key: hostname_converge_target_env_name as String)
+          let peer = step_env_value(step: plan, key: hostname_converge_peer_env_name as String)
+          let act = step_env_value(step: plan, key: hostname_converge_act_env_name as String)
+          string_contains(s: target, pattern: join(["github.event.inputs.", hostname_converge_target_input_name as String], ""))
+            && string_contains(s: peer, pattern: join(["github.event.inputs.", hostname_converge_peer_input_name as String], ""))
+            && string_contains(s: act, pattern: join(["github.event.inputs.", hostname_converge_act_input_name as String], ""))
+            && target != peer
+            && !string_contains(s: target, pattern: hostname_converge_peer_input_name as String)
+            && !string_contains(s: peer, pattern: hostname_converge_target_input_name as String)
+      }
   }
 }
 
@@ -309,12 +486,16 @@ test fn every_hostname_converge_step_carries_the_full_env_contract() -> Bool {
   }
 }
 
-// THE CONFIRM VARIABLE IS NOT A SIXTH STRING THAT HAPPENS TO APPEAR: it is read by the CLI entries
-// through the same exported name, so the emitted key and the read name cannot disagree without one of
-// these two legs going red.
-test fn the_confirm_env_name_is_the_one_the_entries_read() -> Bool {
-  (hostname_converge_confirm_env_name as String) == "FLEET_CONVERGE_HOSTNAME_CONFIRM"
-    && any(hostname_converge_env_contract(), k => k == (hostname_converge_confirm_env_name as String))
+// THE ACT VARIABLE IS NOT A STRING THAT HAPPENS TO APPEAR: it is read by the CLI entries through the same
+// exported name, and it carries the word that both unlocks the write and chooses its direction. The emitted
+// key and the name the entries read cannot disagree without one of these two legs going red.
+test fn the_act_env_name_is_the_one_the_entries_read() -> Bool {
+  (hostname_converge_act_env_name as String) == "FLEET_CONVERGE_HOSTNAME_ACT"
+    && any(hostname_converge_env_contract(), k => k == (hostname_converge_act_env_name as String))
+    // The word the gate compares and the word the entry compares are the same data, held once.
+    && any(hostname_converge_act_options, o => o == (hostname_converge_act_converge_value as String))
+    && any(hostname_converge_act_options, o => o == (hostname_converge_act_rollback_value as String))
+    && any(hostname_converge_act_options, o => o == (hostname_converge_act_adopt_value as String))
 }
 
 
@@ -333,12 +514,25 @@ test fn the_confirm_env_name_is_the_one_the_entries_read() -> Bool {
 // ever agree with it.
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 
+// A WORD AN OPERATOR CAN ACTUALLY SEND, for the field a lock compares against. A closed choice declares its
+// words on the row itself; a free-text row declares none, and the words its lock may use are the ones the
+// SUBJECT that owns the field declares -- here gunbc.host.host_hostname_converge hostname_converge_act_options,
+// which the entry enforces as strongly as the form could. Either way, a gate pointing at a word that appears
+// in neither place is a gate nobody can ever satisfy.
+fn declared_words(name: String) -> List<String> {
+  if name == (hostname_converge_act_input_name as String) {
+    hostname_converge_act_options
+  } else {
+    dispatch_input_options(name: name)
+  }
+}
+
 fn lock_compares_a_declared_field_against_a_declared_word(text: String) -> Bool {
   any(
     fleet_converge_dispatch_inputs,
     i =>
       any(
-        dispatch_input_options(name: i.name),
+        declared_words(name: i.name),
         o => string_contains(s: text, pattern: join(["github.event.inputs.", i.name, " == '", o, "'"], "")),
       ),
   )

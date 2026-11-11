@@ -282,29 +282,18 @@ import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
 import gunbc.host.host_hostname_converge {
-  Forward,
+  hostname_converge_act_adopt_value,
+  hostname_converge_act_converge_value,
+  hostname_converge_act_input_name,
+  hostname_converge_act_options,
+  hostname_converge_act_rollback_value,
   hostname_converge_attempt_env_name,
-  hostname_converge_confirm_default,
-  hostname_converge_confirm_env_name,
-  hostname_converge_confirm_input_name,
-  hostname_converge_confirm_options,
-  hostname_converge_confirm_value,
-  hostname_converge_direction_env_name,
-  hostname_converge_direction_input_name,
-  hostname_converge_direction_options,
-  hostname_converge_direction_wire,
-  hostname_converge_mode,
+  hostname_converge_dispatch_admission,
   hostname_converge_mode_env_name,
-  hostname_converge_peer_env_name,
   hostname_converge_peer_input_name,
-  hostname_converge_peer_options,
-  hostname_converge_readopt_adopt_value,
-  hostname_converge_readopt_default,
-  hostname_converge_readopt_env_name,
-  hostname_converge_readopt_input_name,
-  hostname_converge_readopt_options,
   hostname_converge_receipt_path,
-  hostname_converge_target_env_name,
+  hostname_converge_select,
+  hostname_converge_target_input_name,
 }
 import gunbc.host.host_reset_return {
   DispatchAssignment,
@@ -7644,7 +7633,7 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
 // dispatch from another module (gunbc.runner.runner_qualification_dispatch) must supply every required input by name.
 data fleet_converge_host_input: DispatchInput = DispatchInput {
     name: "host",
-    description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host)" },
+    description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host). hostname_converge only: the EXECUTING PEER -- this is the one mode whose runner is not the machine it renames, because the target's own runner label is the label the rename window retires; it must not name the same host as subject_host, which the pair law in gunbc.host.host_hostname_converge hostname_converge_select refuses in the build job" },
     required: true,
     default: none,
     type: InputChoice { options: fleet_converge_enrolled_host_options },
@@ -7652,7 +7641,7 @@ data fleet_converge_host_input: DispatchInput = DispatchInput {
 
 data fleet_converge_subject_host_input: DispatchInput = DispatchInput {
     name: "subject_host",
-    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
+    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
     required: false,
     default: none,
     type: InputChoice { options: fleet_converge_enrolled_host_options },
@@ -7716,40 +7705,24 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
     default: none,
     type: InputChoice { options: fleet_converge_reset_observer_options },
   },
-  // THE FOUR INPUTS OF THE PEER-RUN HOSTNAME CONVERGE MODE. `host` (the row above) is the TARGET whose
-  // Linux hostname converges; `hostname_converge_peer` is the host the job RUNS ON. They are separate
-  // inputs because they are separate machines by design: the target's own fleet-converge job is pinned
-  // to the target's runner label, which is the label the rename window renames. The options are derived
-  // from the hostname allocation rather than typed out, and a dispatch that names the target as its own
-  // peer is refused by the entry -- the closed choice keeps a typo from becoming a free-text host.
-  DispatchInput {
-    name: hostname_converge_peer_input_name as String,
-    description: Present { value: "hostname_converge only: the EXECUTING PEER that runs the converge over fleet SSH. Options are gunbc.host.host_hostname_converge hostname_converge_peer_options (the allocated fleet hosts); it must not be the target, and an empty value is refused by the build job's dispatch gate rather than queued to a label no runner carries" },
-    required: false,
-    default: none,
-    type: InputChoice { options: hostname_converge_peer_options() },
-  },
-  DispatchInput {
-    name: hostname_converge_direction_input_name as String,
-    description: Present { value: "hostname_converge only: forward converges the target's Linux hostname to its canonical allocation name; rollback puts the committed baseline name back -- the rename window's rollback, and the only previous name this mode may write. The pair is typed, never a free-text hostname" },
-    required: false,
-    default: Present { value: hostname_converge_direction_wire(direction: Forward) as String },
-    type: InputChoice { options: hostname_converge_direction_options },
-  },
-  DispatchInput {
-    name: hostname_converge_confirm_input_name as String,
-    description: Present { value: "hostname_converge only: plan (the default) folds the live name and reads it back without writing; converge unlocks the apply step that runs hostnamectl set-hostname on the target. Two locks guard the write -- this choice and the entry's own check of it" },
-    required: false,
-    default: Present { value: hostname_converge_confirm_default },
-    type: InputChoice { options: hostname_converge_confirm_options },
-  },
-  DispatchInput {
-    name: hostname_converge_readopt_input_name as String,
-    description: Present { value: "hostname_converge only: adopt unlocks the typed baseline re-adopt, which admits ONLY where the live name already is the desired name, and emits the DeployedIntentV0 for the operator to commit -- it never rewrites the committed baseline itself. refuse (the default) leaves the gate closed" },
-    required: false,
-    default: Present { value: hostname_converge_readopt_default },
-    type: InputChoice { options: hostname_converge_readopt_options },
-  },
+  // THE PEER-RUN HOSTNAME CONVERGE MODE DECLARES NO INPUT OF ITS OWN, and that is a constraint rather
+  // than a style: GitHub admits at most extdeps.github.actions workflow_dispatch_max_inputs (25) inputs on
+  // one workflow_dispatch, and past the ceiling it refuses to REGISTER THE FILE -- every mode in
+  // fleet-converge stops being dispatchable, not just the new one. The roster sat exactly at that number,
+  // so four rows (peer, direction, confirm, readopt) would have taken the file to 29 and cost every other
+  // mode its dispatch. What the mode needs is already declared, by rows whose meaning is the same role:
+  //   peer   = `host`          -- the machine the job runs on IS this mode's executing peer; this job is
+  //                              the only one in the workflow whose runner is not the machine it acts on,
+  //                              because the target's own runner label is the label the rename retires.
+  //   target = `subject_host`  -- the machine acted upon, the same reading the reset and network modes use.
+  //   act    = `transaction_nonce` -- one word, closed to converge|rollback|adopt, that unlocks exactly one
+  //                              step: the write, in one direction, or the baseline re-adopt. It carries
+  //                              intent and direction together because a forward converge and a rollback are
+  //                              the same single write with the pair swapped. It is not a nonce here and is
+  //                              never a hostname; the names and words live in gunbc.host.host_hostname_converge.
+  // The two roles staying distinct is load-bearing (see fleet_converge_hostname_converge_step_env), and a
+  // dispatch that names one machine for both roles is refused by the pair law in hostname_converge_select,
+  // in the build job, before any step runs.
   DispatchInput {
     name: "credential",
     description: Present { value: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names" },
@@ -7839,7 +7812,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "transaction_nonce",
-    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). branch_run_grant: the requesting run's <run id>-<run attempt>, set by the branch-run-grant-broker workflow from GitHub's workflow_run event (gunbc.auth.branch_run_grant_broker). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
+    description: Present { value: "hostname_converge only: NOT a nonce -- the single act word that unlocks exactly one step, closed to converge (write the canonical name) | rollback (write the committed baseline name back) | adopt (the typed baseline re-adopt), as gunbc.host.host_hostname_converge hostname_converge_act_options. The write and the baseline rewrite are guarded by this word in the workflow AND by the entry's own check of it; any other value, including empty, leaves both locked. It is never a hostname: the mode refuses any value outside the three words rather than writing what it was handed. Otherwise: operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). branch_run_grant: the requesting run's <run id>-<run attempt>, set by the branch-run-grant-broker workflow from GitHub's workflow_run event (gunbc.auth.branch_run_grant_broker). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
     required: false,
     default: none,
     type: InputString,
@@ -7990,9 +7963,41 @@ fn fleet_converge_yml_after_run_scoped_admission() -> FleetConvergeYamlGeneratio
         " (GitHub rejects an empty closed choice; gunbc.design_argument::fail_closed: refuse, do not emit options: [])",
       ], "")
     }
-  } else if count(fleet_converge_dispatch_inputs) > workflow_dispatch_max_inputs {
-    FleetConvergeYamlGenerationRefused { reason: "fleet-converge exceeds GitHub's workflow_dispatch input limit" }
-  } else { fleet_converge_yml_after_input_admission() }
+  } else { fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs) }
+}
+
+// THE SAME CEILING, APPLIED TO A ROSTER YOU CAN HAND IT. This used to compare
+// `count(fleet_converge_dispatch_inputs)` against extdeps.github.actions workflow_dispatch_max_inputs (25)
+// inline -- and the only roster this module can produce is that one, which sits EXACTLY on the limit. So the
+// refusing branch was unreachable by any input: no witness could show the emitter refusing at twenty-six, and
+// loosening the comparison could not be made red (gunbc.design_argument::fail_closed: "Done means a real
+// consumer green by execution plus a discriminating input that goes red when the behavior is wrong"). The
+// roster is a parameter now, and the refusal names the inputs, so a witness hands over twenty-six rows and
+// watches the emitter refuse and twenty-five and watches it admit -- the two controls
+// gunbc.recurring_failure_mode workflow_dispatch_input_limit_unchecked exists to keep from recurring. The
+// NUMBER stays in extdeps.github.actions, where GitHub's documentation is cited; nothing here restates it.
+// Why the refusal is worth a build failure: past the ceiling GitHub does not register the workflow at all,
+// so the twenty-sixth input does not merely fail to appear -- it silences every mode in the file, including
+// modes whose dispatches were working the day before (P8a's first draft added four rows to a roster already
+// at 25; the emitter was the thing that should have said so).
+fn fleet_converge_yml_after_dispatch_input_capacity(
+  inputs: List<DispatchInput>,
+) -> FleetConvergeYamlGenerationOutcome {
+  if count(inputs) > workflow_dispatch_max_inputs {
+    FleetConvergeYamlGenerationRefused {
+      reason: join([
+        "fleet-converge declares ",
+        join(map(inputs, i => i.name), ", "),
+        " as workflow_dispatch inputs, more than GitHub admits (extdeps.github.actions workflow_dispatch_max_inputs).",
+        " GitHub refuses to register the whole file, so EVERY mode in fleet-converge stops being dispatchable --",
+        " not just the new one. Pack a field into an input the workflow already declares, colon-separated",
+        " (a colon cannot appear in a hostname, and `host`-shaped inputs already carry one value that way),",
+        " rather than adding a row.",
+      ], ""),
+    }
+  } else {
+    fleet_converge_yml_after_input_admission()
+  }
 }
 
 fn fleet_converge_yml_after_input_admission() -> FleetConvergeYamlGenerationOutcome {
@@ -8563,14 +8568,16 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
 // WHERE IT RUNS.
 //
 // It runs on a PEER. The target's own fleet-converge job is pinned to the target's own runner label
-// (fleet_converge_host_runner_label_expression), and during a rename window that label is exactly
-// what is being renamed — the job that would fix the name is scheduled on a label that no longer
-// exists. So this job takes its runner from a SEPARATE input, `hostname_converge_peer`, whose options
-// are gunbc.host.host_hostname_converge hostname_converge_peer_options — never the target's label,
-// and never the executor's `hostname -s`, which reports the box a runner happens to sit on rather
-// than the box the dispatch named. The peer reaches the target over the existing fleet SSH reach
-// model (gunbc.host.host_hostname_converge hostname_converge_resolve → fleet_ssh_target_at_standard_port);
-// no step in this job hand-spells a target address.
+// (fleet_converge_host_runner_label_expression), and during a rename window that label is exactly what is
+// being renamed — the job that would fix the name is scheduled on a label that no longer exists. So this
+// job's runner comes from the dispatch's `host` field, which for THIS mode names the executing peer, while
+// `subject_host` names the machine being renamed: the one job in the workflow whose runner is not the
+// machine it acts on. It is never the target's label, and never the executor's `hostname -s`, which reports
+// the box a runner happens to sit on rather than the box the dispatch named. A dispatch that puts one
+// machine in both roles is refused before any step runs, by the pair law
+// (gunbc.host.host_hostname_converge hostname_converge_select), and the peer reaches the target over the
+// existing fleet SSH reach model (hostname_converge_resolve_plan / hostname_converge_resolve_apply →
+// fleet_ssh_target_at_standard_port); no step in this job hand-spells a target address.
 //
 // The plan and the apply are SEPARATE GATED STEPS. `if: <mode>` runs the dry plan, which reads the
 // live name and folds it against the stored baseline and the desired name. The apply additionally
@@ -8597,15 +8604,24 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
 data fleet_converge_hostname_converge_step_if: String = fleet_converge_mode_step_if(mode: HostnameConverge)
 
 // THE APPLY IS A SECOND GATE, INSIDE THE MODE. The dry plan runs on any mode=hostname_converge
-// dispatch; the apply additionally requires the dispatched confirmation. Both halves are Expressions
-// built by `fleet_converge_dispatch_input_is` from the field name and the word the subject holds
-// (`hostname_converge_confirm_input_name`, `hostname_converge_confirm_value`), so renaming the input or
-// rewording the gate moves the declaration, the step env and this condition together -- and a typo in
-// either is no longer a condition that silently never matches.
-data fleet_converge_hostname_converge_confirm_gate: Expression = fleet_converge_dispatch_input_is(
-  input: hostname_converge_confirm_input_name as String,
-  value: hostname_converge_confirm_value as String,
-)
+// dispatch; the apply additionally requires the dispatched act word. Both halves are Expressions built by
+// `fleet_converge_dispatch_input_is` from the field name and the word the subject holds
+// (`hostname_converge_act_input_name`, `hostname_converge_act_converge_value`,
+// `hostname_converge_act_rollback_value`), so renaming the input or rewording the gate moves the
+// declaration, the step env and this condition together -- and a typo in either is no longer a condition
+// that silently never matches. THE ACT WORD CARRIES THE INTENT AND THE DIRECTION TOGETHER, which is what
+// bought the input budget back: a forward converge and a rollback are the same one write with the pair
+// swapped, so the two words are two arms of one lock, and neither means anything without the mode.
+data fleet_converge_hostname_converge_apply_gate: Expression = LogicalOr {
+  left: fleet_converge_dispatch_input_is(
+    input: hostname_converge_act_input_name as String,
+    value: hostname_converge_act_converge_value as String,
+  ),
+  right: fleet_converge_dispatch_input_is(
+    input: hostname_converge_act_input_name as String,
+    value: hostname_converge_act_rollback_value as String,
+  ),
+}
 
 data fleet_converge_hostname_converge_apply_step_if: String = serialize_expression(
   expression: LogicalAnd {
@@ -8617,8 +8633,8 @@ data fleet_converge_hostname_converge_apply_step_if: String = serialize_expressi
 // THE BASELINE ADOPTION IS A THIRD GATE: it is the only step that may rewrite a stored baseline, so it
 // asks for its own word, and its CLI entry refuses without it (the gate in YAML is not the lock).
 data fleet_converge_hostname_converge_readopt_gate: Expression = fleet_converge_dispatch_input_is(
-  input: hostname_converge_readopt_input_name as String,
-  value: hostname_converge_readopt_adopt_value as String,
+  input: hostname_converge_act_input_name as String,
+  value: hostname_converge_act_adopt_value as String,
 )
 
 data fleet_converge_hostname_converge_readopt_step_if: String = serialize_expression(
@@ -8628,13 +8644,14 @@ data fleet_converge_hostname_converge_readopt_step_if: String = serialize_expres
   },
 )
 
-// WHERE THE JOB RUNS, AS AN EXPRESSION AND NOT AS TEXT. This is the one runner expression in the
-// workflow that must NOT be `fleet_converge_host_runner_expression_body`: keying it to `host` would put
-// the rename back on the box whose label the rename retires. The peer's label comes from the dispatch
-// field `hostname_converge_peer_input_name` -- the same name the step env reads and the dispatch gate
-// refuses on -- so no copy of it can go stale and pin the job to a label nobody advertises. And it is
-// serialized by the same authority as the gates: `fromJSON(format(...))` is the spelling this file
-// already uses for a host-pinned job, and it is now produced rather than typed.
+// WHERE THE JOB RUNS, AS AN EXPRESSION AND NOT AS TEXT. For THIS mode the dispatch's `host` field names
+// the EXECUTING machine, not the machine being renamed -- the target is `subject_host` -- so the peer pin
+// and this workflow's standard host pin are the same expression, and a witness says so instead of relying
+// on the reading. It is still built rather than typed: `fromJSON(format(...))` is the spelling this file
+// already uses for a host-pinned job, produced here by `extdeps.github.expressions` and keyed to the one
+// field name the step env reads and the dispatch gate refuses on, so no copy of it can go stale and pin
+// the job to a label nobody advertises. What keeps a dispatch from naming one machine for both roles is
+// not this expression: it is the pair law, gunbc.host.host_hostname_converge hostname_converge_select.
 data fleet_converge_hostname_converge_peer_runner_expression_body: String = serialize_expression(
   expression: FunctionCall {
     function: FromJSON,
@@ -8658,20 +8675,22 @@ fn fleet_converge_hostname_converge_runner_spec() -> RunnerSpec {
   RunsOnExpression { expression: fleet_converge_hostname_converge_peer_runner_expression }
 }
 
-// THE TARGET, THE PEER, THE DIRECTION AND THE GATES TRAVEL AS ENVIRONMENT, each named once in
-// gunbc.host.host_hostname_converge so a step and its entry cannot drift apart
-// (gunbc.design_argument::single_authority). The confirm gate travels too: the apply entry re-checks it
-// as a second lock beside the step's `if:`, and the independent read-back only goes red on a wrong name
-// when it knows actuation was confirmed. Drop this line and the mode silently degrades -- apply always
-// refuses, and read-back reports success on a name that never changed -- so the emitter witness asserts
-// every step carries all six (gunbc.design_argument::fail_closed).
+// WHAT TRAVELS AS ENVIRONMENT, each name held once in gunbc.host.host_hostname_converge so a step and its
+// entry cannot drift apart (gunbc.design_argument::single_authority): the TARGET, the PEER, the ACT WORD and
+// the ATTEMPT. The act word travels because it is a second lock as well as a gate -- the apply entry re-checks
+// it beside the step's `if:`, and the independent read-back goes red on a wrong name only when it knows an
+// actuation was confirmed. Drop a line here and the mode degrades silently: the apply refuses forever, or the
+// read-back reports success on a name that never changed. So the emitter witness asserts every mode step
+// carries all four, and asserts which dispatch FIELD each role reads (review 93449, and the repack below).
 fn fleet_converge_hostname_converge_step_env() -> List<YamlKeyValue> {
   [
-    kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: join(["${{ ", fleet_host_input_expression, " }}"], ""))),
+    // TWO ROLES, TWO FIELDS -- AND THAT IS A SAFETY PROPERTY, NOT A DETAIL. `host` names the machine this
+    // job runs ON (the peer); `subject_host` names the machine being RENAMED. Read both from one field, as
+    // this line did while it borrowed `fleet_host_input_expression`, and the mode renames the peer it was
+    // dispatched to instead of its target. The emitter witness asserts which field each role reads.
+    kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_target_input_name as String))),
     kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_peer_input_name as String))),
-    kv(key: hostname_converge_direction_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_direction_input_name as String))),
-    kv(key: hostname_converge_readopt_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_readopt_input_name as String))),
-    kv(key: hostname_converge_confirm_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_confirm_input_name as String))),
+    kv(key: hostname_converge_act_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_act_input_name as String))),
     kv(key: hostname_converge_attempt_env_name as String, value: yaml_string(s: "${{ github.run_id }}-${{ github.run_attempt }}")),
   ]
 }
@@ -8745,7 +8764,9 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
     env: Present {
       value: [
         kv(key: hostname_converge_mode_env_name as String, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
-        kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: join(["${{ ", fleet_host_input_expression, " }}"], ""))),
+        // The same two roles, read from their two fields -- the admission step is where a dispatch that
+        // names one machine for both roles is refused, so it must see the target and the peer distinctly too.
+        kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_target_input_name as String))),
         kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_peer_input_name as String))),
       ]
     },

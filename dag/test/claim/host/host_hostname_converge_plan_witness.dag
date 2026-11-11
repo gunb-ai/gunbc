@@ -41,18 +41,23 @@ import gunbc.host.host_hostname_converge {
   Declines,
   TargetSelectorRefused,
   TargetSelectorUnknown,
-  hostname_converge_direction_of,
+  hostname_converge_act_adopt_value,
+  hostname_converge_act_converge_value,
+  hostname_converge_act_env_name,
+  hostname_converge_act_input_name,
+  hostname_converge_act_is_adopt,
+  hostname_converge_act_is_actuation,
+  hostname_converge_act_is_converge,
+  hostname_converge_act_is_rollback,
+  hostname_converge_act_options,
+  hostname_converge_act_rollback_value,
+  hostname_converge_apply_lock_line,
+  hostname_converge_direction_of_act,
   hostname_converge_direction_wire,
-  hostname_converge_confirm_env_name,
-  hostname_converge_confirm_lock_line,
-  hostname_converge_confirm_value,
   hostname_converge_dispatch_admission,
   hostname_converge_dispatch_admission_line,
-  hostname_converge_dispatch_confirms_actuation,
   hostname_converge_mode,
-  hostname_converge_readopt_adopt_value,
-  hostname_converge_readopt_dispatched,
-  hostname_converge_readopt_env_name,
+  hostname_converge_planned_direction,
   hostname_converge_readopt_lock_line,
   hostname_converge_pair,
   hostname_converge_peer_env_name,
@@ -63,7 +68,7 @@ import gunbc.host.host_hostname_converge {
   hostname_converge_readopt_judge,
   hostname_converge_refusal_reason,
   hostname_converge_refusal_wire,
-  hostname_converge_resolve,
+  hostname_converge_resolve_apply,
   hostname_converge_target_env_name,
   PeerIsTarget,
 }
@@ -211,26 +216,94 @@ test fn rollback_is_noop_back_at_the_previous_name() -> Bool {
   }
 }
 
-// THE DIRECTION IS A CLOSED CHOICE. Anything else resolves to nothing, so a dispatch cannot name an
-// arbitrary host to roll back TO — the only previous name this mode can write is the committed baseline.
-test fn direction_is_a_closed_choice() -> Bool {
-  let forward_resolves = match hostname_converge_direction_of(raw: "forward") {
-    Present { value: _ } => true
+// THE DIRECTION IS A CLOSED CHOICE, AND IT IS THE ACT WORD: `converge` is forward, `rollback` is back, and
+// nothing else resolves. A dispatch therefore cannot name an arbitrary host to roll back TO — the only
+// previous name this mode can write is the committed baseline — and it cannot carry a direction that
+// contradicts the word that unlocks the write, because there is one string and one parser for both
+// (gunbc.design_argument::single_authority).
+test fn the_act_word_is_the_direction_and_it_is_closed() -> Bool {
+  let converge_is_forward = match hostname_converge_direction_of_act(value: "converge") {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "forward"
     Absent => false
   }
-  let rollback_resolves = match hostname_converge_direction_of(raw: "rollback") {
-    Present { value: _ } => true
+  let rollback_is_rollback = match hostname_converge_direction_of_act(value: "rollback") {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "rollback"
     Absent => false
   }
-  let free_text_refused = match hostname_converge_direction_of(raw: "fox") {
+  // `forward` was the word this mode's first draft accepted, in a field of its own. It is not a word any
+  // more, and a dispatch that still sends it must be refused rather than quietly read as forward.
+  let the_retired_word_refuses = match hostname_converge_direction_of_act(value: "forward") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let a_hostname_refuses = match hostname_converge_direction_of_act(value: "fox") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let empty_is_not_an_act_word = match hostname_converge_direction_of_act(value: "") {
     Absent => true
     Present { value: _ } => false
   }
   hostname_converge_direction_wire(direction: Forward) == "forward"
     && hostname_converge_direction_wire(direction: Rollback) == "rollback"
-    && forward_resolves
-    && rollback_resolves
-    && free_text_refused
+    && converge_is_forward
+    && rollback_is_rollback
+    && the_retired_word_refuses
+    && a_hostname_refuses
+    && empty_is_not_an_act_word
+}
+
+// THE WORD THE OPERATOR PICKS AND THE WORD THAT ACTUATES ARE THE SAME DATA. `hostname_converge_act_options`
+// is what the dispatch form offers; these predicates are what the workflow gate and the entry both ask. If
+// an option were added that no predicate knows, a dispatch could carry a word that unlocks nothing and the
+// step would sit behind an `if:` nobody can satisfy -- so the closed set and the predicates are pinned to
+// each other here, four words and no more.
+test fn the_closed_options_are_exactly_the_words_the_predicates_know() -> Bool {
+  let forward_absent = match hostname_converge_direction_of_act(value: "forward") {
+    Absent => true
+    Present { value: _ } => false
+  }
+  hostname_converge_act_options
+    == [
+      "" as String,
+      hostname_converge_act_converge_value as String,
+      hostname_converge_act_rollback_value as String,
+      hostname_converge_act_adopt_value as String,
+    ]
+    && hostname_converge_act_is_converge(value: hostname_converge_act_converge_value as String)
+    && hostname_converge_act_is_rollback(value: hostname_converge_act_rollback_value as String)
+    && hostname_converge_act_is_adopt(value: hostname_converge_act_adopt_value as String)
+    && hostname_converge_act_is_actuation(value: hostname_converge_act_converge_value as String)
+    && hostname_converge_act_is_actuation(value: hostname_converge_act_rollback_value as String)
+    // RE-ADOPT IS NOT AN ACTUATION: it rewrites a baseline, not a hostname. If it were counted as one, a
+    // read-back after an `adopt` dispatch could report a converged name that nobody wrote.
+    && !hostname_converge_act_is_actuation(value: hostname_converge_act_adopt_value as String)
+    && !hostname_converge_act_is_actuation(value: "" as String)
+    && !hostname_converge_act_is_actuation(value: "converge " as String)
+    && forward_absent
+}
+
+// THE READ-ONLY STEPS READ AN ABSENT WORD AS THE FORWARD QUESTION, and still refuse a word that is neither
+// write word -- a default that swallowed garbage would turn a typo in the form into a plan that quietly
+// means something else.
+test fn the_read_only_steps_default_to_forward_and_refuse_garbage() -> Bool {
+  let empty_is_forward = match hostname_converge_planned_direction(value: "") {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "forward"
+    Absent => false
+  }
+  let rollback_is_rollback = match hostname_converge_planned_direction(value: hostname_converge_act_rollback_value as String) {
+    Present { value: d } => hostname_converge_direction_wire(direction: d) == "rollback"
+    Absent => false
+  }
+  let adopt_refuses = match hostname_converge_planned_direction(value: hostname_converge_act_adopt_value as String) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let garbage_refuses = match hostname_converge_planned_direction(value: "CONVERGE" as String) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  empty_is_forward && rollback_is_rollback && adopt_refuses && garbage_refuses
 }
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -370,10 +443,10 @@ test fn the_gate_refuses_a_peer_that_is_the_target_the_way_the_job_does() -> Boo
     target_raw: gate_target,
     peer_raw: gate_target,
   )
-  let job = hostname_converge_resolve(
+  let job = hostname_converge_resolve_apply(
     target_selector: gate_target,
     peer_selector: gate_target,
-    direction_raw: hostname_converge_direction_wire(direction: Forward) as String,
+    act: hostname_converge_act_converge_value as String,
     attempt_raw: gate_attempt,
   )
   match gate {
@@ -400,10 +473,10 @@ test fn the_gate_refuses_an_unallocated_peer_the_way_the_job_does() -> Bool {
     target_raw: gate_target,
     peer_raw: unallocated_peer,
   )
-  let job = hostname_converge_resolve(
+  let job = hostname_converge_resolve_apply(
     target_selector: gate_target,
     peer_selector: unallocated_peer,
-    direction_raw: hostname_converge_direction_wire(direction: Forward) as String,
+    act: hostname_converge_act_converge_value as String,
     attempt_raw: gate_attempt,
   )
   match gate {
@@ -484,37 +557,42 @@ test fn an_unnamed_target_or_peer_names_the_variable_it_needs() -> Bool {
 // passes the accepted word cannot tell an `==` from an `!=`.
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 
-test fn the_actuation_lock_accepts_one_word_exactly() -> Bool {
-  hostname_converge_dispatch_confirms_actuation(value: hostname_converge_confirm_value as String)
-    && !hostname_converge_dispatch_confirms_actuation(value: "")
-    && !hostname_converge_dispatch_confirms_actuation(value: "plan")
-    && !hostname_converge_dispatch_confirms_actuation(value: "converge ")
-    && !hostname_converge_dispatch_confirms_actuation(value: "Converge")
-    && !hostname_converge_dispatch_confirms_actuation(value: "no")
-}
-
-test fn the_readopt_lock_accepts_one_word_exactly() -> Bool {
-  hostname_converge_readopt_dispatched(value: hostname_converge_readopt_adopt_value as String)
-    && !hostname_converge_readopt_dispatched(value: "")
-    && !hostname_converge_readopt_dispatched(value: "plan")
-    && !hostname_converge_readopt_dispatched(value: "adopt ")
-    && !hostname_converge_readopt_dispatched(value: "ADOPT")
-    && !hostname_converge_readopt_dispatched(value: "converge")
+test fn each_lock_accepts_its_words_and_refuses_everything_adjacent() -> Bool {
+  hostname_converge_act_is_actuation(value: hostname_converge_act_converge_value as String)
+    && hostname_converge_act_is_actuation(value: hostname_converge_act_rollback_value as String)
+    && !hostname_converge_act_is_actuation(value: "")
+    && !hostname_converge_act_is_actuation(value: "plan")
+    && !hostname_converge_act_is_actuation(value: "converge ")
+    && !hostname_converge_act_is_actuation(value: "Converge")
+    && !hostname_converge_act_is_actuation(value: "no")
+    // `adopt` rewrites a baseline, not a hostname: it must not be able to unlock the write.
+    && !hostname_converge_act_is_actuation(value: hostname_converge_act_adopt_value as String)
+    && hostname_converge_act_is_adopt(value: hostname_converge_act_adopt_value as String)
+    && !hostname_converge_act_is_adopt(value: "")
+    && !hostname_converge_act_is_adopt(value: "adopt ")
+    && !hostname_converge_act_is_adopt(value: "ADOPT")
+    // Nor the other way round: a word that unlocks the write must not unlock the baseline rewrite.
+    && !hostname_converge_act_is_adopt(value: hostname_converge_act_converge_value as String)
 }
 
 // THE REFUSALS NAME WHAT IS MISSING. A red step that says only "not confirmed" sends the operator to the
 // workflow source instead of to the dispatch form, and the whole point of a typed refusal is that the
 // reason is legible from the log (gunbc.design_argument::fail_closed). Each line must carry the word it
-// wanted and the field that carries it -- and the readopt line must not be the confirm line wearing a
-// different hat.
-test fn a_lock_refusal_names_the_word_and_the_field_it_was_waiting_for() -> Bool {
-  let confirm_line = hostname_converge_confirm_lock_line(value: "plan")
-  let readopt_line = hostname_converge_readopt_lock_line(value: "")
-  string_contains(s: confirm_line, pattern: hostname_converge_confirm_value as String)
-    && string_contains(s: confirm_line, pattern: hostname_converge_confirm_env_name as String)
-    && string_contains(s: confirm_line, pattern: "plan")
-    && string_contains(s: readopt_line, pattern: hostname_converge_readopt_adopt_value as String)
-    && string_contains(s: readopt_line, pattern: hostname_converge_readopt_env_name as String)
+// wanted, the env var that carries it and the dispatch input the operator actually fills -- and because the
+// two locks now share ONE field, the lines must not be interchangeable: an operator waiting on the re-adopt
+// who is told to send `converge` would perform a hostname write they did not ask for.
+test fn a_lock_refusal_names_the_word_the_field_and_the_lock_it_was_waiting_for() -> Bool {
+  let apply_line = hostname_converge_apply_lock_line(value: "plan")
+  let readopt_line = hostname_converge_readopt_lock_line(value: "plan")
+  string_contains(s: apply_line, pattern: hostname_converge_act_converge_value as String)
+    && string_contains(s: apply_line, pattern: hostname_converge_act_rollback_value as String)
+    && string_contains(s: apply_line, pattern: hostname_converge_act_env_name as String)
+    && string_contains(s: apply_line, pattern: hostname_converge_act_input_name as String)
+    && string_contains(s: apply_line, pattern: "plan")
+    && string_contains(s: apply_line, pattern: "hostnamectl")
+    && string_contains(s: readopt_line, pattern: hostname_converge_act_adopt_value as String)
+    && string_contains(s: readopt_line, pattern: hostname_converge_act_env_name as String)
+    && string_contains(s: readopt_line, pattern: hostname_converge_act_input_name as String)
     && string_contains(s: readopt_line, pattern: "baseline")
-    && confirm_line != readopt_line
+    && apply_line != readopt_line
 }
