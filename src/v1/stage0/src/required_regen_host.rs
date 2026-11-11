@@ -3699,7 +3699,7 @@ impl RegenRoundCostModel {
     ) -> Result<ModelValue, String> {
         if !self.demanded.iter().any(|name| name == function) {
             return Err(format!(
-                "UndemandedModelFunction: {function} is not among the functions the {} model was settled for ({}); the interpreter reads its function table from the resolved AST, so this call would evaluate a body no typecheck ever saw -- name it in the demanded list beside this call site",
+                "UndemandedModelFunction: {function} is not among the functions the {} model was settled for ({}); the demanded settle never realized this body, so the runtime would refuse the call at its own index lookup -- name it in the demanded list beside this call site",
                 self.entry,
                 self.demanded.join(",")
             ));
