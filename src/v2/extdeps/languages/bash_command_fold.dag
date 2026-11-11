@@ -807,6 +807,7 @@ data bash_fold_word_positional_sentinel: String = "\u{0009}"
 data bash_fold_word_double_quoted_sentinel: String = "\u{000A}"
 data bash_fold_word_quoted_text_sentinel: String = "\u{000B}"
 data bash_fold_word_var_bare_sentinel: String = "\u{000C}"
+data bash_fold_word_test_operator_sentinel: String = "\u{000D}"
 
 fn bash_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
@@ -835,6 +836,7 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_double_quoted, text: bash_fold_word_double_quoted_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_quoted_text, text: bash_fold_word_quoted_text_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_var_bare, text: bash_fold_word_var_bare_sentinel),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_test_operator, text: bash_fold_word_test_operator_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_open, text: "$("),
       bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_close, text: ")"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stderr_null, text: " 2>/dev/null"),
@@ -932,7 +934,8 @@ fn bash_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m11 = map_insert(m10, ^bash_fold_word_kind_double_quoted, EmitSpellingConstant { value: "" })
   let m12 = map_insert(m11, ^bash_fold_word_kind_quoted_text, EmitSpellingConstant { value: "" })
   let m13 = map_insert(m12, ^bash_fold_word_kind_var_bare, EmitSpellingConstant { value: "" })
-  map_insert(m13, ^bash_token_orch_raw, EmitSpellingIdentity)
+  let m14 = map_insert(m13, ^bash_fold_word_kind_test_operator, EmitSpellingConstant { value: "" })
+  map_insert(m14, ^bash_token_orch_raw, EmitSpellingIdentity)
 }
 
 fn bash_fold_binding_spellings() -> Map<Symbol, String> {
@@ -1547,6 +1550,30 @@ fn bash_fold_quoted_text_word_production() -> FormalProduction {
   )
 }
 
+// THE BRACKET-TEST OPERATOR, AS A WORD OF ITS OWN. bash(1), node "Bash Conditional
+// Expressions", gives a conditional expression its meaning from operator tokens that are
+// NOT quoted: `[ a != b ]` tests inequality, `[ a "!=" b ]` compares the three strings and
+// is true of every pair. So the operator cannot be a quoted literal and cannot be a bare
+// word either -- the bare alphabet has no '!' at all, and widening it would let '!' into
+// every unquoted position in a script (history expansion there, and the closed set below
+// exists precisely so that does not happen). It gets its own production: a kind token,
+// then the operator text through the same free slot every other word kind uses, with the
+// text checked against the closed set by bash_build_word_test_operator on the way in and
+// by the serializer's arm on the way out. A word that is not one of the manual's operators
+// has no row and cannot be spelled by anything.
+fn bash_fold_test_operator_word_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_test_operator_word,
+    rhs: [
+      grammar_formal_terminal_bound(
+        identity: ^bash_fold_word_kind_test_operator,
+        binding: ^bash_fold_word_kind_test_operator
+      ),
+      grammar_formal_terminal_free(identity: ^bash_token_orch_raw)
+    ]
+  )
+}
+
 fn bash_fold_var_bare_word_production() -> FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_var_bare_word,
@@ -1569,6 +1596,7 @@ fn bash_fold_new_word_productions() -> List<FormalProduction> {
     bash_fold_param_error_word_production(),
     bash_fold_positional_all_word_production(),
     bash_fold_positional_word_production(),
+    bash_fold_test_operator_word_production(),
     bash_fold_double_quoted_word_production(),
     bash_fold_quoted_text_word_production()
   ]
@@ -1613,6 +1641,10 @@ fn bash_fold_new_command_words_leaf_productions() -> List<FormalProduction> {
     ),
     grammar_formal_production(
       lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_test_operator_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_double_quoted_word)]
     ),
     grammar_formal_production(
@@ -1631,7 +1663,8 @@ fn bash_fold_new_command_words_list_productions() -> List<FormalProduction> {
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_array_expansion_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_param_error_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_positional_all_word),
-    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_positional_word)
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_positional_word),
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_test_operator_word)
   ]
 }
 
@@ -1656,6 +1689,10 @@ fn bash_fold_new_concat_parts_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^bash_production_fold_concat_parts,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_positional_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_concat_parts,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_test_operator_word)]
     ),
     grammar_formal_production(
       lhs: ^bash_production_fold_concat_parts,

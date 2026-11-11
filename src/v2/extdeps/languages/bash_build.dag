@@ -1170,3 +1170,70 @@ fn bash_build_with_redir_stderr_to_stdout(inner: Node) -> Node {
 fn bash_build_with_redir_stdout_to_stderr(inner: Node) -> Node {
   bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stdout_to_stderr)
 }
+
+// THE OPERATORS OF A BRACKET TEST, AS A CLOSED SET. bash(1), node "Bash Conditional
+// Expressions", lists the primaries a conditional expression is built from: the unary
+// file and handle tests (-b -c -d -e -f -g -G -h -k -p -r -S -s -t -u -w -x -O -N -v -R),
+// the unary string tests (-z -n), the unary option test (-o), the file comparisons
+// (-ef -nt -ot), the string comparisons (= == !=), the arithmetic comparisons
+// (-eq -ne -lt -le -gt -ge), the regex match (=~) and the bracket connectives (-a -o).
+// Those texts, and no others, are what the constructor below admits.
+//
+// FOUR OPERATORS OF THAT NODE ARE DELIBERATELY NOT WORDS HERE. The bang and the
+// parentheses are negation and grouping, and the lane already models them as constructs
+// (bash_build_negation, the subshell, the brace group), so admitting them as words would
+// give the same syntax two producers -- which is what every rule in this lane exists to
+// prevent. The two angle brackets compare strings INSIDE the brackets and redirect
+// OUTSIDE them; a word cannot tell those contexts apart, and making that safe needs a
+// bracket-typed context the fold does not have yet. Neither is needed by anything this
+// module renders, and a checked constructor that admits nothing is honest in a way a
+// checked constructor that admits a trap is not.
+data bash_build_test_operators: List<String> = [
+  "-b", "-c", "-d", "-e", "-f", "-g", "-G", "-h", "-k", "-p", "-r", "-S", "-s", "-t",
+  "-u", "-v", "-w", "-x", "-O", "-N", "-R", "-z", "-n", "-o",
+  "-ef", "-nt", "-ot",
+  "=", "==", "!=",
+  "-eq", "-ne", "-lt", "-le", "-gt", "-ge",
+  "=~", "-a"
+]
+
+fn bash_build_test_operator_scanned(xs: List<String>, op: String, index: Int) -> Bool {
+  match list_at_optional(xs: xs, index: index) {
+    Present { value: head } => if head == op { true } else { bash_build_test_operator_scanned(xs: xs, op: op, index: index + 1) }
+    Absent => false
+  }
+}
+
+fn bash_build_is_test_operator(op: String) -> Bool {
+  bash_build_test_operator_scanned(xs: bash_build_test_operators, op: op, index: 0)
+}
+
+// A bracket-test operator, emitted exactly as the manual spells it and checked against
+// the closed set above. Refuses (returns Absent) for anything the set does not name;
+// there is no quoting fallback, because quoting an operator is the one thing that stops
+// it being one: a bracketed comparison of the STRING "!=" is true of every pair.
+fn bash_build_word_test_operator(op: String) -> Optional<Node> {
+  if bash_build_is_test_operator(op: op) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_test_operator,
+        value: op
+      )
+    }
+  } else {
+    Absent
+  }
+}
+
+// A bracket test whose operator position is filled by a real operator: a test of
+// `left OP right`, with the brackets and their spaces supplied by the row, never by a
+// string. An operator outside the closed set does not become text here -- it becomes the
+// refused kind, which the serializer then refuses, so a wrong operator can only ever
+// stop a render, never quietly change one.
+fn bash_build_test_comparison(left: Node, op: String, right: Node) -> Node {
+  let op_word = match bash_build_word_test_operator(op: op) {
+    Present { value: w } => w
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_operator, value: op)
+  }
+  bash_build_test_bracket(words: [left, op_word, right])
+}

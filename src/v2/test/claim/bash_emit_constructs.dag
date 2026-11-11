@@ -15,7 +15,7 @@ module v2.test.claim.bash_emit_constructs
 import std.algebra { list_at_optional, list_head }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, diagnostics_reason_lexemes, Outcome, Rejected }
 import v2.extdeps.languages.bash {
   bash_kw_case_arm_newline_text,
   bash_kw_case_block_lead_text,
@@ -48,6 +48,10 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var_bare,
   bash_build_quoted_text,
   bash_build_word_positional_all,
+  bash_build_word_kinded,
+  bash_build_word_test_operator,
+  bash_build_test_comparison,
+  bash_build_test_bracket,
   bash_build_with_redir_stderr_to_stdout,
   bash_build_with_redir_stdout_to_stderr
 }
@@ -677,5 +681,114 @@ test fn bare_word_refuses_bytes_that_would_split_or_expand() -> Bool {
         Present { value: _ } => false
       }
     Present { value: _ } => false
+  }
+}
+
+// ── bracket-test operators ─────────────────────────────────────────────────
+// Bash manual, node "Bash Conditional Expressions": a conditional expression is
+// built from operator tokens -- = == != -eq -ne -lt -le -gt -ge -nt -ot -ef =~
+// and the unary primaries -- and those tokens only carry their meaning UNQUOTED.
+// `[ "a" != "b" ]` tests inequality; `[ "a" "!=" "b" ]` compares the string "!="
+// and is true for every pair. The lane therefore models the operator as its own
+// word kind with a closed set, rather than as a bare word (whose alphabet has no
+// '!') or as a quoted literal (which would silently stop being an operator).
+
+data test_comparison_golden: String = "[ \"a\" != \"b\" ]\n"
+
+fn quoted_literal(text: String) -> Optional<Node> {
+  match bash_build_quoted_text(text: text) {
+    Absent => Absent
+    Present { value: inert } => bash_build_word_double_quoted(parts: [inert])
+  }
+}
+
+fn test_comparison_statement() -> Node {
+  match quoted_literal(text: "a") {
+    Absent => command([word("unreachable")])
+    Present { value: left } =>
+      match quoted_literal(text: "b") {
+        Absent => command([word("unreachable")])
+        Present { value: right } =>
+          bash_build_test_comparison(left: left, op: "!=", right: right)
+      }
+  }
+}
+
+test fn bracket_test_with_operator_serializes_installed_shape() -> Bool {
+  emits(stmt: test_comparison_statement(), golden: test_comparison_golden)
+}
+
+// RED: an operator the manual's node does not name is refused by the constructor.
+// '-ia' is one character off a real primary, which is exactly the text a hand
+// -built script would let through and bash would read as a filename argument.
+test fn test_operator_refuses_an_unlisted_operator() -> Bool {
+  match bash_build_word_test_operator(op: "-ia") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: the four operators the closed set leaves out on purpose. '!' and the
+// parentheses are negation and grouping -- constructs the lane already models --
+// and '<' '>' compare strings inside the brackets and redirect outside them, so
+// a word cannot carry them safely without a bracket-typed context to tell the
+// two apart. Refusing them is the difference between a checked constructor and
+// a string with a name on it.
+test fn test_operator_refuses_the_operators_that_are_not_words() -> Bool {
+  match bash_build_word_test_operator(op: "!") {
+    Absent =>
+      match bash_build_word_test_operator(op: "<") {
+        Absent =>
+          match bash_build_word_test_operator(op: ">") {
+            Absent =>
+              match bash_build_word_test_operator(op: "(") {
+                Absent => true
+                Present { value: _ } => false
+              }
+            Present { value: _ } => false
+          }
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// RED, and the fail-closed half: the check is not only on the way IN. A node
+// carrying the operator kind with text the set does not name -- the shape a
+// forged or stale node would have -- is refused by the EMITTER, with the reason
+// naming what was refused. Nothing reaches the byte stream that has no row.
+test fn test_operator_unlisted_is_refused_by_the_emitter() -> Bool {
+  match bash_emit_stmts(
+    statements: [command([
+      word("["),
+      bash_build_word_kinded(kind: ^bash_fold_word_kind_test_operator, value: "-ia"),
+      word("b"),
+      word("]")
+    ])],
+    set_e: false
+  ) {
+    Rejected { diagnostics: d } =>
+      diagnostics_reason_lexemes(diagnostics: d) == "bash_fold_serialize_test_operator_unlisted"
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED: the operator word and the quoted literal must not agree. If the quoted
+// form ever emitted the operator's bytes, the closed set would be decorating a
+// duplication; if the operator form ever quoted, the test would stop being a
+// test. Both sides are built through the SAME bracket builder, so the only
+// difference between the two spellings is the operator word itself.
+test fn quoted_operator_is_not_the_operator() -> Bool {
+  match bash_emit_stmts(
+    statements: [bash_build_test_bracket(words: [word("a"), bash_build_word_lit(text: "!="), word("b")])],
+    set_e: false
+  ) {
+    Accepted { value: quoted_spelling, diagnostics: _ } =>
+      match bash_emit_stmts(statements: [test_comparison_statement()], set_e: false) {
+        Accepted { value: operator_spelling, diagnostics: _ } =>
+          quoted_spelling != operator_spelling && operator_spelling == test_comparison_golden
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
