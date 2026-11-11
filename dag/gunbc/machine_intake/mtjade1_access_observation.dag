@@ -805,36 +805,41 @@ fn read_row_fru_capture(row: BmcFruCaptureRow) -> BmcFruCaptureRead uses fs: std
   let read = Filesystem.Read(path: row.capture_path as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: e } => BmcFruCaptureRefused { gap: FruCaptureUnreadable { error: e } }
-    FilesystemReadSucceeded { content: text } =>
-      match fru_capture_digest_check(content: text, expected_sha256: row.capture_sha256) {
-        FruCaptureDigestDiffers { gap: g } => BmcFruCaptureRefused { gap: g }
-        FruCaptureDigestAgrees => mint_committed_bmc_fru_capture(text: text, row: row)
-      }
+    FilesystemReadSucceeded { content: text } => mint_committed_bmc_fru_capture(text: text, row: row)
   }
 }
 
 // Cut the FRU text out of the capture -- the whole file, or the one section its row names -- decode the board
-// area to the identity grade, and mint the observation under the evidence kind the row attributes it to.
+// area to the identity grade, and mint the observation under the evidence kind the row attributes it to. THE
+// DIGEST GATE IS INSIDE THE MINTING ARM: a row keys its capture by content digest, and bytes that are not that
+// capture never become evidence, whether they came from a committed file or from a live run reading back the
+// content-addressed store it just wrote. A caller that hands this arm other bytes with a real row gets the typed
+// digest refusal, not a board identity attributed to a capture it did not read.
 fn mint_committed_bmc_fru_capture(text: String, row: BmcFruCaptureRow) -> BmcFruCaptureRead {
-  let fru_text = match row.capture_section {
-    none => text
-    Present { value: section } => join(inband_section_rows(content: text, marker: section), "\n")
-  }
-  match decode_fru_board_identity(fru_text: fru_text) {
-    FruBoardIdentityRefused { gap: g } => BmcFruCaptureRefused { gap: g }
-    FruBoardIdentityDecoded { fields: f } =>
-      BmcFruCaptureObserved {
-        observation: RecordedFruBoardIdentity {
-          subject: row.unit as NonEmptyStr,
-          board: f,
-          source: FruFromSessionBoundCapture {
-            capture_path: row.capture_path,
-            capture_sha256: row.capture_sha256,
-            attribution: row.attribution,
-            attribution_basis: row.attribution_basis,
-          },
-        },
+  match fru_capture_digest_check(content: text, expected_sha256: row.capture_sha256) {
+    FruCaptureDigestDiffers { gap: g } => BmcFruCaptureRefused { gap: g }
+    FruCaptureDigestAgrees => {
+      let fru_text = match row.capture_section {
+        none => text
+        Present { value: section } => join(inband_section_rows(content: text, marker: section), "\n")
       }
+      match decode_fru_board_identity(fru_text: fru_text) {
+        FruBoardIdentityRefused { gap: g } => BmcFruCaptureRefused { gap: g }
+        FruBoardIdentityDecoded { fields: f } =>
+          BmcFruCaptureObserved {
+            observation: RecordedFruBoardIdentity {
+              subject: row.unit as NonEmptyStr,
+              board: f,
+              source: FruFromSessionBoundCapture {
+                capture_path: row.capture_path,
+                capture_sha256: row.capture_sha256,
+                attribution: row.attribution,
+                attribution_basis: row.attribution_basis,
+              },
+            },
+          }
+      }
+    }
   }
 }
 

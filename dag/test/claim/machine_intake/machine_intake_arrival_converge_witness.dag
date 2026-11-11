@@ -76,6 +76,7 @@ import gunbc.machine_intake.arrival_converge {
   ArrivalStepIncomplete, PriorLifeBoundaryIncomplete, PriorLifeInputs, prior_life_boundary_step_ref, prior_life_boundary, PriorLifeIdentityForAnotherInstance,
   IdentityBindObserveRefused, IdentityObserveRefusal, IdentityBindAccessForAnotherInstance, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
   IdentityBindInputs, AccessDiscoverEstablished, BoardSerialAgreementRefusal, BoardSerialsDisagree, SmbiosSessionForAnotherController, classify_board_serial_agreement,
+  IdentityFruObserved, IdentityFruAbsent, FullFruRecordOfBmc, CommittedFruBoardArea, fru_evidence_source,
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
@@ -205,8 +206,9 @@ fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepRec
               && ((i.subject.attempt_id as NonEmptyStr) as String) == "o1c1-witness-run-a"
               && declaration_ref_eq(a: i.consumed_access.step_identity, b: access_discover_step_ref)
               && (i.agreement.serial as String) == "B810301000412080005AJ0C1"
-              && match i.agreement.fru.source {
+              && match fru_evidence_source(evidence: i.agreement.fru) {
                 FruFromCommittedCapture { capture_path: _, capture_sha256: sha } => (sha as String) == "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b"
+                FruFromSessionBoundCapture { capture_path: _, capture_sha256: _, attribution: _, attribution_basis: _ } => false
                 FruIdentityWitnessSupplied { realization: _ } => false
               }
               // The baseboard capture arm carries its SOL attribution as a required field, so there is no
@@ -1966,12 +1968,14 @@ fn srv13_identity_bind_inputs() -> IdentityBindInputs
   ]
 {
   witness_identity_bind_inputs(
-    fru: FruObserved {
-      observation: witness_recorded_fru_identity(
-        subject: "srv13" as NonEmptyStr,
-        fields: srv13_witness_fru_fields(),
-        realization: srv13_witness_realization(),
-      ),
+    fru: IdentityFruObserved {
+      evidence: FullFruRecordOfBmc {
+        observation: witness_recorded_fru_identity(
+          subject: "srv13" as NonEmptyStr,
+          fields: srv13_witness_fru_fields(),
+          realization: srv13_witness_realization(),
+        ),
+      },
     },
     smbios: SmbiosObserved {
       observation: witness_recorded_smbios_serial(
@@ -1999,8 +2003,9 @@ fn srv13_witness_fru_observation() -> RecordedFruObservation?
   ]
 {
   match srv13_identity_bind_inputs().fru {
-    FruObserved { observation: o } => Present { value: o }
-    FruReadRefused { gap: _ } => none
+    IdentityFruObserved { evidence: FullFruRecordOfBmc { observation: o } } => Present { value: o }
+    IdentityFruObserved { evidence: CommittedFruBoardArea { observation: _ } } => none
+    IdentityFruAbsent { gap: _ } => none
   }
 }
 
