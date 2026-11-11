@@ -14,10 +14,8 @@ import v2.lens.affected_set {
   repo_process_universe,
   repo_process_universe_from
 }
-import gunbc.ci.ci_spec {
-  Gate,
-  gunbc_ci_gates
-}
+import gunbc.ci.ci_gate { Gate }
+import gunbc.commit_workflow { gunbc_ci_gates }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THE DISPOSITION CHANGED WITH THE CUTOVER, and it is a fact about this module rather than a
