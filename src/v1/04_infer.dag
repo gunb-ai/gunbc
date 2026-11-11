@@ -2,7 +2,7 @@ module v1.compiler.infer
 
 import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
 import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
-import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope }
+import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent }
 import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments, field_access_spine }
 import v1.compiler.ownership { fold_terminal_expr }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
@@ -4065,11 +4065,93 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
 // table does not name (a kernel type, an extensional container, an alias) is read from its own shape; one that resolves to
 // nothing refuses rather than comparing by the target.
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
-  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
+  let applied = equality_reference_applies_arguments(peeled: peeled)
+  // THE WALK JUDGES THE DECLARATION; THE APPLIED ARGUMENTS ARE JUDGED WHERE THEY ARE WRITTEN. This is the one
+  // place that joins admission and emission for an applied reference, and it answers the question the emitted
+  // Rust answers: a derived `impl<V: PartialEq> PartialEq for Engine<V>` holds exactly when the type bound to
+  // V carries PartialEq, so every argument written at the use must itself be equality-admissible -- not merely
+  // the declaration's schema. Measured on the emitted v2 crate the derive roster
+  // (v1.compiler.trait_derive_emit::v1_emit_struct_derives, v1_emit_enum_derives) narrows to Clone only for a
+  // carrier that reaches a function value, and this walk refuses on the same condition, so an admitted `==`
+  // always meets a carrier the emitter gave PartialEq to. While the arguments were not judged at the use,
+  // DemandEngine<NativeDemandValue> went by-target and the emitted body compared it with Rust `==` against a
+  // carrier the roster had narrowed to Clone: E0369, v2-bootstrap run 42575201140 at 0619830d7f6e.
+  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: equality_scope_with_params(scope: scope, rt: rt), visited: visited, depth: depth, at_root: at_root)
+  if w.refusal != none || !applied || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
     w
   } else {
     equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+  }
+}
+
+// AN APPLIED ARGUMENT THAT IS A PARAMETER OF THE GENERIC BEING WALKED COMPARES BY THE TARGET. The authority is
+// the declared roster inference already carries for the declaration in scope
+// (InferScope.enclosing_declared_type_param_names, read by v1.compiler.infer::name_is_enclosing_declared_type_parameter
+// and populated for a function body by v1.compiler.infer::fn_type_param_names); the equality walk populates it for
+// the declaration whose members it is walking (equality_scope_with_params, called from
+// equality_resolved_declaration_structure). This is deliberately NOT "any name the reading could not bind": an
+// unresolved name arrives unidentified too, so an arm built on that admits every typo -- measured, with such an
+// arm a member applied to List<NedDiag> with std.types unimported admitted. The refusal is kept by the executing
+// control test.claim.self_host_equality_admission_witness::an_unresolved_type_name_still_refuses_blocking.
+// Why the parameter must pass: the emitted Rust bounds EVERY parameter of a generic carrier
+// (impl<V: PartialEq> PartialEq for Engine<V>), so the carrier's own shape is admissible for every instantiation;
+// the requirement is discharged where the generic is APPLIED, by this same predicate over the argument actually
+// written there (equality_resolved_declaration_structure -> equality_arguments_by_target). Measured at
+// 3d34fc61ca6e the refused sites were exactly this shape: gunbc.host.host_effect::
+// host_effect_is_converge_loop_evidence refused at the applied argument of `CreateCause<K>` inside EffectShape's
+// schema, and every nested specimen in test.claim.self_host_equality_admission_witness refused at its inner
+// declaration. The pair that keeps this arm honest, both measured at this head: Engine<LeafVal> admits, while
+// Engine<Node> refuses at the route arm and Engine<Value> (a carrier reaching a function value) refuses at its own
+// table entry -- the DemandEngine<NativeDemandValue> shape that produced E0369 in v2-bootstrap run 42575201140 at
+// 0619830d7f6e must never pass here.
+fn equality_argument_is_enclosing_type_parameter(n: Node, scope: InferScope) -> Bool {
+  name_is_enclosing_declared_type_parameter(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n), scope: scope)
+}
+
+// THE ROSTER OF THE DECLARATION THE EQUALITY WALK HAS ENTERED. Its parameters are the names that may appear free
+// in its members, and the walk reaches those members through v1.compiler.infer::equality_product_walk and
+// v1.compiler.infer::equality_coproduct_walk without carrying anything but the scope -- so the roster travels in
+// the scope, in the same field the rest of inference reads. Extending rather than replacing keeps an outer
+// declaration's names visible to an inner walk.
+fn equality_scope_with_params(scope: InferScope, rt: Node) -> InferScope {
+  let names = rt.params |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: p))
+  if names |> count == 0 {
+    scope
+  } else {
+    InferScope {
+      type_env: scope.type_env
+      func_env: scope.func_env
+      locals: scope.locals
+      body_locals: scope.body_locals
+      match_bound_names: scope.match_bound_names
+      module_name: scope.module_name
+      service_registry: scope.service_registry
+      item_registry: scope.item_registry
+      lambda_param_provenance: scope.lambda_param_provenance
+      caller_decl_name: scope.caller_decl_name
+      in_flight_lambda_param_names: scope.in_flight_lambda_param_names
+      enclosing_declared_type_param_names: concat(scope.enclosing_declared_type_param_names, names)
+    }
+  }
+}
+
+// A UNIT-VARIANT PHANTOM TYPE ARGUMENT IS A MARKER, and it compares by the target. `type RackUnit =
+// Measure<Length, RackUnitHeight, Nat>` (std.measure) passes coproduct unit variants as its dimension and
+// scale arguments; they name no declaration, so the by-target table cannot answer for them and the walk
+// refused the whole application -- gunbc.fleet.fleet_physical_inventory::
+// fleet_nominal_rackmount_arithmetic_holds and gunbc.compute.compute_seat_ensure::seat_fell_by, measured
+// at 3d34fc61ca6e with the pre-repair infer. The emitter already decides what these symbols ARE, through
+// the same authority resolve consumes (v1.compiler.infer_env::lookup_unit_variant_phantom_type, the
+// exact-one judgment): a unit marker struct carrying the full derive roster -- measured in the emitted v2
+// crate, `pub struct Length;` and `pub struct RackUnitHeight;` both with
+// `#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]`. A marker declares
+// no fields, so v1.compiler.trait_derive_emit::v1_emit_struct_derives never narrows it, and admission
+// answers by-target for exactly that set. When the judgment is absent, or its evidence is unavailable, the
+// argument refuses as before.
+fn is_unit_variant_phantom_argument(n: Node, scope: InferScope) -> Bool {
+  match lookup_unit_variant_phantom_type(env: scope.type_env, variant_name: authored_name_at(source_indices: scope.type_env.source_indices, node: n)) {
+    UnitVariantPhantomPresent { variant: _ } => true
+    _ => false
   }
 }
 
@@ -4112,6 +4194,10 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
                     let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
                     if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
                       equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
+                    } else if is_unit_variant_phantom_argument(n: peeled, scope: scope) {
+                      true
+                    } else if equality_argument_is_enclosing_type_parameter(n: peeled, scope: scope) {
+                      true
                     } else {
                       false
                     }
@@ -21681,7 +21767,55 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
 // The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
 // is built once over every module (build_symbol_index_census) and every module's type environment
 // carries the same one, so the first module's is the closure's.
-fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+// THE SINGLE IMPORT AUTHORITY. For each module, the leaf names it explicitly imports (`import path { a, b }`)
+// mapped to the ONE module path they were imported from -- but only where that path actually declares the
+// name in the closure-wide registry (an import of a name the owner does not declare is not a binding). A bare
+// value-reference resolves through this BEFORE consulting the closure-wide leaf-owner index, so a leaf whose
+// spelling two modules declare is NOT ambiguous for the module that imported it from a single named owner.
+// This is the fact the emitter's `lookup_item_for_declared_value_ref` was missing: it went qualifier -> own
+// declaration -> leaf-owner index, so an imported bare reference to a two-owner leaf fell through to
+// `LeafAmbiguous` -- the exact population #16155 patched at six call sites by hand-qualifying them. Glob
+// imports are deliberately EXCLUDED: a glob import names no owner, so a leaf pulled in only by a glob keeps no
+// single owner to resolve to and correctly remains in the ambiguous population (the importer never stated which
+// module it meant). This ONE function feeds BOTH the emitter (via emit_info.bare_import_owner_index) and the
+// resolution pass `ambiguous_leaf_value_ref_diagnostics`, so the two cannot drift on what an import resolves.
+fn bare_import_owner_index(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, Map<String, String>> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let si = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: si, node: tm.module)
+    let leaf_to_owner = module_imports(n: tm.module) |> fold(init: empty_map(), f: (inner, imp) =>
+      let import_path = authored_name_at(source_indices: si, node: imp)
+      import_specific_names_at(n: imp, source_indices: si)
+        |> fold(init: inner, f: (inner_names, imported_name) =>
+          match map_get(inner_names, imported_name) {
+            Present { value: _ } => inner_names
+            Absent =>
+              if map_get(registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: import_path, decl_name: imported_name })) != none {
+                map_insert(inner_names, imported_name, import_path)
+              } else {
+                inner_names
+              }
+          }
+        )
+    )
+    map_insert(acc, module_name, leaf_to_owner)
+  )
+}
+
+// The one owner a module's import binding gives a bare reference, if any. Read the SAME way by the emitter and
+// the resolution pass so "does the import resolve this" is one predicate, not two.
+fn imported_owner_of_bare_ref(import_index: Map<String, Map<String, String>>, module_name: String, leaf: String) -> String? {
+  match map_get(import_index, module_name) {
+    Present { value: leaf_to_owner } => map_get(leaf_to_owner, leaf)
+    Absent => none
+  }
+}
+
+// THE ONE FOLD OVER EVERY MODULE'S ITEMS INTO AN EmitInfoBuildState. build_emit_graph_info (the emitter's
+// full info) and build_value_ref_graph_info (the resolution pass's lean info) share this so neither re-types
+// the module/item walk (gunbc.design_argument::single_authority, minimize_redundancy). It is the only place
+// the per-item summary is computed.
+fn emit_graph_info_build_state(modules: List<TypedModule>) -> EmitInfoBuildState {
   let qualified_names = match modules |> first {
     Present { value: m } => m.type_env.symbol_index
     Absent => empty_symbol_index()
@@ -21704,7 +21838,62 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+}
+
+// THE RESOLUTION PASS'S LEAN EmitGraphInfo. ambiguous_leaf_value_ref_diagnostics runs on EVERY resolved
+// compile (a required-floor correctness gate), so it must NOT pay the full build_emit_graph_info: the 04_items
+// ResolvedGraph comment records that folding the whole info at resolve time cost ~4 GB at the required-floor
+// peak for callers that never emit. This builds ONLY what the pass's classify_value_ref path actually reads
+// -- type_summaries + variant_to_enum (effective_variant_parent) and the two registry projections
+// item_leaf_owner_modules + bare_import_owner_index -- reusing the SAME fold (emit_graph_info_build_state) and
+// the SAME leaf/import builders the emitter uses. The other EmitGraphInfo fields (the enum-variant-shape fold,
+// the recursive-type fold, the fn/type-decl identity indices) are the expensive, unread-at-refusal ones and are
+// left at empty_emit_graph_info's defaults. Verified: classify_value_ref and its lookup/effective_variant_parent
+// tree touch no field but these four, so the refusal decision here is identical to the emitter's. Required-floor
+// cost of the pass is therefore one type-summary fold plus two registry index passes, not the full emit info.
+fn build_value_ref_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  let built = emit_graph_info_build_state(modules)
+  let base = empty_emit_graph_info()
+  EmitGraphInfo {
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
+    bare_import_owner_index: bare_import_owner_index(modules: modules, registry: registry),
+    type_summaries: built.type_summaries,
+    variant_to_enum: derive_variant_to_enum(type_summaries: built.type_summaries),
+    type_decl_items: base.type_decl_items,
+    data_variant_wire_spellings: base.data_variant_wire_spellings,
+    fn_decl_items: base.fn_decl_items,
+    fn_decl_identity_items: base.fn_decl_identity_items,
+    fn_map_key_bounds: base.fn_map_key_bounds,
+    fn_equality_bounds: base.fn_equality_bounds,
+    recursive_type_set: base.recursive_type_set,
+    fielded_variants: base.fielded_variants,
+    positional_payload_variants: base.positional_payload_variants,
+    shared_types: base.shared_types,
+    ownership_index: base.ownership_index,
+    moved_argument_index: base.moved_argument_index,
+    movable: base.movable,
+    moved_argument_occurrences: base.moved_argument_occurrences,
+    owned_bindings: base.owned_bindings,
+    read_only_params_index: base.read_only_params_index,
+    read_only_params: base.read_only_params,
+    clone_bounded_type_params: base.clone_bounded_type_params,
+    map_key_required_type_names: base.map_key_required_type_names,
+    clone_impl_required_type_params: base.clone_impl_required_type_params,
+    map_key_bounded_type_params: base.map_key_bounded_type_params,
+    fn_generic_param_names: base.fn_generic_param_names,
+    fn_type_env: base.fn_type_env,
+    fn_return_type: base.fn_return_type,
+    expected_type: base.expected_type,
+    tco_cursor_params: base.tco_cursor_params,
+    tco_cursor_tails: base.tco_cursor_tails,
+    trmc_out: base.trmc_out,
+    dying_base_sites: base.dying_base_sites
+  }
+}
+
+fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  let built = emit_graph_info_build_state(modules)
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
@@ -21719,6 +21908,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: registry),
+    bare_import_owner_index: bare_import_owner_index(modules: modules, registry: registry),
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),

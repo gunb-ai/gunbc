@@ -1,0 +1,637 @@
+module v2.test.claim.bash_emit_constructs
+
+// Witness for the four bash_emit capability gaps the srv1 replica boot path
+// recorded, plus the shapes the launcher render additionally needs. Every
+// construct gets: a POSITIVE serialization control (the emitted bytes are the
+// installed bytes), a RED control (the shape that must not be emitted is
+// refused, or differs), and — where the fold has an ingest side — a control
+// that the emitted text and the ingest lexical rows are the SAME rows, not two
+// spellings that happen to agree today.
+//
+// Upstream authority: GNU Bash Reference Manual, nodes "Shell Functions",
+// "Conditional Constructs" (case), "Arrays", "Shell Parameters",
+// "Comments", "Looping Constructs", "Definition of Terms", "Quotes".
+
+import std.algebra { list_at_optional, list_head }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.extdeps.languages.bash {
+  bash_kw_case_arm_newline_text,
+  bash_kw_case_block_lead_text,
+  bash_kw_case_clause_indent_text,
+  bash_kw_case_clause_sep_text,
+  bash_kw_case_text,
+  bash_kw_done_text,
+  bash_kw_do_text,
+  bash_kw_esac_text,
+  bash_kw_for_text,
+  bash_kw_in_text
+}
+import v2.extdeps.languages.bash_build {
+  bash_build_array_assign,
+  bash_build_brace_group_from_stmts,
+  bash_build_case,
+  bash_build_assign,
+  bash_build_case_clause_block,
+  bash_build_case_clause_inline,
+  bash_build_command_from_word_nodes,
+  bash_build_comment,
+  bash_build_for,
+  bash_build_function_def,
+  bash_build_word_array_expansion,
+  bash_build_word_bare,
+  bash_build_word_lit,
+  bash_build_word_double_quoted,
+  bash_build_word_param_error,
+  bash_build_word_var_bare,
+  bash_build_quoted_text,
+  bash_build_word_positional_all,
+  bash_build_with_redir_stderr_to_stdout,
+  bash_build_with_redir_stdout_to_stderr
+}
+import v2.extdeps.languages.bash_command_fold { bash_fold_relation_row_witness,
+  bash_fold_lex_rule,
+  bash_ingest_lex_rules
+}
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.std.witness { Holds, Violates }
+import std.host_text { chars }
+import std.types { List }
+import v2.std.compilers.lexing { LexRule }
+import v2.std.node { Node, Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+// A word that reaches the byte stream unquoted, or nothing: every positive
+// control below is built from words a host would actually see.
+// Word helper for the controls below. It tries the UNQUOTED bare word first —
+// that is the shape the srv1 boot path uses for arguments, paths and ports —
+// and only falls back to a quoted literal when the text cannot be bare, so a
+// golden that says "'a' " really is the lane quoting a literal and not a bare
+// word that silently changed shape.
+fn word(text: String) -> Node {
+  match bash_build_word_bare(text: text) {
+    Present { value: n } => n
+    Absent => bash_build_word_lit(text: text)
+  }
+}
+
+fn command(words: List<Node>) -> Node {
+  bash_build_command_from_word_nodes(words: words)
+}
+
+fn emits(stmt: Node, golden: String) -> Bool {
+  match bash_emit_stmts(statements: [stmt], set_e: false) {
+    Accepted { value: spelling, diagnostics: _ } => spelling == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ── function definition ────────────────────────────────────────────────────
+// Bash manual, node "Shell Functions": name () compound-command. The srv1
+// container command's logger is this shape; '(){' with no space and '; }' to
+// close are the bytes installed on the host.
+
+data ev_logger_function_golden: String = "ev(){ echo up; }\n"
+
+fn ev_logger_function_statement() -> Node {
+  match bash_build_function_def(
+    name: "ev",
+    body: [command([word("echo"), word("up")])]
+  ) {
+    Present { value: n } => n
+    Absent => command([word("unreachable")])
+  }
+}
+
+test fn function_definition_serializes_installed_shape() -> Bool {
+  emits(stmt: ev_logger_function_statement(), golden: ev_logger_function_golden)
+}
+
+// RED: a name that is not a bash Name cannot become a function. 'ev; rm' would
+// define ev and then run rm.
+test fn function_definition_refuses_a_name_that_is_not_a_name() -> Bool {
+  match bash_build_function_def(
+    name: "ev; rm",
+    body: [command([word("echo")])]
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: an empty body is not a compound-command.
+test fn function_definition_refuses_an_empty_body() -> Bool {
+  match bash_build_function_def(name: "ev", body: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── 2>&1 and >&2 ───────────────────────────────────────────────────────────
+// The productions and serializer arms predate this PR (the lane's own golden is
+// "'true' 2>&1"); what was missing was the named builders. RED: the two
+// duplications are different bytes, so a caller cannot get one for the other.
+
+data merge_stderr_golden: String = "make build 2>&1\n"
+data merge_stdout_golden: String = "echo nope >&2\n"
+
+test fn merge_stderr_to_stdout_serializes() -> Bool {
+  emits(
+    stmt: bash_build_with_redir_stderr_to_stdout(
+      inner: command([word("make"), word("build")])
+    ),
+    golden: merge_stderr_golden
+  )
+}
+
+test fn merge_stdout_to_stderr_serializes() -> Bool {
+  emits(
+    stmt: bash_build_with_redir_stdout_to_stderr(
+      inner: command([word("echo"), word("nope")])
+    ),
+    golden: merge_stdout_golden
+  )
+}
+
+test fn the_two_descriptor_merges_are_not_the_same_bytes() -> Bool {
+  match bash_emit_stmts(
+    statements: [
+      bash_build_with_redir_stderr_to_stdout(
+        inner: command([word("echo"), word("x")])
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: merged, diagnostics: _ } =>
+      match bash_emit_stmts(
+        statements: [
+          bash_build_with_redir_stdout_to_stderr(
+            inner: command([word("echo"), word("x")])
+          )
+        ],
+        set_e: false
+      ) {
+        Accepted { value: reversed, diagnostics: _ } => merged != reversed
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ── case ───────────────────────────────────────────────────────────────────
+// Bash manual, node "Conditional Constructs": case word in [ [(] pattern
+// [| pattern] command-list ;;]… esac. The roster arms are the block spelling,
+// the default arm the inline one.
+
+data roster_case_golden: String = "case $IDX in\n  0)\n    docker rm -f r0\n    ;;\n  *) echo bad >&2; exit 2 ;;\nesac\n"
+
+fn roster_case_statement() -> Node {
+  match bash_build_case_clause_block(
+    pattern: "0",
+    body: [command([word("docker"), word("rm"), word("-f"), word("r0")])]
+  ) {
+    Present { value: block } =>
+      match bash_build_case_clause_inline(
+        pattern: "*",
+        body: [
+          bash_build_with_redir_stdout_to_stderr(
+            inner: command([word("echo"), word("bad")])
+          ),
+          command([word("exit"), word("2")])
+        ]
+      ) {
+        Present { value: inline } =>
+          // The case word is the unquoted $IDX exactly as the launcher holds it.
+          match bash_build_word_var_bare(name: "IDX") {
+            Absent => command([word("unreachable")])
+            Present { value: w } =>
+              match bash_build_case(word: w, clauses: [block, inline]) {
+                Present { value: n } => n
+                Absent => command([word("unreachable")])
+              }
+          }
+        Absent => command([word("unreachable")])
+      }
+    Absent => command([word("unreachable")])
+  }
+}
+
+test fn case_serializes_the_installed_layout() -> Bool {
+  emits(stmt: roster_case_statement(), golden: roster_case_golden)
+}
+
+// RED: a pattern with a space in it is two patterns, not one. Bash would read
+// '0 1)' as pattern 0 with garbage after it; the builder refuses.
+test fn case_refuses_a_pattern_with_a_space() -> Bool {
+  match bash_build_case_clause_block(pattern: "0 1", body: [command([word("true")])]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: a case with no arms. 'case w in esac' is legal bash and useless; an
+// arm list that came out empty is a caller bug, so it is refused at both ends.
+test fn case_refuses_no_arms() -> Bool {
+  match bash_build_case(word: word("X"), clauses: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ROUND TRIP THROUGH INGEST: the keyword texts the case statement emits are the
+// very rows the fold's ingest lexical classes are declared with. If someone
+// respells 'case' on one side, this reddens.
+test fn case_keywords_are_the_ingest_rows() -> Bool {
+  let rules = bash_ingest_lex_rules().rules
+  list_head(xs: rules) != Absent &&
+    list_contains_lex_rule(rules: rules, token_class: ^bash_ingest_kw_case, text: bash_kw_case_text) &&
+    list_contains_lex_rule(rules: rules, token_class: ^bash_ingest_kw_esac, text: bash_kw_esac_text) &&
+    list_contains_lex_rule(
+      rules: rules,
+      token_class: ^bash_ingest_kw_case_clause_sep,
+      text: bash_kw_case_clause_sep_text
+    ) &&
+    list_contains_lex_rule(rules: rules, token_class: ^bash_ingest_kw_for, text: bash_kw_for_text) &&
+    list_contains_lex_rule(rules: rules, token_class: ^bash_ingest_kw_do, text: bash_kw_do_text) &&
+    list_contains_lex_rule(rules: rules, token_class: ^bash_ingest_kw_done, text: bash_kw_done_text)
+}
+
+fn list_contains_lex_rule_matches(
+  rules: List<LexRule>,
+  index: Int,
+  token_class: Symbol,
+  text: String
+) -> Bool {
+  match list_at_optional(xs: rules, index: index) {
+    Present { value: rule } =>
+      match rule {
+        TokenRule { token_class: c, pattern: p } =>
+          c != token_class ||
+          (
+            match p {
+              LiteralPattern { text: t } => t == chars(text: text)
+              _ => false
+            }
+          )
+        _ => true
+      }
+    Absent => false
+  }
+}
+
+fn list_contains_lex_rule(rules: List<LexRule>, token_class: Symbol, text: String) -> Bool {
+  list_contains_lex_rule_from(rules: rules, index: 0, token_class: token_class, text: text)
+}
+
+fn list_contains_lex_rule_from(
+  rules: List<LexRule>,
+  index: Int,
+  token_class: Symbol,
+  text: String
+) -> Bool {
+  match list_at_optional(xs: rules, index: index) {
+    Absent => false
+    Present { value: rule } =>
+      match rule {
+        TokenRule { token_class: c, pattern: p } =>
+          c == token_class &&
+          (
+            match p {
+              LiteralPattern { text: t } => t == chars(text: text)
+              _ => false
+            }
+          ) ||
+            list_contains_lex_rule_from(
+              rules: rules,
+              index: index + 1,
+              token_class: token_class,
+              text: text
+            )
+        _ =>
+          list_contains_lex_rule_from(
+            rules: rules,
+            index: index + 1,
+            token_class: token_class,
+            text: text
+          )
+      }
+  }
+}
+
+// ── arrays ─────────────────────────────────────────────────────────────────
+// Bash manual, node "Arrays": name=(word1 word2 …), and "${name[@]}" expands to
+// every member, each one a separate word. Load-bearing: an emitted exec without
+// the quoted expansion re-splits the engine arguments.
+
+data array_assign_golden: String = "ENGINE_ARGS=('a' 'b')\n"
+data array_expansion_golden: String = "exec \"$\{ENGINE_ARGS[@]}\" 2>&1\n"
+
+fn array_assign_statement() -> Node {
+  match bash_build_array_assign(
+    name: "ENGINE_ARGS",
+    elements: [bash_build_word_lit(text: "a"), bash_build_word_lit(text: "b")]
+  ) {
+    Present { value: n } => n
+    Absent => command([word("unreachable")])
+  }
+}
+
+fn exec_array_statement() -> Node {
+  match bash_build_word_array_expansion(name: "ENGINE_ARGS") {
+    Present { value: expanded } =>
+      bash_build_with_redir_stderr_to_stdout(
+        inner: command([word("exec"), expanded])
+      )
+    Absent => command([word("unreachable")])
+  }
+}
+
+test fn array_assignment_serializes() -> Bool {
+  emits(stmt: array_assign_statement(), golden: array_assign_golden)
+}
+
+test fn array_expansion_keeps_its_quotes_and_stays_one_word() -> Bool {
+  emits(stmt: exec_array_statement(), golden: array_expansion_golden)
+}
+
+// RED: an UNQUOTED array expansion is the bug this kind exists to prevent. A
+// caller cannot reach it by asking for a bare word: the bare-word constructor
+// refuses '$', so the unquoted form simply cannot be built.
+test fn unquoted_array_expansion_cannot_be_built() -> Bool {
+  match bash_build_word_bare(text: "$\{ENGINE_ARGS[@]}") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: an empty array assignment. 'name=()' declares an empty array, which is
+// never what a render means here.
+test fn array_assign_refuses_no_elements() -> Bool {
+  match bash_build_array_assign(name: "ENGINE_ARGS", elements: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── comment ────────────────────────────────────────────────────────────────
+// Bash manual, node "Comments": a word beginning with '#' is ignored to the end
+// of the line. The '#!' interpreter line is the same shape to the shell.
+
+data comment_golden: String = "# lil-replica: rendered boot path\n"
+
+test fn comment_serializes() -> Bool {
+  match bash_build_comment(text: "# lil-replica: rendered boot path") {
+    Present { value: n } => emits(stmt: n, golden: comment_golden)
+    Absent => false
+  }
+}
+
+// RED: text that is not a comment would become live shell.
+test fn comment_refuses_text_without_the_hash() -> Bool {
+  match bash_build_comment(text: "rm -rf /") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: a newline inside the text ends the comment and hands the rest of the
+// string to the shell, so it is refused rather than escaped.
+test fn comment_refuses_an_embedded_newline() -> Bool {
+  match bash_build_comment(text: "# one\ntwo") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── for loop ───────────────────────────────────────────────────────────────
+// Bash manual, node "Looping Constructs": for name [ [in [words …] ; ] do
+// commands; done.
+
+data for_golden: String = "for i in 1 2; do echo up; done\n"
+
+fn for_statement() -> Node {
+  match bash_build_for(
+    name: "i",
+    words: [word("1"), word("2")],
+    body: [command([word("echo"), word("up")])]
+  ) {
+    Present { value: n } => n
+    Absent => command([word("unreachable")])
+  }
+}
+
+test fn for_serializes() -> Bool {
+  emits(stmt: for_statement(), golden: for_golden)
+}
+
+// RED: the loop variable is a Name.
+test fn for_refuses_a_loop_variable_that_is_not_a_name() -> Bool {
+  match bash_build_for(
+    name: "i; rm",
+    words: [word("1")],
+    body: [command([word("true")])]
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── brace group ────────────────────────────────────────────────────────────
+// Bash manual, node "Grouping Commands": { list; }. The launcher's refusals are
+// '{ echo "…" >&2; exit 3; }'; the rows existed, the serializer arm and the
+// builder did not.
+
+data brace_group_golden: String = "{ echo no; exit 3; }\n"
+
+test fn brace_group_serializes() -> Bool {
+  emits(
+    stmt: bash_build_brace_group_from_stmts(
+      stmts: [
+        command([word("echo"), word("no")]),
+        command([word("exit"), word("3")])
+      ]
+    ),
+    golden: brace_group_golden
+  )
+}
+
+// ── parameter expansions ───────────────────────────────────────────────────
+// Bash manual, node "Shell Parameters": ${parameter:?word} aborts with word when
+// the parameter is unset or null; $* is the positional parameters as one word.
+
+data param_error_golden: String = "IDX=$\{1:?usage: replica index required}\n"
+data positional_all_golden: String = "ev $*\n"
+
+fn param_error_statement() -> Node {
+  match bash_build_word_param_error(
+    index: "1",
+    word: "usage: replica index required"
+  ) {
+    Present { value: v } => bash_build_assign(name: "IDX", value: v)
+    Absent => command([word("unreachable")])
+  }
+}
+
+test fn positional_all_serializes() -> Bool {
+  match bash_build_word_positional_all(which: "*") {
+    Present { value: star } =>
+      emits(stmt: command([word("ev"), star]), golden: positional_all_golden)
+    Absent => false
+  }
+}
+
+// RED: $* and $@ only. A name is the var word kind's business.
+test fn positional_all_refuses_anything_but_star_and_at() -> Bool {
+  match bash_build_word_positional_all(which: "IDX") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: the parameter of ${parameter:?word} is a positional index.
+test fn param_error_refuses_a_non_numeric_index() -> Bool {
+  match bash_build_word_param_error(index: "one", word: "usage") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── bare words ─────────────────────────────────────────────────────────────
+// The lane's other literal kind single-quotes everything (its own golden is
+// "'true' 2>&1"); the installed srv1 scripts are bare. The constructor refuses
+// anything that would split, glob or expand — there is no quoting fallback.
+
+test fn bare_word_serializes_unquoted() -> Bool {
+  match bash_build_word_bare(text: "mapfile") {
+    Present { value: n } =>
+      emits(stmt: command([n]), golden: "mapfile\n")
+    Absent => false
+  }
+}
+
+test fn bare_word_refuses_everything_that_would_split_or_expand() -> Bool {
+  match bash_build_word_bare(text: "two words") {
+    Absent =>
+      match bash_build_word_bare(text: "a;b") {
+        Absent =>
+          match bash_build_word_bare(text: "$X") {
+            Absent =>
+              match bash_build_word_bare(text: "*.log") {
+                Absent =>
+                  match bash_build_word_bare(text: "a|b") {
+                    Absent => match bash_build_word_bare(text: "") {
+                      Absent => true
+                      Present { value: _ } => false
+                    }
+                    Present { value: _ } => false
+                  }
+                Present { value: _ } => false
+              }
+            Present { value: _ } => false
+          }
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// A word that DOES reach the byte stream must keep the characters a host path
+// or flag uses, or the migration cannot be byte-exact.
+test fn bare_word_accepts_the_shapes_the_boot_path_needs() -> Bool {
+  match bash_build_word_bare(text: "/root/replicas/0/args") {
+    Present { value: _ } =>
+      match bash_build_word_bare(text: "--ulimit=memlock=-1:-1") {
+        Present { value: _ } =>
+          match bash_build_word_bare(text: "18860:18860") {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// ── double-quoted word ─────────────────────────────────────────────────────
+// Bash manual, node "Double Quotes": inside double quotes every character loses
+// its special meaning except '$', '`', '"', '\' and (interactively) '!'. The
+// container command's logger line 'ev "START srv1 gpu3"' is this shape, so the
+// lane models the quoted word as its parts and checks the inert text against
+// exactly that set — an expansion can never hide inside a literal.
+
+data quoted_message_golden: String = "ev \"START srv1 gpu3\" 2>&1\n"
+
+fn quoted_message_statement() -> Node {
+  match bash_build_quoted_text(text: "START srv1 gpu3") {
+    Absent => command([word("unreachable")])
+    Present { value: text } =>
+      match bash_build_word_double_quoted(parts: [text]) {
+        Absent => command([word("unreachable")])
+        Present { value: quoted } =>
+          bash_build_with_redir_stderr_to_stdout(
+            inner: command([word("ev"), quoted])
+          )
+      }
+  }
+}
+
+test fn double_quoted_word_serializes_installed_shape() -> Bool {
+  emits(stmt: quoted_message_statement(), golden: quoted_message_golden)
+}
+
+// RED: '$' is not inert between double quotes — it expands.
+test fn quoted_text_refuses_a_dollar() -> Bool {
+  match bash_build_quoted_text(text: "cost $1") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: a '"' between double quotes would end the quote.
+test fn quoted_text_refuses_a_double_quote() -> Bool {
+  match bash_build_quoted_text(text: "say \"hi\"") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: a quoted word with no parts is not a word.
+test fn double_quoted_refuses_no_parts() -> Bool {
+  match bash_build_word_double_quoted(parts: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: the unquoted bare word refuses everything bash would split or expand on
+// (Bash manual, nodes "Definitions" and "Word Expansions").
+test fn bare_word_refuses_bytes_that_would_split_or_expand() -> Bool {
+  match bash_build_word_bare(text: "a b") {
+    Absent =>
+      match bash_build_word_bare(text: "a;b") {
+        Absent =>
+          match bash_build_word_bare(text: "a|b") {
+            Absent =>
+              match bash_build_word_bare(text: "a$b") {
+                Absent =>
+                  match bash_build_word_bare(text: "a*b") {
+                    Absent =>
+                      match bash_build_word_bare(text: "a(b") {
+                        Absent => true
+                        Present { value: _ } => false
+                      }
+                    Present { value: _ } => false
+                  }
+                Present { value: _ } => false
+              }
+            Present { value: _ } => false
+          }
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}

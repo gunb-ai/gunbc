@@ -21293,7 +21293,7 @@ fn decide_rest_exchange(
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
-                let cause = rest_body_not_json_cause(&error.to_string());
+                let cause = rest_body_not_json_cause(&error.to_string(), body.as_bytes().len());
                 return refused(rest_body_undecodable_value(ctx, status, cause));
             }
         };
@@ -21995,12 +21995,45 @@ fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> 
         .unwrap_or_default()
 }
 
+/// WHICH NAMES THESE ARE: the members of a response that were left uninhabited, and whether every one
+/// of them is a field the operation's declared output actually names. The distinction decides what the
+/// refusal may say, so it is carried with the names rather than re-derived at the renderer.
+///
+/// Names out of the declaration tree may be published on a credential path -- they are facts about this
+/// repository, the same class of fact `rest_response_declared_cause` already publishes as its located
+/// field. Names the RESPONSE presented may not, and `map_response_to_value_json` / `map_response_to_value`
+/// fall through to `json_to_value` when the output type resolves to no children at all, which puts the
+/// body's own keys into the record. Hence `declared`, computed once from the declaration here.
+pub struct RestNullMembers {
+    pub paths: Vec<String>,
+    pub declared: bool,
+}
+
+fn rest_output_declared_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
+    op_node
+        .inferred
+        .as_deref()
+        .and_then(|inferred| match inferred {
+            InferredNode::Resolved { node } => Some(node),
+            _ => None,
+        })
+        .map(|return_type| {
+            return_type
+                .children
+                .iter()
+                .map(|child| authored_name_at(ctx.si(), child.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn rest_payload_null_fields(
     mapped: &Value,
     op_node: &Rc<Node>,
     ctx: &InterpContext,
-) -> Option<String> {
+) -> Option<RestNullMembers> {
     let optional = rest_optional_output_field_names(op_node, ctx);
+    let declared = rest_output_declared_field_names(op_node, ctx);
     match mapped {
         Value::Record { fields, .. } => {
             let missing: Vec<String> = fields
@@ -22014,10 +22047,19 @@ fn rest_payload_null_fields(
             if missing.is_empty() {
                 None
             } else {
-                Some(missing.join(","))
+                // Every name must be a declaration, not just most of them: one body-shaped record in a
+                // mixed set would put a presented key on the credential path beside the declared names.
+                Some(RestNullMembers {
+                    declared: missing.iter().all(|name| declared.contains(name)),
+                    paths: missing,
+                })
             }
         }
-        Value::Null => Some("<mapped-null>".to_string()),
+        // No record at all: there is no name to vouch for, only the fact that one was expected.
+        Value::Null => Some(RestNullMembers {
+            paths: vec!["<mapped-null>".to_string()],
+            declared: false,
+        }),
         _ => None,
     }
 }
@@ -22169,13 +22211,16 @@ pub enum RestResponseDecodeCause {
 /// each renderer below takes the host- or body-derived text it refuses to publish, and the accompanying
 /// test plants a marker in that exact value. Dropping the text costs diagnosis, so the loss is stated
 /// rather than hidden: a body-read failure keeps only the status (the transport's own io text echoed
-/// request material into a token-bearing path), a non-JSON body keeps only that it was not JSON (a
-/// `serde_json` message carries offsets and sometimes the offending token), and uninhabited declared
-/// members keep only how many there were. `rest_payload_null_fields` reports its names out of the mapped
-/// record, and that record is NOT reliably declared-side: `decode_json_by_declared_field` falls through to
-/// `json_to_value` for a field whose type never resolved, which puts the keys the body PRESENTED into the
-/// record it returns. So the names are withheld and the count published -- unlike `field_path` above,
-/// every segment of which is an authored name out of the declaration tree.
+/// request material into a token-bearing path), a non-JSON body keeps that it was not JSON plus how many
+/// bytes arrived (a `serde_json` message carries offsets into the body and sometimes the offending token,
+/// while the byte count is a number out of the transport's own buffer), and uninhabited members keep how
+/// many there were plus their names WHEN THOSE NAMES ARE DECLARATIONS. The distinction is carried by
+/// `RestNullMembers`: `rest_payload_null_fields` reports its names out of the mapped record, and that
+/// record is NOT reliably declared-side -- `map_response_to_value_json` falls through to `json_to_value`
+/// when the output type resolves to no children, which puts the keys the body PRESENTED into the record --
+/// so a record whose members are all fields the declared output names publishes them, as every segment of
+/// `field_path` above is an authored name out of the declaration tree, and any other record publishes only
+/// the count.
 fn rest_body_read_refused_cause(io_error: &str) -> String {
     // The parameter is the text being dropped; it stays visible so the test can plant a marker in the
     // exact value this renderer refuses to publish.
@@ -22183,16 +22228,36 @@ fn rest_body_read_refused_cause(io_error: &str) -> String {
     "the response body could not be read from the host".to_string()
 }
 
-fn rest_body_not_json_cause(parse_error: &str) -> String {
+fn rest_body_not_json_cause(parse_error: &str, received_bytes: usize) -> String {
+    // The parse message is still dropped -- a `serde_json` message carries offsets into the body and
+    // sometimes the offending token -- but the SIZE of what arrived is kept, because it is a count out of
+    // the transport's own buffer and not a byte of the body. It is what separates a truncated or partial
+    // 200 (the likeliest transient, and the one a replay of the same bytes cannot reproduce) from a
+    // complete body that simply does not fit the declaration; before it those two printed the same line.
     let _ = parse_error;
-    "the body is not JSON, as the operation's declared response format requires".to_string()
+    format!(
+        "the body is not JSON, as the operation's declared response format requires, after {received_bytes} bytes received"
+    )
 }
 
-fn rest_body_null_members_cause(missing: &str) -> String {
-    format!(
-        "body did not inhabit the declared output: {} declared members were left uninhabited, their names withheld on a credential path",
-        missing.split(',').filter(|name| !name.is_empty()).count()
-    )
+fn rest_body_null_members_cause(members: &RestNullMembers) -> String {
+    let count = members.paths.len();
+    let noun = if count == 1 { "member" } else { "members" };
+    if members.declared {
+        // The names are the operation's own declared members, so publishing them is the same class of
+        // fact as the located field the decode arm prints. "3 members were left uninhabited" is the
+        // sentence that made the 2026-11-10 outage need a human: it does not say which.
+        format!(
+            "body did not inhabit the declared output: {count} declared {noun} left uninhabited: {}",
+            members.paths.join(", ")
+        )
+    } else {
+        // The record is body-shaped (its output type resolved to no children, or there was no record at
+        // all), so these names may be keys the response presented and they stay withheld.
+        format!(
+            "body did not inhabit the declared output: {count} {noun} left uninhabited, their names withheld on a credential path"
+        )
+    }
 }
 
 fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
@@ -31706,16 +31771,41 @@ mod t9_host_recursion_probes {
         );
         let not_json = crate::v1_interpreter::rest_body_not_json_cause(
             "expected value at line 1 column 1: FAKE-SECRET-MARKER",
+            4096,
         );
         assert!(
             !not_json.contains("FAKE-SECRET-MARKER"),
             "a non-JSON cause echoed the parse error: {not_json}"
         );
-        let null_members =
-            crate::v1_interpreter::rest_body_null_members_cause("FAKE-SECRET-MARKER,head");
         assert!(
-            !null_members.contains("FAKE-SECRET-MARKER") && null_members.contains("2"),
-            "an uninhabited-member cause echoed a member name, or lost the count: {null_members}"
+            not_json.contains("4096 bytes"),
+            "a non-JSON cause lost how many bytes arrived, which is what tells a truncated 200 from a \
+             complete body that does not fit: {not_json}"
+        );
+        // Declared members: the names are the operation's own, so they are published -- this is the
+        // sentence a run needs, and the one the 2026-11-10 outage never printed.
+        let declared_members = crate::v1_interpreter::rest_body_null_members_cause(
+            &crate::v1_interpreter::RestNullMembers {
+                paths: vec!["pulls.head.sha".to_string(), "pulls.user".to_string()],
+                declared: true,
+            },
+        );
+        assert!(
+            declared_members.contains("pulls.head.sha")
+                && declared_members.contains("pulls.user")
+                && declared_members.contains("2"),
+            "an uninhabited-member cause lost the declared names or the count: {declared_members}"
+        );
+        // Body-shaped record: those names may be keys the response presented, so they stay withheld.
+        let presented_members = crate::v1_interpreter::rest_body_null_members_cause(
+            &crate::v1_interpreter::RestNullMembers {
+                paths: vec!["FAKE-SECRET-MARKER".to_string(), "head".to_string()],
+                declared: false,
+            },
+        );
+        assert!(
+            !presented_members.contains("FAKE-SECRET-MARKER") && presented_members.contains("2"),
+            "an uninhabited-member cause echoed a name the body presented: {presented_members}"
         );
     }
 }

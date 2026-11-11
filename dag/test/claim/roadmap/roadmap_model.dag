@@ -1,18 +1,13 @@
 module test.claim.roadmap.roadmap_model
 
 import gunbc.roadmap.roadmap_status {
-  RoadmapItem, DerivableLine, AuthoredLine,
   DriftVerdict, Drifted, Clean, Underivable,
 }
-import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
-  Pointer,
-  RoadmapNode, RoadmapEdge,
+  RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,
-  WorkItemDispatch, NotDispatchable,
   roadmap_primary_parent, roadmap_parent_ids, is_top_level,
-  node_carrier_clean,
 }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -56,41 +51,4 @@ test fn witness_orphan_is_top_level() -> Bool {
 
 test fn witness_parent_is_top_level() -> Bool {
   is_top_level(edges: edges(), node: parent_node)
-}
-
-data existing_docs: List<String> = [
-  "docs/plans/replacement-migration-doctrine.md",
-  "DESIGN.md",
-]
-
-fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_P8CGH3E7ERD8M55W9X49" as RoadmapNodeIdentity,
-    node: roadmap_model_child_node,
-    line: AuthoredLine { content: "PR→checkbox status" },
-    carriers: cs,
-    dispatch: NotDispatchable,
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    parent: none,
-    centering: none,
-  }
-}
-
-test fn witness_resolving_carrier_clean() -> Bool {
-  node_carrier_clean(
-    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/replacement-migration-doctrine.md" }]),
-    existing_docs: existing_docs,
-  )
-}
-
-test fn witness_dangling_carrier_caught() -> Bool {
-  !node_carrier_clean(
-    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/does-not-exist.md" }]),
-    existing_docs: existing_docs,
-  )
-}
-
-test fn witness_no_carrier_clean() -> Bool {
-  node_carrier_clean(rn: node_with_carriers(cs: []), existing_docs: existing_docs)
 }

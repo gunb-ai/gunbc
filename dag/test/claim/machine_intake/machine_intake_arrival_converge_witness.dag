@@ -1976,7 +1976,7 @@ fn srv13_identity_bind_inputs() -> IdentityBindInputs
         realization: srv13_witness_realization(),
       ),
     },
-    other_units: arrival_bound_unit_keys(),
+    other_units: arrival_bound_unit_keys(subject: "srv13" as HostIdentity),
   )
 }
 
