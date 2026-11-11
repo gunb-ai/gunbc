@@ -1246,7 +1246,7 @@ test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dr
         subject: mtjade1_key,
         read: read_mtjade1_current_manager_read(),
         inputs: mtjade1_identity_bind_inputs(),
-        prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
+        prior_life: PriorLifeInputs::DryWorld { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
         bmc: mtjade1_bmc_inputs(
           reading: apply.application.plan.diverged,
           grant: Present { value: mtjade1_live_standing_grant },
@@ -1702,7 +1702,7 @@ test fn w_access_discover_refuses_a_read_bound_to_another_unit() -> Bool {
 // unit it is not bound to, refuses AccessDiscover; IdentityBindProvisional and PriorLifeBoundary are
 // then never executed and are NotReached, each blocked by that AccessDiscover instance.
 test fn w_a_refused_access_leaves_identity_bind_not_reached_blocked_by_it() -> Bool {
-  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs(), prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() }, locked: none) {
+  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs(), prior_life: PriorLifeInputs::DryWorld { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() }, locked: none) {
     ArrivalRunFolded { verdict: v } => match v {
       RunStopped { ledger: l, at: at } =>
         declaration_ref_eq(a: at.step_identity, b: access_discover_step_ref)
@@ -1813,7 +1813,7 @@ test fn w_a_held_mtjade1_does_not_converge_through_bmc_secure_apply() -> Bool {
         subject: mtjade1_key,
         read: read_mtjade1_current_manager_read(),
         inputs: mtjade1_identity_bind_inputs(),
-        prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
+        prior_life: PriorLifeInputs::DryWorld { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
         bmc: mtjade1_bmc_inputs_released_by(
           reading: apply.application.plan.diverged,
           grant: Present { value: mtjade1_live_standing_grant },
@@ -2191,7 +2191,7 @@ fn forced_fold(
     pending: pending,
     read: read,
     inputs: bind,
-    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: world },
+    prior_life: PriorLifeInputs::DryWorld { platform: mt_jade_platform_ref, world: world },
     transition: transition,
     bmc: bmc,
     write: write,

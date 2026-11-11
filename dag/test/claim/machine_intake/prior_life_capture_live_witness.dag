@@ -12,16 +12,18 @@ module test.claim.machine_intake.prior_life_capture_live_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import std.algebra { concat }
+
+import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue }
+import gunbc.machine_intake.prior_life_capture_live { live_parse }
+
 import gunbc.machine_intake.prior_life_capture_live {
   LiveDecodeRecordsOk,
   LiveDecodeRefused,
   LiveDecodeGap,
   LiveDecodeOverrideOk,
   LiveDecodeRefsOk,
-  LiveDecodeRefsRefused,
+  LiveEntryRefsRefused,
   LiveDecodeTextOk,
-  LiveDecodeVmOk,
   LiveDecodePointsOk,
   LiveReadAuthRefused,
   LiveReadNotServed,
@@ -36,7 +38,16 @@ import gunbc.machine_intake.prior_life_capture_live {
   live_media_type,
   live_sensor_points,
   live_sel_records,
-  live_virtual_media_members,
+  live_member_media_refs,
+  live_vm_media,
+  live_vm_connected_via,
+  live_vm_image,
+  LiveMemberMediaRefsOk,
+  LiveMemberMediaRefsRefused,
+  LiveMediaMemberAccepted,
+  LiveMediaMemberRefused,
+  LiveViaRefused,
+  LiveImageRefused,
 }
 import gunbc.machine_intake.prior_life_boundary {
   CarrierFirmwareCannotServe,
@@ -58,7 +69,7 @@ import extdeps.bmc.redfish_virtual_media {
   MediaFloppy,
   MediaUsbStick,
   RedfishVirtualMediaConnectedVia,
-  RedfishVirtualMediaMediaType,
+  RedfishVirtualMediaType,
   RedfishVirtualMediaParent,
   UnderSystem,
   redfish_virtual_media_type_wire,
@@ -139,7 +150,7 @@ fn media_types_round_trip_the_schema_wire() -> Bool {
     && is_media(redfish_virtual_media_type_wire(t: MediaFloppy), MediaFloppy)
 }
 
-fn is_media(wire: String, want: RedfishVirtualMediaMediaType) -> Bool {
+fn is_media(wire: String, want: RedfishVirtualMediaType) -> Bool {
   match live_media_type(text: wire) {
     Present { value: got } => got == want
     Absent => false
@@ -177,24 +188,74 @@ fn no_via(wire: String) -> Bool {
   }
 }
 
-// An EMPTY served VirtualMedia collection is an empty CAPTURE (the detached fleet is the honest srv15
-// prior-life reading), not a gap.
-fn an_empty_virtual_media_collection_is_an_empty_capture() -> Bool {
-  match live_virtual_media_members(body: "{\"Members\":[]}" as NonEmptyStr, parent: vm_parent()) {
-    LiveDecodeVmOk { members: ms } => ms.length() == 0
+// The collection's Members are LINKS, not inline state (Redfish VirtualMedia v1.x): the reader follows
+// each link and reads the Media resource itself. An EMPTY served collection is an empty CAPTURE (the
+// detached fleet is the honest srv15 prior-life reading), not a gap.
+fn an_empty_virtual_media_collection_yields_an_empty_link_set() -> Bool {
+  match live_member_media_refs(body: "{\"Members\":[]}" as NonEmptyStr) {
+    LiveMemberMediaRefsOk { refs: rs } => rs.length() == 0
     _ => false
   }
 }
 
-// A member with an unreadable field refuses the WHOLE carrier (a half-invisible mount is never archived).
-fn a_half_decodable_virtual_media_member_refuses_the_carrier() -> Bool {
-  match live_virtual_media_members(
-    body: "{\"Members\":[{\"Id\":\"1\",\"Inserted\":true,\"ConnectedVia\":\"Telnet\",\"MediaType\":[]}]}" as NonEmptyStr,
-    parent: vm_parent(),
-  ) {
-    LiveDecodeRefused { detail: _ } => true
+// Both link spellings are followed: a bare string path and the object's @odata.id member.
+fn media_links_are_followed_in_both_spellings() -> Bool {
+  match live_member_media_refs(body: "{\"Members\":[\"/redfish/v1/Systems/system/VirtualMedia/1\",{\"@odata.id\":\"/redfish/v1/Systems/system/VirtualMedia/2\"}]}" as NonEmptyStr) {
+    LiveMemberMediaRefsOk { refs: rs } =>
+      rs.length() == 2
+        && (match first(rs) { Present { value: p } => p == "/redfish/v1/Systems/system/VirtualMedia/1" Absent => false })
+        && (match first(rs.skip(n: 1)) { Present { value: p } => p == "/redfish/v1/Systems/system/VirtualMedia/2" Absent => false })
     _ => false
   }
+}
+
+// RED: one Members element without a followable link refuses the WHOLE link set — half a media state is
+// never handed to the carrier.
+fn a_media_link_without_a_path_refuses_the_link_set() -> Bool {
+  match live_member_media_refs(body: "{\"Members\":[{\"Foo\":\"bar\"}]}" as NonEmptyStr) {
+    LiveMemberMediaRefsRefused { detail: _ } => true
+    _ => false
+  }
+}
+
+// One Media resource decodes IN FULL or not at all (the reader above archives it only from its own
+// read-back bytes): Id, Inserted, ConnectedVia, MediaType[] and Image all land in the observation.
+fn a_media_member_round_trips_all_five_fields() -> Bool {
+  match live_parse(body: "{\"Id\":\"1\",\"Inserted\":true,\"ConnectedVia\":\"URI\",\"MediaType\":[\"CD\"],\"Image\":\"http://10.0.0.5/srv15.iso\"}") {
+    Present { value: v } => match live_vm_media(v: v, parent: vm_parent()) {
+      LiveMediaMemberAccepted { observation: o } =>
+        o.locator.media_id == "1" && o.inserted
+          && (match first(o.media_types) { Present { value: t } => redfish_virtual_media_type_wire(t: t) == "CD" Absent => false })
+          && (match o.image { Present { value: u } => u == "http://10.0.0.5/srv15.iso" Absent => false })
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// RED: a member whose ConnectedVia names a wire value the schema does not serve refuses the member —
+// it is never dropped and never guessed.
+fn a_media_member_with_an_unmodelled_connected_via_refuses() -> Bool {
+  match live_parse(body: "{\"Id\":\"1\",\"Inserted\":true,\"ConnectedVia\":\"Telnet\",\"MediaType\":[],\"Image\":\"\"}") {
+    Present { value: v } => match live_vm_media(v: v, parent: vm_parent()) {
+      LiveMediaMemberRefused { detail: _ } => true
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// The single-valued readers themselves: an unknown ConnectedVia wire value and a non-string Image each
+// refuse their own field.
+fn connected_via_and_image_refuse_wire_values_they_cannot_name() -> Bool {
+  match live_vm_connected_via(v: JsonString { value: "Telnet" as NonEmptyStr }) {
+    LiveViaRefused { detail: _ } => true
+    _ => false
+  }
+    && match live_vm_image(v: JsonNumber { value: 7 }) {
+      LiveImageRefused { detail: _ } => true
+      _ => false
+    }
 }
 
 // ── THE LOG-SERVICES WALK: LINKS FOLLOWED, BOUND ENFORCED, NO SILENT MEMBER LOSS. ────────────────────
@@ -229,7 +290,7 @@ fn a_collection_beyond_the_bound_is_flagged_not_silently_truncated() -> Bool {
 // as the empty service list would make the bound claim meaningless.
 fn a_log_services_body_without_members_refuses_rather_than_archiving_empty() -> Bool {
   match live_log_service_refs(body: "{\"@odata.id\":\"/x\"}" as NonEmptyStr, log_services_path: "/x" as NonEmptyStr) {
-    LiveDecodeRefsRefused { detail: _ } => true
+    LiveEntryRefsRefused { detail: _ } => true
     _ => false
   }
 }

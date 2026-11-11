@@ -473,7 +473,7 @@ fn arrival_wet_prefix_record(
                                           subject: (row.unit as NonEmptyStr) as StepSubjectKey,
                                           read: manager_read,
                                           inputs: inputs,
-                                          prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
+                                          prior_life: PriorLifeInputs::DryWorld { platform: row.platform, world: prior_life },
                                           bmc: BmcSecureInputs {
                                             goal: goal,
                                             reading: observation,

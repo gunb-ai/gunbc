@@ -41,9 +41,9 @@ module gunbc.machine_intake.prior_life_capture_live
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
-import std.algebra { concat, length, string_contains, take_prefix, trim }
+import std.algebra { length, string_contains, take_prefix, trim }
 import extdeps.uri { Uri, uri_from_wire }
-import extdeps.languages.json.emit { JsonBool, JsonValue }
+import extdeps.languages.json.emit { JsonBool, JsonString, JsonValue }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
 import gunbc.scm.json_member {
   MemberArray,
@@ -56,8 +56,8 @@ import gunbc.scm.json_member {
   read_member_value,
   read_string_member,
 }
-import extdeps.bmc.ipmi { Tool as IpmiTool }
-import extdeps.bmc.http { Tool as HttpTool }
+import extdeps.bmc.ipmi
+import extdeps.bmc.http
 import extdeps.bmc.ipmi_session { IpmiSessionAuthRefused, ipmi_session_failure }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
 import extdeps.bmc.ipmitool_print_read { ipmitool_sel_elist_rows }
@@ -85,10 +85,11 @@ import extdeps.bmc.redfish_virtual_media {
   MediaUsbStick,
   RedfishVirtualMediaConnectedVia,
   RedfishVirtualMediaLocator,
-  RedfishVirtualMediaMediaType,
+  RedfishVirtualMediaType,
   RedfishVirtualMediaObservation,
   RedfishVirtualMediaParent,
   redfish_virtual_media_collection_path,
+  redfish_virtual_media_type_wire,
 }
 import gunbc.bmc_model {
   BmcBootOverride,
@@ -492,7 +493,7 @@ fn live_sel_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = IpmiTool.SelListAuthenticated(
+    let resp = diagnostic.ipmi.Tool.SelListAuthenticated(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
@@ -515,7 +516,7 @@ fn live_sel_step(
         LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: concat("private evidence retention refused: ", detail) })
         LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: concat("read-back of retained bytes failed: ", detail) })
         LiveCommitted { digest_hex, bytes } => match live_sel_records(text: bytes) {
-          LiveDecodeRefused { detail } => live_record(
+          LiveRecordsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeSelAndEventLogs, op_label: live_op_sel_list, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
             capture: CarrierGap { carrier: PriorLifeSelAndEventLogs, cause: CarrierSurfaceUnmodeled {} },
@@ -545,7 +546,7 @@ fn live_power_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = IpmiTool.ChassisStatus(
+    let resp = diagnostic.ipmi.Tool.ChassisStatus(
       bmc_host: bmc_host,
       username: managed_account,
       password_file: password_file,
@@ -597,7 +598,7 @@ fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: No
   if live_halted(state: state) {
     state
   } else {
-    let resp = HttpTool.GetSystem(bmc_host: bmc_host, netrc_file: netrc_file)
+    let resp = redfish.Http.GetSystem(bmc_host: bmc_host, netrc_file: netrc_file)
     match live_classify_http(success: resp.success, body: resp.body, stderr: "") {
       LiveReadAuthRefused => live_stop(
         state: state,
@@ -643,7 +644,7 @@ fn live_log_services_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = HttpTool.GetResourceByPath(
+    let resp = redfish.Http.GetResourceByPath(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: log_services_path,
@@ -664,7 +665,7 @@ fn live_log_services_step(
         LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: concat("private evidence retention refused: ", detail) })
         LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: concat("read-back of retained bytes failed: ", detail) })
         LiveCommitted { digest_hex, bytes } => match live_log_service_refs(body: bytes, log_services_path: log_services_path) {
-          LiveDecodeRefsRefused { detail } => live_record(
+          LiveEntryRefsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
             capture: CarrierGap { carrier: PriorLifeRedfishLogCollections, cause: CarrierSurfaceUnmodeled {} },
@@ -768,7 +769,7 @@ fn live_virtual_media_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = HttpTool.GetResourceByPath(
+    let resp = redfish.Http.GetResourceByPath(
       bmc_host: bmc_host,
       netrc_file: netrc_file,
       odata_path: redfish_virtual_media_collection_path(parent: virtual_media_parent),
@@ -788,20 +789,163 @@ fn live_virtual_media_step(
       LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
         LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("private evidence retention refused: ", detail) })
         LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("read-back of retained bytes failed: ", detail) })
-        LiveCommitted { digest_hex, bytes } => match live_virtual_media_members(body: bytes, parent: virtual_media_parent) {
-          LiveDecodeRefused { detail } => live_record(
+        LiveCommitted { digest_hex, bytes } => match live_member_media_refs(body: bytes) {
+          LiveMemberMediaRefsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
             capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} },
           )
-          LiveDecodeVmOk { members } => live_record(
+          LiveMemberMediaRefsOk { refs } => live_media_read_refs(
             state: state,
-            row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "every served VirtualMedia member decoded" } },
-            capture: CarrierCaptured { carrier: PriorLifeVirtualMediaState, payload: VirtualMediaPayload { members: members } },
+            bmc_host: bmc_host,
+            netrc_file: netrc_file,
+            evidence_root: evidence_root,
+            parent: virtual_media_parent,
+            refs: refs,
           )
         }
       }
     }
+  }
+}
+
+// Every Media link the VirtualMedia collection serves: each Members element is a link to a Media
+// resource — a bare string path, or an object carrying @odata.id (Redfish VirtualMedia v1.x; the BMC
+// renders the object form). One element without a link this reader can follow refuses the WHOLE link
+// set: half a media state is not the media state, so the carrier comes back as a typed gap instead.
+type LiveMemberMediaRefs
+  = LiveMemberMediaRefsOk { refs: List<NonEmptyStr> }
+  | LiveMemberMediaRefsRefused { detail: NonEmptyStr }
+
+fn live_member_media_refs(body: NonEmptyStr) -> LiveMemberMediaRefs {
+  match live_parse(body: body as String) {
+    Absent => LiveMemberMediaRefsRefused { detail: "the VirtualMedia collection body is not a JSON document" }
+    Present { value: doc } => match read_member(v: doc, key: "Members") {
+      MemberArray { elements: members } => match live_media_ref_paths(elements: members) {
+        Present { value: paths } => LiveMemberMediaRefsOk { refs: paths }
+        Absent => LiveMemberMediaRefsRefused { detail: "a VirtualMedia Members element carries no link this reader can follow" }
+      }
+      _ => LiveMemberMediaRefsRefused { detail: "the VirtualMedia collection serves no Members array" }
+    }
+  }
+}
+
+fn live_media_ref_paths(elements: List<JsonValue>) -> Optional<List<NonEmptyStr>> {
+  let initial: Optional<List<NonEmptyStr>> = Present { value: [] }
+  fold(elements, init: initial, f: (acc, e) => match acc {
+    Absent => Absent
+    Present { value: paths } => match live_media_ref_path(element: e) {
+      Present { value: path } => Present { value: concat(paths, [path]) }
+      Absent => Absent
+    }
+  })
+}
+
+fn live_media_ref_path(element: JsonValue) -> Optional<NonEmptyStr> {
+  match element {
+    JsonString { value: path } => if starts_with(s: path, prefix: "/") { Present { value: path as NonEmptyStr } } else { Absent }
+    _ => match read_member(v: element, key: "@odata.id") {
+      MemberString { value: path } => if starts_with(s: path, prefix: "/") { Present { value: path } } else { Absent }
+      _ => Absent
+    }
+  }
+}
+
+// One Media resource read, retained and read back, decoded through the single member reader. The
+// FIRST authentication refusal stops the whole run; any member this reader cannot decode refuses the
+// WHOLE carrier as a typed gap — a partial media state archived as complete is exactly the
+// fabrication this lane forbids.
+fn live_media_read_refs(
+  state: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  netrc_file: NonEmptyStr,
+  evidence_root: FilePath,
+  parent: RedfishVirtualMediaParent,
+  refs: List<NonEmptyStr>,
+) -> LiveCaptureState {
+  let initial: (LiveCaptureState, List<RedfishVirtualMediaObservation>) = (state, [])
+  let pair = fold(refs, init: initial, f: (acc, path) => match acc {
+    (acc_state, acc_members) =>
+      if live_halted(state: acc_state) {
+        (acc_state, acc_members)
+      } else {
+        let resp = redfish.Http.GetResourceByPath(bmc_host: bmc_host, netrc_file: netrc_file, odata_path: path, max_seconds: "10")
+        match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+          LiveReadAuthRefused => (live_stop(state: acc_state, stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: concat("media member ", path, " refused the managed credential") }), acc_members)
+          LiveReadNotServed { detail } => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: concat("media member ", path, " refused the read") } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } }), acc_members)
+          LiveReadTransportFailed { detail } => (live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("media member ", path, ": ", detail) }), acc_members)
+          LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
+            LiveRetentionRefused { detail } => (live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("private evidence retention refused: ", detail) }), acc_members)
+            LiveReadBackRefused { detail } => (live_fail(state: acc_state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("read-back of retained bytes failed: ", detail) }), acc_members)
+            LiveCommitted { digest_hex: _, bytes } => match live_parse(body: bytes) {
+              Absent => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: "a Media member is not a JSON document" } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), acc_members)
+              Present { value: v } => match live_vm_media(v: v, parent: parent) {
+                LiveMediaMemberAccepted { observation } => (acc_state, concat(acc_members, [observation]))
+                LiveMediaMemberRefsRefused { detail } => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), acc_members)
+                LiveMediaMemberRefused { detail } => (live_record(state: acc_state, row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } }, capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} }), acc_members)
+              }
+            }
+          }
+        }
+      }
+  })
+  match pair {
+    (final_state, members) =>
+      if live_halted(state: final_state) {
+        final_state
+      } else if length(xs: members) == length(xs: refs) {
+        live_record(
+          state: final_state,
+          row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierArchived { note: "every served Media member decoded from its own read-back bytes" } },
+          capture: CarrierCaptured { carrier: PriorLifeVirtualMediaState, payload: VirtualMediaPayload { members: members } },
+        )
+      } else {
+        // A member already recorded the carrier's typed gap above; nothing further to write.
+        final_state
+      }
+  }
+}
+
+type LiveMediaMember
+  = LiveMediaMemberAccepted { observation: RedfishVirtualMediaObservation }
+  | LiveMediaMemberRefsRefused { detail: NonEmptyStr }
+  | LiveMediaMemberRefused { detail: NonEmptyStr }
+
+// One Media resource, in full or not at all: Id, Inserted, ConnectedVia, MediaType[] and Image each
+// either decode or refuse the member (checked by the reader above). MediaId is our locator's member
+// key; the schema is Redfish VirtualMedia v1.x as the BMC renders it.
+fn live_vm_media(v: JsonValue, parent: RedfishVirtualMediaParent) -> LiveMediaMember {
+  match read_string_member(v: v, key: "Id") {
+    MemberString { value: id } =>
+      if id == "" {
+        LiveMediaMemberRefused { detail: "a Media member carries an empty Id" }
+      } else {
+        match live_vm_inserted(v: v) {
+          LiveInsertedRefused { detail } => LiveMediaMemberRefused { detail: detail }
+          LiveInsertedOk { inserted } => match live_vm_connected_via(v: v) {
+            LiveViaRefused { detail } => LiveMediaMemberRefused { detail: detail }
+            LiveViaOk { via } => match read_member(v: v, key: "MediaType") {
+              MemberArray { elements: media } => match live_media_types(elements: media) {
+                LiveMediaRefused { detail } => LiveMediaMemberRefused { detail: detail }
+                LiveDecodeMediaOk { types } => match live_vm_image(v: v) {
+                  LiveImageRefused { detail } => LiveMediaMemberRefused { detail: detail }
+                  LiveImageOk { image } => LiveMediaMemberAccepted {
+                    observation: RedfishVirtualMediaObservation {
+                      locator: RedfishVirtualMediaLocator { parent: parent, media_id: id as NonEmptyStr },
+                      media_types: types,
+                      connected_via: via,
+                      inserted: inserted,
+                      image: image,
+                    },
+                  }
+                }
+              }
+              _ => LiveMediaMemberRefused { detail: "a Media member serves no MediaType array" }
+            }
+          }
+        }
+      }
+    _ => LiveMediaMemberRefused { detail: "a Media member carries no string Id" }
   }
 }
 
@@ -819,7 +963,7 @@ fn live_sensors_step(
   if live_halted(state: state) {
     state
   } else {
-    let resp = HttpTool.GetChassisSensors(bmc_host: bmc_host, chassis_id: chassis_id, netrc_file: netrc_file)
+    let resp = redfish.Http.GetChassisSensors(bmc_host: bmc_host, chassis_id: chassis_id, netrc_file: netrc_file)
     match live_classify_http(success: resp.success, body: resp.body, stderr: "") {
       LiveReadAuthRefused => live_stop(
         state: state,
@@ -835,7 +979,7 @@ fn live_sensors_step(
         LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: concat("private evidence retention refused: ", detail) })
         LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: concat("read-back of retained bytes failed: ", detail) })
         LiveCommitted { digest_hex, bytes } => match live_sensor_points(body: bytes) {
-          LiveDecodeRefused { detail } => live_record(
+          LivePointsRefused { detail } => live_record(
             state: state,
             row: LiveCarrierRow { carrier: PriorLifeSensorSnapshot, op_label: live_op_sensors, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
             capture: CarrierGap { carrier: PriorLifeSensorSnapshot, cause: CarrierSurfaceUnmodeled {} },
@@ -877,7 +1021,7 @@ fn live_entries_for_refs(
     if live_halted(state: acc) {
       acc
     } else {
-      let resp = HttpTool.GetResourceByPath(
+      let resp = redfish.Http.GetResourceByPath(
         bmc_host: bmc_host,
         netrc_file: netrc_file,
         odata_path: r.entries_path,
@@ -967,7 +1111,7 @@ type LiveDecodeOutcome
 
 type LiveRecordsOutcome
   = LiveDecodeRecordsOk { records: List<BmcSelRecord> }
-  | LiveDecodeRefused { detail: NonEmptyStr }
+  | LiveRecordsRefused { detail: NonEmptyStr }
 
 type LiveOverrideOutcome
   = LiveDecodeOverrideOk { override: BmcBootOverride }
@@ -975,15 +1119,11 @@ type LiveOverrideOutcome
 
 type LiveRefsOutcome
   = LiveDecodeRefsOk { refs: List<LiveLogServiceRef>, over_bound: Bool }
-  | LiveDecodeRefsRefused { detail: NonEmptyStr }
-
-type LiveVmOutcome
-  = LiveDecodeVmOk { members: List<RedfishVirtualMediaObservation> }
-  | LiveDecodeRefused { detail: NonEmptyStr }
+  | LiveEntryRefsRefused { detail: NonEmptyStr }
 
 type LivePointsOutcome
   = LiveDecodePointsOk { points: List<RedfishTelemetryPoint> }
-  | LiveDecodeRefused { detail: NonEmptyStr }
+  | LivePointsRefused { detail: NonEmptyStr }
 
 fn live_parse(body: String) -> Optional<JsonValue> {
   match parse_json_document(s: body) {
@@ -1016,7 +1156,7 @@ fn live_manager_date_time(body: NonEmptyStr) -> LiveDecodeOutcome {
 fn live_sel_records(text: String) -> LiveRecordsOutcome {
   match ipmitool_sel_elist_rows(stdout: text) {
     Present { value: rows } => LiveDecodeRecordsOk { records: map(rows, r => BmcSelRecord { id_hex: r.record_id_hex as String, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state }) }
-    Absent => LiveDecodeRefused { detail: "a sel elist line this reader cannot parse" }
+    Absent => LiveRecordsRefused { detail: "a sel elist line this reader cannot parse" }
   }
 }
 
@@ -1078,7 +1218,7 @@ fn live_boot_override_of(body: NonEmptyStr) -> LiveOverrideOutcome {
 // <path>/<Id>/Entries the Redfish LogService schema mandates.
 fn live_log_service_refs(body: NonEmptyStr, log_services_path: NonEmptyStr) -> LiveRefsOutcome {
   match live_parse(body: body as String) {
-    Absent => LiveDecodeRefsRefused { detail: "the LogServices body is not a JSON document" }
+    Absent => LiveEntryRefsRefused { detail: "the LogServices body is not a JSON document" }
     Present { value: doc } => match read_member(v: doc, key: "Members") {
       MemberArray { elements: members } =>
         if length(xs: members) > live_log_services_read_bound {
@@ -1086,15 +1226,15 @@ fn live_log_service_refs(body: NonEmptyStr, log_services_path: NonEmptyStr) -> L
           // makes the carrier a gap regardless.
           match live_refs_of_elements(elements: take_prefix(xs: members, n: live_log_services_read_bound), log_services_path: log_services_path) {
             Present { value: refs } => LiveDecodeRefsOk { refs: refs, over_bound: true }
-            Absent => LiveDecodeRefsRefused { detail: "a Members element carries no string Id" }
+            Absent => LiveEntryRefsRefused { detail: "a Members element carries no string Id" }
           }
         } else {
           match live_refs_of_elements(elements: members, log_services_path: log_services_path) {
             Present { value: refs } => LiveDecodeRefsOk { refs: refs, over_bound: false }
-            Absent => LiveDecodeRefsRefused { detail: "a Members element carries no string Id" }
+            Absent => LiveEntryRefsRefused { detail: "a Members element carries no string Id" }
           }
         }
-      _ => LiveDecodeRefsRefused { detail: "the LogServices collection serves no Members array" }
+      _ => LiveEntryRefsRefused { detail: "the LogServices collection serves no Members array" }
     }
   }
 }
@@ -1137,96 +1277,67 @@ fn live_ref_of_element(element: JsonValue, log_services_path: NonEmptyStr) -> Op
 // decodes or the whole carrier refuses — an observation list with a hole in it would archive a fleet whose
 // mounted images are partly invisible. Field names per the Redfish VirtualMedia v1.x schema; OpenBMC
 // 3.22.00 renders members inline in the collection.
-fn live_virtual_media_members(body: NonEmptyStr, parent: RedfishVirtualMediaParent) -> LiveVmOutcome {
-  match live_parse(body: body as String) {
-    Absent => LiveDecodeRefused { detail: "the VirtualMedia body is not a JSON document" }
-    Present { value: doc } => match read_member(v: doc, key: "Members") {
-      MemberArray { elements: members } => live_vm_of_elements(elements: members, parent: parent)
-      _ => LiveDecodeRefused { detail: "the VirtualMedia collection serves no Members array" }
-    }
+type LiveInsertedOutcome
+  = LiveInsertedOk { inserted: Bool }
+  | LiveInsertedRefused { detail: NonEmptyStr }
+
+type LiveViaOutcome
+  = LiveViaOk { via: RedfishVirtualMediaConnectedVia }
+  | LiveViaRefused { detail: NonEmptyStr }
+
+type LiveImageOutcome
+  = LiveImageOk { image: Optional<Uri> }
+  | LiveImageRefused { detail: NonEmptyStr }
+
+fn live_vm_inserted(v: JsonValue) -> LiveInsertedOutcome {
+  match read_member_value(v: v, key: "Inserted") {
+    MemberValue { value: JsonBool { value: inserted } } => LiveInsertedOk { inserted: inserted }
+    _ => LiveInsertedRefused { detail: "a VirtualMedia member carries no boolean Inserted" }
   }
 }
 
-fn live_vm_of_elements(elements: List<JsonValue>, parent: RedfishVirtualMediaParent) -> LiveVmOutcome {
-  let initial: LiveVmOutcome = LiveDecodeVmOk { members: [] }
-  fold(elements, init: initial, f: (acc, e) => match acc {
-    LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
-    LiveDecodeVmOk { members } => match live_vm_member(v: e, parent: parent) {
-      LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
-      LiveDecodeMemberOk { member } => LiveDecodeVmOk { members: concat(members, [member]) }
+fn live_vm_connected_via(v: JsonValue) -> LiveViaOutcome {
+  match read_string_member(v: v, key: "ConnectedVia") {
+    MemberString { value: via } => match live_connected_via(text: via) {
+      Present { value: connected_via } => LiveViaOk { via: connected_via }
+      Absent => LiveViaRefused { detail: "ConnectedVia names no value of the VirtualMedia schema" }
     }
-  })
+    _ => LiveViaRefused { detail: "a VirtualMedia member carries no string ConnectedVia" }
+  }
 }
 
-type LiveMemberOutcome
-  = LiveDecodeMemberOk { member: RedfishVirtualMediaObservation }
-  | LiveDecodeRefused { detail: NonEmptyStr }
-
-fn live_vm_member(v: JsonValue, parent: RedfishVirtualMediaParent) -> LiveMemberOutcome {
-  match read_string_member(v: v, key: "Id") {
-    MemberString { value: id } =>
-      if id == "" {
-        LiveDecodeRefused { detail: "a VirtualMedia member carries an empty Id" }
-      } else {
-        match read_member_value(v: v, key: "Inserted") {
-          MemberValue { value: JsonBool { value: inserted } } =>
-            match read_string_member(v: v, key: "ConnectedVia") {
-              MemberString { value: via } => match live_connected_via(text: via) {
-                Present { value: connected_via } =>
-                  match read_member(v: v, key: "MediaType") {
-                    MemberArray { elements: media } => match live_media_types(elements: media) {
-                      LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
-                      LiveDecodeMediaOk { types } =>
-                        match read_member_value(v: v, key: "Image") {
-                          MemberLookupFailed { cause: _ } =>
-                            LiveDecodeMemberOk { member: RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: parent, media_id: id as NonEmptyStr }, media_types: types, connected_via: connected_via, inserted: inserted, image: Absent } }
-                          MemberValue { value: v_image } => match v_image {
-                            JsonString { value: image } => match uri_from_wire(url: image) {
-                              Present { value: uri } =>
-                                LiveDecodeMemberOk { member: RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: parent, media_id: id as NonEmptyStr }, media_types: types, connected_via: connected_via, inserted: inserted, image: Present { value: uri } } }
-                              Absent => LiveDecodeRefused { detail: "a VirtualMedia Image is not a URI this reader parses" }
-                            }
-                            _ => LiveDecodeRefused { detail: "a VirtualMedia Image is not a string" }
-                          }
-                        }
-                    }
-                    _ => LiveDecodeRefused { detail: "a VirtualMedia member serves no MediaType array" }
-                  }
-              }
-              Absent => LiveDecodeRefused { detail: "ConnectedVia names no value of the VirtualMedia schema" }
-            }
-              MemberFailed { cause: _ } => LiveDecodeRefused { detail: "a VirtualMedia member carries no string ConnectedVia" }
-              MemberArray { elements: _ } => LiveDecodeRefused { detail: "ConnectedVia is not a string" }
-              MemberObject { value: _ } => LiveDecodeRefused { detail: "ConnectedVia is not a string" }
-            }
-          _ => LiveDecodeRefused { detail: "a VirtualMedia member carries no boolean Inserted" }
-        }
-      }
-    _ => LiveDecodeRefused { detail: "a VirtualMedia member carries no string Id" }
+fn live_vm_image(v: JsonValue) -> LiveImageOutcome {
+  match read_member_value(v: v, key: "Image") {
+    MemberLookupFailed { cause: _ } => LiveImageOk { image: Absent }
+    MemberValue { value: JsonString { value: image } } => match uri_from_wire(url: image) {
+      Present { value: uri } => LiveImageOk { image: Present { value: uri } }
+      Absent => LiveImageRefused { detail: "a VirtualMedia Image is not a URI this reader parses" }
+    }
+    MemberValue { value: _ } => LiveImageRefused { detail: "a VirtualMedia Image is not a string" }
   }
 }
 
 type LiveMediaOutcome
-  = LiveDecodeMediaOk { types: List<RedfishVirtualMediaMediaType> }
-  | LiveDecodeRefused { detail: NonEmptyStr }
+  = LiveDecodeMediaOk { types: List<RedfishVirtualMediaType> }
+  | LiveMediaRefused { detail: NonEmptyStr }
 
 fn live_media_types(elements: List<JsonValue>) -> LiveMediaOutcome {
   let initial: LiveMediaOutcome = LiveDecodeMediaOk { types: [] }
   fold(elements, init: initial, f: (acc, e) => match acc {
-    LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
+    LiveMediaRefused { detail } => LiveMediaRefused { detail: detail }
     LiveDecodeMediaOk { types } => match e {
       JsonString { value: wire } => match live_media_type(text: wire) {
         Present { value: t } => LiveDecodeMediaOk { types: concat(types, [t]) }
-        Absent => LiveDecodeRefused { detail: concat("MediaType value ", wire, " names no arm of RedfishVirtualMediaType") }
+        Absent => LiveMediaRefused { detail: concat("MediaType value ", wire, " names no arm of RedfishVirtualMediaType") }
       }
-      _ => LiveDecodeRefused { detail: "a MediaType element is not a string" }
+      _ => LiveMediaRefused { detail: "a MediaType element is not a string" }
     }
   })
 }
 
 // The wire spellings are the schema's enum values, and redfish_virtual_media_type_wire is their single
 // authority — the inverse map here is CHECKED against it, so a schema rename cannot drift silently.
-fn live_media_type(text: String) -> Optional<RedfishVirtualMediaMediaType> {
+fn live_media_type(text: String) -> Optional<RedfishVirtualMediaType> {
   if text == redfish_virtual_media_type_wire(t: MediaCd) {
     Present { value: MediaCd }
   } else if text == redfish_virtual_media_type_wire(t: MediaDvd) {
@@ -1259,10 +1370,10 @@ fn live_connected_via(text: String) -> Optional<RedfishVirtualMediaConnectedVia>
 // partial sensor picture archived as complete is exactly the fabrication this lane forbids.
 fn live_sensor_points(body: NonEmptyStr) -> LivePointsOutcome {
   match live_parse(body: body as String) {
-    Absent => LiveDecodeRefused { detail: "the Sensors body is not a JSON document" }
+    Absent => LivePointsRefused { detail: "the Sensors body is not a JSON document" }
     Present { value: doc } => match read_member(v: doc, key: "Members") {
       MemberArray { elements: members } => live_points_of_elements(elements: members)
-      _ => LiveDecodeRefused { detail: "the Sensors collection serves no Members array" }
+      _ => LivePointsRefused { detail: "the Sensors collection serves no Members array" }
     }
   }
 }
@@ -1270,17 +1381,17 @@ fn live_sensor_points(body: NonEmptyStr) -> LivePointsOutcome {
 fn live_points_of_elements(elements: List<JsonValue>) -> LivePointsOutcome {
   let initial: LivePointsOutcome = LiveDecodePointsOk { points: [] }
   fold(elements, init: initial, f: (acc, e) => match acc {
-    LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
+    LivePointsRefused { detail } => LivePointsRefused { detail: detail }
     LiveDecodePointsOk { points } =>
       match read_string_member(v: e, key: "ReadingType") {
         MemberString { value: reading_type } =>
           match redfish_point(v: e, kind: live_point_kind(text: reading_type), reading_key: "Reading") {
-            ObservationRefused { cause } => LiveDecodeRefused { detail: cause }
+            ObservationRefused { cause } => LivePointsRefused { detail: cause }
             ObservationEstablished { observed: point } => LiveDecodePointsOk { points: concat(points, [point]) }
           }
-        MemberFailed { cause: _ } => LiveDecodeRefused { detail: "a sensor member carries no string ReadingType" }
-        MemberArray { elements: _ } => LiveDecodeRefused { detail: "ReadingType is not a string" }
-        MemberObject { value: _ } => LiveDecodeRefused { detail: "ReadingType is not a string" }
+        MemberFailed { cause: _ } => LivePointsRefused { detail: "a sensor member carries no string ReadingType" }
+        MemberArray { elements: _ } => LivePointsRefused { detail: "ReadingType is not a string" }
+        MemberObject { value: _ } => LivePointsRefused { detail: "ReadingType is not a string" }
       }
   })
 }
