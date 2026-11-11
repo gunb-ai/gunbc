@@ -2248,8 +2248,14 @@ test fn a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_incon
 // claim requires a non-root principal and is false on a root runner rather than passing without it.
 test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
   let root = wet_claim_root(tag: "unsandboxed-control" as NonEmptyStr)
-  let principal_is_not_root =
-    shell.Sh.ReparseWith(shell: "sh" as NonEmptyStr, command: "test \"$(id -u)\" -ne 0" as NonEmptyStr).success
+  // THE PRINCIPAL READ THROUGH THE ROUTE THIS FILE ALREADY MODELS, and the comparison done here, in
+  // .dag, on a typed Int. The fixture's principal commands already run `id -u` as argv and parse the
+  // text; spawning a shell and handing it a quoted test around a command substitution would be a second
+  // path beside a modeled route, with quoting packed into a string -- and it would also
+  // conflate two different facts. The read failing is not evidence of "not root": a principal this file
+  // cannot name must make the claim false, not let it walk into the EACCES cell it cannot observe.
+  let principal = wet_principal()
+  let principal_is_not_root = principal.uid >= 0 && principal.uid != 0
   // Each cell's verdict is bound BEFORE its unit is retired, and the retirement is then a conjunct of
   // its own: a leaked unit turns the claim red without being able to flip what the cell measured.
   let enoent = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-enoent", path: "/proc/gunbc-no-such-dir/target", claim: "the_unsandboxed_control_reads_the_principals_write_access")
