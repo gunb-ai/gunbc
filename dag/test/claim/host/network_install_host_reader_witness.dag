@@ -1,0 +1,461 @@
+// test.claim.host.network_install_host_reader — the installed-host reader, evaluated on the bytes a host would
+// have printed.
+//
+// gunbc.host.network_install_host_reader is the one port of the install run that is NOT composition over the
+// store: observe_install. Everything checkable without an ssh session is therefore what decides whether a
+// completion is ever written: which parent disk is believed, which MAC set carries the client, which installer
+// record counts, and which instant may be called the root's creation time. The claims run the reader over
+// supplied RemoteAnswers, so they stay hermetic; the live leg of this port is the production ssh exec and, later,
+// the run the manager dispatches.
+//
+// THE POSITIVE CONTROL IS A REAL INPUT, not a made-up shape. srv15's authorized disk is admitted here from the
+// committed row in gunbc.fleet.machine_target_disk_observations (nvme0n1, SERIAL 25466Q801557, MODEL "WD Green
+// SN350 1TB 2G0C", captured in artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt) through
+// admit_install_target_disk itself, and the bytes the host "prints" carry that same serial and model, this
+// machine's netboot MAC (gunbc.machine_intake.srv15_host_nic_observation: 9c:6b:00:e7:ca:63), and a chain hanging
+// off the SAME disk a USB flash drive with its own serial sits next to — the trap the pin exists for, since that
+// capture saw two disks with serials and the installer's own default is "the largest disk". If the committed row
+// ever stops authorizing an install, the claim using it goes red rather than silently checking the reader against
+// a disk no run could have authorized.
+module test.claim.host.network_install_host_reader
+
+import std.logic { Bool }
+import std.types { Int, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.algebra { FreeSemigroup, length, string_contains }
+import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkPart }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.host.network_install_host_reader {
+  InstalledHostEvidence, InstalledHostRemoteLegs, InstalledHostRootChainBroken, InstalledHostRootFound,
+  InstalledHostRootNotMounted, InstalledHostOsNotReported, InstalledHostOsReported,
+  installed_host_carries_mac, installed_host_created_at, installed_host_mac_set, installed_host_os_report,
+  installed_host_record_reading, installed_host_root_report, network_install_host_evidence,
+  network_install_host_readings,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
+import gunbc.fleet.machine_target_disk_observations {
+  site_pxe_edge_disk_identity_admission_window, srv15_lsblk_capture_instant, target_disk_reading_for,
+}
+import gunbc.provisioning.device_identity { device_identification_token_text }
+import gunbc.provisioning.install_target_disk { InstallTargetDisk, InstallTargetDiskAdmitted, InstallTargetDiskWithheld, admit_install_target_disk }
+import gunbc.provisioning.network_install_receipt {
+  ClientClassRead, ClientClassUnread, InstalledRootDevice, InstalledRootRead, InstalledRootUnbacked, InstalledRootUnread,
+  InstallerRecordAbsent, InstallerRecordRead, InstallerRecordUnread, NetworkInstallReadings,
+}
+import gunbc.secure_boot_observation { SecureBootDisabled, SecureBootEnabled, SecureBootRefused, SecureBootUnobserved }
+
+// ── The real input ──────────────────────────────────────────────────────
+
+// srv15's disk, authorized the only way a run authorizes one. The withheld arm returns false from the claim that
+// asked for it: a reader checked against no authorized disk proves nothing, so those claims refuse to run rather
+// than run against a substitute.
+fn with_srv15_target(apply: fn(InstallTargetDisk) -> Bool) -> Bool {
+  match admit_install_target_disk(
+    reading: target_disk_reading_for(host: operator_host_srv15),
+    decided_at: srv15_lsblk_capture_instant + 60000,
+    window: site_pxe_edge_disk_identity_admission_window,
+  ) {
+    InstallTargetDiskAdmitted { target: target } => apply(target)
+    InstallTargetDiskWithheld { host: _, cause: _ } => false
+  }
+}
+
+// THE PREMISE ITSELF, as its own claim: the committed srv15 row still admits, and what it admits is pinned to the
+// NVMe's serial and model rather than to the USB disk in the same capture. Every identity claim below leans on
+// this, so it is stated where a reviewer can see it go red.
+test fn w_srv15_s_committed_row_still_authorizes_the_nvme_it_reported() -> Bool {
+  with_srv15_target(apply: target =>
+    (target.device as String) == "nvme0n1"
+      && device_identification_token_text(token: target.pin.serial) == srv15_reported_serial
+  )
+}
+
+// bobo's netboot MAC as ip -o link show prints it: 9c:6b:00:e7:ca:63, the I210 that carried the rescue's lease.
+data bobo_netboot_mac: Eui48Address = mac_address(octet1: 156, octet2: 107, octet3: 0, octet4: 231, octet5: 202, octet6: 99)
+
+// Two more of srv15's ports, neither of which netboots. They are here so membership is tested against a machine
+// with MORE NICs than the bound client, which is what an equality test would get wrong.
+data other_port_mac: Eui48Address = mac_address(octet1: 0, octet2: 184, octet3: 118, octet4: 1, octet5: 2, octet6: 3)
+data third_port_mac: Eui48Address = mac_address(octet1: 0, octet2: 184, octet3: 118, octet4: 4, octet5: 5, octet6: 6)
+
+// What `ip -o link show` printed on the installed host, in the one-line form extdeps.iproute2.ip_show parses: the
+// loopback, which carries no link/ether at all, and the three host ports.
+data installed_link_list: String = "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000 link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\n2: enP2p4s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000 link/ether 9c:6b:00:e7:ca:63 brd ff:ff:ff:ff:ff:ff\n3: enp5s0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000 link/ether 00:b8:76:01:02:03 brd ff:ff:ff:ff:ff:ff\n4: enp6s0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000 link/ether 00:b8:76:04:05:06 brd ff:ff:ff:ff:ff:ff"
+
+// What `lsblk -p -P -o NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT` printed. The parent disk's SERIAL and MODEL are
+// the strings the committed capture printed for srv15's NVMe; the USB flash drive with its own serial is in the
+// same listing, because that is what this board actually reports.
+fn installed_block_report(serial: String, model: String) -> String {
+  concat(
+    "NAME=\"/dev/nvme0n1p1\" TYPE=\"part\" SERIAL=\"\" MODEL=\"\" PKNAME=\"/dev/nvme0n1\" MOUNTPOINT=\"/boot/efi\"\n",
+    concat(
+      "NAME=\"/dev/nvme0n1p2\" TYPE=\"part\" SERIAL=\"\" MODEL=\"\" PKNAME=\"/dev/nvme0n1\" MOUNTPOINT=\"/\"\n",
+      concat(
+        concat(
+          concat(concat(concat("NAME=\"/dev/nvme0n1\" TYPE=\"disk\" SERIAL=\"", serial), "\" MODEL=\""), model),
+          "\" PKNAME=\"\" MOUNTPOINT=\"\"\n"
+        ),
+        "NAME=\"/dev/sda\" TYPE=\"disk\" SERIAL=\"071E26101434\" MODEL=\"USB Flash Disk\" PKNAME=\"\" MOUNTPOINT=\"\""
+      )
+    )
+  )
+}
+
+data srv15_reported_serial: String = "25466Q801557"
+data srv15_reported_model: String = "WD Green SN350 1TB 2G0C"
+
+data installed_os_release: String = "PRETTY_NAME=\"Ubuntu 24.04.2 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nID=ubuntu\nIMAGE_ID=ubuntu-server\nVERSION=\"24.04.2 LTS (Noble Numbat)\""
+
+// A provisioned systemd machine id: 32 lowercase hex digits, which is what the installer's final stage writes and
+// what the live installer environment leaves empty.
+data installed_machine_id: String = "3f2a9c1d4b5e6789a0b1c2d3e4f50617"
+
+data installer_record_mtime: String = "1793232030"
+data root_birth_time_seconds: String = "1793232025"
+
+fn answered(text: String) -> RemoteAnswer {
+  RemoteAnswer { exit_code: 0, stdout: text, stderr: "" }
+}
+
+// The six legs, with the identity columns and the refusals left open so a claim changes exactly ONE fact and every
+// other fact stays as the positive control printed it.
+fn legs(machine_id: String, block: String, record_text: String, record_exit: Int, created: String) -> InstalledHostRemoteLegs {
+  InstalledHostRemoteLegs {
+    os_release: fn() { answered(installed_os_release) }
+    machine_id: fn() { answered(machine_id) }
+    link_list: fn() { answered(installed_link_list) }
+    block_report: fn() { answered(block) }
+    installer_record: fn() { RemoteAnswer { exit_code: record_exit, stdout: record_text, stderr: "" } }
+    root_created: fn() { answered(created) }
+  }
+}
+
+fn srv15_legs() -> InstalledHostRemoteLegs {
+  legs(
+    machine_id: installed_machine_id,
+    block: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model),
+    record_text: installer_record_mtime,
+    record_exit: 0,
+    created: root_birth_time_seconds
+  )
+}
+
+fn reading_with(target: InstallTargetDisk, host_legs: InstalledHostRemoteLegs) -> NetworkInstallReadings {
+  network_install_host_readings(
+    target: target,
+    client: bobo_netboot_mac,
+    decided_at: srv15_lsblk_capture_instant + 60000,
+    evidence: network_install_host_evidence(legs: host_legs)
+  )
+}
+
+// ── THE POSITIVE CONTROL ────────────────────────────────────────────────
+
+// A host that printed srv15's own committed disk identity, a provisioned machine id, the netboot MAC among three
+// ports, the installer record and a real birth time IS read as installed to disk: the Read arm, with the admitted
+// serial, a chain from the mounted partition to the whole disk this run authorized, and the instant the root's own
+// superblock reported — seconds multiplied to milliseconds, not the second itself passed off as an instant.
+test fn w_srv15_s_installed_host_is_read_as_installed_to_disk() -> Bool {
+  with_srv15_target(apply: target =>
+    match reading_with(target: target, host_legs: srv15_legs()).host.root {
+      InstalledRootRead { source: source, chain: chain, disk_serial: disk_serial, created_at: created_at } =>
+        (source as String) == "/dev/nvme0n1p2"
+          && serial_or_empty(disk_serial: disk_serial) == srv15_reported_serial
+          && (chain.head.name as String) == "/dev/nvme0n1p2"
+          && kind_is_part(kind: chain.head.kind)
+          && (last_of(chain: chain).name as String) == "/dev/nvme0n1"
+          && created_at == 1793232025000
+      InstalledRootUnbacked { source: _ } => false
+      InstalledRootUnread { why: _ } => false
+    }
+  )
+}
+
+// THE OTHER TWO FACTS on the same run: the bound MAC is FOUND among the three ports the host reported (not equal
+// to how many there are), the installer record is there with its own mtime, and the edge readings stay declared
+// gaps rather than becoming this reader's answer.
+test fn w_the_bound_mac_is_a_member_of_a_three_port_host_and_the_edge_gaps_stay_gaps() -> Bool {
+  with_srv15_target(apply: target => {
+    let readings = reading_with(target: target, host_legs: srv15_legs())
+    installed_host_carries_mac(mac_set: readings.host.interface_macs, client: bobo_netboot_mac)
+      && installed_host_carries_mac(mac_set: readings.host.interface_macs, client: other_port_mac)
+      && length(xs: readings.host.interface_macs) == 3
+      && match readings.host.installer_record {
+        InstallerRecordRead { written_at: written_at } => written_at == 1793232030000
+        InstallerRecordAbsent => false
+        InstallerRecordUnread { why: _ } => false
+      }
+      && match readings.client_class {
+        ClientClassUnread { why: _ } => true
+        ClientClassRead { client: _, code: _ } => false
+      }
+      && length(xs: readings.fetches) == 0
+      && match readings.host.secure_boot {
+        SecureBootUnobserved { reason: _ } => true
+        SecureBootEnabled => false
+        SecureBootDisabled => false
+        SecureBootRefused { refusal: _ } => false
+      }
+  })
+}
+
+// ── THE DISCRIMINATING REDS ─────────────────────────────────────────────
+
+// SERIAL ONLY IS NOT ENOUGH. The parent disk prints the authorized serial and a DIFFERENT model. This is the red
+// that catches a reader which compared the serial and treated the model as decoration — and the fleet has its own
+// precedent for why: srv14's model-only match is a CLASS test every disk of that model passes.
+test fn w_the_authorized_serial_with_another_model_is_refused() -> Bool {
+  with_srv15_target(apply: target =>
+    match reading_with(
+      target: target,
+      host_legs: legs(
+        machine_id: installed_machine_id,
+        block: installed_block_report(serial: srv15_reported_serial, model: "WD Green SN350 500G 2G0C"),
+        record_text: installer_record_mtime,
+        record_exit: 0,
+        created: root_birth_time_seconds
+      )
+    ).host.root {
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => false
+      InstalledRootUnread { why: why } => string_contains(s: why as String, pattern: "not the disk this run authorized")
+    }
+  )
+}
+
+// AND THE OTHER DISK IN THE SAME LISTING IS NOT THE TARGET. The USB flash drive the capture found beside the NVMe
+// must never stand in for the authorized disk, which is the exact state the pin exists to make unreachable (the
+// installer's own default is the largest disk, and which that is today is a fact about the capture, not a
+// permission).
+test fn w_the_usb_disk_alongside_the_authorized_disk_is_refused() -> Bool {
+  with_srv15_target(apply: target =>
+    match reading_with(
+      target: target,
+      host_legs: legs(
+        machine_id: installed_machine_id,
+        block: installed_block_report(serial: "071E26101434", model: "USB Flash Disk"),
+        record_text: installer_record_mtime,
+        record_exit: 0,
+        created: root_birth_time_seconds
+      )
+    ).host.root {
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => false
+      InstalledRootUnread { why: why } => string_contains(s: why as String, pattern: "not the disk this run authorized")
+    }
+  )
+}
+
+// NO FABRICATED INSTANT. `stat -c %W` answers 0, which is what "this filesystem reports no birth time" prints.
+// The reader must refuse — and refuse NAMING the command and its answer — because a zero used as a time would let
+// a root far older than the attempt pass the fold's freshness gate.
+test fn w_a_root_with_no_birth_time_is_refused_naming_the_command_and_its_answer() -> Bool {
+  with_srv15_target(apply: target =>
+    match reading_with(
+      target: target,
+      host_legs: legs(
+        machine_id: installed_machine_id,
+        block: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model),
+        record_text: installer_record_mtime,
+        record_exit: 0,
+        created: "0"
+      )
+    ).host.root {
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => false
+      InstalledRootUnread { why: why } =>
+        string_contains(s: why as String, pattern: "stat -c %W")
+          && string_contains(s: why as String, pattern: "birth time unsupported")
+    }
+  )
+}
+
+// The instant gate on its own: an answer that is not a number yields NO instant, which the reader above turns into
+// the refusal. A reader that fell back to "now" would report an installed root that was never created.
+test fn w_a_root_created_time_that_is_not_a_number_yields_no_instant() -> Bool {
+  match installed_host_created_at(root_created_raw: "Jan 1 2026") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE LIVE INSTALLER ENVIRONMENT IS NOT AN INSTALLED HOST. Every other fact looks right — the record may be there,
+// the MAC is on the wire, the disk was formatted minutes ago — but the live session never provisioned a machine
+// id, and folding it would complete an install that never happened.
+test fn w_an_unprovisioned_machine_id_is_refused_even_with_everything_else_right() -> Bool {
+  with_srv15_target(apply: target =>
+    match reading_with(
+      target: target,
+      host_legs: legs(
+        machine_id: "",
+        block: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model),
+        record_text: installer_record_mtime,
+        record_exit: 0,
+        created: root_birth_time_seconds
+      )
+    ).host.root {
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => false
+      InstalledRootUnread { why: why } => string_contains(s: why as String, pattern: "machine-id")
+    }
+  )
+}
+
+// A machine id of the wrong shape is the same refusal: 32 characters that are not hex must not pass, or the guard
+// would accept anything that happens to be the right length.
+test fn w_a_machine_id_of_the_wrong_shape_is_refused() -> Bool {
+  with_srv15_target(apply: target =>
+    match reading_with(
+      target: target,
+      host_legs: legs(
+        machine_id: "3f2a9c1d4b5e6789a0b1c2d3e4f5061z",
+        block: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model),
+        record_text: installer_record_mtime,
+        record_exit: 0,
+        created: root_birth_time_seconds
+      )
+    ).host.root {
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => true
+      InstalledRootUnread { why: _ } => true
+    }
+  )
+}
+
+// TWO ROWS MOUNTED AT / ARE NOT RESOLVED BY PICKING THE NEARER ONE — the fleet's named recurring failure mode,
+// "a bare name resolved by proximity, standing in for resolution", tested at the one place such a guess could have
+// been made.
+test fn w_two_root_filesystems_are_not_resolved_by_proximity() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: concat(
+      "NAME=\"/dev/nvme0n1p2\" TYPE=\"part\" SERIAL=\"\" MODEL=\"\" PKNAME=\"/dev/nvme0n1\" MOUNTPOINT=\"/\"\n",
+      "NAME=\"/dev/sdb1\" TYPE=\"part\" SERIAL=\"\" MODEL=\"\" PKNAME=\"/dev/sdb\" MOUNTPOINT=\"/\""
+    )
+  ) {
+    InstalledHostRootFound { source: _, chain: _ } => false
+    InstalledHostRootNotMounted { why: why } => string_contains(s: why as String, pattern: "was not guessed")
+    InstalledHostRootChainBroken { why: _ } => false
+  }
+}
+
+// WHY -P IS ASKED OF lsblk. An absent SERIAL beside a MODEL containing spaces: under whitespace column-splitting
+// the model slides into the serial's place and this claim flips to an accept. The pairs parser must instead see an
+// empty serial and refuse the disk for reporting none — a refusal the operator can act on.
+test fn w_an_absent_serial_column_does_not_shift_the_model_into_it() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: concat(
+      "NAME=\"/dev/nvme0n1p2\" TYPE=\"part\" SERIAL=\"\" MODEL=\"\" PKNAME=\"/dev/nvme0n1\" MOUNTPOINT=\"/\"\n",
+      "NAME=\"/dev/nvme0n1\" TYPE=\"disk\" SERIAL=\"\" MODEL=\"WD Green SN350 1TB 2G0C\" PKNAME=\"\" MOUNTPOINT=\"\""
+    )
+  ) {
+    InstalledHostRootFound { source: _, chain: _ } => false
+    InstalledHostRootNotMounted { why: _ } => false
+    InstalledHostRootChainBroken { why: why } => string_contains(s: why as String, pattern: "reports no serial")
+  }
+}
+
+// A CHAIN THAT LEAVES THE REPORTED SET IS REFUSED rather than completed by reading a parent out of a name: p2 whose
+// PKNAME names a disk lsblk never printed has no parent disk, and inferring "nvme0n1" from "nvme0n1p2" would
+// authorize the erase of a device nobody reported.
+test fn w_a_parent_link_that_leaves_the_reported_set_is_refused() -> Bool {
+  match installed_host_root_report(
+    block_report_raw: "NAME=\"/dev/nvme0n1p2\" TYPE=\"part\" SERIAL=\"\" MODEL=\"\" PKNAME=\"/dev/nvme0n9\" MOUNTPOINT=\"/\""
+  ) {
+    InstalledHostRootFound { source: _, chain: _ } => false
+    InstalledHostRootChainBroken { why: why } => string_contains(s: why as String, pattern: "nvme0n1p2")
+    InstalledHostRootNotMounted { why: _ } => false
+  }
+}
+
+// MEMBERSHIP IS NOT EQUALITY, in the refusing direction: three ports, none of them the bound client, and the host
+// carries nothing. A reader that answered "the host has NICs" would complete an install for a machine that never
+// booted from this lease.
+test fn w_a_host_without_the_bound_mac_does_not_carry_it() -> Bool {
+  let macs = installed_host_mac_set(link_list_raw: "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000 link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\n2: enp5s0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000 link/ether 00:b8:76:01:02:03 brd ff:ff:ff:ff:ff:ff")
+  !(installed_host_carries_mac(mac_set: macs, client: bobo_netboot_mac)) && length(xs: macs) == 1
+}
+
+// A MALFORMED ETHER IS LEFT OUT OF THE SET rather than trusted: the line is a record, and the only address on it
+// will not parse, so the host carries nothing it could be believed for.
+test fn w_a_host_whose_only_ether_will_not_parse_carries_nothing() -> Bool {
+  length(xs: installed_host_mac_set(link_list_raw: "2: enp5s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000 link/ether 9c:6b:00:e7:ca:zz brd ff:ff:ff:ff:ff:ff")) == 0
+}
+
+// ABSENT AND UNREAD ARE KEPT APART. `stat` exits non-zero for a record it could not find: that is a host that did
+// not install. Bytes that are not a time on a zero exit are a host that was not reached. Collapsing the two would
+// tell the operator to reinstall a machine whose disk was never written, or to retry a machine that is down.
+test fn w_an_installer_record_stat_could_not_find_is_absent_not_unread() -> Bool {
+  match installed_host_record_reading(evidence: evidence_with(record_text: "", record_exit: 1)) {
+    InstallerRecordAbsent => true
+    InstallerRecordRead { written_at: _ } => false
+    InstallerRecordUnread { why: _ } => false
+  }
+}
+
+test fn w_an_installer_record_that_printed_no_mtime_is_unread_not_absent() -> Bool {
+  match installed_host_record_reading(evidence: evidence_with(record_text: "stat: cannot statx", record_exit: 0)) {
+    InstallerRecordAbsent => false
+    InstallerRecordRead { written_at: _ } => false
+    InstallerRecordUnread { why: why } => string_contains(s: why as String, pattern: "autoinstall-user-data")
+  }
+}
+
+// THE OS READING, both directions: an os-release that names itself reports the name the host printed (quotes taken
+// back off, because os-release quotes a name containing spaces), and a file with no ID= reports nothing rather than
+// guessing an OS from what the run hoped to install.
+test fn w_the_installed_os_is_the_name_the_host_prints() -> Bool {
+  match installed_host_os_report(os_release_raw: installed_os_release) {
+    InstalledHostOsReported { evidence: evidence } => (evidence as String) == "Ubuntu 24.04.2 LTS"
+    InstalledHostOsNotReported { why: _ } => false
+  }
+}
+
+test fn w_an_os_release_that_names_no_os_reports_nothing() -> Bool {
+  match installed_host_os_report(os_release_raw: "HOME_URL=\"https://www.ubuntu.com/\"") {
+    InstalledHostOsReported { evidence: _ } => false
+    InstalledHostOsNotReported { why: _ } => true
+  }
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────
+
+fn evidence_with(record_text: String, record_exit: Int) -> InstalledHostEvidence {
+  InstalledHostEvidence {
+    os_release_raw: installed_os_release
+    machine_id_raw: installed_machine_id
+    link_list_raw: installed_link_list
+    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
+    installer_record_raw: record_text
+    root_created_raw: root_birth_time_seconds
+    installer_record_exit: record_exit
+  }
+}
+
+fn serial_or_empty(disk_serial: Optional<NonEmptyStr>) -> String {
+  match disk_serial {
+    Absent => ""
+    Present { value: value } => value as String
+  }
+}
+
+fn last_of(chain: FreeSemigroup<InstalledRootDevice>) -> InstalledRootDevice {
+  match get(xs: chain.tail, index: length(xs: chain.tail) - 1) {
+    Absent => chain.head
+    Present { value: device } => device
+  }
+}
+
+fn kind_is_part(kind: LsblkDeviceType) -> Bool {
+  match kind {
+    LsblkPart => true
+    LsblkDisk => false
+    LsblkLvm => false
+    LsblkRaid => false
+    LsblkRom => false
+    LsblkRm => false
+    LsblkLvmMember => false
+    LsblkRaidMember => false
+    LsblkScheduled => false
+  }
+}

@@ -2,7 +2,14 @@ module extdeps.tools.util_linux_lsblk
 
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.uri { Uri, Https }
+
+// THE PROGRAM, as one identity. The invocation is absolute because the consumer that reads a fleet host's block
+// layout runs this over ssh (gunbc.host.network_install_host_reader), where the remote PATH is the remote
+// administrator's PATH and not the fleet's; a bare "lsblk" there would be a lookup, and a lookup that resolves to
+// a different binary is a different program.
+fn lsblk_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/lsblk")
 
 // lsblk(8), util-linux: "lsblk lists information about all available or the specified block devices". Its TYPE
 // column is the device type; the man page names the column but not its values, which lsblk computes in

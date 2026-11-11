@@ -1,0 +1,684 @@
+module gunbc.host.network_install_host_reader
+
+// ============================ WHAT THIS IS ============================
+// THE INSTALLED-HOST READER (PXE 2c, ruling C): the one port of gunbc.host.network_install's
+// NetworkInstallRunPorts that the store does NOT supply — observe_install — carried over the fleet's EXISTING
+// remote-leg shape. A leg is a thunk to a RemoteAnswer (gunbc.host.boot_medium_served_readback), production runs
+// each leg through the typed ssh exec exactly as boot_medium_served_readback and
+// gunbc.host.export_host_reader_converge do, and nothing here opens a connection or spawns a process on its own
+// initiative: the legs come in, this module parses, admits and folds them. A witness supplies RemoteAnswers
+// directly, which is what keeps this module's witness hermetic.
+//
+// WHAT IT MINTS, AND THE THREE FACTS THAT MEAN "INSTALLED TO DISK". The output is
+// gunbc.provisioning.network_install_receipt.NetworkInstallReadings, and that module's fold reads the host
+// reading as installed only when all three of these hold:
+//   1. the root filesystem's PARENT disk reports the ADMITTED serial AND the ADMITTED model, both compared
+//      against the SAME gunbc.provisioning.install_target_disk.InstallTargetDisk object the run authorized —
+//      specifically against its stored pin, which admit_install_target_disk builds from the admitted identity and
+//      from nothing else. The identity is never re-read or re-admitted here: a fresh admission would let some
+//      later reading of some other disk satisfy a run that authorized a different one.
+//   2. the bound client MAC is a MEMBER of the observed MAC set — membership, NOT set equality, because srv15
+//      carries three host ports and only the I210 (gunbc.machine_intake.srv15_host_nic_observation) netboots, so
+//      an equality test against a one-NIC expectation would refuse a machine that installed correctly.
+//   3. subiquity's installed autoinstall record is present on the installed root
+//      (extdeps.os.ubuntu_autoinstall.subiquity_installed_autoinstall_record_path), with its own mtime as its own
+//      fact — "a disk formatted during the attempt without that record is a formatted disk, not an install".
+//
+// ============================ THE SIX READS ============================
+//   cat /etc/os-release      -> the installed OS as its own os-release reports it (installed_host_os_report)
+//   cat /etc/machine-id      -> the installed system provisioned its own identity. The live installer environment
+//                               leaves this file empty, so this is the read that stops the reader folding a live
+//                               session that happens to have the target disk mounted.
+//   ip -o link show          -> the MAC set, through extdeps.iproute2.ip_show's own record parser
+//   lsblk -p -P -o NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT -> the root filesystem's row, the chain under it, and
+//                               the parent disk's SERIAL and MODEL
+//   stat -c %Y <record>      -> the installer record's mtime; the record's PRESENCE is the exit status, not the text
+//   stat -c %W /             -> the root filesystem's own creation time
+//
+// WHY lsblk IS ASKED FOR TWO COLUMNS BEYOND NAME,TYPE,SERIAL,MODEL. InstalledRootRead.source is THE MOUNT SOURCE,
+// and completion turns on the root filesystem's PARENT disk. With the four briefed columns alone there is no way
+// to tell which row IS the root filesystem, and no documented way to recover parenthood: lsblk's tree glyphs are
+// layout rather than data, and inferring a parent from a device NAME is this repository's named recurring failure
+// mode — "a bare name resolved by proximity, standing in for resolution". PKNAME is lsblk's own parent link and
+// MOUNTPOINT its own mount column. Columns are ADDED and none removed, and the identity that is BELIEVED still
+// comes only from the authorized pin: an extra column can widen what is read, never widen what is trusted. -P is
+// asked for the same reason it exists in lsblk(1): with it an absent SERIAL stays a column instead of shifting
+// MODEL into its place, and a MODEL containing spaces — srv15's reads "WD Green SN350 1TB 2G0C" — stays one value.
+//
+// ============================ DECLARED GAPS, NEVER MINTED HERE ============================
+// InstallFetchReading (both edges) and InstallClientClassReading are the EDGE's readings: what the TFTP and seed
+// servers logged as delivered to this client, and what the client class the edge measured was. They are never
+// minted from a host-side read, and this module never mints them: it reports ClientClassUnread and no fetches, so
+// the fold answers InstallNotEstablished with ClientClassNotMeasured and MemberNotDelivered gaps and the
+// completion journal stays unwritten. Both are named in the PR body. A reader that answered them would be vouching
+// for an edge-side fact from the client side, which is the confusion this split exists to prevent. Secure boot
+// stays SecureBootUnobserved for the same reason: it is a firmware read owned by gunbc.secure_boot_observation,
+// not one of the six host reads made here.
+//
+// ============================ WHAT A REFUSAL MEANS OPERATIONALLY ============================
+// created_at comes ONLY from `stat -c %W` on the root filesystem (ruling A: one fact may not feed two gates, so it
+// is never copied from the installer record's mtime). When that leg answers 0, or errors, this reader refuses with
+// the command and its raw answer in the refusal text — never a substituted instant, and never 0 as if it were a
+// time, because 0 is what "this filesystem reports no birth time" looks like, and a zero instant would let a root
+// far OLDER than the attempt pass the fold's freshness gate. Operationally: a filesystem that reports no birth
+// time can NEVER complete an install under this fold, and the remedy is a different reading route for that host,
+// not a retry of this one. srv15's install target is ext4 on a 6.x kernel, where %W is populated, so this does not
+// block bobo. Each leg's raw stdout travels back in InstalledHostEvidence beside the values decided from it, so a
+// created_at in a completion receipt traces to bytes on record rather than to this parser's word.
+//
+// ============================ REFUSAL DISCIPLINE ============================
+// Every gate here refuses. A leg that did not answer, a row that is not in the reported set, an address that will
+// not parse, a parent disk whose serial or model differs from the authorized one, a machine id the installer never
+// wrote: each yields the receipt module's own gap arm (InstalledRootUnread, InstalledRootUnbacked,
+// InstallerRecordUnread, InstallerRecordAbsent, ...) and never an "observed" arm. A port that cannot establish its
+// effect refuses; it never answers yes.
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Absent, Present }
+import std.algebra { FreeSemigroup, length, list_append, string_contains, trim }
+import std.list { first_where }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.iproute2.ip_neigh { ip_program }
+import extdeps.iproute2.ip_show { ip_link_record, ip_oneline_records, ip_show_link_args }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_addresses_are_equal, parse_mac_address_any_case }
+import extdeps.os.ubuntu_autoinstall { subiquity_installed_autoinstall_record_path }
+import extdeps.storage.device_identification { DeviceIdentificationAdmitted, DeviceIdentificationRefused, DeviceIdentificationToken, admit_device_identification_token, device_identification_token_text }
+import extdeps.tools.gnu_coreutils { cat_program }
+import extdeps.tools.stat { stat_program }
+import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkCrypt, LsblkDisk, LsblkLoop, LsblkLvm, LsblkOtherType, LsblkPart, LsblkRom, lsblk_program }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.provisioning.install_target_disk { InstallTargetDisk, install_target_disk_pin }
+import gunbc.provisioning.network_install_receipt { ClientClassUnread, InstalledHostReading, InstalledRootDevice, InstalledRootRead, InstalledRootReading, InstalledRootUnbacked, InstalledRootUnread, InstallerRecordAbsent, InstallerRecordRead, InstallerRecordReading, InstallerRecordUnread, NetworkInstallReadings }
+import gunbc.secure_boot_observation { SecureBootUnobserved }
+
+// One host-side read, supplied rather than performed here. Production supplies these over the typed ssh exec;
+// witnesses supply a RemoteAnswer directly.
+type InstalledHostRemoteLegs {
+  os_release: fn() -> RemoteAnswer
+  machine_id: fn() -> RemoteAnswer
+  link_list: fn() -> RemoteAnswer
+  block_report: fn() -> RemoteAnswer
+  installer_record: fn() -> RemoteAnswer
+  root_created: fn() -> RemoteAnswer
+}
+
+// What the six legs said, bytes first. The parsed arms below are decisions; these are the readings those decisions
+// were made from, kept together so every value in a completion receipt traces to recorded bytes.
+type InstalledHostEvidence {
+  os_release_raw: String
+  machine_id_raw: String
+  link_list_raw: String
+  block_report_raw: String
+  installer_record_raw: String
+  root_created_raw: String
+  installer_record_exit: Int
+}
+
+// One row of `lsblk -P`: the columns this reader asked for, exactly as the tool printed them. Nothing is admitted
+// yet — an absent serial is still the empty string lsblk printed, and what that means is decided below.
+type InstalledHostBlockRow {
+  name: String
+  kind_word: String
+  serial: String
+  model: String
+  parent: String
+  mount_point: String
+}
+
+// The chain under the root filesystem: the row mounted at /, the whole disk it hangs off, and every device between
+// them in the order lsblk's own parent links give.
+type InstalledHostRootChain {
+  leaf: InstalledHostBlockRow
+  disk: InstalledHostBlockRow
+  below_disk: List<InstalledHostBlockRow>
+}
+
+// What the block reading says about the root, before anything is compared with the authorized disk.
+type InstalledHostRootReport
+  = InstalledHostRootFound { source: NonEmptyStr, chain: InstalledHostRootChain }
+  | InstalledHostRootNotMounted { why: NonEmptyStr }
+  | InstalledHostRootChainBroken { why: NonEmptyStr }
+
+// The parent disk's printed identity, each column admitted through the same token admission the committed rows go
+// through — or refused, naming the column.
+type InstalledHostDiskIdentityReport
+  = InstalledHostDiskIdentityReported { serial: DeviceIdentificationToken, model: DeviceIdentificationToken }
+  | InstalledHostDiskIdentityUnreportable { why: NonEmptyStr }
+
+// What /etc/os-release said, as its own arm: this is NOT the run's NetworkInstallOsObservation (that type belongs
+// to gunbc.host.network_install, which imports THIS module — naming it here would close an import cycle), and the
+// run's entry maps these arms onto its own observation.
+type InstalledHostOsReport
+  = InstalledHostOsReported { evidence: NonEmptyStr }
+  | InstalledHostOsNotReported { why: NonEmptyStr }
+
+// ============================ LEG COMMANDS ============================
+// Each command is a whole argv with no shell in front of it and no secret in any of it. The BMC credential never
+// appears here: it travels only as a PATH to a 0600 file (gunbc.auth.private_secret_file) on the run's entry.
+
+fn installed_host_os_release_command() -> ArgvCommand {
+  argv_command(program: cat_program(), arguments: ["/etc/os-release"])
+}
+
+fn installed_host_machine_id_command() -> ArgvCommand {
+  argv_command(program: cat_program(), arguments: ["/etc/machine-id"])
+}
+
+fn installed_host_link_list_command() -> ArgvCommand {
+  argv_command(program: ip_program(), arguments: ip_show_link_args)
+}
+
+// The block report for the installed root: lsblk's own parent link (PKNAME) and mount column (MOUNTPOINT) beside
+// the four briefed identity columns. -p so a NAME is a path a mount source can be read against, -P so an absent
+// column stays a column.
+fn installed_host_block_report_command() -> ArgvCommand {
+  argv_command(
+    program: lsblk_program(),
+    arguments: ["-p", "-P", "-o", "NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT"]
+  )
+}
+
+// The installer record's mtime. Its PRESENCE is this command's exit status, which is why the status is kept in the
+// evidence rather than folded away: `stat` prints an mtime only for a file it found.
+fn installed_host_installer_record_command() -> ArgvCommand {
+  argv_command(program: stat_program(), arguments: ["-c", "%Y", "--", subiquity_installed_autoinstall_record_path as String])
+}
+
+// The root filesystem's own birth time in seconds. 0 is what "this filesystem reports no birth time" prints, and
+// installed_host_created_at is where that is refused rather than believed.
+fn installed_host_root_created_command() -> ArgvCommand {
+  argv_command(program: stat_program(), arguments: ["-c", "%W", "--", "/"])
+}
+
+// ============================ THE EVIDENCE PATH ============================
+// Each leg is evaluated EXACTLY once and its bytes kept, so the reading and the bytes it was decided from cannot
+// drift apart, and a production leg is never spawned twice for one install.
+fn network_install_host_evidence(legs: InstalledHostRemoteLegs) -> InstalledHostEvidence {
+  let os_release = legs.os_release()
+  let machine_id = legs.machine_id()
+  let link_list = legs.link_list()
+  let block_report = legs.block_report()
+  let installer_record = legs.installer_record()
+  let root_created = legs.root_created()
+  InstalledHostEvidence {
+    os_release_raw: os_release.stdout
+    machine_id_raw: machine_id.stdout
+    link_list_raw: link_list.stdout
+    block_report_raw: block_report.stdout
+    installer_record_raw: installer_record.stdout
+    root_created_raw: root_created.stdout
+    installer_record_exit: installer_record.exit_code
+  }
+}
+
+// ============================ THE MAC SET ============================
+// ip -o link show through iproute2's own parser: this reader does not re-parse what extdeps.iproute2.ip_show
+// already parses. An address that will not parse is LEFT OUT of the set rather than trusted, so the membership
+// test below has to find the bound MAC among the addresses that did parse — a host whose only ether is malformed
+// carries nothing, and the fold then reports HostDoesNotCarryClientMac.
+fn installed_host_mac_set(link_list_raw: String) -> List<Eui48Address> {
+  installed_host_macs_at(words: ip_oneline_records(stdout: link_list_raw), at: 0, acc: [])
+}
+
+fn installed_host_macs_at(words: List<List<String>>, at: Int, acc: List<Eui48Address>) -> List<Eui48Address> {
+  match get(xs: words, index: at) {
+    Absent => acc
+    Present { value: record } => match installed_host_mac_of(words: record) {
+      Absent => installed_host_macs_at(words: words, at: at + 1, acc: acc)
+      Present { value: address } => installed_host_macs_at(words: words, at: at + 1, acc: list_append(acc, [address]))
+    }
+  }
+}
+
+fn installed_host_mac_of(words: List<String>) -> Optional<Eui48Address> {
+  match ip_link_record(words: words) {
+    Absent => Absent
+    Present { value: record } => match record.ether {
+      Absent => Absent
+      Present { value: spelling } => match parse_mac_address_any_case(text: trim(s: spelling)) {
+        MacParsed { address: address } => Present { value: address }
+        MacParseFailed { error: _ } => Absent
+      }
+    }
+  }
+}
+
+// MEMBERSHIP, not set equality: srv15 has three ports and one netboot MAC, so the bound client's address has to be
+// FOUND among what the host reported, not matched against how many ports it has.
+fn installed_host_carries_mac(mac_set: List<Eui48Address>, client: Eui48Address) -> Bool {
+  match first_where(xs: mac_set, keep: observed => mac_addresses_are_equal(left: observed, right: client)) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// ============================ THE BLOCK REPORT ============================
+fn installed_host_block_rows(block_report_raw: String) -> List<InstalledHostBlockRow> {
+  map(
+    filter(
+      split(s: block_report_raw, delimiter: "\n"),
+      line => string_contains(s: trim(s: line), pattern: "NAME=\"")
+    ),
+    line => installed_host_block_row(line: trim(s: line))
+  )
+}
+
+// -P prints KEY="value" pairs, so a value is what sits between the quote after its key and the next quote: an
+// absent SERIAL stays "" instead of shifting MODEL left, which is exactly what the whitespace form gets wrong.
+fn installed_host_block_row(line: String) -> InstalledHostBlockRow {
+  InstalledHostBlockRow {
+    name: installed_host_pair(line: line, key: "NAME")
+    kind_word: installed_host_pair(line: line, key: "TYPE")
+    serial: installed_host_pair(line: line, key: "SERIAL")
+    model: installed_host_pair(line: line, key: "MODEL")
+    parent: installed_host_pair(line: line, key: "PKNAME")
+    mount_point: installed_host_pair(line: line, key: "MOUNTPOINT")
+  }
+}
+
+fn installed_host_pair(line: String, key: String) -> String {
+  match get(xs: split(s: line, delimiter: concat(key, "=\"")), index: 1) {
+    Absent => ""
+    Present { value: after_key } => match get(xs: split(s: after_key, delimiter: "\""), index: 0) {
+      Absent => ""
+      Present { value: value } => value
+    }
+  }
+}
+
+// lsblk's TYPE words as extdeps.tools.util_linux_lsblk names them. A word that module does not distinguish keeps
+// its own word rather than folding into a named arm.
+fn installed_host_block_kind(word: String) -> LsblkDeviceType {
+  if word == "disk" { LsblkDisk }
+  else if word == "part" { LsblkPart }
+  else if word == "lvm" { LsblkLvm }
+  else if word == "crypt" { LsblkCrypt }
+  else if word == "loop" { LsblkLoop }
+  else if word == "rom" { LsblkRom }
+  else { LsblkOtherType { word: word as NonEmptyStr } }
+}
+
+fn installed_host_row_named(rows: List<InstalledHostBlockRow>, name: String) -> Optional<InstalledHostBlockRow> {
+  first_where(xs: rows, keep: row => row.name == name)
+}
+
+// The root filesystem is the row mounted AT /. Zero such rows is a host this reader cannot read; more than one is
+// too, and picking the nearer one would be the proximity substitution the fleet names as a failure mode.
+fn installed_host_root_report(block_report_raw: String) -> InstalledHostRootReport {
+  let rows = installed_host_block_rows(block_report_raw: block_report_raw)
+  let mounted = filter(rows, row => row.mount_point == "/")
+  match get(xs: mounted, index: 0) {
+    Absent => InstalledHostRootNotMounted {
+      why: "lsblk -p -P -o NAME,TYPE,SERIAL,MODEL,PKNAME,MOUNTPOINT printed no row mounted at /" as NonEmptyStr
+    }
+    Present { value: leaf } =>
+      if length(xs: mounted) > 1 {
+        InstalledHostRootNotMounted {
+          why: concat("lsblk printed ", concat(to_string(length(xs: mounted)), " rows mounted at /; the root filesystem was not guessed from among them")) as NonEmptyStr
+        }
+      } else if trim(s: leaf.name) == "" {
+        InstalledHostRootNotMounted {
+          why: "the row mounted at / printed no NAME" as NonEmptyStr
+        }
+      } else {
+      match installed_host_chain_up(rows: rows, current: leaf, below_disk: [], hops: 0) {
+        Absent => InstalledHostRootChainBroken {
+          why: concat("PKNAME left the devices lsblk reported, or the walk reached eight devices without a whole disk, starting at ", leaf.name) as NonEmptyStr
+        }
+        Present { value: chain } => InstalledHostRootFound { source: leaf.name as NonEmptyStr, chain: chain }
+      }
+    }
+  }
+}
+
+// Up the parent links lsblk itself prints, stopping AT the whole disk. Eight hops is deeper than any root chain
+// this fleet runs (a partition, or part -> lvm -> crypt -> disk), so a cycle ends the walk instead of looping it.
+fn installed_host_chain_up(
+  rows: List<InstalledHostBlockRow>,
+  current: InstalledHostBlockRow,
+  below_disk: List<InstalledHostBlockRow>,
+  hops: Int
+) -> Optional<InstalledHostRootChain> {
+  if current.kind_word == "disk" {
+    Present { value: InstalledHostRootChain { leaf: current, disk: current, below_disk: below_disk } }
+  } else if hops >= 8 {
+    none
+  } else if trim(s: current.parent) == "" {
+    none
+  } else {
+      match installed_host_row_named(rows: rows, name: current.parent) {
+    Absent => Absent
+    Present { value: parent } => installed_host_chain_up(
+      rows: rows,
+      current: parent,
+      below_disk: list_append(below_disk, [current]),
+      hops: hops + 1
+    )
+  }
+    }
+}
+
+// The parent disk's printed identity, admitted through the SAME token admission the committed rows go through: a
+// column the admission refuses is refused here, with the column named.
+fn installed_host_disk_identity(disk: InstalledHostBlockRow) -> InstalledHostDiskIdentityReport {
+  match installed_host_token(spelling: disk.serial) {
+    Absent => InstalledHostDiskIdentityUnreportable {
+      why: concat("lsblk printed no admissible SERIAL for the parent disk ", disk.name) as NonEmptyStr
+    }
+    Present { value: serial } => match installed_host_token(spelling: disk.model) {
+      Absent => InstalledHostDiskIdentityUnreportable {
+        why: concat("lsblk printed no admissible MODEL for the parent disk ", disk.name) as NonEmptyStr
+      }
+      Present { value: model } => InstalledHostDiskIdentityReported { serial: serial, model: model }
+    }
+  }
+}
+
+fn installed_host_token(spelling: String) -> Optional<DeviceIdentificationToken> {
+  match admit_device_identification_token(spelling: trim(s: spelling)) {
+    DeviceIdentificationAdmitted { token: token } => Present { value: token }
+    DeviceIdentificationRefused { spelling: _, cause: _ } => Absent
+  }
+}
+
+fn installed_host_tokens_agree(left: DeviceIdentificationToken, right: DeviceIdentificationToken) -> Bool {
+  device_identification_token_text(token: left) == device_identification_token_text(token: right)
+}
+
+// ============================ THE MACHINE ID ============================
+// systemd's own format: 32 lowercase hex digits and nothing else. The live installer environment leaves this file
+// empty, so this is the read that stops a live session — with the target disk mounted, the record possibly present,
+// and every other fact looking right — being folded as an installed host.
+fn installed_host_machine_id_provisioned(machine_id_raw: String) -> Bool {
+  let id = trim(s: machine_id_raw)
+  if length(xs: id) != 32 {
+    false
+  } else {
+    length(xs: filter(split(s: id, delimiter: ""), digit => installed_host_is_hex(digit: digit))) == 32
+  }
+}
+
+fn installed_host_is_hex(digit: String) -> Bool {
+  length(xs: digit) == 1 && string_contains(s: "0123456789abcdef", pattern: digit)
+}
+
+// ============================ THE OS READING ============================
+// What the installed OS says it is, from its own /etc/os-release. An ID= with no NAME= or PRETTY_NAME= is a file
+// that exists without naming an OS, which is NotReported rather than a guess at an identity.
+fn installed_host_os_report(os_release_raw: String) -> InstalledHostOsReport {
+  let text = trim(s: os_release_raw)
+  if text == "" {
+    InstalledHostOsNotReported { why: "cat /etc/os-release printed no bytes" as NonEmptyStr }
+  } else if installed_host_os_release_has(text: text, key: "ID") && installed_host_os_release_named(text: text) {
+    InstalledHostOsReported { evidence: installed_host_os_evidence(text: text) }
+  } else {
+    InstalledHostOsNotReported {
+      why: "/etc/os-release carried no ID= with a NAME= or PRETTY_NAME= to identify the installed system by" as NonEmptyStr
+    }
+  }
+}
+
+fn installed_host_os_release_named(text: String) -> Bool {
+  installed_host_os_release_has(text: text, key: "NAME") || installed_host_os_release_has(text: text, key: "PRETTY_NAME")
+}
+
+fn installed_host_os_release_has(text: String, key: String) -> Bool {
+  trim(s: installed_host_os_release_value(text: text, key: key)) != ""
+}
+
+fn installed_host_os_evidence(text: String) -> NonEmptyStr {
+  let pretty = installed_host_os_release_value(text: text, key: "PRETTY_NAME")
+  let name = installed_host_os_release_value(text: text, key: "NAME")
+  let id = installed_host_os_release_value(text: text, key: "ID")
+  if trim(s: pretty) != "" { pretty as NonEmptyStr }
+  else if trim(s: name) != "" { name as NonEmptyStr }
+  else { id as NonEmptyStr }
+}
+
+// KEY=VALUE to end of line, with the quotes os-release puts around values containing spaces taken back off.
+fn installed_host_os_release_value(text: String, key: String) -> String {
+  match first_where(
+    xs: split(s: text, delimiter: "\n"),
+    keep: line => string_contains(s: trim(s: line), pattern: concat(key, "="))
+  ) {
+    Absent => ""
+    Present { value: line } => match get(xs: split(s: trim(s: line), delimiter: "="), index: 1) {
+      Absent => ""
+      Present { value: rest } => trim(s: installed_host_unquote(value: rest))
+    }
+  }
+}
+
+fn installed_host_unquote(value: String) -> String {
+  if string_contains(s: value, pattern: "\"") {
+    match get(xs: split(s: value, delimiter: "\""), index: 1) {
+      Absent => value
+      Present { value: quoted } => quoted
+    }
+  } else {
+    value
+  }
+}
+
+// ============================ THE ROOT'S OWN BIRTH TIME (ruling A) ============================
+// An independent reading of the root, never a copy of the installer record's mtime. `stat -c %W` prints 0 when the
+// filesystem reports no birth time: that is refused below, and NEVER read as the instant 0.
+fn installed_host_created_at(root_created_raw: String) -> Optional<EpochMs> {
+  match parse_int(s: trim(s: root_created_raw)) {
+    Absent => Absent
+    Present { value: seconds } => if seconds > 0 { Present { value: seconds * 1000 } } else { none }
+  }
+}
+
+// The refusal names the command, the raw answer, and what it means for this host — "root unreadable" is not
+// operator-actionable.
+fn installed_host_created_at_refusal(root_created_raw: String) -> NonEmptyStr {
+  let answer = trim(s: root_created_raw)
+  if answer == "0" {
+    "stat -c %W on / answered 0 (birth time unsupported): a filesystem with no birth time can never complete an install under this fold, and the remedy is a different reading route for this host, not a retry of this one" as NonEmptyStr
+  } else if answer == "" {
+    "stat -c %W on / printed no bytes at all" as NonEmptyStr
+  } else {
+    concat("stat -c %W on / answered \"", concat(answer, "\", which is not a creation time")) as NonEmptyStr
+  }
+}
+
+// ============================ THE READER ============================
+// The host reading the ports record's observe_install carries, from the bytes the six legs left.
+//
+// The authorized disk is a PARAMETER, never re-derived here: it is the object the run admitted from the committed
+// reading, and the two printed identity columns are compared only against it. client and decided_at are drawn from
+// the run's own NetworkInstallInstallQuery by gunbc.host.network_install's entry, so this module stays importable
+// BY that module instead of importing it.
+fn network_install_host_readings(
+  target: InstallTargetDisk,
+  client: Eui48Address,
+  decided_at: EpochMs,
+  evidence: InstalledHostEvidence
+) -> NetworkInstallReadings {
+  NetworkInstallReadings {
+    client_class: ClientClassUnread {
+      why: "the client class is measured at the edge, not on the host: this reader never mints InstallClientClassReading" as NonEmptyStr
+    }
+    fetches: []
+    host: network_install_host_reading(target: target, client: client, decided_at: decided_at, evidence: evidence)
+  }
+}
+
+fn network_install_host_reading(
+  target: InstallTargetDisk,
+  client: Eui48Address,
+  decided_at: EpochMs,
+  evidence: InstalledHostEvidence
+) -> InstalledHostReading {
+  InstalledHostReading {
+    interface_macs: installed_host_mac_set(link_list_raw: evidence.link_list_raw)
+    root: installed_host_root_reading(target: target, evidence: evidence)
+    installer_record: installed_host_record_reading(evidence: evidence)
+    secure_boot: SecureBootUnobserved {
+      reason: "Secure Boot is a firmware read owned by gunbc.secure_boot_observation, not one of the six host reads this reader makes" as NonEmptyStr
+    }
+    observed_at: decided_at
+  }
+}
+
+// The installer record: `stat -c %Y` prints an mtime only for a file it found, so an exit status that is not zero,
+// or bytes that are not a time, is the record NOT there — and the two refusals are kept apart, because a record
+// that is absent is a host that did not install and a record that cannot be read is a host that was not reached.
+fn installed_host_record_reading(evidence: InstalledHostEvidence) -> InstallerRecordReading {
+  let answer = trim(s: evidence.installer_record_raw)
+  if evidence.installer_record_exit != 0 {
+    InstallerRecordAbsent
+  } else {
+      match parse_int(s: answer) {
+    Absent => InstallerRecordUnread {
+      why: concat("stat -c %Y on ", concat(subiquity_installed_autoinstall_record_path as String, concat(" answered \"", concat(answer, "\" which is no mtime")))) as NonEmptyStr
+    }
+    Present { value: seconds } => if seconds > 0 {
+      InstallerRecordRead { written_at: seconds * 1000 }
+    } else {
+      InstallerRecordAbsent
+    }
+  }
+    }
+}
+
+// The root filesystem as the host reports it, checked against the disk the run authorized. Note what is NOT re-read
+// here: what is believed is the authorized identity, and the host's printed columns are only ever compared to it.
+fn installed_host_root_reading(target: InstallTargetDisk, evidence: InstalledHostEvidence) -> InstalledRootReading {
+  if installed_host_machine_id_provisioned(machine_id_raw: evidence.machine_id_raw) {
+    match installed_host_created_at(root_created_raw: evidence.root_created_raw) {
+      Absent => InstalledRootUnread { why: installed_host_created_at_refusal(root_created_raw: evidence.root_created_raw) }
+      Present { value: created_at } => installed_host_root_from_report(
+        target: target,
+        report: installed_host_root_report(block_report_raw: evidence.block_report_raw),
+        created_at: created_at
+      )
+    }
+  } else {
+    InstalledRootUnread {
+      why: "cat /etc/machine-id did not print a provisioned systemd machine id, so as far as its own identity goes this host has not been installed" as NonEmptyStr
+    }
+  }
+}
+
+fn installed_host_root_from_report(
+  target: InstallTargetDisk,
+  report: InstalledHostRootReport,
+  created_at: EpochMs
+) -> InstalledRootReading {
+  match report {
+    InstalledHostRootNotMounted { why: why } => InstalledRootUnread { why: why }
+    InstalledHostRootChainBroken { why: why } => InstalledRootUnread { why: why }
+    InstalledHostRootFound { source: source, chain: chain } =>
+      if chain.leaf.kind_word == "disk" {
+        // A whole disk mounted at / means no filesystem was created on a partition during this install, which is
+        // the state the fold's chain gate exists to catch; it is reported, not smoothed over.
+        InstalledRootUnbacked { source: source }
+      } else {
+      match installed_host_disk_identity(disk: chain.disk) {
+        InstalledHostDiskIdentityUnreportable { why: why } => InstalledRootUnread { why: why }
+        InstalledHostDiskIdentityReported { serial: serial, model: model } =>
+          if installed_host_agrees_with_authorized(target: target, serial: serial, model: model) {
+            InstalledRootRead {
+              source: source
+              chain: installed_host_chain(chain: chain)
+              disk_serial: Present { value: device_identification_token_text(token: serial) as NonEmptyStr }
+              created_at: created_at
+            }
+          } else {
+            InstalledRootUnread {
+              why: concat(
+                "the parent disk ",
+                concat(chain.disk.name, concat(" printed SERIAL \"",
+                  concat(device_identification_token_text(token: serial), concat("\" and MODEL \"",
+                    concat(device_identification_token_text(token: model),
+                      "\", which is not the disk this run authorized")))))
+              ) as NonEmptyStr
+            }
+          }
+      }
+    }
+  }
+}
+
+// Leaf first, then every device under the disk, in the order lsblk's parent links gave.
+fn installed_host_chain(chain: InstalledHostRootChain) -> FreeSemigroup<InstalledRootDevice> {
+  FreeSemigroup {
+    head: installed_host_device(row: chain.leaf)
+    tail: map(chain.below_disk, row => installed_host_device(row: row))
+  }
+}
+
+fn installed_host_device(row: InstalledHostBlockRow) -> InstalledRootDevice {
+  InstalledRootDevice { name: row.name as NonEmptyStr, kind: installed_host_block_kind(word: row.kind_word) }
+}
+
+// BOTH admitted columns must match the authorized target's own admitted identity. The comparison is by token text,
+// the spelling the committed rows carry, so a host that pads or truncates a column is refused rather than
+// corrected toward the answer that would let it pass.
+fn installed_host_agrees_with_authorized(
+  target: InstallTargetDisk,
+  serial: DeviceIdentificationToken,
+  model: DeviceIdentificationToken
+) -> Bool {
+  let pin = install_target_disk_pin(disk: target)
+  if installed_host_tokens_agree(left: serial, right: pin.serial) {
+    match pin.model {
+      Absent => true
+      Present { value: authorized_model } => installed_host_tokens_agree(left: model, right: authorized_model)
+    }
+  } else {
+    false
+  }
+}
+
+// ============================ THE LIVE LEGS ============================
+//
+// The six reads as the fleet performs them: the SAME typed ssh exec that carries every other remote leg in this
+// fleet (the leg shape gunbc.host.export_host_reader_converge composes over), with the commands above and nothing
+// else on the wire. The secret never travels here: the legs read files on the installed host, and the BMC
+// credential belongs to the controller leg of the run, which takes it only as a path to a 0600 file
+// (gunbc.auth.private_secret_file).
+//
+// A refused exec is not an empty answer. remote_answer_of turns a refusal into exit 255 with the reason in stderr,
+// and every gate below reads a non-zero exit or unparseable bytes as "not reported" — so a leg that could not run
+// withholds the completion rather than reporting a host it never reached.
+fn network_install_host_legs(target: SshTarget, context: FleetSshExecutionContext) -> InstalledHostRemoteLegs {
+  InstalledHostRemoteLegs {
+    os_release: fn() { network_install_host_leg(target: target, context: context, command: installed_host_os_release_command()) }
+    machine_id: fn() { network_install_host_leg(target: target, context: context, command: installed_host_machine_id_command()) }
+    link_list: fn() { network_install_host_leg(target: target, context: context, command: installed_host_link_list_command()) }
+    block_report: fn() { network_install_host_leg(target: target, context: context, command: installed_host_block_report_command()) }
+    installer_record: fn() { network_install_host_leg(target: target, context: context, command: installed_host_installer_record_command()) }
+    root_created: fn() { network_install_host_leg(target: target, context: context, command: installed_host_root_created_command()) }
+  }
+}
+
+fn network_install_host_leg(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> RemoteAnswer {
+  remote_answer_of(
+    outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command))
+  )
+}
+
+// THE READING A RUN THAT CANNOT NAME ITS DISK GETS. When the dated row no longer admits a target disk, the
+// observe port does not invent a disk to check the host against, and it does not stay silent: it answers with
+// the reading that says so — no MACs (so the bound client is not carried), an unread root naming why, an unread
+// installer record, secure boot unobserved, and the run's own instant kept as the observed-at because that
+// instant IS the observer's reading from the start of this run. Every field is the refusal arm, which is what
+// makes the fold refuse: a completion cannot be written against a host this reader never identified.
+fn network_install_host_readings_unauthorized(decided_at: EpochMs) -> NetworkInstallReadings {
+  NetworkInstallReadings {
+    client_class: ClientClassUnread { why: "the fetch side of the edge is a declared gap of this workflow, not a reading this port withholds" as NonEmptyStr }
+    fetches: []
+    host: InstalledHostReading {
+      interface_macs: []
+      root: InstalledRootUnread { why: "no target disk was authorized for this run, so the root filesystem has no disk to be checked against" as NonEmptyStr }
+      installer_record: InstallerRecordUnread { why: "no target disk was authorized, so the installer record has nothing to be read beside" as NonEmptyStr }
+      secure_boot: SecureBootUnobserved { reason: "this reader reads the installed host, not its controller" as NonEmptyStr }
+      observed_at: decided_at
+    }
+  }
+}
