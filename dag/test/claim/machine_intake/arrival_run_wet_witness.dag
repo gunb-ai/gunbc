@@ -38,8 +38,8 @@ import gunbc.machine_intake.inband_host_identity {
 }
 import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
-  FruObserved,
-  FruRead,
+  BmcFruCaptureObserved,
+  BmcFruCaptureRefused,
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
@@ -155,7 +155,8 @@ test fn the_named_census_projects_onto_the_committed_census() -> Bool {
   }
   let committed_rows = match ipmi_authenticated_census_read(text: table, channel: 1) {
     IpmiCensusAccepted { rows: rows } => rows
-    _ => []
+    IpmiCensusAuthenticationRefused { detail: _detail } => []
+    IpmiCensusUnreadable { detail: _detail } => []
   }
   // Same three named rows, same user ids in order; the named arm additionally carries the names
   // the committed reader drops.
@@ -186,8 +187,8 @@ test fn the_door_derives_managed_and_published_users_from_this_run_census() -> B
 // file, real digest path -- the identity the board row claims is what the store hands back.
 test fn the_real_fru_print_mints_the_identity_the_store_hands_back() -> Bool {
   match read_committed_bmc_fru_capture(unit: operator_host_mtjade1) {
-    FruObserved { observation: observation } => (observation.fields.board_serial as String) == "B810301000412080005AJ0C1"
-    FruReadRefused { gap: _gap } => false
+    BmcFruCaptureObserved { observation: observation } => (observation.board.board_serial as String) == "B810301000412080005AJ0C1"
+    BmcFruCaptureRefused { gap: _gap } => false
   }
 }
 

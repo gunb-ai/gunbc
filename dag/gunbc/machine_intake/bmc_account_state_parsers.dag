@@ -299,6 +299,7 @@ fn ipmi_authenticated_census_read(text: String, channel: IpmiChannelNumber) -> I
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_empty_census_is_unreadable_never_a_refused_reading"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_garbage_census_is_unreadable_never_a_defaulted_acceptance"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_named_census_projects_onto_the_committed_census"),
   ]
 {
   match ipmi_session_failure(output: text) {
@@ -476,6 +477,7 @@ fn redfish_account_names_from_collection(body: String) -> RedfishAccountsCollect
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_srv13_accounts_collection_decodes_its_members"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_collection_whose_count_contradicts_its_members_is_unreadable"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "census_for"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_run_wet_gated"),
   ]
 {
   match json_root_object(body: body) {
@@ -530,6 +532,7 @@ fn redfish_account_entry_from_body(body: String, managed_name: String) -> Redfis
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_manager_account_body_decodes_name_enabled_and_identity"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_manager_account_without_enabled_is_unreadable_never_defaulted"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_wet_prefix_record"),
   ]
 {
   match json_root_object(body: body) {
@@ -697,7 +700,7 @@ fn arrival_named_user_access_row(line: String, channel: IpmiChannelNumber) -> Ar
                 // no account here, and a door that could not name it would only mis-derive.
                 NamedRowMalformed { detail: "the name cell is empty: an enabled slot with no account names nothing" }
               } else {
-                NamedRowParsed { row: ArrivalNamedUserAccessRow { channel: channel, user: id as IpmiUserId, name: token_at(toks: toks, i: 1) as NonEmptyStr, privilege: privilege } }
+                NamedRowParsed { row: ArrivalNamedUserAccessRow { channel: channel, user: id, name: token_at(toks: toks, i: 1) as NonEmptyStr, privilege: privilege } }
               }
             }
         }

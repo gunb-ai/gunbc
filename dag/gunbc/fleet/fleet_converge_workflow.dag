@@ -8136,7 +8136,7 @@ fn fleet_converge_arrival_converge_job() -> Job {
         timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
       },
       ci_wif_auth_step_for(
-        name: "WIF auth (OIDC -> dedicated mtjade1-arrival pool -> mtjade1-arrival SA, access token only)",
+        name: "WIF auth (OIDC -> dedicated arrival pool for the dispatch host -> its arrival SA, access token only)",
         provider_resource: fleet_converge_arrival_provider_resource_expression(),
         service_account: fleet_converge_arrival_service_account_expression(),
       ),
