@@ -1,0 +1,129 @@
+module gunbc.machine_intake.arrival_unit_captures
+
+import std.types { List, NonEmptyStr, String }
+import std.list { first_where }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_srv15 }
+import gunbc.machine_intake.prior_life_boundary { asrock_altrad8ud_platform_ref, mt_jade_platform_ref }
+import gunbc.machine_intake.mtjade1_factory_network {
+  ObservedBmcNetwork,
+  mtjade1_bmc_observed_network,
+  mtjade1_bmc_reconfigured_network,
+  srv15_bmc_observed_network,
+}
+import gunbc.machine_intake.mtjade1_access_observation {
+  CurrentManagerRead,
+  ManagerCaptureBinding,
+  BoundToObservedWireLink,
+  altrad8ud_manager_capture_binding,
+  current_manager_read_of,
+  manager_capture_read_unread,
+  observed_bmc_link,
+  mtjade1_current_manager_capture_path,
+  mtjade1_current_manager_capture_sha256,
+  mtjade1_redfish_manager_resource,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_manager_id }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
+
+// ONE SET OF ARRIVAL INPUTS PER UNIT, AS ROWS. An arrival producer needs four things about a unit: the Manager
+// capture AccessDiscover reads and the digest that capture is checked against, the controller that capture was
+// taken at, the platform whose prior-life policy the fold applies, and which identity readers this unit has.
+// Those are rows. A unit joins convergence by being rowed -- there is no per-unit producer function to write,
+// and none to forget to write (gunbc.design_argument::root_generalization).
+//
+// WHAT A ROW DOES NOT CARRY. The step sequence, the effects, the grant: those are the fold's and the
+// admission's, and a row that named them would be a second authority over what arriving means. The identity
+// arm names WHICH READERS exist for the unit, not what they conclude; what they conclude is decided by the
+// captures and the classifiers, every time, from bytes.
+
+// Which pair of board-serial readers the fold is allowed to ask for. Today exactly two units have a pair at
+// all: the arm below for mtjade1, whose BMC FRU capture and host SMBIOS transcript are both committed, and the
+// in-band arm for an ALTRAD8UD unit whose rescue-OS capture is committed. A unit taking the first arm with no
+// FRU and SMBIOS capture row of its own would be a row claiming evidence that is not committed -- which is
+// why the rows above the arm, not the arm, are where captures are declared.
+type ArrivalUnitIdentityArm
+  = CommittedBmcFruAndHostSmbiosCaptures
+  | CommittedInbandHostIdentityCapture
+
+type ArrivalUnitCaptureRow {
+  unit: HostIdentity
+  manager_capture_path: NonEmptyStr
+  manager_capture_sha256: NonEmptyStr
+  manager_resource: NonEmptyStr
+  controller_network: ObservedBmcNetwork
+  capture_binding: ManagerCaptureBinding
+  platform: DeclarationRef
+  identity_arm: ArrivalUnitIdentityArm
+}
+
+// mtjade1's row is the read the arrival fold has been consuming since cut O1c-1: GET
+// /redfish/v1/Managers/Self at the controller's lease, bound to this unit by the Board Extra field the
+// capture carries against the link observed on that controller's own wire.
+data mtjade1_arrival_capture_row: ArrivalUnitCaptureRow = ArrivalUnitCaptureRow {
+  unit: operator_host_mtjade1,
+  manager_capture_path: mtjade1_current_manager_capture_path,
+  manager_capture_sha256: mtjade1_current_manager_capture_sha256,
+  manager_resource: mtjade1_redfish_manager_resource,
+  controller_network: mtjade1_bmc_reconfigured_network,
+  capture_binding: BoundToObservedWireLink { link: observed_bmc_link(network: mtjade1_bmc_observed_network) },
+  platform: mt_jade_platform_ref,
+  identity_arm: CommittedBmcFruAndHostSmbiosCaptures,
+}
+
+// srv15's row: the authenticated Manager read of the credential-recovery run -- GET /redfish/v1/Managers/bmc
+// with the rotated credential, HTTP 200, committed with its SHA256SUMS entry at
+// artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Managers_bmc.json (00_README.txt of that
+// directory records the read and the credential it was taken with). Its subject binding is the chassis that
+// Manager manages, the arm an OpenBMC Manager capture carries; its identity arm is the in-band one, because
+// the same directory holds the rescue-OS host identity capture and no FRU print.
+data srv15_arrival_capture_row: ArrivalUnitCaptureRow = ArrivalUnitCaptureRow {
+  unit: operator_host_srv15,
+  manager_capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Managers_bmc.json",
+  manager_capture_sha256: "50a206b0d14f7c49d405f2a75161c23f2aab022c41b9ff252a40cc96987e283e",
+  manager_resource: join(["/redfish/v1/Managers/", asrock_altrad8ud_redfish_manager_id], "") as NonEmptyStr,
+  controller_network: srv15_bmc_observed_network,
+  capture_binding: altrad8ud_manager_capture_binding,
+  platform: asrock_altrad8ud_platform_ref,
+  identity_arm: CommittedInbandHostIdentityCapture,
+}
+
+data arrival_unit_capture_rows: List<ArrivalUnitCaptureRow> = [
+  mtjade1_arrival_capture_row,
+  srv15_arrival_capture_row,
+]
+
+fn arrival_unit_capture_row(unit: HostIdentity) -> ArrivalUnitCaptureRow? {
+  first_where(arrival_unit_capture_rows, e => host_identity_eq(a: e.unit, b: unit))
+}
+
+// READ A UNIT'S MANAGER CAPTURE FROM ITS ROW: the same fail-closed read every other Manager reader performs,
+// now driven by the row instead of by a function named for one unit. An unreadable capture still records which
+// capture was attempted, under which digest, at which endpoint -- the attempt is the record, and everything
+// derived from the body is unread.
+fn read_unit_manager_capture(row: ArrivalUnitCaptureRow) -> CurrentManagerRead uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: row.manager_capture_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      manager_capture_read_unread(
+        subject: row.unit as NonEmptyStr,
+        endpoint: row.controller_network,
+        resource: row.manager_resource,
+        capture_path: row.manager_capture_path,
+        capture_sha256: row.manager_capture_sha256,
+        error: e,
+      )
+    FilesystemReadSucceeded { content: text } =>
+      current_manager_read_of(
+        content: text,
+        expected_sha256: row.manager_capture_sha256,
+        subject: row.unit as NonEmptyStr,
+        resource: row.manager_resource,
+        endpoint: row.controller_network,
+        binding: row.capture_binding,
+        capture_path: row.manager_capture_path,
+      )
+  }
+}
