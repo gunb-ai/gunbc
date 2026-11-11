@@ -836,30 +836,50 @@ fn bash_fold_serialize_grouped_stmt(stmt: Node) -> Outcome<String> {
   )
 }
 
-fn bash_fold_serialize_andor_operand(stmt: Node, group_binding: Symbol) -> Outcome<String> {
+// ONE RULE, ONE LEAF: an operand is grouped when grouping is what the artifacts hold and the
+// nesting would otherwise read differently. `group_and_or` is the operand's POSITION, which is
+// the only thing that can make grouping matter -- the Bash Reference Manual's "Lists of
+// Commands" puts `&&` and `||` at ONE precedence level, left-associative, so a left operand
+// that is itself an and/or re-reads as itself and its parentheses are inert (`( A && B ) || C`
+// and `A && B || C` run the same three pipelines in the same order); a RIGHT operand that is
+// the other operator does not re-read as itself, so it stays grouped exactly as it always
+// was. A negated operand keeps its group in either position: `(! cmd)` is the subshell form
+// the committed CI scripts carry -- .github/workflows/heal.yml, heal-publish.yml,
+// drift-watch.yml, witnesses.yml and instrument-dispatch.yml all read
+// `(! '[' -f "$GUNBC_FLOOR_RECEIPT" ']')` -- and a test has no side effect for the subshell
+// to lose, so those bytes stay where they are while a host file that spells the same guard
+// without the group is still expressible by leaving the group off the left and/or operand.
+fn bash_fold_serialize_andor_operand(
+  stmt: Node,
+  group_binding: Symbol,
+  group_and_or: Bool
+) -> Outcome<String> {
   let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
-  if binding == group_binding {
+  if binding == ^bash_build_stmt_negation {
     bash_fold_serialize_grouped_stmt(stmt: stmt)
-  } else if binding == ^bash_build_stmt_negation {
+  } else if group_and_or && (binding == group_binding) {
     bash_fold_serialize_grouped_stmt(stmt: stmt)
   } else {
     bash_fold_serialize_node(stmt: stmt)
   }
 }
 
-// ONLY THE RIGHT OPERAND CAN RE-ASSOCIATE. The Bash Reference Manual's "Lists of Commands"
-// puts `&&` and `||` at ONE precedence level, left-associative: `a && b || c` reads back as
-// `or_else(and_then(a, b), c)` and `a || b && c` as `and_then(or_else(a, b), c)`. So the left
-// operand of either operator re-reads as itself and never needs parentheses, while a right
-// operand that is itself an and/or re-reads as the PARENT's operator and does. Grouping the
-// left operand too -- what this did -- emitted `( [ -s a ] && [ -s b ] ) || openssl ...` for
-// the container command's TLS guard, where the installed artifact carries no parentheses.
+// BOTH OPERANDS ARE GROUPED AS THE ARTIFACTS HAVE ALWAYS GROUPED THEM. The Bash Reference
+// Manual's "Lists of Commands" puts `&&` and `||` at ONE precedence level, left-associative,
+// so a left operand that is itself an and/or re-reads as itself and needs no parentheses --
+// but the committed CI scripts carry them anyway: `'[' -f "$R" ']'` inside a negated group
+// reads `(! '[' -f "$R" ']')` in .github/workflows/{heal,heal-publish,drift-watch,
+// witnesses,instrument-dispatch}.yml, because grouping an operand puts it in a subshell and
+// nothing in those tests has a side effect to lose. A render that must be byte-exact against
+// an installed host file, where the guard carries no parentheses, does NOT get to respell
+// every artifact that shares this row: it takes a row of its own. Until a caller needs one,
+// the grouped spelling is the only spelling.
 fn bash_fold_serialize_andor_pair(left: Node, right: Node, op: String, group_binding: Symbol) -> Outcome<String> {
   bind_outcome(
-    o: bash_fold_serialize_node(stmt: left),
+    o: bash_fold_serialize_andor_operand(stmt: left, group_binding: group_binding, group_and_or: false),
     f: fn(left_spelling) {
       bind_outcome(
-        o: bash_fold_serialize_andor_operand(stmt: right, group_binding: group_binding),
+        o: bash_fold_serialize_andor_operand(stmt: right, group_binding: group_binding, group_and_or: true),
         f: fn(right_spelling) {
           bash_fold_serialize_emit_from_node(
             emitted: bash_stmt_andor_emitted,

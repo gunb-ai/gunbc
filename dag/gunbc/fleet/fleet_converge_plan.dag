@@ -58,6 +58,8 @@ import std.durable_compare_and_set { CasGeneration, cas_generation_following, ca
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
+
   bash_build_assign,
   bash_build_command_with_words,
   bash_build_exit,
@@ -2739,7 +2741,7 @@ fn fleet_converge_generation_store_read_stmt(subject_host: NonEmptyStr) -> Node 
     cond: bash_build_test_bracket(words: [
       bash_build_word_lit(text: "-e"),
       bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
-    ]),
+    ], spelling: BracketQuoted),
     then_stmts: [
       bash_build_assign(
         name: fleet_converge_locked_apply_current_var,
@@ -2825,6 +2827,3180 @@ fn fleet_converge_locked_apply_inner_stmts(
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
       bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
     ]), then_stmts: [bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
+    ])]),
+    fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
+      prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash),
+  ]
+  }
+}
+
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)"
+
+fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+  }
+}
+
+fn fleet_converge_locked_apply_inner_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+) -> String {
+  fleet_converge_bash_or_poison(
+    stmts: fleet_converge_locked_apply_inner_stmts(
+      subject_host: subject_host,
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+      apply_shell_path: apply_shell_path,
+      plan_hash: plan_hash,
+    ),
+  )
+}
+
+// THE LEASE IS HELD BY ONE PRINCIPAL, AND THE SCRIPT SAYS WHO THE CALLER IS RELATIVE TO IT.
+//
+// The lease directory and store are owned by the CI runner account (fleet_converge_lease_owner),
+// and the flock'd transaction used to run as whoever invoked the binary. In the workflow the two
+// coincide, so nothing noticed; from an operator shell they do not, and the first local apply
+// refused at `flock: cannot open lock file: Permission denied` AFTER the plan gates had admitted
+// it -- a refusal about the executor's identity arriving as a shell error from inside the guard.
+// The identity is now a typed input to the script: an invoker that IS the owner runs the guard
+// directly, exactly as CI does; any other invoker runs it AS the owner through sudo, so the store
+// is always written by the same account and a later CI apply can still read and advance it. The
+// decision is taken in the CLI from an observed effective principal and passed here as a value,
+// so the emitted script never has to guess from `$(id -un)` at run time.
+type FleetConvergeApplyInvoker
+  = InvokerIsLeaseOwner
+  | InvokerImpersonatesLeaseOwner
+
+fn fleet_converge_apply_invoker(effective_user: NonEmptyStr) -> FleetConvergeApplyInvoker {
+  if (effective_user as String) == (fleet_converge_lease_owner() as String) {
+    InvokerIsLeaseOwner
+  } else {
+    InvokerImpersonatesLeaseOwner
+  }
+}
+
+fn fleet_converge_locked_apply_flock_words(invoker: FleetConvergeApplyInvoker) -> List<Node> {
+  match invoker {
+    InvokerIsLeaseOwner => []
+    InvokerImpersonatesLeaseOwner => [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "-u"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+    ]
+  }
+}
+
+fn fleet_converge_locked_apply_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+  invoker: FleetConvergeApplyInvoker,
+) -> String {
+  fleet_converge_bash_or_poison(stmts: [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_command_with_words(words: concat(
+      [bash_build_word_lit(text: "sudo"), bash_build_word_lit(text: "-n")],
+      executor_privileged_operation_argv(op: fleet_converge_generation_store_ensure())
+        |> map(w => bash_build_word_lit(text: w as String)),
+    )),
+    bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
+      bash_build_word_lit(text: "flock"),
+      bash_build_word_lit(text: "-x"),
+      bash_build_word_lit(text: fleet_converge_generation_lock_path),
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        subject_host: subject_host,
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+        apply_shell_path: apply_shell_path,
+        plan_hash: plan_hash,
+      )),
+    ])),
+  ])
+}
+
+// THE SCRIPT IS BUILT FROM THE REQUEST FOR THE SAME REASON THE TERMINAL IS. An apply script is the
+// executable projection of exactly the axes the plan selected, so taking loose families let a
+// narrower scope be spelled only by handing over populations it never observed -- and here the
+// consequence is not a misreported count but EXECUTED WORK: a launch-environment plan carrying an
+// empty slot list would emit a full slot install for a family its scope does not own.
+//
+// THE PREAMBLE LINE NAMES THE SCOPE'S OWN AXES rather than a fixed sentence about all of them,
+// because that line is what an operator reads before approving a script.
+fn fleet_converge_apply_shell(
+  request: FleetConvergeRequest,
+  terminal: FleetConvergeApplyTerminal,
+) -> String {
+  join(
+    concat(
+      [
+        concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
+        concat("# ", fleet_converge_cap_apply_shell_note),
+        concat(
+          "# Admission gates enforced in fleet_converge_apply_wet before bash — ",
+          fleet_converge_apply_shell_axis_note(request: request),
+        ),
+        "set -euo pipefail",
+        "# generated at plan time — apply MUST NOT recompute membership_reconcile",
+      ],
+      concat(
+        fleet_converge_apply_shell_body_lines(request: request),
+        [fleet_converge_apply_terminal_line(terminal: terminal)],
+      ),
+    ),
+    "\n",
+  )
+}
+
+// A BLOCKING GRANT PRODUCES A REFUSAL-ONLY, NON-ACTUATING ARTIFACT. The CLI gate refuses first, but the
+// artifact is itself reviewed and carried, so it must not contain the effects its own terminal says
+// were never admitted: when a host-wide grant is missing or unobserved the body is the refusal and
+// nothing else -- no axis line of any family, so no `sudo` line anywhere in the executable body.
+fn fleet_converge_apply_shell_blocking_capability(request: FleetConvergeRequest) -> String? {
+  match request {
+    FullHostConverge { host: host, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: grants } =>
+      host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants))
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => Absent
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => Absent
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => Absent
+    WorkspaceSlotCommissioningConverge { basis: _ } => Absent
+    WorkspaceCommissioningDependencyConverge { plan: _ } => Absent
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => Absent
+    LiveDeployConverge { desired: _, basis: _ } => Absent
+  }
+}
+
+fn fleet_converge_apply_shell_body_lines(request: FleetConvergeRequest) -> List<String> {
+  match fleet_converge_apply_shell_blocking_capability(request: request) {
+    Present { value: capability } => [concat("# REFUSED, NON-ACTUATING: no effect line is emitted because ", capability)]
+    Absent => fleet_converge_apply_shell_axis_lines(request: request)
+  }
+}
+
+fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } =>
+      "this script runs timer teardown, the host-wide executor grants, runner-slot reconciliation (additions, authorized retirement inhibition via systemctl mask --now, and completed-retirement tree removal), and fabric-cell ensure effects"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+    WorkspaceSlotCommissioningConverge { basis: _ } => "commission one slot through the protected executor; wait for exact completion and durable fleet generation"
+    WorkspaceCommissioningDependencyConverge { plan: _ } => "commissioning requires host kernel maintenance; no slot readiness or generation may be published"
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => "scope:workspace-allocation-only — publish typed invocation credential and start the existing selected slot controller"
+    LiveDeployConverge { desired: _, basis: _ } =>
+      "scope:live-deploy — this script emits no host effects; wet apply is CONVERGENCE-ONE C8 and is not this arm"
+  }
+}
+
+fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+      observed_host_grants: _,
+    } =>
+      concat(
+        concat(
+          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+        ),
+        concat(
+          host_wide_grant_apply_lines(host: host),
+        concat(
+          [runner_slot_apply_family_header],
+          concat(
+            slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
+            concat(
+              ["# runner-service activation (gunbc.runner.runner_service_activation) — enable then start, separately admitted"],
+              concat(
+                activation_apply_lines(host: host, readiness: readiness, standings: standings),
+                fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              ),
+            ),
+          ),
+        ),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    WorkspaceSlotCommissioningConverge { basis } => if basis.already_committed { [] } else { [workspace_dispatch_apply_script(release_dir: basis.release_dir, slot: runner_slot_instance_name(slot: basis.provenance.slot))] }
+    WorkspaceCommissioningDependencyConverge { plan: _ } => []
+    WorkspaceAllocationConverge { basis: selected, release_dir: installed } => if selected.allocation.phase == WorkspaceReleased { [] }
+      else { [join(["printf '%s' ", posix_single_quote(spelling: workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
+          " > ", posix_single_quote(spelling: workspace_launch_staging_path(slot: selected.reservation_plan.reservation.slot) as String)], "")]
+        + map(workspace_launch_operations(slot: selected.reservation_plan.reservation.slot), operation => executor_privileged_operation_shell_command(op: operation)) }
+    LiveDeployConverge { desired: _, basis: _ } => []
+  }
+}
+
+// THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
+// OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
+// gunbc.runner.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// and its authorization are one value rendered twice, so a command with no grant has no spelling
+// here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
+// realization, an observation refusal -- reaches the script as a comment refusal line, counted in
+// the terminal, never as work claimed applied.
+//
+// THE BOUNDARY IS APPLIED BEFORE THE SUBSTRATE DIRECTORIES, AND THE ORDER IS THE SAFETY PROPERTY.
+// The all-or-nothing realization already refuses a cell any of whose addresses cannot be realized;
+// this ordering closes the RUNTIME half of the same hazard: under `set -euo pipefail` a failing
+// line stops the script, and with the slice ensured first a stop can strand a boundary with no
+// directories -- inert -- but never a cell root without its resource boundary, which is the
+// unbounded-slice state the fold exists to forbid. A half-applied cell reconciles forward: the next
+// plan reads the missing addresses as MemberAdded and completes, because every effect here is an
+// idempotent ensure.
+//
+// AN UNMODELED DEPLOY HOST CONTRIBUTES NO FABRIC LINES, mirroring the activation family: the slot
+// family already stops the whole script for an unmodeled host, one axis earlier and with the
+// louder diagnostic, so a second stop here would report one defect twice.
+fn fabric_cell_apply_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: es } =>
+          fabric_cell_apply_executable_lines(host: host, effects: es)
+        CellPlanRefused { refusals: _ } =>
+          fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+      }
+    FabricCellFamilyNotApplicable =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyConvergedNoActions =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationRefused { blocked: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// THE HOST-WIDE EXECUTOR GRANTS, APPLIED WHERE EVERY OTHER HOST MUTATION IS APPLIED. These are the
+// operations the executor owes the machine itself rather than any runner population: its converge
+// state directory, the runner tree's roots, membership of the group udev hands /dev/kvm to, and the
+// daemon reload. gunbc.runner.runner_host_grants has emitted them since it was written and
+// runner_host_sudoers_content rendered PERMISSION for each one, but nothing executed them -- so the
+// KVM grant arrived on srv2 by an operator typing the rendered argv by hand on 2026-09-05, which is
+// the rostered class gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path.
+//
+// THEY BELONG HERE AND NOT BESIDE THE OBSERVER THAT NEEDS THEM, which is that row's explicit
+// ruling: an applier reached outside this spine inherits none of fleet_converge_plan_held_lease, so
+// two applies against one baseline could both proceed, and an applier bolted beside
+// gunbc.runner.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
+// disclaimer's blind spots. Emitted into apply.sh, each line is one plan-time-resolved argv that
+// the operator reads before approving, the whole script runs under the generation flock, and the
+// readback that decides whether the capability actually landed stays with the module that claims it
+// (runner_microvm_host_ready's kvm_group standing).
+//
+// THE SPEC, NOT THE DEPLOY, AND THE DIFFERENCE IS A HOST. Every other family here resolves through
+// runner_host_deploy_for and contributes nothing for a host whose width refuses. These rows depend
+// on no runner population -- that is exactly why runner_host_wide_refused_operations takes the spec
+// -- so resolving them through the deploy would silently deny srv2, a rostered host with a refused
+// width, the group membership its own installed sudoers already authorizes.
+//
+// EVERY ROW IS AN IDEMPOTENT ENSURE, so a script stopped part-way by `set -euo pipefail` reconciles
+// forward on the next apply: `usermod -aG` appending a group the login already holds exits 0
+// (measured on srv1, twice -- gunbc.executor_privileged_operation's precondition roster), and the
+// directory rows are ensures by construction.
+data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
+
+fn host_wide_grant_apply_lines(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: h } =>
+      [concat("# host-wide executor grants: no runner host spec for ", concat(h as String, " — no grants are declared for it, so none are applied"))]
+    RunnerHostSpecFound { spec: spec } =>
+      concat(
+        [host_wide_grant_apply_header],
+        map(
+          runner_host_wide_refused_operations(spec: spec),
+          op => executor_privileged_operation_converge_command(op: op),
+        ),
+      )
+  }
+}
+
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+fn fabric_cell_apply_comment_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  concat(
+    ["# fabric-cell membership (gunbc.fabric.fabric_cell_converge) — resolved at plan time"],
+    map(
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      l => concat("# ", l),
+    ),
+  )
+}
+
+fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
+  map(
+    fabric_cell_effect_operations(effect: effect, job_user: job_user),
+    op => executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+
+// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
+// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
+// only an unmodeled or refused host has none.
+fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
+    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  }
+}
+
+fn fabric_cell_apply_executable_lines(
+  host: NonEmptyStr,
+  effects: List<FabricCellEffect>,
+) -> List<String> {
+  match fleet_converge_host_job_user(host: host) {
+    Absent => []
+    Present { value: job_user } =>
+      concat(
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: job_user),
+      )
+  }
+}
+
+// THE FULL-HOST CONSTRUCTOR. It is a named entry point rather than a bare literal because the
+// converge actuator and its witnesses enter the plan through it; the assembly itself is the shared
+// request fold below, so a scope cannot grow a second answer for the subject, the lease or the
+// bundle digest.
+fn fleet_converge_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
+  observed_retirement: SlotRetirementEvidence,
+  observed_host_grants: HostGrantObservation,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+      observed_unit_standings: observed_unit_standings,
+      observed_retirement: observed_retirement,
+      observed_host_grants: observed_host_grants,
+    },
+    prior_generation: prior_generation,
+  )
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// Hash classification stays total (content_hash_atom). Absent here is only a refused
+// lease-generation successor (negative prior or exhausted CasGeneration space).
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+) -> FleetConvergePlanArtifact? {
+  let subject = fleet_converge_plan_subject(request: request)
+  let baseline = observed_identity_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
+          concat(
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              concat(fleet_converge_plan_baseline_section, ":"),
+              baseline,
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_baseline_section),
+              concat(fleet_converge_plan_observed_only_section, ":"),
+              join(observed_only_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
+              concat(fleet_converge_plan_monotone_section, ":"),
+              join(monotone_premise_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_monotone_section),
+            ],
+            fleet_converge_plan_axis_lines(request: request),
+          ),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
+  }
+}
+
+
+// THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
+fn fleet_converge_launch_environment_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
+    prior_generation: prior_generation,
+  )
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match fleet_converge_host_job_user(host: host) {
+    Absent => Absent
+    Present { value: job_user } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+          "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.namespace_mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
+    }
+  }
+}
+
+
+data fleet_converge_plan_body_path: String = fleet_reviewed_plan_path
+
+data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+
+data fleet_converge_plan_apply_shell_path: String = fleet_reviewed_apply_path
+
+data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+
+data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+
+data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+
+data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+
+data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+
+fn fleet_converge_observed_baseline_matches(
+  observed_baseline_hex: Fnv1a64StructuralDigestHex,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  let baseline = observed_identity_text(request: observed)
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) => structural.digest == observed_baseline_hex
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+    Sha512Hash(_) => false
+  }
+}
+),
+    then_stmts: [
+      bash_build_assign(
+        name: fleet_converge_locked_apply_current_var,
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "bash"),
+            bash_build_word_lit(text: "-c"),
+            bash_build_word_lit(text: fleet_generation_native_read_script),
+            bash_build_word_lit(text: "fleet-generation-read"),
+            bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
+          ]),
+        ),
+      ),
+    ],
+  )
+}
+
+fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_generation: Int) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: to_string(prior_generation)),
+    ], spelling: BracketQuoted),
+    then_stmts: [
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_lit(text: "LeaseGenerationStale"),
+        bash_build_word_lit(text: concat("planned=", to_string(planned_generation))),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "observed="),
+          bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+        ]),
+      ]),
+      bash_build_exit(code: "1"),
+    ],
+  )
+}
+
+data fleet_converge_publication_decision_var: String = "_gunbc_publication_decision"
+
+fn fleet_converge_generation_publication_stmt(action: String, subject_host: NonEmptyStr,
+  prior_generation: Int, planned_generation: Int, plan_hash: NonEmptyStr) -> Node {
+  bash_build_command_with_words(words: [
+    bash_build_word_lit(text: "bash"), bash_build_word_lit(text: "-c"),
+    bash_build_word_lit(text: fleet_generation_native_publication_script),
+    bash_build_word_lit(text: "fleet-generation-publication"), bash_build_word_lit(text: action),
+    bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
+    bash_build_word_lit(text: to_string(prior_generation)), bash_build_word_lit(text: to_string(planned_generation)),
+    bash_build_word_lit(text: plan_hash as String),
+  ])
+}
+
+fn fleet_converge_locked_apply_inner_stmts(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+) -> List<Node> {
+  match parse_content_hash(wire: plan_hash as String) {
+    Absent => [bash_build_exit(code: "65")]
+    Present { value: _ } => [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    fleet_converge_generation_store_default_stmt(),
+    fleet_converge_generation_store_read_stmt(subject_host: subject_host),
+    fleet_converge_generation_stale_guard_stmt(
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+    ),
+    bash_build_assign(name: fleet_converge_publication_decision_var, value: bash_build_word_cmdsubst(
+      body: fleet_converge_generation_publication_stmt(action: "admit", subject_host: subject_host,
+        prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash))),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "apply"),
+    ]), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "recover"),
+    ]), then_stmts: [bash_build_exit(code: "65")])]),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
+    ]), then_stmts: [bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
+    ])]),
+    fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
+      prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash),
+  ]
+  }
+}
+
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)"
+
+fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+  }
+}
+
+fn fleet_converge_locked_apply_inner_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+) -> String {
+  fleet_converge_bash_or_poison(
+    stmts: fleet_converge_locked_apply_inner_stmts(
+      subject_host: subject_host,
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+      apply_shell_path: apply_shell_path,
+      plan_hash: plan_hash,
+    ),
+  )
+}
+
+// THE LEASE IS HELD BY ONE PRINCIPAL, AND THE SCRIPT SAYS WHO THE CALLER IS RELATIVE TO IT.
+//
+// The lease directory and store are owned by the CI runner account (fleet_converge_lease_owner),
+// and the flock'd transaction used to run as whoever invoked the binary. In the workflow the two
+// coincide, so nothing noticed; from an operator shell they do not, and the first local apply
+// refused at `flock: cannot open lock file: Permission denied` AFTER the plan gates had admitted
+// it -- a refusal about the executor's identity arriving as a shell error from inside the guard.
+// The identity is now a typed input to the script: an invoker that IS the owner runs the guard
+// directly, exactly as CI does; any other invoker runs it AS the owner through sudo, so the store
+// is always written by the same account and a later CI apply can still read and advance it. The
+// decision is taken in the CLI from an observed effective principal and passed here as a value,
+// so the emitted script never has to guess from `$(id -un)` at run time.
+type FleetConvergeApplyInvoker
+  = InvokerIsLeaseOwner
+  | InvokerImpersonatesLeaseOwner
+
+fn fleet_converge_apply_invoker(effective_user: NonEmptyStr) -> FleetConvergeApplyInvoker {
+  if (effective_user as String) == (fleet_converge_lease_owner() as String) {
+    InvokerIsLeaseOwner
+  } else {
+    InvokerImpersonatesLeaseOwner
+  }
+}
+
+fn fleet_converge_locked_apply_flock_words(invoker: FleetConvergeApplyInvoker) -> List<Node> {
+  match invoker {
+    InvokerIsLeaseOwner => []
+    InvokerImpersonatesLeaseOwner => [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "-u"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+    ]
+  }
+}
+
+fn fleet_converge_locked_apply_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+  invoker: FleetConvergeApplyInvoker,
+) -> String {
+  fleet_converge_bash_or_poison(stmts: [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_command_with_words(words: concat(
+      [bash_build_word_lit(text: "sudo"), bash_build_word_lit(text: "-n")],
+      executor_privileged_operation_argv(op: fleet_converge_generation_store_ensure())
+        |> map(w => bash_build_word_lit(text: w as String)),
+    )),
+    bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
+      bash_build_word_lit(text: "flock"),
+      bash_build_word_lit(text: "-x"),
+      bash_build_word_lit(text: fleet_converge_generation_lock_path),
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        subject_host: subject_host,
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+        apply_shell_path: apply_shell_path,
+        plan_hash: plan_hash,
+      )),
+    ])),
+  ])
+}
+
+// THE SCRIPT IS BUILT FROM THE REQUEST FOR THE SAME REASON THE TERMINAL IS. An apply script is the
+// executable projection of exactly the axes the plan selected, so taking loose families let a
+// narrower scope be spelled only by handing over populations it never observed -- and here the
+// consequence is not a misreported count but EXECUTED WORK: a launch-environment plan carrying an
+// empty slot list would emit a full slot install for a family its scope does not own.
+//
+// THE PREAMBLE LINE NAMES THE SCOPE'S OWN AXES rather than a fixed sentence about all of them,
+// because that line is what an operator reads before approving a script.
+fn fleet_converge_apply_shell(
+  request: FleetConvergeRequest,
+  terminal: FleetConvergeApplyTerminal,
+) -> String {
+  join(
+    concat(
+      [
+        concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
+        concat("# ", fleet_converge_cap_apply_shell_note),
+        concat(
+          "# Admission gates enforced in fleet_converge_apply_wet before bash — ",
+          fleet_converge_apply_shell_axis_note(request: request),
+        ),
+        "set -euo pipefail",
+        "# generated at plan time — apply MUST NOT recompute membership_reconcile",
+      ],
+      concat(
+        fleet_converge_apply_shell_body_lines(request: request),
+        [fleet_converge_apply_terminal_line(terminal: terminal)],
+      ),
+    ),
+    "\n",
+  )
+}
+
+// A BLOCKING GRANT PRODUCES A REFUSAL-ONLY, NON-ACTUATING ARTIFACT. The CLI gate refuses first, but the
+// artifact is itself reviewed and carried, so it must not contain the effects its own terminal says
+// were never admitted: when a host-wide grant is missing or unobserved the body is the refusal and
+// nothing else -- no axis line of any family, so no `sudo` line anywhere in the executable body.
+fn fleet_converge_apply_shell_blocking_capability(request: FleetConvergeRequest) -> String? {
+  match request {
+    FullHostConverge { host: host, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: grants } =>
+      host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants))
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => Absent
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => Absent
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => Absent
+    WorkspaceSlotCommissioningConverge { basis: _ } => Absent
+    WorkspaceCommissioningDependencyConverge { plan: _ } => Absent
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => Absent
+    LiveDeployConverge { desired: _, basis: _ } => Absent
+  }
+}
+
+fn fleet_converge_apply_shell_body_lines(request: FleetConvergeRequest) -> List<String> {
+  match fleet_converge_apply_shell_blocking_capability(request: request) {
+    Present { value: capability } => [concat("# REFUSED, NON-ACTUATING: no effect line is emitted because ", capability)]
+    Absent => fleet_converge_apply_shell_axis_lines(request: request)
+  }
+}
+
+fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } =>
+      "this script runs timer teardown, the host-wide executor grants, runner-slot reconciliation (additions, authorized retirement inhibition via systemctl mask --now, and completed-retirement tree removal), and fabric-cell ensure effects"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+    WorkspaceSlotCommissioningConverge { basis: _ } => "commission one slot through the protected executor; wait for exact completion and durable fleet generation"
+    WorkspaceCommissioningDependencyConverge { plan: _ } => "commissioning requires host kernel maintenance; no slot readiness or generation may be published"
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => "scope:workspace-allocation-only — publish typed invocation credential and start the existing selected slot controller"
+    LiveDeployConverge { desired: _, basis: _ } =>
+      "scope:live-deploy — this script emits no host effects; wet apply is CONVERGENCE-ONE C8 and is not this arm"
+  }
+}
+
+fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+      observed_host_grants: _,
+    } =>
+      concat(
+        concat(
+          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+        ),
+        concat(
+          host_wide_grant_apply_lines(host: host),
+        concat(
+          [runner_slot_apply_family_header],
+          concat(
+            slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
+            concat(
+              ["# runner-service activation (gunbc.runner.runner_service_activation) — enable then start, separately admitted"],
+              concat(
+                activation_apply_lines(host: host, readiness: readiness, standings: standings),
+                fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              ),
+            ),
+          ),
+        ),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    WorkspaceSlotCommissioningConverge { basis } => if basis.already_committed { [] } else { [workspace_dispatch_apply_script(release_dir: basis.release_dir, slot: runner_slot_instance_name(slot: basis.provenance.slot))] }
+    WorkspaceCommissioningDependencyConverge { plan: _ } => []
+    WorkspaceAllocationConverge { basis: selected, release_dir: installed } => if selected.allocation.phase == WorkspaceReleased { [] }
+      else { [join(["printf '%s' ", posix_single_quote(spelling: workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
+          " > ", posix_single_quote(spelling: workspace_launch_staging_path(slot: selected.reservation_plan.reservation.slot) as String)], "")]
+        + map(workspace_launch_operations(slot: selected.reservation_plan.reservation.slot), operation => executor_privileged_operation_shell_command(op: operation)) }
+    LiveDeployConverge { desired: _, basis: _ } => []
+  }
+}
+
+// THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
+// OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
+// gunbc.runner.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// and its authorization are one value rendered twice, so a command with no grant has no spelling
+// here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
+// realization, an observation refusal -- reaches the script as a comment refusal line, counted in
+// the terminal, never as work claimed applied.
+//
+// THE BOUNDARY IS APPLIED BEFORE THE SUBSTRATE DIRECTORIES, AND THE ORDER IS THE SAFETY PROPERTY.
+// The all-or-nothing realization already refuses a cell any of whose addresses cannot be realized;
+// this ordering closes the RUNTIME half of the same hazard: under `set -euo pipefail` a failing
+// line stops the script, and with the slice ensured first a stop can strand a boundary with no
+// directories -- inert -- but never a cell root without its resource boundary, which is the
+// unbounded-slice state the fold exists to forbid. A half-applied cell reconciles forward: the next
+// plan reads the missing addresses as MemberAdded and completes, because every effect here is an
+// idempotent ensure.
+//
+// AN UNMODELED DEPLOY HOST CONTRIBUTES NO FABRIC LINES, mirroring the activation family: the slot
+// family already stops the whole script for an unmodeled host, one axis earlier and with the
+// louder diagnostic, so a second stop here would report one defect twice.
+fn fabric_cell_apply_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: es } =>
+          fabric_cell_apply_executable_lines(host: host, effects: es)
+        CellPlanRefused { refusals: _ } =>
+          fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+      }
+    FabricCellFamilyNotApplicable =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyConvergedNoActions =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationRefused { blocked: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// THE HOST-WIDE EXECUTOR GRANTS, APPLIED WHERE EVERY OTHER HOST MUTATION IS APPLIED. These are the
+// operations the executor owes the machine itself rather than any runner population: its converge
+// state directory, the runner tree's roots, membership of the group udev hands /dev/kvm to, and the
+// daemon reload. gunbc.runner.runner_host_grants has emitted them since it was written and
+// runner_host_sudoers_content rendered PERMISSION for each one, but nothing executed them -- so the
+// KVM grant arrived on srv2 by an operator typing the rendered argv by hand on 2026-09-05, which is
+// the rostered class gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path.
+//
+// THEY BELONG HERE AND NOT BESIDE THE OBSERVER THAT NEEDS THEM, which is that row's explicit
+// ruling: an applier reached outside this spine inherits none of fleet_converge_plan_held_lease, so
+// two applies against one baseline could both proceed, and an applier bolted beside
+// gunbc.runner.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
+// disclaimer's blind spots. Emitted into apply.sh, each line is one plan-time-resolved argv that
+// the operator reads before approving, the whole script runs under the generation flock, and the
+// readback that decides whether the capability actually landed stays with the module that claims it
+// (runner_microvm_host_ready's kvm_group standing).
+//
+// THE SPEC, NOT THE DEPLOY, AND THE DIFFERENCE IS A HOST. Every other family here resolves through
+// runner_host_deploy_for and contributes nothing for a host whose width refuses. These rows depend
+// on no runner population -- that is exactly why runner_host_wide_refused_operations takes the spec
+// -- so resolving them through the deploy would silently deny srv2, a rostered host with a refused
+// width, the group membership its own installed sudoers already authorizes.
+//
+// EVERY ROW IS AN IDEMPOTENT ENSURE, so a script stopped part-way by `set -euo pipefail` reconciles
+// forward on the next apply: `usermod -aG` appending a group the login already holds exits 0
+// (measured on srv1, twice -- gunbc.executor_privileged_operation's precondition roster), and the
+// directory rows are ensures by construction.
+data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
+
+fn host_wide_grant_apply_lines(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: h } =>
+      [concat("# host-wide executor grants: no runner host spec for ", concat(h as String, " — no grants are declared for it, so none are applied"))]
+    RunnerHostSpecFound { spec: spec } =>
+      concat(
+        [host_wide_grant_apply_header],
+        map(
+          runner_host_wide_refused_operations(spec: spec),
+          op => executor_privileged_operation_converge_command(op: op),
+        ),
+      )
+  }
+}
+
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+fn fabric_cell_apply_comment_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  concat(
+    ["# fabric-cell membership (gunbc.fabric.fabric_cell_converge) — resolved at plan time"],
+    map(
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      l => concat("# ", l),
+    ),
+  )
+}
+
+fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
+  map(
+    fabric_cell_effect_operations(effect: effect, job_user: job_user),
+    op => executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+
+// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
+// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
+// only an unmodeled or refused host has none.
+fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
+    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  }
+}
+
+fn fabric_cell_apply_executable_lines(
+  host: NonEmptyStr,
+  effects: List<FabricCellEffect>,
+) -> List<String> {
+  match fleet_converge_host_job_user(host: host) {
+    Absent => []
+    Present { value: job_user } =>
+      concat(
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: job_user),
+      )
+  }
+}
+
+// THE FULL-HOST CONSTRUCTOR. It is a named entry point rather than a bare literal because the
+// converge actuator and its witnesses enter the plan through it; the assembly itself is the shared
+// request fold below, so a scope cannot grow a second answer for the subject, the lease or the
+// bundle digest.
+fn fleet_converge_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
+  observed_retirement: SlotRetirementEvidence,
+  observed_host_grants: HostGrantObservation,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+      observed_unit_standings: observed_unit_standings,
+      observed_retirement: observed_retirement,
+      observed_host_grants: observed_host_grants,
+    },
+    prior_generation: prior_generation,
+  )
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// Hash classification stays total (content_hash_atom). Absent here is only a refused
+// lease-generation successor (negative prior or exhausted CasGeneration space).
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+) -> FleetConvergePlanArtifact? {
+  let subject = fleet_converge_plan_subject(request: request)
+  let baseline = observed_identity_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
+          concat(
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              concat(fleet_converge_plan_baseline_section, ":"),
+              baseline,
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_baseline_section),
+              concat(fleet_converge_plan_observed_only_section, ":"),
+              join(observed_only_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
+              concat(fleet_converge_plan_monotone_section, ":"),
+              join(monotone_premise_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_monotone_section),
+            ],
+            fleet_converge_plan_axis_lines(request: request),
+          ),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
+  }
+}
+
+
+// THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
+fn fleet_converge_launch_environment_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
+    prior_generation: prior_generation,
+  )
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match fleet_converge_host_job_user(host: host) {
+    Absent => Absent
+    Present { value: job_user } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+          "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.namespace_mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
+    }
+  }
+}
+
+
+data fleet_converge_plan_body_path: String = fleet_reviewed_plan_path
+
+data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+
+data fleet_converge_plan_apply_shell_path: String = fleet_reviewed_apply_path
+
+data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+
+data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+
+data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+
+data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+
+data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+
+fn fleet_converge_observed_baseline_matches(
+  observed_baseline_hex: Fnv1a64StructuralDigestHex,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  let baseline = observed_identity_text(request: observed)
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) => structural.digest == observed_baseline_hex
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+    Sha512Hash(_) => false
+  }
+}
+),
+    then_stmts: [
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_lit(text: "LeaseGenerationStale"),
+        bash_build_word_lit(text: concat("planned=", to_string(planned_generation))),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "observed="),
+          bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+        ]),
+      ]),
+      bash_build_exit(code: "1"),
+    ],
+  )
+}
+
+data fleet_converge_publication_decision_var: String = "_gunbc_publication_decision"
+
+fn fleet_converge_generation_publication_stmt(action: String, subject_host: NonEmptyStr,
+  prior_generation: Int, planned_generation: Int, plan_hash: NonEmptyStr) -> Node {
+  bash_build_command_with_words(words: [
+    bash_build_word_lit(text: "bash"), bash_build_word_lit(text: "-c"),
+    bash_build_word_lit(text: fleet_generation_native_publication_script),
+    bash_build_word_lit(text: "fleet-generation-publication"), bash_build_word_lit(text: action),
+    bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
+    bash_build_word_lit(text: to_string(prior_generation)), bash_build_word_lit(text: to_string(planned_generation)),
+    bash_build_word_lit(text: plan_hash as String),
+  ])
+}
+
+fn fleet_converge_locked_apply_inner_stmts(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+) -> List<Node> {
+  match parse_content_hash(wire: plan_hash as String) {
+    Absent => [bash_build_exit(code: "65")]
+    Present { value: _ } => [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    fleet_converge_generation_store_default_stmt(),
+    fleet_converge_generation_store_read_stmt(subject_host: subject_host),
+    fleet_converge_generation_stale_guard_stmt(
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+    ),
+    bash_build_assign(name: fleet_converge_publication_decision_var, value: bash_build_word_cmdsubst(
+      body: fleet_converge_generation_publication_stmt(action: "admit", subject_host: subject_host,
+        prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash))),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "apply"),
+    ], spelling: BracketQuoted), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "recover"),
+    ]), then_stmts: [bash_build_exit(code: "65")])]),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
+    ]), then_stmts: [bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
+    ])]),
+    fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
+      prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash),
+  ]
+  }
+}
+
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)"
+
+fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+  }
+}
+
+fn fleet_converge_locked_apply_inner_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+) -> String {
+  fleet_converge_bash_or_poison(
+    stmts: fleet_converge_locked_apply_inner_stmts(
+      subject_host: subject_host,
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+      apply_shell_path: apply_shell_path,
+      plan_hash: plan_hash,
+    ),
+  )
+}
+
+// THE LEASE IS HELD BY ONE PRINCIPAL, AND THE SCRIPT SAYS WHO THE CALLER IS RELATIVE TO IT.
+//
+// The lease directory and store are owned by the CI runner account (fleet_converge_lease_owner),
+// and the flock'd transaction used to run as whoever invoked the binary. In the workflow the two
+// coincide, so nothing noticed; from an operator shell they do not, and the first local apply
+// refused at `flock: cannot open lock file: Permission denied` AFTER the plan gates had admitted
+// it -- a refusal about the executor's identity arriving as a shell error from inside the guard.
+// The identity is now a typed input to the script: an invoker that IS the owner runs the guard
+// directly, exactly as CI does; any other invoker runs it AS the owner through sudo, so the store
+// is always written by the same account and a later CI apply can still read and advance it. The
+// decision is taken in the CLI from an observed effective principal and passed here as a value,
+// so the emitted script never has to guess from `$(id -un)` at run time.
+type FleetConvergeApplyInvoker
+  = InvokerIsLeaseOwner
+  | InvokerImpersonatesLeaseOwner
+
+fn fleet_converge_apply_invoker(effective_user: NonEmptyStr) -> FleetConvergeApplyInvoker {
+  if (effective_user as String) == (fleet_converge_lease_owner() as String) {
+    InvokerIsLeaseOwner
+  } else {
+    InvokerImpersonatesLeaseOwner
+  }
+}
+
+fn fleet_converge_locked_apply_flock_words(invoker: FleetConvergeApplyInvoker) -> List<Node> {
+  match invoker {
+    InvokerIsLeaseOwner => []
+    InvokerImpersonatesLeaseOwner => [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "-u"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+    ]
+  }
+}
+
+fn fleet_converge_locked_apply_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+  invoker: FleetConvergeApplyInvoker,
+) -> String {
+  fleet_converge_bash_or_poison(stmts: [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_command_with_words(words: concat(
+      [bash_build_word_lit(text: "sudo"), bash_build_word_lit(text: "-n")],
+      executor_privileged_operation_argv(op: fleet_converge_generation_store_ensure())
+        |> map(w => bash_build_word_lit(text: w as String)),
+    )),
+    bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
+      bash_build_word_lit(text: "flock"),
+      bash_build_word_lit(text: "-x"),
+      bash_build_word_lit(text: fleet_converge_generation_lock_path),
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        subject_host: subject_host,
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+        apply_shell_path: apply_shell_path,
+        plan_hash: plan_hash,
+      )),
+    ])),
+  ])
+}
+
+// THE SCRIPT IS BUILT FROM THE REQUEST FOR THE SAME REASON THE TERMINAL IS. An apply script is the
+// executable projection of exactly the axes the plan selected, so taking loose families let a
+// narrower scope be spelled only by handing over populations it never observed -- and here the
+// consequence is not a misreported count but EXECUTED WORK: a launch-environment plan carrying an
+// empty slot list would emit a full slot install for a family its scope does not own.
+//
+// THE PREAMBLE LINE NAMES THE SCOPE'S OWN AXES rather than a fixed sentence about all of them,
+// because that line is what an operator reads before approving a script.
+fn fleet_converge_apply_shell(
+  request: FleetConvergeRequest,
+  terminal: FleetConvergeApplyTerminal,
+) -> String {
+  join(
+    concat(
+      [
+        concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
+        concat("# ", fleet_converge_cap_apply_shell_note),
+        concat(
+          "# Admission gates enforced in fleet_converge_apply_wet before bash — ",
+          fleet_converge_apply_shell_axis_note(request: request),
+        ),
+        "set -euo pipefail",
+        "# generated at plan time — apply MUST NOT recompute membership_reconcile",
+      ],
+      concat(
+        fleet_converge_apply_shell_body_lines(request: request),
+        [fleet_converge_apply_terminal_line(terminal: terminal)],
+      ),
+    ),
+    "\n",
+  )
+}
+
+// A BLOCKING GRANT PRODUCES A REFUSAL-ONLY, NON-ACTUATING ARTIFACT. The CLI gate refuses first, but the
+// artifact is itself reviewed and carried, so it must not contain the effects its own terminal says
+// were never admitted: when a host-wide grant is missing or unobserved the body is the refusal and
+// nothing else -- no axis line of any family, so no `sudo` line anywhere in the executable body.
+fn fleet_converge_apply_shell_blocking_capability(request: FleetConvergeRequest) -> String? {
+  match request {
+    FullHostConverge { host: host, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: grants } =>
+      host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants))
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => Absent
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => Absent
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => Absent
+    WorkspaceSlotCommissioningConverge { basis: _ } => Absent
+    WorkspaceCommissioningDependencyConverge { plan: _ } => Absent
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => Absent
+    LiveDeployConverge { desired: _, basis: _ } => Absent
+  }
+}
+
+fn fleet_converge_apply_shell_body_lines(request: FleetConvergeRequest) -> List<String> {
+  match fleet_converge_apply_shell_blocking_capability(request: request) {
+    Present { value: capability } => [concat("# REFUSED, NON-ACTUATING: no effect line is emitted because ", capability)]
+    Absent => fleet_converge_apply_shell_axis_lines(request: request)
+  }
+}
+
+fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } =>
+      "this script runs timer teardown, the host-wide executor grants, runner-slot reconciliation (additions, authorized retirement inhibition via systemctl mask --now, and completed-retirement tree removal), and fabric-cell ensure effects"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+    WorkspaceSlotCommissioningConverge { basis: _ } => "commission one slot through the protected executor; wait for exact completion and durable fleet generation"
+    WorkspaceCommissioningDependencyConverge { plan: _ } => "commissioning requires host kernel maintenance; no slot readiness or generation may be published"
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => "scope:workspace-allocation-only — publish typed invocation credential and start the existing selected slot controller"
+    LiveDeployConverge { desired: _, basis: _ } =>
+      "scope:live-deploy — this script emits no host effects; wet apply is CONVERGENCE-ONE C8 and is not this arm"
+  }
+}
+
+fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+      observed_host_grants: _,
+    } =>
+      concat(
+        concat(
+          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+        ),
+        concat(
+          host_wide_grant_apply_lines(host: host),
+        concat(
+          [runner_slot_apply_family_header],
+          concat(
+            slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
+            concat(
+              ["# runner-service activation (gunbc.runner.runner_service_activation) — enable then start, separately admitted"],
+              concat(
+                activation_apply_lines(host: host, readiness: readiness, standings: standings),
+                fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              ),
+            ),
+          ),
+        ),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    WorkspaceSlotCommissioningConverge { basis } => if basis.already_committed { [] } else { [workspace_dispatch_apply_script(release_dir: basis.release_dir, slot: runner_slot_instance_name(slot: basis.provenance.slot))] }
+    WorkspaceCommissioningDependencyConverge { plan: _ } => []
+    WorkspaceAllocationConverge { basis: selected, release_dir: installed } => if selected.allocation.phase == WorkspaceReleased { [] }
+      else { [join(["printf '%s' ", posix_single_quote(spelling: workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
+          " > ", posix_single_quote(spelling: workspace_launch_staging_path(slot: selected.reservation_plan.reservation.slot) as String)], "")]
+        + map(workspace_launch_operations(slot: selected.reservation_plan.reservation.slot), operation => executor_privileged_operation_shell_command(op: operation)) }
+    LiveDeployConverge { desired: _, basis: _ } => []
+  }
+}
+
+// THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
+// OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
+// gunbc.runner.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// and its authorization are one value rendered twice, so a command with no grant has no spelling
+// here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
+// realization, an observation refusal -- reaches the script as a comment refusal line, counted in
+// the terminal, never as work claimed applied.
+//
+// THE BOUNDARY IS APPLIED BEFORE THE SUBSTRATE DIRECTORIES, AND THE ORDER IS THE SAFETY PROPERTY.
+// The all-or-nothing realization already refuses a cell any of whose addresses cannot be realized;
+// this ordering closes the RUNTIME half of the same hazard: under `set -euo pipefail` a failing
+// line stops the script, and with the slice ensured first a stop can strand a boundary with no
+// directories -- inert -- but never a cell root without its resource boundary, which is the
+// unbounded-slice state the fold exists to forbid. A half-applied cell reconciles forward: the next
+// plan reads the missing addresses as MemberAdded and completes, because every effect here is an
+// idempotent ensure.
+//
+// AN UNMODELED DEPLOY HOST CONTRIBUTES NO FABRIC LINES, mirroring the activation family: the slot
+// family already stops the whole script for an unmodeled host, one axis earlier and with the
+// louder diagnostic, so a second stop here would report one defect twice.
+fn fabric_cell_apply_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: es } =>
+          fabric_cell_apply_executable_lines(host: host, effects: es)
+        CellPlanRefused { refusals: _ } =>
+          fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+      }
+    FabricCellFamilyNotApplicable =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyConvergedNoActions =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationRefused { blocked: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// THE HOST-WIDE EXECUTOR GRANTS, APPLIED WHERE EVERY OTHER HOST MUTATION IS APPLIED. These are the
+// operations the executor owes the machine itself rather than any runner population: its converge
+// state directory, the runner tree's roots, membership of the group udev hands /dev/kvm to, and the
+// daemon reload. gunbc.runner.runner_host_grants has emitted them since it was written and
+// runner_host_sudoers_content rendered PERMISSION for each one, but nothing executed them -- so the
+// KVM grant arrived on srv2 by an operator typing the rendered argv by hand on 2026-09-05, which is
+// the rostered class gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path.
+//
+// THEY BELONG HERE AND NOT BESIDE THE OBSERVER THAT NEEDS THEM, which is that row's explicit
+// ruling: an applier reached outside this spine inherits none of fleet_converge_plan_held_lease, so
+// two applies against one baseline could both proceed, and an applier bolted beside
+// gunbc.runner.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
+// disclaimer's blind spots. Emitted into apply.sh, each line is one plan-time-resolved argv that
+// the operator reads before approving, the whole script runs under the generation flock, and the
+// readback that decides whether the capability actually landed stays with the module that claims it
+// (runner_microvm_host_ready's kvm_group standing).
+//
+// THE SPEC, NOT THE DEPLOY, AND THE DIFFERENCE IS A HOST. Every other family here resolves through
+// runner_host_deploy_for and contributes nothing for a host whose width refuses. These rows depend
+// on no runner population -- that is exactly why runner_host_wide_refused_operations takes the spec
+// -- so resolving them through the deploy would silently deny srv2, a rostered host with a refused
+// width, the group membership its own installed sudoers already authorizes.
+//
+// EVERY ROW IS AN IDEMPOTENT ENSURE, so a script stopped part-way by `set -euo pipefail` reconciles
+// forward on the next apply: `usermod -aG` appending a group the login already holds exits 0
+// (measured on srv1, twice -- gunbc.executor_privileged_operation's precondition roster), and the
+// directory rows are ensures by construction.
+data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
+
+fn host_wide_grant_apply_lines(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: h } =>
+      [concat("# host-wide executor grants: no runner host spec for ", concat(h as String, " — no grants are declared for it, so none are applied"))]
+    RunnerHostSpecFound { spec: spec } =>
+      concat(
+        [host_wide_grant_apply_header],
+        map(
+          runner_host_wide_refused_operations(spec: spec),
+          op => executor_privileged_operation_converge_command(op: op),
+        ),
+      )
+  }
+}
+
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+fn fabric_cell_apply_comment_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  concat(
+    ["# fabric-cell membership (gunbc.fabric.fabric_cell_converge) — resolved at plan time"],
+    map(
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      l => concat("# ", l),
+    ),
+  )
+}
+
+fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
+  map(
+    fabric_cell_effect_operations(effect: effect, job_user: job_user),
+    op => executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+
+// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
+// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
+// only an unmodeled or refused host has none.
+fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
+    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  }
+}
+
+fn fabric_cell_apply_executable_lines(
+  host: NonEmptyStr,
+  effects: List<FabricCellEffect>,
+) -> List<String> {
+  match fleet_converge_host_job_user(host: host) {
+    Absent => []
+    Present { value: job_user } =>
+      concat(
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: job_user),
+      )
+  }
+}
+
+// THE FULL-HOST CONSTRUCTOR. It is a named entry point rather than a bare literal because the
+// converge actuator and its witnesses enter the plan through it; the assembly itself is the shared
+// request fold below, so a scope cannot grow a second answer for the subject, the lease or the
+// bundle digest.
+fn fleet_converge_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
+  observed_retirement: SlotRetirementEvidence,
+  observed_host_grants: HostGrantObservation,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+      observed_unit_standings: observed_unit_standings,
+      observed_retirement: observed_retirement,
+      observed_host_grants: observed_host_grants,
+    },
+    prior_generation: prior_generation,
+  )
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// Hash classification stays total (content_hash_atom). Absent here is only a refused
+// lease-generation successor (negative prior or exhausted CasGeneration space).
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+) -> FleetConvergePlanArtifact? {
+  let subject = fleet_converge_plan_subject(request: request)
+  let baseline = observed_identity_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
+          concat(
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              concat(fleet_converge_plan_baseline_section, ":"),
+              baseline,
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_baseline_section),
+              concat(fleet_converge_plan_observed_only_section, ":"),
+              join(observed_only_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
+              concat(fleet_converge_plan_monotone_section, ":"),
+              join(monotone_premise_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_monotone_section),
+            ],
+            fleet_converge_plan_axis_lines(request: request),
+          ),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
+  }
+}
+
+
+// THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
+fn fleet_converge_launch_environment_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
+    prior_generation: prior_generation,
+  )
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match fleet_converge_host_job_user(host: host) {
+    Absent => Absent
+    Present { value: job_user } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+          "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.namespace_mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
+    }
+  }
+}
+
+
+data fleet_converge_plan_body_path: String = fleet_reviewed_plan_path
+
+data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+
+data fleet_converge_plan_apply_shell_path: String = fleet_reviewed_apply_path
+
+data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+
+data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+
+data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+
+data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+
+data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+
+fn fleet_converge_observed_baseline_matches(
+  observed_baseline_hex: Fnv1a64StructuralDigestHex,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  let baseline = observed_identity_text(request: observed)
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) => structural.digest == observed_baseline_hex
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+    Sha512Hash(_) => false
+  }
+}
+), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "recover"),
+    ], spelling: BracketQuoted), then_stmts: [bash_build_exit(code: "65")])]),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
+    ]), then_stmts: [bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
+    ])]),
+    fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
+      prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash),
+  ]
+  }
+}
+
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)"
+
+fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+  }
+}
+
+fn fleet_converge_locked_apply_inner_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+) -> String {
+  fleet_converge_bash_or_poison(
+    stmts: fleet_converge_locked_apply_inner_stmts(
+      subject_host: subject_host,
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+      apply_shell_path: apply_shell_path,
+      plan_hash: plan_hash,
+    ),
+  )
+}
+
+// THE LEASE IS HELD BY ONE PRINCIPAL, AND THE SCRIPT SAYS WHO THE CALLER IS RELATIVE TO IT.
+//
+// The lease directory and store are owned by the CI runner account (fleet_converge_lease_owner),
+// and the flock'd transaction used to run as whoever invoked the binary. In the workflow the two
+// coincide, so nothing noticed; from an operator shell they do not, and the first local apply
+// refused at `flock: cannot open lock file: Permission denied` AFTER the plan gates had admitted
+// it -- a refusal about the executor's identity arriving as a shell error from inside the guard.
+// The identity is now a typed input to the script: an invoker that IS the owner runs the guard
+// directly, exactly as CI does; any other invoker runs it AS the owner through sudo, so the store
+// is always written by the same account and a later CI apply can still read and advance it. The
+// decision is taken in the CLI from an observed effective principal and passed here as a value,
+// so the emitted script never has to guess from `$(id -un)` at run time.
+type FleetConvergeApplyInvoker
+  = InvokerIsLeaseOwner
+  | InvokerImpersonatesLeaseOwner
+
+fn fleet_converge_apply_invoker(effective_user: NonEmptyStr) -> FleetConvergeApplyInvoker {
+  if (effective_user as String) == (fleet_converge_lease_owner() as String) {
+    InvokerIsLeaseOwner
+  } else {
+    InvokerImpersonatesLeaseOwner
+  }
+}
+
+fn fleet_converge_locked_apply_flock_words(invoker: FleetConvergeApplyInvoker) -> List<Node> {
+  match invoker {
+    InvokerIsLeaseOwner => []
+    InvokerImpersonatesLeaseOwner => [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "-u"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+    ]
+  }
+}
+
+fn fleet_converge_locked_apply_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+  invoker: FleetConvergeApplyInvoker,
+) -> String {
+  fleet_converge_bash_or_poison(stmts: [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_command_with_words(words: concat(
+      [bash_build_word_lit(text: "sudo"), bash_build_word_lit(text: "-n")],
+      executor_privileged_operation_argv(op: fleet_converge_generation_store_ensure())
+        |> map(w => bash_build_word_lit(text: w as String)),
+    )),
+    bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
+      bash_build_word_lit(text: "flock"),
+      bash_build_word_lit(text: "-x"),
+      bash_build_word_lit(text: fleet_converge_generation_lock_path),
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        subject_host: subject_host,
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+        apply_shell_path: apply_shell_path,
+        plan_hash: plan_hash,
+      )),
+    ])),
+  ])
+}
+
+// THE SCRIPT IS BUILT FROM THE REQUEST FOR THE SAME REASON THE TERMINAL IS. An apply script is the
+// executable projection of exactly the axes the plan selected, so taking loose families let a
+// narrower scope be spelled only by handing over populations it never observed -- and here the
+// consequence is not a misreported count but EXECUTED WORK: a launch-environment plan carrying an
+// empty slot list would emit a full slot install for a family its scope does not own.
+//
+// THE PREAMBLE LINE NAMES THE SCOPE'S OWN AXES rather than a fixed sentence about all of them,
+// because that line is what an operator reads before approving a script.
+fn fleet_converge_apply_shell(
+  request: FleetConvergeRequest,
+  terminal: FleetConvergeApplyTerminal,
+) -> String {
+  join(
+    concat(
+      [
+        concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
+        concat("# ", fleet_converge_cap_apply_shell_note),
+        concat(
+          "# Admission gates enforced in fleet_converge_apply_wet before bash — ",
+          fleet_converge_apply_shell_axis_note(request: request),
+        ),
+        "set -euo pipefail",
+        "# generated at plan time — apply MUST NOT recompute membership_reconcile",
+      ],
+      concat(
+        fleet_converge_apply_shell_body_lines(request: request),
+        [fleet_converge_apply_terminal_line(terminal: terminal)],
+      ),
+    ),
+    "\n",
+  )
+}
+
+// A BLOCKING GRANT PRODUCES A REFUSAL-ONLY, NON-ACTUATING ARTIFACT. The CLI gate refuses first, but the
+// artifact is itself reviewed and carried, so it must not contain the effects its own terminal says
+// were never admitted: when a host-wide grant is missing or unobserved the body is the refusal and
+// nothing else -- no axis line of any family, so no `sudo` line anywhere in the executable body.
+fn fleet_converge_apply_shell_blocking_capability(request: FleetConvergeRequest) -> String? {
+  match request {
+    FullHostConverge { host: host, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: grants } =>
+      host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants))
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => Absent
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => Absent
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => Absent
+    WorkspaceSlotCommissioningConverge { basis: _ } => Absent
+    WorkspaceCommissioningDependencyConverge { plan: _ } => Absent
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => Absent
+    LiveDeployConverge { desired: _, basis: _ } => Absent
+  }
+}
+
+fn fleet_converge_apply_shell_body_lines(request: FleetConvergeRequest) -> List<String> {
+  match fleet_converge_apply_shell_blocking_capability(request: request) {
+    Present { value: capability } => [concat("# REFUSED, NON-ACTUATING: no effect line is emitted because ", capability)]
+    Absent => fleet_converge_apply_shell_axis_lines(request: request)
+  }
+}
+
+fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } =>
+      "this script runs timer teardown, the host-wide executor grants, runner-slot reconciliation (additions, authorized retirement inhibition via systemctl mask --now, and completed-retirement tree removal), and fabric-cell ensure effects"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+    WorkspaceSlotCommissioningConverge { basis: _ } => "commission one slot through the protected executor; wait for exact completion and durable fleet generation"
+    WorkspaceCommissioningDependencyConverge { plan: _ } => "commissioning requires host kernel maintenance; no slot readiness or generation may be published"
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => "scope:workspace-allocation-only — publish typed invocation credential and start the existing selected slot controller"
+    LiveDeployConverge { desired: _, basis: _ } =>
+      "scope:live-deploy — this script emits no host effects; wet apply is CONVERGENCE-ONE C8 and is not this arm"
+  }
+}
+
+fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+      observed_host_grants: _,
+    } =>
+      concat(
+        concat(
+          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+        ),
+        concat(
+          host_wide_grant_apply_lines(host: host),
+        concat(
+          [runner_slot_apply_family_header],
+          concat(
+            slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
+            concat(
+              ["# runner-service activation (gunbc.runner.runner_service_activation) — enable then start, separately admitted"],
+              concat(
+                activation_apply_lines(host: host, readiness: readiness, standings: standings),
+                fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              ),
+            ),
+          ),
+        ),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    WorkspaceSlotCommissioningConverge { basis } => if basis.already_committed { [] } else { [workspace_dispatch_apply_script(release_dir: basis.release_dir, slot: runner_slot_instance_name(slot: basis.provenance.slot))] }
+    WorkspaceCommissioningDependencyConverge { plan: _ } => []
+    WorkspaceAllocationConverge { basis: selected, release_dir: installed } => if selected.allocation.phase == WorkspaceReleased { [] }
+      else { [join(["printf '%s' ", posix_single_quote(spelling: workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
+          " > ", posix_single_quote(spelling: workspace_launch_staging_path(slot: selected.reservation_plan.reservation.slot) as String)], "")]
+        + map(workspace_launch_operations(slot: selected.reservation_plan.reservation.slot), operation => executor_privileged_operation_shell_command(op: operation)) }
+    LiveDeployConverge { desired: _, basis: _ } => []
+  }
+}
+
+// THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
+// OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
+// gunbc.runner.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// and its authorization are one value rendered twice, so a command with no grant has no spelling
+// here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
+// realization, an observation refusal -- reaches the script as a comment refusal line, counted in
+// the terminal, never as work claimed applied.
+//
+// THE BOUNDARY IS APPLIED BEFORE THE SUBSTRATE DIRECTORIES, AND THE ORDER IS THE SAFETY PROPERTY.
+// The all-or-nothing realization already refuses a cell any of whose addresses cannot be realized;
+// this ordering closes the RUNTIME half of the same hazard: under `set -euo pipefail` a failing
+// line stops the script, and with the slice ensured first a stop can strand a boundary with no
+// directories -- inert -- but never a cell root without its resource boundary, which is the
+// unbounded-slice state the fold exists to forbid. A half-applied cell reconciles forward: the next
+// plan reads the missing addresses as MemberAdded and completes, because every effect here is an
+// idempotent ensure.
+//
+// AN UNMODELED DEPLOY HOST CONTRIBUTES NO FABRIC LINES, mirroring the activation family: the slot
+// family already stops the whole script for an unmodeled host, one axis earlier and with the
+// louder diagnostic, so a second stop here would report one defect twice.
+fn fabric_cell_apply_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: es } =>
+          fabric_cell_apply_executable_lines(host: host, effects: es)
+        CellPlanRefused { refusals: _ } =>
+          fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+      }
+    FabricCellFamilyNotApplicable =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyConvergedNoActions =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationRefused { blocked: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// THE HOST-WIDE EXECUTOR GRANTS, APPLIED WHERE EVERY OTHER HOST MUTATION IS APPLIED. These are the
+// operations the executor owes the machine itself rather than any runner population: its converge
+// state directory, the runner tree's roots, membership of the group udev hands /dev/kvm to, and the
+// daemon reload. gunbc.runner.runner_host_grants has emitted them since it was written and
+// runner_host_sudoers_content rendered PERMISSION for each one, but nothing executed them -- so the
+// KVM grant arrived on srv2 by an operator typing the rendered argv by hand on 2026-09-05, which is
+// the rostered class gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path.
+//
+// THEY BELONG HERE AND NOT BESIDE THE OBSERVER THAT NEEDS THEM, which is that row's explicit
+// ruling: an applier reached outside this spine inherits none of fleet_converge_plan_held_lease, so
+// two applies against one baseline could both proceed, and an applier bolted beside
+// gunbc.runner.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
+// disclaimer's blind spots. Emitted into apply.sh, each line is one plan-time-resolved argv that
+// the operator reads before approving, the whole script runs under the generation flock, and the
+// readback that decides whether the capability actually landed stays with the module that claims it
+// (runner_microvm_host_ready's kvm_group standing).
+//
+// THE SPEC, NOT THE DEPLOY, AND THE DIFFERENCE IS A HOST. Every other family here resolves through
+// runner_host_deploy_for and contributes nothing for a host whose width refuses. These rows depend
+// on no runner population -- that is exactly why runner_host_wide_refused_operations takes the spec
+// -- so resolving them through the deploy would silently deny srv2, a rostered host with a refused
+// width, the group membership its own installed sudoers already authorizes.
+//
+// EVERY ROW IS AN IDEMPOTENT ENSURE, so a script stopped part-way by `set -euo pipefail` reconciles
+// forward on the next apply: `usermod -aG` appending a group the login already holds exits 0
+// (measured on srv1, twice -- gunbc.executor_privileged_operation's precondition roster), and the
+// directory rows are ensures by construction.
+data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
+
+fn host_wide_grant_apply_lines(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: h } =>
+      [concat("# host-wide executor grants: no runner host spec for ", concat(h as String, " — no grants are declared for it, so none are applied"))]
+    RunnerHostSpecFound { spec: spec } =>
+      concat(
+        [host_wide_grant_apply_header],
+        map(
+          runner_host_wide_refused_operations(spec: spec),
+          op => executor_privileged_operation_converge_command(op: op),
+        ),
+      )
+  }
+}
+
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+fn fabric_cell_apply_comment_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  concat(
+    ["# fabric-cell membership (gunbc.fabric.fabric_cell_converge) — resolved at plan time"],
+    map(
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      l => concat("# ", l),
+    ),
+  )
+}
+
+fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
+  map(
+    fabric_cell_effect_operations(effect: effect, job_user: job_user),
+    op => executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+
+// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
+// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
+// only an unmodeled or refused host has none.
+fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
+    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  }
+}
+
+fn fabric_cell_apply_executable_lines(
+  host: NonEmptyStr,
+  effects: List<FabricCellEffect>,
+) -> List<String> {
+  match fleet_converge_host_job_user(host: host) {
+    Absent => []
+    Present { value: job_user } =>
+      concat(
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: job_user),
+      )
+  }
+}
+
+// THE FULL-HOST CONSTRUCTOR. It is a named entry point rather than a bare literal because the
+// converge actuator and its witnesses enter the plan through it; the assembly itself is the shared
+// request fold below, so a scope cannot grow a second answer for the subject, the lease or the
+// bundle digest.
+fn fleet_converge_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
+  observed_retirement: SlotRetirementEvidence,
+  observed_host_grants: HostGrantObservation,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+      observed_unit_standings: observed_unit_standings,
+      observed_retirement: observed_retirement,
+      observed_host_grants: observed_host_grants,
+    },
+    prior_generation: prior_generation,
+  )
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// Hash classification stays total (content_hash_atom). Absent here is only a refused
+// lease-generation successor (negative prior or exhausted CasGeneration space).
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+) -> FleetConvergePlanArtifact? {
+  let subject = fleet_converge_plan_subject(request: request)
+  let baseline = observed_identity_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
+          concat(
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              concat(fleet_converge_plan_baseline_section, ":"),
+              baseline,
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_baseline_section),
+              concat(fleet_converge_plan_observed_only_section, ":"),
+              join(observed_only_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
+              concat(fleet_converge_plan_monotone_section, ":"),
+              join(monotone_premise_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_monotone_section),
+            ],
+            fleet_converge_plan_axis_lines(request: request),
+          ),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
+  }
+}
+
+
+// THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
+fn fleet_converge_launch_environment_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
+    prior_generation: prior_generation,
+  )
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match fleet_converge_host_job_user(host: host) {
+    Absent => Absent
+    Present { value: job_user } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+          "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.namespace_mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
+    }
+  }
+}
+
+
+data fleet_converge_plan_body_path: String = fleet_reviewed_plan_path
+
+data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+
+data fleet_converge_plan_apply_shell_path: String = fleet_reviewed_apply_path
+
+data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+
+data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+
+data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+
+data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+
+data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+
+fn fleet_converge_observed_baseline_matches(
+  observed_baseline_hex: Fnv1a64StructuralDigestHex,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  let baseline = observed_identity_text(request: observed)
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) => structural.digest == observed_baseline_hex
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+    Sha512Hash(_) => false
+  }
+}
+), then_stmts: [bash_build_exit(code: "65")])]),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
+    ], spelling: BracketQuoted), then_stmts: [bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
+    ])]),
+    fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
+      prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash),
+  ]
+  }
+}
+
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)"
+
+fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+  }
+}
+
+fn fleet_converge_locked_apply_inner_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+) -> String {
+  fleet_converge_bash_or_poison(
+    stmts: fleet_converge_locked_apply_inner_stmts(
+      subject_host: subject_host,
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+      apply_shell_path: apply_shell_path,
+      plan_hash: plan_hash,
+    ),
+  )
+}
+
+// THE LEASE IS HELD BY ONE PRINCIPAL, AND THE SCRIPT SAYS WHO THE CALLER IS RELATIVE TO IT.
+//
+// The lease directory and store are owned by the CI runner account (fleet_converge_lease_owner),
+// and the flock'd transaction used to run as whoever invoked the binary. In the workflow the two
+// coincide, so nothing noticed; from an operator shell they do not, and the first local apply
+// refused at `flock: cannot open lock file: Permission denied` AFTER the plan gates had admitted
+// it -- a refusal about the executor's identity arriving as a shell error from inside the guard.
+// The identity is now a typed input to the script: an invoker that IS the owner runs the guard
+// directly, exactly as CI does; any other invoker runs it AS the owner through sudo, so the store
+// is always written by the same account and a later CI apply can still read and advance it. The
+// decision is taken in the CLI from an observed effective principal and passed here as a value,
+// so the emitted script never has to guess from `$(id -un)` at run time.
+type FleetConvergeApplyInvoker
+  = InvokerIsLeaseOwner
+  | InvokerImpersonatesLeaseOwner
+
+fn fleet_converge_apply_invoker(effective_user: NonEmptyStr) -> FleetConvergeApplyInvoker {
+  if (effective_user as String) == (fleet_converge_lease_owner() as String) {
+    InvokerIsLeaseOwner
+  } else {
+    InvokerImpersonatesLeaseOwner
+  }
+}
+
+fn fleet_converge_locked_apply_flock_words(invoker: FleetConvergeApplyInvoker) -> List<Node> {
+  match invoker {
+    InvokerIsLeaseOwner => []
+    InvokerImpersonatesLeaseOwner => [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "-u"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+    ]
+  }
+}
+
+fn fleet_converge_locked_apply_script(
+  subject_host: NonEmptyStr,
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+  plan_hash: NonEmptyStr,
+  invoker: FleetConvergeApplyInvoker,
+) -> String {
+  fleet_converge_bash_or_poison(stmts: [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_command_with_words(words: concat(
+      [bash_build_word_lit(text: "sudo"), bash_build_word_lit(text: "-n")],
+      executor_privileged_operation_argv(op: fleet_converge_generation_store_ensure())
+        |> map(w => bash_build_word_lit(text: w as String)),
+    )),
+    bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
+      bash_build_word_lit(text: "flock"),
+      bash_build_word_lit(text: "-x"),
+      bash_build_word_lit(text: fleet_converge_generation_lock_path),
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        subject_host: subject_host,
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+        apply_shell_path: apply_shell_path,
+        plan_hash: plan_hash,
+      )),
+    ])),
+  ])
+}
+
+// THE SCRIPT IS BUILT FROM THE REQUEST FOR THE SAME REASON THE TERMINAL IS. An apply script is the
+// executable projection of exactly the axes the plan selected, so taking loose families let a
+// narrower scope be spelled only by handing over populations it never observed -- and here the
+// consequence is not a misreported count but EXECUTED WORK: a launch-environment plan carrying an
+// empty slot list would emit a full slot install for a family its scope does not own.
+//
+// THE PREAMBLE LINE NAMES THE SCOPE'S OWN AXES rather than a fixed sentence about all of them,
+// because that line is what an operator reads before approving a script.
+fn fleet_converge_apply_shell(
+  request: FleetConvergeRequest,
+  terminal: FleetConvergeApplyTerminal,
+) -> String {
+  join(
+    concat(
+      [
+        concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
+        concat("# ", fleet_converge_cap_apply_shell_note),
+        concat(
+          "# Admission gates enforced in fleet_converge_apply_wet before bash — ",
+          fleet_converge_apply_shell_axis_note(request: request),
+        ),
+        "set -euo pipefail",
+        "# generated at plan time — apply MUST NOT recompute membership_reconcile",
+      ],
+      concat(
+        fleet_converge_apply_shell_body_lines(request: request),
+        [fleet_converge_apply_terminal_line(terminal: terminal)],
+      ),
+    ),
+    "\n",
+  )
+}
+
+// A BLOCKING GRANT PRODUCES A REFUSAL-ONLY, NON-ACTUATING ARTIFACT. The CLI gate refuses first, but the
+// artifact is itself reviewed and carried, so it must not contain the effects its own terminal says
+// were never admitted: when a host-wide grant is missing or unobserved the body is the refusal and
+// nothing else -- no axis line of any family, so no `sudo` line anywhere in the executable body.
+fn fleet_converge_apply_shell_blocking_capability(request: FleetConvergeRequest) -> String? {
+  match request {
+    FullHostConverge { host: host, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: grants } =>
+      host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants))
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => Absent
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => Absent
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => Absent
+    WorkspaceSlotCommissioningConverge { basis: _ } => Absent
+    WorkspaceCommissioningDependencyConverge { plan: _ } => Absent
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => Absent
+    LiveDeployConverge { desired: _, basis: _ } => Absent
+  }
+}
+
+fn fleet_converge_apply_shell_body_lines(request: FleetConvergeRequest) -> List<String> {
+  match fleet_converge_apply_shell_blocking_capability(request: request) {
+    Present { value: capability } => [concat("# REFUSED, NON-ACTUATING: no effect line is emitted because ", capability)]
+    Absent => fleet_converge_apply_shell_axis_lines(request: request)
+  }
+}
+
+fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } =>
+      "this script runs timer teardown, the host-wide executor grants, runner-slot reconciliation (additions, authorized retirement inhibition via systemctl mask --now, and completed-retirement tree removal), and fabric-cell ensure effects"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+    WorkspaceSlotCommissioningConverge { basis: _ } => "commission one slot through the protected executor; wait for exact completion and durable fleet generation"
+    WorkspaceCommissioningDependencyConverge { plan: _ } => "commissioning requires host kernel maintenance; no slot readiness or generation may be published"
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => "scope:workspace-allocation-only — publish typed invocation credential and start the existing selected slot controller"
+    LiveDeployConverge { desired: _, basis: _ } =>
+      "scope:live-deploy — this script emits no host effects; wet apply is CONVERGENCE-ONE C8 and is not this arm"
+  }
+}
+
+fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+      observed_host_grants: _,
+    } =>
+      concat(
+        concat(
+          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+        ),
+        concat(
+          host_wide_grant_apply_lines(host: host),
+        concat(
+          [runner_slot_apply_family_header],
+          concat(
+            slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
+            concat(
+              ["# runner-service activation (gunbc.runner.runner_service_activation) — enable then start, separately admitted"],
+              concat(
+                activation_apply_lines(host: host, readiness: readiness, standings: standings),
+                fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              ),
+            ),
+          ),
+        ),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    WorkspaceSlotCommissioningConverge { basis } => if basis.already_committed { [] } else { [workspace_dispatch_apply_script(release_dir: basis.release_dir, slot: runner_slot_instance_name(slot: basis.provenance.slot))] }
+    WorkspaceCommissioningDependencyConverge { plan: _ } => []
+    WorkspaceAllocationConverge { basis: selected, release_dir: installed } => if selected.allocation.phase == WorkspaceReleased { [] }
+      else { [join(["printf '%s' ", posix_single_quote(spelling: workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
+          " > ", posix_single_quote(spelling: workspace_launch_staging_path(slot: selected.reservation_plan.reservation.slot) as String)], "")]
+        + map(workspace_launch_operations(slot: selected.reservation_plan.reservation.slot), operation => executor_privileged_operation_shell_command(op: operation)) }
+    LiveDeployConverge { desired: _, basis: _ } => []
+  }
+}
+
+// THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
+// OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
+// gunbc.runner.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// and its authorization are one value rendered twice, so a command with no grant has no spelling
+// here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
+// realization, an observation refusal -- reaches the script as a comment refusal line, counted in
+// the terminal, never as work claimed applied.
+//
+// THE BOUNDARY IS APPLIED BEFORE THE SUBSTRATE DIRECTORIES, AND THE ORDER IS THE SAFETY PROPERTY.
+// The all-or-nothing realization already refuses a cell any of whose addresses cannot be realized;
+// this ordering closes the RUNTIME half of the same hazard: under `set -euo pipefail` a failing
+// line stops the script, and with the slice ensured first a stop can strand a boundary with no
+// directories -- inert -- but never a cell root without its resource boundary, which is the
+// unbounded-slice state the fold exists to forbid. A half-applied cell reconciles forward: the next
+// plan reads the missing addresses as MemberAdded and completes, because every effect here is an
+// idempotent ensure.
+//
+// AN UNMODELED DEPLOY HOST CONTRIBUTES NO FABRIC LINES, mirroring the activation family: the slot
+// family already stops the whole script for an unmodeled host, one axis earlier and with the
+// louder diagnostic, so a second stop here would report one defect twice.
+fn fabric_cell_apply_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: es } =>
+          fabric_cell_apply_executable_lines(host: host, effects: es)
+        CellPlanRefused { refusals: _ } =>
+          fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+      }
+    FabricCellFamilyNotApplicable =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyConvergedNoActions =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationRefused { blocked: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// THE HOST-WIDE EXECUTOR GRANTS, APPLIED WHERE EVERY OTHER HOST MUTATION IS APPLIED. These are the
+// operations the executor owes the machine itself rather than any runner population: its converge
+// state directory, the runner tree's roots, membership of the group udev hands /dev/kvm to, and the
+// daemon reload. gunbc.runner.runner_host_grants has emitted them since it was written and
+// runner_host_sudoers_content rendered PERMISSION for each one, but nothing executed them -- so the
+// KVM grant arrived on srv2 by an operator typing the rendered argv by hand on 2026-09-05, which is
+// the rostered class gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path.
+//
+// THEY BELONG HERE AND NOT BESIDE THE OBSERVER THAT NEEDS THEM, which is that row's explicit
+// ruling: an applier reached outside this spine inherits none of fleet_converge_plan_held_lease, so
+// two applies against one baseline could both proceed, and an applier bolted beside
+// gunbc.runner.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
+// disclaimer's blind spots. Emitted into apply.sh, each line is one plan-time-resolved argv that
+// the operator reads before approving, the whole script runs under the generation flock, and the
+// readback that decides whether the capability actually landed stays with the module that claims it
+// (runner_microvm_host_ready's kvm_group standing).
+//
+// THE SPEC, NOT THE DEPLOY, AND THE DIFFERENCE IS A HOST. Every other family here resolves through
+// runner_host_deploy_for and contributes nothing for a host whose width refuses. These rows depend
+// on no runner population -- that is exactly why runner_host_wide_refused_operations takes the spec
+// -- so resolving them through the deploy would silently deny srv2, a rostered host with a refused
+// width, the group membership its own installed sudoers already authorizes.
+//
+// EVERY ROW IS AN IDEMPOTENT ENSURE, so a script stopped part-way by `set -euo pipefail` reconciles
+// forward on the next apply: `usermod -aG` appending a group the login already holds exits 0
+// (measured on srv1, twice -- gunbc.executor_privileged_operation's precondition roster), and the
+// directory rows are ensures by construction.
+data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
+
+fn host_wide_grant_apply_lines(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: h } =>
+      [concat("# host-wide executor grants: no runner host spec for ", concat(h as String, " — no grants are declared for it, so none are applied"))]
+    RunnerHostSpecFound { spec: spec } =>
+      concat(
+        [host_wide_grant_apply_header],
+        map(
+          runner_host_wide_refused_operations(spec: spec),
+          op => executor_privileged_operation_converge_command(op: op),
+        ),
+      )
+  }
+}
+
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+fn fabric_cell_apply_comment_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  concat(
+    ["# fabric-cell membership (gunbc.fabric.fabric_cell_converge) — resolved at plan time"],
+    map(
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      l => concat("# ", l),
+    ),
+  )
+}
+
+fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
+  map(
+    fabric_cell_effect_operations(effect: effect, job_user: job_user),
+    op => executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+
+// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
+// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
+// only an unmodeled or refused host has none.
+fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
+    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
+    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  }
+}
+
+fn fabric_cell_apply_executable_lines(
+  host: NonEmptyStr,
+  effects: List<FabricCellEffect>,
+) -> List<String> {
+  match fleet_converge_host_job_user(host: host) {
+    Absent => []
+    Present { value: job_user } =>
+      concat(
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: job_user),
+      )
+  }
+}
+
+// THE FULL-HOST CONSTRUCTOR. It is a named entry point rather than a bare literal because the
+// converge actuator and its witnesses enter the plan through it; the assembly itself is the shared
+// request fold below, so a scope cannot grow a second answer for the subject, the lease or the
+// bundle digest.
+fn fleet_converge_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
+  observed_retirement: SlotRetirementEvidence,
+  observed_host_grants: HostGrantObservation,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+      observed_unit_standings: observed_unit_standings,
+      observed_retirement: observed_retirement,
+      observed_host_grants: observed_host_grants,
+    },
+    prior_generation: prior_generation,
+  )
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// Hash classification stays total (content_hash_atom). Absent here is only a refused
+// lease-generation successor (negative prior or exhausted CasGeneration space).
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+) -> FleetConvergePlanArtifact? {
+  let subject = fleet_converge_plan_subject(request: request)
+  let baseline = observed_identity_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
+          concat(
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              concat(fleet_converge_plan_baseline_section, ":"),
+              baseline,
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_baseline_section),
+              concat(fleet_converge_plan_observed_only_section, ":"),
+              join(observed_only_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
+              concat(fleet_converge_plan_monotone_section, ":"),
+              join(monotone_premise_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_monotone_section),
+            ],
+            fleet_converge_plan_axis_lines(request: request),
+          ),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
+  }
+}
+
+
+// THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
+fn fleet_converge_launch_environment_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact_of_request(
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
+    prior_generation: prior_generation,
+  )
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match fleet_converge_host_job_user(host: host) {
+    Absent => Absent
+    Present { value: job_user } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+          "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.namespace_mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.mode)),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
+    }
+  }
+}
+
+
+data fleet_converge_plan_body_path: String = fleet_reviewed_plan_path
+
+data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+
+data fleet_converge_plan_apply_shell_path: String = fleet_reviewed_apply_path
+
+data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+
+data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+
+data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+
+data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+
+data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+
+fn fleet_converge_observed_baseline_matches(
+  observed_baseline_hex: Fnv1a64StructuralDigestHex,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  let baseline = observed_identity_text(request: observed)
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) => structural.digest == observed_baseline_hex
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+    Sha512Hash(_) => false
+  }
+}
+), then_stmts: [bash_build_command_with_words(words: [
       bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
     ])]),
     fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,

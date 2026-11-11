@@ -52,9 +52,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_kinded,
   bash_build_word_test_operator,
   bash_build_test_comparison,
-  bash_build_test_comparison_bare,
   bash_build_test_bracket,
-  bash_build_test_bracket_bare,
+  BracketQuoted,
+  BracketBare,
   bash_build_with_redir_stderr_to_stdout,
   bash_build_with_redir_stdout_to_stderr
 }
@@ -712,7 +712,7 @@ fn test_comparison_statement() -> Node {
       match quoted_literal(text: "b") {
         Absent => command([word("unreachable")])
         Present { value: right } =>
-          bash_build_test_comparison_bare(left: left, op: "!=", right: right)
+          bash_build_test_comparison(left: left, op: "!=", right: right, spelling: BracketBare)
       }
   }
 }
@@ -783,7 +783,7 @@ test fn test_operator_unlisted_is_refused_by_the_emitter() -> Bool {
 // difference between the two spellings is the operator word itself.
 test fn quoted_operator_is_not_the_operator() -> Bool {
   match bash_emit_stmts(
-    statements: [bash_build_test_bracket_bare(words: [word("a"), bash_build_word_lit(text: "!="), word("b")])],
+    statements: [bash_build_test_bracket(words: [word("a"), bash_build_word_lit(text: "!="), word("b")], spelling: BracketBare)],
     set_e: false
   ) {
     Accepted { value: quoted_spelling, diagnostics: _ } =>
@@ -846,38 +846,40 @@ test fn var_row_still_refuses_the_exit_status_question_mark() -> Bool {
   }
 }
 
-// THE TWO BRACKET ROWS, PINNED. The default row is the spelling the committed CI artifacts
-// hold -- `'[' "$status" '=' '0' ']'` at .github/workflows/instrument-dispatch.yml line 250
-// and `'[' "$?" '=' '1' ']'` at .github/workflows/witnesses.yml line 306 -- so those bytes
-// may not move when a host's installed file happens to spell the brackets differently. The
-// bare row is the spelling srv1's installed /usr/local/sbin/lil-replica-launch holds
-// (sha256 c4ef7314…, line 24: `[ -s /root/engine.args ] || { …; exit 3; }`). Bash manual,
-// nodes "Simple Command Expansion" and "Quote Removal": the quotes on a word in command
-// position are removed before command lookup, so both spellings run the same test -- the
-// rows differ in bytes, and a caller picks the bytes it must hold.
-test fn test_bracket_default_row_holds_the_committed_ci_spelling() -> Bool {
+// THE TEST BRACKET, ONE RULE, TWO SPELLINGS -- pinned. BracketQuoted is the spelling the
+// committed CI artifacts hold: `'[' "$status" '=' '0' ']'` at .github/workflows/
+// instrument-dispatch.yml line 250, `'[' "$?" '=' '1' ']'` at .github/workflows/witnesses.yml
+// line 306. BracketBare is the spelling srv1's installed
+// /usr/local/sbin/lil-replica-launch holds (sha256 c4ef7314…, line 24:
+// `[ -s /root/engine.args ] || { ev "START …"; exit 3; }`). Bash manual, nodes "Simple
+// Command Expansion" and "Quote Removal": the quotes on a word in command position are
+// removed before command lookup, so both spellings run the same test with the same status --
+// the parameter chooses bytes, and a red golden here is a byte move, not a semantics change.
+test fn test_bracket_quoted_spelling_holds_the_committed_ci_bytes() -> Bool {
   emits(
     stmt: bash_build_test_bracket(
-      words: [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")]
+      words: [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")],
+      spelling: BracketQuoted
     ),
-    golden: "'[' '-s' '/root/engine.args' ']\n"
+    golden: "'[' '-s' '/root/engine.args' ']'\n"
   )
 }
 
-test fn test_bracket_bare_row_holds_the_installed_host_spelling() -> Bool {
+test fn test_bracket_bare_spelling_holds_the_installed_host_bytes() -> Bool {
   emits(
-    stmt: bash_build_test_bracket_bare(
-      words: [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")]
+    stmt: bash_build_test_bracket(
+      words: [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")],
+      spelling: BracketBare
     ),
     golden: "[ '-s' '/root/engine.args' ]\n"
   )
 }
 
-test fn the_two_bracket_rows_differ_only_in_the_brackets() -> Bool {
+test fn the_two_bracket_spellings_differ_only_in_the_brackets() -> Bool {
   let words = [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")]
-  match bash_emit_stmts(statements: [bash_build_test_bracket(words: words)], set_e: false) {
+  match bash_emit_stmts(statements: [bash_build_test_bracket(words: words, spelling: BracketQuoted)], set_e: false) {
     Accepted { value: quoted, diagnostics: _ } =>
-      match bash_emit_stmts(statements: [bash_build_test_bracket_bare(words: words)], set_e: false) {
+      match bash_emit_stmts(statements: [bash_build_test_bracket(words: words, spelling: BracketBare)], set_e: false) {
         Accepted { value: bare, diagnostics: _ } =>
           quoted != bare
             && string_contains(s: quoted, pattern: "'-s' '/root/engine.args'")

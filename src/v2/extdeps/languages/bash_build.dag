@@ -580,50 +580,43 @@ fn bash_build_command_with_words(words: List<Node>) -> Node {
   bash_build_command(words: bash_build_command_words_from_nodes(words: words))
 }
 
-// THE BRACKETS OF A TEST, AS INERT TEXT -- the spelling a caller asks bash to READ.
-// `[` and `]` are the test command's own name, not data: emitted through a `lit` word they
-// come out quoted, and through this row they come out verbatim. The builder still refuses
-// them if they ever carry a character bash would expand.
-fn bash_build_test_bracket_bracket(text: String) -> Node {
-  match bash_build_quoted_text(text: text) {
-    Present { value: n } => n
-    Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_bracket_bracket, value: text)
+// THE TEST BRACKET, ONE RULE WITH ITS SPELLING AS A PARAMETER.
+// BracketQuoted is the spelling the committed CI artifacts hold: the brackets are QUOTED
+// LITERAL words. `'[' "$status" '=' '0' ']'` is what .github/workflows/
+// instrument-dispatch.yml carries at line 250 and `'[' "$?" '=' '1' ']'` what
+// .github/workflows/witnesses.yml carries at line 306. BracketBare is the spelling an
+// installed host file holds: srv1's /usr/local/sbin/lil-replica-launch (sha256 c4ef7314…)
+// writes `[ -s /root/engine.args ] || { ev "START …"; exit 3; }`.
+//
+// THEY ARE THE SAME TEST. Bash manual, node "Simple Command Expansion": the word naming the
+// command is resolved before the other expansions apply, and node "Quote Removal": "After the
+// previous expansions were applied, all unescaped occurrences of the single quote character
+// are removed from the resulting word" -- `'['` and `[` both name the `test` command, with
+// the same operands and the same exit status. The choice is about bytes, never about meaning,
+// and a caller passes the bytes it must reproduce. There is ONE leaf for this rule: the
+// spelling is a parameter, not a second pair of builders.
+type TestBracketSpelling = BracketQuoted | BracketBare
+
+// THE BRACKETS OF A TEST, AS INERT TEXT -- the spelling a caller asks bash to READ. `[` and
+// `]` are the test command's own name, not data: quoted at the BracketQuoted spelling,
+// verbatim at BracketBare. The builder still refuses them if they ever carry a character bash
+// would expand.
+fn bash_build_test_bracket_bracket(text: String, spelling: TestBracketSpelling) -> Node {
+  match spelling {
+    BracketQuoted => bash_build_word_lit(text: text)
+    BracketBare =>
+      match bash_build_quoted_text(text: text) {
+        Present { value: n } => n
+        Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_bracket_bracket, value: text)
+      }
   }
 }
 
-// THE TEST BRACKET IN THE SPELLING EVERY COMMITTED ARTIFACT HOLDS TODAY: the brackets are
-// QUOTED LITERAL words. `'[' "$status" '=' '0' ']'` is what .github/workflows/
-// instrument-dispatch.yml carries at line 250, and `'[' "$?" '=' '1' ']'` what
-// .github/workflows/witnesses.yml carries at line 306. THIS ROW IS THE DEFAULT, and it must
-// keep producing those bytes: a host's installed spelling is a fact about that host's file,
-// not a licence to respell every artifact that shares this row (the row that moves bytes
-// elsewhere is the one below, chosen by its caller).
-//
-// THE TWO SPELLINGS MEAN THE SAME THING. Bash manual, node "Simple Command Expansion": the
-// word before the redirections is expanded for aliases and nothing else before command
-// lookup, and node "Quote Removal": "After the previous expansions were applied, all
-// unescaped occurrences of the single quote character are removed from the resulting word" --
-// so `'['` and `[` both name the `test` command, with the same arguments and the same exit
-// status. A caller picks the spelling its bytes must hold; neither is more correct as shell.
-fn bash_build_test_bracket(words: List<Node>) -> Node {
+fn bash_build_test_bracket(words: List<Node>, spelling: TestBracketSpelling) -> Node {
   bash_build_command_with_words(
     words: concat(
-      [bash_build_word_lit(text: "[")],
-      concat(words, [bash_build_word_lit(text: "]")])
-    )
-  )
-}
-
-// THE SAME TEST IN THE SPELLING THE HOST HOLDS: bare brackets, as srv1's installed
-// /usr/local/sbin/lil-replica-launch (sha256 c4ef7314…) writes them --
-// `[ -s /root/engine.args ] || { ev "START …"; exit 3; }`. A render that must be byte-exact
-// against an installed file calls THIS row; the rows above stay where the other artifacts'
-// bytes are.
-fn bash_build_test_bracket_bare(words: List<Node>) -> Node {
-  bash_build_command_with_words(
-    words: concat(
-      [bash_build_test_bracket_bracket(text: "[")],
-      concat(words, [bash_build_test_bracket_bracket(text: "]")])
+      [bash_build_test_bracket_bracket(text: "[", spelling: spelling)],
+      concat(words, [bash_build_test_bracket_bracket(text: "]", spelling: spelling)])
     )
   )
 }
@@ -1301,25 +1294,21 @@ fn bash_build_word_test_operator(op: String) -> Optional<Node> {
 }
 
 // A bracket test whose operator position is filled by a real operator: a test of
-// `left OP right`, with the brackets and their spaces supplied by the row, never by a
-// string. An operator outside the closed set does not become text here -- it becomes the
-// refused kind, which the serializer then refuses, so a wrong operator can only ever
-// stop a render, never quietly change one.
-fn bash_build_test_comparison(left: Node, op: String, right: Node) -> Node {
+// `left OP right`, with the brackets and their spaces supplied by the row, never by a string.
+// An operator outside the closed set does not become text here -- it becomes the refused kind,
+// which the serializer then refuses, so a wrong operator can only ever stop a render, never
+// quietly change one. The bracket spelling is the same parameter as above, so the operator
+// rule and the bracket rule stay one rule each.
+fn bash_build_test_comparison(
+  left: Node,
+  op: String,
+  right: Node,
+  spelling: TestBracketSpelling
+) -> Node {
   let op_word = match bash_build_word_test_operator(op: op) {
     Present { value: w } => w
     Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_operator, value: op)
   }
-  bash_build_test_bracket(words: [left, op_word, right])
+  bash_build_test_bracket(words: [left, op_word, right], spelling: spelling)
 }
 
-// THE SAME COMPARISON IN THE HOST'S BRACKET SPELLING (bare brackets, row above). The
-// operator rule is identical -- an operator outside the closed set still becomes the refused
-// kind and stops the render -- so the two rows differ ONLY in the brackets.
-fn bash_build_test_comparison_bare(left: Node, op: String, right: Node) -> Node {
-  let op_word = match bash_build_word_test_operator(op: op) {
-    Present { value: w } => w
-    Absent => bash_build_word_kinded(kind: ^bash_build_refused_test_operator, value: op)
-  }
-  bash_build_test_bracket_bare(words: [left, op_word, right])
-}

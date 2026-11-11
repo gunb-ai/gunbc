@@ -27,6 +27,8 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
+
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
   bash_build_if_else_from_stmts, bash_build_test_bracket,
@@ -135,7 +137,149 @@ fn microvm_shakedown_known_task_statements() -> List<Node> {
         bash_build_word_var(name: "observed"),
         bash_build_word_lit(text: "="),
         bash_build_word_lit(text: microvm_shakedown_known_task_digest()),
-      ]),
+      ], spelling: BracketQuoted),
+      then_stmts: [
+        bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
+        bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
+          path: bash_build_word_var(name: "GITHUB_STEP_SUMMARY"),
+        ),
+      ],
+      else_stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            microvm_shakedown_word_line(parts: [
+              bash_build_word_lit(text: "microvm-shakedown known-task=REFUSED expected="),
+              bash_build_word_lit(text: microvm_shakedown_known_task_digest()),
+              bash_build_word_lit(text: " observed="),
+              bash_build_word_var(name: "observed"),
+            ]),
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ],
+    ),
+  ]
+}
+
+fn microvm_shakedown_known_task_script() -> Outcome<String> {
+  bash_emit_stmts(statements: microvm_shakedown_known_task_statements(), set_e: true)
+}
+
+// THE INPUT REACHES THE SCRIPT THROUGH THE ENVIRONMENT, NEVER BY INTERPOLATION INTO IT: an
+// expression spliced into `run:` is evaluated before the shell parses it, so a crafted input would
+// become script text.
+fn microvm_shakedown_known_task_step(script: String) -> Step {
+  RunStep {
+    name: Present { value: "Known task: hash the fixed payload and compare with the model's digest" },
+    id: Present { value: "known_task" },
+    run: script,
+    shell: Present { value: Bash },
+    env: Present { value: [kv(key: "MICROVM_SHAKEDOWN_ATTEMPT", value: yaml_string(s: microvm_shakedown_attempt_expression()))] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: 5 },
+  }
+}
+
+fn microvm_shakedown_job(script: String) -> Job {
+  Job {
+    id: microvm_shakedown_workflow_job_id,
+    name: none,
+    runner: SelfHosted { labels: microvm_shakedown_runs_on() },
+    environment: none,
+    steps: [microvm_shakedown_known_task_step(script: script)],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: 10 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none,
+      }
+    }
+  }
+}
+
+// THE TRIGGER SET IS A MODULE-LEVEL CONSTANT that the Workflow constructor reads for its 'on'
+// field, so it cannot depend on the dispatched script: "workflow_dispatch-only" — the reason
+// gunbc.runner.runner_fleet_job_timeout_census omits this workflow from the drain-bound population —
+// is then a property of this constant, read directly by the census discharge and its witness, not a
+// sampling over built workflows.
+fn microvm_shakedown_workflow_triggers() -> List<WorkflowTrigger> {
+  [
+    WorkflowDispatch {
+      inputs: [
+        DispatchInput {
+          name: microvm_shakedown_attempt_input,
+          description: Present { value: "The attempt's registration name (its transient unit name, gunbc.runner.jit_registration_subject jit_runner_name_for). It is REQUIRED in runs-on, so a wrong name queues forever rather than running on any other runner." },
+          required: true,
+          default: none,
+          type: InputString,
+        },
+      ]
+    }
+  ]
+}
+
+fn microvm_shakedown_workflow(script: String) -> Workflow {
+  Workflow {
+  name: microvm_shakedown_workflow_name,
+  run_name: Present { value: join(["microvm-shakedown ", microvm_shakedown_attempt_expression()], "") },
+  on: microvm_shakedown_workflow_triggers(),
+  concurrency: none,
+  env: none,
+  permissions: none,
+  jobs: [microvm_shakedown_job(script: script)],
+  }
+}
+
+type MicrovmShakedownWorkflowGenerationOutcome
+  = MicrovmShakedownWorkflowGenerated { content: String }
+  | MicrovmShakedownWorkflowGenerationRefused { reason: String }
+
+fn expected_microvm_shakedown_yml() -> MicrovmShakedownWorkflowGenerationOutcome {
+  match microvm_shakedown_known_task_script() {
+    Rejected { diagnostics: _ } =>
+      MicrovmShakedownWorkflowGenerationRefused { reason: "gunbc.runner.runner_microvm_shakedown_workflow: v2.workflow.bash_emit refused the known-task script, so no workflow is emitted" }
+    Accepted { value: script, diagnostics: _ } =>
+      expected_microvm_shakedown_yml_with(workflow: microvm_shakedown_workflow(script: script))
+  }
+}
+
+fn expected_microvm_shakedown_yml_with(workflow: Workflow) -> MicrovmShakedownWorkflowGenerationOutcome {
+  match admit_workflow_action_uses(workflow: workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      MicrovmShakedownWorkflowGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.runner.runner_microvm_shakedown_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_checkout_refs(workflow: workflow, declared: []) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      MicrovmShakedownWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.runner.runner_microvm_shakedown_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: workflow) {
+        WorkflowToolchainHomesAdmitted =>
+          match emit_yaml(v: project_workflow_to_yaml(workflow: workflow)) {
+            EmittedYaml { text: t } => MicrovmShakedownWorkflowGenerated { content: t }
+            YamlEmitRefused { path: p, reason: r } =>
+              MicrovmShakedownWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.runner.runner_microvm_shakedown_workflow", path: p, reason: r) }
+          }
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          MicrovmShakedownWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+      }
+  }
+  }
+}
+),
       then_stmts: [
         bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
         bash_build_with_redir_to_file(
