@@ -26,7 +26,9 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv1
 import gunbc.fleet.fleet_intent_network { srv14_bmc_endpoint }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
-import gunbc.ipmitool_fru_text { FruCaptureNotCommitted }
+import gunbc.ipmitool_fru_text {
+  FruCaptureNotCommitted, FruFieldAbsent, FruFieldGap, FruFieldValue, fru_field,
+}
 import gunbc.machine_intake.inband_host_identity {
   InbandBoardObserved,
   InbandBoardRefused,
@@ -40,6 +42,7 @@ import gunbc.machine_intake.inband_host_identity {
   SessionNicIsTheFleetBoundHostNic,
   InbandSessionNicNotFleetBound,
   decode_inband_board_capture,
+  inband_section_rows,
   read_attributed_inband_capture,
   read_inband_board_identity,
 }
@@ -203,34 +206,70 @@ test fn w_a_channel_that_answers_for_another_unit_s_controller_refuses_the_attri
   }
 }
 
-// THE AGREEMENT PAIR, ON ONE REAL UNIT: srv14's FRU board area (read on the unit, through /dev/ipmi0, in the
-// same file) and its dmidecode baseboard table agree on one serial. Two sources of the same board, from two
-// different tables read by two different tools, minting what the arrival door asks for -- which is what makes
-// srv15's refusal a statement about a missing capture and not about what an ALTRAD8UD can establish.
-test fn w_srv14_s_fru_capture_and_its_in_band_baseboard_agree_on_one_serial() -> Bool uses fs: std.resources.Filesystem {
-  match read_committed_bmc_fru_capture(unit: operator_host_srv14) {
-    FruReadRefused { gap: _ } => false
-    FruObserved { observation: fru } =>
-      fru.subject == "srv14"
-        && fru.fields.board_product == "ALTRAD8UD-1L2T"
-        && match fru.source {
-          FruFromSessionBoundCapture { capture_path: p, capture_sha256: d, attribution: a, attribution_basis: _ } =>
-            match bmc_fru_capture_row(unit: operator_host_srv14) {
-              Absent => false
-              Present { value: row } =>
-                p == row.capture_path
-                  && d == row.capture_sha256
-                  && match a {
-                    FruReadTakenOnTheUnitItself => true
-                    FruReadIssuedToBoundController { fleet_bound_bmc_address: _ } => false
+// THE FRU ARM OVER SRV14'S COMMITTED CAPTURE, IN THE THREE PIECES IT IS MADE OF. srv14's recovery run read the
+// FRU board area on the unit itself, through /dev/ipmi0, and committed it in the same file as its dmidecode
+// tables -- but it committed the BOARD IDENTITY AREA of that print, not the whole print: Board Mfg, Board
+// Product, Board Serial, Product Name. gunbc.ipmitool_fru_text's decode is inventory-grade and asks for five
+// fields (board part number, chassis part number, chassis serial included), so this capture refuses rather than
+// half-minting a record whose inventory fields are absent. That is the honest result of pointing the FRU arm at
+// an excerpt, and it is worth claiming for three reasons: the section cut finds the right table and reads real
+// ALTRAD8UD bytes out of it, the two serials in that file -- dmidecode's baseboard and ipmitool's board area --
+// agree on one value, and a reader that was asked for the whole record refuses instead of inventing the parts it
+// did not get. The mint itself is shown by mtjade1's own witnesses, over a full print; the live arrival run's
+// FruPrint is a full print, which is what the row is written for.
+test fn w_srv14_s_committed_fru_excerpt_is_cut_to_its_board_area_and_reads_the_real_board_serial() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv14) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: _, channel_content: _ } =>
+      match bmc_fru_capture_row(unit: operator_host_srv14) {
+        none => false
+        Present { value: fru_row } =>
+          match fru_row.capture_section {
+            none => false
+            Present { value: section } =>
+              match fru_field(content: join(inband_section_rows(content: text, marker: section), "\n"), field: "Board Serial") {
+                FruFieldGap { gap: _ } => false
+                FruFieldValue { value: serial } => serial == "BR80S6102300077"
+              }
+          }
+      }
+  }
+}
+
+// THE TWO TABLES IN THAT ONE FILE AGREE. dmidecode read the baseboard table from the host; ipmitool read the
+// board area from the BMC, on the unit. Same board, same serial -- the shape of the agreement the arrival door
+// asks for, established over committed bytes rather than asserted.
+test fn w_srv14_s_dmidecode_baseboard_and_its_on_unit_fru_board_area_carry_the_same_serial() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv14) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: inband_row, channel_content: channel } =>
+      match bmc_fru_capture_row(unit: operator_host_srv14) {
+        none => false
+        Present { value: fru_row } =>
+          match fru_row.capture_section {
+            none => false
+            Present { value: section } =>
+              match fru_field(content: join(inband_section_rows(content: text, marker: section), "\n"), field: "Board Serial") {
+                FruFieldGap { gap: _ } => false
+                FruFieldValue { value: fru_serial } =>
+                  match decode_inband_board_capture(content: text, row: inband_row, channel_content: channel) {
+                    InbandBoardRefused { gap: _ } => false
+                    InbandBoardObserved { observation: b } => (b.serial as String) == (fru_serial as String)
                   }
-            }
-          _ => false
-        }
-        && match read_inband_board_identity(unit: operator_host_srv14) {
-          InbandBoardRefused { gap: _ } => false
-          InbandBoardObserved { observation: b } => b.serial == fru.fields.board_serial
-        }
+              }
+          }
+      }
+  }
+}
+
+// RED, incomplete capture: the FRU arm asked of an excerpt. The excerpt proves which board the print came off;
+// it is not a whole FRU record, and the reader says so by naming the field it did not get instead of minting a
+// record with holes in it.
+test fn w_an_fru_capture_that_carries_only_the_board_identity_area_refuses_naming_the_field_it_lacks() -> Bool uses fs: std.resources.Filesystem {
+  match read_committed_bmc_fru_capture(unit: operator_host_srv14) {
+    FruObserved { observation: _ } => false
+    FruReadRefused { gap: FruFieldGapped { gap: FruFieldAbsent { field: f } } } => f == "Board Part Number"
+    FruReadRefused { gap: _ } => false
   }
 }
 

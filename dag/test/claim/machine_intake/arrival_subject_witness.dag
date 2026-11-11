@@ -12,7 +12,7 @@ import gunbc.auth.standing_operator_grant {
 import gunbc.machine_intake.arrival_subject {
   ArrivalConvergePopulationRow, admit_arrival_subject_in, admit_arrival_subject,
   ArrivalSubjectInPopulation, ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
-  arrival_converge_population, arrival_row_grant_covers_the_door,
+  arrival_converge_population, arrival_population_row_in, arrival_row_grant_covers_the_door,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv15 }
 
@@ -133,7 +133,7 @@ test fn the_production_fold_admits_srv15_and_knows_nothing_of_the_retired_srv13(
 // the two the arrival door asks for. The account-write arm belongs to the BmcSecure step, which this door does
 // not bind: a grant that carried it here would let an arrival ruling reach a credential this PR never grounds.
 test fn srv15_s_row_is_granted_by_the_standing_grant_ruled_for_it_and_carries_no_write_arm() -> Bool {
-  match first_where(xs: arrival_converge_population(), keep: fn(r) { (r.host as String) == (operator_host_srv15 as String) }) {
+  match arrival_population_row_in(population: arrival_converge_population(), wire: operator_host_srv15 as String) {
     none => false
     Present { value: row } =>
       (row.grant.identity as String) == "srv15-live-standing-grant-2026-11-10"

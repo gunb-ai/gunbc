@@ -541,7 +541,7 @@ fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> Obser
           } else {
             observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: InbandHostBoardReading { observation: inband }, serial: fru.fields.board_serial })
           }
-        Absent => observe_identity_from_smbios_agreement(request: request, fru: fru)
+        Absent => observe_identity_from_smbios_agreement(key: key, request: request, fru: fru)
       }
   }
 }
