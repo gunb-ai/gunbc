@@ -3507,7 +3507,27 @@ fn resolve_orchestrator_model(
     ),
     String,
 > {
-    super::resolve_entry_graph_demand_acquired(source_roots, entry)
+    // EVERY ORCHESTRATOR-SIDE MODEL LOAD PAYS ITS OWN CLOSURE, AND THIS NAMES WHICH. The bound at
+    // `regen_admit_generation_begin` charges the orchestrator's growth between generation begins; a
+    // round whose generations need an install pays this read several times (every
+    // `rebuild_scope_decision_*`, `partition_rebuild_actuation`, `render_round_cost_receipt`), and the
+    // refusal does not say which read grew the process. These two lines make each read's entry,
+    // closure size and resident cost a fact at the phase where it happens (the same instrument
+    // `parent.emitted_tree.resolve.*` already carries), so the derivation of a refusal can be
+    // falsified against measurements instead of inferred from a total.
+    report_cgroup_memory_diagnostic(&format!("parent.model_resolve.begin entry={entry}"));
+    let resolved = super::resolve_entry_graph_demand_acquired(source_roots, entry);
+    match resolved.as_ref() {
+        Ok((graph, _)) => report_cgroup_memory_diagnostic(&format!(
+            "parent.model_resolve.end entry={entry} modules={} items={}",
+            graph.modules.len(),
+            graph.item_registry.len()
+        )),
+        Err(_) => {
+            report_cgroup_memory_diagnostic(&format!("parent.model_resolve.error entry={entry}"))
+        }
+    }
+    resolved
 }
 
 impl RegenConvergenceModel {
@@ -4107,6 +4127,7 @@ fn rebuild_scope_decision_with(
 ) -> Result<ModelValue, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
+    report_cgroup_memory_diagnostic(&format!("parent.decision.begin function={function}"));
     let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
     })?;
@@ -9200,6 +9221,7 @@ pub fn run_regen_round_cost(
             &candidate_manifest,
             &current_seed_digest,
         )?;
+        report_cgroup_memory_diagnostic("parent.round.drifted.candidate_admitted");
         let state = format!("{current_seed_digest}:{candidate_digest}");
         let seen_state_keys = seen_states.iter().cloned().collect::<Vec<_>>();
         let (kind, install_set, dependency_closure_id) = convergence_plan_from_model(
@@ -9223,6 +9245,10 @@ pub fn run_regen_round_cost(
             generation_bound,
         )?;
         seen_states.insert(state);
+        report_cgroup_memory_diagnostic(&format!(
+            "parent.round.drifted.convergence_planned install={}",
+            install_set.len()
+        ));
         let stage_kind = kind;
         let install_population: BTreeSet<String> = install_set.iter().cloned().collect();
         let deferred_reason = match stage_kind {
@@ -9266,6 +9292,7 @@ pub fn run_regen_round_cost(
         .map_err(|failure| {
             format!("install boundary population disagrees with the stage partition: {failure}")
         })?;
+        report_cgroup_memory_diagnostic("parent.round.drifted.boundary_population_admitted");
         // THE BOUNDARY POPULATION JOINS THE STAGE THAT IS ALREADY PENDING. The post-install
         // binary's own producer names the boundary files it would change; when a mirror stage is
         // pending anyway they install in THE SAME install, so that stage's one rebuild covers
@@ -9283,6 +9310,10 @@ pub fn run_regen_round_cost(
             Vec::new()
         };
         let stage_whole_compiler = stage_rebuild_is_whole_compiler(source_roots, &stage_boundary)?;
+        report_cgroup_memory_diagnostic(&format!(
+            "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={}",
+            stage_boundary.len()
+        ));
         if !stage_boundary.is_empty() {
             round_records.push(format!(
                 "generation {generation_ordinal}: boundary drift under the post-install producer \
