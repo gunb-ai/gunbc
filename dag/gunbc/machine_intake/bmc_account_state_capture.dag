@@ -17,13 +17,17 @@ module gunbc.machine_intake.bmc_account_state_capture
 // supplied_transport_read_bmc_account_state still accepts a hand-built one (the supplied-transport witness
 // builds one directly), so a mismatched decoded field beside committed bytes remains WRITABLE on that lower
 // route -- the fork is avoided only on the ASSEMBLER path (guarantee_ladder: report only the rung executed
-// evidence reaches; fail_closed: making the bad state unwritable beats catching it). The LIVE read closes
-// it: the bound entry gunbc.machine_intake.bmc_account_state_live bmc_account_state_live_read takes
-// BmcAccountStateCaptures and builds the transport ONLY through this assembler, exposing no hand-built one,
-// so the dispatched live path cannot carry a mismatched field. Trigger that closes it for EVERY caller: make
-// the reader take BmcAccountStateCaptures directly (or derive the decoded fields), retiring direct
-// construction -- named as remaining, not claimed closed. The wet driver (the real-effects half) builds its
-// captures from real ipmitool / Redfish responses and calls exactly this assembler through that entry; the
+// evidence reaches; fail_closed: making the bad state unwritable beats catching it). Where it closes NEXT
+// (REMAINING, NOT landed on this branch): a captures-only entry
+// gunbc.machine_intake.bmc_account_state_live.bmc_account_state_live_read (sibling PR #16298) is PLANNED to
+// take BmcAccountStateCaptures and build the transport ONLY through this assembler, exposing no hand-built
+// one; its own consumer is the arrival-door BmcSecure binding (a later change). Until those land this
+// assembler's only caller is its witness -- it is the decode-from-bytes fix the reader's contract requires,
+// landing ahead of its consumer, which is NAMED here rather than implied done (a symbol not on this branch
+// closes nothing; guarantee_ladder). The full trigger for EVERY caller: make the reader take
+// BmcAccountStateCaptures directly (or derive the decoded fields), retiring direct construction. The wet
+// driver (the real-effects half) will build its captures from real ipmitool / Redfish responses and call
+// exactly this assembler through that entry; the
 // witness builds them from committed real captures.
 //
 // GENERIC, NOT PER-HOST (operator ruling D2). No srvN literal, no board string, no `host == X` branch: the
