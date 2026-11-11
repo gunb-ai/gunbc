@@ -203,12 +203,25 @@ data runner_group_id_env_name: String = "RUNNER_GROUP_ID"
 // re-grounding the denominator. Two rows that look identical here still resolve to very different
 // widths, and that is the derivation working rather than an inconsistency.
 
+// THE RUNNER PRINCIPAL PER HOST, ONE DATUM EACH -- the single source for a host's listener (unit_user) and
+// CI job user (job_user). The deploy specs below REFERENCE these fields, and deploy_runner_principal_rows
+// (the converge's view) references the SAME datums, so the deploy and the converge cannot be edited to name
+// different users: one datum decides it (single_authority -- a second place that independently decides it is
+// a fork). srv1-srv4 keep the root listener until each host's own B3d cutover; butch (srv14) names
+// gunbc-runner from the start. The logins are the account model's authorities (fleet_posix_root_user,
+// fleet_posix_ci_runner_user, fleet_posix_runner_listener_login), reused, never re-spelled.
+data srv1_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name }
+data srv2_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name }
+data srv3_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name }
+data srv4_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name }
+data srv14_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal { unit_user: fleet_posix_runner_listener_login, job_user: fleet_posix_ci_runner_user.name }
+
 data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv1",
   ssh_target: "briansrls@192.168.1.203",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: srv1_runner_principal.unit_user,
+  job_user: srv1_runner_principal.job_user,
   app: gunbc_ci_github_app,
 }
 
@@ -302,16 +315,16 @@ data srv2_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv2",
   ssh_target: "briansrls@192.168.1.201",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: srv2_runner_principal.unit_user,
+  job_user: srv2_runner_principal.job_user,
   app: gunbc_ci_github_app,
 }
 data srv3_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv3",
   ssh_target: "briansrls@192.168.1.221",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: srv3_runner_principal.unit_user,
+  job_user: srv3_runner_principal.job_user,
   app: gunbc_ci_github_app,
 }
 
@@ -319,49 +332,31 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv4",
   ssh_target: "briansrls@192.168.1.196",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: srv4_runner_principal.unit_user,
+  job_user: srv4_runner_principal.job_user,
   app: gunbc_ci_github_app,
 }
 
-// THE RUNNER PRINCIPAL, AS ROWS KEYED BY THE MACHINE (was the single srv1_ci_deploy_runner_principal
-// datum in gunbc.fleet.fleet_posix_accounts -- a per-host named declaration, which operator ruling D2
-// forbids). unit_user is the systemd User= of the actions-runner unit (the LISTENER); job_user is the
-// deprivileged workflow principal. The listener's login is the account model's single authority
-// (fleet_posix_runner_listener_login, which gunbc.runner.runner_host_medium re-exports as
-// runner_host_medium_runner_account) -- reused, never re-spelled; the root and ghrunner logins are the
-// account model's authorities, likewise reused. srv1-srv4 KEEP their current listener (root) until each
-// host's own B3d cutover -- the row says so, and the row is where the cutover changes. butch (srv14) names
-// gunbc-runner from the start: it is the CI-only host whose listener is the new account, and the converge
-// creates that account because the host's membership rows name it.
+// THE RUNNER PRINCIPAL, AS ROWS KEYED BY THE MACHINE (was the single srv1_ci_deploy_runner_principal datum
+// in gunbc.fleet.fleet_posix_accounts -- a per-host named declaration, which operator ruling D2 forbids).
+// Each row references the SAME named principal datum the deploy spec references (srv1_runner_principal, ...),
+// so the deploy and the converge read ONE datum for a host's listener and job user -- there is no second
+// place that decides it (single_authority). srv1-srv4 KEEP their current listener (root) until each host's
+// own B3d cutover -- the datum is where the cutover changes. butch (srv14) names gunbc-runner from the start;
+// creating that OS account on the host is B3b/B3d (the named consumers, each with its trigger).
 type DeployRunnerPrincipalRow {
   host: HostIdentity
   principal: DeployRunnerPrincipal
 }
 
 data deploy_runner_principal_rows: List<DeployRunnerPrincipalRow> = [
-  // srv1-srv4: listener stays root until that host's B3d cutover.
-  DeployRunnerPrincipalRow {
-    host: operator_host_srv1,
-    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
-  },
-  DeployRunnerPrincipalRow {
-    host: operator_host_srv2,
-    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
-  },
-  DeployRunnerPrincipalRow {
-    host: operator_host_srv3,
-    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
-  },
-  DeployRunnerPrincipalRow {
-    host: operator_host_srv4,
-    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
-  },
+  // srv1-srv4: listener stays root until that host's B3d cutover (the datum is where it flips).
+  DeployRunnerPrincipalRow { host: operator_host_srv1, principal: srv1_runner_principal },
+  DeployRunnerPrincipalRow { host: operator_host_srv2, principal: srv2_runner_principal },
+  DeployRunnerPrincipalRow { host: operator_host_srv3, principal: srv3_runner_principal },
+  DeployRunnerPrincipalRow { host: operator_host_srv4, principal: srv4_runner_principal },
   // butch (srv14): the listener IS the new gunbc-runner account.
-  DeployRunnerPrincipalRow {
-    host: operator_host_srv14,
-    principal: DeployRunnerPrincipal { unit_user: fleet_posix_runner_listener_login, job_user: fleet_posix_ci_runner_user.name },
-  },
+  DeployRunnerPrincipalRow { host: operator_host_srv14, principal: srv14_runner_principal },
 ]
 
 // THE RUNNER PRINCIPAL FOR A HOST, read from the rows. An unmodeled host is Absent, not a borrowed
