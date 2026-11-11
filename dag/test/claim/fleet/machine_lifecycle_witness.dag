@@ -26,7 +26,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.algebra { string_concat_join }
-import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.decl_index { DeclFact, decl_facts_at }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.machine_intake.subject {
@@ -615,22 +615,51 @@ fn leg_cites(module_path: String, decl: String, leg: TransitionLeg) -> Bool {
 // gunbc.design_argument::fail_closed: a plausible output is never fabricated).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-// ONE WALK OF THE POOL, shared by the claims that answer citations. A keyed read per citation would re-walk
-// it once per citation, which is the cost v2.std.decl_index warns about; this is one walk for the whole
-// file. The pool root is `gunbc`, which is where every cited producer lives.
-data route_citation_pool_roots: List<String> = ["gunbc"]
-data route_citation_facts: List<DeclFact> = decl_facts(pool_roots: route_citation_pool_roots)
+// ONE KEYED READ OF THE POOL answers every citation in the file. `decl_facts` per citation would re-walk
+// the pool once per citation, which is the cost v2.std.decl_index names (91s on a remote runner for one
+// such lookup); this is a single `decl_facts_at` over the keys the routes are EXPECTED to carry. The keys
+// are spelled here on purpose: a route that starts citing something else fails this claim until its key is
+// asked for, so drift is a red test rather than a silent green.
+data route_citation_pool_roots: List<String> = ["dag/gunbc"]
+data route_citation_keys: List<String> = [
+  "gunbc.fleet.fleet_enrollment.admitted_enrollments",
+  "gunbc.fleet.fleet_enrollment.fleet_enrollment_intents",
+  "gunbc.fleet.fleet_enrollment.hosts_enrolled_among",
+  "gunbc.fleet.fleet_host_backing.admit_owned_provisioning",
+  "gunbc.fleet.fleet_host_backing.backing_converge_realization",
+  "gunbc.fleet.fleet_machine_unit_binding.admit_machine_units",
+  "gunbc.fleet.fleet_machine_unit_binding.machine_unit_standing",
+  "gunbc.fleet.fleet_naming.linux_hostname",
+  "gunbc.fleet.machine_lifecycle.machine_is_retired",
+  "gunbc.fleet.machine_lifecycle.retired_ledger_with",
+  "gunbc.fleet.machine_lifecycle.retirement_artifacts",
+  "gunbc.host.physical_machine_binding.physical_machine_admission",
+  "gunbc.hostname_allocation.canonical_hostname_for_fleet_slot",
+  "gunbc.hostname_allocation.fleet_machine_registry",
+  "gunbc.hostname_allocation.hostname_allocation_admission",
+  "gunbc.hostname_allocation.next_name_for_fleet_slot",
+  "gunbc.hostname_set.hostname_set_fleet_ssh",
+  "gunbc.machine_intake.subject.bind_unit_key",
+  "gunbc.plans.fleet_machine_authority.fleet_machine_authority_plan",
+  "gunbc.provisioning.provisioning_arm.derive_virtual_media",
+  "gunbc.provisioning.provisioning_arm.provisioning_arm_derive",
+  "gunbc.runner.runner_host_deploy.runner_host_resolutions_among",
+  "gunbc.tailscale_machine_name_converge.tailscale_machine_name_plan",
+]
+
+fn citation_rows_declared(keys: List<String>) -> List<DeclFact> {
+  decl_facts_at(pool_roots: route_citation_pool_roots, qualified_names: keys, type_names: [])
+}
+
+fn row_declares(rows: List<DeclFact>, key: String) -> Bool {
+  any(rows, f => f.qualified_name == key)
+}
 
 fn route_citation_key(reference: DeclarationRef) -> String {
   string_concat_join(
     fields: [reference.module_path as String, ".", reference.decl_name as String],
     separator: "",
   )
-}
-
-fn route_citation_is_declared(reference: DeclarationRef) -> Bool {
-  let key = route_citation_key(reference: reference)
-  any(route_citation_facts, f => (f.qualified_name as String) == key)
 }
 
 fn planned_leg_key(leg: TransitionLeg) -> String {
@@ -650,6 +679,7 @@ fn planned_leg_key(leg: TransitionLeg) -> String {
 // real one, because the plan document is a declaration that exists today.
 test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool {
   let swap = fixture_board_swap_evidence(machine: operator_host_mtcollins1, swapped_serial: swapped_board_serial)
+  let rows = citation_rows_declared(keys: route_citation_keys)
   all(
     o4_transition_population(
       machine: operator_host_mtcollins1,
@@ -660,16 +690,29 @@ test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool
     t =>
       all(route_legs(r: machine_transition_route(t: t)), leg =>
         match leg.producer {
-          RealProducer { ref: r, detail: _ } => route_citation_is_declared(reference: r)
+          RealProducer { ref: r, detail: _ } =>
+            row_declares(rows: rows, key: route_citation_key(reference: r))
           PlannedProducer { site: s, lands_in: l } =>
             declaration_ref_is_well_formed(reference: s)
               && plan_landing_is_well_formed(landing: l)
-              && route_citation_is_declared(reference: l.plan)
+              && row_declares(rows: rows, key: route_citation_key(reference: l.plan))
           UnmodeledLeg { gap: g } => (g as String) != ""
+        },
+      )
+      // every leg of every transition was asked about: a citation outside the pinned key list cannot be
+      // satisfied by a row, so this is what forces a new leg to be looked up rather than trusted.
+      && all(route_legs(r: machine_transition_route(t: t)), leg =>
+        match leg.producer {
+          RealProducer { ref: r, detail: _ } =>
+            any(route_citation_keys, k => (k as String) == route_citation_key(reference: r))
+          PlannedProducer { site: _, lands_in: l } =>
+            any(route_citation_keys, k => (k as String) == route_citation_key(reference: l.plan))
+          UnmodeledLeg { gap: _ } => true
         },
       ),
   )
-}
+    // and the read really answered: 23 keys asked for is 23 rows back, so no key silently found nothing.
+    && rows.length() == route_citation_keys.length()
 
 // THE PLANNED SET IS PINNED, both ways: no leg may call itself planned outside the two sites this plan
 // really schedules, and both of those still appear. The pair is the projected-name derivation sites P4 owns
