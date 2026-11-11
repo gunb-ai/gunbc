@@ -8,7 +8,7 @@ module test.claim.host.host_allocation_conservation
 // are writing it, which is the difference between finding a defect now and finding it in CI.
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
-import std.measure { ByteSize, byte_size, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count_value }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
