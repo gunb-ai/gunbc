@@ -137,7 +137,7 @@ fn firmware_statement_in(line: String, statements: List<NonEmptyStr>) -> Bool {
 // line names no author, and the SOL console carries DRAM firmware and UEFI output on one line, so a statement is
 // attributed to UEFI only when it is a row here. "Boot option loading failed" is the boot manager reporting that a
 // boot option did not load: boot run 43040335415 printed it after the UEFI setup prompt, once per network boot
-// option it tried (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-sol.capture), and the
+// option it tried (mtcollins1_power_on_account boot_run_43040335415_console_excerpt), and the
 // sixteen-module restore verification capture carries the same line. Recognising the AUTHOR is not recognising a
 // cause: for the bring-up verdict the line stays FirmwareErrorStatementUnrecognized.
 data uefi_boot_manager_error_statements: List<NonEmptyStr> = [

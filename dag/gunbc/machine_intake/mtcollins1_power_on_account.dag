@@ -46,6 +46,7 @@ import gunbc.host.boot_console_observation {
   SpanConsoleReading,
   ConsoleMilestone, ConsoleMilestoneObservation, ConsoleMilestoneSighting, ConsoleFailureLine, ConsoleFailureSighting,
   FirmwareErrorStatementLine, GrubFailureLine, InitrdLoadFailureLine, KernelPanicLine, ModuleDecompressionRefusalLine,
+  ConsoleCaptureExcerpt, ConsoleExcerptLine,
   DramFirmwareBannerObserved, FirmwareSummaryObserved, UefiConsolePromptObserved, UefiShellObserved, GrubBannerObserved, EfiStubLineObserved, KernelBannerObserved,
   console_milestone_name, console_milestone_sighting_text,
 }
@@ -1275,4 +1276,22 @@ fn mtcollins1_power_on_account_notes(a: PowerOnAccount) -> List<String> {
     concat(map(a.errors, x => concat(subject_text(s: x.subject), ": ", decoded_error_text(err: x.error))),
     concat(map(a.degradations, d => degradation_text(d: d)), concat(map(a.warnings, w => warning_text(w: w)), concat(map(a.anomalies, x => anomaly_text(a: x)),
       map(a.open, q => concat("open: ", open_question_text(q: q))))))))
+}
+
+// BOOT RUN 43040335415'S CONSOLE, AS THE LINES ITS FIXTURES READ: the DRAM banner, the UEFI setup prompt, the
+// media-presence checks and the boot manager's two failures (one per network boot option tried).
+data boot_run_43040335415_console_excerpt: ConsoleCaptureExcerpt = ConsoleCaptureExcerpt {
+  run_id: "43040335415",
+  original_artifact: "mtcollins1-boot-sol.capture",
+  original_sha256: "018d93310987ea45d3605ebb1aafdc808a2145696e37e60f40886a4383ebd662",
+  excerpt_path: "artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-sol.capture.excerpt.txt",
+  rendering: "each line's trailing carriage return is stripped; no excerpted line carries an ESC byte (the original's terminal control sequences sit on lines 123, 129, 134 and 142, which are not excerpted)",
+  lines: [
+    ConsoleExcerptLine { capture_line: 2, text: "NOTICE:  DRAM FW version 220414" },
+    ConsoleExcerptLine { capture_line: 124, text: "Press <DEL> or <ESC> to Entering the Setup." },
+    ConsoleExcerptLine { capture_line: 130, text: ">>Checking Media Presence......" },
+    ConsoleExcerptLine { capture_line: 131, text: ">>No Media Present......Checkpoint D9" },
+    ConsoleExcerptLine { capture_line: 132, text: "ERROR: Boot option loading failed" },
+    ConsoleExcerptLine { capture_line: 140, text: "ERROR: Boot option loading failed" },
+  ],
 }

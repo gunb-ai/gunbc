@@ -39,7 +39,7 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
   RetryStatePersistence, ResetCauseNotPubliclyReadable, CheckpointMeaningNotPubliclyModeled, SmproPairRefused,
   ConfigurationNotRecorded, ConfiguredDimmPopulation, CarrierNotRead,
   BootReachedUefiAfterSet, BootProgressLostAfterSet, ProgressRead, BootLoaderFailed, FirmwareStatement, PowerOnCorroboration, DistinctRestart,
-  mtcollins1_power_on_account, mtcollins1_power_on_account_text, firmware_set_boot_readback,
+  mtcollins1_power_on_account, mtcollins1_power_on_account_text, firmware_set_boot_readback, boot_run_43040335415_console_excerpt,
 }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 
@@ -437,18 +437,19 @@ test fn a_firmware_statement_in_each_of_two_cycles_is_two_errors() -> Bool {
 }
 
 // ── AN `ERROR:` STATEMENT'S AUTHOR IS READ FROM THE STATEMENT ──────────────────────────────────
-// Boot run 43040335415's own console lines (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-sol.capture):
+// Boot run 43040335415's own console lines (mtcollins1_power_on_account boot_run_43040335415_console_excerpt):
 // the DRAM banner, the UEFI setup prompt, a network boot option and the boot manager's failure. Its receipt named
 // that failure as DRAM firmware's; it is UEFI's (pre_os_bringup_verdict uefi_boot_manager_error_statements). The
 // control is the same console with a statement no table names, which keeps the console's subject: the subject moves
 // on the statement, not on the console.
 fn boot_11_console_errors(statement: String) -> List<LocatedError> {
-  let lines = ["NOTICE:  DRAM FW version 220414", "Press <DEL> or <ESC> to Entering the Setup.", ">>Checking Media Presence......", ">>No Media Present......Checkpoint D9", statement]
+  let lines = concat(map(filter(boot_run_43040335415_console_excerpt.lines, l => l.capture_line < 132), l => l.text), [statement])
   filter(mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: step1_restarts)).errors, x => match x.error { FirmwareStatement { report: _ } => true _ => false })
 }
 
 test fn a_boot_manager_statement_is_uefis_and_an_unnamed_one_keeps_the_consoles_subject() -> Bool {
-  let uefi = boot_11_console_errors(statement: "ERROR: Boot option loading failed")
+  let failure = match filter(boot_run_43040335415_console_excerpt.lines, l => l.capture_line == 132).first() { Present { value: l } => l.text  Absent => "" }
+  let uefi = boot_11_console_errors(statement: failure)
   let other = boot_11_console_errors(statement: "ERROR: a statement no table names")
   count(uefi) == 1 && all(uefi, x => match x.subject { Uefi => true _ => false })
     && count(other) == 1 && all(other, x => match x.subject { DramFirmware => true _ => false })
