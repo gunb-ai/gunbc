@@ -745,6 +745,7 @@ test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool
   )
     // and the read really answered: 23 keys asked for is 23 rows back, so no key silently found nothing.
     && rows.length() == route_citation_keys.length()
+}
 
 // THE PLANNED SET IS PINNED, both ways: no leg may call itself planned outside the two sites this plan
 // really schedules, and both of those still appear. The pair is the projected-name derivation sites P4 owns
