@@ -2222,7 +2222,60 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConce
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector]
+// PXE 2b: the nbd install actuator's boot-once and the host-generic managed-host boot-once are two
+// authorities that set a Redfish boot-source override and reset a host's BMC. The install actuator has NO
+// managed-host identity (os_install_actuator_steps is keyed on arm+boot_control+export; network_boot_actuation
+// carries boot_control+boot_target+arm shape and no host), so its boot-once controller is HARD-CODED to srv3
+// in the realization -- a defect, not merely a style choice: a second managed host could not be booted once
+// from its own row. The two answer different concerns (an OS-install sequence step vs a managed-fleet one-shot
+// boot) but share the override+reset question, so until the identity is threaded they are recorded as a fork.
+data nbd_boot_once_sighting_revision: CommitSha = "7aab0ecfc9b25efdeb5270b436e61a197e48791b"
+
+data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = IntegrationConcern {
+  identity: "nbd_install_actuator_boot_once_hard_codes_srv3",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "boot_once_step"),
+      second: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "ActuatorBootOnce"),
+      rest: [decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_for_managed_host")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_steps"),
+    tail: [
+      decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps"),
+      decl_ref(module_path: "gunbc.provisioning.provisioning_arm", decl_name: "provisioning_arm_derive"),
+    ],
+  },
+  question: "Is the boot-once over a host's bound controller one authority, or two? The managed-host boot-once derives its controller from the managed-host row and gates its reset on a read-back; the nbd install actuator hard-codes its controller to srv3 and does not read back. Do they collapse into one, or are they distinct concerns that merely share the override+reset shape?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: nbd_boot_once_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "boot_once_step") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "ActuatorBootOnce") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.managed_host_boot_once", decl_name: "boot_once_for_managed_host") },
+        ],
+      },
+      account: "The install actuator has no managed-host identity: os_install_actuator_steps is keyed on (arm, boot_control, export) only, its sole production callers are internal to gunbc.nbd_proxy_virtual_media_install, and network_boot_actuation/network_boot_arm_actuator_steps/ProvisioningArm carry boot_control+boot_target+arm shape with no host, so the boot-once controller is hard-coded to srv3_host in the realization. The host-generic managed-host boot-once derives the controller from the managed-host row and its BMC binding, never an address passed in, and gates its reset on a read-back before the boot. They serve different concerns (an OS-install sequence step vs a managed-fleet one-shot boot), which is why the deletion did not merge them here, but the srv3 hard-code is a defect either way: a second managed host cannot get a boot-once from its own rows over the install actuator.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved { question: "does the boot-once over a bound controller live in the managed-host boot-once (extended to emit the install-sequence step), or in a generalized nbd boot_once_step whose controller is row-derived -- or both over one shared planner?" },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_steps"),
+        control: Absent,
+        statement: "the install actuator's other steps (nbd proxy serve, media insert, PXE staging, firmware) and their refusals are not the boot-once and must keep working when the boot-once step is generalized",
+      },
+    ],
+    next: climbs_when(capability: "a managed-host identity is threaded through provisioning_arm, network_boot_actuation and the nbd boot_once_step, so the install actuator's boot-once controller comes from the host's row and BMC binding (never an address passed in) and its reset is gated on a read-back; the srv3 hard-code is deleted with that threading"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, nbd_install_actuator_boot_once_hard_codes_srv3]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
