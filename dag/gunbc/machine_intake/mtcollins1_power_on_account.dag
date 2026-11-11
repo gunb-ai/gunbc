@@ -23,7 +23,7 @@ import extdeps.bmc.redfish_memory_inventory { RedfishMemoryMember, RedfishProces
 import extdeps.bootloader.grub { grub_console_report, GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, GrubError, grub_error_text }
 import gunbc.machine_intake.pre_os_bringup_verdict {
   SelWindowEvent, BootRestart, FirmwareProgressRecord, OemTimestamped, OtherStandardEvent,
-  firmware_console_report, FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
+  firmware_console_report, is_uefi_boot_manager_statement, FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
 }
 import gunbc.machine_intake.ampere_smpro_observation { SmproProbeOutcome, SmproPassObservation, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, smpro_socket_records, outcome_socket }
 import extdeps.ampere.smpro_internal_error {
@@ -763,7 +763,11 @@ fn span_errors(r: SpanConsoleReading) -> List<LocatedError> {
   concat(match r.firmware {
     NoTerminalStated => []
     UndecodedErrorCodesOnly { err_lines: _ } => [LocatedError { cycle: none, subject: DramFirmware, error: FirmwareStatement { report: r.firmware } }]
-    FirmwareErrorStatementUnrecognized { statement: _ } => [LocatedError { cycle: none, subject: DramFirmware, error: FirmwareStatement { report: r.firmware } }]
+    // THE AUTHOR OF AN `ERROR:` STATEMENT IS READ FROM THE STATEMENT, NOT ASSUMED: a UEFI boot-manager statement
+    // (pre_os_bringup_verdict uefi_boot_manager_error_statements) is UEFI's; boot run 43040335415's account named
+    // "Boot option loading failed" as DRAM firmware's. Any other unrecognised statement keeps the console's
+    // subject (carrier_subject SolConsole), as before -- its author is not established by this change.
+    FirmwareErrorStatementUnrecognized { statement: s } => [LocatedError { cycle: none, subject: if is_uefi_boot_manager_statement(line: s as String) { Uefi } else { DramFirmware }, error: FirmwareStatement { report: r.firmware } }]
     TrainingRefusedByFirmware { statement: _, locus: _ } => [LocatedError { cycle: none, subject: DramFirmware, error: FirmwareStatement { report: r.firmware } }]
   },
   concat(match r.loader {

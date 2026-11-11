@@ -1,0 +1,145 @@
+[SOL Session operational.  Use ~? for help]
+NOTICE:  DRAM FW version 220414
+CP: 0ff00900
+MCU param:
+  ecc_en = 00000002 [default: 00000001]
+DRAM populated DIMMs:
+  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    
+  SK0 MC1 S0: RDIMM[2c:80] 16GB 2133 ECC 2R x 04f01909
+CP: 05f01907
+CP: 05f01906
+CP: 05f01908
+CP: 05f01909
+CP: 06f01907
+CP: 06f01906
+CP: 06f01908
+CP: 06f01909
+CP: 07f01907
+CP: 07f01906
+CP: 07f01908
+CP: 07f01909
+CP: 0ff00b02
+CP: 0ff00c00
+CP: 3ff00300
+CP: 00001a02
+CP: 01001a02DRAM ECC Initialization: [31] [ =======>             ]DRAM ECC Initialization: [37] [ ========>            ]DRA5
+    PCP Clock                   : 1650 MHz
+    SOC Clock                   : 2000 MHz
+    SYS Clock                   : 400 MHz
+    AHB Clock                   : 200 MHz
+User Configuration Setting:
+    8028: 0x1 (1)
+    8038: 0x0 (0)
+      81D0: 0xFF (255)
+    8208: 0x78 (120)
+    8210: 0x4B0 (1200)
+    8218: 0x1 (1)
+    8220: 0x5A0 (1440)
+    8228: 0x0 (0)
+    8230: 0x0 (0)
+Board Configuration Setting:
+    C000: 0xCD3A (52538)
+    C008: 0x0 (0)
+    C010: 0x0 (0)
+    C018: 0x0 (0)
+    C020: 0xFFFF (65535)
+    C028: 0xFFFF (65535)
+    C030: 0x80E8 (33000)
+    C038: 0x80E8 (33000)
+    C040: 0x2710 (10000)
+    C048: 0x2710 (10000)
+    C050: 0x0 (0)
+    C058: 0x190 (400)
+    C060: 0x190 (400)
+    C068: 0x1907 (822477175)
+    C1E0: 0x30060070 (805699696)
+    C1E8: 0x30060070 (805699696)
+    C1F0: 0x0 (0)
+    C1F8: 0x0 (0)
+    C200: 0x0 (0)
+    C208: 0x0 (0)
+    C210: 0x44C0CCC (72092876)
+    C218: 0x84C0CCC (139201740)
+    C220: 0x4130333 (68354867)
+    C228: 0x8130333 (135463731)
+    C230: 0x1130333 (18023219)
+    C238: 0x2230333 (35849011)
+    C240: 0x1430333 (21168947)
+    C248: 0x2830333 (42140467)
+    C250: 0x55EDEED (90103533)
+    C258: 0xA5DEDDE (173927902)
+    C260: 0x55757 (1465341783)
+    C400: 0x57575757 (1465341783)
+    C408: 0x57575757 (1465341783)
+    C410: 0x57575757 (1465341783)
+    C418: 0x57575757 (1465341783)
+    C420: 0x57575757 (1465341783)
+    C428: 0x57575757 (1465341783)
+    C430: 0x57575757: 0x57575757 (1465341783)
+    C558: 0x57575757 (1465341783)
+    C560: 0x57575757 (1465341783)
+    C568: 0x57575757 (1465341783)
+    C570: 0x57575757 (1465341783)
+    C578: 0x3 (3)
+    C580: 0x1A4 (420)
+    C588: 0x0 (0)
+    C590: 0x18000 (98304)
+    C598: 0x80018000 (-2147385344)
+    C5A0: 0x0 (0)
+    C5A8: 0x0 (0)
+    C5B0: 0x0 (0)
+    C5B8: 0x0 (0)
+    C5C0: 0x0 (0)
+    C5C8: 0x0 (0)
+    C5D0: 0x0 (0)
+    C5D8: 0x0 (0)
+    C5E0: 0x550055 (5570645)
+    C5E8: 0x64 (100)
+  (-1)
+    C700: 0xFFFFFFFF (-1)
+    C708: 0xFFFFFFFF (-1)
+    C710: 0x57575757 (1465341783)
+    C718: 0x57575757 (1465341783)
+    C720: 0x57575757 (1465341783)
+    C728: 0x57575757 (1465341783)
+    C730: 0x57575757 (1465341783)
+    C738: 0x75757 (1465341783)
+    C778: 0x57575757 (1465341783)
+    C780: 0x0 (0)
+    C788: 0x0 (0)
+    C790: 0x1 (1)
+    C798: 0x0 (0)
+    C7A0: 0x0 (0)
+    C7A8: 0x0 (0)
+    C7B0: 0x0 (0)
+    C7B8: 0x0 (0)
+    C7C0: 0x1 (1)
+    C7C8: 0x0 (0)
+   int 92
+Checkpoint 92
+Checkpoint 92
+Checkpoint 92
+Checkpoint 97
+[2J[1;1H[2J[1;1H[2;1H
+Press <DEL> or <ESC> to Entering the Setup.
+Press <F11> to Entering the Boot Menu.
+Press <F12> to PXE Boot.Checkpoint 98
+Checkpoint 9D
+Checkpoint 9Akpoint AD
+[2J[1;1H[1;1H
+>>Checking Media Presence......
+>>No Media Present......Checkpoint D9
+ERROR: Boot option loading failed
+Checkpoint AD
+[2J[1;1H[1;1H
+>>Checking Media Presence......
+>>Media Present......
+>>Start PXE over IPv6 on MAC: 28-C1-3C-8A-D6-4A.
+  PXE-E16: No valid offer received.
+Checkpoint D9
+ERROR: Boot option loading failed
+Checkpoint AD
+[2J[1;1H[1;1H
+>>Checking Media Presence......
+>>No Media Present......Checkpoint D9
+ERROR: Boot option loading fa

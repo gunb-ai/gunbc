@@ -154,6 +154,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacForeignImagePresented,
   MegaRacSeveralImagesPresented,
   MegaRacStaleDetachNotAdmitted,
+  MegaRacPresentedRowNotServing,
   MegaRacStaleDetachUnconfirmed,
   MegaRacRedirectionUncatalogued,
   redirection_unread_text, unread_row_stop_refusal_text,
@@ -967,6 +968,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: concat("more than one census image is presented at once, a state never observed on this single-CD unit; nothing was written: ", c) }
     MegaRacStaleDetachNotAdmitted { stale_image: n, reason: why } =>
       Present { value: concat("the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))) }
+    MegaRacPresentedRowNotServing { image_name: n, configurations: c, cd_error: cd, not_replaced: why } =>
+      Present { value: join(["the row presenting '", n as String, "' is not evidence the medium is served: general settings read cd_error_code ", cd_reading_text(r: cd), ", and an already-presented row is admitted only on 0; it was NOT stopped and re-attached: ", why as String, ". No boot-device or power handoff was made; configurations: ", c], "") }
     MegaRacStaleDetachUnconfirmed { detach: d, reason: why } =>
       Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
     MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: why, configurations: c } =>

@@ -6,7 +6,8 @@ import std.algebra { non_empty_singleton, string_contains }
 import gunbc.host.boot_attempt { CredentialMayRemain, EveryReadFailed }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
-import extdeps.bmc.megarac { megarac_firmware_0_32 }
+import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_firmware_0_45_reported }
+import gunbc.machine_intake.megarac_media_row_reading { MegaRacMediaRowReceipt, boot_run_43040335415_presented_row, boot_run_43040335415_general_before_handoff }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name, ubuntu_seeded_install_media_name_digest_prefix }
@@ -27,6 +28,8 @@ import gunbc.machine_intake.megarac_media_attach {
   ConvergeStepAttachFromListing,
   ConvergeStepAwaitReadiness,
   ConvergeStepDetachStale,
+  MegaRacPresentedRowNotServing,
+  megarac_cd_error_code_of_wire,
   ConvergeStepRefuse,
   ConvergenceStep,
   DetachEstablished,
@@ -650,6 +653,20 @@ test fn an_unread_code_at_readiness_withholds_as_unestablished() -> Bool {
   }
 }
 
+// A CODE THAT APPEARS DURING THE WAIT: on an already-presented row it refuses (the wait writes nothing, so the
+// row is refused rather than stopped), carrying the code; on an attach it stays a recorded observation beside the
+// Started row, the existing disposition that boot 11 does not reach.
+test fn a_code_appearing_at_readiness_refuses_an_already_presented_row_and_is_recorded_on_an_attach() -> Bool {
+  (match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: look(at: 1100, status: "1", session: "0") }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_clean, general_at_end: raw_at(body: general_coded(code: "16"))) {
+    MegaRacPresentedRowNotServing { image_name: n, configurations: _, cd_error: e, not_replaced: _ } => (n as String) == (desired_census as String) && nonzero_is(r: e, expected: 16)
+    _ => false
+  })
+    && (match ready_after(cd_before: cd_clean, general: general_coded(code: "16")) {
+      MegaRacPresentationReady { route: _, evidence: e } => nonzero_is(r: e.cd_at_ready, expected: 16)
+      _ => false
+    })
+}
+
 test fn a_clean_code_at_readiness_is_ready() -> Bool {
   match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: look(at: 1100, status: "0", session: "255") }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)) {
     MegaRacPresentationReady { route: _, evidence: e } => (match e.cd_at_ready { CdErrorRead { code: CdErrorNone } => true _ => false })
@@ -705,13 +722,58 @@ test fn a_stopped_presentation_is_a_timeout_whatever_the_code_reads() -> Bool {
 }
 
 // ─── BEFORE ANY WRITE ───────────────────────────────────────────────────────────────────────────
-// A read code is an observation: the desired image presented goes straight to the readiness fold
-// with no write, host on or off, whatever the code reads; nothing presented is attached under the policy
-// that admits 16 on 0.32.
-test fn a_read_code_before_any_write_never_withdraws_the_desired_presentation() -> Bool {
-  (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_off, cd_before: cd_16) { ConvergeStepAwaitReadiness => true  _ => false })
-    && (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_on, cd_before: cd_16) { ConvergeStepAwaitReadiness => true  _ => false })
-    && (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_off, cd_before: cd_42) { ConvergeStepAwaitReadiness => true  _ => false })
+// THE DESIRED IMAGE PRESENTED IS PRESENTATION EVIDENCE ONLY ON A CLEAN CODE (megarac_media_attach
+// presented_row_serving, grounded by boot run 43040335415). Clean: the no-write readiness fold, host on or off.
+// Nonzero with the host off: the stale-row path stops that very row. Nonzero with the host on: a typed refusal
+// carrying both readings and why no stop was made; nothing is written. Nothing presented is attached under the
+// policy that admits 16 on 0.32, as before.
+test fn a_desired_presentation_is_readiness_only_on_a_clean_code() -> Bool {
+  let desired = presenting(name: desired_census as String, status: "1")
+  (match step_with_cd(configurations: desired, detach: host_off, cd_before: cd_clean) { ConvergeStepAwaitReadiness => true  _ => false })
+    && (match step_with_cd(configurations: desired, detach: host_on, cd_before: cd_clean) { ConvergeStepAwaitReadiness => true  _ => false })
+    && (match step_with_cd(configurations: desired, detach: host_off, cd_before: cd_16) { ConvergeStepDetachStale { row: r } => r.image_name == (desired_census as String)  _ => false })
+    && (match step_with_cd(configurations: desired, detach: host_off, cd_before: cd_42) { ConvergeStepDetachStale { row: r } => r.image_name == (desired_census as String)  _ => false })
+    && (match step_with_cd(configurations: desired, detach: host_on, cd_before: cd_16) {
+      ConvergeStepRefuse { outcome: MegaRacPresentedRowNotServing { image_name: n, configurations: c, cd_error: e, not_replaced: why } } =>
+        (n as String) == (desired_census as String) && nonzero_is(r: e, expected: 16) && c == desired && string_contains(s: why as String, pattern: "powered on")
+      _ => false
+    })
+}
+
+// BOOT 11'S OWN READINGS, through the pure step: the row it admitted (boot_run_43040335415_presented_row, rendered
+// back into the configurations document it was read from) beside the code general settings read
+// (boot_run_43040335415_general_before_handoff), on the release that run's hpm check reported. With the host off,
+// as it was, the row is stopped and re-attached rather than handed to the readiness fold; with the host on it is
+// refused. The RED is presented_row_serving removed: both arms then read ConvergeStepAwaitReadiness, the route that
+// powered boot 11 on over a CD that served nothing.
+fn boot_11_row_document(r: MegaRacMediaRowReceipt) -> String {
+  join(["[ { \"id\": 1, \"media_type\": ", to_string(r.media_type), ", \"media_index\": ", to_string(r.media_index), ", \"session_index\": ", to_string(r.session_index), ", \"image_name\": \"", match r.image_name { Present { value: n } => n as String  Absent => "" }, "\", \"redirection_status\": ", to_string(r.redirection_status), " } ]"], "")
+}
+
+fn boot_11_step(detach: MegaRacDetachAdmission) -> ConvergenceStep {
+  let image = match boot_run_43040335415_presented_row.image_name { Present { value: n } => n  Absent => desired_census }
+  let doc = boot_11_row_document(r: boot_run_43040335415_presented_row)
+  megarac_convergence_step(
+    convergence: presented_convergence(
+      presented: presented_media(body: doc, image_name: image, firmware: megarac_firmware_0_45_reported, replaceable: Present { value: non_empty_singleton(item: mtcollins1_census_image_stem) }),
+      image_name: image,
+      replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem),
+    ),
+    detach: detach,
+    configurations: doc,
+    cd_before: CdErrorRead { code: megarac_cd_error_code_of_wire(firmware: megarac_firmware_0_45_reported, wire: boot_run_43040335415_general_before_handoff.cd_error_code) },
+  )
+}
+
+test fn boot_11_readings_are_not_presentation_evidence() -> Bool {
+  (match boot_11_step(detach: host_off) {
+    ConvergeStepDetachStale { row: r } => match boot_run_43040335415_presented_row.image_name { Present { value: n } => r.image_name == (n as String)  Absent => false }
+    _ => false
+  })
+    && (match boot_11_step(detach: host_on) {
+      ConvergeStepRefuse { outcome: MegaRacPresentedRowNotServing { image_name: _, configurations: _, cd_error: e, not_replaced: _ } } => nonzero_is(r: e, expected: 16)
+      _ => false
+    })
 }
 
 test fn a_named_code_with_nothing_presented_attaches() -> Bool {
@@ -984,7 +1046,7 @@ data cd_unread: CdErrorReading = CdErrorUnread { detail: "cd_error_code missing"
 
 test fn an_unread_code_never_withdraws_a_presentation() -> Bool {
   (match step_with_cd(configurations: presenting(name: stale_census as String, status: "1"), detach: host_off, cd_before: cd_unread) { ConvergeStepRefuse { outcome: MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } } => true _ => false })
-    && (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_off, cd_before: cd_unread) { ConvergeStepAwaitReadiness => true _ => false })
+    && (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_off, cd_before: cd_unread) { ConvergeStepRefuse { outcome: MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } } => true _ => false })
     && (match step_with_cd(configurations: "[]", detach: host_off, cd_before: cd_unread) { ConvergeStepRefuse { outcome: MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } } => true _ => false })
 }
 

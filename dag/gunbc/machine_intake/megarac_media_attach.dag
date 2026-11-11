@@ -199,6 +199,11 @@ type MegaRacAttachOutcome
   | MegaRacForeignImagePresented { image_name: String, configurations: String }
   | MegaRacSeveralImagesPresented { configurations: String }
   | MegaRacStaleDetachNotAdmitted { stale_image: String, reason: NonEmptyStr }
+  // THE DESIRED IMAGE'S ROW IS PRESENT BUT GENERAL SETTINGS DO NOT SAY IT IS SERVED (presented_row_serving),
+  // and it was not stopped and re-attached: the detach was not admitted, or the code appeared only during the
+  // no-write readiness wait. Both readings are kept -- the configurations document that presented the row and
+  // the cd_error_code read beside it -- and `not_replaced` says why no stop was made. Nothing was written.
+  | MegaRacPresentedRowNotServing { image_name: NonEmptyStr, configurations: String, cd_error: CdErrorReading, not_replaced: NonEmptyStr }
   | MegaRacStaleDetachUnconfirmed { detach: MegaRacDetachEvidence, reason: NonEmptyStr }
   | MegaRacRedirectionUncatalogued { image_name: String, unread: MegaRacRedirectionUnread, refusal: UnreadRowStopRefusal, configurations: String }
   | MegaRacRefreshClockUnreadable { detail: String, detach: MegaRacDetachEvidence }
@@ -2007,8 +2012,10 @@ type ConvergenceStep
 
 // THE DECISION, PURE, so every control is a supplied configurations reading rather than a
 // controller. THE CODE'S DISPOSITION IS EXPLICIT ON EVERY ROUTE (side-chat review 5331991982), and
-// follows the vendor's UI: the desired image presented (Started or connecting) goes to the no-write
-// readiness fold whatever the code reads, because the vendor does not consult it then; nothing
+// follows the vendor's UI, with one exception the controller's own readings forced: the desired image
+// presented (Started or connecting) goes to the no-write readiness fold only when presented_row_serving
+// admits it, and otherwise is stopped and re-attached as a stale row would be (or refused when the
+// detach is not admitted); nothing
 // presented is attached on a clean code or a named stop reason (the vendor's stopped view leaves Start
 // enabled), and on a code outside the table only under the fresh-presentation admission; an UNREAD
 // code never licenses a write. The admission is read only on the arms that would write.
@@ -2023,7 +2030,19 @@ fn megarac_convergence_step(
     ConvergeUncatalogued { image_name: n, unread: u, refusal: why } => ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: why, configurations: configurations } }
     ConvergeForeignPresented { image_name: n } => ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n, configurations: configurations } }
     ConvergeSeveralPresented => ConvergeStepRefuse { outcome: MegaRacSeveralImagesPresented { configurations: configurations } }
-    ConvergeDesiredPresented { row: _ } => ConvergeStepAwaitReadiness
+    ConvergeDesiredPresented { row: r } =>
+      match presented_row_serving(cd: cd_before) {
+        true => ConvergeStepAwaitReadiness
+        false =>
+          match cd_before {
+            CdErrorUnread { detail: _ } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: "the desired image's row is presented but cd_error_code could not be read, so the row is not evidence that the medium is served, and an unknown media state never licenses withdrawing it") }
+            CdErrorRead { code: _ } =>
+              match detach {
+                MegaRacDetachAdmitted => ConvergeStepDetachStale { row: r }
+                MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: MegaRacPresentedRowNotServing { image_name: r.image_name as NonEmptyStr, configurations: configurations, cd_error: cd_before, not_replaced: why } }
+              }
+          }
+      }
     ConvergeStalePresented { row: r } =>
       match cd_before {
         CdErrorUnread { detail: _ } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: "cd_error_code could not be read, and an unknown media state never licenses withdrawing a presentation") }
@@ -2047,6 +2066,35 @@ fn megarac_convergence_step(
               }
           }
       }
+  }
+}
+
+// AN ALREADY-PRESENTED ROW IS PRESENTATION EVIDENCE ONLY WHEN GENERAL SETTINGS READ cd_error_code 0.
+// Boot run 43040335415 (boot 11) met the desired image's row at redirection_status 1, session_index 0,
+// with general settings reading cd_error_code 16 at the first look and again before the handoff
+// (boot_run_43040335415_presented_row, boot_run_43040335415_general_at_look). The row was admitted as
+// already presented, the host was powered on with the CD override set, and the console shows the
+// firmware walking only network boot options ("Checking Media Presence", PXE over IPv6) and printing
+// "ERROR: Boot option loading failed": no CD was served. Every earlier powered-on handoff that the
+// firmware could boot from read 0. So a nonzero code beside a presented row is not served media, and
+// the row is routed down the stale-row path (stop, read back, re-enumerate, attach) like any other
+// presentation that is not this attempt's medium.
+//
+// cd_image_name WAS CONSIDERED AS A SECOND CLAUSE AND REJECTED. General settings read cd_image_name ""
+// on the one attempt that booted Linux from the CD -- boot run 39010930690, whose console shows GRUB
+// 2.12 and "Booting Linux" with BOOT_IMAGE=/casper/vmlinuz from /cdrom, and whose general settings read
+// cd_image_name "" with cd_error_code 0 at the look, the handoff and the end
+// (artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-diagnostics.txt lines 2009-2011). On this
+// controller that member does not report the presentation, so requiring it would refuse every
+// presentation, the proven one included.
+//
+// Code 0 is NECESSARY, NOT SUFFICIENT: boot run 40258937016 read 0 at handoff and still did not reach
+// Linux. A presented row with code 0 still passes the readiness fold before any handoff.
+fn presented_row_serving(cd: CdErrorReading) -> Bool {
+  match cd {
+    CdErrorRead { code: CdErrorNone } => true
+    CdErrorRead { code: CdErrorNonzero { wire: _, firmware: _ } } => false
+    CdErrorUnread { detail: _ } => false
   }
 }
 
@@ -2383,6 +2431,18 @@ fn megarac_readiness_outcome(
   }
 }
 
+// THE ROUTE THE SERVING LAW (presented_row_serving) GATES AT THE END OF THE WAIT. A fresh or replaced
+// attach keeps its existing disposition: the code at readiness is recorded beside the Started row and not
+// gated here. Whether the same law should reach those routes is not decided by boot 11, which met an
+// already-presented row.
+fn attach_route_is_already_presented(route: MegaRacAttachRoute) -> Bool {
+  match route {
+    RouteAlreadyPresented => true
+    RouteAttached { image_list_index: _, start: _ } => false
+    RouteReplaced { image_list_index: _, detach: _, start: _ } => false
+  }
+}
+
 // THE CODE IS READ AT THE END OF THE WAIT WHATEVER THE WAIT ANSWERED, so a refusal carries the code
 // that stood beside the unhealthy presentation, and a ready presentation carries it beside the Started row, as an observation.
 // PURE: the wait's answer as the attach outcome. Only a Started look reaches MegaRacPresentationReady,
@@ -2408,10 +2468,13 @@ fn readiness_wait_outcome(
       let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
-        ReadinessStarted { row: r, configurations: _ } =>
+        ReadinessStarted { row: r, configurations: c } =>
           match cd_at_end {
             CdErrorUnread { detail: _ } => state_unestablished
             CdErrorRead { code: _ } =>
+          if attach_route_is_already_presented(route: route) && presented_row_serving(cd: cd_at_end) == false {
+            MegaRacPresentedRowNotServing { image_name: image_name, configurations: c, cd_error: cd_at_end, not_replaced: "cd_error_code read nonzero at the end of the readiness wait on an already-presented row; the wait writes nothing, so the row is refused rather than stopped" }
+          } else {
           MegaRacPresentationReady {
             route: route,
             evidence: MegaRacPresentationEvidence {
@@ -2427,6 +2490,7 @@ fn readiness_wait_outcome(
               general_at_ready: general_at_end,
               in_interval: iv,
             },
+          }
           }
           }
         ReadinessConnecting { row: _, configurations: _ } => not_ready
@@ -2542,6 +2606,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacForeignImagePresented { image_name: _, configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacSeveralImagesPresented { configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacStaleDetachNotAdmitted { stale_image: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacPresentedRowNotServing { image_name: _, configurations: _, cd_error: _, not_replaced: _ } => presentation_unobserved_before_presentation()
     MegaRacStaleDetachUnconfirmed { detach: _, reason: _ } => presentation_unobserved_before_presentation()
     MegaRacRedirectionUncatalogued { image_name: _, unread: _, refusal: _, configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacRefreshClockUnreadable { detail: _, detach: _ } => presentation_unobserved_before_presentation()
