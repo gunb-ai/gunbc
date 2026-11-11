@@ -161,13 +161,12 @@ test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
 }
 
 test fn srv3_live_fleet_offer_carries_ci() -> Bool {
-  // 4 -> 5 at B3b: srv14_offer joins the catalog and srv14 is CiRunnerParticipation-enrolled,
-  // so the filter that builds fleet_intent_offers admits exactly one more offer. NOTE: this file
-  // does not resolve on main (effect-summary defect at the srv3_pre_install_actuation_verdict call
-  // at :374 via host_standup_gap_count in dag/gunbc/host/host_standup.dag), so this witness could
-  // not be executed here; the increment is by the filter's definition, and it is the value the
-  // fold produces the moment the effect summary is repaired.
-  fleet_intent_offers.length() == 5
+  // 4 -> 6, corrected on this branch (the B3b pin said 5 and was wrong): the filter that builds
+  // fleet_intent_offers admits every catalog offer whose host is CiRunnerParticipation-enrolled,
+  // and the enrollment root (gunbc.fleet.fleet_enrollment fleet_enrollments) carries srv1-srv4,
+  // srv14 AND mtcollins1 -- all six catalog offers pass. The original 4 predated mtcollins1_offer;
+  // the B3b 5 predated noticing mtcollins1's enrollment row. Executed green on this head.
+  fleet_intent_offers.length() == 6
     && srv3_offer.supply.physical.identity == operator_host_srv3
 }
 
