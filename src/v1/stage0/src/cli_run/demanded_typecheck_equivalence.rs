@@ -177,7 +177,9 @@ fn grain_fixture_graph() -> (
 
 // The same graph, from any entry: the realization witnesses below also run against real corpus
 // files, because a fixture can only show the shape a failure has, not that the failure is gone.
-fn graph_from(
+// pub(super): the ONE parse/resolve pipeline for grain witnesses -- fleet_roster_entry_resolve_witness
+// reuses it rather than copying it (root_generalization: no second implementation of one rule).
+pub(super) fn graph_from(
     entry: &str,
 ) -> (
     Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
@@ -247,7 +249,9 @@ fn route_messages(
         .collect()
 }
 
-fn grain_demand(
+// pub(super): the ONE census+realization grain helper, shared with
+// fleet_roster_entry_resolve_witness (root_generalization: one implementation of one rule).
+pub(super) fn grain_demand(
     modules: &Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     seeds: &[&str],
     si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,

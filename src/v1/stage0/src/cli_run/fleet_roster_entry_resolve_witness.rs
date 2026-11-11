@@ -43,8 +43,6 @@
 //! mirror, deferred to the landing lane named by the tracking row
 //! gunbc.integration_concern::grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror
 //! (follow-up node adhoc-0eedbb6e-a35), same as demanded_typecheck_equivalence.rs.
-use std::rc::Rc;
-
 fn repo_root() -> std::path::PathBuf {
     let root = std::env::current_dir()
         .unwrap()
@@ -85,62 +83,23 @@ fn assert_run_resolves(entry_file: &str, function: &str) {
 /// controls assert the demanded grain genuinely reaches the named refusal-site route out of each
 /// real entry (and the shell route out of the canary): deleting an integration (or letting the
 /// demanded set shrink below it) makes THIS fail.
-/// Mirrors `demanded_typecheck_equivalence`'s grain helpers: the same census + realization the
-/// demanded typecheck threads, computed over the entry's real closure.
+/// REUSES `demanded_typecheck_equivalence`'s shared grain helpers -- `graph_from` (the one
+/// closure/parse/resolve pipeline) and `grain_demand` (the one census + realization rule) --
+/// per root_generalization: this file adds no second grain implementation.
 fn assert_route_realized_from(entry_file: &str, seeds: &[&str], expected: &[&str]) {
-    let root = repo_root();
-    let seed_file = Rc::new(crate::v1_compiler_compile::SourceFile {
-        path: entry_file.to_string(),
-        content: std::fs::read_to_string(root.join(entry_file)).unwrap(),
-    });
-    let mut sources =
-        super::entry_resolve::resolve_seeded_compile_closure(vec![seed_file], &["dag".to_string()])
-            .unwrap();
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    let mut intern = crate::v1_std_core::empty_intern_table();
-    let mut parsed = Vec::new();
-    let mut si = crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>();
-    for s in &sources {
-        let idx = crate::v1_std_core::build_newline_index(s.path.clone(), s.content.clone());
-        si = crate::v1_rt::rc_map_insert(si, s.path.clone(), idx.clone());
-        let toks = crate::v1_compiler_tokenize::tokenize(
-            s.content.clone(),
-            s.path.clone(),
-            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-        );
-        let p = crate::v1_compiler_parse::parse_with_table(
-            toks,
-            crate::v1_rt::rc_map_insert(
-                crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
-                idx.file.clone(),
-                idx.clone(),
-            ),
-            intern.clone(),
-        );
-        intern = p.intern_table.clone();
-        parsed.push(
-            p.result
-                .module
-                .clone()
-                .unwrap_or_else(|| panic!("parse {}", s.path)),
-        );
-    }
-    let graph = crate::v1_compiler_resolve::resolve_modules(Rc::new(parsed.into()), si.clone());
-    let census =
-        crate::v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), si.clone());
-    let seed_labels: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
-    let seeds_vec: Rc<im::Vector<String>> =
-        Rc::new(seed_labels.iter().cloned().collect::<im::Vector<String>>());
-    let realization = crate::v1_compiler_infer::realization_of(
-        graph.modules.clone(),
-        seeds_vec,
-        census,
-        si.clone(),
-    );
+    let (_sources, _intern, si, modules, _graph) =
+        super::demanded_typecheck_equivalence::graph_from(entry_file);
+    let demand = super::demanded_typecheck_equivalence::grain_demand(&modules, seeds, &si);
+    let realization = match &*demand {
+        crate::v1_compiler_infer::DeclarationDemand::OnlyDeclarations { realization, .. } => {
+            realization.clone()
+        }
+        other => panic!("grain_demand must yield OnlyDeclarations, got {other:?}"),
+    };
     for name in expected {
         assert!(
             crate::v1_compiler_infer::realization_includes(realization.clone(), name.to_string()),
-            "the demanded grain seeded from {entry_file} {seed_labels:?} must realize the REST \
+            "the demanded grain seeded from {entry_file} {seeds:?} must realize the REST \
              roster route declaration `{name}` -- if this fails, the witnesses above are green by \
              absence, not by resolution"
         );
