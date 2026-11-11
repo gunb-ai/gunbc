@@ -61,6 +61,13 @@ import gunbc.fleet.site_pxe_edge_converge {
 }
 import gunbc.provisioning.install_target_disk { TargetDiskReading, DiskReported, NotRead, LsblkBlockReport }
 
+import gunbc.machine_intake.bmc_write_controller {
+  NoControllerRowForHost,
+  ControllerRowIsAnotherEndpoint,
+  ControllerRowIsAnotherBoard,
+  ControllerWritesHeld,
+  StandingGrantNotAdmittedForController,
+}
 import gunbc.host.install_boot_subject {
   ArrivalNotAdmitted,
   ControllerNotBound,
@@ -1191,6 +1198,42 @@ test fn w_diag_refusal_is_journal_or_hold() -> Bool {
     NetworkInstallDispatchRefused { cause: JournalPayloadMalformed { host: _, serial: _, payload: _ } } => true
     NetworkInstallDispatchRefused { cause: HostHeldByAnotherDispatch { host: _, owner: _ } } => true
     NetworkInstallDispatchRefused { cause: HostHoldUnreadable { host: _, detail: _ } } => true
+    _ => false
+  }
+}
+
+// finer diagnostics: which of the write controller's five refusals is ours
+test fn w_diag_wc_no_row() -> Bool {
+  match happy_path_dispatch() {
+    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: NoControllerRowForHost { host: _ } } } } => true
+    _ => false
+  }
+}
+
+test fn w_diag_wc_another_endpoint() -> Bool {
+  match happy_path_dispatch() {
+    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: ControllerRowIsAnotherEndpoint { host: _, row_endpoint: _, target: _ } } } } => true
+    _ => false
+  }
+}
+
+test fn w_diag_wc_another_board() -> Bool {
+  match happy_path_dispatch() {
+    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: ControllerRowIsAnotherBoard { host: _, row_board: _, read_board: _ } } } } => true
+    _ => false
+  }
+}
+
+test fn w_diag_wc_held() -> Bool {
+  match happy_path_dispatch() {
+    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: ControllerWritesHeld { host: _, reason: _, until: _ } } } } => true
+    _ => false
+  }
+}
+
+test fn w_diag_wc_grant_not_admitted() -> Bool {
+  match happy_path_dispatch() {
+    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: StandingGrantNotAdmittedForController { host: _ } } } } => true
     _ => false
   }
 }
