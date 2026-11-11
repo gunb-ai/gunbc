@@ -96,11 +96,20 @@ fn jit_dead_sweep_slots_for_host(host: HostIdentity) -> List<RunnerSlotIdentity>
   filter(population.members, s => s.host == host)
 }
 
-// THE OBSERVED PER-SLOT MainPIDs. The pure plan/report/apply entry points take `current: List<JitCurrentIncarnation>`
-// directly, so the CI wiring supplies the observed MainPIDs (systemd `MainPID` per slot) it reads over the host. A
-// slot NOT supplied reads MainPidUnreadable -> PRESERVED (fail closed), never swept -- so the mode never deregisters a
-// runner whose live pid it has not confirmed is gone. With no MainPIDs supplied at all the mode still correctly lists
-// the retired-name rows and preserves every offline non-current row.
+// THE OBSERVED PER-SLOT MainPIDs, supplied as an INPUT to the pure plan/report/apply entry points. The dead-
+// incarnation arm compares each offline JIT row's pid token against its slot unit's live MainPID, so an arm that
+// FIRES must be handed those observations. THE DISPATCH SUPPLIES NONE TODAY: jit_dead_sweep_read_dispatch passes this
+// empty list, so on the executing route every offline JIT row reads MainPidUnreadable and is PRESERVED (fail closed)
+// -- the run module currently retires only RETIRED-NAME rows and never deregisters a runner whose live pid it has not
+// confirmed is gone. The dead-incarnation arm's live observation (systemd `MainPID` per slot, read over the host
+// transport) is its NAMED TRIGGER: unbuilt here, scheduled for srv4's rename window (plan P9), because wiring it
+// reclassifies the read-only dry run to FleetSshKeyConsumed -- an effect-model change the program owner declined for
+// P8d. Until that read is wired, the report counts the unobserved offline-JIT population so a zero is never presented
+// as a clean sweep (gunbc.recurring_failure_mode: an observation not taken is unobserved, never empty). The dead-
+// incarnation SELECTION LOGIC, including the current-incarnation guard, IS exercised through the real
+// jit_dead_registration_sweep entry by the claim witness -- that is the executed evidence for this rung, not the
+// production dispatch (gunbc.design_argument::guarantee_ladder: the reported rung equals the rung executed evidence
+// establishes).
 fn jit_dead_sweep_no_current_observed() -> List<JitCurrentIncarnation> {
   []
 }
