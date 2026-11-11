@@ -27,7 +27,7 @@ import std.nat { Nat }
 import std.algebra { length, string_contains, string_concat_join }
 import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_to_byte_size, seconds_per_day }
 import std.decimal { fixed_point_trimmed_wire }
-import std.content_hash { sha256_hex_of_text, lower_hex_64 }
+import std.content_hash { lower_hex_64 }
 import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
 import gunbc.serving.srv1_serving_replica_layout {
   Srv1LaunchConfig, Srv1LmCacheL2Placement, Srv1CheckpointRetentionPolicy, Srv1TlsMaterial,
@@ -49,10 +49,8 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
   srv1_boot_path_run_ready_duration, srv1_boot_path_incident_downtime,
   srv1_boot_path_window_router_counting_2026_11_09, srv1_router_window_count_balances, srv1_boot_path_incident_2026_11_09,
-  srv1_bash_emit_capability_gaps, srv1_bash_emit_scaffold_approval,
   srv1_installed_boot_path_artifacts_2026_11_09,
   srv1_serving_replica_roster,
-  srv1_container_command_render_bash_emit_dissolution, srv1_replica_launcher_render_bash_emit_dissolution,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
   srv1_replica_helper_bash_emit_dissolution,
 }
@@ -207,12 +205,14 @@ test fn the_docker_command_is_the_observed_container_shape() -> Bool {
   let args_mounted = string_contains(s: argv0, pattern: "-v /usr/local/etc/lil-replica/replica-0.args:/root/engine.args:ro")
     && string_contains(s: argv1, pattern: "-v /usr/local/etc/lil-replica/replica-1.args:/root/engine.args:ro")
     && (srv1_replica_engine_args_host_path(replica: srv1_replica_0) as String) == "/usr/local/etc/lil-replica/replica-0.args"
-  // Arity is pinned so a silently dropped flag cannot pass the containment checks above: 14 identity and
-  // budget tokens (run/-d, --name + value, --restart + value, --device + selector, the cgroup/memory/swap
-  // trio, --shm-size + value, --env-file + value), 6 published (-p + mapping, two -e pairs), 12 mount
-  // tokens (six -v flags and their six values), and 5 entrypoint/image/-lc tokens with the one joined
-  // command string -- 37 tokens, joined by spaces into the arm the launcher runs.
-  let arity = length(xs: srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config)) == 37
+  // Arity is pinned so a silently dropped flag cannot pass the containment checks above: 16 identity and
+  // budget tokens (docker, run, -d as THREE argv elements -- an argv element is one word, so the row does not
+  // glue the invocation together any more, and each element reaches the launcher's docker-run statement as one
+  // word through a checked word builder -- plus --name + value, --restart + value, --device + selector, the
+  // cgroup/memory/swap trio, --shm-size + value, --env-file + value), 6 published (-p + mapping, two -e pairs),
+  // 12 mount tokens (six -v flags and their six values), and 5 entrypoint/image/-lc tokens with the one joined
+  // command string -- 39 elements, each one word of the command the arm runs.
+  let arity = length(xs: srv1_replica_docker_argv(replica: srv1_replica_0, config: srv1_admitted_launch_config)) == 39
   // The launcher passes the index and nothing else; the command line itself carries no host variable that an
   // empty environment could silently blank out. That is the `$EXTRA` class of defect, closed structurally.
   let no_unbound_variables = !string_contains(s: argv0, pattern: "$EXTRA")
@@ -432,20 +432,6 @@ test fn the_render_survives_the_printed_channel_that_installs_it() -> Bool {
     && string_contains(s: a, pattern: "\n")
 }
 
-// THE INSTALL RECEIPT'S ONLY HANDLE ON THE RENDER. srv1 records `sha256sum` of the installed files and those
-// digests must equal these; so these must be the digests OF THE RENDER and not of some other string -- equal
-// here, and different for a render that gained one byte. A printed render is trusted only through this pair.
-test fn the_install_digests_are_the_digests_of_the_render() -> Bool {
-  let l = srv1_render_replica_launcher()
-  let a = srv1_render_replica_engine_args()
-  sha256_hex_of_text(text: l) == srv1_render_replica_launcher_sha256()
-    && sha256_hex_of_text(text: a) == srv1_render_replica_engine_args_sha256()
-    && sha256_hex_of_text(text: l + "\n") != srv1_render_replica_launcher_sha256()
-    && sha256_hex_of_text(text: a + "\n") != srv1_render_replica_engine_args_sha256()
-    && lower_hex_64(value: srv1_render_replica_launcher_sha256())
-    && lower_hex_64(value: srv1_render_replica_engine_args_sha256())
-}
-
 // THE REFUSALS PRECEDE THE LAUNCHES. A guard rendered after the `case` still exits non-zero, but only after
 // `docker run` has started a container on inputs it was supposed to refuse -- leaving a stale container and a
 // unit that reports a start. The bytes before the first `docker run` must therefore already contain every
@@ -594,65 +580,26 @@ test fn the_rendered_boot_path_pins_the_card_from_the_profile_row() -> Bool {
     && !string_contains(s: srv1_render_replica_helper(), pattern: "NO_CARD_UUID_IN_PROFILE")
 }
 
-// EACH GAP ROW POINTS AT A RENDER THAT ACTUALLY CARRIES A MARKER. Declared debt rots in two ways: a marker whose
-// stated trigger names nothing real, or a gap row that no artifact depends on. So the gap rows are checked as
-// references -- four constructs, each naming a renderer in this module, each of those renderers covered by the
-// text of one of the two bash-emit markers -- and not as a paragraph about how hard the bash lane is. The gaps
-// themselves were established by reading the bash lane (its builders, node kinds and lexical phrases) on
-// 2026-11-10; this claim checks the ROWS against this module's artifacts, not against that lane.
-test fn each_declared_bash_emit_gap_points_at_a_marked_render() -> Bool {
-  let gaps = srv1_bash_emit_capability_gaps
-  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
-  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
-  gaps.length() == 4
-    && gaps.all(g =>
-      g.construct as String != ""
-        && g.what_would_close_it as String != ""
-        && string_contains(s: g.verified_on_utc as String, pattern: "2026-11-10T"))
-    && gaps.all(g =>
-      string_contains(s: launcher_marker, pattern: g.used_by as String)
-        || string_contains(s: command_marker, pattern: g.used_by as String))
-}
-
-// THE APPROVAL FOR SHIPPING THIS HAND-SHELL IS A ROW, AND BOTH MARKERS CITE IT. fail_closed asks for the
-// operator's approval OUTSIDE the diff when a scaffold is admitted while a modeled path exists: the route is
-// here (v2.workflow.bash_emit bash_emit_stmts) and the four builders named by srv1_bash_emit_capability_gaps
-// are not. The decision was taken in an escalation, so the markers point at a row that records it rather than at
-// a thread a later reader cannot open. RED controls: a marker that drops its citation, and a record that names no
-// escalation, no option, or no limit on what it covers -- an approval with no stated boundary is not an approval.
-test fn the_shipped_hand_shell_carries_its_out_of_diff_approval() -> Bool {
-  let approval = srv1_bash_emit_scaffold_approval
-  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
-  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
-  approval.approved_by as String != ""
-    && string_contains(s: approval.asked_via as String, pattern: "msg_")
-    && string_contains(s: approval.asked_via as String, pattern: "bash_emit")
-    && string_contains(s: approval.decided_on_utc as String, pattern: "2026-11-10")
-    && string_contains(s: approval.what_it_covers as String, pattern: "srv1_bash_emit_capability_gaps")
-    && string_contains(s: approval.what_it_does_not_cover as String, pattern: "no new hand-authored shell")
-    && string_contains(s: approval.what_it_does_not_cover as String, pattern: "bash_build")
-    && all([launcher_marker, command_marker], m =>
-      string_contains(s: m, pattern: "srv1_bash_emit_scaffold_approval")
-        && string_contains(s: m, pattern: "msg_856d8172"))
-    // the approved state is still the gap state: the four constructs remain open
-    && srv1_bash_emit_capability_gaps.length() == 4
-}
-
+// THE HAND-SHELL THAT REMAINS CARRIES ITS OWN MARKER. Two of the five markers this module carried are gone,
+// and they are gone because the renders they marked are emitted as built statements now: the container command
+// and the launcher render (srv1_replica_launcher_lines) are produced by the bash_build constructors and the
+// serializer, and the digest the host read back for the installed launcher — c4ef7314… in
+// srv1_installed_boot_path_artifacts_2026_11_09 — is what the render produces (the_install_and_run_receipts_
+// hold_their_own_claim re-derives it and compares, which is the control that can say so). What is left here is
+// hand shell still: the retained gpu.sh restore path (kept untouched, by the operator's decision, as the way
+// back if this render is wrong), the host helper, and the docker argv shape, whose concrete syntax lives with
+// the docker spec input rather than with bash.
 test fn every_hand_composed_script_carries_its_own_marker() -> Bool {
-  let launcher_marker = marker_text(condition: srv1_replica_launcher_render_bash_emit_dissolution)
-  let command_marker = marker_text(condition: srv1_container_command_render_bash_emit_dissolution)
   let shape_marker = marker_text(condition: srv1_replica_launcher_shape_dissolution)
   let gpu_sh_marker = marker_text(condition: srv1_serving_gpu_launcher_bash_emit_dissolution)
   let helper_marker = marker_text(condition: srv1_replica_helper_bash_emit_dissolution)
-  string_contains(s: launcher_marker, pattern: "srv1_replica_launcher_lines")
-    && string_contains(s: command_marker, pattern: "srv1_replica_container_command_lines")
-    && string_contains(s: shape_marker, pattern: "Srv1ContainerRunShape")
+  string_contains(s: shape_marker, pattern: "Srv1ContainerRunShape")
     && string_contains(s: gpu_sh_marker, pattern: "srv1_serving_gpu_launcher")
     && string_contains(s: helper_marker, pattern: "srv1_replica_helper")
     // every marker states its trigger, and names the modeled route it waits on: the shell bodies point at
     // v2.workflow.bash_emit, the docker argv points at the docker spec input -- a marker that named NEITHER
     // route is a paragraph, not a dissolution
-    && all([launcher_marker, command_marker, shape_marker, gpu_sh_marker, helper_marker], m =>
+    && all([shape_marker, gpu_sh_marker, helper_marker], m =>
       string_contains(s: m, pattern: "dissolve-on:")
         && (string_contains(s: m, pattern: "v2.workflow.bash_emit") || string_contains(s: m, pattern: "extdeps.docker.create_spec")))
 }
