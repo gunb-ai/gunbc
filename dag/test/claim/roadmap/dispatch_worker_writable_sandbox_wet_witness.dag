@@ -3873,10 +3873,10 @@ test fn a_locus_whose_seal_cannot_be_written_is_not_read_as_installed() -> Bool 
   let planted = wet_plant_confined_tree(instance: inst)
   // Content this claim alone carries: it tampers with the locus seal, so it may not share a locus key
   // with the legs that only read the shared one. See `wet_plant_claim_own_marker`.
+  let marked = wet_plant_claim_own_marker(instance: inst, marker: "seal-unwritable" as NonEmptyStr)
   let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
   let seal = witness_locus_receipt_seal_path(instance: inst, locus_key: key)
-  let marked = wet_plant_claim_own_marker(instance: inst, marker: "seal-unwritable" as NonEmptyStr)
   let verdict = planted && marked
     && named != ""
     && revision != ""
@@ -4208,9 +4208,9 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
   // the locus receipt, so its key must be its own or another leg will answer its refusal arms.
   // Measured: the roster over one shared base made its first refusal arm come back installed; alone
   // over that base, and in the roster with the base unset, it is green.
+  let marked = wet_plant_claim_own_marker(instance: inst, marker: "locus-seal" as NonEmptyStr)
   let key = witness_locus_key_from_environment(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
-  let marked = wet_plant_claim_own_marker(instance: inst, marker: "locus-seal" as NonEmptyStr)
   let staged_tree = named != "" && revision != "" && key != ""
     && wet_stage_locus_by_hand(instance: inst, locus_key: key, image: named)
 
