@@ -31,7 +31,6 @@ import std.measure { second_count, minute_count }
 import std.integer { nat_to_int }
 import extdeps.github.actions { max_job_timeout_minutes }
 import gunbc.auth.approval_gate { approval_request_window, approval_poll_overrun_ticks }
-import gunbc.auth.access_token_source { workload_identity_access_token_lifetime }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run {
   gcp_iam_converge_file_window, gcp_iam_converge_poll_cadence, gcp_iam_converge_poll_ticks,
@@ -46,10 +45,9 @@ import gunbc.auth.branch_run_grant {
 }
 import gunbc.fleet.printer_operator_approval {
   printer_operator_approval_window, printer_operator_approval_poll_cadence,
-  printer_operator_approval_poll_tick_budget, printer_approval_credential_ceiling,
+  printer_operator_approval_poll_tick_budget,
   printer_approval_pre_decision_allowance, printer_approval_post_decision_allowance,
   printer_approval_step_timeout_minutes, printer_approval_step_margin,
-  printer_converge_preparation_allowance, printer_approval_credential_pre_decision_spend,
 }
 import gunbc.fleet.printer_federation { printer_federated_workload_token_lifetime }
 import gunbc.fabric.fabric_storage_state_provision { fabric_storage_state_provision_card_window }
@@ -81,54 +79,34 @@ test fn the_cards_that_hold_nothing_across_the_wait_read_the_policy_row() -> Boo
     && fabric_storage_state_provision_card_window() == approval_request_window
 }
 
-// THE PRINTER'S CARD READS THE POLICY ROW TOO, AND IS CAPPED BY THE CREDENTIAL IT MUST PRESENT AFTER
-// THE DECISION. Not by a hand-written number: the cap is the token's lifetime minus everything the run
-// spends between the mint and the presentation -- the preparation it does before it even asks, the filing,
-// the wait, the poll's reserve, and the delivery after the tap. So the window is the policy where the
-// credential reaches that far, and the credential's own reach where it does not -- today 1,160 s
-// (19 min 20 s), because the token is federated at the top of the job and half an hour of CAD and slicing
-// happens after that mint and before the ask. That is 4 min 20 s MORE than the hand-written 900 s on main,
-// THE OPERATOR GETS THE 4 h POLICY ROW. The mint happens after the tap (mint-at-use,
-// gunbc.fleet.printer_credential_source printer_mint_at_use_token), so no pre-poll token constrains the
-// window; the card opens for the full approval_request_window. If someone moves the mint before the wait,
-// the window would need to be capped by the token lifetime and this claim goes red (window != policy).
+// THE PRINTER'S CARD READS THE POLICY ROW, UNCAPPED, BECAUSE THE MINT IS AFTER THE TAP.
+// THE OPERATOR GETS THE 4 h POLICY ROW. The mint happens after the tap (mint-at-use), so no pre-poll
+// token constrains the window; the card opens for the full approval_request_window. If someone moves
+// the mint before the wait, the window must be capped by the credential ceiling and this claim goes
+// red (window != policy).
 test fn the_printers_card_is_the_policy_row_or_the_reach_of_its_credential() -> Bool {
   let window = nat_to_int(n: second_count(s: printer_operator_approval_window()))
   let policy = nat_to_int(n: second_count(s: approval_request_window))
   window > 0 && window == policy
 }
 
-// RETIRED: the_printers_window_fits_inside_the_credential_that_has_to_survive_it. The pre-poll WIF mint is
-// gone; the mint fires at use time (after the tap), so no single token spans the approval window. The
-// replacement claim is the_printers_mint_covers_only_the_post_decision_delivery.
-test fn the_printers_window_fits_inside_the_credential_that_has_to_survive_it() -> Bool {
-  true
-}
-
-// RETIRED: the_printers_credential_ceiling_is_the_token_minus_the_run. The pre-poll WIF mint is gone; no
-// token is minted before the decision so there is no credential ceiling to verify. Retired with the
-// pre-poll mint, per the rule "retire with the pre-poll mint, don't leave them agreeing with nothing."
-test fn the_printers_credential_ceiling_is_the_token_minus_the_run() -> Bool {
-  true
-}
-
-// RETIRED: the_printers_ceiling_pays_for_what_the_run_does_before_it_asks. The WIF auth step that minted the
-// token before the run is gone; there is no pre-poll token to charge for preparation. Retired with the
-// pre-poll mint, per the rule "retire with the pre-poll mint, don't leave them agreeing with nothing."
-test fn the_printers_ceiling_pays_for_what_the_run_does_before_it_asks() -> Bool {
-  true
-}
-
-// THE PRINTER'S MINTED TOKEN COVERS ONLY THE POST-DECISION DELIVERY. The mint fires after the operator's tap
-// (mint-at-use, gunbc.fleet.printer_credential_source printer_mint_at_use_token), so the token's lifetime only
-// needs to cover the post-decision delivery; it does not need to span the approval window. This claim is red
-// if the mint is moved before the wait: the window exceeds the minted lifetime, meaning the token could not
-// survive the wait, which is the bug this PR removes.
+// THE PRINTER'S MINTED TOKEN COVERS ONLY THE POST-DECISION DELIVERY.
+//
+// This claim is discriminating against the regression the PR removes in two directions:
+// (1) If the mint is moved before the wait, the credential ceiling must cap the window;
+//     then window != policy goes red (the first condition), because the ceiling is strictly
+//     less than the policy row.
+// (2) If the mint lifetime is extended to span the window (so the pre-mint could cover it),
+//     mint_seconds < window goes red (the third condition).
+// The combination — mint < window AND window == policy — is only satisfiable when the mint
+// happens after the tap, because only then can the window stay at the full policy row while
+// the token stays short enough to cover only the delivery.
 test fn the_printers_mint_covers_only_the_post_decision_delivery() -> Bool {
   let mint_seconds = nat_to_int(n: second_count(s: printer_federated_workload_token_lifetime))
   let post = nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
   let window = nat_to_int(n: second_count(s: printer_operator_approval_window()))
-  mint_seconds >= post && window > mint_seconds
+  let policy = nat_to_int(n: second_count(s: approval_request_window))
+  mint_seconds >= post && window == policy && mint_seconds < window
 }
 
 // THE POLL COVERS ITS OWN WINDOW, FOR EVERY POLL THAT WAITS OUT ITS CARD. The tick budget is derived

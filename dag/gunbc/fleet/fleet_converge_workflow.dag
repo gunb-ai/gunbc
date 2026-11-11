@@ -8591,7 +8591,7 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 
 fn printer_converge_step_timeout_minutes() -> Duration {
   let preparation_minutes = (nat_to_int(n: second_count(s: printer_converge_preparation_allowance)) + 59) / 60
-  let checkout_allowance_minutes = 5
+  let checkout_allowance_minutes = gunbc_ci_aux_step_timeout_minutes
   preparation_minutes + checkout_allowance_minutes + nat_to_int(n: minute_count(m: printer_approval_step_timeout_minutes()))
 }
 

@@ -2,9 +2,8 @@ module gunbc.fleet.fleet_printer_access
 
 import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity,sm_resolved_version_id,SmVersionIdProjected,SmVersionIdNotAVersionResource}
 import gunbc.fleet.printer_credential_source {PrinterCredentialSource,SecretManagerCredentialSource,MintAtUseCredentialSource,HostCustodyCredentialSource,read_printer_custody_version,PrinterCustodyVersionPresent,PrinterCustodyVersionRefused}
-import gunbc.fleet.printer_mint_at_use {printer_mint_at_use_token}
-import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential,fetch_secret_ref_credential_with_token,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
-import gunbc.auth.federated_workload_credential {FederatedWorkloadCredentialMint}
+import gunbc.fleet.printer_mint_at_use {resolve_printer_google_token,GoogleTokenResolved,GoogleTokenRefused}
+import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential_with_token,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource, gcp_resource_names_this_secret }
@@ -521,9 +520,11 @@ fn session_resolved_version(s:PrinterCredentialSession) -> SmResolvedVersionIden
 fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyStr,credential_source:PrinterCredentialSource) -> PrinterSessionRead {
  if !sm_version_id_is_number(version:version as String) { return PrinterSessionRefused {cause:"An existing-session read requires an exact numeric version"} }
  match credential_source {
-  SecretManagerCredentialSource {token_source:token_source} => read_existing_printer_session_from_secret_manager(printer:printer,version:version,token_source:token_source)
-  MintAtUseCredentialSource {mint:mint} => read_existing_printer_session_from_mint_at_use(printer:printer,version:version,mint:mint)
   HostCustodyCredentialSource { run_id: _ } => read_existing_printer_session_from_custody(printer:printer,version:version)
+  _ => match resolve_printer_google_token(credential_source:credential_source) {
+   GoogleTokenResolved {token:token} => read_existing_printer_session_with_token(printer:printer,version:version,token:token)
+   GoogleTokenRefused {cause:c} => PrinterSessionRefused {cause:c as NonEmptyStr}
+  }
  }
 }
 // The shell route's session: the copy host custody holds, never Secret Manager. The custody record names
@@ -535,32 +536,20 @@ fn read_existing_printer_session_from_custody(printer:PhysicalAssetIdentity,vers
   PrinterCustodyVersionPresent {version:v,record:r} => if (v as String) != (version as String) {PrinterSessionRefused {cause:join(["The custody copy holds credential version ",v as String,", not the requested ",version as String],"") as NonEmptyStr}} else {PrinterSessionReady {session:PrinterCredentialSession {printer:printer,version:version,credential:r.code,resolved:r.resolved}}}
  }
 }
-fn read_existing_printer_session_from_secret_manager(printer:PhysicalAssetIdentity,version:NonEmptyStr,token_source:AccessTokenSource) -> PrinterSessionRead {
+// The single shared Secret-Manager fetch body for both Google arms of
+// PrinterCredentialSource. Takes the resolved Secret token directly (obtained
+// via resolve_printer_google_token) and performs only the Secret-Manager read.
+// The version-pin, empty-credential guard, and all response checks are here
+// once; both the SecretManager and MintAtUse arms of the source share this body.
+fn read_existing_printer_session_with_token(printer:PhysicalAssetIdentity,version:NonEmptyStr,token:Secret) -> PrinterSessionRead {
  match printer_access_code_locus(printer:printer) {
   PrinterAccessCodeDesiredLocusFound {locus:locus} =>
-   match fetch_secret_ref_credential(secret_ref:secret_ref_pin_version(ref:locus.secret,version:version),token_source:token_source) {
+   match fetch_secret_ref_credential_with_token(secret_ref:secret_ref_pin_version(ref:locus.secret,version:version),access_token:token) {
     SecretCredentialReady {credential:c,resolved_version:r} => if (c as String)=="" {PrinterSessionRefused {cause:"Empty printer credential"}} else {PrinterSessionReady {session:PrinterCredentialSession {printer:printer,version:version,credential:c,resolved:r}}}
     SecretCredentialFetchRefused {reason:r}=>PrinterSessionRefused {cause:r}
     SecretCredentialAccessUpsertRequired {plan:_}=>PrinterSessionRefused {cause:"Existing-session read requires credential access; it does not provision access"}
     SecretCredentialWireDecodeRefused {identity_cause:_,payload_cause:_}=>PrinterSessionRefused {cause:"Credential response did not decode"}
     SecretCredentialResolvedVersionMismatch {requested:_,resolved:_}=>PrinterSessionRefused {cause:"Credential response names another exact version"}
-   }
-  PrinterAccessCodeLocusUnknown {printer:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"} PrinterAccessCodeLocusConflict {printer:_,matches:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"}
- }
-}
-fn read_existing_printer_session_from_mint_at_use(printer:PhysicalAssetIdentity,version:NonEmptyStr,mint:FederatedWorkloadCredentialMint) -> PrinterSessionRead {
- match printer_access_code_locus(printer:printer) {
-  PrinterAccessCodeDesiredLocusFound {locus:locus} =>
-   match printer_mint_at_use_token(mint:mint) {
-    Present {value:token} =>
-     match fetch_secret_ref_credential_with_token(secret_ref:secret_ref_pin_version(ref:locus.secret,version:version),access_token:token) {
-      SecretCredentialReady {credential:c,resolved_version:r} => if (c as String)=="" {PrinterSessionRefused {cause:"Empty printer credential"}} else {PrinterSessionReady {session:PrinterCredentialSession {printer:printer,version:version,credential:c,resolved:r}}}
-      SecretCredentialFetchRefused {reason:r}=>PrinterSessionRefused {cause:r}
-      SecretCredentialAccessUpsertRequired {plan:_}=>PrinterSessionRefused {cause:"Existing-session read requires credential access; it does not provision access"}
-      SecretCredentialWireDecodeRefused {identity_cause:_,payload_cause:_}=>PrinterSessionRefused {cause:"Credential response did not decode"}
-      SecretCredentialResolvedVersionMismatch {requested:_,resolved:_}=>PrinterSessionRefused {cause:"Credential response names another exact version"}
-     }
-    Absent => PrinterSessionRefused {cause:"Mint-at-use credential could not be acquired"}
    }
   PrinterAccessCodeLocusUnknown {printer:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"} PrinterAccessCodeLocusConflict {printer:_,matches:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"}
  }
