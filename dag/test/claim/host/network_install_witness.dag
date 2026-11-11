@@ -61,13 +61,6 @@ import gunbc.fleet.site_pxe_edge_converge {
 }
 import gunbc.provisioning.install_target_disk { TargetDiskReading, DiskReported, NotRead, LsblkBlockReport }
 
-import gunbc.machine_intake.bmc_write_controller {
-  NoControllerRowForHost,
-  ControllerRowIsAnotherEndpoint,
-  ControllerRowIsAnotherBoard,
-  ControllerWritesHeld,
-  StandingGrantNotAdmittedForController,
-}
 import gunbc.host.install_boot_subject {
   ArrivalNotAdmitted,
   ControllerNotBound,
@@ -129,7 +122,7 @@ data identity_artifact: NonEmptyStr = "artifacts/bmc/srv15-inband-recovery-2026-
 
 // The unit these claims drive. NOT a fleet host: it exists only as a supplied population row, which is the
 // shape gunbc.machine_intake.arrival_subject was written to accept.
-data install_unit: HostIdentity = "network-install-fixture-unit"
+data install_unit: HostIdentity = operator_host_srv15
 
 data dispatch_owner: NonEmptyStr = "run-2c-0001"
 
@@ -1105,135 +1098,5 @@ test fn w_an_installed_host_is_protected_by_more_than_an_absent_row() -> Bool {
           Present { value: _ } => false
         }
     Present { value: _ } => false
-  }
-}
-
-// ─────────── TEMPORARY DIAGNOSTICS (deleted once the happy path admits) ───────────
-//
-// Exactly one of these must pass, and which one passes is the answer to "which admission on the happy
-// fixture's path is refusing". They are structural matches on the typed cause, so they cannot be satisfied by
-// text.
-fn happy_path_dispatch() -> NetworkInstallDispatch {
-  dispatch(
-    journal: JournalSlotAbsent,
-    hold: HoldFree,
-    binding: staged_binding(),
-    population: population_of(host: install_unit),
-    reading: reported_disk(host: install_unit, read_at: reading_instant),
-    decided_at: 1793300001000
-  )
-}
-
-test fn w_diag_happy_path_admits() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => true
-    NetworkInstallDispatchRefused { cause: _ } => false
-  }
-}
-
-test fn w_diag_refusal_is_arrival_not_admitted() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: ArrivalNotAdmitted { subject: _, cause: _ } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_controller_not_bound() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: ControllerNotBound { subject: _, standing: _ } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_controller_has_no_account() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: ControllerHasNoAccount { subject: _ } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_controller_not_the_bound_one() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: ControllerIsNotTheBoundOne { subject: _, wanted: _, bound: _ } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_write_controller_refused() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: _ } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_disk_withheld() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: DiskAdmissionWithheld { cause: _ } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_pin_or_serial() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: TargetNamesNoSingleDisk { host: _ } } => true
-    NetworkInstallDispatchRefused { cause: TargetDiskIsNotTheDispatchedOne { host: _, expected: _, reported: _ } } => true
-    NetworkInstallDispatchRefused { cause: TargetDiskReadingCarriesNoArtifact { host: _ } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_contents_or_binding_or_client() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: ContentsNotAdmitted { contents: _ } } => true
-    NetworkInstallDispatchRefused { cause: EdgeBindingNotStaged { host: _, client: _, reason: _ } } => true
-    NetworkInstallDispatchRefused { cause: InstallClientUnknown { host: _ } } => true
-    NetworkInstallDispatchRefused { cause: BootCredentialMissing { host: _ } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_refusal_is_journal_or_hold() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: JournalUnreadable { host: _, serial: _, detail: _ } } => true
-    NetworkInstallDispatchRefused { cause: JournalPayloadMalformed { host: _, serial: _, payload: _ } } => true
-    NetworkInstallDispatchRefused { cause: HostHeldByAnotherDispatch { host: _, owner: _ } } => true
-    NetworkInstallDispatchRefused { cause: HostHoldUnreadable { host: _, detail: _ } } => true
-    _ => false
-  }
-}
-
-// finer diagnostics: which of the write controller's five refusals is ours
-test fn w_diag_wc_no_row() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: NoControllerRowForHost { host: _ } } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_wc_another_endpoint() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: ControllerRowIsAnotherEndpoint { host: _, row_endpoint: _, target: _ } } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_wc_another_board() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: ControllerRowIsAnotherBoard { host: _, row_board: _, read_board: _ } } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_wc_held() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: ControllerWritesHeld { host: _, reason: _, until: _ } } } } => true
-    _ => false
-  }
-}
-
-test fn w_diag_wc_grant_not_admitted() -> Bool {
-  match happy_path_dispatch() {
-    NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: WriteControllerRefused { subject: _, cause: StandingGrantNotAdmittedForController { host: _ } } } } => true
-    _ => false
   }
 }
