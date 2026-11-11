@@ -97,6 +97,10 @@
 #   observation_refuses_when_the_acceptance_decoder_refuses
 #   observation_refuses_when_a_roster_node_is_not_shown_retired
 #   observation_refuses_an_empty_roster
+#   retirement_refuses_a_completion_receipt_left_by_an_earlier_attempt
+#   verification_admits_and_writes_both_admission_receipts
+#   verification_refuses_when_the_read_back_produced_no_document
+#   observation_refuses_when_the_read_back_produced_no_document
 #
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
@@ -674,6 +678,8 @@ echo "================ PART G: a refused append stops the migration; the input i
 MIG_LEG=$(fence_containing 'INPUT ADMITTED')
 [ -n "$MIG_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-3 block containing INPUT ADMITTED — refusing to invent one"; FAILURES=$((FAILURES+1)); }
 RET_LEG=$(fence_containing 'did not take its retirement')
+VER_LEG=$(fence_containing 'the only state from which step 5b may be entered')
+[ -n "$VER_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-5 verification fence to execute — its admission cannot be witnessed"; FAILURES=$((FAILURES+1)); }
 OBS_LEG=$(fence_containing 'STANDING ADMITTED')
 [ -n "$OBS_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-6 observation fence to execute — its admissions cannot be witnessed"; FAILURES=$((FAILURES+1)); }
 [ -n "$RET_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-4 block that refuses a retirement — refusing to invent one"; FAILURES=$((FAILURES+1)); }
@@ -686,6 +692,16 @@ if [ -n "$MIG_LEG" ] && [ -n "$RET_LEG" ]; then
   GEXP=$TMP/migrate-export; install -d -m 0755 "$GEXP/fabric/storage"
   GTREE=$TMP/release-tree; install -d -m 0755 "$GTREE"
   GB=$TMP/gb; install -d -m 0755 "$GB"
+  # step 5 asks the event branch where it stands; nothing else in these cases touches git
+  cat > "$GB/git" <<'GITSTUB'
+#!/usr/bin/env bash
+case "$*" in
+  *"ls-remote origin roadmap-events"*) printf '%s\trefs/heads/roadmap-events\n' "${STUB_TIP:-$(printf 'd%.0s' {1..40})}"; exit 0 ;;
+esac
+printf 'stub git: unexpected call: %s\n' "$*" >&2; exit 1
+GITSTUB
+  chmod +x "$GB/git"
+
   cat > "$GB/gunbc" <<'EOF'
 #!/usr/bin/env bash
 fn=$(printf '%s\n' "$*" | sed -n 's/.*--function \([a-z_]*\).*/\1/p')
@@ -702,6 +718,12 @@ case "$fn" in
   roadmap_event_log_read_back_cli)
     rp=$(printf '%s\n' "$*" | sed -n 's/.*--arg report_path=\([^ ]*\).*/\1/p')
     [ -n "$rp" ] || { echo "stub gunbc: the read-back was handed no report_path" >&2; exit 1; }
+    # The failure the stale-document cases need: the entry SUCCEEDS and writes nothing. A step that then reads the
+    # report file is reading whatever the LAST attempt left there, and no exit code anywhere says so.
+    if [ -n "${STUB_READBACK_NOWRITE:-}" ]; then
+      printf 'stub gunbc: the read-back admitted and wrote nothing\n' >> "$APPEND_LOG"
+      exit 0
+    fi
     : > "$rp"
     printf '%s\n' "${EXPECTED_ROSTER:-}" | tr ',' '\n' | while read -r nd; do
       [ -n "$nd" ] || continue
@@ -719,8 +741,12 @@ fi
 exit 0
 EOF
   chmod +x "$GB/gunbc"
-  seed_export() { # 17 acceptances + 1 revocation, the fabric tail empty, unless $1 says otherwise
-    rm -f "$GEXP"/fabric/storage/* "$GEXP/migrate.completion"
+  seed_export() { # 17 acceptances + 1 revocation, the fabric tail empty, unless $1 says otherwise.
+                  # $3 = keep: leave any migrate.completion from a PREVIOUS scenario standing. A fresh export
+                  # directory would never carry one, and clearing it here is exactly why an earlier round's fixture
+                  # could not see a receipt surviving a failed retry.
+    [ "${3:-}" = keep ] || rm -f "$GEXP/migrate.completion"
+    rm -f "$GEXP"/fabric/storage/*
     : > "$GEXP/migrate.acceptance.lines"
     : > "$GEXP/seed.jsonl"
     for i in $(seq 1 "${1:-17}"); do
@@ -739,20 +765,32 @@ EOF
   }
   run_migrate() { local label="$1"; shift
     : > "$TMP/appends.log"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
-    local out rc; out=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+    local out rc; out=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" STUB_CALL_DIR="$TMP" \
       OPERATOR='principal:google-oidc/accounts/116084671989231734979' "$@" bash "$TMP/migleg.sh" 2>&1); rc=$?
     echo "  [$label] rc=$rc appends=$(wc -l < "$APPEND_LOG" | tr -d ' ')"; echo "$out" | sed 's/^/    /'
     LAST_OUT="$out"; LAST_RC=$rc; LAST_APPENDS=$(wc -l < "$APPEND_LOG" | tr -d ' ')
   }
   run_retire() { local label="$1"
     : > "$TMP/appends.log"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
-    OUT=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+    OUT=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" STUB_CALL_DIR="$TMP" \
       OPERATOR='principal:google-oidc/accounts/116084671989231734979' bash "$TMP/retleg.sh" 2>&1); RC=$?
     echo "  [$label] rc=$RC retires=$(wc -l < "$APPEND_LOG" | tr -d ' ')"; echo "$OUT" | sed 's/^/    /'
+    # also published as LAST_*: a case that has to inspect step 4's own words (rather than only its exit code)
+    # otherwise ends up asserting against the previous step's output, which is exactly what it is NOT testing
+    LAST_OUT="$OUT"; LAST_RC=$RC
   }
   printf '%s\n' "$MIG_LEG" > "$TMP/migleg.sh"
   printf '%s\n' "$RET_LEG" > "$TMP/retleg.sh"
   printf '%s\n' "$OBS_LEG" > "$TMP/obsleg.sh"
+  printf '%s\n' "$VER_LEG" > "$TMP/verleg.sh"
+  run_verify() { # $1 = label, rest = STUB_* overrides; runs step 5 as the operator's shell would
+    local label="$1"; shift
+    : > "$TMP/appends.log"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
+    local out rc; out=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" STUB_CALL_DIR="$TMP" \
+      OPERATOR='principal:google-oidc/accounts/116084671989231734979' "$@" bash "$TMP/verleg.sh" 2>&1); rc=$?
+    echo "  [$label] rc=$rc"; echo "$out" | sed 's/^/    /'
+    LAST_OUT="$out"; LAST_RC=$rc
+  }
   run_observe() { # $1 = label, rest = STUB_* / STUB_ROSTER overrides; runs step 6 as the operator's shell would
     local label="$1"; shift
     : > "$TMP/appends.log"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
@@ -761,7 +799,7 @@ EOF
     # whole point is emptiness.
     local roster='entry-graph-union-construction,shell-dag-floor-peak-calibration-rows' knob
     for knob in "$@"; do case "$knob" in STUB_ROSTER=*) roster="${knob#STUB_ROSTER=}" ;; esac; done
-    local out rc; out=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+    local out rc; out=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" STUB_CALL_DIR="$TMP" \
       MANIFEST="$(cat "$GEXP/seed.jsonl")" \
       ROSTER="$roster" \
       OPERATOR='principal:google-oidc/accounts/116084671989231734979' "$@" bash "$TMP/obsleg.sh" 2>&1); rc=$?
@@ -937,6 +975,52 @@ EOF
   [ "$LAST_RC" -ne 0 ] || fail "G18: an empty roster certified the migration — zero expected is zero admitted, which is how a verification passes by having no subject"
   echo "$LAST_OUT" | grep -qF 'the roster is empty' \
     || fail "G18: the refusal did not name the empty roster: [$LAST_OUT]"
+
+  # ---- round twelve (review at 1f42003): a receipt from an EARLIER attempt must not survive a failed retry ------
+  # Step 3 writes its completion receipt only after the last admitted append, so the receipt of a PREVIOUS success
+  # is still on disk when a retry starts — and it is the one thing step 4 demands before retiring anything. The
+  # fixture below is the reviewer's sequence exactly: a migration completes, then a retry against the SAME export
+  # dies on its third append, WITHOUT the fixture setup clearing the receipt (seed_export clearing it is why the
+  # earlier aborted-migration case could not see this). Step 4 must refuse, and retire nothing.
+  seed_export; run_migrate "the first migration completes and leaves its receipt"
+  [ "$LAST_RC" -eq 0 ] || fail "G19: the first migration should have completed: [$LAST_OUT]"
+  [ -s "$GEXP/migrate.completion" ] || fail "G19: the completed migration left no receipt, so this case would test nothing"
+  seed_export 17 "" keep; run_migrate "a retry against the same export, whose third append refuses" STUB_FAIL_ON=3
+  [ "$LAST_RC" -ne 0 ] || fail "G19: the retry should have refused at its third append: [$LAST_OUT]"
+  run_retire "step 4 after a FAILED retry that left an earlier attempt's receipt standing"
+  [ "$LAST_RC" -ne 0 ] || fail "G19: step 4 retired over an acceptance history the failed replay never wrote — the earlier attempt's receipt was trusted"
+  echo "$LAST_OUT" | grep -qF 'migrate.completion' \
+    || fail "G19: the refusal did not name the missing completion receipt: [$LAST_OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G19: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # The same class, one step later: step 5b's gate reads $D/read-back.out and $D/migration.verified as ADMISSION
+  # predicates. Step 5 writes both only on success, so a re-run whose read-back produces nothing would otherwise be
+  # certified by the previous attempt's documents — a stale document that still says MIGRATION VERIFIED, digested
+  # into a stale receipt, in front of the deploy gate. The first case is again the happy path, so the refusal cases
+  # below cannot be harness noise.
+  seed_export; run_verify "step 5 admits and writes both of its receipts"
+  [ "$LAST_RC" -eq 0 ] || fail "G20: step 5 refused a read-back that admits: [$LAST_OUT]"
+  [ -s "$GEXP/migration.verified" ] && [ -s "$GEXP/read-back.out" ] \
+    || fail "G20: the admitting step left no admission to gate on: verified=[$(cat "$GEXP/migration.verified" 2>/dev/null | head -1)] readback=[$(cat "$GEXP/read-back.out" 2>/dev/null | head -1)]"
+
+  seed_export
+  run_verify "step 5 re-run, where the read-back admits but writes nothing" STUB_READBACK_NOWRITE=1
+  [ "$LAST_RC" -ne 0 ] || fail "G21: step 5 certified activation from a read-back that produced no document at all"
+  [ ! -e "$GEXP/migration.verified" ] \
+    || fail "G21: the failed re-run left the previous attempt's admission standing — step 5b would deploy on it: [$(head -2 "$GEXP/migration.verified" | tr '\n' '|')]"
+  [ ! -e "$GEXP/read-back.out" ] \
+    || fail "G21: a stale read-back document survived a re-run that wrote none, and its digest would have been recorded as this attempt's"
+
+  seed_export
+  run_observe "step 6 re-run, whose read-back admits but writes nothing" STUB_READBACK_NOWRITE=1
+  [ "$LAST_RC" -ne 0 ] || fail "G22: step 6 measured a standing that is not in the log — it counted the previous attempt's report"
+  # The refusal must come from the STANDING COUNT, not from an earlier gate in the same fence.
+  # Any OBSERVATION REFUSED would do for the first assertion and the case would certify a fence
+  # it never reached — which is what it did before this line existed.
+  echo "$LAST_OUT" | grep -qF 'roster nodes retired' \
+    || fail "G22: the refusal was not the standing count, so the case proves nothing about the stale report: [$LAST_OUT]"
+  [ ! -e "$GEXP/read-back.after.out" ] \
+    || fail "G22: the re-run left the previous attempt's report standing for the next reader to count"
 fi
 echo
 

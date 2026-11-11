@@ -321,6 +321,14 @@ set -euo pipefail
 cd $TREE
 : "${D:?MIGRATION REFUSED: EXPORT_DIR is not set — run step 1 and use the path it echoed}"
 : "${OPERATOR:?MIGRATION REFUSED: the author is part of the fact; an empty author is a wrong fact}"
+# ONE COMPLETION PER ATTEMPT. The receipt written at the end of this step is the ONLY thing step 4 demands before
+# it retires anything, and this step writes it only after the LAST admitted append — so when a retry begins, the
+# PREVIOUS attempt's receipt is still standing on disk. A replay that dies on its third append would leave step 4
+# holding a receipt that is intact, self-consistent, and describes a history the failed replay never wrote: the
+# inputs are re-prepared from the same export, so the counts, the seed digest and the input digest ALL match it.
+# Nothing downstream can tell that receipt from a fresh one, so it is destroyed here, before anything can fail.
+rm -f "$D/migrate.completion"
+
 # THE SEED IS RE-VERIFIED BY DIGEST, NOT BY COUNT, BEFORE ANYTHING IS APPENDED. Step 1 hashed the seed it
 # exported into $D/SHA256SUMS. A line count cannot see a rewrite — an approver named differently, a receipt tail
 # edited, one line swapped for another of the same length — and step 5 builds its expected manifest from the file
@@ -540,6 +548,13 @@ instead of certifying.
 # the gate; the exit code is, and it is derived from the readers' own verdicts. The roster's standing sentences
 # are informational because the verifier itself refuses a roster name whose retirement is not in the log, so a
 # missing retirement cannot ride through on a friendly standing line.
+# THE ADMISSION IS REBUILT OR IT IS ABSENT. step 5b reads $D/read-back.out and $D/migration.verified as admission
+# PREDICATES, and this fence writes both only on its success path. Without this line a re-run whose read-back fails
+# leaves the PREVIOUS attempt's documents standing: the `grep '^MIGRATION VERIFIED'` below is satisfied by the stale
+# document, the digest it records is the digest of that stale document, and activation is certified by a read-back
+# that never happened in this attempt. Both go together — an admission missing half its evidence is no admission.
+rm -f "$D/read-back.out" "$D/migration.verified"
+
 MANIFEST="$(cat "$D/seed.jsonl")"   # the fabric store contributes nothing today (verified at step 1: acceptance.count is 0);
                                     # if acceptance.before is not empty, append each object's payload.line as step 3 derives them
 ROSTER="entry-graph-union-construction,shell-dag-floor-peak-calibration-rows"
@@ -884,6 +899,10 @@ it runnable would bend the reader to the runner, so `gunbc.roadmap.roadmap_event
 beside them that decide nothing and only report:
 
 ```bash
+# THE REPORT IS REBUILT OR ABSENT. The standing count at the end of this fence reads $D/read-back.after.out, which
+# the read-back entry writes through the modeled Filesystem.Write; a re-run whose read-back produced nothing would
+# otherwise be measured against the PREVIOUS attempt's document and report a retirement that is not in the log.
+rm -f "$D/read-back.after.out"
 # exit 0 = the fail-closed retired read ADMITTED the set (a log it cannot read exits 1 naming the reason, and
 # is never served as an empty retired set); the reason the runtime prints IS the diagnostic. An admission nobody
 # consumes is a comment: this fence has no `set -e`, so the status is CAPTURED and a refusal stops the step here,
