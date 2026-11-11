@@ -10,6 +10,16 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 fn closure_of(entry: &str) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
+    closure_of_scoped(entry, &["dag".to_string()])
+}
+
+// The closure over an EXPLICIT source-root set. fleet_roster_entry_resolve_witness passes the
+// exact `gunbc run --source-root` argv of the production fleet-converge entries (dag + src/v2);
+// the sibling witnesses keep the dag-only default through closure_of.
+pub(super) fn closure_of_scoped(
+    entry: &str,
+    source_roots: &[String],
+) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
     let root = std::env::current_dir()
         .unwrap()
         .ancestors()
@@ -22,8 +32,7 @@ fn closure_of(entry: &str) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
         content: std::fs::read_to_string(root.join(entry)).unwrap(),
     });
     let mut v =
-        super::entry_resolve::resolve_seeded_compile_closure(vec![seed], &["dag".to_string()])
-            .unwrap();
+        super::entry_resolve::resolve_seeded_compile_closure(vec![seed], source_roots).unwrap();
     v.sort_by(|a, b| a.path.cmp(&b.path));
     v
 }
@@ -177,7 +186,9 @@ fn grain_fixture_graph() -> (
 
 // The same graph, from any entry: the realization witnesses below also run against real corpus
 // files, because a fixture can only show the shape a failure has, not that the failure is gone.
-fn graph_from(
+// pub(super): the ONE parse/resolve pipeline for grain witnesses -- fleet_roster_entry_resolve_witness
+// reuses it rather than copying it (root_generalization: no second implementation of one rule).
+pub(super) fn graph_from(
     entry: &str,
 ) -> (
     Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
@@ -186,7 +197,23 @@ fn graph_from(
     Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     Rc<crate::v1_compiler_resolve::ModuleGraph>,
 ) {
-    let sources = closure_of(entry);
+    graph_from_scoped(entry, &["dag".to_string()])
+}
+
+// graph_from over an EXPLICIT source-root set -- the one pipeline, scoped (root_generalization:
+// fleet_roster_entry_resolve_witness passes the production `gunbc run` argv roots through here
+// rather than rebuilding the pipeline).
+pub(super) fn graph_from_scoped(
+    entry: &str,
+    source_roots: &[String],
+) -> (
+    Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
+    Rc<crate::v1_std_core::InternTable>,
+    Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+    Rc<crate::v1_compiler_resolve::ModuleGraph>,
+) {
+    let sources = closure_of_scoped(entry, source_roots);
     let mut intern = empty_intern_table();
     let mut parsed = Vec::new();
     let mut si = crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>();
@@ -247,7 +274,9 @@ fn route_messages(
         .collect()
 }
 
-fn grain_demand(
+// pub(super): the ONE census+realization grain helper, shared with
+// fleet_roster_entry_resolve_witness (root_generalization: one implementation of one rule).
+pub(super) fn grain_demand(
     modules: &Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     seeds: &[&str],
     si: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,

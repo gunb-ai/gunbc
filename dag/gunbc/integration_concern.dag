@@ -880,7 +880,14 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
       },
       account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
     },
-    tail: [],
+    tail: [ConcernSighting {
+      revision: "cf7c5038cc3",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired_scoped") }],
+      },
+      account: "PR #16307 (node adhoc-cf8a613a-843, P8d follow-up) adds src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs -- hand-written witness Rust beside the same mirror: the real-entry demanded-grain resolve witnesses for the org-roster REST route (production demand-acquire resolve over two real fleet entries, a realization inhabitance control, and the wire-rows-only carrier fixture pair under dag/test/fixture/demanded_scope). Deferred to the same landing as the head sighting: lane node adhoc-0eedbb6e-a35 decides generated-.dag vs standing hand-written exception; the file carries a receipt comment at its top pointing at this row.",
+    }],
   },
   disposition: Open,
 }
@@ -2370,6 +2377,33 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
   },
 }
 
+data runner_connectivity_observe_admitted_by_no_controller_key_stager: IntegrationConcern = IntegrationConcern {
+  identity: "runner_connectivity_observe_admitted_by_no_controller_key_stager",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    requirement: "gunbc.fleet.runner_connectivity_observe_wet::observe_under_staged_key calls gunbc.github_effect_perform::stage_controller_app_key (dag/gunbc/fleet/runner_connectivity_observe_wet.dag, the ControllerKeyStaging match), but stage_controller_app_key's admit_callers list names only the lost-boot, qualification, service-slot and jit-dead-sweep staged-key callers -- not this one. Under the run demand grain the entry therefore refuses ConstructorCallAdmissionRefused before any read: the entry is UNEXECUTABLE by gunbc run, and no lane dispatches it today (the mode's header says it is not bound to any timer or CI job), which is why main carried this unseen. It was sighted at revision 12480021961 as the sole failing arm of src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs on srv1 -- declared red there by gunbc.recurring_failure_mode::rest_service_carrier_row_unrealized_by_the_run_demand_grain_refuses_a_misattributed_no_method_surface, NOT as the carrier class: the ListOrganizationRunnersPage refusal is ABSENT from that entry's resolve, so the carrier repair reaches it too. TRIGGER: enroll observe_under_staged_key in stage_controller_app_key's admit_callers (or move the connectivity entry to a staging constructor it is admitted to), and the witness the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain goes green under `cargo test -p v1-compiler --lib fleet_roster_entry_resolve_witness`.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+    tail: [decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key")],
+  },
+  question: "Who admits the connectivity observe entry to controller-key staging? The entry was written against stage_controller_app_key but never enrolled in its admit_callers, so it has never resolved under the run demand grain and no lane executes it. The fix is one allowlist row (or a move to an admitted stager) plus the witness going green; until then the witness is declared red with THIS cause, distinct from the carrier class the sibling failure-mode row tracks.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "12480021961",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key") }],
+      },
+      account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
+    },
+  },
+  disposition: Open,
+}
+
 // PXE 2b: the nbd install actuator's boot-once and the host-generic managed-host boot-once are two
 // authorities that set a Redfish boot-source override and reset a host's BMC. The install actuator has NO
 // managed-host identity (os_install_actuator_steps is keyed on arm+boot_control+export; network_boot_actuation
@@ -2501,7 +2535,8 @@ data managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once: Integr
 }
 
 
-data integration_concerns: List<IntegrationConcern> = [qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, nbd_install_actuator_boot_once_hard_codes_srv3, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once]
+
+data integration_concerns: List<IntegrationConcern> = [qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
