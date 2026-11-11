@@ -1,4 +1,4 @@
-module test.claim.machine_intake.arrival_run_wet_witness;
+module test.claim.machine_intake.arrival_run_wet_witness
 
 // WITNESS FOR THE 1d-B ARRIVAL DOOR. The door is a pure composition over SUPPLIED capture bytes
 // (the live transport runs the declared extdeps ops outside the DAG and the skin commits every
@@ -8,8 +8,7 @@ module test.claim.machine_intake.arrival_run_wet_witness;
 // ground, not only against fixtures. Fixture provenance is stated per fixture.
 
 import std.types { NonEmptyStr, String, Bool, Int, EpochMs }
-import std.list { first }
-import std.algebra { filter, map, length, string_contains }
+import std.algebra { length, string_contains }
 import std.content_hash { content_hash_of_value }
 import std.dissolution { dissolution_description }
 import gunbc.machine_intake.arrival_run {
@@ -24,9 +23,9 @@ import std.scoped_authorization { AttemptIdentity }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId }
 import gunbc.machine_intake.bmc_account_state_parsers {
   arrival_named_census_read,
-  ArrivalNamedCensusAccepted,
-  ArrivalNamedCensusAuthenticationRefused,
-  ArrivalNamedCensusUnreadable,
+  IpmiNamedCensusAccepted,
+  IpmiNamedCensusAuthenticationRefused,
+  IpmiNamedCensusUnreadable,
   ipmi_authenticated_census_read,
   IpmiCensusAccepted,
   ipmi_channel_info_is_lan,
@@ -36,7 +35,6 @@ import gunbc.machine_intake.inband_host_identity {
   InbandBoardObserved,
   InbandBoardIdentity,
   InbandIdentitySource,
-  InbandAttributedByHostIdentity,
 }
 import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
@@ -80,7 +78,7 @@ fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
     netrc_file: "arrival-witness/netrc" as NonEmptyStr,
     observation_time: 1762400000000,
     attempt: "arrival-witness-attempt" as AttemptIdentity,
-    credential_epoch: "1" as NonEmptyStr,
+    credential_epoch: 1,
     observation_subject: MachineIntakeSubject {
       subject: QualificationSubject {
         unit_key: "srv15" as UnitKey,
@@ -103,7 +101,7 @@ fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
         },
         product_name: "Altrad8ud-1L2T" as NonEmptyStr,
         serial: "BR80S6102300049" as NonEmptyStr,
-        attributed_by: InbandAttributedByHostIdentity { mac: "9c:6b:00:e7:c9:e7" as NonEmptyStr },
+        attributed_by: "9c:6b:00:e7:c9:e7" as NonEmptyStr,
       },
     },
   }

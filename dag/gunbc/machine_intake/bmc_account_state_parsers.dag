@@ -749,11 +749,7 @@ fn arrival_named_census_read(text: String, channel: IpmiChannelNumber) -> Arriva
       IpmiNamedCensusAuthenticationRefused { detail: "the authenticated named census was refused by the controller (credential rejected)" as NonEmptyStr }
     Present { value: IpmiSessionUnestablished } =>
       IpmiNamedCensusUnreadable { detail: "the RMCP+ session never came up; that reached no credential and is not a refusal of it" as NonEmptyStr }
-    Absent => match arrival_named_user_access_rows(text: text, channel: channel) -> IpmiUserAccessRowsVerdict2
-  admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_parsers", decl_name: "arrival_named_census_read"),
-  ]
-{
+    Absent => match arrival_named_user_access_rows(text: text, channel: channel) {
       ArrivalNamedRowsRead { rows: rows } => IpmiNamedCensusAccepted { rows: rows }
       ArrivalNamedRowsMalformed { detail: d } => IpmiNamedCensusUnreadable { detail: d }
     }
@@ -765,7 +761,8 @@ fn arrival_named_census_read(text: String, channel: IpmiChannelNumber) -> Arriva
 // the `Channel Medium Type` line, keyed, not a substring of prose. Admitted to the arrival door only.
 fn ipmi_channel_info_is_lan(text: String) -> Bool
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_run_wet_after_hold"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_run_wet_gated"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_real_channel_info_probes_serve_the_lan_medium"),
   ]
 {
   match ipmi_field(text: text, key: "Channel Medium Type") {
