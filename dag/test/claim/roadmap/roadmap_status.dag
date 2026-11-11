@@ -91,10 +91,14 @@ test fn witness_derivable_done_from_merge() -> Bool {
     && !item_is_done(item: derivable_item(prs: [9999], title: "bound + open"), merged: [5445])
 }
 
-test fn witness_authored_done_is_authored() -> Bool {
-  item_is_done(item: authored_status_fixture(content: "hand-checked done"), merged: [])
-    && !item_is_done(item: authored_status_fixture(content: "hand-checked todo, cites #5445"), merged: [5445])
-}
+// RETIRED WITH ITS SUBJECT (this file's own note below, and operator ruling
+// gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08): this case read `done: true` off an
+// authored row to ask whether the row was done. That flag no longer exists, so the claim could only compare a
+// fitted value against itself. Both of its arms are still claimed: an authored row never reports its own
+// ending (witness_no_line_shape_reports_its_own_ending), and citing a merged PR in the content is not done
+// (witness_partial_evidence_merged_mention_stays_green). What DOES end a node — an acceptance event folding
+// to accepted, or a retirement — is claimed over the event log in
+// dag/test/claim/roadmap/roadmap_event_log_witness.dag.
 
 test fn witness_partial_evidence_merged_mention_stays_green() -> Bool {
   let item = authored_status_fixture(content: "rust-gate coverage — cites merged #5445 as partial evidence, not done")

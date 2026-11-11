@@ -162,7 +162,9 @@ fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
 }
 
 fn live_withheld_node_ids() -> List<RoadmapNodeId>? {
-  match withheld_node_ids_projection(history: roadmap_acceptance_event_history_load()) {
+  match withheld_node_ids_projection(
+    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
+  ) {
     WithheldNodeIdsProjected { ids: ids } => Present { value: ids }
     WithheldNodeIdsProjectionRefused { detail: _ } => Absent
   }
@@ -738,11 +740,21 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
     }
 }
 
-test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_node_admissible(n: red_fixture(line: red_ticket(done: true)))
-}
+// RETIRED WITH ITS SUBJECT, not deleted for convenience: this case read an authored completion flag
+// (`red_ticket(done: true)`) to ask whether a finished ticket can come back. That flag is gone -- whether a
+// node is over is a fact of the roadmap event log, never of the row (operator ruling
+// gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08) -- so a row fitted with it would be
+// the second home the ruling deletes, and the claim would only be proving that a fabricated field fabricates
+// nothing. The fact it guarded is claimed where it now lives: an accepted node is off the plan in
+// dag/test/claim/roadmap/roadmap_event_log_witness.dag::a_retired_node_leaves_the_plan_the_way_an_accepted_one_does,
+// and an over node's dependency edge closes in
+// dag/test/claim/roadmap/roadmap_launch_canary_witness.dag::witness_canary_a_retired_parent_closes_the_dependency_and_an_unretired_one_does_not.
 
-test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
+// What this case proves now is stated in its name: no row kind that is not an admissible work item is
+// admissible, whatever text it carries. The row it used to fit was a 'superseded' line, and there is no
+// such row kind any more -- a retirement is a Retired event in the log, claimed in
+// dag/test/claim/roadmap/roadmap_event_log_witness.dag -- so the old name no longer described a kind of row.
+test fn witness_plain_line_is_not_an_admissible_work_item() -> Bool {
   !active_node_admissible(n: red_fixture(
     line: PlainLine { content: "retired history" },
   ))

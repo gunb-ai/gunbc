@@ -687,15 +687,21 @@ test fn a_revocations_disposition_decides_whether_the_node_returns() -> Bool {
   let reopened_standing = roadmap_node_standing(envs: [accepted, reopened])
   // POSITIVE CONTROLS FOR BOTH DISPOSITIONS (review of gunb-ai/gunbc#16189, finding 1): the word the
   // operator wrote is what moves the node — remains-superseded keeps it closed, reopens-active-frontier
-  // returns it to the frontier, and a node back on the frontier takes the ordinary record of work
-  // again. Neither disposition is inferred, defaulted, or read from the standing.
+  // returns it to the frontier. Neither disposition is inferred, defaulted, or read from the standing.
+  // The Progress event is ABSORBED on both arms and re-decides nothing: on the reopened arm it leaves the
+  // standing identical to the lane without it, and identical does not mean accepted — a node the log
+  // returned to the frontier is open work, and only an acceptance event can make it accepted again. (The
+  // first draft of this claim asserted `roadmap_standing_is_accepted` here and was red, which is what
+  // proved the arm was stating the wrong law.)
   roadmap_standing_is_terminal(standing: accepted_standing)
     && roadmap_standing_is_accepted(standing: accepted_standing)
     && roadmap_standing_is_terminal(standing: stays_standing)
     && roadmap_standing_is_accepted(standing: stays_standing)
     && !roadmap_standing_is_terminal(standing: reopened_standing)
     && !roadmap_standing_is_accepted(standing: reopened_standing)
-    && roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted, reopened, open_lane]))
+    && roadmap_node_standing(envs: [accepted, reopened, open_lane]) == reopened_standing
+    && !roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted, reopened, open_lane]))
+    && !roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted, reopened, open_lane]))
 }
 
 // THE SEED'S OWN HISTORY, END TO END (review finding 2): acceptance, then the revocation that took it
