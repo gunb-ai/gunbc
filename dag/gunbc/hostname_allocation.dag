@@ -579,9 +579,14 @@ type ObservedHostIdentityRefusal
   = ObservedHostUnnamed { observed: String }
   | ObservedHostAmbiguous { observed: String, candidates: List<DnsLabel> }
   | ObservedHostUnknown { observed: String }
+  // The registry itself admits nothing -- `key` is claimed by more than one machine, as a current name or
+  // a pending one. This is NOT an unknown spelling: the spelling may be perfectly good, and the fleet is
+  // simply in a state where no machine may be placed. It resolves nothing and is never reported as
+  // `ObservedHostUnknown`, which would tell an operator to go fix the name on the machine.
+  | ObservedHostRegistryRefused { key: String }
 
 fn observed_host_identity(observed: String) -> ObservedHostIdentity {
-  observed_host_identity_in(allocations: gunbc_fleet_hostname_allocations, observed: observed)
+  observed_host_identity_in(allocations: fleet_machine_registry, observed: observed)
 }
 
 // THE SAME RULE OVER A GIVEN ROSTER, so a witness can hand it two hosts that answer to one short
@@ -598,6 +603,11 @@ fn observed_host_identity_in(allocations: List<HostnameAllocation>, observed: St
         ObservedHostIdentityRefused { refusal: ObservedHostAmbiguous { observed: s, candidates: c } }
       HostSelectorUnknown { selector: s } =>
         ObservedHostIdentityRefused { refusal: ObservedHostUnknown { observed: s } }
+      // A refused registry resolves nothing, and the spelling is not what is wrong: no fallback to the raw
+      // string, and no report of "unknown", which would send an operator to the machine instead of to the
+      // registry. `key` is the name two machines claim.
+      HostSelectorRegistryRefused { key: k } =>
+        ObservedHostIdentityRefused { refusal: ObservedHostRegistryRefused { key: k } }
     }
   }
 }
@@ -620,6 +630,12 @@ fn observed_host_identity_refusal_text(refusal: ObservedHostIdentityRefusal) -> 
       join([quote_spelling(s: o),
             " is no host's identity, allocated hostname, or shorter form of its drawn name;",
             " a spelling is a name and is never a HostIdentity"], "")
+    // A different fault entirely: the machine's name may be perfect and the fleet still be unplaceable.
+    // The sentence says what to repair (the registry) and names the key two machines claim, so nobody
+    // goes chasing a hostname that was never the problem.
+    ObservedHostRegistryRefused { key: k } =>
+      join([quote_spelling(s: k), " is claimed by more than one machine in the fleet registry;",
+            " the registry admits no host until that is repaired, so nothing here can be resolved"], "")
   }
 }
 
@@ -657,7 +673,7 @@ fn join_side_is_observed(side: ObservedHostJoinSide) -> Bool {
 
 fn observed_host_selector_join(expected: String, observed: String) -> ObservedHostSelectorJoin {
   observed_host_selector_join_in(
-    allocations: gunbc_fleet_hostname_allocations, expected: expected, observed: observed)
+    allocations: fleet_machine_registry, expected: expected, observed: observed)
 }
 
 fn observed_host_selector_join_in(

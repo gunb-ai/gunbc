@@ -10,14 +10,15 @@ module test.claim.observed_host_identity_witness
 // fleet's own, so the shape witnessed is the shape in production
 // (gunbc.design_argument::witness_one_interface).
 import std.types { String, Bool, Int }
+import std.optional { Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.hostname_allocation {
   HostnameAllocation, LegacyHostname, DrawnHumanName, HumanNameDraw, FirstOnly,
-  gunbc_fleet_hostname_allocations,
-  ObservedHostIdentityResolved, ObservedHostIdentityRefused,
-  ObservedHostUnnamed, ObservedHostAmbiguous, ObservedHostUnknown,
+  fleet_machine_registry,
+  ObservedHostIdentity, ObservedHostIdentityResolved, ObservedHostIdentityRefused,
+  ObservedHostUnnamed, ObservedHostAmbiguous, ObservedHostUnknown, ObservedHostRegistryRefused,
   observed_host_identity, observed_host_identity_in, observed_host_identity_refusal_text,
   ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
   JoinSideRefused, JoinHostsDisagree, join_side_is_observed,
@@ -31,6 +32,7 @@ fn legacy_row(slot: String, hostname: String) -> HostnameAllocation {
   HostnameAllocation {
     fleet_slot: slot as HostIdentity,
     name: LegacyHostname { label: hostname as DnsLabel },
+    next_name: Absent,
   }
 }
 
@@ -41,6 +43,7 @@ fn drawn_row(slot: String, first: String, entropy: Int) -> HostnameAllocation {
       name: FirstOnly { first: first as DnsLabel },
       draw: HumanNameDraw { entropy: entropy },
     },
+    next_name: Absent,
   }
 }
 
@@ -221,9 +224,12 @@ test fn witness_an_empty_selection_refuses_before_the_kernel_is_judged() -> Bool
 
 // THE FLEET ROSTER RESOLVES EVERY HOST IT CARRIES, BY ITS OWN IDENTITY AND BY ITS OWN ALLOCATED
 // NAME. A rename that moved a name from one host to another would break this claim -- which is the
-// point: what is under test is the roster's rule, not a hand-picked pair.
+// point: what is under test is the roster's rule, not a hand-picked pair. The PENDING name is not in
+// this claim and must not be: `gunbc.hostname_allocation` (P2) rules a pending name RESERVED and not
+// answered to, so a machine answering its own rename target before the rename applies is refused;
+// `witness_a_pending_rename_target_is_not_yet_an_answer` holds that boundary at this interface.
 test fn witness_the_fleet_roster_resolves_every_allocated_host_by_both_names() -> Bool {
-  let unmet = filter(gunbc_fleet_hostname_allocations, row => {
+  let unmet = filter(fleet_machine_registry, row => {
     match row.name {
       LegacyHostname { label: l } =>
         !resolves_as(observed: row.fleet_slot as String, want: row.fleet_slot)
@@ -238,5 +244,55 @@ fn resolves_as(observed: String, want: HostIdentity) -> Bool {
   match observed_host_identity(observed: observed) {
     ObservedHostIdentityResolved { host: h } => (h as String) == (want as String)
     ObservedHostIdentityRefused { refusal: _ } => false
+  }
+}
+
+// A PENDING NAME IS NOT AN ANSWER YET. srv4's rename target is fox and the registry reserves it (no other
+// machine may take it), but the fleet's rule is that a machine answering a name it has not been renamed to
+// is refused rather than accepted as "close enough" -- fail-closed, because accepting a pending name would
+// let a half-applied rename certify a machine under the name it is about to have
+// (gunbc.design_argument::fail_closed).
+test fn witness_a_pending_rename_target_is_not_yet_an_answer() -> Bool {
+  match observed_host_identity(observed: "fox") {
+    ObservedHostIdentityRefused { refusal: r } =>
+      match r {
+        ObservedHostUnknown { observed: o } =>
+          o == "fox" && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "fox")
+        _ => false
+      }
+    ObservedHostIdentityResolved { host: _ } => false
+  }
+}
+
+// A REFUSED REGISTRY RESOLVES NOTHING, AND SAYS SO BY THE KEY IT REFUSED ON. Two machines claiming one
+// hostname is not a tie to break: `gunbc.hostname_allocation` admits no host at all until the collision is
+// repaired, so the spelling that is perfectly good on the row that looks fine is refused too. This is the
+// arm an operator most needs to be typed -- the fault is in the registry and the fix is not on any machine.
+test fn witness_a_refused_registry_resolves_nothing_and_names_the_key() -> Bool {
+  let collided = [
+    legacy_row(slot: "srv-one", hostname: "shared-name"),
+    legacy_row(slot: "srv-two", hostname: "shared-name"),
+  ]
+  let on_the_collision = observed_host_identity_in(allocations: collided, observed: "shared-name")
+  let on_a_clean_row = observed_host_identity_in(allocations: collided, observed: "srv-two")
+  match on_the_collision {
+    ObservedHostIdentityRefused { refusal: r } =>
+      match r {
+        ObservedHostRegistryRefused { key: k } =>
+          k == "shared-name"
+            && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "shared-name")
+            && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "registry")
+            && clean_row_also_refuses(resolution: on_a_clean_row)
+        _ => false
+      }
+    ObservedHostIdentityResolved { host: _ } => false
+  }
+}
+
+// The row that looks fine must refuse too -- never a winner, and never the raw string.
+fn clean_row_also_refuses(resolution: ObservedHostIdentity) -> Bool {
+  match resolution {
+    ObservedHostIdentityRefused { refusal: ObservedHostRegistryRefused { key: _ } } => true
+    _ => false
   }
 }
