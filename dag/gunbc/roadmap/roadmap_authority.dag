@@ -1075,7 +1075,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_E414RDCS728VRFA9QZ0NX76SYN",
       id: "pderive-typesafe-nullary-reflection",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/v2-self-hosting.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Stop the compiler from mixing up one type with another",
         boundary: "When the compiler asks 'what are the possible values of this type?', the answer comes from that actual type. Asking about one type and receiving another should be impossible to express.",
@@ -1092,7 +1092,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_HVYDDT9844FY806ZKBDV5KVQDR",
       id: "pderive-static-supplemental-contract",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/v2-self-hosting.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Write down which extra type requirements each generated shape needs",
         boundary: "For each shape we generate Rust for, record which extra requirements each of its type slots needs. 'No requirements' and 'we never said' stay different answers.",
@@ -1109,7 +1109,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_0CPDNZRQA7JMPR0SDG5XSG5987",
       id: "pderive-source-slot-binding",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/v2-self-hosting.md"),
+      carriers: [],
       line: ticket(t: updated(t: fields(
         headline: "Attach those requirements to the right type, not just the right position",
         boundary: "Connect each recorded slot to the exact declaration it belongs to, using the name resolution work above.",
@@ -1144,7 +1144,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_81MBTXHVQFB0HJ6XPA0WXEGVVW",
       id: "observation-raw-print-retirement",
       owner: "ci-observation",
-      carriers: carrier(path: "docs/plans/progress-observation-design.md"),
+      carriers: [],
       line: ticket(t: updated(t: fields(
         headline: "Remove the old raw progress printing",
         boundary: "Once the above work, inventory every place that prints progress directly and either move it over or mark it as real program output.",
@@ -1371,7 +1371,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_8XBLW9DKZH5NCQ0RTVPMGJ4F2",
       id: "ci-executed-coverage-receipt",
       owner: "ci-control",
-      carriers: carrier(path: "docs/plans/ci-process-end-to-end.md"),
+      carriers: [],
       line: ticket(t: updated(t: fields(
         headline: "A check reports what it actually executed, not merely that it ran",
         boundary: "Every required check carries the population it executed — which witnesses, which corpus, how many — and a run that executed nothing cannot report a verdict of any kind. A build failure that stops the corpus from running is its own outcome, distinct from the corpus running and disagreeing.",
@@ -1417,7 +1417,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_SZKN5YRA7FH46J1Z6THGN080G1",
       id: "v1-test-hygiene-producer-retirement",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/v2-self-hosting.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Move one hand-written test check into the substrate and delete the original",
         boundary: "Re-express the check, prove it behaves identically, then delete the hand-written version rather than keeping both.",
@@ -2186,11 +2186,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_4A1V8V0AN0B51SYR1XJP64A4YC",
       id: "work-execution-redesign",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: [],
       line: ticket(t: level_fields(
           headline: "Ordinary work runs without anyone choosing a host: it waits when the fleet is full, runs inside an admitted budget, survives controller loss and returns a verifiable result",
-          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. gunbc.plans.durable_work_handoff stays the program authority and is amended when work-exec-1 records its backend ruling; these rows order its milestones and are not a second plan. Proposal of 2026-11-08 for operator discussion. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
-          approach: "Seven members in dependency order: work-exec-0 splits sizing from identity and work-exec-1 selects the backend, in parallel; work-exec-2 builds one durable route for one ordinary build; work-exec-3 sizes automatically from evidence; work-exec-4 moves local work over and deletes its old launch paths; work-exec-5 moves CI over and switches the required verdict; work-exec-6 puts every consumer on a host under one ledger. Each member deletes the route it replaces, after naming that root's consumers. Against gunbc.plans.durable_work_handoff: PR 2, 3, 5, 6 and 9 to 12 are kept; PR 4 (host reservations and grant issuance) and PR 7 to 8 (remote host executor, SSH convergence, two-candidate selection) mostly dissolve into the scheduler if work-exec-1 selects one.",
+          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. These rows are the program authority, amended when work-exec-1 records its backend ruling, and are not a second plan. Proposal of 2026-11-08 for operator discussion. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
+          approach: "Seven members in dependency order: work-exec-0 splits sizing from identity and work-exec-1 selects the backend, in parallel; work-exec-2 builds one durable route for one ordinary build; work-exec-3 sizes automatically from evidence; work-exec-4 moves local work over and deletes its old launch paths; work-exec-5 moves CI over and switches the required verdict; work-exec-6 puts every consumer on a host under one ledger. Each member deletes the route it replaces, after naming that root's consumers. Of the original program PR list, PR 2, 3, 5, 6 and 9 to 12 are kept; PR 4 (host reservations and grant issuance) and PR 7 to 8 (remote host executor, SSH convergence, two-candidate selection) mostly dissolve into the scheduler if work-exec-1 selects one.",
           red_control: "The program bar: an ordinary gunbc build submitted with no host chosen and no fleet allocation edited waits while the fleet is full, runs inside its admitted budget, survives a controller kill without losing responsibility, and returns a receipt the CLI or GitHub verifies. A member whose parent walk does not reach this node is not part of the program.",
           displaced_cost: "The operator spends time arranging runner slots and reconciling competing limits by hand; about 25 GiB fixed slots make every small job pay for the largest; capacity refusals bounce work back to whoever submitted it; and roughly 110k lines of runner, fabric and compute machinery re-implement a generic scheduler without ever composing it.",
           handback: "Each member accepted with its executed controls, the plan carrier amended to the selected backend, and the deleted routes named."
@@ -2217,10 +2217,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_RQ6M9VDXVNV3HZQ1WGN5PGNVAN",
       id: "work-exec-1-placement-backend-selection",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "The placement backend is chosen by a bounded spike against fixed criteria, and the choice is recorded as a ruling",
-        boundary: "Candidates: k3s with Kueue (recommended), Nomad, or keeping the systemd and cgroup realization and finishing gunbc's own allocator. Judge by the machinery and operator work each removes, not by current code volume. The spike runs one ordinary gunbc build as a Kubernetes Job with memory request equal to limit, an ephemeral volume and sccache reachable, on one host the operator grants for about one week. Nomad is evaluated only if k3s fails a criterion. The ruling records the criteria results and amends gunbc.plans.durable_work_handoff PR 4 and PR 7 to 8 accordingly.",
+        boundary: "Candidates: k3s with Kueue (recommended), Nomad, or keeping the systemd and cgroup realization and finishing gunbc's own allocator. Judge by the machinery and operator work each removes, not by current code volume. The spike runs one ordinary gunbc build as a Kubernetes Job with memory request equal to limit, an ephemeral volume and sccache reachable, on one host the operator grants for about one week. Nomad is evaluated only if k3s fails a criterion. The ruling records the criteria results and amends the PR 4 and PR 7 to 8 scope accordingly.",
         displaced_cost: "Without a chosen backend the program either keeps building a generic scheduler in gunbc or adopts one by accident, and every later member is designed twice.",
         first_slice: "Operator grants a spike host. Stand up a single k3s node with Kueue and run the criteria below once each.",
         red_control: "(1) An OOM is attributed from pod status and memory.peak. (2) With the node full, a second job waits rather than refusing. (3) Cancel yields termination evidence. (4) Killing the controller mid-run leaves the job running and it is re-observed. (5) A DIMM reading over 85 C taints the node and blocks new placement. (6) An arm64 job and an amd64 job each land on a matching node. (7) Manual operator steps are counted and reported. A criterion with no executed run counts as failed, never as passed.",
@@ -2233,13 +2233,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_C62Z25H5J12ZRZZ6NSRKY1ERPK",
       id: "work-exec-2-durable-route-first-consumer",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "One ordinary gunbc build goes through durable acceptance, a fenced attempt on the selected backend, and a bound receipt",
-        boundary: "Model first: cited, versioned extdeps modules for the selected backend (for Kubernetes, batch/v1 Job and core/v1 Pod resources and conditions; for Kueue, Workload and ClusterQueue admission). Then the controller of durable_work_handoff PR 3 and PR 5 realized on it: acceptance through the #15310 request boundary, one Job per ExecutionAttemptKey, a pending admission projected to Waiting on capacity, and a receipt bound to attempt, source and work. A backend Job can start twice, so result publication is create-only and keyed by attempt. A pod on an unreachable node is never read as proof that it stopped; the attempt stays unresolved until fenced. Parking in this member means waiting before start or release at a durable output boundary; freezing a cgroup is not release, and process checkpoint is out of scope. The first consumer is an ordinary build, not heal.",
+        boundary: "Model first: cited, versioned extdeps modules for the selected backend (for Kubernetes, batch/v1 Job and core/v1 Pod resources and conditions; for Kueue, Workload and ClusterQueue admission). Then the controller, realized on it: acceptance through the #15310 request boundary, one Job per ExecutionAttemptKey, a pending admission projected to Waiting on capacity, and a receipt bound to attempt, source and work. A backend Job can start twice, so result publication is create-only and keyed by attempt. A pod on an unreachable node is never read as proof that it stopped; the attempt stays unresolved until fenced. Parking in this member means waiting before start or release at a durable output boundary; freezing a cgroup is not release, and process checkpoint is out of scope. The first consumer is an ordinary build, not heal.",
         displaced_cost: "Capacity shortage stops bouncing work back to its submitter, and a lost controller stops losing accepted work.",
         first_slice: "The extdeps model for the selected backend and a controller that accepts one build, creates its attempt and reads its terminal state back into a receipt.",
-        red_control: "From the durable_work_handoff shadow matrix, each executed and each naming the mutation that turns it red: success, compile failure (domain failure, no retry), OOM (infrastructure ending, no compile-failure substitution), cancel, controller kill and resume, duplicate start publishing once, stale receipt rejected.",
+        red_control: "From the shadow matrix, each executed and each naming the mutation that turns it red: success, compile failure (domain failure, no retry), OOM (infrastructure ending, no compile-failure substitution), cancel, controller kill and resume, duplicate start publishing once, stale receipt rejected.",
         out_of_scope: "Automatic sizing (work-exec-3). Deleting old routes (work-exec-4). CI (work-exec-5).",
         handback: "The extdeps model, the controller, and the executed matrix cases."
       )),
@@ -2268,7 +2268,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compute/work_provider_local.dag"),
       line: ticket(t: fields(
         headline: "gunbc build, test and validate_worktree submit through the durable route, and the old local launch paths are deleted",
-        boundary: "durable_work_handoff PR 6 on the selected backend. Every local build and test consumer submits through work-exec-2's route. Then delete the direct compute_provide launch, the worker bin/gunbc shell bypass, and ComputeBuildPool on hosts joined to the scheduler. Name each root's consumers by grep and source inspection before deleting; a negative search is not proof of no consumer.",
+        boundary: "On the selected backend, every local build and test consumer submits through work-exec-2's route. Then delete the direct compute_provide launch, the worker bin/gunbc shell bypass, and ComputeBuildPool on hosts joined to the scheduler. Name each root's consumers by grep and source inspection before deleting; a negative search is not proof of no consumer.",
         displaced_cost: "Two launch routes for the same work keep two sets of limits and failure behavior alive, and the old one keeps refusing on a full pool.",
         first_slice: "Move validate_worktree onto the route and delete its direct launch.",
         red_control: "(1) A planted direct launch fails. (2) A caller or controller restart keeps accepted work. (3) A full fleet produces waiting, never HostComputeCapacityFull, on a joined host.",
@@ -2284,7 +2284,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/ci/ci_runner_target.dag"),
       line: ticket(t: fields(
         headline: "The required CI verdict is published from an admitted receipt for the exact commit, and the fixed runner slots are gone",
-        boundary: "durable_work_handoff PR 9 to 12 on the selected backend. First the optional shadow job (roster addition already approved). Then hosts move one at a time: withdraw runner slots, quiesce, join as a node, so no host is ever under two authorities. Then a light publisher posts the required check from the admitted receipt, bound to the exact head or merge commit and restricted to one GitHub App; success is published only when the receipt establishes it. The first cut keeps today's grain, one Job per required v2-bootstrap run; the demand engine splits it later where measurement shows a gain. An interim actions-runner-controller bridge is a scaffold that needs operator approval outside the diff and dissolves at the verdict switch; it is not part of this plan unless approved.",
+        boundary: "On the selected backend, first the optional shadow job (roster addition already approved). Then hosts move one at a time: withdraw runner slots, quiesce, join as a node, so no host is ever under two authorities. Then a light publisher posts the required check from the admitted receipt, bound to the exact head or merge commit and restricted to one GitHub App; success is published only when the receipt establishes it. The first cut keeps today's grain, one Job per required v2-bootstrap run; the demand engine splits it later where measurement shows a gain. An interim actions-runner-controller bridge is a scaffold that needs operator approval outside the diff and dissolves at the verdict switch; it is not part of this plan unless approved.",
         displaced_cost: "CI keeps the fixed slots and their hand arrangement until the required verdict stops depending on them.",
         first_slice: "Run the shadow job through the route for every pull request and compare its verdict with v2-bootstrap.",
         red_control: "(1) Success is never published without a bound receipt for that commit. (2) A late result from an old attempt cannot publish. (3) A rollback rehearsal withdraws admission and proves quiescence before the old route resumes. (4) No host carries runner slots and scheduler admission at once.",
@@ -2313,7 +2313,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_HARNESS0RECURSIVE0ALIGN0A",
       id: "harness-recursive-alignment",
       owner: "harness",
-      carriers: carrier(path: "docs/plans/harness-work-lifecycle.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Allow work to continue across durable epochs while preserving alignment to every project level and the task contract",
         boundary: "Continuation is unbounded in time but bounded in grounding: at each epoch boundary an independent adjudication reads the attempt's evidence against its rooted chain and resumes, steers, re-plans, routes, or stops the lineage.",
@@ -2547,7 +2547,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_GG8OZ558D0UB3R98N5MQCDPKB",
       id: "ci-end-to-end-execution",
       owner: "ci-control",
-      carriers: carrier(path: "docs/plans/ci-process-end-to-end.md"),
+      carriers: [],
       line: ticket(t: level_fields(
           headline: "CI verdicts name what they executed",
           boundary: "The CI end-to-end execution program under the factory: a required check carries the population it actually executed and refuses a verdict on an empty one; the floor fits the fleet's memory; the unit tests block again; the required run's cost is attributed.",
@@ -2697,7 +2697,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_TTZHRWWETX4EQ6HDABTT8AKMCV",
       id: "factory",
       owner: "harness",
-      carriers: carrier(path: "docs/plans/harness-work-lifecycle.md"),
+      carriers: [],
       line: ticket(t: level_fields(
           headline: "The factory: harness, workers, CI/floor and the daily workspace, the machine that lands and verifies work",
           boundary: "The steps every change traverses (orientation, implementation, test, commit, publication, review, verification) are owned by the workflow as durable state, not by an agent's memory. CI and floor verdicts name what they executed and cost what their inputs require.",
@@ -2838,10 +2838,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_CFZ5DNH7FEND59ZAXKRZS55XAR",
       id: "convergence-coverage",
       owner: "debt",
-      carriers: carrier(path: "docs/plans/convergence-coverage-program.md"),
+      carriers: [],
       line: ticket(t: level_fields(
           headline: "Cover every production convergence path until the ensure chain reaches the execution boundary",
-          boundary: "Own scope: the compiler-enforced ensure chain D14 intended (qualified operands, restricted construction, completion from root bindings) applied to production observe/decide/apply/readback/mint paths. An operation cannot be admitted without its complete prerequisite chain, and cannot consume success until that chain has established the required facts. Continues gunbc.plans.ensure_closure_design and gunbc.plans.v2_compiler_architecture; it does not redesign them. Member of debt-payoff (operator 2026-10-11): known gaps and RFMs retired against their triggers. Dual membership is refused. Daily-workspace (factory) value is named on the contribution, not a second parent.",
+          boundary: "Own scope: the compiler-enforced ensure chain D14 intended (qualified operands, restricted construction, completion from root bindings) applied to production observe/decide/apply/readback/mint paths. An operation cannot be admitted without its complete prerequisite chain, and cannot consume success until that chain has established the required facts. It continues prior ensure-closure-design and v2-compiler-architecture work; it does not redesign them. Member of debt-payoff (operator 2026-10-11): known gaps and RFMs retired against their triggers. Dual membership is refused. Daily-workspace (factory) value is named on the contribution, not a second parent.",
           approach: "Census production paths first (cc-path-census). Then one leaf per deepest cause: ordinary compiler floor (A), generic structural carriers (B), environmental facts as required operands (C), observation distinctions that decide repair (D), lifecycle ownership including failure and retirement (E), selection-to-use of scope and policy (F), evidence that reaches its consumers at subject identity (G), guaranteed cleanup of held resources once the owner is proven ended.",
           red_control: "A production path in the census whose consumer still type-checks after its prerequisite-producing ensure is deleted keeps this open. A leaf that restates D14 or mints a second ensure syntax is refused in review.",
           displaced_cost: "Useful convergence procedures exist, but forgetting a prerequisite still compiles and runs. Harm is paid later as silent wrong actuation, unrepairable members, and green CI over an unestablished serving or sudoers closure.",
@@ -2853,19 +2853,19 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_K6TBWN5T4J6FV5B2X0HN3VHCW4",
       id: "cc-path-census",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/convergence-coverage-program.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Census every production convergence path against the missing execution-boundary guarantee",
         boundary: "Enumerate production observe / decide / apply / readback / mint paths. Classify each: does removing a prerequisite-producing ensure deprive the consumer of a required operand? One roster row per path (route, subject, supplied vs established, covering leaf or named exclusion). The roster is the denominator later leaves consume.",
         displaced_cost: "Without a derived population, each leaf invents its own list of paths and the uncovered remainder is invisible.",
         first_slice: "One roster carrier over the production ensure and effectful-converge folds already named in D14 section 10 and the operator review (srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv family), each classified supplied vs established. Cause-F instance/target slice is sourced from valiant-gull-69 (entry wrappers pinning srv1_live_dashboard_instance over *_for_instance cores: belt 16, serve 10, dispatch_actuator 5 plus two srv1-layout data pins, dashboard_instance_apply 2, launch_deployment_cli 1, dispatch_preflight 1, dispatch_selection 1 fixed in gunbc#13720); do not re-derive that census.",
         red_control: "A production path that uses gunbc.ensure or std.realization_reconcile and is absent from the roster keeps this red. A row that restates D14's target list instead of naming a corpus route is not a census row.",
-        out_of_scope: "No repair, no new ensure syntax, no HostBlueprint work. D14 landing steps stay in ensure-closure-design.",
+        out_of_scope: "No repair, no new ensure syntax, no HostBlueprint work.",
         handback: "The roster, the identity-join that later leaves read, and a planted omitted path that reds the census."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "convergence-coverage", contribution: "Coverage is an identity join over paths, not a count of findings. The census is the program's denominator."),
-      centering: plan(text: "Target: a roster carrier consumed by later cc-* leaves, authority `gunbc.plans.convergence_coverage_program`. (1) Do not redesign D14 or v2-compiler-architecture. (2) First slice: classify the production folds D14 section 10 and the operator review already name -- srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv / RunArgvStdin / RunArgvOutcome -- as supplied-report vs established-operand. (3) Ingest valiant-gull-69's cause-F wrapper census as sourced inventory; do not re-count srv1_live_dashboard_instance pins. (4) Plant one omitted path that reds the census. (5) Acceptance: a claim process over that roster once bound; until then ExecutionContractUnspecified is honest."),
+      centering: plan(text: "Target: a roster carrier consumed by later cc-* leaves. (1) Do not redesign D14 or v2-compiler-architecture. (2) First slice: classify the production folds D14 section 10 and the operator review already name -- srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv / RunArgvStdin / RunArgvOutcome -- as supplied-report vs established-operand. (3) Ingest valiant-gull-69's cause-F wrapper census as sourced inventory; do not re-count srv1_live_dashboard_instance pins. (4) Plant one omitted path that reds the census. (5) Acceptance: a claim process over that roster once bound; until then ExecutionContractUnspecified is honest."),
     ),
     roadmap_node(
       identity: "rn_XW56ZS6QC1081AFR252PR2RBPS",
@@ -2907,7 +2907,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_Q73CZQQFQHZKC9VP6ZEW6AAW8W",
       id: "cc-qualified-operands",
       owner: "fleet",
-      carriers: carrier(path: "docs/plans/ensure-closure-design.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "An operation asks for the established capability, not an optional description of the environment",
         boundary: "Environmental facts as required operands (F02, F07, F14, F16, F35, F43-F44). The reversal belongs once at the operation's owning boundary: the operation asks for the established capability, the selected provider induces further requirements, the compiler carries them outward, the root answers policy and placement. Specimen: srv3_ensure_apt takes subject and package separately; install uses package, readback checks subject (D14 section 10). Continue D14's qualified results and restricted mint. Do not mint a parallel operand vocabulary.",
@@ -4162,7 +4162,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_2GPKWK8FXAKETC8ATH3MJEXEXC",
       id: "fleet-convergence-census-closure",
       owner: "fleet",
-      carriers: carrier(path: "docs/plans/convergence-one-program.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Every effect that changes a machine goes through the one checked route",
         boundary: "The census already lists every effect that changes lasting state. Work through what it lists, one family of effects at a time, and for each one say who chose the desired state, what looked at reality, what compared them, what plan was allowed, what carried it out, and what checked afterwards. Where the honest answer is that it never converged, rename it to what it actually does.",
@@ -4179,7 +4179,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_W964QANFVKCPEBGKP50F0036KH",
       id: "fleet-convergence-legacy-deletion",
       owner: "fleet",
-      carriers: carrier(path: "docs/plans/convergence-one-program.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Delete the routes that were replaced, and make them hard to grow back",
         boundary: "Once the checked route is the real one, the older ways of changing the same machine state are deleted rather than left beside it. A check then refuses a change that adds a new one, by comparing against the list of things that actually produce effects rather than by searching for suspicious names.",
@@ -4400,7 +4400,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_3GKQ7WVZ4TNXPB8MHCDR5EJYA2",
       id: "review-sheet-identity-producer-and-admission",
       owner: "buyer-review",
-      carriers: carrier(path: "docs/plans/review-sheet-and-census-lane-handoff.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Give the landed review-sheet identity kernel its producers and its declared-id admission",
         boundary: "gunbc.review_sheet_identity landed as a pure kernel and is enrolled in the census closure frontier with three consumer rows whose triggers name EXECUTION rather than import. This node is the execution: the shared marker-query constructor, the Drive superseded-marker producer, and the subject-bound operator-declaration reader, each emitting LegacyExtentEvidence into the one complete join; then the declared-id admission that reconciles a LegacyFileSelection against a standing, a contradicting observation, an exact file-by-id preflight and the intended subject. The kernel decides standing and the producers decide none.",
@@ -4417,7 +4417,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_8QF2XJNLD6VKC3ZRW9HTYB4MSP",
       id: "review-sheet-properties-write-and-legacy-retirement",
       owner: "buyer-review",
-      carriers: carrier(path: "docs/plans/review-sheet-and-census-lane-handoff.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Write the current marker back and retire the legacy generation",
         boundary: "The UpdateFileProperties PATCH that stamps the current marker, with a readback asserting the PATCHED FILE ID rather than a count, and then the retirement of the legacy marker generation once the extent is settled.",
@@ -4434,7 +4434,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_9JXQW2VTNB5KZCR7MHPD4GYL60",
       id: "census-job-level-observation-and-reprojection",
       owner: "buyer-review",
-      carriers: carrier(path: "docs/plans/review-sheet-and-census-lane-handoff.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Derive prospect rows from job-level observation, because the workflow-level scan cannot",
         boundary: "Read jobs?filter=all across every page AND every attempt, and derive from it the facts the prospect rows actually need: real runner and provider identity, job occupancy, pre-start observation, cancelled occupancy, and provider execution standing. Then reproject those into the private commercial reading and the operator-safe sheet rows. The bounded scan producer landed in gunbc#11656 yields a declared candidate POPULATION and is a prerequisite, not a substitute.",
@@ -4451,7 +4451,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_2HKDQZ8WVNX4TBM6RCPJLG0517",
       id: "census-app-registration-installation-and-custody",
       owner: "buyer-review",
-      carriers: carrier(path: "docs/plans/review-sheet-and-census-lane-handoff.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Actually register, install and take custody of the census App",
         boundary: "gunbc#11552 landed the acquisition MODEL and its route; it did not achieve acquisition. The step that stalls is real: gunbc.github_app_acquisition tells the operator to paste the manifest into the App-creation form's manifest field, and GitHub exposes no such field -- the manifest protocol requires a form POST carrying a manifest parameter, and a GET renders the blank create page. This node covers manifest submission, installation consent, callback capture and credential custody, and it treats registration and INSTALLATION as the two separate facts they are.",
@@ -4468,7 +4468,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_5TBHM9XKCWQ2VLF7NRJD8GYZ3E",
       id: "census-installation-token-via-app-jws-route",
       owner: "buyer-review",
-      carriers: carrier(path: "docs/plans/review-sheet-and-census-lane-handoff.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Lift the census API budget by reusing the App JWS route rather than building a second signer",
         boundary: "A second composed performer in gunbc.github_effect_perform consuming the clock/claims/jws/openssl/AppInstallationAccessTokens.Create prefix that gunbc#11677 establishes, factored into one function returning a sole_constructor installation-token carrier that each performer consumes inside its own call. Not a second module and not a second signer.",
@@ -4502,7 +4502,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_4YXQ47680VA8B4GNGGVPV2DQZ8",
       id: "whole-service-witness-costs-more-than-its-budget",
       owner: "self-host",
-      carriers: carrier(path: "docs/plans/floor-cost-distribution-near-the-ceiling.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Decide what a witness over a whole real service is allowed to cost",
         boundary: "One witness parses a complete real service declaration end to end, and it is the only claim that runs that path for real. Decide whether it stays whole, and on what basis, rather than deciding by whichever budget happens to refuse it first.",
@@ -4638,7 +4638,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF",
       id: "compiler-identity-invariant-under-corpus-commit",
       owner: "v1-performance",
-      carriers: carrier(path: "docs/plans/typed-module-cross-run-materialization.md"),
+      carriers: [],
       line: ticket(t: fields(
         headline: "Compiler identity that does not move with the commit SHA, so cross-push reuse becomes reachable",
         boundary: "std.interface_summary typed_module_key consumes a compiler identity it does not author, and its realization today is v1_compiler.closure_identity transform_content_digest -- the content hash of the RUNNING BINARY. src/v1/stage0/build.rs embeds GUNBC_BUILD_IDENTITY, the checkout's commit, into that binary through cargo:rustc-env, so a rebuild at ANY new commit re-keys every entry, including a corpus-only .dag commit. Derive the identity from what the TYPECHECKER actually is instead.",
