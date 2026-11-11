@@ -2,35 +2,30 @@ module test.claim.serving.serving_butch_fixture_witness
 
 // THE FIRST REAL SERVING ROW, EXECUTED: butch (srv14), the operator's hand-deployed two-engine host (2026-11-10).
 // srv3 and srv4 run one engine each; butch runs TWO, so it is the first row that proves the N-replica model --
-// one host, priced once per replica, no per-host fork. This witness drives gunbc.serving.serving_reservation
-// and says the four things the operator's facts required, each discriminating:
+// one host, priced once per replica, no per-host fork. This witness drives gunbc.serving.serving_reservation and
+// says the one thing the kept reservation model can be asked about butch, discriminating:
 //
-//   1. TWO REPLICAS, EACH PRICED PER REPLICA. butch gives up all four A2 cards, and its two cpusets (0-39,
-//      40-79) are AFFINITY -- disjoint, bookable, so the runner keeps every core. Its per-engine MEMORY was never
-//      measured, so the width FAILS CLOSED on it (host_memory_reserved returns Absent, not a fabricated zero).
-//      A model that summed slots per host, priced an affinity pin as exclusive, or invented a memory figure fails here.
-//   2. THE POWER CAP IS A PRESENT FACT: all four cards at 35 W (a2-power-cap.service), not the always-Absent
-//      field the finding found.
-//   3. THE API KEY IS A REFERENCE, NEVER A LITERAL: butch-a and butch-b name the SAME reference at
-//      ~/strata-pool/api_key ("one key, two servers"); a host whose custody is not modeled comes back ABSENT,
-//      not as an empty-string literal. The type has no value arm, so a literal key is unrepresentable.
-//   4. STRATA IS PINNED BY DIGEST, NOT "latest": butch names the same content digest as srv3 ("same build"),
-//      and pinning is KEYED -- a host with no row is not pinned, so the predicate is not a blanket true.
+//   TWO REPLICAS, EACH PRICED PER REPLICA. butch's two cpusets (0-39, 40-79) are AFFINITY -- disjoint, bookable,
+//   so the runner keeps every core (host_cores_withheld is zero, the affinity price), and because its per-engine
+//   MEMORY was never measured the width FAILS CLOSED on it (host_memory_reserved returns Absent, not a fabricated
+//   zero). A model that summed slots per host, priced an affinity pin as exclusive, or invented a memory figure
+//   fails here.
+//
+// The card/power-cap, API-key and Strata-release facts B4a once modelled for butch are NOT here: nothing in
+// production consumes them yet, so they are B4b's, re-added WITH the deploy that reads them. (The operator's
+// facts -- four A2 cards, 35 W, ports 18081/18082, the shared ~/strata-pool/api_key -- are recorded for B4b's
+// fixtures; modelling them with no consumer would be a guess.)
 //
 // Run (the whole floor is CI's job; this file runs alone):
 //   claim_batch --hermetic --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/serving/serving_butch_fixture_witness.dag \
-//     --functions <the three witness_* names, comma-joined>
-import std.types { Bool, List, String }
-import std.measure { watt_count }
+//     --functions witness_butch_runs_two_priced_replicas_whose_affinity_pins_are_disjoint
+import std.types { Bool, List }
 import std.optional { Present, Absent }
-import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv14 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import gunbc.serving.serving_reservation {
-  host_reservations_for, host_memory_reserved, host_gpus_withheld_from_runner, host_cores_withheld_from_runner,
-  ServingHostReservation, ReplicaReservation, cpu_reservation_covers,
-  serving_api_key_is_reference, serving_api_key_source_path,
-  host_strata_is_pinned, strata_release_for, strata_release_artifacts, StrataRelease,
-  StrataArtifact, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
+  host_reservations_for, host_memory_reserved, host_cores_withheld_from_runner,
+  ReplicaReservation, CpuRange, CpuAffinity, CpuRanges,
 }
 
 fn butch_replicas() -> List<ReplicaReservation> {
@@ -44,74 +39,28 @@ fn butch_replicas() -> List<ReplicaReservation> {
 test fn witness_butch_runs_two_priced_replicas_whose_affinity_pins_are_disjoint() -> Bool {
   let reps = butch_replicas()
   let two = count(reps) == 2
-  // butch-a owns 0-39 and nothing above 39; butch-b owns 40-79 and nothing below 40 -- the operator's shape.
-  let butch_a = any(reps, c => cpu_reservation_covers(c.cpu, 5) && cpu_reservation_covers(c.cpu, 39) && !cpu_reservation_covers(c.cpu, 40))
-  let butch_b = any(reps, c => cpu_reservation_covers(c.cpu, 40) && cpu_reservation_covers(c.cpu, 79) && !cpu_reservation_covers(c.cpu, 39))
-  // AFFINITY leaves the runner whole: butch pays cards but withholds no cores. Its memory is UNMEASURED, so
-  // host_memory_reserved returns Absent -- the width fails CLOSED rather than charge butch a fabricated figure.
+  // butch-a is pinned 0-39 and butch-b 40-79, each an AFFINITY arm (a CpuExclusive would not match these arms,
+  // and would price cores away -- contradicted by cores_whole below). The operator's two-engine shape, one row.
+  let butch_a_pin = any(reps, r => match r.cpu {
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 0 && rg.last == 39)
+    _ => false
+  })
+  let butch_b_pin = any(reps, r => match r.cpu {
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 40 && rg.last == 79)
+    _ => false
+  })
+  // DISJOINT: the lower pin ends at 39 and the upper starts at 40, and no single replica spans the seam -- no
+  // replica's range has first <= 39 and last >= 40. (A collapsed/host-pinned model could not keep both pins.)
+  let seam_open = all(reps, r => match r.cpu {
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => all(rs, rg => !(rg.first <= 39 && rg.last >= 40))
+    _ => true
+  })
+  // AFFINITY leaves the runner whole: butch withholds no cores. Its memory is UNMEASURED, so host_memory_reserved
+  // returns Absent -- the width fails CLOSED rather than charge butch a fabricated figure.
   let cores_whole = host_cores_withheld_from_runner(operator_host_srv14) == 0
   let memory_fail_closed = match host_memory_reserved(operator_host_srv14) {
     Absent => true
     Present { value: _ } => false
   }
-  let cards_priced = host_gpus_withheld_from_runner(operator_host_srv14) == 4
-  // a2-power-cap.service holds all four A2 at 35 W -- a Present cap on every replica, not the old always-Absent.
-  let caps_35 = all(reps, c => match c.gpu.power_cap_watts { Present { value: v } => watt_count(w: v) == 35 Absent => false })
-  two && butch_a && butch_b && cores_whole && memory_fail_closed && cards_priced && caps_35
-}
-
-// THE KEY IS A REFERENCE, NOT A LITERAL, AND ONE KEY COVERS BOTH SERVERS.
-test fn witness_butch_key_is_a_reference_not_a_literal_and_one_key_covers_both() -> Bool {
-  let a_ref = serving_api_key_is_reference(operator_host_srv14, "butch-a")
-  let b_ref = serving_api_key_is_reference(operator_host_srv14, "butch-b")
-  let a_path = serving_api_key_source_path(operator_host_srv14, "butch-a")
-  let b_path = serving_api_key_source_path(operator_host_srv14, "butch-b")
-  let same_key = match a_path {
-    Present { value: pa } => match b_path {
-      Present { value: pb } => (pa as String) == (pb as String)
-      Absent => false
-    }
-    Absent => false
-  }
-  // a host whose key custody is not modeled reads absent -- not an invented path, not an empty literal.
-  let srv3_absent = match serving_api_key_source_path(operator_host_srv3, "srv3-strata") {
-    Absent => true
-    Present { value: _ } => false
-  }
-  a_ref && b_ref && same_key && srv3_absent
-}
-
-// STRATA IS PINNED BY DIGEST, NOT "latest"; AND PINNING IS KEYED, NOT BLANKET.
-test fn witness_butch_strata_is_pinned_by_native_commit_and_a_keyed_absence_is_not_pinned() -> Bool {
-  let butch_pinned = host_strata_is_pinned(operator_host_srv14)
-  let srv3_pinned = host_strata_is_pinned(operator_host_srv3)
-  let butch_arts = match strata_release_for(operator_host_srv14) {
-    Present { value: r } => strata_release_artifacts(r)
-    Absent => []
-  }
-  let srv3_arts = match strata_release_for(operator_host_srv3) {
-    Present { value: r } => strata_release_artifacts(r)
-    Absent => []
-  }
-  let srv4_arts = match strata_release_for(operator_host_srv4) {
-    Present { value: r } => strata_release_artifacts(r)
-    Absent => []
-  }
-  // butch pins BOTH checkouts that make up its running native engine: the server code (strata-main) AND the
-  // venv interpreter+packages (strata), each a full git commit read off the box -- a container image among them
-  // would make butch_no_container false, so this also proves butch is not pinned to the flex image.
-  let has_server_code = any(butch_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" _ => false })
-  let has_venv = any(butch_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "44df8fd5f0b26537009bb6194dc7216cc24d6b93" _ => false })
-  let butch_no_container = all(butch_arts, a => match a { StrataContainerImageDigest { digest: _ } => false _ => true })
-  // "same build and server as srv3 production": srv3 names the SAME two native commits.
-  let srv3_has_code = any(srv3_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" _ => false })
-  let srv3_has_venv = any(srv3_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: c } => (c as String) == "44df8fd5f0b26537009bb6194dc7216cc24d6b93" _ => false })
-  let srv3_same = srv3_has_code && srv3_has_venv
-  // srv4 is now PINNED by a MANAGED RELEASE id (a distinct kind from a git commit), cited from the corpus --
-  // not refused. Asserting it is a managed release (not a commit) also proves the kinds stay distinct.
-  let srv4_managed = any(srv4_arts, a => match a { StrataManagedRelease { directory: _, release_id: r } => (r as String) == "406c9de18cef" _ => false })
-  let srv4_not_commit = all(srv4_arts, a => match a { StrataNativeGitCommit { checkout: _, commit: _ } => false _ => true })
-  let unmodeled_not_pinned = host_strata_is_pinned(operator_host_srv2) == false
-  butch_pinned && srv3_pinned && has_server_code && has_venv && butch_no_container && srv3_same
-    && host_strata_is_pinned(operator_host_srv4) && srv4_managed && srv4_not_commit && unmodeled_not_pinned
+  two && butch_a_pin && butch_b_pin && seam_open && cores_whole && memory_fail_closed
 }

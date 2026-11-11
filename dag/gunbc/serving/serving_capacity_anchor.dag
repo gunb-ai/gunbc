@@ -271,7 +271,6 @@ type ServingShapeRefusalReason
   | ShapeLeastRateBelowPolicyAtConcurrency
   | ShapeNoResumableConversation
   | ShapeGrantRefused { detail: NonEmptyStr }
-  | ShapeOtherFault { detail: NonEmptyStr }
 
 // Render a refusal for a diagnostic. Total over the failure modes; each names its fault. This is the ONLY home
 // for the wording; callers decide a case by matching the constructors above, never this string.
@@ -286,7 +285,6 @@ fn serving_shape_refusal_message(reason: ServingShapeRefusalReason) -> String {
     ShapeLeastRateBelowPolicyAtConcurrency => "at its measured concurrency the anchor gives each turn less than the policy's least stream rate, and no reading at a lower concurrency is supplied"
     ShapeNoResumableConversation => "the deployment can keep no conversation of the anchor context resumable within the swap wait"
     ShapeGrantRefused { detail: d } => concat("the grant refused: ", d as String)
-    ShapeOtherFault { detail: d } => d as String
   }
 }
 
@@ -339,17 +337,9 @@ fn turns_within_held(a: ServingCapacityAnchor, f: ServingHeldFigures) -> Serving
   }
 }
 
-// A layout with exactly one configured replica grants that replica's admitted conversations. A refused layout, or one
-// configuring any other number of replicas, refuses: it is a decision about this deployment, not an absent model.
-fn single_replica_grant(layout: ServingLayoutResult, deployment: String) -> ServingRetentionGrant {
-  match layout {
-    ServingLayoutRefused { refusal: _ } => GrantRefused { reason: ("the serving layout for " + deployment + " is refused") as NonEmptyStr }
-    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
-      if count(rs) == 1 {
-        fold(rs, init: GrantRefused { reason: "unreachable: a one-replica layout always folds its replica" as NonEmptyStr }, f: (acc, c) => GrantAdmits { conversations: c.admitted_conversations })
-      } else { GrantRefused { reason: ("the serving layout for " + deployment + " configures " + to_string(count(rs) as Int) + " replicas, not one") as NonEmptyStr } }
-  }
-}
+// (single_replica_grant is GONE -- B4a per-replica cutover, review 93413. A per-host grant could not say WHICH
+// replica it granted, so a second engine on a host was ungrantable. Production reads the per-replica fold
+// `serving_replica_grants` and the group-keyed `serving_replica_grant_for` below.)
 
 // A PER-REPLICA RETENTION GRANT (B4a): which replica the grant is for, and what it admits. Keyed by the
 // layout's own group name -- the replica's identity -- so a host running N engines yields N grants, each
@@ -373,6 +363,18 @@ fn serving_replica_grants(layout: ServingLayoutResult, deployment: String) -> Li
     ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
       fold(rs, init: [] as List<ServingReplicaGrant>, f: (acc, c) =>
         concat(acc, [ServingReplicaGrant { group: c.group, grant: GrantAdmits { conversations: c.admitted_conversations } }]))
+  }
+}
+
+// THE GRANT FOR ONE NAMED REPLICA (B4a per-replica cutover, review 93413): the per-replica fold's grant for the
+// device-group this profile models. Production (serving_replica_profile's srv3/srv4 rows) reads THIS -- and the
+// fold it wraps -- never the deleted per-host single_replica_grant: a host running N replicas yields N grants and
+// each per-replica profile row asks for its own by group. A refused layout, or a group the fold does not carry,
+// refuses with the missing group named (fail_closed: a decision about this deployment, not an absent model).
+fn serving_replica_grant_for(layout: ServingLayoutResult, deployment: String, group: NonEmptyStr) -> ServingRetentionGrant {
+  match filter(serving_replica_grants(layout, deployment), g => (g.group as String) == (group as String)) |> first() {
+    Present { value: g } => g.grant
+    Absent => GrantRefused { reason: ("no replica group " + (group as String) + " is granted by " + deployment) as NonEmptyStr }
   }
 }
 

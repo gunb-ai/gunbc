@@ -171,21 +171,10 @@ data srv3_strata_restore_guard: StrataRestoreGuard = StrataRestoreGuard {
   cites: "extdeps.strata.session_file; /home/ubuntu/strata-test under strata-pool.service, build /home/ubuntu/strata-test/strata-rkllama-build-c5fd1fe15c3e (hand-run: re-check on the host's next engine change)" as NonEmptyStr
 }
 
-// THE REPLICA'S BATCH AND ITS LAYOUT'S REFUSAL, READ FROM THE LAYOUT THAT OWNS THEM. A refused layout has no
-// active-slot figure; folding it to 0 would let a host whose layout was refused sail past the batch check and come
-// out admissible, so the refusal is carried through as a typed rung refusal (fail_closed: no silent widen), not a
-// zero. Both hosts run one replica today; the sum is that replica's figure, and a second replica answers for itself.
-fn strata_replica_verdict(l: ServingLayoutResult, budget: ServingMemoryReading, free: ServingMemoryReading, guard: StrataRestoreGuard) -> ServingRungAdmissibility {
-  match l {
-    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
-      strata_slot_file_admissible(active_slots: fold(rs, init: 0, f: (acc, c) => acc + c.active_slots), budget: budget, free: free, guard: guard)
-    ServingLayoutRefused { refusal: _ } => RungRefused {
-      why: LayoutRefused { detail: "its replica set could not be derived, so there is no active-slot figure to admit on" as NonEmptyStr },
-      reason: strata_refusal_text(r: LayoutRefused { detail: "its replica set could not be derived, so there is no active-slot figure to admit on" as NonEmptyStr }),
-      cites: strata_refusal_cites(r: LayoutRefused { detail: "its replica set could not be derived, so there is no active-slot figure to admit on" as NonEmptyStr })
-    }
-  }
-}
+// (strata_replica_verdict -- the per-host verdict that summed every replica's active_slots into ONE figure and
+// asked the slot question once -- is GONE: B4a per-replica cutover, review 93413. Summing made a second batch-1
+// engine a suspect in a rule the first never broke and refused two engines that each ran batch 1. Production reads
+// the per-replica `strata_replica_verdicts` and the group-keyed `strata_replica_verdict_for` below.)
 
 // A PER-REPLICA PARKED-TIER VERDICT (B4a): which replica the verdict is for, keyed by the layout's own group
 // name, and that replica's own admissibility.
@@ -211,15 +200,32 @@ fn strata_replica_verdicts(l: ServingLayoutResult, budget: ServingMemoryReading,
   }
 }
 
+// THE PARKED-TIER VERDICT FOR ONE NAMED REPLICA (B4a per-replica cutover): the per-replica fold's admissibility
+// for the group this host's engine row models, keyed by the layout's own group name. A refused layout, or a group
+// it does not carry, comes back as a typed rung refusal -- a refused layout has no active-slot figure, and folding
+// that to zero would let a refused host sail past the batch check (fail_closed: no silent widen). Production
+// (srv3/srv4 rung admissibility, and through them serving_replica_profile's warm ladder) reads THIS and the fold it
+// wraps -- never the deleted per-host strata_replica_verdict.
+fn strata_replica_verdict_for(l: ServingLayoutResult, budget: ServingMemoryReading, free: ServingMemoryReading, guard: StrataRestoreGuard, group: NonEmptyStr) -> ServingRungAdmissibility {
+  match filter(strata_replica_verdicts(l, budget, free, guard), v => (v.group as String) == (group as String)) |> first() {
+    Present { value: v } => v.admissibility
+    Absent => RungRefused {
+      why: LayoutRefused { detail: "its replica set carries no such group, so there is no active-slot figure to admit on" as NonEmptyStr },
+      reason: strata_refusal_text(r: LayoutRefused { detail: "its replica set carries no such group, so there is no active-slot figure to admit on" as NonEmptyStr }),
+      cites: strata_refusal_cites(r: LayoutRefused { detail: "its replica set carries no such group, so there is no active-slot figure to admit on" as NonEmptyStr })
+    }
+  }
+}
+
 // SRV4 AND SRV3 AS THEY RUN, each on its OWN rows and its OWN guard. srv4's engine is parallel 1, so its slot
 // endpoint answers save and restore; srv3 runs --batch 8, so the same question refuses -- and that refusal is the
-// answer, not a gap to fill in.
+// answer, not a gap to fill in. Each is the verdict for its engine's OWN group, not a sum over the host.
 fn srv4_strata_rung_admissible() -> ServingRungAdmissibility {
-  strata_replica_verdict(l: srv4_layout, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard)
+  strata_replica_verdict_for(l: srv4_layout, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard, group: "gunbc-srv4-daily-engine" as NonEmptyStr)
 }
 
 fn srv3_strata_rung_admissible() -> ServingRungAdmissibility {
-  strata_replica_verdict(l: srv3_layout, budget: srv3_strata_parked_budget, free: srv3_host_free_disk, guard: srv3_strata_restore_guard)
+  strata_replica_verdict_for(l: srv3_layout, budget: srv3_strata_parked_budget, free: srv3_host_free_disk, guard: srv3_strata_restore_guard, group: "strata-pool" as NonEmptyStr)
 }
 
 // HOW SRV3/SRV4'S LAYOUT VERDICT LOOKS TO THE GENERIC STORE. The anchor must not hardcode Strata's refusal

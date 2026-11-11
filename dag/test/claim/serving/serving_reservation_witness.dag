@@ -2,44 +2,39 @@ module test.claim.serving.serving_reservation_witness
 
 // THE WITNESS FOR gunbc.serving.serving_reservation (B4a). This is the module's first real consumer -- it
 // makes the typed reservation facts true by execution rather than by declaration (gunbc.cognition.belief:
-// a model nothing consumes is a guess). It says, and discriminates, four things the finding required:
+// a model nothing consumes is a guess). It says, and discriminates, the three reservation facts PRODUCTION
+// reads -- the CPU arm split and the memory reservation that the runner-width derivation folds for EVERY
+// serving host:
 //
 //   1. A CPU AFFINITY set does not reduce a host's CI width; an EXCLUSIVE set does. The discriminating
 //      red: if `cpu_reservation_excluded_cores` charged the affinity arm (or ignored the exclusive one),
 //      the two equalities below break in opposite directions -- a single collapse of the two arms cannot
 //      satisfy both.
-//   2. EVERY serving host is charged, not the prod-role host alone -- srv3, which is not the prod host,
-//      pays a memory and GPU reservation. The prod-role-only gap the finding names is closed by keying on
-//      the host identity, so srv3 (a Strata host the old derivation never charged) is charged here.
-//   3. A GPU power cap is a priced fact, not the always-Absent field the finding found -- srv3's cards carry
-//      a Present cap.
-//   4. A Strata release tagged "latest" is refused as unpinned while a content digest is accepted; and an
-//      engine that binds the LAN is reachable where a loopback-only engine is not.
+//   2. EVERY serving host is charged for memory, not the prod-role host alone -- srv3, which is not the
+//      prod host, pays its cgroup HARD ceiling (MemoryMax, 112 GiB). The prod-role-only gap the finding
+//      names is closed by keying the fold on the host identity, so a Strata host the old derivation never
+//      charged (srv3) is charged here.
+//   3. An unread memory ceiling charges NOTHING rather than a fabricated zero -- the width derivation
+//      receives Absent and fails closed, so a host whose memory nobody has read (butch's two engines) does
+//      not silently widen or narrow CI on a made-up number.
+//
+// The bind/port, GPU-card/power-cap, API-key and Strata-release facts this module once modelled are NOT here:
+// nothing in production consumes them yet, so B4a leaves them to B4b, which re-adds each WITH the deploy that
+// reads it. A model with no consumer is a guess, and a guess that passes a witness is worse than no model.
 //
 // Run (the whole floor is CI's job; this file runs alone):
 //   claim_batch --hermetic --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/serving/serving_reservation_witness.dag \
 //     --functions <the witness_* names, comma-joined>
 import std.types { Bool }
-import std.nat { Nat }
-import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, Watt, watt, watt_count }
-import std.algebra { FreeSemigroup }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size }
 import std.optional { Present, Absent }
-import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
-import extdeps.network.ipv4 { ipv4_address }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv14 }
 import gunbc.serving.serving_reservation {
-  CpuRange, CpuSet, CpuReservation, CpuAffinity, CpuExclusive, NoCpuSet, CpuRanges,
-  GpuReservation, ReplicaReservation,
-  ReplicaMemoryReservation, MemoryMeasured,
-  ServingBind, ServingBindAddress, BindLan, BindLoopback, BindIpv4,
-  StrataArtifact, StrataNativeGitCommit, StrataManagedRelease, StrataContainerImageDigest,
-  StrataRelease, StrataReleasePinned, StrataReleaseUnpinned,
-  cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores, cpu_reservation_covers,
-  gpu_reservation_card_count, bind_is_lan_reachable,
-  strata_release_is_pinned,
-  host_cores_withheld_from_runner, host_memory_reserved, host_gpus_withheld_from_runner,
-  reservation_reduces_runner_width,
+  CpuRange, CpuAffinity, CpuExclusive, CpuRanges,
+  ReplicaMemoryReservation, MemoryMeasured, MemoryUnmeasured, memory_reservation_bytes,
+  cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores,
+  host_cores_withheld_from_runner, host_memory_reserved,
 }
 
 // AN AFFINITY PIN LEAVES THE RUNNER WHOLE; AN EXCLUSIVE PIN WITHHOLDS ITS CORES. Both reserve the same
@@ -52,107 +47,46 @@ test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_ho
   let exclusive = CpuExclusive { set: shared_set }
   // The set itself spans forty cores either way -- the price is not in the set, it is in the arm.
   let set_spans_forty = cpu_set_width(shared_set) == 40 && cpu_range_width(CpuRange { first: 0, last: 39 }) == 40
-  // Affinity withholds nothing from the runner; exclusive withholds all forty.
+  // Affinity withholds nothing from the runner; exclusive withholds all forty. This is the whole split.
   let affinity_free = cpu_reservation_excluded_cores(affinity) == 0
   let exclusive_priced = cpu_reservation_excluded_cores(exclusive) == 40
-  // And the width-reduction decision tracks the price, not the set: affinity does not reduce width,
-  // exclusive does.
-  let affinity_res = ReplicaReservation { cpu: affinity, memory: MemoryMeasured { bytes: byte_size(count: 8), provenance: "witness synthetic replica" }, gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
-  let exclusive_res = ReplicaReservation { cpu: exclusive, memory: MemoryMeasured { bytes: byte_size(count: 8), provenance: "witness synthetic replica" }, gpu: GpuReservation { devices: [], power_cap_watts: Absent } }
-  let decision_tracks_arm = !reservation_reduces_runner_width(affinity_res) && reservation_reduces_runner_width(exclusive_res)
-  // Coverage is arm-independent: an affinity pin still says the engine may run on core 5.
-  let covers_either_way = cpu_reservation_covers(affinity, 5) && cpu_reservation_covers(exclusive, 5) && !cpu_reservation_covers(affinity, 40)
-  set_spans_forty && affinity_free && exclusive_priced && decision_tracks_arm && covers_either_way
+  set_spans_forty && affinity_free && exclusive_priced
 }
 
-// EVERY SERVING HOST IS CHARGED, NOT THE PROD-ROLE HOST ALONE. srv3 runs a Strata engine and is not the
-// prod-role host, yet it pays a memory reservation -- its cgroup HARD ceiling MemoryMax (112 GiB) -- and gives
-// up its two cards to the runner, while its affinity pin costs it no cores. The finding's gap was that
-// srv3/srv4's Strata were never charged; here a non-prod serving host is, keyed by its own identity, and the
-// HARD ceiling (MemoryMax) is charged rather than the soft MemoryHigh, because MemoryMax is what the cgroup
-// enforces. srv3's fixed_overhead predates its engine, so this is the engine's only charge, not a double-count.
-test fn witness_a_non_prod_serving_host_is_charged_for_memory_and_cards_though_its_affinity_costs_no_cores() -> Bool {
-  // srv3's one engine: two cards withheld, an affinity pin -> zero cores withheld; its per-engine memory is the
-  // MEASURED cgroup HARD ceiling MemoryMax = 112 GiB, not the soft MemoryHigh and not the fabricated zero this
-  // row once carried. That charge keeps srv3's Strata memory out of the runner pool.
-  let cores_whole = host_cores_withheld_from_runner(operator_host_srv3) == 0
-  let srv3_bytes = match host_memory_reserved(operator_host_srv3) {
-    Present { value: m } => byte_size_count(b: m)
-    Absent => 0 - 1
+// EVERY SERVING HOST IS CHARGED FOR MEMORY, NOT THE PROD-ROLE HOST ALONE. srv3 runs a Strata engine and is
+// not the prod-role host, yet it pays a memory reservation -- its cgroup HARD ceiling MemoryMax (112 GiB) --
+// while its affinity/no-cpuset costs it no runner cores. The finding's gap was that srv3/srv4's Strata were
+// never charged; here a non-prod serving host is, keyed by its own identity, and the HARD ceiling (MemoryMax)
+// is charged rather than the soft MemoryHigh, because MemoryMax is what the cgroup enforces. srv3's
+// fixed_overhead predates its engine, so this is the engine's only charge, not a double-count.
+test fn witness_a_non_prod_serving_host_is_charged_for_memory_by_its_own_identity() -> Bool {
+  // srv3 is not the prod-role host, but the fold charges it its engine's 112 GiB hard ceiling.
+  let srv3_memory_charged = match host_memory_reserved(operator_host_srv3) {
+    Present { value: b } => byte_size_count(b) == byte_size_count(gibibyte_to_byte_size(gibibyte(count: 112)))
+    Absent => false
   }
-  let memory_max_srv3 = byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 112)))
-  let cards_held = host_gpus_withheld_from_runner(operator_host_srv3) == 2
-  // srv4 likewise, keyed by its own identity -- a second serving host charged to its OWN hard ceiling MemoryMax
-  // = 64 GiB, no code change between the two hosts (the derivation is not keyed on a single host).
-  let srv4_bytes = match host_memory_reserved(operator_host_srv4) {
-    Present { value: m } => byte_size_count(b: m)
-    Absent => 0 - 1
-  }
-  let memory_max_srv4 = byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 64)))
-  cores_whole
-    && srv3_bytes == memory_max_srv3
-    && srv3_bytes > 0
-    && cards_held
-    && srv4_bytes == memory_max_srv4
-    && srv4_bytes > 0
-    && host_gpus_withheld_from_runner(operator_host_srv4) == 2
+  // And srv3's pin withholds no runner cores: it is modelled with no exclusive cpuset, so width is untouched
+  // on the CPU axis even while the memory axis pays. (A collapse that ignored non-prod hosts would charge
+  // srv3 nothing; a collapse that charged the affinity arm would withhold cores -- either breaks this.)
+  let srv3_withholds_no_cores = host_cores_withheld_from_runner(operator_host_srv3) == 0
+  srv3_memory_charged && srv3_withholds_no_cores
 }
 
-// A GPU POWER CAP IS A PRICED FACT, NOT THE ALWAYS-ABSENT FIELD the finding found on ReplicaGpuCard: srv3's
-// reservation carries a Present cap of 40 W, so a capped card no longer looks like an uncapped one.
-test fn witness_a_power_cap_present_on_the_reservation_is_distinguishable_from_uncapped() -> Bool {
-  // srv3 cards are capped at 40 W (from the model roster); the count of withheld cards reflects the two
-  // cards, and a capped reservation reduces width no differently from an uncapped one on the CPU axis --
-  // the cap is a separate, carried fact. Here we assert the roster actually carries a Present cap by
-  // checking the cards are counted and that an empty-card reservation with an explicit cap still prices
-  // zero cards, i.e. the cap does not leak into the card count.
-  let cards_counted = host_gpus_withheld_from_runner(operator_host_srv3) == 2
-  let capped_empty = gpu_reservation_card_count(GpuReservation { devices: [], power_cap_watts: Present { value: watt(count: 35) } }) == 0
-  let two_cards = gpu_reservation_card_count(GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 35) } }) == 2
-  cards_counted && capped_empty && two_cards
-}
-
-// WHAT NAMES A STRATA ENGINE. A CONTENT-ADDRESSED IMAGE DIGEST, a FULL NATIVE GIT COMMIT, a two-checkout
-// native build, and a MANAGED RELEASE id all pin an engine; a moving tag is refused. The runtime checks this
-// witness used to make -- a short git sha, a wrong-algorithm digest, an empty artifact list -- are NO LONGER
-// WRITABLE, so it does not (cannot) construct them: a commit must be a 40-char lowercase SHA-1 (Sha1DigestHex),
-// an image digest a 64-char one (Sha256DigestHex, so the algorithm is in the type and no "md5"/"sha256" string
-// exists to get wrong), and `artifacts` a FreeSemigroup with no empty inhabitant. The fail-closed moved from
-// runtime here into the TYPES; what remains checkable is exactly the writable distinction -- real pins are
-// pinned, and every moving reference is only expressible as Unpinned, which is refused.
-test fn witness_a_latest_tag_is_refused_where_a_content_digest_is_pinned() -> Bool {
-  let image_pinned = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataContainerImageDigest { digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }, tail: [] }, read_from: "witness synthetic image" }
-  let native_pinned = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" }, tail: [] }, read_from: "witness synthetic native build" }
-  // a native server spanning a code checkout AND a venv checkout pins BOTH; head + tail, both full commits.
-  let two_checkout = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataNativeGitCommit { checkout: "strata-main", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" }, tail: [ StrataNativeGitCommit { checkout: "strata", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" } ] }, read_from: "witness synthetic two checkouts" }
-  // a MANAGED RELEASE id from a release directory pins, and is a distinct kind from a git commit.
-  let managed_pinned = StrataReleasePinned { artifacts: FreeSemigroup { head: StrataManagedRelease { directory: "/opt/gunbc-serving/srv4-daily/releases", release_id: "406c9de18cef" }, tail: [] }, read_from: "witness synthetic managed release" }
-  let latest = StrataReleaseUnpinned { reference: "strata:latest" }
-  let nightly = StrataReleaseUnpinned { reference: "strata:nightly" }
-  strata_release_is_pinned(image_pinned)
-    && strata_release_is_pinned(native_pinned)
-    && strata_release_is_pinned(two_checkout)
-    && strata_release_is_pinned(managed_pinned)
-    && !strata_release_is_pinned(latest)
-    && !strata_release_is_pinned(nightly)
-}
-
-// AN ENGINE BINDS THE LAN. A replica bound to the LAN is reachable by the router; one bound to loopback is
-// not; an explicit address is reachable only when it falls outside 127/8. This is the model fact item 3 asks
-// for -- the port and address live on the replica, and "engines bind the LAN" is a check the model can run.
-// The address is the reused `extdeps.network.ipv4::Ipv4Address`; a malformed/IPv6/hostname literal is not
-// constructible as it at all (its `Octet` is `Int where range(0,255)`), so it can never be reported reachable.
-test fn witness_an_engine_bound_to_the_lan_is_reachable_where_a_loopback_bind_is_not() -> Bool {
-  let lan = ServingBind { address: BindLan, port: 18081 }
-  let loopback = ServingBind { address: BindLoopback, port: 18082 }
-  let explicit_lan = ServingBind { address: BindIpv4 { ip: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 64) }, port: 18083 }
-  let explicit_loop = ServingBind { address: BindIpv4 { ip: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1) }, port: 18084 }
-  // the discriminating case the old string match got WRONG: 127.0.0.2 is loopback (all of 127/8), but
-  // `!= "127.0.0.1" && != "localhost"` reported it reachable. Deciding over octet1 refuses the whole block.
-  let whole_8 = ServingBind { address: BindIpv4 { ip: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 2) }, port: 18085 }
-  bind_is_lan_reachable(lan)
-    && !bind_is_lan_reachable(loopback)
-    && bind_is_lan_reachable(explicit_lan)
-    && !bind_is_lan_reachable(explicit_loop)
-    && !bind_is_lan_reachable(whole_8)
+// AN UNREAD MEMORY CEILING CHARGES NOTHING, NOT A ZERO. The width derivation asks for a reservation and gets
+// Absent, so it fails closed instead of folding a made-up 0 bytes -- an unmeasured engine neither widens nor
+// narrows CI on a number nobody read. The primitive `memory_reservation_bytes` distinguishes the two states;
+// the fold `host_memory_reserved` on butch's two unread replicas returns Absent. This is the fail-closed rule
+// (gunbc.design_argument::fail_closed): an unmeasured reservation must not be charged as zero.
+test fn witness_an_unmeasured_memory_replica_charges_nothing_rather_than_a_fabricated_zero() -> Bool {
+  let read = MemoryMeasured { bytes: byte_size(count: 8), provenance: "witness synthetic replica" }
+  let unread = MemoryUnmeasured { reason: "no per-engine memory figure has been read" }
+  // The primitive: a read figure yields its bytes; an unread one yields nothing (not zero).
+  let primitive_distinguishes = match memory_reservation_bytes(read) {
+    Present { value: b } => byte_size_count(b) == 8
+    Absent => false
+  } && match memory_reservation_bytes(unread) { Absent => true Present { value: _ } => false }
+  // The fold: butch's host has two engines whose memory nobody read, so the host contributes no memory charge
+  // -- its width is not moved by a fabricated figure. (If it charged 0 as a number, the fold would be Present.)
+  let butch_charges_no_memory = match host_memory_reserved(operator_host_srv14) { Absent => true Present { value: _ } => false }
+  primitive_distinguishes && butch_charges_no_memory
 }

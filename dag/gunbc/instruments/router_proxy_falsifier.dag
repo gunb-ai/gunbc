@@ -15,9 +15,11 @@ import extdeps.proxy.openresty {
   ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorSrv3Strata, AnchorStrataProfile, AnchorStrataUnread, OwnedCap, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_h11_naming, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal, RouterDevHostRoster, router_dev_first_party_for_roster }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, UpstreamHttps, AnchorStrataProfile, OwnedCap, NoRetention, RetentionAdmitted, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RouterDevReplicaNaming, RouterDevReplicaProjected, RouterDevReplicaRefused, router_dev_replica_projection, router_dev_h11_namings, router_dev_h11_naming, router_dev_srv3_namings, router_dev_srv4_namings, RouterDevFirstParty, RouterDevFirstPartyRows, RouterDevFirstPartyRefused, router_dev_first_party_for, router_dev_first_party_refusal, RouterDevHostRoster, router_dev_first_party_for_roster }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutNoGroups, ServingReplicaConfig }
-import gunbc.serving.serving_replica_profile { srv3_strata_profile }
+import gunbc.serving.serving_replica_profile { srv3_strata_profile, srv_strata_profile_unread }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv3, operator_host_srv4 }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
@@ -518,7 +520,7 @@ fn h11_retain_text(r: RouterDevRetention) -> String {
 }
 
 fn h11_projection_summary(layout: ServingLayoutResult, engines: List<RouterDevReplicaNaming>) -> String {
-  match router_dev_replica_projection(host: "h11", layout: layout, namings: engines) {
+  match router_dev_replica_projection(host: operator_host_6ce85c, layout: layout, namings: engines) {
     RouterDevReplicaRefused { reason: r } => concat("REFUSED: ", r)
     RouterDevReplicaProjected { rows: rs } => fold(rs, init: "", f: (acc, u) => concat(acc, concat(if acc == "" { "" } else { "," }, concat(u.name, concat(":", h11_retain_text(r: u.retention))))))
   }
@@ -587,13 +589,13 @@ fn srv3_with_a_second_replica() -> ServingLayoutResult {
 // RED: a srv3 naming whose group is not the group the layout grants — a renamed unit, a stale table — refuses
 // rather than dropping the host from the router.
 fn srv3_naming_for_a_group_nothing_grants() -> Bool {
-  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorSrv3Strata, retiring: [] }]))
+  h11_summary_is_refused(text: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }]))
 }
 
 // ONE ROW, not one per card: the layout's single replica lists BOTH cards, and a projection that read devices as
 // replicas would emit two upstreams for one engine and route twice the traffic to one port.
 fn srv3_one_row_for_two_devices() -> Bool {
-  match router_dev_replica_projection(host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings()) {
+  match router_dev_replica_projection(host: operator_host_srv3, layout: srv3_layout, namings: router_dev_srv3_namings()) {
     RouterDevReplicaRefused { reason: _ } => false
     RouterDevReplicaProjected { rows: rs } => count(rs) == 1 && all(rs, u => u.name == "srv3-strata" && u.port == 18080 && count(u.retiring_names) == 1)
   }
@@ -603,7 +605,7 @@ fn srv3_one_row_for_two_devices() -> Bool {
 // (gunbc.harness.harness_operator_route), and it is one endpoint because the LAYOUT says so, not because a
 // hand-written row happened to list one.
 fn srv4_one_row_one_tls_endpoint() -> Bool {
-  match router_dev_replica_projection(host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings()) {
+  match router_dev_replica_projection(host: operator_host_srv4, layout: srv4_layout, namings: router_dev_srv4_namings()) {
     RouterDevReplicaRefused { reason: _ } => false
     RouterDevReplicaProjected { rows: rs } => count(rs) == 1 && all(rs, u => u.name == "srv4-strata" && u.port == 18443 && match u.scheme {
       UpstreamHttps => true
@@ -864,12 +866,17 @@ fn row_is_present(rs: List<RouterDevUpstream>, name: String) -> Bool {
   match first_party_row(rs: rs, name: name) { Present { value: _ } => true Absent => false }
 }
 
+// Fixture host identities for the falsifier's extra hosts: a roster is keyed by HostIdentity, so a synthetic
+// host brands its own literal the way the fleet rows do.
+data b4a_read_identity: HostIdentity = "b4a-read"
+data b4a_unread_identity: HostIdentity = "b4a-unread"
+
 fn fourth_strata_host_joins_as_a_row() -> Bool {
   let roster = [
-    RouterDevHostRoster { host: "h11", layout: host_6ce85c_layout, namings: router_dev_h11_namings() },
-    RouterDevHostRoster { host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings() },
-    RouterDevHostRoster { host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings() },
-    RouterDevHostRoster { host: "b4a-read", layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-read-host", scheme: UpstreamHttps, host: "10.0.0.5", port: 19001, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }] },
+    RouterDevHostRoster { host: operator_host_6ce85c, layout: host_6ce85c_layout, namings: router_dev_h11_namings() },
+    RouterDevHostRoster { host: operator_host_srv3, layout: srv3_layout, namings: router_dev_srv3_namings() },
+    RouterDevHostRoster { host: operator_host_srv4, layout: srv4_layout, namings: router_dev_srv4_namings() },
+    RouterDevHostRoster { host: b4a_read_identity, layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-read-host", scheme: UpstreamHttps, host: "10.0.0.5", port: 19001, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }] },
   ]
   match router_dev_first_party_for_roster(roster) {
     RouterDevFirstPartyRefused { reason: _ } => false
@@ -879,9 +886,9 @@ fn fourth_strata_host_joins_as_a_row() -> Bool {
 
 fn unread_replica_named_not_in_service() -> Bool {
   let roster = [
-    RouterDevHostRoster { host: "srv3", layout: srv3_layout, namings: router_dev_srv3_namings() },
-    RouterDevHostRoster { host: "srv4", layout: srv4_layout, namings: router_dev_srv4_namings() },
-    RouterDevHostRoster { host: "b4a-unread", layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-unread-host", scheme: UpstreamHttps, host: "10.0.0.6", port: 19002, tls_name: Absent, anchor: AnchorStrataUnread { obligation: "no throughput reading has been taken for this host" }, retiring: [] }] },
+    RouterDevHostRoster { host: operator_host_srv3, layout: srv3_layout, namings: router_dev_srv3_namings() },
+    RouterDevHostRoster { host: operator_host_srv4, layout: srv4_layout, namings: router_dev_srv4_namings() },
+    RouterDevHostRoster { host: b4a_unread_identity, layout: srv4_layout, namings: [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "b4a-unread-host", scheme: UpstreamHttps, host: "10.0.0.6", port: 19002, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv_strata_profile_unread }, retiring: [] }] },
   ]
   match router_dev_first_party_for_roster(roster) {
     RouterDevFirstPartyRefused { reason: _ } => false
@@ -1193,7 +1200,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // fronts. The first three are the REDs a hand-typed srv3 row would sail through.
     case_of(identity: "srv3_rows_come_from_srv3_layout: a refused srv3 layout stops the write", held: srv3_refused_layout_stops_the_write(), observed: h11_projection_summary(layout: h11_refused_layout(), engines: router_dev_srv3_namings())),
     case_of(identity: "a_second_srv3_replica_without_its_own_naming_refuses_the_write", held: srv3_second_replica_without_a_naming_refuses(), observed: h11_projection_summary(layout: srv3_with_a_second_replica(), engines: router_dev_srv3_namings())),
-    case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorSrv3Strata, retiring: [] }])),
+    case_of(identity: "a_srv3_naming_whose_group_nothing_grants_refuses_the_write", held: srv3_naming_for_a_group_nothing_grants(), observed: h11_projection_summary(layout: srv3_layout, engines: [RouterDevReplicaNaming { group: "strata-pool-old", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: [] }])),
     case_of(identity: "srv3_projects_one_row_for_its_one_replica_across_both_cards", held: srv3_one_row_for_two_devices(), observed: srv3_projection_summary()),
     case_of(identity: "srv4_projects_one_tls_endpoint_because_its_layout_grants_one_replica", held: srv4_one_row_one_tls_endpoint(), observed: h11_projection_summary(layout: srv4_layout, engines: router_dev_srv4_namings())),
     case_of(identity: "a_fourth_strata_host_joins_the_first_party_router_as_a_data_row", held: fourth_strata_host_joins_as_a_row(), observed: "a fourth host joins the host-keyed router as a data row, in service"),

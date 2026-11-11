@@ -1,18 +1,21 @@
 module test.claim.serving.serving_multi_replica_witness
 
-// THE N-REPLICAS-PER-HOST WITNESS (B4a). It says, and discriminates, the two per-replica findings:
+// THE N-REPLICAS-PER-HOST WITNESS (B4a). It says, and discriminates, the per-replica finding:
 //
-//   A PER-HOST grant could only name one replica, so `single_replica_grant` refused any layout that was not
-//   exactly one -- a second engine on a host was ungrantable. And the parked-tier verdict summed every
-//   replica's active_slots and asked the slot-file rule once, so TWO batch-1 engines summed to two active
-//   slots and tripped the batch rule together, when each batch-1 engine alone admits (server.py:4091 refuses
-//   only when THAT replica runs parallel requests). Both were per-host rules wearing a per-replica question.
+//   A PER-HOST grant could only name one replica, so the old `single_replica_grant` refused any layout that was
+//   not exactly one -- a second engine on a host was ungrantable. And the old per-host parked verdict summed every
+//   replica's active_slots and asked the slot-file rule once, so TWO batch-1 engines summed to two active slots
+//   and tripped the batch rule together, when each batch-1 engine alone admits (server.py:4091 refuses only when
+//   THAT replica runs parallel requests). Both were per-host rules wearing a per-replica question. B4a cuts the
+//   root over: production reads the per-replica folds `serving_replica_grants` / `strata_replica_verdicts`, and
+//   the per-host pair is gone.
 //
 // The fixture is srv4's real layout (one batch-1 replica) with a SECOND batch-1 replica appended -- the
-// "butch-shaped" two-engines-one-host case, genericized to srv4's rows. The witness asserts BOTH directions
-// so a single shared (per-host) derivation cannot satisfy it: the per-replica grant and verdict ADMIT each
-// replica, while the per-host grant and summed verdict REFUSE the very same layout. That red is built into
-// the green -- flip either to the collapsed (host-summed) form and one assertion breaks.
+// "butch-shaped" two-engines-one-host case, genericized to srv4's rows. The witness asserts BOTH directions so a
+// collapsed (per-host) derivation cannot satisfy it: EACH replica's group admits its own grant and parked verdict
+// through the per-replica functions, while a group the layout does not carry still REFUSES. A per-host grant
+// could not have granted the second replica (it refused count != 1), and a derivation that granted anything could
+// not refuse the absent group -- so green here rules out both collapsed forms.
 //
 // Run (the whole floor is CI's job; this file runs alone):
 //   claim_batch --hermetic --source-root dag --source-root src/v2 \
@@ -27,11 +30,11 @@ import gunbc.serving.serving_host_memory {
   ServingMemoryUnread, srv4_strata_parked_budget, srv4_host_free_disk,
 }
 import gunbc.serving.serving_capacity_anchor {
-  serving_replica_grants, single_replica_grant, GrantAdmits, GrantUnmodeled, GrantRefused,
+  serving_replica_grants, serving_replica_grant_for, GrantAdmits, GrantUnmodeled, GrantRefused,
 }
 import gunbc.serving.strata_parked_tier {
-  strata_replica_verdicts, strata_replica_verdict, RungAdmissible, RungRefused,
-  BatchDisablesSlotFiles, srv4_strata_restore_guard,
+  strata_replica_verdicts, strata_replica_verdict_for, RungAdmissible, RungRefused,
+  srv4_strata_restore_guard,
 }
 
 // SRV4'S REAL LAYOUT WITH A SECOND batch-1 REPLICA APPENDED, reusing the layout's own unallocated ram and
@@ -68,14 +71,18 @@ test fn witness_two_batch1_replicas_on_one_host_each_get_a_grant_and_a_parked_ve
   let every_grant_admits = all(grants, g => match g.grant { GrantAdmits { conversations: _ } => true GrantUnmodeled { obligation: _ } => false GrantRefused { reason: _ } => false })
   let two_verdicts = count(verdicts) == 2
   let every_verdict_admits = all(verdicts, v => match v.admissibility { RungAdmissible { admission_standings: _ } => true RungRefused { why: _, reason: _, cites: _ } => false })
-  // THE DISCRIMINATOR -- the per-HOST derivations, asserted to still refuse the SAME layout. A per-host grant
-  // cannot name two replicas so it refuses (count != 1); a summed per-host verdict makes two batch-1 engines
-  // look like one batch-2 engine and refuses on the batch rule. Both refusals present while both per-replica
-  // admissions hold is the finding closed, in one witness.
-  let host_grant_refuses = match single_replica_grant(layout, "srv4") { GrantRefused { reason: _ } => true GrantUnmodeled { obligation: _ } => false GrantAdmits { conversations: _ } => false }
-  let host_verdict_refuses = match strata_replica_verdict(layout, srv4_strata_parked_budget, srv4_host_free_disk, srv4_strata_restore_guard) {
-    RungRefused { why: w, reason: _, cites: _ } => match w { BatchDisablesSlotFiles { active_slots: _ } => true _ => false }
-    RungAdmissible { admission_standings: _ } => false
+  // THE DISCRIMINATOR -- each replica's OWN group admits through the per-replica functions, and a group the
+  // layout does not carry REFUSES. A per-host grant could never have granted the appended second replica (it
+  // refused count != 1); a derivation that granted anything could not refuse the absent group. Both hold, so the
+  // root is the per-replica fold, not a collapsed host rule wearing a replica question.
+  let second_replica_admits_by_group = match serving_replica_grant_for(layout: layout, deployment: "srv4", group: "strata-disk-b" as NonEmptyStr) {
+    GrantAdmits { conversations: _ } => true GrantUnmodeled { obligation: _ } => false GrantRefused { reason: _ } => false
   }
-  two_grants && every_grant_admits && two_verdicts && every_verdict_admits && host_grant_refuses && host_verdict_refuses
+  let absent_group_grant_refuses = match serving_replica_grant_for(layout: layout, deployment: "srv4", group: "group-the-layout-does-not-carry" as NonEmptyStr) {
+    GrantRefused { reason: _ } => true GrantUnmodeled { obligation: _ } => false GrantAdmits { conversations: _ } => false
+  }
+  let absent_group_verdict_refuses = match strata_replica_verdict_for(l: layout, budget: srv4_strata_parked_budget, free: srv4_host_free_disk, guard: srv4_strata_restore_guard, group: "group-the-layout-does-not-carry" as NonEmptyStr) {
+    RungRefused { why: _, reason: _, cites: _ } => true RungAdmissible { admission_standings: _ } => false
+  }
+  two_grants && every_grant_admits && two_verdicts && every_verdict_admits && second_replica_admits_by_group && absent_group_grant_refuses && absent_group_verdict_refuses
 }

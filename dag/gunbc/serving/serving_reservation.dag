@@ -2,79 +2,86 @@ module gunbc.serving.serving_reservation
 
 // A SERVING REPLICA'S CLAIM ON ITS HOST, SAID AS TYPED FACTS, BEFORE ANY OF IT IS SPENT.
 //
-// WHY THIS MODULE EXISTS (B4a, 2026-11-10). The serving path could already say how MANY replicas a host
-// runs and WHAT each is configured as (serving_layout's ServingReplicaConfig, serving_replica_profile's
-// ServingReplicaProfile), but nowhere could it say what a replica TAKES OFF THE HOST while it runs: which
-// cores it may run on, whether those cores are held back from every other tenant, how much memory is set
-// aside for it, which cards and at what power cap, and on which port and address its engine listens. The
-// finding B4a closes is that these were expressible nowhere on the serving path (ServingDeviceGroup,
-// ServingReplicaConfig, ServingReplicaProfile, ReplicaGpuCard, extdeps.strata.serve_flags carried none of
-// them), so the only place a port appeared at all was the router's own naming row, and the runner's width
-// derivation (gunbc.runner.runner_slot_allocation, gunbc.live_deploy.served_slice_charge) could charge only
+// WHY THIS MODULE EXISTS (B4a, 2026-11-10). The serving path could already say how MANY replicas a host runs
+// and WHAT each is configured as (serving_layout's ServingReplicaConfig, serving_replica_profile's
+// ServingReplicaProfile), but nowhere could it say what a replica TAKES OFF THE HOST while it runs: which cores
+// it may run on, whether those cores are held back from every other tenant, and how much memory is set aside for
+// it. The finding B4a closes is that these were expressible nowhere on the serving path (ServingDeviceGroup,
+// ServingReplicaConfig, ServingReplicaProfile, extdeps.strata.serve_flags carried none of them), so the runner's
+// width derivation (gunbc.runner.runner_slot_allocation, gunbc.live_deploy.served_slice_charge) could charge only
 // the one prod-role host and never srv3's or srv4's Strata -- because it had nothing typed to charge with.
 //
-// A RESERVATION IS PRICED BEFORE CI WIDTH, NOT DISCOVERED AFTER IT (operator ruling, B4a). A core the
-// engine is given exclusively is a core the runner cannot hand to a CI slot; a core the engine is merely
-// ALLOWED on is still a core the runner may use. The distinction is the whole of the module's reason for
-// being: affinity is a fact about where a process may run, exclusivity is a fact about what is withheld
-// from everyone else, and only the second one has a price against CI width. Collapsing them -- pinning and
-// reserving with one field -- would either overcharge (a pinned-but-shared cpuset wrongly shrinks the
-// runner) or undercharge (an exclusive range wrongly leaves its cores bookable by a second tenant). So
-// they are two arms, and the width derivation reads only the exclusive one.
+// A RESERVATION IS PRICED BEFORE CI WIDTH, NOT DISCOVERED AFTER IT (operator ruling, B4a). A core the engine is
+// given exclusively is a core the runner cannot hand to a CI slot; a core the engine is merely ALLOWED on is
+// still a core the runner may use. The distinction is the whole of the module's reason for being: affinity is a
+// fact about where a process may run, exclusivity is a fact about what is withheld from everyone else, and only
+// the second one has a price against CI width. Collapsing them -- pinning and reserving with one field -- would
+// either overcharge (a pinned-but-shared cpuset wrongly shrinks the runner) or undercharge (an exclusive range
+// wrongly leaves its cores bookable by a second tenant). So they are two arms, and the width derivation reads
+// only the exclusive one.
 //
-// PER-REPLICA, NOT PER-HOST (B4a ruling, and operator ruling D2 in gunbc.plans.fleet_machine_naming: a
-// per-host fact is a DATA ROW keyed by the machine, never a named per-host declaration). A host that runs
-// N replicas prices N reservations, one per replica row, each keyed by (host, replica id). The width a host
-// gives back to the runner is the fold over its replicas' reservations -- so adding a second engine to a
-// host is another row, not a fork of the derivation.
+// PER-REPLICA, NOT PER-HOST (B4a ruling, and operator ruling D2 in gunbc.plans.fleet_machine_naming: a per-host
+// fact is a DATA ROW keyed by the machine, never a named per-host declaration). A host that runs N replicas
+// prices N reservations, one per replica row, each keyed by (host, replica id). The width a host gives back to
+// the runner is the fold over its replicas' reservations -- so adding a second engine to a host is another row,
+// not a fork of the derivation.
 //
-// NOTHING HERE DEPLOYS. This is the model the live deploy (B4b, cool-lark-40) and the runner width
-// derivation consume; the witnesses under dag/test/claim/serving are the consumers that make it true by
-// execution. The production consumer for the width charge is the runner's served-deployment claim, which
-// today (gunbc.live_deploy.served_slice_charge, owned by PR 16058) charges the prod-role host's container
-// MEMORY only -- this module supplies the CPU/GPU/memory-reservation face and charges it for EVERY serving
-// host, keyed by host identity, so the prod-role restriction the finding names is not inherited here.
-import std.types { Bool, List, NonEmptyStr, String }
+// ONLY WHAT A PRODUCTION CONSUMER READS IS MODELLED HERE (review 93413, DESIGN consumption). This module holds
+// exactly the facts the runner WIDTH derivation folds -- the CPU affinity/exclusive arms and the memory
+// reservation, both keyed per host and folded per replica. Facts that have NO consumer yet are NOT staged here
+// ahead of the deploy that would read them; they are named below and re-added, together with their consumer, by
+// the live-deploy lane (B4b):
+//   - The replica's PORT and BIND address (the "engines bind the LAN" fact) -- re-added with the router/deploy
+//     that reads the replica's listen address, so a loopback-vs-LAN check has a caller rather than being a
+//     predicate with none.
+//   - The engine's GPU CARDS and their POWER CAP -- re-added with the GPU-width consumer (the runner's GPU CI
+//     admission) that stops counting a serving card as free; the runner today has no such fold, so a card and a
+//     watt cap would be facts no consumer reads.
+//   - The engine's API-KEY REFERENCE -- re-added with the router key-state consumer that forwards it to the
+//     engine; the model must still never carry a literal key when it lands.
+//   - The Strata RELEASE pinned by artifact digest -- re-added with the deploy that reproduces the byte-exact
+//     engine from the pin.
+// Each is honest to DEFER: a typed fact with no named consumer over an executing route is dangling (DESIGN
+// consumption), and staging it here would let it drift from the deploy that must own it.
+//
+// NOTHING HERE DEPLOYS. This is the model the runner width derivation consumes; the production consumer is the
+// runner's served-deployment claim (gunbc.runner.runner_slot_allocation, and gunbc.live_deploy.served_slice_charge
+// owned by PR 16058), which today charges only the prod-role host and is the consumer B4a generalises to EVERY
+// serving host.
+
+import std.types { List, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { ByteSize, byte_size_count, byte_size, Watt, watt }
-import std.algebra { FreeSemigroup, list_append }
-import std.content_hash { Sha1DigestHex, Sha256DigestHex }
+import std.measure { ByteSize, byte_size_count, byte_size }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
-import extdeps.network.ipv4 { Ipv4Address }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
-// AN INCLUSIVE RANGE OF CORE INDICES. `first` is never above `last` -- a witness pins that, because the
-// width below is `last - first + 1` and a reversed range would underflow the naturals rather than mean
-// "empty."
+// AN INCLUSIVE CORE RANGE, `first` .. `last`. `first` and `last` are CORE INDICES (a position in the machine's
+// core numbering), not a count, so they are bare Nat: a bare index is a position, not a quantity that needs a
+// Measure (unit rule).
 type CpuRange {
   first: Nat
   last: Nat
 }
 
-// A CPUSASET: the cores a process is placed among. Either nothing (an engine with no placement, which
-// shares whatever the cgroup was handed) or a list of inclusive ranges. Modelled as ranges and not as a
-// string like "0-39" so the width is a fact of the carrier rather than of a parser: a host's cpuset is
-// counted, not decoded (gunbc.design_argument::minimize_redundancy -- no parser where data will do).
+// THE CPUSET A PROCESS MAY RUN ON: an ordered set of inclusive ranges, or nothing.
 type CpuSet
   = NoCpuSet
   | CpuRanges { ranges: List<CpuRange> }
 
-// THE PRICE-RELEVANT DISTINCTION. `CpuAffinity` says which cores the engine may run on; the host keeps
-// them bookable, so the runner may still spend them on a CI slot. `CpuExclusive` says those cores are
-// withheld from every other tenant for the engine's life; the runner may NOT spend them. The two carry the
-// same set and cost the host different amounts, which is why they are two arms and not one field with a
-// boolean.
+// THE TWO WAYS A CPU SET ENTERS A RESERVATION, KEPT APART BECAUSE THEY PRICE DIFFERENTLY.
+//   - CpuAffinity is a cpuset the process is PERMITTED to run on: the scheduler may still place a runner there,
+//     so it withholds NOTHING from the runner and prices zero against CI width.
+//   - CpuExclusive is a set of cores WITHHELD from every other tenant: the runner cannot hand them to a slot, so
+//     their width is the host's CI price.
+// A cpuset is a placement fact; only exclusivity is a reservation. One field for both cannot say both honestly.
 type CpuReservation
   = CpuAffinity { set: CpuSet }
   | CpuExclusive { set: CpuSet }
 
-// HOW MANY CORES A RANGE SPANS. Both endpoints are addressable cores, hence `+ 1`. Well-formedness
-// (`first <= last`) is the caller's duty and is witnessed; a reversed range is a bug in the row, not an
-// empty set.
 fn cpu_range_width(r: CpuRange) -> Nat {
   r.last - r.first + 1
 }
@@ -95,34 +102,6 @@ fn cpu_reservation_excluded_cores(r: CpuReservation) -> Nat {
     CpuAffinity { set: _ } => 0
     CpuExclusive { set: s } => cpu_set_width(s)
   }
-}
-
-// IS THIS CORE INSIDE THE RESERVATION'S SET (either arm -- placement, not price).
-fn cpu_reservation_covers(r: CpuReservation, core: Nat) -> Bool {
-  let set = match r {
-    CpuAffinity { set: s } => s
-    CpuExclusive { set: s } => s
-  }
-  match set {
-    NoCpuSet => false
-    CpuRanges { ranges: rs } => any(rs, range => core >= range.first && core <= range.last)
-  }
-}
-
-// ── GPU: WHICH CARDS, AT WHAT CAP ────────────────────────────────────────────────────────────────────
-
-// THE CARDS A REPLICA HOLDS AND THE POWER FLOOR IT SETS ON THEM. The power cap is the reason a card's
-// reservation is not merely a device list: ReplicaGpuCard.power_cap was always Absent on the serving path,
-// so a card an operator had capped to 35 W looked identical to an uncapped one. A Present cap is a priced
-// fact (heat and clock headroom the host has committed away); Absent says nothing was capped, not that the
-// cap is unknown to the point of being unusable.
-type GpuReservation {
-  devices: List<NonEmptyStr>
-  power_cap_watts: Optional<Watt>
-}
-
-fn gpu_reservation_card_count(g: GpuReservation) -> Nat {
-  count(g.devices)
 }
 
 // A REPLICA'S MEMORY RESERVATION IS A MEASURED FACT OR HONESTLY UNMEASURED -- never a fabricated number. A
@@ -151,7 +130,7 @@ fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> Optional<ByteSize> {
 
 // THE RESERVATION DERIVED FROM THE CEILING AUTHORITY (review 93375): srv3/srv4 charge the cgroup HARD ceiling
 // that gunbc.serving.serving_host_memory reads ONCE as ServingEngineMemory.memory_max -- serving_reservation
-// does NOT restate the 112/64 GiB figures (single_authority / minimize_redundancy: the ceiling has one home).
+// does NOT restate the ceiling figures (single_authority / minimize_redundancy: the ceiling has one home).
 // An unread ceiling is MemoryUnmeasured, so host_memory_reserved returns Absent and the width derivation fails
 // closed on that host rather than charging a fabricated number (fail_closed).
 fn reservation_from_engine_ceiling(e: ServingEngineMemory) -> ReplicaMemoryReservation {
@@ -162,108 +141,20 @@ fn reservation_from_engine_ceiling(e: ServingEngineMemory) -> ReplicaMemoryReser
   }
 }
 
-// ── THE REPLICA'S RESERVATION, AND THE HOST'S BIND ───────────────────────────────────────────────────
+// ── THE REPLICA'S RESERVATION ────────────────────────────────────────────────────────────────────────
 
-// WHAT ONE REPLICA TAKES OFF ITS HOST: cores (affinity or exclusive), a memory reservation, and its cards
-// with their cap. Every field is a fact a row states; none is derived from a count of co-resident replicas,
-// which is what let a per-host verdict wrongly add a second batch-1 engine onto the first.
+// WHAT ONE REPLICA TAKES OFF ITS HOST: the cores it reserves (affinity or exclusive), and a memory reservation.
+// Every field is a fact a row states; none is derived from a count of co-resident replicas, which is what let a
+// per-host verdict wrongly add a second batch-1 engine onto the first. The CPU reservation is OPTIONAL: a host
+// whose engine cpuset has never been READ carries no CPU reservation at all rather than a fabricated pin, and an
+// absent CPU reservation withholds no cores (contributes zero to width). srv3/srv4 are exactly that -- the
+// operator read their Strata builds and memory ceilings over ssh, never their cpusets -- so their rows say
+// Absent, and butch (whose cpusets the operator DID state) says Present (step 4, review 93413: an unread figure
+// is a read-cited assumption or it is dropped, never invented). The GPU cards, power cap, port, bind address,
+// API key and Strata pin are B4b's, with the deploy that reads them (see the module header).
 type ReplicaReservation {
-  cpu: CpuReservation
+  cpu: Optional<CpuReservation>
   memory: ReplicaMemoryReservation
-  gpu: GpuReservation
-}
-
-// THE ADDRESS AN ENGINE BINDS AND THE PORT IT BINDS IT ON. `BindLan` is the address a Strata engine listens
-// on so its siblings on the LAN can reach it -- the finding's "engines bind the LAN." `BindLoopback` is a
-// local-only engine (the named variant carries the meaning; there is no loopback STRING to get wrong).
-// `BindIpv4` pins an explicit interface using the fleet's ONE IPv4 authority, `extdeps.network.ipv4::Ipv4Address`
-// (review 93364): its `Octet` is `Int where range(0,255)`, so an out-of-range octet like 999 has NO
-// constructor and is unwritable rather than a value a consumer must re-check -- the address is not modelled
-// twice (single_authority / minimize_redundancy / fail_closed). The port is a Nat so a collision (two replicas
-// on one host given the same port) is decidable rather than a string-compare accident.
-type ServingBindAddress
-  = BindLan
-  | BindLoopback
-  | BindIpv4 { ip: Ipv4Address }
-
-type ServingBind {
-  address: ServingBindAddress
-  port: Nat
-}
-
-// AN ENGINE BINDS THE LAN: a serving replica must be LAN-addressable to serve, so a loopback-only replica is
-// not reachable by the router and is refused by this check (fail_closed -- a wrong "reachable" fabricates a
-// routable engine). BindLan is reachable; BindLoopback is not; an explicit IPv4 is reachable when it falls
-// OUTSIDE the loopback block. 127.0.0.0/8 is loopback, so the address is loopback exactly when its FIRST octet
-// is 127 -- decided over `octet1` this catches 127.0.0.2, not merely the "127.0.0.1" spelling. The octets are
-// already 0..255 by the reused `Octet`, so there is no range check to restate here; a malformed/IPv6/hostname
-// literal cannot be built as an Ipv4Address at all, so it can never be wrongly reported reachable.
-fn bind_is_lan_reachable(b: ServingBind) -> Bool {
-  match b.address {
-    BindLan => true
-    BindLoopback => false
-    BindIpv4 { ip: ip } => ip.octet1 != 127
-  }
-}
-
-// ── THE STRATA RELEASE IS PINNED BY ARTIFACT DIGEST, NOT TAGGED "latest" ─────────────────────────────
-
-// WHAT A HOST'S STRATA ENGINE ACTUALLY IS, as an immutable artifact. These are genuinely different artifact
-// KINDS and are kept distinct (operator ruling, 2026-11-10): a NATIVE checkout is identified by a GIT COMMIT --
-// a 40-char lowercase SHA-1, the type `Sha1DigestHex` is `String where lower_hex_40`, so a short sha, a branch
-// name, or any non-hex text simply WILL NOT CONSTRUCT -- AND SEPARATELY the venv interpreter+packages it runs
-// under (on srv3/butch these are two DIFFERENT clean checkouts, strata-main and strata); a MANAGED RELEASE is an
-// id in a release directory (srv4's /opt/gunbc-serving/srv4-daily/releases/<id>, a build chosen by the deploy
-// tool, NOT a git commit); and a CONTAINER image is a CONTENT-ADDRESSED IMAGE DIGEST -- the type
-// `Sha256DigestHex` is `String where lower_hex_64`, so the algorithm is carried IN THE TYPE and no "sha256"
-// string is ever compared. Collapsing these onto one "hex" field would let a host's pin claim the wrong artifact
-// -- pinning a container digest for a host that runs a native binary, or a git commit for a host that runs a
-// managed release, is a FALSE pin, worse than no pin because it reads as reproducible and is not. A tag
-// ("latest", "nightly", "v1") cannot enter ANY of these arms -- it is neither 40-hex, 64-hex, nor a managed
-// build id -- so the moving-reference case lives only in StrataReleaseUnpinned below, and a "pinned" value can
-// never BE a tag: the bad states are UNWRITABLE at the type, not filtered at runtime (fail_closed: making a
-// wrong state unwritable beats catching it; the guarantee ladder's "structurally impossible" rung, not runtime
-// validation dressed as it).
-type StrataArtifact
-  = StrataNativeGitCommit { checkout: NonEmptyStr, commit: Sha1DigestHex }
-  | StrataManagedRelease { directory: NonEmptyStr, release_id: NonEmptyStr }
-  | StrataContainerImageDigest { digest: Sha256DigestHex }
-
-// A STRATA RELEASE THE MODEL WILL RUN. `Pinned` carries the artifacts that MAKE UP the running engine (a native
-// server may span a code checkout AND a venv checkout, so a NONEMPTY list -- `FreeSemigroup` -- never a
-// possibly-empty one) AND the authority they were read from, so a pin is auditable to an observation rather than
-// an assertion. FreeSemigroup has no empty inhabitant (its `head` is a required field, std.algebra), so a
-// "pinned release with no artifact" -- a fabricated pin -- CANNOT be written; emptiness is constructed, never
-// checked at runtime (nonemptiness_is_constructed_or_proved). Every member is immutable BY TYPE (a 40-hex
-// commit, a 64-hex digest, or a managed build id), so there is nothing left to validate. `Unpinned` records a
-// moving reference (a tag like "strata:latest", or a build never read off the box) and is refused by every
-// consumer that must reproduce a byte-exact engine. Keeping `Unpinned` as a variant -- rather than making a
-// digest required -- lets the model NAME a host's current unpinned state and refuse it, more honest than
-// pretending every host already has a byte-exact build.
-type StrataRelease
-  = StrataReleasePinned { artifacts: FreeSemigroup<StrataArtifact>, read_from: NonEmptyStr }
-  | StrataReleaseUnpinned { reference: NonEmptyStr }
-
-// A release is pinned exactly when it is the `Pinned` variant. There is no algorithm string to compare and no
-// length to check, because the arms already cannot hold a moving reference (a tag will not type-check as a
-// commit or digest) and `FreeSemigroup` cannot be empty -- the checks this function once made are now enforced
-// BY THE TYPES, so this predicate is the pinned/unpinned DISTINCTION alone (fail_closed: an Unpinned release is
-// never assumed pinned).
-fn strata_release_is_pinned(r: StrataRelease) -> Bool {
-  match r {
-    StrataReleasePinned { artifacts: _, read_from: _ } => true
-    StrataReleaseUnpinned { reference: _ } => false
-  }
-}
-
-// THE ARTIFACTS a release names, as an ordinary list for iteration -- an accessor over the nonempty head+tail,
-// so a consumer (an auditor, a witness) can ask "which builds make up this host's engine?" without pattern
-// matching the FreeSemigroup shape. An Unpinned release names no immutable artifact, so it lists none.
-fn strata_release_artifacts(r: StrataRelease) -> List<StrataArtifact> {
-  match r {
-    StrataReleasePinned { artifacts: FreeSemigroup { head: h, tail: t }, read_from: _ } => list_append(left: [h], right: t)
-    StrataReleaseUnpinned { reference: _ } => []
-  }
 }
 
 // ── THE WIDTH DERIVATION: EVERY SERVING HOST PAYS FOR THE RESERVATIONS IT RUNS ────────────────────────
@@ -280,77 +171,76 @@ type ServingHostReservation {
 
 // THE ROSTER OF SERVING HOSTS AND THEIR RESERVATIONS. Extending the fleet is a row here -- the operator's
 // "adding the next machine is boring" bar -- never a branch on a machine name in the derivation below.
-// srv3 and srv4 run one Strata engine each on an AFFINITY cpuset (pinned to their engine cores, but the
-// cores stay bookable by the runner), so they are charged GPU and memory and cost the runner no cores; a
-// host that pins its engine EXCLUSIVELY would carry a CpuExclusive row and the width would fall. This is a
-// MODEL roster: butch's own rows and the live cpusets land with B4b (cool-lark-40); the rows here are the
-// fleet's standing claims, and the derivation reads them all the same.
+// srv3 and srv4 run one Strata engine each and are charged MEMORY (their measured cgroup ceiling); their CPU is
+// Absent because no operator has READ their engine cpuset, so an absent pin costs the runner no cores and says so
+// honestly. butch (srv14) is the FIRST host that runs TWO REPLICAS -- the N-per-host price the per-host code
+// could not express. The ports, GPU cards, power caps and Strata pins that butch's operator read are B4b's rows
+// (cool-lark-40), re-added with the consumers that read them; a MODEL roster here records only what the width
+// derivation folds.
 data serving_host_reservations: List<ServingHostReservation> = [
-  // srv3: one Strata engine, its two cards capped, an affinity pin that leaves cores bookable. Its per-engine
-  // MEMORY is MEASURED as the cgroup's HARD ceiling, MemoryMax = 112 GiB (the drop-in that caps the engine also
-  // sets MemoryHigh 96 G / MemoryMax 112 G). The HARD ceiling is charged, not the soft MemoryHigh: MemoryMax is
-  // what the cgroup ENFORCES, so it is the fail-closed amount the runner must never book (the engine can be
-  // pushed to MemoryMax under pressure; MemoryHigh only throttles above it). It is NOT already covered by the
-  // host's fixed_overhead -- srv3's overhead observation (gunbc.host.host_memory_observation
-  // gunbc_ci_srv3_memavailable_high_water) was read 2026-07-16, four months BEFORE this engine was deployed
-  // (2026-11-09), so the engine's RSS is not inside that bound and this is its only charge, not a double-count.
+  // srv3: one Strata engine. Its per-engine MEMORY is MEASURED as the cgroup's HARD ceiling, MemoryMax (the
+  // drop-in that caps the engine also sets a soft MemoryHigh and a hard MemoryMax). The HARD ceiling is charged,
+  // not the soft MemoryHigh: MemoryMax is what the cgroup ENFORCES, so it is the fail-closed amount the runner
+  // must never book (the engine can be pushed to MemoryMax under pressure; MemoryHigh only throttles above it).
+  // It is NOT already covered by the host's fixed_overhead -- srv3's overhead observation
+  // (gunbc.host.host_memory_observation gunbc_ci_srv3_memavailable_high_water) was read 2026-07-16, months BEFORE
+  // this engine was deployed, so the engine's RSS is not inside that bound and this is its only charge, not a
+  // double-count. Its engine cpuset is unread, so CPU is Absent (see the roster comment; step 4, review 93413).
   ServingHostReservation {
     host: operator_host_srv3,
     replicas: [
       ReplicaReservation {
-        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
+        cpu: Absent,
         // srv3 charges its strata engine's cgroup HARD ceiling (MemoryMax), read ONCE into
         // serving_host_memory.srv3_strata_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
         // The hard ceiling (not MemoryHigh) is what the cgroup enforces, so it is the fail-closed figure the
         // runner must never book. srv3's fixed_overhead (gunbc_ci_srv3_memavailable_high_water, 2026-07-16)
         // predates this engine (2026-11-09) and does NOT already subtract it, so this is the engine's only charge.
         memory: reservation_from_engine_ceiling(srv3_strata_engine_memory),
-        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
   },
-  // srv4: one Strata engine, its two cards capped, an affinity pin; memory MEASURED as its cgroup HARD ceiling
-  // MemoryMax = 64 GiB (drop-in MemoryHigh 56 G / MemoryMax 64 G, gunbc-srv4-daily-engine.service). Same
-  // reasoning as srv3 -- hard ceiling charged, and srv4's fixed_overhead is the same 2026-07-16 bound that
-  // predates this engine, so the charge is not a double-count.
+  // srv4: one Strata engine; memory MEASURED as its cgroup HARD ceiling (drop-in MemoryHigh/MemoryMax,
+  // gunbc-srv4-daily-engine.service). Same reasoning as srv3 -- hard ceiling charged, and srv4's fixed_overhead
+  // is the same 2026-07-16 bound that predates this engine, so the charge is not a double-count. Its engine
+  // cpuset is unread, so CPU is Absent (step 4, review 93413).
   ServingHostReservation {
     host: operator_host_srv4,
     replicas: [
       ReplicaReservation {
-        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 7 } ] } },
+        cpu: Absent,
         // srv4 charges its strata engine's cgroup HARD ceiling (MemoryMax), read ONCE into
         // serving_host_memory.srv4_serving_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
         // The hard ceiling (not MemoryHigh) is what the cgroup enforces. srv4's fixed_overhead (the 2026-07-16
         // gunbc_ci_managed_host_fixed_overhead bound) predates this engine (2026-11-09) and does NOT already
         // subtract it, so this is the engine's only charge.
         memory: reservation_from_engine_ceiling(srv4_serving_engine_memory),
-        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 40) } },
       },
     ],
   },
   // BUTCH (srv14) -- THE FIRST REAL ROW, AND THE FIRST HOST THAT RUNS TWO REPLICAS. This is the operator's
-  // hand-deployed serving host (2026-11-10): strata-pool@a (butch-a) and strata-pool@b (butch-b), one engine
-  // each, each holding two of the four A2 cards (0+1 / 2+3) that a2-power-cap.service holds at 35 W. Its
-  // cpusets are AFFINITY (the operator's word): 0-39 and 40-79 pin each engine but leave the cores bookable, so
-  // butch gives the runner back no cores while still handing over all four cards -- the N-per-host price the
-  // finding's per-host code could not express. Its per-engine MEMORY is HONESTLY UNMEASURED: the operator gave
-  // ports, cpusets, cards and the 35 W cap, NOT a memory figure, so B4a refuses to invent one -- the row says
-  // MemoryUnmeasured and the width derivation FAILS CLOSED on butch until B4b reads the reservation from the
-  // box (which is correct: butch is a serving host, and an unmeasured reservation must not be charged as zero).
-  // The ports, router cap (2) and sticky count (4) are the ROUTER's facts (RouterDevReplicaNaming /
-  // RouterDevUpstream.capacity/retention), not a reservation, so they are not duplicated here.
+  // hand-deployed serving host (2026-11-10, operator facts msg_cc2ab16d): strata-pool@a (butch-a) and
+  // strata-pool@b (butch-b), one engine each. Its cpusets are AFFINITY (the operator's word, a read this model
+  // cites rather than invents): 0-39 pins butch-a and 40-79 pins butch-b, and because they are AFFINITY they
+  // leave the cores bookable, so butch gives the runner back no cores -- the N-per-host price the per-host code
+  // could not express. Its per-engine MEMORY is HONESTLY UNMEASURED: the operator gave cpusets and cards but NOT
+  // a per-engine memory figure, so B4a refuses to invent one -- the row says MemoryUnmeasured and the width
+  // derivation FAILS CLOSED on butch until B4b reads the reservation from the box (correct: an unmeasured
+  // reservation must not be charged as zero). Its GPU cards + 35 W cap, ports, router cap (2) and sticky count
+  // (4) are NOT reservations this derivation folds -- the GPU/power facts re-enter with B4b's GPU-width consumer
+  // and the port/router facts with the router's own rows (RouterDevReplicaNaming / RouterDevUpstream).
   ServingHostReservation {
     host: operator_host_srv14,
     replicas: [
       ReplicaReservation {
-        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] } },
-        memory: MemoryUnmeasured { reason: "operator stated butch-a ports/cpusets/cards/35W cap, not a per-engine memory figure; B4b reads it from the running box" },
-        gpu: GpuReservation { devices: ["GPU-0", "GPU-1"], power_cap_watts: Present { value: watt(count: 35) } },
+        // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] } } },
+        memory: MemoryUnmeasured { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" },
       },
       ReplicaReservation {
-        cpu: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, last: 79 } ] } },
-        memory: MemoryUnmeasured { reason: "operator stated butch-b ports/cpusets/cards/35W cap, not a per-engine memory figure; B4b reads it from the running box" },
-        gpu: GpuReservation { devices: ["GPU-2", "GPU-3"], power_cap_watts: Present { value: watt(count: 35) } },
+        // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, last: 79 } ] } } },
+        memory: MemoryUnmeasured { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" },
       },
     ],
   },
@@ -363,11 +253,15 @@ fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation>
   }
 }
 
-// HOW MANY CORES A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive cores
-// only. An affinity-pinned host gives back zero cores here -- which is the witness, stated.
+// HOW MANY CORES A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive cores only. An
+// affinity-pinned host, or a host whose engine cpuset is unread (no CPU reservation), gives back zero cores here
+// -- which is the witness, stated.
 fn host_cores_withheld_from_runner(host: HostIdentity) -> Nat {
   match host_reservations_for(host) {
-    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + cpu_reservation_excluded_cores(c.cpu))
+    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + match c.cpu {
+      Present { value: cpu } => cpu_reservation_excluded_cores(cpu)
+      Absent => 0
+    })
     Absent => 0
   }
 }
@@ -396,141 +290,5 @@ fn host_memory_reserved(host: HostIdentity) -> Optional<ByteSize> {
         }
       }
     )
-  }
-}
-
-// HOW MANY CARDS A SERVING HOST COMMITS TO SERVING, so the runner never counts a serving card as free for
-// a GPU CI job on that host.
-fn host_gpus_withheld_from_runner(host: HostIdentity) -> Nat {
-  match host_reservations_for(host) {
-    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + gpu_reservation_card_count(c.gpu))
-    Absent => 0
-  }
-}
-
-// THE DERIVATION'S DECISION, STATED FOR THE WITNESS: a reservation reduces a host's CI width exactly when
-// it withholds cores from the runner -- i.e. only when it is exclusive. An affinity-only set does not
-// reduce width; an exclusive one does.
-fn reservation_reduces_runner_width(res: ReplicaReservation) -> Bool {
-  cpu_reservation_excluded_cores(res.cpu) > 0
-}
-
-// ── THE ENGINE'S API KEY IS A REFERENCE, NEVER A LITERAL (operator 2026-11-10) ───────────────────────
-
-// HOW A REPLICA'S SERVER-SIDE API KEY IS HELD. The key is a SECRET: the operator carries butch's key host to
-// host and never prints it, and a request without it is refused 401 by the engine. So the model must be
-// UNABLE to state a literal key -- there is no arm here that carries a secret value at all. `ApiKeyReference`
-// names the secret and the path it is read from on the host; the value is resolved at deploy by B4b from
-// that path, never from the model. `NoApiKey` records a replica whose key custody is not yet modeled, which
-// is honest where an empty string (a "literal" of nothing) would be a lie. A whole host can be added with no
-// key modeled and nothing crashes -- the reference simply comes back absent.
-type ServingApiKey
-  = ApiKeyReference { name: NonEmptyStr, source_path: NonEmptyStr }
-  | NoApiKey
-
-type ServingReplicaApiKey {
-  host: HostIdentity
-  replica: NonEmptyStr
-  key: ServingApiKey
-}
-
-// ONE KEY CAN COVER SEVERAL REPLICAS: butch-a and butch-b both reference butch's single key at
-// ~/strata-pool/api_key (the operator's fact), so the two rows name the SAME reference and the model can say
-// "one key, two servers" without ever holding the secret. A host with no row has no key modeled -- srv3/srv4
-// custody is B4b's to record -- so they come back absent rather than inventing a path.
-data serving_replica_api_keys: List<ServingReplicaApiKey> = [
-  ServingReplicaApiKey { host: operator_host_srv14, replica: "butch-a", key: ApiKeyReference { name: "butch-strata-pool", source_path: "~/strata-pool/api_key" } },
-  ServingReplicaApiKey { host: operator_host_srv14, replica: "butch-b", key: ApiKeyReference { name: "butch-strata-pool", source_path: "~/strata-pool/api_key" } },
-]
-
-fn serving_api_key_for(host: HostIdentity, replica: NonEmptyStr) -> Optional<ServingApiKey> {
-  match filter(serving_replica_api_keys, r => host_identity_eq(r.host, host) && (r.replica as String) == (replica as String)) |> first() {
-    Present { value: r } => Present { value: r.key }
-    Absent => Absent
-  }
-}
-
-// IS THIS REPLICA'S KEY A REFERENCE (present and secret by construction). Absent -- no row at all -- is false:
-// the model says nothing was modeled, which is distinct from a modeled absence and refuses nothing.
-fn serving_api_key_is_reference(host: HostIdentity, replica: NonEmptyStr) -> Bool {
-  match serving_api_key_for(host: host, replica: replica) {
-    Present { value: ApiKeyReference { name: _, source_path: _ } } => true
-    Present { value: NoApiKey } => false
-    Absent => false
-  }
-}
-
-// THE PATH A REPLICA'S KEY IS READ FROM, for B4b to resolve at deploy and for the witness to assert two
-// replicas share one key. Two replicas reading the same path is "one key covers both servers."
-fn serving_api_key_source_path(host: HostIdentity, replica: NonEmptyStr) -> Optional<NonEmptyStr> {
-  match serving_api_key_for(host: host, replica: replica) {
-    Present { value: ApiKeyReference { name: _, source_path: p } } => Present { value: p }
-    Present { value: NoApiKey } => Absent
-    Absent => Absent
-  }
-}
-
-// ── EACH SERVING HOST'S STRATA IS PINNED BY THE DIGEST OF THE BUILD ACTUALLY RUNNING ─────────────────
-
-// WHICH STRATA EACH HOST RUNS. Pinning lives on the host (a data row keyed by the machine), so "butch runs
-// the same build as srv3" is two rows naming the SAME commits, not a branch. The running engine is modelled by
-// the artifact KIND each host actually runs, read over ssh by smart-crane-730 (2026-11-10 ~20:10Z, clean):
-//  - srv3 + butch run the NATIVE strata binary. A native server here spans TWO clean checkouts, so each host
-//    pins BOTH as separate StrataNativeGitCommit artifacts: the SERVER CODE in strata-main @ 8c5fafc1fa84d1af1d
-//    3f1459ae86fe55d604774c (strata-pool.service runs .venv/bin/python serve/server.py with cwd strata-main),
-//    AND the venv INTERPRETER+PACKAGES in a second checkout strata @ 44df8fd5f0b26537009bb6194dc7216cc24d6b93
-//    (/home/ubuntu/strata-test/strata/.venv). butch runs the same arrangement under taskset -c CPUS. Pinning
-//    only the server code would silently leave the interpreter/packages unpinned, so both are named.
-//  - srv4 runs a MANAGED RELEASE: gunbc-srv4-daily-engine.service runs /opt/gunbc-serving/srv4-daily/releases/
-//    406c9de18cef/build/strata (bound 127.0.0.1:18080). That release id is already modelled in the corpus --
-//    gunbc.serving.serving_layout (strata_srv4 layout + backend), gunbc.serving.strata_parked_tier, and
-//    gunbc.serving.serving_host_memory (srv4_serving_engine_memory) all carry 406c9de18cef -- so it is CITED,
-//    not refused. It is a release-directory id, a DIFFERENT kind from a git commit, kept in its own arm.
-// host_strata_is_pinned is true only where a row names one or more immutable artifacts read from an authority;
-// a host with no row, or one left StrataReleaseUnpinned, is not pinned. B4b keeps the authoritative ssh read of
-// each box and overrides any row whose build differs -- and never the moving tag "latest".
-type ServingHostStrata {
-  host: HostIdentity
-  strata: StrataRelease
-}
-
-data serving_host_strata_releases: List<ServingHostStrata> = [
-  ServingHostStrata { host: operator_host_srv3, strata: StrataReleasePinned {
-    artifacts: FreeSemigroup {
-      head: StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool.service: /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
-      tail: [ StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" } ],
-    },
-    read_from: "both checkouts read clean over ssh by smart-crane-730 2026-11-10 ~20:10Z; strata-pool.service runs .venv/bin/python serve/server.py with cwd strata-main",
-  } },
-  ServingHostStrata { host: operator_host_srv4, strata: StrataReleasePinned {
-    artifacts: FreeSemigroup {
-      head: StrataManagedRelease { directory: "/opt/gunbc-serving/srv4-daily/releases", release_id: "406c9de18cef" },
-      tail: [],
-    },
-    read_from: "gunbc-srv4-daily-engine.service runs /opt/gunbc-serving/srv4-daily/releases/406c9de18cef/build/strata (bound 127.0.0.1:18080), read over ssh by smart-crane-730 2026-11-10 ~20:10Z; the release id 406c9de18cef is already modelled in gunbc.serving.serving_layout / strata_parked_tier / serving_host_memory -- cited, not restated",
-  } },
-  ServingHostStrata { host: operator_host_srv14, strata: StrataReleasePinned {
-    artifacts: FreeSemigroup {
-      head: StrataNativeGitCommit { checkout: "strata-main (server code; cwd of strata-pool@a/b, /home/ubuntu/strata-test/strata-main)", commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" },
-      tail: [ StrataNativeGitCommit { checkout: "strata (venv interpreter + packages: /home/ubuntu/strata-test/strata/.venv)", commit: "44df8fd5f0b26537009bb6194dc7216cc24d6b93" } ],
-    },
-    read_from: "strata-pool@a/b under taskset -c CPUS, cwd strata-main 8c5fafc1 clean, venv strata 44df8fd clean, read over ssh by smart-crane-730 2026-11-10 ~20:10Z; same arrangement as srv3",
-  } },
-]
-
-fn strata_release_for(host: HostIdentity) -> Optional<StrataRelease> {
-  match filter(serving_host_strata_releases, r => host_identity_eq(r.host, host)) |> first() {
-    Present { value: r } => Present { value: r.strata }
-    Absent => Absent
-  }
-}
-
-// A host's Strata is PINNED only when it is present AND names a content-addressed digest; a host with no row,
-// or one that fell back to "latest," is not pinned and any consumer that must reproduce the byte-exact engine
-// must refuse it. Fail closed on the natural reading.
-fn host_strata_is_pinned(host: HostIdentity) -> Bool {
-  match strata_release_for(host) {
-    Present { value: r } => strata_release_is_pinned(r)
-    Absent => false
   }
 }
