@@ -1,4 +1,7 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
+import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_approval_ntfy_retire_invoke }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_admit_invoke, gunbc_ci_mtcollins1_boot_invoke }
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke, gunbc_ci_mtcollins1_fan_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_release_invoke, gunbc_ci_mtcollins1_ui_status_asset_observe_invoke }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
@@ -218,17 +221,13 @@ import gunbc.ci.ci_spec {
   gunbc_ci_workspace_checkpoint_measure_invoke,
   gunbc_ci_workspace_checkpoint_restore_invoke,
   gunbc_ci_workspace_transcript_rate_observe_invoke,
-  gunbc_ci_approval_keyring_converge_invoke,
-  gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_microvm_runner_group_ensure_invoke,
-  gunbc_ci_srv1_root_mutation_approval_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
   gunbc_ci_jit_dead_sweep_invoke,
   gunbc_ci_jit_dead_sweep_dry_run_invoke,
   gunbc_ci_service_slot_start_invoke,
   gunbc_ci_qualification_attempt_invoke,
-  gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_gcp_iam_converge_request_invoke,
   gunbc_ci_gcp_iam_converge_apply_invoke,
   gunbc_ci_gcp_iam_bootstrap_delta_request_invoke,
@@ -262,9 +261,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_spark_grants_observe_invoke,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
-  gunbc_ci_approval_broker_dark_install_invoke,
   gunbc_ci_microvm_controller_install_invoke,
-  gunbc_ci_approval_ntfy_retire_invoke,
   gunbc_ci_microvm_controller_install_admission_invoke,
   gunbc_ci_microvm_slot_start_invoke,
   gunbc_ci_microvm_slot_reserve_invoke,
