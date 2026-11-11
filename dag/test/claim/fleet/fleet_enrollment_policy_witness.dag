@@ -196,13 +196,14 @@ test fn the_minted_federation_carries_its_row_names() -> Bool {
 }
 
 test fn the_minted_federation_grants_are_the_admitted_ones() -> Bool {
-  match (
-    host_run_scoped_boot_federation(host: operator_host_mtcollins1),
-    provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)),
-  ) {
-    (Present { value: minted }, Present { value: admitted }) =>
-      length(minted.secret_grants) == length(admitted.secret_grants) && length(minted.secret_grants) > 0
-    _ => false
+  match host_run_scoped_boot_federation(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: minted } =>
+      match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+        Absent => false
+        Present { value: admitted } =>
+          length(minted.secret_grants) == length(admitted.secret_grants) && length(minted.secret_grants) > 0
+      }
   }
 }
 
