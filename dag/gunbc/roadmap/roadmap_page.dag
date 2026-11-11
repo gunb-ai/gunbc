@@ -2858,6 +2858,12 @@ fn observed_node_status(rn: RoadmapNode, obs: RowObservations, accepted: List<Ro
       NodeStatusDerived { status: issue_display_status(view: view), closed: work_lifecycle_is_closed(l: view.lifecycle) }
     }
     Absent => {
+      // What an omitted node's own row would say, read ONCE and used twice below. Restored because
+      // the rewrite that replaced the row-level SupersededLine test with the log's standing dropped
+      // this binding while the branch's final arm still matched on it (srv1: roadmap_page.dag:2873:15
+      // undefined variable 'own'); the name is imported from the module that owns it and the accepted
+      // case is answered by the branch below, so the authority is asked as a non-accepted row.
+      let own = omitted_node_display_status(rn: rn, merged: obs.merged, accepted: false)
       // A node the log has RETIRED is shown retired and closed, read from the standing the log
       // folds — the one home the fact has. It is never decided by its row: the row-level
       // SupersededLine this branch used to consult is deleted.
