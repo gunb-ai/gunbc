@@ -10,6 +10,7 @@ import extdeps.libxcrypt.crypt_scheme { crypt_hash_shaped }
 import extdeps.standards.rfc_7468 { pem_text_carries_private_key_block }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import extdeps.network.mac { Eui48Address, render_mac_address }
+import extdeps.storage.device_identification { admit_device_identification_token, DeviceIdentificationAdmitted, DeviceIdentificationRefused }
 import gunbc.os_install_emit { cloud_config_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 
 // A NOCLOUD SEED IS PUBLIC (merry-fox-82, hold at 24edcaa3, option (a)). The site PXE edge serves seeds from
@@ -51,6 +52,7 @@ type PublicSeedSchema
   | SeedStringOneOf { values: List<String> }
   | SeedPublicKeyLine
   | SeedPosixName
+  | SeedDeviceIdentityToken
 
 type PublicSeedField {
   key: String
@@ -84,9 +86,21 @@ data public_seed_user_data_schema: PublicSeedSchema = SeedMappingOf { fields: [
       PublicSeedField { key: "authorized-keys", schema: public_seed_public_keys },
       PublicSeedField { key: "allow-pw", schema: SeedBoolExactly { value: false } },
     ] } },
+    // THE DISK THE INSTALL IS AUTHORIZED AGAINST (PXE 2a). The direct layout names one disk by the identity a
+    // capture reported for it, and the schema admits exactly the reference's two identity keys and nothing else:
+    // a serial is what names one disk, a model is the second check on it, and the reference's class-shaped keys
+    // (`ssd`, `size`, `path`) have no field here at all — a seed that selects a CLASS of disks to wipe is not
+    // admitted, which is the whole point. They have no type to be held in either: what is admitted into a
+    // layout's `match` is an extdeps.os.ubuntu_autoinstall AutoinstallDiskPin, whose serial cannot be left out,
+    // so the schema gate and the type refuse the same state and cannot drift. `model` may be absent: a serial
+    // alone names one disk.
     PublicSeedField { key: "storage", schema: SeedMappingOf { fields: [
       PublicSeedField { key: "layout", schema: SeedMappingOf { fields: [
         PublicSeedField { key: "name", schema: SeedStringOneOf { values: ["direct"] } },
+        PublicSeedField { key: "match", schema: SeedMappingOf { fields: [
+          PublicSeedField { key: "serial", schema: SeedDeviceIdentityToken },
+          PublicSeedField { key: "model", schema: SeedDeviceIdentityToken },
+        ] } },
       ] } },
     ] } },
     PublicSeedField { key: "interactive-sections", schema: SeedEmptySequence },
@@ -134,6 +148,25 @@ fn seed_string_backstop(document: SeedDocument, path: String, text: String) -> L
   if crypt_hash_shaped(text: text) || pem_text_carries_private_key_block(text: text) {
     [SeedCredentialShapedValue { document: document, path: path }]
   } else { [] }
+}
+
+// A DEVICE IDENTIFICATION TOKEN, admitted by the shape its source defines (extdeps.storage.
+// device_identification): printable device-reported text, no fnmatch metacharacter, no edge padding. The
+// credential backstop still runs over it — a device is free to report anything as its model name.
+//
+// IT ANSWERS YES/NO ON PURPOSE, which is the one place a reader should pause. Elsewhere in this repository an
+// admitted spelling is a Final the caller must destructurate, because the CALLER decides what a refusal means.
+// Here the schema gate is the last thing between bytes and a booting machine, and every reason the token
+// admitter can give (empty, nothing reported, a metacharacter, edge padding) means the same single thing to
+// this gate: this value is not a device identification, so the seed does not ship and the finding is
+// SeedValueNotAdmitted { document, path }, which names where. A four-way cause would be carried to a caller
+// that cannot act differently on any of the four — the cause lives with the admitter, and an operator who
+// wants it re-runs the reading through admit_device_identification_token, which reports it.
+fn seed_device_identity_token(text: String) -> Bool {
+  match admit_device_identification_token(spelling: text) {
+    DeviceIdentificationAdmitted { token: _ } => true
+    DeviceIdentificationRefused { spelling: _, cause: _ } => false
+  }
 }
 
 fn seed_posix_name(text: String) -> Bool {
@@ -196,6 +229,16 @@ fn seed_leaf_finding(document: SeedDocument, path: String, schema: PublicSeedSch
     }
     SeedPosixName => match value {
       YamlString { value: t } => if seed_posix_name(text: t) { seed_string_backstop(document: document, path: path, text: t) } else { not_admitted }
+      YamlNull => not_admitted
+      YamlBool { value: _ } => not_admitted
+      YamlInt { lexeme: _ } => not_admitted
+      YamlFloat { lexeme: _ } => not_admitted
+      YamlSequence { elements: _ } => not_admitted
+      YamlMapping { entries: _ } => not_admitted
+    }
+    SeedDeviceIdentityToken => match value {
+      YamlString { value: t } =>
+        if seed_device_identity_token(text: t) { seed_string_backstop(document: document, path: path, text: t) } else { not_admitted }
       YamlNull => not_admitted
       YamlBool { value: _ } => not_admitted
       YamlInt { lexeme: _ } => not_admitted
@@ -275,6 +318,7 @@ fn seed_schema_findings(document: SeedDocument, path: String, schema: PublicSeed
     SeedBoolAny => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedIntExactly { lexeme: _ } => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedStringOneOf { values: _ } => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
+    SeedDeviceIdentityToken => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedPublicKeyLine => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
     SeedPosixName => seed_leaf_finding(document: document, path: path, schema: schema, value: value)
   }

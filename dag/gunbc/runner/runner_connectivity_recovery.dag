@@ -1,8 +1,8 @@
 module gunbc.runner.runner_connectivity_recovery
 
 import std.nat { nat_to_decimal_string }
-import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration }
-import std.algebra { length }
+import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, Map }
+import std.algebra { length, empty_map, map_insert, map_lookup }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
@@ -18,6 +18,7 @@ import gunbc.build_cache.build_cache_instance {
   ProcessIdentity,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
 import gunbc.runner.runner_broker_progress_watchdog {
   RunnerRemoteRegistration,
   RunnerRemoteOnline,
@@ -680,10 +681,7 @@ fn host_reach_admission_for_fleet_host(host: HostIdentity) -> HostReachAdmission
 }
 
 type PerHostReplaceBudgetState {
-  srv1: Int
-  srv2: Int
-  srv3: Int
-  srv4: Int
+  budgets: Map<String, Int>
 }
 
 type ReplaceCapFoldState {
@@ -693,24 +691,18 @@ type ReplaceCapFoldState {
 
 fn initial_per_host_replace_budget(cap: Int) -> PerHostReplaceBudgetState {
   PerHostReplaceBudgetState {
-    srv1: cap,
-    srv2: cap,
-    srv3: cap,
-    srv4: cap,
+    budgets: fold(
+      runner_executor_hosts(),
+      init: empty_map(),
+      f: (m, h) => map_insert(m, h as String, cap),
+    ),
   }
 }
 
 fn host_budget_remaining(state: PerHostReplaceBudgetState, host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
-    state.srv1
-  } else if (host as String) == (operator_host_srv2 as String) {
-    state.srv2
-  } else if (host as String) == (operator_host_srv3 as String) {
-    state.srv3
-  } else if (host as String) == (operator_host_srv4 as String) {
-    state.srv4
-  } else {
-    0
+  match map_lookup(state.budgets, host as String) {
+    Present { value: v } => v
+    Absent => 0
   }
 }
 
@@ -718,36 +710,9 @@ fn decrement_host_budget(
   state: PerHostReplaceBudgetState,
   host: HostIdentity,
 ) -> PerHostReplaceBudgetState {
-  if (host as String) == (operator_host_srv1 as String) {
-    PerHostReplaceBudgetState {
-      srv1: state.srv1 - 1,
-      srv2: state.srv2,
-      srv3: state.srv3,
-      srv4: state.srv4,
-    }
-  } else if (host as String) == (operator_host_srv2 as String) {
-    PerHostReplaceBudgetState {
-      srv1: state.srv1,
-      srv2: state.srv2 - 1,
-      srv3: state.srv3,
-      srv4: state.srv4,
-    }
-  } else if (host as String) == (operator_host_srv3 as String) {
-    PerHostReplaceBudgetState {
-      srv1: state.srv1,
-      srv2: state.srv2,
-      srv3: state.srv3 - 1,
-      srv4: state.srv4,
-    }
-  } else if (host as String) == (operator_host_srv4 as String) {
-    PerHostReplaceBudgetState {
-      srv1: state.srv1,
-      srv2: state.srv2,
-      srv3: state.srv3,
-      srv4: state.srv4 - 1,
-    }
-  } else {
-    state
+  let current = host_budget_remaining(state: state, host: host)
+  PerHostReplaceBudgetState {
+    budgets: map_insert(state.budgets, host as String, current - 1),
   }
 }
 

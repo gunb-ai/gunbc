@@ -21,12 +21,14 @@ module gunbc.machine_intake.bmc_account_state_parsers
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
 import std.algebra { list_at_optional, list_push, trim }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished }
 import extdeps.languages.json.parse {
   JsonArray,
   JsonBool,
   JsonMemberAbsent,
   JsonMemberDuplicated,
   JsonMemberFound,
+  JsonMemberNotAnObject,
   JsonNumber,
   JsonObject,
   JsonParsed,
@@ -232,6 +234,8 @@ fn ipmi_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAc
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_getaccess_table_decodes_every_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_malformed_privilege_word_refuses_never_a_defaulted_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_flag_column_of_garbage_refuses_though_the_carrier_drops_the_flags"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_parsers", decl_name: "ipmi_authenticated_census_read"),
   ]
 {
   let lines = filter(split(s: text, delimiter: "\n"), l => {
@@ -239,6 +243,73 @@ fn ipmi_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAc
     string_length(s: t) > 0 && !(starts_with(s: t, prefix: "ID") || starts_with(s: t, prefix: "###"))
   })
   ipmi_user_access_rows_from_lines(lines: lines, channel: channel, acc: [])
+}
+
+// ── The authenticated census read: the managed credential's acceptance, read from the census ──────
+//
+// WHY THIS EXISTS (PXE 1c rework, review 93420). The managed account's acceptance used to be proven
+// by a SEPARATE `ipmitool user test`, which put the tested BMC password on ARGV as a positional word
+// -- readable by anyone from /proc/<pid>/cmdline and ps. It is deleted. The evidence the controller
+// ACCEPTS the managed credential is already carried by the authenticated census reads: `ipmitool ...
+// -U <managed> -f <password_file> user list <channel>` and `channel getaccess <ch> <uid>` only print
+// a table if the RMCP+ session authenticated AS the managed account. So a census read that served a
+// well-formed user-access table IS the proof the managed credential was accepted. This function is THE
+// SINGLE AUTHORITY for the census-side reading; the assembler maps its arms onto managed_accepted.
+//
+// THE THREE ARMS, and why each is what it is:
+//   Accepted          -- the body decoded to a well-formed user-access table. The managed account
+//                        authenticated and the controller served the census. managed_accepted := true.
+//   AuthenticationRefused -- the body carries one of ipmitool's CREDENTIAL-refusal lines. The controller
+//                        saw the managed credential and rejected it. managed_accepted := false -- NEVER a
+//                        defaulted true. These lines only: "RAKP 2 HMAC is invalid", "Unauthorized name",
+//                        "Insufficient privilege level".
+//   Unreadable        -- the census cannot be read as an authenticated acceptance at all, and the caller
+//                        REFUSES rather than minting a census or defaulting managed_accepted. This arm
+//                        deliberately collects three different "cannot look" situations, none of which is
+//                        evidence the credential was accepted OR refused: an empty/truncated/garbage body
+//                        that is neither a table nor a credential-refusal; AND a body where the RMCP+
+//                        SESSION NEVER CAME UP ("Unable to establish IPMI v2"). The last is the subtle one
+//                        (review 93445): a session that never came up reached no credential at all, so it
+//                        says NOTHING about the managed credential -- reading it as managed_accepted:false
+//                        would report a credential as rejected merely because the link was down. It is a
+//                        refusal of the READ, not of the credential, so it refuses here rather than minting
+//                        a rejected probe.
+//
+// THE VENDOR-LINE CLASSIFICATION IS NOT DUPLICATED HERE. Which body is a credential refusal vs. an
+// unestablished session is decided ONCE by extdeps.bmc.ipmi_session ipmi_session_failure -- the same single
+// declaration the boot-diagnostic read cause (gunbc.machine_intake.megarac_boot_diagnostic_bundle
+// bmc_ipmitool_session_cause) uses (single_authority, review 93445). This function only maps that verdict
+// onto the census arms: credential-refused -> AuthenticationRefused, session-unestablished -> Unreadable,
+// and when there is no such line it runs the structural row decoder (a served getaccess/user-list table
+// carries none of these vendor sentences, so a real table is never misread as a refusal).
+type IpmiAuthenticatedCensusVerdict
+  = IpmiCensusAccepted { rows: List<IpmiUserChannelAccess> }
+  | IpmiCensusAuthenticationRefused { detail: NonEmptyStr }
+  | IpmiCensusUnreadable { detail: NonEmptyStr }
+
+// THE AUTHENTICATED CENSUS READING, in one call. The shared session classifier runs first; a credential
+// refusal is AuthenticationRefused, an unestablished session is Unreadable, and any other body is decoded
+// structurally (a served table -> Accepted, anything malformed -> Unreadable).
+fn ipmi_authenticated_census_read(text: String, channel: IpmiChannelNumber) -> IpmiAuthenticatedCensusVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_authenticated_census_table_reads_as_accepted_with_its_rows"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_refused_authenticated_credential_is_read_as_refused_not_malformed"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_unestablished_session_is_unreadable_never_a_refused_credential"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_empty_census_is_unreadable_never_a_refused_reading"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_garbage_census_is_unreadable_never_a_defaulted_acceptance"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
+  ]
+{
+  match ipmi_session_failure(output: text) {
+    Present { value: IpmiSessionAuthRefused } =>
+      IpmiCensusAuthenticationRefused { detail: "the authenticated census read was refused by the controller (credential rejected)" as NonEmptyStr }
+    Present { value: IpmiSessionUnestablished } =>
+      IpmiCensusUnreadable { detail: "the RMCP+ session never came up; that reached no credential and is not a refusal of it" as NonEmptyStr }
+    Absent => match ipmi_user_access_rows(text: text, channel: channel) {
+      IpmiUserAccessRowsRead { rows: rows } => IpmiCensusAccepted { rows: rows }
+      IpmiUserAccessRowsMalformed { detail: d } => IpmiCensusUnreadable { detail: d }
+    }
+  }
 }
 
 
@@ -403,6 +474,7 @@ fn redfish_account_names_from_collection(body: String) -> RedfishAccountsCollect
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_srv13_accounts_collection_decodes_its_members"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_collection_whose_count_contradicts_its_members_is_unreadable"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "census_for"),
   ]
 {
   match json_root_object(body: body) {
@@ -487,6 +559,7 @@ fn redfish_account_service_lockout_from_body(body: String) -> RedfishAccountServ
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_openbmc_account_service_body_decodes_the_lockout_props"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_account_service_without_a_threshold_is_unreadable_never_zero"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_build"),
   ]
 {
   match json_root_object(body: body) {
@@ -506,6 +579,57 @@ fn redfish_account_service_lockout_from_body(body: String) -> RedfishAccountServ
                 account_lockout_counter_reset_enabled: json_member_bool(v: root, key: "AccountLockoutCounterResetEnabled"),
               )
             }
+          }
+      }
+  }
+}
+
+// THE IPMI user-test verdict decoder that stood here (ipmi_user_test_verdict_from_output) was DELETED
+// with the `ipmitool user test` op it decoded (review 93420 / decision (a)): the op put the tested BMC
+// password on argv, and the managed credential's acceptance is now read from the authenticated census
+// (ipmi_authenticated_census_read above). Its only remaining consumer was the break-glass path, and that
+// path has no real input on the fleet either -- srv15's break-glass IS the managed root, so no separate
+// user test runs (the reader fills the break-glass reference from the goal). The distinct-generation
+// break-glass case is a declared frontier (PR body of #16295): when the first board with a distinct
+// break-glass generation appears, it must rebuild the stdin-fed user-test op, its capture field, AND this
+// decoder together, from a real stdin capture (the only committed capture is positional-argv, which the
+// repo rule forbids).
+
+// ── Redfish service-root surface fact (PXE 1c, review 93366) ───────────────────────────────────
+// THE SINGLE AUTHORITY for whether the unit exposes a usable Redfish surface. Grounded STRUCTURAL
+// decode, not a keyword search: a real ServiceRoot is a JSON object whose @odata.type names the
+// ServiceRoot schema (captures: srv13-first-contact-2026-10-07/bmc-3.22.00/root_.json
+// "#ServiceRoot.v1_15_0.ServiceRoot"; mtcollins1 redfish_ServiceRoot.json "#ServiceRoot.v1_5_2").
+// bmcweb reports an unavailable or denied surface as an ERROR ENVELOPE {"error":{...}} (capture
+// mtcollins1-bmc-user3-route-2026-09-14/redfish_VirtualMedia_401_body.txt). An error envelope is
+// NotServed; a ServiceRoot is Served; a JSON object that is neither, or a body that is not a JSON
+// object at all (an HTML 404, plaintext, a truncated read), is Unrecognized and the caller REFUSES --
+// it is NOT served, and nothing is guessed. The assembler used to set the fact true for any body
+// mentioning "redfish"/"SessionService"/"@odata.id", which an error body satisfies. fail_closed.
+type RedfishServiceRootVerdict
+  = ServiceRootServed
+  | ServiceRootNotServed { detail: NonEmptyStr }
+  | ServiceRootUnrecognized { detail: NonEmptyStr }
+
+fn redfish_service_root_verdict_from_body(body: String) -> RedfishServiceRootVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "the_service_root_is_decoded_structurally_not_by_keyword"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_account_state_transport"),
+  ]
+{
+  match json_root_object(body: body) {
+    none => ServiceRootUnrecognized { detail: "the service-root body is not a JSON object" as NonEmptyStr }
+    Present { value: root } =>
+      match json_object_unique_member(v: root, key: "error") {
+        JsonMemberFound { value: _ } => ServiceRootNotServed { detail: "Redfish answered with an error envelope" as NonEmptyStr }
+        JsonMemberDuplicated { count: _ } => ServiceRootUnrecognized { detail: "the error member is duplicated; the body is ambiguous and is not read as a definite answer" as NonEmptyStr }
+        JsonMemberNotAnObject => ServiceRootUnrecognized { detail: "the object has no decodable error member" as NonEmptyStr }
+        JsonMemberAbsent =>
+          match json_member_string(v: root, key: "@odata.type") {
+            Present { value: t } =>
+              if starts_with(s: t, prefix: "#ServiceRoot") { ServiceRootServed }
+              else { ServiceRootUnrecognized { detail: "@odata.type does not name the ServiceRoot schema" as NonEmptyStr } }
+            none => ServiceRootUnrecognized { detail: "the object carries no @odata.type" as NonEmptyStr }
           }
       }
   }
