@@ -46,11 +46,11 @@ import gunbc.live_deploy.served_slice_charge { ServedDeploymentNotPlaced }
 // cores away from every other tenant. This is the derivation's decision, stated in both directions so a
 // single shared field could not pass.
 test fn witness_affinity_prices_no_width_where_exclusive_prices_every_core_it_holds() -> Bool {
-  let shared_set = CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] }
+  let shared_set = CpuRanges { ranges: [ CpuRange { first: 0, width: 40 } ] }
   let affinity = CpuAffinity { set: shared_set }
   let exclusive = CpuExclusive { set: shared_set }
   // The set itself spans forty cores either way -- the price is not in the set, it is in the arm.
-  let set_spans_forty = cpu_set_width(shared_set) == 40 && cpu_range_width(CpuRange { first: 0, last: 39 }) == 40
+  let set_spans_forty = cpu_set_width(shared_set) == 40 && cpu_range_width(CpuRange { first: 0, width: 40 }) == 40
   // Affinity withholds nothing from the runner; exclusive withholds all forty. This is the whole split.
   let affinity_free = cpu_reservation_excluded_cores(affinity) == 0
   let exclusive_priced = cpu_reservation_excluded_cores(exclusive) == 40

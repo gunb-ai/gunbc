@@ -43,17 +43,17 @@ test fn witness_butch_runs_two_priced_replicas_whose_affinity_pins_are_disjoint(
   // butch-a is pinned 0-39 and butch-b 40-79, each an AFFINITY arm (a CpuExclusive would not match these arms,
   // and would price cores away -- contradicted by cores_whole below). The operator's two-engine shape, one row.
   let butch_a_pin = any(reps, r => match r.cpu {
-    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 0 && rg.last == 39)
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 0 && rg.width == 40)
     _ => false
   })
   let butch_b_pin = any(reps, r => match r.cpu {
-    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 40 && rg.last == 79)
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 40 && rg.width == 40)
     _ => false
   })
   // DISJOINT: the lower pin ends at 39 and the upper starts at 40, and no single replica spans the seam -- no
   // replica's range has first <= 39 and last >= 40. (A collapsed/host-pinned model could not keep both pins.)
   let seam_open = all(reps, r => match r.cpu {
-    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => all(rs, rg => !(rg.first <= 39 && rg.last >= 40))
+    Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => all(rs, rg => !(rg.first <= 39 && rg.first + rg.width >= 41))
     _ => true
   })
   // AFFINITY leaves the runner whole: butch withholds no cores. Its memory is UNMEASURED, so host_memory_reserved

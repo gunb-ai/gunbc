@@ -58,19 +58,22 @@ module gunbc.serving.serving_reservation
 import std.types { List, String, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { ByteSize, byte_size_count, byte_size, HardwareThreadCount, hardware_thread_count }
+import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
-// AN INCLUSIVE CORE RANGE, `first` .. `last`. `first` and `last` are CORE INDICES (a position in the machine's
-// core numbering), not a count, so they are bare Nat: a bare index is a position, not a quantity that needs a
-// Measure (unit rule).
+// A CONTIGUOUS CORE SET: a starting core `first` (a CORE INDEX — a position in the machine's core numbering,
+// not a count, so bare Nat: a bare index is a position, not a quantity needing a Measure (unit rule)) plus the
+// COUNT of cores it spans. Storing the count rather than a last index makes a malformed range UNWRITABLE: any
+// `Nat` width is a well-formed reservation, and there is no pair of bounds that can be reversed to fabricate a
+// count (fail_closed, gunbc.design_argument::fail_closed: "stronger than catching a wrong state is making it
+// unwritable"). The cores it covers are `first .. first + width - 1`.
 type CpuRange {
   first: Nat
-  last: Nat
+  width: Nat
 }
 
 // THE CPUSET A PROCESS MAY RUN ON: an ordered set of inclusive ranges, or nothing.
@@ -88,8 +91,10 @@ type CpuReservation
   = CpuAffinity { set: CpuSet }
   | CpuExclusive { set: CpuSet }
 
+// The count of cores a range withholds. The range stores its width directly, so this is a bare read: there is
+// no subtraction to underflow and no reversed bounds that could misprice the runner's CI width.
 fn cpu_range_width(r: CpuRange) -> Nat {
-  r.last - r.first + 1
+  r.width
 }
 
 fn cpu_set_width(set: CpuSet) -> Nat {
@@ -239,12 +244,12 @@ data serving_host_reservations: List<ServingHostReservation> = [
     replicas: [
       ReplicaReservation {
         // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
-        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, last: 39 } ] } } },
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: 40 } ] } } },
         memory: ServingMemoryUnread { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
       },
       ReplicaReservation {
         // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
-        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, last: 79 } ] } } },
+        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: 40 } ] } } },
         memory: ServingMemoryUnread { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
       },
     ],
@@ -296,7 +301,7 @@ fn host_memory_reserved(host: HostIdentity) -> Optional<ByteSize> {
         Absent => Absent
         Present { value: a } => match charge {
           Absent => Absent
-          Present { value: b } => Present { value: byte_size(count: byte_size_count(b: a) + byte_size_count(b: b)) }
+          Present { value: b } => Present { value: measure_add(a, b) }
         }
       }
     )
