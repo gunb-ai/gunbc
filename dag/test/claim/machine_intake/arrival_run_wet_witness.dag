@@ -30,8 +30,6 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   IpmiCensusAccepted,
   ipmi_channel_info_is_lan,
 }
-import gunbc.machine_intake.inband_host_identity {
-}
 import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
   BmcFruCaptureObserved,
