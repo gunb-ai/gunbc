@@ -1,0 +1,276 @@
+module test.claim.machine_intake.altrad8ud_inband_identity_witness
+
+// THE ALTRAD8UD IDENTITY READERS, OVER THE COMMITTED CAPTURES OF REAL RECOVERY RUNS.
+//
+// Both ALTRAD8UD readers -- the in-band host board read and the committed BMC FRU read -- are claimed against
+// the capture directory of srv14/butch's 2026-10-16 in-band SSIF recovery: real bytes, the digests its own
+// SHA256SUMS lists, and the attribution that run can actually support. That is the positive control, and it is
+// what shows the two arms decode real ALTRAD8UD tables and that an ALTRAD8UD unit CAN reach the two-source
+// agreement once its FRU print exists -- not merely that srv15 refuses. srv15's own capture is claimed for what
+// it does establish: one attributed baseboard serial, and a refusal that names the read that would ground the
+// second. Every discriminating red is the same real capture with one row field changed, which is what the
+// digest gate is for: the row's digest is what makes the bytes this capture, so a reader that trusts the row
+// still refuses bytes that are not it.
+//
+// Nothing here is minted: the witness drives the readers over committed captures, it does not supply an identity
+// to them (gunbc.design_argument::witness_one_interface). And no claim compares a read serial to a fleet-held
+// serial value, because the fleet holds no board serial as data -- the authorities a read CAN be checked
+// against are the fleet's own board row (its model label), the NIC and controller addresses the fleet binds to
+// each unit, and the other reader of the same board.
+
+import std.logic { Bool }
+import std.algebra { ends_with }
+import std.optional { Absent, Present }
+import std.types { NonEmptyStr, String }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
+import gunbc.fleet.fleet_intent_network { srv14_bmc_endpoint }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
+import gunbc.machine_intake.inband_host_identity {
+  InbandBoardObserved,
+  InbandBoardRefused,
+  InbandCaptureAttributed,
+  InbandCaptureDigestMismatch,
+  InbandChannelAnswersForTheFleetBoundController,
+  InbandChannelControllerNotFleetBound,
+  InbandFieldGapped,
+  InbandHostIdentityCaptureRow,
+  SessionNicIsTheFleetBoundHostNic,
+  InbandSessionNicNotFleetBound,
+  decode_inband_board_capture,
+  read_attributed_inband_capture,
+  read_inband_board_identity,
+}
+import gunbc.machine_intake.mtjade1_access_observation {
+  BmcFruCaptureRow,
+  FruCaptureNotCommitted,
+  FruFromSessionBoundCapture,
+  FruObserved,
+  FruReadIssuedToBoundController,
+  FruReadRefused,
+  FruReadTakenOnTheUnitItself,
+  bmc_fru_capture_row,
+  mint_committed_bmc_fru_capture,
+  read_committed_bmc_fru_capture,
+}
+
+// The board the capture claims, against the fleet's own board row: the catalog label ends with the product the
+// capture printed, which is the same relation the reader checks -- asserted here so a reader that stopped
+// checking it would fail this claim.
+fn captured_product_is_the_fleet_board_row(product: NonEmptyStr) -> Bool {
+  ends_with(s: asrock_altrad8ud_1l2t_catalog.model_label as String, suffix: product as String)
+}
+
+// srv14's in-band board read: the baseboard table of a real rescue-OS capture, digested against the row,
+// attributed through the IPMI channel of the same run because the rescue host arrived on USB media and its own
+// NIC was never captured.
+test fn w_the_in_band_reader_decodes_srv14_s_baseboard_and_attributes_it_through_its_bound_controller() -> Bool uses fs: std.resources.Filesystem {
+  match read_inband_board_identity(unit: operator_host_srv14) {
+    InbandBoardRefused { gap: _ } => false
+    InbandBoardObserved { observation: b } =>
+      host_identity_eq(a: b.unit, b: operator_host_srv14)
+        && captured_product_is_the_fleet_board_row(product: b.product_name)
+        && (b.attributed_by as String) == (srv14_bmc_endpoint.address as String)
+        && b.serial == "BR80S6102300077"
+  }
+}
+
+// srv15's in-band board read: the same kind of read, attributed the other way -- through the host NIC the fleet
+// binds to this unit, which is the NIC the capture itself reports as the session interface (carrier up,
+// addressed, the MAC the fleet's wire observation names).
+test fn w_the_in_band_reader_decodes_srv15_s_baseboard_and_attributes_it_through_the_bound_host_nic() -> Bool uses fs: std.resources.Filesystem {
+  match read_inband_board_identity(unit: operator_host_srv15) {
+    InbandBoardRefused { gap: _ } => false
+    InbandBoardObserved { observation: b } =>
+      host_identity_eq(a: b.unit, b: operator_host_srv15)
+        && captured_product_is_the_fleet_board_row(product: b.product_name)
+        && (b.attributed_by as String) == (srv15_host_nic_mac as String)
+        && b.serial == "BR80S6102300049"
+  }
+}
+
+// RED, digest: the committed bytes with one byte appended, against the untouched row. The row's digest is the
+// authority for which bytes are this capture, so bytes that are not it refuse -- they do not decode, and no
+// serial is minted from them.
+test fn w_bytes_that_are_not_the_committed_capture_refuse_at_the_digest_gate() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv14) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: row, channel_content: channel } =>
+      match decode_inband_board_capture(content: join([text, "\n"], ""), row: row, channel_content: channel) {
+        InbandBoardObserved { observation: _ } => false
+        InbandBoardRefused { gap: InbandCaptureDigestMismatch { expected: e, observed: o } } =>
+          (e as String) == (row.capture_sha256 as String) && (o as String) != (e as String)
+        InbandBoardRefused { gap: _ } => false
+      }
+  }
+}
+
+// RED, missing serial: the capture's dmidecode SYSTEM section -- a real table of the same unit, carrying a
+// Product Name and an EMPTY Serial Number. Pointing the reader at the wrong table must refuse; reading a
+// serial out of the wrong SMBIOS table is exactly the confusion the section row exists to prevent.
+test fn w_a_capture_section_that_carries_no_baseboard_serial_refuses_rather_than_reading_the_wrong_table() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv15) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: row, channel_content: channel } =>
+      match decode_inband_board_capture(
+        content: text,
+        row: InbandHostIdentityCaptureRow {
+          unit: row.unit,
+          capture_path: row.capture_path,
+          capture_sha256: row.capture_sha256,
+          board_section: "dmidecode system",
+          board_product_row_label: row.board_product_row_label,
+          attribution: row.attribution,
+          attribution_basis: row.attribution_basis,
+        },
+        channel_content: channel,
+      ) {
+        InbandBoardObserved { observation: _ } => false
+        InbandBoardRefused { gap: InbandFieldGapped { field: f, cause: c } } => f == "Serial Number" && c == "carries it empty"
+        InbandBoardRefused { gap: _ } => false
+      }
+  }
+}
+
+// RED, attribution: the same capture, the same NIC block, and a row that binds a different MAC to this unit.
+// The capture's session interface is real and the fleet's bound MAC is real; they disagree, so nothing this
+// unit's baseboard says is attached to anything, and the reader says so by name.
+test fn w_a_session_nic_the_fleet_does_not_bind_to_this_unit_refuses_the_attribution() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv15) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: row, channel_content: channel } =>
+      match row.attribution {
+        SessionNicIsTheFleetBoundHostNic { session_nic_section: _, session_interface: _, fleet_bound_host_nic_mac: bound } =>
+          match decode_inband_board_capture(
+            content: text,
+            row: InbandHostIdentityCaptureRow {
+              unit: row.unit,
+              capture_path: row.capture_path,
+              capture_sha256: row.capture_sha256,
+              board_section: row.board_section,
+              board_product_row_label: row.board_product_row_label,
+              attribution: SessionNicIsTheFleetBoundHostNic {
+                session_nic_section: "nics",
+                session_interface: "enP2p4s0",
+                fleet_bound_host_nic_mac: "9c:6b:00:e7:ca:61",
+              },
+              attribution_basis: row.attribution_basis,
+            },
+            channel_content: channel,
+          ) {
+            InbandBoardObserved { observation: _ } => false
+            InbandBoardRefused { gap: InbandSessionNicNotFleetBound { observed_mac: seen, fleet_bound_mac: want } } =>
+              (seen as String) == (bound as String) && want == "9c:6b:00:e7:ca:61"
+            InbandBoardRefused { gap: _ } => false
+          }
+        InbandChannelAnswersForTheFleetBoundController { channel_capture_path: _, lan_print_section: _, fleet_bound_bmc_address: _ } => false
+      }
+  }
+}
+
+// RED, attribution: the same run's channel, and a row that binds srv15's controller to srv14. The channel
+// answers for the BMC it was read against; the fleet row for this unit names another one. Two ALTRAD8UD units
+// with the same board, so only the attribution tells them apart, and the reader refuses rather than letting a
+// baseboard serial cross the units.
+test fn w_a_channel_that_answers_for_another_unit_s_controller_refuses_the_attribution() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv14) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: row, channel_content: channel } =>
+      match decode_inband_board_capture(
+        content: text,
+        row: InbandHostIdentityCaptureRow {
+          unit: row.unit,
+          capture_path: row.capture_path,
+          capture_sha256: row.capture_sha256,
+          board_section: row.board_section,
+          board_product_row_label: row.board_product_row_label,
+          attribution: InbandChannelAnswersForTheFleetBoundController {
+            channel_capture_path: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt",
+            channel_capture_sha256: "8c1750d13a6c9832b459a61b8aadab246f4e74f138d85861e2758200c07202a4",
+            lan_print_section: "lan print 1",
+            fleet_bound_bmc_address: "192.168.1.248",
+          },
+          attribution_basis: row.attribution_basis,
+        },
+        channel_content: channel,
+      ) {
+        InbandBoardObserved { observation: _ } => false
+        InbandBoardRefused { gap: InbandChannelControllerNotFleetBound { observed_address: seen, fleet_bound_address: want } } =>
+          (seen as String) == (srv14_bmc_endpoint.address as String) && want == "192.168.1.248"
+        InbandBoardRefused { gap: _ } => false
+      }
+  }
+}
+
+// THE AGREEMENT PAIR, ON ONE REAL UNIT: srv14's FRU board area (read on the unit, through /dev/ipmi0, in the
+// same file) and its dmidecode baseboard table agree on one serial. Two sources of the same board, from two
+// different tables read by two different tools, minting what the arrival door asks for -- which is what makes
+// srv15's refusal a statement about a missing capture and not about what an ALTRAD8UD can establish.
+test fn w_srv14_s_fru_capture_and_its_in_band_baseboard_agree_on_one_serial() -> Bool uses fs: std.resources.Filesystem {
+  match read_committed_bmc_fru_capture(unit: operator_host_srv14) {
+    FruReadRefused { gap: _ } => false
+    FruObserved { observation: fru } =>
+      fru.subject == "srv14"
+        && fru.fields.board_product == "ALTRAD8UD-1L2T"
+        && match fru.source {
+          FruFromSessionBoundCapture { capture_path: p, capture_sha256: d, attribution: a, attribution_basis: _ } =>
+            match bmc_fru_capture_row(unit: operator_host_srv14) {
+              Absent => false
+              Present { value: row } =>
+                p == row.capture_path
+                  && d == row.capture_sha256
+                  && match a {
+                    FruReadTakenOnTheUnitItself => true
+                    FruReadIssuedToBoundController { fleet_bound_bmc_address: _ } => false
+                  }
+            }
+          _ => false
+        }
+        && match read_inband_board_identity(unit: operator_host_srv14) {
+          InbandBoardRefused { gap: _ } => false
+          InbandBoardObserved { observation: b } => b.serial == fru.fields.board_serial
+        }
+  }
+}
+
+// SRV15 HAS NO FRU CAPTURE: the refusal is typed, it is about srv15, and it names the read that would ground
+// the second source in the form the live arrival run would take it -- so the missing evidence is named rather
+// than the second source forged.
+test fn w_srv15_refuses_its_fru_read_naming_the_capture_that_would_ground_it() -> Bool uses fs: std.resources.Filesystem {
+  match read_committed_bmc_fru_capture(unit: operator_host_srv15) {
+    FruObserved { observation: _ } => false
+    FruReadRefused { gap: FruCaptureNotCommitted { unit: u, read_that_would_ground_it: r } } =>
+      u == "srv15"
+        && ends_with(s: r as String, suffix: "which mints FruReadTakenOnTheUnitItself.")
+    FruReadRefused { gap: _ } => false
+  }
+}
+
+// RED, section: an FRU row that names a section this capture does not carry. The file digest still proves the
+// file, so this is the reader being asked for a table that is not in it -- it refuses instead of decoding the
+// dmidecode tables as though they were a FRU print.
+test fn w_an_fru_row_naming_a_section_the_capture_does_not_carry_refuses() -> Bool uses fs: std.resources.Filesystem {
+  match bmc_fru_capture_row(unit: operator_host_srv14) {
+    Absent => false
+    Present { value: row } =>
+      match read_attributed_inband_capture(unit: operator_host_srv14) {
+        InbandCaptureRefused { gap: _ } => false
+        InbandCaptureAttributed { content: text, row: _, channel_content: _ } =>
+          match mint_committed_bmc_fru_capture(
+            text: text,
+            row: BmcFruCaptureRow {
+              unit: row.unit,
+              capture_path: row.capture_path,
+              capture_sha256: row.capture_sha256,
+              capture_section: Present { value: "this section is not in the capture" },
+              attribution: row.attribution,
+              attribution_basis: row.attribution_basis,
+            },
+          ) {
+            FruObserved { observation: _ } => false
+            FruReadRefused { gap: _ } => true
+          }
+      }
+  }
+}

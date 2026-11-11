@@ -195,6 +195,10 @@ data mt_collins_platform_ref: DeclarationRef = decl_ref(module_path: "extdeps.am
 
 data mt_jade_platform_ref: DeclarationRef = decl_ref(module_path: "extdeps.ocp.mt_jade.subject", decl_name: "MtJadeSpecificationRevision")
 
+// THE ALTRAD8UD BOARD THE FLEET CARRIES SRV15 ON, cited by the catalog row srv15_baseboard itself is built
+// from -- the row does not claim a controller family, only the board.
+data asrock_altrad8ud_platform_ref: DeclarationRef = decl_ref(module_path: "extdeps.boards.asrock_rack", decl_name: "asrock_altrad8ud_1l2t_catalog")
+
 // THE ROWS (warm-crane-577 for the operator, 2026-10-05, reported upward for veto). Mt. Collins and
 // Mt. Jade both require ALL EIGHT carriers and admit only the uncleared baseline-cursor arm. A
 // required subset would assert, without evidence, that the other carriers are irrelevant -- absence
@@ -204,6 +208,12 @@ data mt_jade_platform_ref: DeclarationRef = decl_ref(module_path: "extdeps.ocp.m
 data prior_life_platform_policies: List<PriorLifePolicy> = [
   PriorLifePolicy { platform: mt_collins_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
   PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
+  // THE ALTRAD8UD ROW (swift-ram-509 for the srv15 arrival lane, 2026-11-11, reported upward for veto). All
+  // eight carriers, for the same reason as the rows above: no evidence says any carrier is irrelevant. Its
+  // uncleared-boundary admission is NOTAdmitted, which is the fail-closed side of the choice the other two
+  // rows did not have to make: no platform-policy statement for this board is committed anywhere, and
+  // admitting the append-only cursor arm would assert one. Admitting it later is a new row with its reason.
+  PriorLifePolicy { platform: asrock_altrad8ud_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryNotAdmitted },
 ]
 
 fn prior_life_policy_for(platform: DeclarationRef) -> PriorLifePolicy? {

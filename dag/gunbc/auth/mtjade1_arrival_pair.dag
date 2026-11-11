@@ -12,17 +12,27 @@ import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_arrival_accessor_ref }
+import gunbc.auth.arrival_federation_pair {
+  mtjade1_arrival_federation_pair, arrival_wif_pool_id, arrival_wif_provider_id,
+  arrival_service_account_id, arrival_service_account, arrival_environment,
+  arrival_pool_display_name,
+}
+
+// mtjade1's pair is a ROW of the general ArrivalFederationPair shape (gunbc.auth.arrival_federation_pair,
+// PXE 1d-b), not a per-host hard-coding. Every name below is DERIVED from that row by the shared fns; the
+// arrival_federation_pair_witness proves each derived string equals the literal mtjade1 declared, so this
+// is a cut at the root, not a second spelling. A new arrival host adds a row there; nothing here changes.
 
 // Names, WIF pair and the one version-pinned accessor. PrivilegedEffect rows live in
 // gunbc.auth.mtjade1_arrival_federation so gcp-iam-converge and fleet-converge.yml do not
 // close over the selection fold.
 
-data mtjade1_arrival_pool_id: NonEmptyStr = "github-mtjade1-arrival"
-data mtjade1_arrival_pool_display_name: NonEmptyStr = "Mt. Jade arrival (one job)"
-data mtjade1_arrival_provider_id: NonEmptyStr = "github-mtjade1-arrival-oidc"
-data mtjade1_arrival_service_account_id: NonEmptyStr = "mtjade1-arrival"
-data mtjade1_arrival_service_account: ServiceAccountEmail = "mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
-data mtjade1_arrival_environment: NonEmptyStr = "mtjade1-arrival"
+data mtjade1_arrival_pool_id: NonEmptyStr = arrival_wif_pool_id(pair: mtjade1_arrival_federation_pair)
+data mtjade1_arrival_pool_display_name: NonEmptyStr = arrival_pool_display_name(pair: mtjade1_arrival_federation_pair)
+data mtjade1_arrival_provider_id: NonEmptyStr = arrival_wif_provider_id(pair: mtjade1_arrival_federation_pair)
+data mtjade1_arrival_service_account_id: NonEmptyStr = arrival_service_account_id(pair: mtjade1_arrival_federation_pair)
+data mtjade1_arrival_service_account: ServiceAccountEmail = arrival_service_account(pair: mtjade1_arrival_federation_pair)
+data mtjade1_arrival_environment: NonEmptyStr = arrival_environment(pair: mtjade1_arrival_federation_pair)
 
 data mtjade1_arrival_wif_pool: WifPool = WifPool {
   name: mtjade1_arrival_pool_id

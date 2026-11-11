@@ -1,0 +1,53 @@
+module gunbc.auth.srv15_arrival_federation_provision
+
+// srv15's arrival DedicatedFederation, as a ROW of the same shape mtjade1's occupies
+// (gunbc.auth.mtjade1_arrival_federation_provision). Built entirely from srv15_arrival_federation_pair
+// via gunbc.auth.arrival_federation_pair -- no srv15 name is re-spelled here.
+//
+// DELIBERATELY NOT appended to gunbc.auth.gcp_iam_converge's gcp_iam_converge_targets (PXE 1d-b, decided
+// with smart-crane-730). gcp_iam_converge is a plan->actuate converger whose plan REFUSES with
+// not_bootstrapped on a WIF pool/service account that do not exist yet; appending srv15 now would make the
+// (manual-dispatch, mode=gcp_iam_converge) converge refuse on the absent srv15 resources. So this row is
+// MODELED (a real, witness-consumed fn -- see test.claim.srv15_arrival_federation_provision_witness) but
+// INERT in the roster.
+//
+// DECLARED FRONTIER -- the roster entry is this row's only consumer; it does not dangle, its activation is
+// the separate bootstrap dispatch (in the PR body for smart-crane-730):
+//   trigger: the operator has created the bmc-srv15-admin secret AND read its Secret Manager version list.
+//   step 1: append srv15_arrival_dedicated_federation() to gcp_iam_converge_targets in
+//           gunbc.auth.gcp_iam_converge (that is the consumer that dissolves this frontier).
+//   step 2: workflow_dispatch the gcp-iam-converge job (mode=gcp_iam_converge). Its actuate CREATES the
+//           WIF pool github-srv15-arrival, the provider github-srv15-arrival-oidc, and the federated
+//           service account srv15-arrival@gunbai-secrets.iam.gserviceaccount.com, and binds the
+//           pinned-version roles/secretmanager.secretAccessor on bmc-srv15-admin. No hand IAM.
+//   precondition (before the LIVE arrival run, not before this row): the operator runs
+//           `gcloud secrets versions list bmc-srv15-admin` and sets
+//           gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version to the enabled version the
+//           accessor names -- the pin is currently an unread TranscribedUncited figure and
+//           resolve_returned_version refuses a mismatch.
+
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
+import gunbc.auth.arrival_federation_pair {
+  srv15_arrival_federation_pair,
+  arrival_wif_pool_id, arrival_wif_provider_id, arrival_pool_display_name,
+  arrival_wif_attribute_mapping, arrival_attribute_condition, arrival_principal_set,
+  arrival_service_account, arrival_service_account_id, arrival_principal_member,
+  arrival_secret_grants,
+}
+
+fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "srv15 arrival federation",
+    pool_id: arrival_wif_pool_id(pair: srv15_arrival_federation_pair),
+    pool_display_name: arrival_pool_display_name(pair: srv15_arrival_federation_pair),
+    provider_id: arrival_wif_provider_id(pair: srv15_arrival_federation_pair),
+    attribute_mapping: arrival_wif_attribute_mapping,
+    attribute_condition: arrival_attribute_condition(pair: srv15_arrival_federation_pair),
+    impersonation: StandingPoolImpersonation { principal_set: arrival_principal_set(pair: srv15_arrival_federation_pair) },
+    service_account: arrival_service_account(pair: srv15_arrival_federation_pair),
+    service_account_id: arrival_service_account_id(pair: srv15_arrival_federation_pair),
+    service_account_display_name: arrival_pool_display_name(pair: srv15_arrival_federation_pair),
+    service_account_member: arrival_principal_member(pair: srv15_arrival_federation_pair),
+    secret_grants: arrival_secret_grants(pair: srv15_arrival_federation_pair),
+  }
+}

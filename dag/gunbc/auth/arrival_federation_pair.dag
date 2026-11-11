@@ -1,0 +1,166 @@
+module gunbc.auth.arrival_federation_pair
+
+import std.types { List, Map, NonEmptyStr, String }
+import std.optional { Present }
+import std.list { first_where }
+import extdeps.cloud.gcp.gcp {
+  ServiceAccountEmail, WifPool, WifProvider, wif_provider_resource, wif_pool_resource,
+}
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_id, fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member,
+}
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_srv15 }
+import gunbc.secret_provision { mtjade1_bmc_gunbc_arrival_accessor_ref, srv15_bmc_gunbc_arrival_accessor_ref }
+
+// THE ONE arrival federation-pair shape. A unit that arrives (an operator host brought onto
+// convergence) federates its arrival_converge job through a GitHub→GCP pair: a dedicated WIF pool
+// and provider whose OIDC claim pins hold it to that host's arrival environment, a run-scoped
+// service account it impersonates, and the one version-pinned accessor on that host's managed BMC
+// credential it may read. mtjade1's pair used to be hard-coded as its own module; every arriving
+// host then needed a second hard-coded module and a second hard-coded environment name (PXE 1d-b).
+// This cuts at the root: a pair is a ROW of ArrivalFederationPair, keyed by the unit's HostIdentity,
+// and every name is derived from that identity by the fns below. A new ordinary host is a row here,
+// not a control-flow branch and not a new module.
+//
+// The row does NOT authorize anything. Whether a row's environment may be federated at all is gated
+// by that host's live StandingOperatorGrant (its arrival effects), checked where the pair is consumed
+// — the pair supplies NAMES, the grant supplies PERMISSION. PrivilegedEffect rows live in the
+// host's *_arrival_federation_provision module so gcp-iam-converge and fleet-converge.yml do not
+// close over the selection fold.
+
+data fleet_secrets_sa_domain: NonEmptyStr = "gunbai-secrets.iam.gserviceaccount.com"
+
+type ArrivalFederationPair {
+  // The population-row host this pair belongs to. Names are derived from it; nothing per-host is
+  // hard-coded downstream of this field.
+  unit: HostIdentity
+  // Human display prefix, e.g. "Mt. Jade". Free prose, not derivable from the host id.
+  display_prefix: NonEmptyStr
+  // The one version-pinned accessor on this host's managed BMC credential the arrival job may read.
+  accessor_ref: SecretRef
+}
+
+// Names, all derived from the unit id. They reproduce exactly the strings mtjade1 used to hard-code
+// (github-mtjade1-arrival, github-mtjade1-arrival-oidc, mtjade1-arrival,
+// mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com, mtjade1-arrival) so mtjade1's pair is
+// carried unchanged onto this shape.
+
+fn arrival_wif_pool_id(pair: ArrivalFederationPair) -> NonEmptyStr {
+  join(["github-", pair.unit as String, "-arrival"], "") as NonEmptyStr
+}
+
+fn arrival_wif_provider_id(pair: ArrivalFederationPair) -> NonEmptyStr {
+  join([arrival_wif_pool_id(pair: pair) as String, "-oidc"], "") as NonEmptyStr
+}
+
+fn arrival_service_account_id(pair: ArrivalFederationPair) -> NonEmptyStr {
+  join([pair.unit as String, "-arrival"], "") as NonEmptyStr
+}
+
+fn arrival_environment(pair: ArrivalFederationPair) -> NonEmptyStr {
+  join([pair.unit as String, "-arrival"], "") as NonEmptyStr
+}
+
+fn arrival_service_account(pair: ArrivalFederationPair) -> ServiceAccountEmail {
+  join([arrival_service_account_id(pair: pair) as String, "@", fleet_secrets_sa_domain as String], "") as ServiceAccountEmail
+}
+
+fn arrival_pool_display_name(pair: ArrivalFederationPair) -> NonEmptyStr {
+  join([pair.display_prefix as String, " arrival (one job)"], "") as NonEmptyStr
+}
+
+fn arrival_claim_pins(pair: ArrivalFederationPair) -> List<OidcClaimPin> {
+  fleet_converge_job_claim_pins(environment: arrival_environment(pair: pair))
+}
+
+// The attribute condition that pins the OIDC token to this pair's arrival environment and repo.
+fn arrival_attribute_condition(pair: ArrivalFederationPair) -> String {
+  claim_pins_attribute_condition(pins: arrival_claim_pins(pair: pair))
+}
+
+data arrival_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+fn arrival_wif_pool(pair: ArrivalFederationPair) -> WifPool {
+  WifPool {
+    name: arrival_wif_pool_id(pair: pair)
+    project: fleet_secrets_project_id as String
+    display_name: Present { value: arrival_pool_display_name(pair: pair) }
+    disabled: false
+  }
+}
+
+fn arrival_wif_provider(pair: ArrivalFederationPair) -> WifProvider {
+  WifProvider {
+    name: arrival_wif_provider_id(pair: pair)
+    pool: arrival_wif_pool_id(pair: pair)
+    issuer_uri: github_wif_issuer_uri
+    attribute_mapping: Present { value: arrival_wif_attribute_mapping }
+    attribute_condition: Present { value: arrival_attribute_condition(pair: pair) }
+  }
+}
+
+fn arrival_provider_resource(pair: ArrivalFederationPair) -> String {
+  wif_provider_resource(
+    project_number: fleet_secrets_project_number,
+    provider: arrival_wif_provider(pair: pair),
+  )
+}
+
+fn arrival_principal_set(pair: ArrivalFederationPair) -> String {
+  join([
+    "principalSet://iam.googleapis.com/",
+    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: arrival_wif_pool_id(pair: pair) as String),
+    "/*"
+  ], "")
+}
+
+fn arrival_principal_member(pair: ArrivalFederationPair) -> String {
+  federated_service_account_member(email: arrival_service_account(pair: pair))
+}
+
+// The single version-pinned accessor the arrival job may read for BmcSecure. One grant, the pair's
+// accessor; there is no published-credential read anywhere on this path.
+fn arrival_secret_grants(pair: ArrivalFederationPair) -> List<SecretAccessGrant> {
+  [pinned_version_accessor_grant_for(
+    title_prefix: arrival_environment(pair: pair),
+    description: join(
+      ["gunbc.auth.arrival_federation_pair: the one version the ", pair.unit as String,
+       " arrival job may read for BmcSecure (derived, not hand-IAM)"],
+      "",
+    ),
+    target: pair.accessor_ref,
+  )]
+}
+
+// THE CATALOG. One row per arriving host. mtjade1 and srv15 are rows; adding a host adds a row.
+data mtjade1_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPair {
+  unit: operator_host_mtjade1,
+  display_prefix: "Mt. Jade" as NonEmptyStr,
+  accessor_ref: mtjade1_bmc_gunbc_arrival_accessor_ref,
+}
+
+data srv15_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPair {
+  unit: operator_host_srv15,
+  display_prefix: "srv15" as NonEmptyStr,
+  accessor_ref: srv15_bmc_gunbc_arrival_accessor_ref,
+}
+
+fn arrival_federation_pairs() -> List<ArrivalFederationPair> {
+  [mtjade1_arrival_federation_pair, srv15_arrival_federation_pair]
+}
+
+// The pair for a host, if this branch models one. The consumer must ALSO hold the host's live
+// standing grant with the arrival effects before it federates; absence of a grant is refused there,
+// not here — this fold is a name lookup, not an authorization decision.
+fn arrival_federation_pair_for_host(host: HostIdentity) -> ArrivalFederationPair? {
+  first_where(arrival_federation_pairs(), p => host_identity_eq(a: p.unit, b: host))
+}
