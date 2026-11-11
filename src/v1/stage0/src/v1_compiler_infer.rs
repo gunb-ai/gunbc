@@ -5181,6 +5181,11 @@ pub fn equality_route_declarations() -> Rc<Vec<Rc<EqualityRouteDeclaration>>> {
         declared_name: "NodeOccurrence".to_string(),
         function: crate::std_decl_ref::decl_ref("v2.std.node".to_string(), "node_occurrence_eq".to_string()),
         admitted_at_root: true,
+    }), Rc::new(EqualityRouteDeclaration {
+        decl_file: "src/v2/std/diagnostic.dag".to_string(),
+        declared_name: "Locus".to_string(),
+        function: crate::std_decl_ref::decl_ref("v2.std.diagnostic".to_string(), "locus_eq".to_string()),
+        admitted_at_root: true,
     })])
             };
         }
