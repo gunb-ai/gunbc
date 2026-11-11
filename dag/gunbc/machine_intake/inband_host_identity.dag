@@ -334,11 +334,16 @@ fn inband_lan_print_address(content: String, section: NonEmptyStr) -> String? {
   }
 }
 
-// THE PURE HALF: decode the board table, then attribute. Row, digest, attribution, decode -- attribution comes
-// before the serial is handed on, because a serial from an unattributed capture is a serial attached to
-// nothing, and the digest gate is what keeps unproven bytes out of both.
+// THE PURE HALF, bytes to verdict: digest, attribution, decode, in that order. The digest gate is first
+// because the digest is what makes the bytes THIS capture; attribution comes before the serial is handed on,
+// because a serial from an unattributed capture is a serial attached to nothing. The callers that read from a
+// path check the digest before they decode anything either way -- the same authority, row.capture_sha256, read
+// twice rather than a second authority written -- so a witness can drive every arm off real capture bytes with
+// one row field changed and no file touched.
 fn decode_inband_board_capture(content: String, row: InbandHostIdentityCaptureRow, channel_content: String?) -> InbandBoardRead {
-  match inband_board_fields(content: content, row: row) {
+  match fru_capture_digest_check(content: content, expected_sha256: row.capture_sha256) {
+    FruCaptureDigestDiffers { gap: FruCaptureDigestMismatch { expected: x, observed: o } } => InbandBoardRefused { gap: InbandCaptureDigestMismatch { expected: x, observed: o } }
+    FruCaptureDigestAgrees => match inband_board_fields(content: content, row: row) {
     InbandBoardFieldsRefused { gap: g } => InbandBoardRefused { gap: g }
     InbandBoardFieldsObserved { product_name: product, serial: serial } =>
       match inband_attribution(content: content, row: row, channel_content: channel_content) {
@@ -362,6 +367,7 @@ fn decode_inband_board_capture(content: String, row: InbandHostIdentityCaptureRo
             Absent => InbandBoardRefused { gap: InbandCaptureUnreadable { error: "the attribution of this capture is neither settled nor refused" } }
           }
       }
+  }
   }
 }
 
@@ -486,7 +492,7 @@ fn read_inband_channel_if_rowled(text: String, row: InbandHostIdentityCaptureRow
             FruCaptureDigestAgrees =>
               match inband_attribution_gap(content: text, row: row, channel_content: Present { value: channel_text }) {
                 Present { value: g } => InbandCaptureRefused { gap: g }
-                Absent => InbandCaptureAttributed { content: text, row: row, channel_content: none }
+                Absent => InbandCaptureAttributed { content: text, row: row, channel_content: Present { value: channel_text } }
               }
           }
       }

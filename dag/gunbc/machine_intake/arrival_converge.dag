@@ -548,22 +548,21 @@ fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> Obser
 
 // The FRU-against-host-SMBIOS pair, the arm mtjade1 converges through: the serials, the unit each read
 // attributes itself to, and the SOL session the SMBIOS read was taken through, all classified together.
-fn observe_identity_from_smbios_agreement(request: IdentityBindRequest, fru: RecordedFruObservation) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
+fn observe_identity_from_smbios_agreement(key: StepInstanceKey, request: IdentityBindRequest, fru: RecordedFruObservation) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
   match request.inputs.smbios {
-        SmbiosReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: SmbiosCaptureUnread { cause: smbios_gap_text(gap: g) } } }
-        SmbiosObserved { observation: smbios } =>
-          match classify_board_serial_agreement(
-            unit: key.subject,
-            accessed: request.access.access.endpoint,
-            fru_subject: fru.subject,
-            fru_serial: fru.fields.board_serial,
-            smbios_subject: smbios.subject,
-            smbios_controller: smbios_session_controller(source: smbios.source),
-            smbios_serial: smbios.serial,
-          ) {
-            Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
-            Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: HostSmbiosReading { observation: smbios }, serial: fru.fields.board_serial })
-          }
+    SmbiosReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: SmbiosCaptureUnread { cause: smbios_gap_text(gap: g) } } }
+    SmbiosObserved { observation: smbios } =>
+      match classify_board_serial_agreement(
+        unit: key.subject,
+        accessed: request.access.access.endpoint,
+        fru_subject: fru.subject,
+        fru_serial: fru.fields.board_serial,
+        smbios_subject: smbios.subject,
+        smbios_controller: smbios_session_controller(source: smbios.source),
+        smbios_serial: smbios.serial,
+      ) {
+        Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
+        Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: HostSmbiosReading { observation: smbios }, serial: fru.fields.board_serial })
       }
   }
 }
