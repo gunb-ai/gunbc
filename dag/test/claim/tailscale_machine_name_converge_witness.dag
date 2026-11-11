@@ -695,10 +695,13 @@ test fn a_read_back_where_both_names_answer_the_request_confirms_the_run() -> Bo
   }
 }
 
-// A WRITE THAT DID NOT LAND AT ALL, rather than one that moved the tailnet half and missed the OS half: neither
-// name answers the request, and the tailnet half is what contradicts it. Split out because the two contradicting
-// read-backs come from different verdicts of the same rule and must not collapse into one arm.
-test fn a_read_back_where_neither_half_answers_the_request_refuses_on_the_tailnet_half() -> Bool {
+// NEITHER HALF ANSWERS THE REQUEST -- the device never moved at all. The tailnet name contradicts the write just
+// as loudly as the OS hostname does, and which of the two the read-back reports is NOT a free choice: it is the
+// same shared rule the plan runs, and that rule answers on the OS half, because that is the half this mode's set
+// cannot bring to the target. Left as its own claim, apart from the half-moved pair, because the two refusals come
+// from different device states that must not collapse into one arm -- and apart from the plan-side claim over the
+// same bytes, which owes no write at all.
+test fn a_read_back_where_neither_half_answers_the_request_refuses_on_the_os_half() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "damien" as DnsLabel,
     names: tailscale_machine_name_device_names_reading(
@@ -706,8 +709,8 @@ test fn a_read_back_where_neither_half_answers_the_request_refuses_on_the_tailne
       os_name_capture: witness_os_capture(witness_os_name_slot_spelling)
     )
   ) {
-    ReadBackMachineNameContradicts { requested: requested, reported: reported, os_name: os_name } =>
-      (requested as String) == "damien" && reported == "host-183527" && os_name == "host-183527"
+    ReadBackOsHalfNotAtRequest { requested: requested, machine_name: machine_name, os_name: os_name } =>
+      (requested as String) == "damien" && machine_name == "host-183527" && os_name == "host-183527"
     _ => false
   }
 }
