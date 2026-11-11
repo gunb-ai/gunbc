@@ -1913,7 +1913,16 @@ pub fn emit_resolved_for_target_counting(
             }
         }
     }
-    v1_compiler_compile::emit_resolved_for_target_selected(resolved, target, selection)
+    // A fixture instrument has no replacement partition in flight -- the corpus it compiles is the
+    // fixture itself -- so it renders its crate roots against the seed's own compiled population.
+    // The counters above observe the SELECTION, never the population; passing the compiled rows
+    // here keeps that separation visible at the one place the render is requested.
+    v1_compiler_compile::emit_resolved_for_target_selected(
+        resolved,
+        target,
+        selection,
+        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
+    )
 }
 
 /// COMPILE A FIXTURE CLOSURE AND RENDER NOTHING. The census route: the same fixed-point compile

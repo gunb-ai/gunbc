@@ -1080,10 +1080,15 @@ fn compile_stage0_admitted(
             })
         })
         .collect();
+    // THE POPULATION THIS ROUND IS CONVERGING, from the same read that gates the emitted edges
+    // above. The emitted crate roots and the mirrors of this one emission must agree about which
+    // crate owns a module; the rows compiled into this binary are the predecessor's and are missing,
+    // by construction, any module the change adds to a partition crate.
     let result = compile_sources_selected(
         Rc::new(source_files.into()),
         RenderTarget::Rust,
         selection.clone(),
+        packages.rows.clone(),
     );
     if let Some(message) =
         stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
@@ -3135,6 +3140,9 @@ mod tests {
                     Rc::new(sources.into()),
                     RenderTarget::Rust,
                     Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                    // A refusing fixture has no partition in flight; the assertion is about the
+                    // emit's all-or-nothing file rule, which no population can change.
+                    crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
                 );
                 (
                     result
