@@ -238,13 +238,15 @@ fn resolve_imports_transitively_with_index(
     sources
 }
 
-fn analyze_complexity_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
+fn analyze_complexity_options() -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
         analyze_complexity: true,
         analyze_ownership: true,
         analyze_test_references: true,
-        declaration_scope: v1_compiler::v1_compiler_infer::DeclarationScope::EveryDeclaration,
-    }
+        declaration_scope: Rc::new(
+            v1_compiler::v1_compiler_infer::DeclarationScope::EveryDeclaration,
+        ),
+    })
 }
 
 pub fn compile_dag_analyze_complexity(source: &str) -> Rc<PipelineResult> {
