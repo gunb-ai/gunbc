@@ -36,10 +36,12 @@ module gunbc.tailscale_machine_name_converge
 // the read disagrees. That is @ref(gunbc.design_argument::epistemic_humility) -- the unknown is recorded at the
 // edge that would have acted on it.
 //
-// THE REVERSE DIRECTION IS NOT A SECOND MODE. A rename window's rollback is this same mode pointed at
-// the old name: the plan's `desired` is whatever gunbc.hostname_allocation currently allocates for the
-// slot, so moving that row back and running the mode again is the undo, and it passes through the same
-// read/plan/apply/read-back order. There is no undo verb here because upstream documents no additive alias to remove -- a device
+// THE REVERSE DIRECTION IS NOT A SECOND MODE. A rename window's rollback is this same mode pointed at the old
+// name: the plan's target is always whatever gunbc.hostname_allocation names canonically for the slot -- the new
+// name once the row has been flipped, the old name again once it has been reverted -- so moving that row back and
+// running the mode again is the undo, and it passes through the same read/plan/apply/read-back order. A window
+// whose row still holds a pending name refuses instead: the flip is a separate write, and this mode never targets
+// a name the registry has not put in place. There is no undo verb here because upstream documents no additive alias to remove -- a device
 // has one machine name and `set --hostname` moves it (extdeps.tailscale.machine_name).
 //
 // HOW THIS MODE IS HELD TO THE RENAME WINDOW (S3), AND WHERE THAT HOLD IS NOT. The mode takes the stage
@@ -197,6 +199,7 @@ fn tailscale_machine_name_window_wire(window: TailscaleMachineNameWindow) -> Str
 // which question was asked, so P2 and P4 have nothing to move here.
 type TailscaleMachineNameDesired
   = TargetNameAllocated { name: DnsLabel }
+  | PendingRenameStillOnTheRow { host: HostIdentity, pending: DnsLabel }
   | DesiredNameNotDerivable { host: HostIdentity, cause: String }
 
 // THE LABEL AN ALLOCATED NAME ANSWERS TO. `human_name_canonical_hostname` is the registry's own rendering of a
@@ -227,20 +230,24 @@ fn tailscale_machine_name_current_canonical(host: HostIdentity) -> TailscaleMach
   }
 }
 
-// THE TARGET, ONE QUESTION. Inside a rename window the target is the registry's PENDING name for the slot --
-// that row is the window's whole content, and a window that ran against the current canonical name instead would
-// write the name the device already answers and report the rename done. Anywhere else, and for a window with
-// nothing pending, the target is the slot's CURRENT canonical name: that is what makes the reverse direction of a
-// rename need no special path, because moving the registry row back and re-running asks this same question and
-// gets the old name. Both questions are the registry's -- this mode holds no name of its own, and an unregistered
-// slot or a registry that fails its own admission yields no target and refuses.
+// THE TARGET, ONE QUESTION, AND IT IS ALWAYS THE ROW'S CANONICAL NAME. A rename is ordered: the row is flipped
+// (its pending name becomes its canonical name) BEFORE the hostname and tailnet step runs, so by the time this mode
+// is invoked inside a window the canonical name IS the new name, and after a revert it is the old name again. That
+// is why there is one target question and no forward/undo pair -- and why this mode never writes a pending name: a
+// name the registry has not flipped into place is a name the fleet does not yet claim, and writing it would put the
+// device ahead of the fact that authorizes it. So a rename window whose row STILL carries a pending name has not
+// had its flip land, and refuses; flipping the row is a different step's write.
 fn tailscale_machine_name_desired(
   host: HostIdentity,
   window: TailscaleMachineNameWindow,
 ) -> TailscaleMachineNameDesired {
   if tailscale_machine_name_window_is_rename_window(window: window) {
     match next_name_for_fleet_slot(fleet_slot: host) {
-      Present { value: pending } => TargetNameAllocated { name: tailscale_allocated_name_label(name: pending) }
+      Present { value: pending } =>
+        PendingRenameStillOnTheRow {
+          host: host,
+          pending: tailscale_allocated_name_label(name: pending),
+        }
       Absent => tailscale_machine_name_current_canonical(host: host)
     }
   } else {
@@ -259,6 +266,7 @@ fn tailscale_machine_name_desired(
 type TailscaleMachineNamePlanRefusal
   = WindowIsNotTheRenameWindow { window: TailscaleMachineNameWindow, mode: TailscaleMachineNameMode }
   | NameNotDerivable { host: HostIdentity, cause: String }
+  | RenameFlipNotLanded { host: HostIdentity, pending: DnsLabel }
   | StatusLegRefused { detail: String }
   | StatusLegFailed { exit_code: Int, detail: String }
   | StatusDocumentRefused { cause: TailscaleMachineNameRefusal }
@@ -359,6 +367,16 @@ fn tailscale_machine_name_plan_refusal_wire(cause: TailscaleMachineNamePlanRefus
       )
     NameNotDerivable { host: host, cause: cause } =>
       join(["refused: no allocated name for ", host as String, ": ", cause], "")
+    RenameFlipNotLanded { host: host, pending: pending } =>
+      join(
+        [
+          "refused: the row for ", host as String, " still carries the pending name `", pending as String,
+          "`; a rename flips the row before this step runs, and the target here is always the row's canonical name",
+          " -- writing a name the registry has not put in place would put the device ahead of the fact that",
+          " authorizes it",
+        ],
+        ""
+      )
     StatusLegRefused { detail: detail } =>
       join(["refused: the status read leg was not attempted: ", detail], "")
     StatusLegFailed { exit_code: exit_code, detail: detail } =>
@@ -439,6 +457,8 @@ fn tailscale_machine_name_plan(
     match tailscale_machine_name_desired(host: host, window: window) {
       DesiredNameNotDerivable { host: subject, cause: cause } =>
         PlanRefused { cause: NameNotDerivable { host: subject, cause: cause } }
+      PendingRenameStillOnTheRow { host: subject, pending: pending } =>
+        PlanRefused { cause: RenameFlipNotLanded { host: subject, pending: pending } }
       TargetNameAllocated { name: desired } =>
         match tailscale_machine_name_names_against_target(requested: desired, names: names) {
           NameReadUnusable { cause: cause } => PlanRefused { cause: cause }
