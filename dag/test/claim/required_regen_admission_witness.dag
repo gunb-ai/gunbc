@@ -9,15 +9,6 @@ module test.claim.required_regen_admission_witness
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
-
-data required_regen_host_path: String = "src/v1/stage0/src/required_regen_host.rs"
-
-fn host_source_contains(pattern: String) -> Bool {
-  let src = filesystem_read(path: required_regen_host_path())
-  string_contains(s: src.content, pattern: pattern)
-}
-
 // Read from the AUTHORITY itself, not assumed here: witness_every_declared_stage0_module_name_is_already_flat
 // asks the partition what it actually declares, so the gap between the merge path and the belt in
 // this file is a checked fact rather than prose.
@@ -62,6 +53,15 @@ import v2.workflow.required_regen {
   missing_mirror_admissions,
   missing_mirror_refused_basenames,
   collect_admitted_new_mirror_paths
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data required_regen_host_path: String = "src/v1/stage0/src/required_regen_host.rs"
+
+fn host_source_contains(pattern: String) -> Bool {
+  let src = filesystem_read(path: required_regen_host_path())
+  string_contains(s: src.content, pattern: pattern)
 }
 
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
