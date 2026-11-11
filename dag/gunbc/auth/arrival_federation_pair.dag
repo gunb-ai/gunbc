@@ -50,24 +50,48 @@ type ArrivalFederationPair {
 // mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com, mtjade1-arrival) so mtjade1's pair is
 // carried unchanged onto this shape.
 
+// One realization for every convergence lane of a unit, not just arrival: the lane name ("arrival",
+// "install", ...) is the only variable. The arrival names below are these with lane "arrival", so
+// mtjade1's and srv15's existing strings are carried unchanged (pinned by the pair witness).
+
+fn arrival_lane_wif_pool_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
+  join(["github-", pair.unit as String, "-", lane as String], "") as NonEmptyStr
+}
+
+fn arrival_lane_wif_provider_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
+  join([arrival_lane_wif_pool_id(pair: pair, lane: lane) as String, "-oidc"], "") as NonEmptyStr
+}
+
+fn arrival_lane_service_account_id(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
+  join([pair.unit as String, "-", lane as String], "") as NonEmptyStr
+}
+
+fn arrival_lane_environment(pair: ArrivalFederationPair, lane: NonEmptyStr) -> NonEmptyStr {
+  join([pair.unit as String, "-", lane as String], "") as NonEmptyStr
+}
+
+fn arrival_lane_service_account(pair: ArrivalFederationPair, lane: NonEmptyStr) -> ServiceAccountEmail {
+  join([arrival_lane_service_account_id(pair: pair, lane: lane) as String, "@", fleet_secrets_sa_domain as String], "") as ServiceAccountEmail
+}
+
 fn arrival_wif_pool_id(pair: ArrivalFederationPair) -> NonEmptyStr {
-  join(["github-", pair.unit as String, "-arrival"], "") as NonEmptyStr
+  arrival_lane_wif_pool_id(pair: pair, lane: "arrival")
 }
 
 fn arrival_wif_provider_id(pair: ArrivalFederationPair) -> NonEmptyStr {
-  join([arrival_wif_pool_id(pair: pair) as String, "-oidc"], "") as NonEmptyStr
+  arrival_lane_wif_provider_id(pair: pair, lane: "arrival")
 }
 
 fn arrival_service_account_id(pair: ArrivalFederationPair) -> NonEmptyStr {
-  join([pair.unit as String, "-arrival"], "") as NonEmptyStr
+  arrival_lane_service_account_id(pair: pair, lane: "arrival")
 }
 
 fn arrival_environment(pair: ArrivalFederationPair) -> NonEmptyStr {
-  join([pair.unit as String, "-arrival"], "") as NonEmptyStr
+  arrival_lane_environment(pair: pair, lane: "arrival")
 }
 
 fn arrival_service_account(pair: ArrivalFederationPair) -> ServiceAccountEmail {
-  join([arrival_service_account_id(pair: pair) as String, "@", fleet_secrets_sa_domain as String], "") as ServiceAccountEmail
+  arrival_lane_service_account(pair: pair, lane: "arrival")
 }
 
 fn arrival_pool_display_name(pair: ArrivalFederationPair) -> NonEmptyStr {

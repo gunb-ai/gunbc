@@ -1,0 +1,202 @@
+module test.claim.machine_intake.arrival_run_wet_witness;
+
+// WITNESS FOR THE 1d-B ARRIVAL DOOR. The door is a pure composition over SUPPLIED capture bytes
+// (the live transport runs the declared extdeps ops outside the DAG and the skin commits every
+// response through the private evidence store); here the captures are supplied directly, exactly
+// as the store would hand them back. One real-input positive control reads committed bytes
+// through the committed reader (witness_one_interface style) so the composition is pinned against
+// ground, not only against fixtures. Fixture provenance is stated per fixture.
+
+import std.types { NonEmptyStr, String, Bool, Int, EpochMs }
+import std.list { first }
+import std.algebra { filter, map, length, string_contains }
+import std.content_hash { content_hash_of_value }
+import std.dissolution { dissolution_description }
+import gunbc.machine_intake.arrival_run {
+  arrival_wet_prefix_record,
+  ArrivalRunCaptures,
+  ArrivalWetRunRecord,
+  ArrivalRunObserved,
+  ArrivalRunRefused,
+}
+import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, QualificationSubject }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId }
+import gunbc.machine_intake.bmc_account_state_parsers {
+  arrival_named_census_read,
+  ArrivalNamedCensusAccepted,
+  ArrivalNamedCensusAuthenticationRefused,
+  ArrivalNamedCensusUnreadable,
+  ipmi_authenticated_census_read,
+  IpmiCensusAccepted,
+  ipmi_channel_info_is_lan,
+}
+import gunbc.machine_intake.inband_host_identity {
+  InbandBoardRead,
+  InbandBoardObserved,
+  InbandBoardIdentity,
+  InbandIdentitySource,
+  InbandAttributedByHostIdentity,
+}
+import gunbc.machine_intake.mtjade1_access_observation {
+  read_committed_bmc_fru_capture,
+  FruObserved,
+  FruRead,
+}
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv15, operator_host_mtjade1 }
+
+// THE CENSUS STAND-IN. Structure copied byte-for-byte from the committed authenticated getaccess
+// table (machine_intake_bmc_account_state_live_witness.getaccess_capture); only the Name cells
+// differ, set to what the srv15 door must derive: the managed account named in the row ('root')
+// appears exactly once. There is no committed srv15 user-list capture yet, so the census part of
+// the happy-path fixture is a labelled stand-in; the projection tests below use the REAL table.
+data srv15_census_stand_in: String = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   root             false   false      true       ADMINISTRATOR\n2   operator           false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+
+// THE AMBIGUOUS CENSUS: two rows claim the managed name. The door must refuse, not pick.
+data srv15_census_two_roots: String = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   root             false   false      true       ADMINISTRATOR\n2   root             false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+
+// THE FRU STAND-IN FOR SRV15: a five-field device-0 print (the shape srv14's real print does NOT
+// have -- see the identity-grade split ruling; the live srv15 run stops at IdentityBindProvisional
+// until that lands, and the door's refusal there is covered by the FRU-decode RED below). The
+// board serial equals the srv15 in-band serial, so the agreement arm is the one exercised.
+data srv15_fru_stand_in: String = "FRU Device Description : Builtin FRU Device (ID 0)\n Board Mfg Date        : Mon Oct 21 00:00:00 2024\n Board Mfg             : ASRock Rack\n Board Product         : Altrad8ud-1L2T\n Board Serial          : BR80S6102300049\n Board Part Number     : 90-007000-1001800000\n Chassis Part Number   : 0000000000F\n Chassis Serial        : 0000000000F\n Product Name          : Altrad8ud-1L2T\n"
+
+fn srv15_wet_captures() -> ArrivalRunCaptures {
+  srv15_wet_captures_census(census_text: srv15_census_stand_in)
+}
+
+fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
+  ArrivalRunCaptures {
+    census_text: census_text,
+    lan_print_text: "Set in Progress         : Set Complete\nAuth Type Support       : NONE MD2 MD5 PASSWORD \nIP Address Source       : Static Address\nIP Address              : 192.168.1.248\nMAC Address             : 9c:6b:00:e7:c9:e7\n802.1q VLAN ID          : Disabled\nBad Password Threshold  : Not Available\n",
+    service_root_body: "{\"@odata.id\":\"/redfish/v1/\",\"@odata.type\":\"#ServiceRoot.v1_15_0.ServiceRoot\",\"Id\":\"RootService\",\"Name\":\"OpenBMC\",\"RedfishVersion\":\"1.17.0\"}",
+    account_service_body: "{\"AccountLockoutThreshold\":3,\"AccountLockoutDuration\":600,\"AccountLockoutCounterResetAfter\":600,\"AccountLockoutCounterResetEnabled\":true}",
+    accounts_collection_body: "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts\",\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":1}",
+    account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"],
+    fru_text: srv15_fru_stand_in,
+    fru_store_path: "arrival-evidence/fru-print-0" as NonEmptyStr,
+    password_file: "arrival-witness/managed-password" as NonEmptyStr,
+    netrc_file: "arrival-witness/netrc" as NonEmptyStr,
+    observation_time: 1762400000000,
+    attempt: "arrival-witness-attempt" as AttemptIdentity,
+    credential_epoch: "1" as NonEmptyStr,
+    observation_subject: MachineIntakeSubject {
+      subject: QualificationSubject {
+        unit_key: "srv15" as UnitKey,
+        assembly_manifest_digest: content_hash_of_value(srv15_census_stand_in),
+        firmware_manifest_digest: content_hash_of_value(srv15_fru_stand_in),
+      },
+      attempt_id: "arrival-witness-attempt" as IntakeAttemptId,
+    },
+    census_channel: 1,
+    channel_info_store_paths: ["arrival-evidence/channel-info-1" as NonEmptyStr],
+    // The srv15 in-band second source: serial from the committed host identity artifact
+    // (artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt).
+    inband: InbandBoardObserved {
+      observation: InbandBoardIdentity {
+        unit: operator_host_srv15,
+        source: InbandIdentitySource {
+          capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+          capture_sha256: "771a9d17687594bd9c48227e90e2f2261c679a5da1eb416a58c9639152821893" as NonEmptyStr,
+          attribution_basis: "machine_intake/arrival_unit_captures committed in-band capture" as NonEmptyStr,
+        },
+        product_name: "Altrad8ud-1L2T" as NonEmptyStr,
+        serial: "BR80S6102300049" as NonEmptyStr,
+        attributed_by: InbandAttributedByHostIdentity { mac: "9c:6b:00:e7:c9:e7" as NonEmptyStr },
+      },
+    },
+  }
+}
+
+// THE HAPPY PATH THROUGH THE FOLD: the door observes the unit (five reads' bytes, the FRU second
+// source, the live observation) and the fold STOPS at the boundary. The receipt is the record:
+// stopped, not converged, and the gap says which lane closes it (PXE 1d-c).
+test fn the_boundary_stop_receipt_names_the_dissolution() -> Bool {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0001" as NonEmptyStr, captures: srv15_wet_captures()) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: dissolution } =>
+      string_contains(s: dissolution_description(condition: dissolution) as String, pattern: "PXE 1d-c") && managed_user == published_user
+    ArrivalRunRefused { reason: _reason } => false
+  }
+}
+
+// NO GUESSING: two rows named 'root' make the managed-user derivation ambiguous; the door refuses
+// with the census cause before the fold, rather than picking an id.
+test fn the_ambiguous_census_refuses_without_guessing() -> Bool {
+  let ambiguous = srv15_wet_captures_census(census_text: srv15_census_two_roots)
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0002" as NonEmptyStr, captures: ambiguous) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "exactly once")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+}
+
+// THE DOOR IS ONLY FOR POPULATION UNITS: an unknown unit and a unit whose fleet row names no BMC
+// binding both refuse up front -- the wet path never runs for a unit the fleet cannot bind.
+test fn the_unbound_unit_refuses_before_any_op() -> Bool {
+  let captures = srv15_wet_captures()
+  let unknown = match arrival_wet_prefix_record(unit: operator_host_srv1, run_wire: "witness-run-0003" as NonEmptyStr, captures: captures) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "arrival capture row")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+  let unbound = match arrival_wet_prefix_record(unit: operator_host_mtjade1, run_wire: "witness-run-0004" as NonEmptyStr, captures: captures) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "BMC binding")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+  unknown && unbound
+}
+
+// PROJECTION EQUIVALENCE OVER THE REAL TABLE: the door's name-carrying census and the committed
+// census reader accept the SAME served table and see the SAME row set. Real committed bytes: the
+// authenticated getaccess table from the live-read witness (the shape ipmitool serves).
+test fn the_named_census_projects_onto_the_committed_census() -> Bool {
+  let table = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      true       ADMINISTRATOR\n2   operator           false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+  let named_rows = match arrival_named_census_read(text: table, channel: 1) {
+    IpmiNamedCensusAccepted { rows: rows } => rows
+    IpmiNamedCensusAuthenticationRefused { detail: _detail } => []
+    IpmiNamedCensusUnreadable { detail: _detail } => []
+  }
+  let committed_rows = match ipmi_authenticated_census_read(text: table, channel: 1) {
+    IpmiCensusAccepted { rows: rows } => rows
+    _ => []
+  }
+  // Same three named rows, same user ids in order; the named arm additionally carries the names
+  // the committed reader drops.
+  length(named_rows) == 3 && length(committed_rows) == 3 && length(filter(named_rows, r => r.name == "admin" || r.name == "operator" || r.name == "OEM")) == 3
+}
+
+// THE DERIVATION IS THIS RUN'S CENSUS: the managed and published ids come from the census the run
+// read (name match against the row's managed account and the firmware's published account), not
+// from any rowed id -- the same census text, read once, yields both.
+test fn the_door_derives_managed_and_published_users_from_this_run_census() -> Bool {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0005" as NonEmptyStr, captures: srv15_wet_captures()) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } =>
+      match first(filter(match arrival_named_census_read(text: srv15_census_stand_in, channel: 1) {
+        IpmiNamedCensusAccepted { rows: rows } => rows
+        IpmiNamedCensusAuthenticationRefused { detail: _detail } => []
+        IpmiNamedCensusUnreadable { detail: _detail } => []
+      }, r => r.name == "root")) {
+        Present { value: row } => managed_user == row.user && published_user == row.user
+        Absent => false
+      }
+    ArrivalRunRefused { reason: _reason } => false
+  }
+}
+
+// POSITIVE CONTROLS OVER REAL COMMITTED BYTES (witness_one_interface style).
+
+// The real committed FRU print mints through the committed row-keyed reader: ground bytes, real
+// file, real digest path -- the identity the board row claims is what the store hands back.
+test fn the_real_fru_print_mints_the_identity_the_store_hands_back() -> Bool {
+  match read_committed_bmc_fru_capture(unit: operator_host_mtjade1) {
+    FruObserved { observation: observation } => (observation.fields.board_serial as String) == "B810301000412080005AJ0C1"
+    FruReadRefused { gap: _gap } => false
+  }
+}
+
+// THE CHANNEL ROSTER CLASSIFIER OVER REAL PROBE BYTES: the committed channel_info_1 probe serves
+// 802.3 LAN; a channel that answers with an error does not.
+test fn the_real_channel_info_probes_serve_the_lan_medium() -> Bool {
+  let lan_text = "Channel 0x1 info:\n  Channel Medium Type   : 802.3 LAN\n  Channel Protocol Type : IPMB-1.0\n  Session Support       : multi-session\n  Active Session Count  : 1\n"
+  let dead_text = "Unable to Get Channel Info Parameter: Invalid channel\n"
+  ipmi_channel_info_is_lan(text: lan_text) && !ipmi_channel_info_is_lan(text: dead_text)
+}

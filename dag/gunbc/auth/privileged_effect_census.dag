@@ -734,7 +734,7 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
     hold: Present { value: decl_ref(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire") },
     refusal: site(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
-    premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and, while ArrivalArchiveSlotHeld, calls arrival_wet_prefix_from_unobserved_world which refuses; it does not fold converge_mtjade1_arrival_prefix or write the prior-life archive until an observed BMC/archive world is bound" as NonEmptyStr,
+    premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and, while ArrivalArchiveSlotHeld, composes the live reads over the evidence store and folds via converge_arrival_through_bmc_secure, which STOPS at PriorLifeBoundary with the typed no-carriers cause: BmcSecure is not established and no prior-life archive write happens until PXE 1d-c binds a read-back observed archive world; the door does not invoke BmcSecure Apply" as NonEmptyStr,
     hold_owning_roots: [
       InterlockRoot {
         root: site(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_converge_wet"),

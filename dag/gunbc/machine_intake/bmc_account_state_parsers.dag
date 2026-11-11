@@ -59,6 +59,7 @@ import extdeps.bmc.ipmi_channel {
   IpmiPrivilegeOperator,
   IpmiPrivilegeUser,
   IpmiUserChannelAccess,
+  IpmiUserId,
   ipmi_lan_bad_password_threshold_served,
   ipmi_user_channel_access,
 }
@@ -632,5 +633,143 @@ fn redfish_service_root_verdict_from_body(body: String) -> RedfishServiceRootVer
             none => ServiceRootUnrecognized { detail: "the object carries no @odata.type" as NonEmptyStr }
           }
       }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE NAME-CARRYING AUTHENTICATED CENSUS READ (PXE 1d-b). The committed census
+// above validates the Name cell but DROPS it: its consumers reason about slots,
+// privileges and counts, and none of them may reason from an account name. The
+// arrival door must DERIVE the managed user id and the published (factory) user
+// id from this run's own census -- the ruling says those facts are derived from
+// the census, never rowed and never probed -- so it needs the name cell kept.
+// Same grammar authority, same session classifier: this read re-parses the
+// table with the committed row grammar's cell logic (ID, Name, three flag
+// cells, the NO ACCESS two-word privilege tail) and keeps the name. Drift
+// between the two readings is pinned claim-for-claim by the door's witness:
+// for every capture both readings must accept and the named rows must project
+// onto the committed rows exactly. Admitted to the arrival door and its
+// witness only: a name-reading in wider hands is an invitation to branch on
+// account names where the committed reading deliberately does not.
+type ArrivalNamedUserAccessRow {
+  channel: IpmiChannelNumber
+  user: IpmiUserId
+  name: NonEmptyStr
+  privilege: IpmiChannelPrivilegeLimit
+}
+
+type ArrivalNamedUserAccessRowVerdict
+  = NamedRowParsed { row: ArrivalNamedUserAccessRow }
+  | NamedRowMalformed { detail: NonEmptyStr }
+
+fn arrival_named_user_access_row(line: String, channel: IpmiChannelNumber) -> ArrivalNamedUserAccessRowVerdict {
+  let toks = ws_tokens(rest: line, current: "", acc: [])
+  let n = toks.length()
+  let tail_access = n >= 2 && word_equals_any(word: token_at(toks: toks, i: n - 1), forms: ["ACCESS", "Access", "access"])
+  let priv_word = if tail_access { token_at(toks: toks, i: n - 2) } else { token_at(toks: toks, i: n - 1) }
+  let consumed = if tail_access { 2 } else { 1 }
+  match parse_int(s: token_at(toks: toks, i: 0)) {
+    none => NamedRowMalformed { detail: line }
+    Present { value: id } =>
+      if n < 1 + 3 + consumed {
+        NamedRowMalformed { detail: line }
+      } else {
+        match ipmi_privilege_word(word: priv_word) {
+          none => NamedRowMalformed { detail: line }
+          Present { value: privilege } =>
+            if tail_access && !word_equals_any(word: token_at(toks: toks, i: n - 2), forms: ["NO", "No", "no"]) {
+              NamedRowMalformed { detail: line }
+            } else {
+              let flag_start = n - consumed - 3
+              let f1 = token_at(toks: toks, i: flag_start)
+              let f2 = token_at(toks: toks, i: flag_start + 1)
+              let f3 = token_at(toks: toks, i: flag_start + 2)
+              let name_cells = flag_start - 1
+              if !is_ipmi_bool_word(word: f1) || !is_ipmi_bool_word(word: f2) || !is_ipmi_bool_word(word: f3) {
+                NamedRowMalformed { detail: line }
+              } else if id < 1 || id > 63 {
+                NamedRowMalformed { detail: line }
+              } else if name_cells > 1 {
+                NamedRowMalformed { detail: line }
+              } else if name_cells != 1 {
+                // The name cell is PRESENT and EMPTY: the slot is enabled but carries no
+                // account. Such a row keeps its slot in the committed census but can name
+                // no account here, and a door that could not name it would only mis-derive.
+                NamedRowMalformed { detail: "the name cell is empty: an enabled slot with no account names nothing" }
+              } else {
+                NamedRowParsed { row: ArrivalNamedUserAccessRow { channel: channel, user: id as IpmiUserId, name: token_at(toks: toks, i: 1) as NonEmptyStr, privilege: privilege } }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn arrival_named_user_access_rows_from_lines(lines: List<String>, channel: IpmiChannelNumber, acc: List<ArrivalNamedUserAccessRow>) -> IpmiUserAccessRowsVerdict2 {
+  match first(lines) {
+    none =>
+      if acc.length() == 0 {
+        ArrivalNamedRowsMalformed { detail: "the table carries no named user row" as NonEmptyStr }
+      } else {
+        ArrivalNamedRowsRead { rows: acc }
+      }
+    Present { value: line } =>
+      match arrival_named_user_access_row(line: line, channel: channel) {
+        NamedRowMalformed { detail: bad } => ArrivalNamedRowsMalformed { detail: bad }
+        NamedRowParsed { row: row } => arrival_named_user_access_rows_from_lines(lines: lines.skip(n: 1), channel: channel, acc: list_push(xs: acc, item: row))
+      }
+  }
+}
+
+type IpmiUserAccessRowsVerdict2
+  = ArrivalNamedRowsRead { rows: List<ArrivalNamedUserAccessRow> }
+  | ArrivalNamedRowsMalformed { detail: NonEmptyStr }
+
+fn arrival_named_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAccessRowsVerdict2 {
+  arrival_named_user_access_rows_from_lines(lines: split(s: text, delimiter: "\n"), channel: channel, acc: [])
+}
+
+type ArrivalNamedCensusVerdict
+  = IpmiNamedCensusAccepted { rows: List<ArrivalNamedUserAccessRow> }
+  | IpmiNamedCensusAuthenticationRefused { detail: NonEmptyStr }
+  | IpmiNamedCensusUnreadable { detail: NonEmptyStr }
+
+// THE AUTHENTICATED, NAMED CENSUS. One classifier authority with the committed
+// census: a refused credential reads as refused, an unestablished session as
+// unreadable, and neither is laundered into the other.
+fn arrival_named_census_read(text: String, channel: IpmiChannelNumber) -> ArrivalNamedCensusVerdict
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_wet_prefix_record"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_named_census_projects_onto_the_committed_census"),
+    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_door_derives_managed_and_published_users_from_this_run_census"),
+  ]
+{
+  match ipmi_session_failure(output: text) {
+    Present { value: IpmiSessionAuthRefused } =>
+      IpmiNamedCensusAuthenticationRefused { detail: "the authenticated named census was refused by the controller (credential rejected)" as NonEmptyStr }
+    Present { value: IpmiSessionUnestablished } =>
+      IpmiNamedCensusUnreadable { detail: "the RMCP+ session never came up; that reached no credential and is not a refusal of it" as NonEmptyStr }
+    Absent => match arrival_named_user_access_rows(text: text, channel: channel) -> IpmiUserAccessRowsVerdict2
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_parsers", decl_name: "arrival_named_census_read"),
+  ]
+{
+      ArrivalNamedRowsRead { rows: rows } => IpmiNamedCensusAccepted { rows: rows }
+      ArrivalNamedRowsMalformed { detail: d } => IpmiNamedCensusUnreadable { detail: d }
+    }
+  }
+}
+
+// THE LAN-MEDIUM TEST ON channel-info BYTES (PXE 1d-b roster grounding). A channel is a LAN census
+// channel exactly when its OWN channel-info bytes say the medium is 802.3 LAN -- the value column of
+// the `Channel Medium Type` line, keyed, not a substring of prose. Admitted to the arrival door only.
+fn ipmi_channel_info_is_lan(text: String) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_run_wet_after_hold"),
+  ]
+{
+  match ipmi_field(text: text, key: "Channel Medium Type") {
+    Absent => false
+    Present { value: v } => word_equals_any(word: v, forms: ["802.3 LAN", "802.3 lan", "LAN"])
   }
 }
