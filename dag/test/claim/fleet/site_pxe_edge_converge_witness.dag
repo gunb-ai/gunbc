@@ -1444,6 +1444,7 @@ test fn the_fleet_row_goes_stale_at_the_instant_it_is_decided_and_not_one_it_car
     RequestBound { binding: binding } =>
       string_contains(s: public_nocloud_seed_user_data(seed: binding.seed) as String, pattern: witness_srv15_disk_serial)
     RequestWithheld { standing: _ } => false
+    RequestClientUnparseable { error: _ } => false
   }
     && match site_pxe_edge_request_admission(request: srv15_request(), decided_at: deadline + 1) {
       RequestWithheld { standing: standing } =>
@@ -1460,6 +1461,7 @@ test fn the_fleet_row_goes_stale_at_the_instant_it_is_decided_and_not_one_it_car
             }
           }
       RequestBound { binding: _ } => false
+      RequestClientUnparseable { error: _ } => false
     }
 }
 
