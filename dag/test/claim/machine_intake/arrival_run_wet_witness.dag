@@ -31,9 +31,6 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   ipmi_channel_info_is_lan,
 }
 import gunbc.machine_intake.inband_host_identity {
-  InbandBoardRead,
-  decode_inband_board_capture,
-  inband_host_identity_capture_row,
 }
 import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
@@ -73,23 +70,16 @@ data srv15_census_two_roots: String = "ID  Name\t             Callin  Link Auth\
 // board serial equals the srv15 in-band serial, so the agreement arm is the one exercised.
 data srv15_fru_stand_in: String = "FRU Device Description : Builtin FRU Device (ID 0)\n Board Mfg Date        : Mon Oct 21 00:00:00 2024\n Board Mfg             : ASRock Rack\n Board Product         : Altrad8ud-1L2T\n Board Serial          : BR80S6102300049\n Board Part Number     : 90-007000-1001800000\n Chassis Part Number   : 0000000000F\n Chassis Serial        : 0000000000F\n Product Name          : Altrad8ud-1L2T\n"
 
-fn srv15_wet_captures(inband: InbandBoardRead) -> ArrivalRunCaptures {
-  srv15_wet_captures_census(census_text: srv15_census_stand_in, inband: inband)
+fn srv15_wet_captures() -> ArrivalRunCaptures {
+  srv15_wet_captures_census(census_text: srv15_census_stand_in)
 }
 
 // The in-band second source, MINTED THE ONLY LEGAL WAY: the committed capture row
 // keyed by unit, the bytes it digests, and the public decoder. The section shapes
 // mirror the committed capture; the NIC is the fleet-bound host NIC whose MAC srv1
 // saw on the wire (srv15_host_nic_mac).
-fn srv15_inband_read() -> InbandBoardRead? {
-  let content = ["### dmidecode baseboard", "Product Name        : ASRock Rack ALTRAD8UD-1L2T", "Serial Number       : BR80S6102300049", "### nics", "enP2p4s0 mac=9c:6b:00:e7:ca:63 carrier=1", "enP2p4s0 inet 192.168.1.248 UP"].join("\n")
-  match inband_host_identity_capture_row(unit: operator_host_srv15) {
-    Present { value: row } => Present { value: decode_inband_board_capture(content: content, row: row, channel_content: none) }
-    Absent => Absent
-  }
-}
 
-fn srv15_wet_captures_census(census_text: String, inband: InbandBoardRead) -> ArrivalRunCaptures {
+fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
   ArrivalRunCaptures {
     census_text: census_text,
     channel_access_text: "Maximum User IDs     : 15\n\nUser ID              : 1\nUser Name            : root\nPrivilege Level      : ADMINISTRATOR",
@@ -118,7 +108,6 @@ fn srv15_wet_captures_census(census_text: String, inband: InbandBoardRead) -> Ar
     // The srv15 in-band second source, decoded through the PUBLIC reader over the
     // committed capture row's own bytes (the shape of the committed
     // artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt sections).
-    inband: inband,
   }
 }
 
@@ -126,20 +115,17 @@ fn srv15_wet_captures_census(census_text: String, inband: InbandBoardRead) -> Ar
 // source, the live observation) and the fold STOPS at the boundary. The receipt is the record:
 // stopped, not converged, and the gap says which lane closes it (PXE 1d-c).
 test fn the_boundary_stop_receipt_names_the_dissolution() -> Bool {
-  match srv15_inband_read() {
-    Absent => false
-    Present { value: inband } => match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0001" as NonEmptyStr, captures: srv15_wet_captures(inband: inband)) {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0001" as NonEmptyStr, captures: srv15_wet_captures()) {
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: dissolution } =>
       string_contains(s: dissolution_description(condition: dissolution) as String, pattern: "PXE 1d-c") && managed_user == published_user
     ArrivalRunRefused { reason: _reason } => false
-  }
   }
 }
 
 // NO GUESSING: two rows named 'root' make the managed-user derivation ambiguous; the door refuses
 // with the census cause before the fold, rather than picking an id.
-fn ambiguous_check(inband: InbandBoardRead) -> Bool {
-  let ambiguous = srv15_wet_captures_census(census_text: srv15_census_two_roots, inband: inband)
+fn ambiguous_check() -> Bool {
+  let ambiguous = srv15_wet_captures_census(census_text: srv15_census_two_roots)
   match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0002" as NonEmptyStr, captures: ambiguous) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "exactly once")
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
@@ -147,16 +133,13 @@ fn ambiguous_check(inband: InbandBoardRead) -> Bool {
 }
 
 test fn the_ambiguous_census_refuses_without_guessing() -> Bool {
-  match srv15_inband_read() {
-    Absent => false
-    Present { value: inband } => ambiguous_check(inband: inband)
-  }
+  ambiguous_check()
 }
 
 // THE DOOR IS ONLY FOR POPULATION UNITS: an unknown unit and a unit whose fleet row names no BMC
 // binding both refuse up front -- the wet path never runs for a unit the fleet cannot bind.
-fn unbound_check(inband: InbandBoardRead) -> Bool {
-  let captures = srv15_wet_captures(inband: inband)
+fn unbound_check() -> Bool {
+  let captures = srv15_wet_captures()
   let unknown = match arrival_wet_prefix_record(unit: operator_host_srv1, run_wire: "witness-run-0003" as NonEmptyStr, captures: captures) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "arrival capture row")
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
@@ -169,10 +152,7 @@ fn unbound_check(inband: InbandBoardRead) -> Bool {
 }
 
 test fn the_unbound_unit_refuses_before_any_op() -> Bool {
-  match srv15_inband_read() {
-    Absent => false
-    Present { value: inband } => unbound_check(inband: inband)
-  }
+  unbound_check()
 }
 
 // PROJECTION EQUIVALENCE OVER THE REAL TABLE: the door's name-carrying census and the committed
@@ -199,9 +179,7 @@ test fn the_named_census_projects_onto_the_committed_census() -> Bool {
 // read (name match against the row's managed account and the firmware's published account), not
 // from any rowed id -- the same census text, read once, yields both.
 test fn the_door_derives_managed_and_published_users_from_this_run_census() -> Bool {
-  match srv15_inband_read() {
-    Absent => false
-    Present { value: inband } => match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0005" as NonEmptyStr, captures: srv15_wet_captures(inband: inband)) {
+  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0005" as NonEmptyStr, captures: srv15_wet_captures()) {
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: managed_user, published_user: published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } =>
       match first(filter(match arrival_named_census_read(text: srv15_census_stand_in, channel: 1) {
         IpmiNamedCensusAccepted { rows: rows } => rows
@@ -212,7 +190,6 @@ test fn the_door_derives_managed_and_published_users_from_this_run_census() -> B
         Absent => false
       }
     ArrivalRunRefused { reason: _reason } => false
-  }
   }
 }
 

@@ -144,14 +144,14 @@ import gunbc.machine_intake.mtjade1_access_observation {
   SmbiosCaptureNotCommitted,
   altrad8ud_bmc_fru_identity_read_obligation,
 }
-import gunbc.machine_intake.inband_host_identity { InbandBoardRead, read_inband_board_identity }
 import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld,
   DryArchiveStore,
   DryArchiveStoreKeepsWrites,
 }
 import gunbc.machine_intake.arrival_converge {
-  identity_bind_inputs_for_live_reads,
+  identity_fru_slot_of,
+  altrad8ud_identity_bind_inputs_with_fru,
   converge_arrival_through_bmc_secure,
   BmcSecureInputs,
   ArrivalPrefixVerdict,
@@ -282,8 +282,6 @@ type ArrivalRunCaptures {
   census_channel: IpmiChannelNumber
   // Store paths of the channel-info bytes that grounded the roster, committed like every response.
   channel_info_store_paths: List<NonEmptyStr>
-  // The in-band board read: the one kernel input that is NOT a controller read through the store.
-  inband: InbandBoardRead
 }
 
 // THE RUN'S OUTCOME. The fold's boundary stop is a SUCCESS of this run: the observation was
@@ -450,16 +448,16 @@ fn arrival_wet_prefix_record(
                                       BmcFruCaptureRefused { gap: _ } =>
                                         ArrivalRunRefused { reason: "the FRU bytes read back from the store do not decode an identity-grade board area: IdentityBindProvisional has no second source and the door refuses rather than bind a serial on one reading" as NonEmptyStr }
                                       BmcFruCaptureObserved { observation: board } => {
-                                        // The seam the fold's own identity arm uses, minted where the
-                                        // sealed inputs live: the door passes the FRU evidence IT
-                                        // committed and read back, the typed SMBIOS absence, the
-                                        // in-band reading, and nothing else -- no other unit's key
-                                        // is known to this run.
-                                        let inputs = identity_bind_inputs_for_live_reads(
-                                          fru: IdentityFruObserved { evidence: CommittedFruBoardArea { observation: board } },
-                                          smbios: SmbiosReadRefused { gap: SmbiosCaptureNotCommitted { unit: row.unit as NonEmptyStr, read_that_would_ground_it: "this door reads no host SMBIOS: the second source for this run is the FRU print through the store" } },
-                                          inband: Present { value: captures.inband },
-                                          other_units: [],
+                                        // THE ONE MINT FOR AN IN-BAND UNIT'S IDENTITY INPUTS, in the
+                                        // module that owns the sealed type: the door contributes the
+                                        // FRU slot from the bytes IT committed and read back through
+                                        // the store; the mint reads the in-band board identity from
+                                        // the unit's committed capture row itself (no hand-supplied
+                                        // bytes) and derives the bound-unit keys, with the typed
+                                        // SMBIOS absence and its obligation carried inside.
+                                        let inputs = altrad8ud_identity_bind_inputs_with_fru(
+                                          unit: row.unit,
+                                          fru: identity_fru_slot_of(read: fru_mint),
                                         )
                                         let world = bmc_world(power: BmcPowerOff)
                                         let prior_life = DryPriorLifeWorld {
@@ -831,7 +829,6 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
       return exit_failure(reason: concat("ARRIVAL WET CLOCK UNREADABLE: ", d as String))
     }
   }
-  let inband = read_inband_board_identity(subject.host)
   let attempt_value = concat("arrival-attempt-", run_wire as String) as NonEmptyStr
   let captures = ArrivalRunCaptures {
     census_text: census_text,
@@ -858,7 +855,6 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     },
     census_channel: census_channel,
     channel_info_store_paths: roster_paths,
-    inband: inband,
   }
   match arrival_wet_prefix_record(unit: subject.host, run_wire: run_wire, captures: captures) {
     ArrivalRunRefused { reason: reason } => exit_failure(reason: concat("ARRIVAL WET REFUSED: ", reason as String))
