@@ -10,6 +10,10 @@ import gunbc.roadmap.roadmap_status {
 import gunbc.roadmap.roadmap_authority { roadmap_node }
 import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 
+// NO FIXTURE HERE CARRIES A 'done' KNOB (gunbc.design_ruling::
+// plans_reset_and_audit_recommendations_2026_11_08): whether a node is accepted or retired is a fact of the
+// roadmap event log, never of the row, so a constructor that took `done: Bool` would be a second home -- and
+// a misleading one, since the value it was given could not change the row it built.
 // FIXTURE CONSTRUCTORS FOR ROADMAP WITNESSES, built on the one production constructor
 // (gunbc.roadmap.roadmap_authority roadmap_node). Production has a single node constructor with optional
 // dispatch facts; witnesses that plant many rows name the shapes they plant here instead of
@@ -52,11 +56,11 @@ fn fx_derivable_wi(identity: String, id: String, prs: List<Int>, title: String, 
     parent: fx_complete_parent(), centering: fx_plan())
 }
 
-fn fx_ticket_row(identity: String, id: String, done: Bool, t: TicketFields) -> RoadmapNode {
+fn fx_ticket_row(identity: String, id: String, t: TicketFields) -> RoadmapNode {
   roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: TicketLine { ticket: t })
 }
 
-fn fx_ticket_wi(identity: String, id: String, done: Bool, t: TicketFields, repo: String) -> RoadmapNode {
+fn fx_ticket_wi(identity: String, id: String, t: TicketFields, repo: String) -> RoadmapNode {
   roadmap_node(identity: identity, id: id, owner: "", carriers: [],
     line: TicketLine { ticket: t },
     dispatch: Present { value: Dispatchable { repo: repo, acceptance: ManualAcceptance } },

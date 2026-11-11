@@ -475,7 +475,7 @@ data readable_witness_enrollment_note: String = "The six readability witnesses b
 // ONLY in their updates, in both directions; the row's structure is asserted over a supplied ticket,
 // and its real-authority inhabitance lives in witness_real_ticket_row_renders_structured.
 fn updates_fixture(updates: List<gunbc.roadmap.roadmap_status.TicketUpdate>) -> RoadmapNode {
-  fx_ticket_row(identity: "rnfx_UPD8TESFXTR3KZ0MQ7WV", id: "updates-fixture", done: false, t: TicketFields {
+  fx_ticket_row(identity: "rnfx_UPD8TESFXTR3KZ0MQ7WV", id: "updates-fixture", t: TicketFields {
     headline: "fixture",
     brief: "a brief",
     displaced_cost: "",
@@ -570,7 +570,7 @@ test fn witness_ticket_rows_render_structured() -> Bool {
 }
 
 fn long_brief_fixture() -> RoadmapNode {
-  fx_ticket_row(identity: "rnfx_J87HN1XAW9JEHR4KTWC0", id: "brief-overrun-fixture", done: false, t: TicketFields {
+  fx_ticket_row(identity: "rnfx_J87HN1XAW9JEHR4KTWC0", id: "brief-overrun-fixture", t: TicketFields {
     headline: "fixture",
     brief: "w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w",
     displaced_cost: "",
@@ -1088,12 +1088,9 @@ test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
 
 fn fx_page_project_nodes() -> List<RoadmapNode> {
   [
-    fx_authored_wi(identity: "rnfx_PAGEHIERPROJ0000000001", id: "page-project",
-      done: false, content: "page project headline", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERPROJ0000000002", id: "page-task-one",
-      done: false, content: "page task one", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERPROJ0000000003", id: "page-task-two",
-      done: false, content: "page task two", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERPROJ0000000001", id: "page-project", content: "page project headline", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERPROJ0000000002", id: "page-task-one", content: "page task one", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERPROJ0000000003", id: "page-task-two", content: "page task two", repo: "gunbc"),
   ]
 }
 
@@ -1182,20 +1179,13 @@ test fn witness_project_disclosure_open_attribute_is_derived() -> Bool {
 
 fn fx_page_chain_nodes() -> List<RoadmapNode> {
   [
-    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000001", id: "page-chain-c1",
-      done: false, content: "chain level one", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000002", id: "page-chain-c2",
-      done: false, content: "chain level two", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000003", id: "page-chain-c3",
-      done: false, content: "chain level three", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000004", id: "page-chain-c4",
-      done: false, content: "chain level four", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000005", id: "page-chain-x1",
-      done: false, content: "chain side leaf one", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000006", id: "page-chain-x2",
-      done: false, content: "chain side leaf two", repo: "gunbc"),
-    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000007", id: "page-chain-x3",
-      done: false, content: "chain side leaf three", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000001", id: "page-chain-c1", content: "chain level one", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000002", id: "page-chain-c2", content: "chain level two", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000003", id: "page-chain-c3", content: "chain level three", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000004", id: "page-chain-c4", content: "chain level four", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000005", id: "page-chain-x1", content: "chain side leaf one", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000006", id: "page-chain-x2", content: "chain side leaf two", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_PAGEHIERCHAIN000000007", id: "page-chain-x3", content: "chain side leaf three", repo: "gunbc"),
   ]
 }
 
@@ -1290,14 +1280,10 @@ fn li_of_node(html: String, node_id: String) -> String {
 // (that rendering survives on the /sandbox exhibit's grouping path, pinned at unit level by
 // witness_project_disclosure_open_attribute_is_derived and the depth-cap machinery half).
 test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
-  let top = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00001", id: "page-collapse-top",
-    done: false, content: "collapse top", repo: "gunbc")
-  let mid = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00002", id: "page-collapse-mid",
-    done: false, content: "collapse mid", repo: "gunbc")
-  let t1 = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00003", id: "page-collapse-t1",
-    done: false, content: "collapse task one", repo: "gunbc")
-  let t2 = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00004", id: "page-collapse-t2",
-    done: false, content: "collapse task two", repo: "gunbc")
+  let top = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00001", id: "page-collapse-top", content: "collapse top", repo: "gunbc")
+  let mid = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00002", id: "page-collapse-mid", content: "collapse mid", repo: "gunbc")
+  let t1 = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00003", id: "page-collapse-t1", content: "collapse task one", repo: "gunbc")
+  let t2 = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00004", id: "page-collapse-t2", content: "collapse task two", repo: "gunbc")
   let edges = [
     gunbc.roadmap.roadmap_authority.edge(child: "page-collapse-top", parent: "page-collapse-mid"),
     gunbc.roadmap.roadmap_authority.edge(child: "page-collapse-mid", parent: "page-collapse-t1"),
@@ -2064,8 +2050,7 @@ fn fx_long_title_doc(long: String) -> RoadmapDocument {
     sections: [ RoadmapSection {
       title: "Projects",
       elements: [ section_group(label: "", nodes: [
-        fx_authored_wi(identity: "rnfx_PAGELONGTITLE00000000001", id: "page-long-title",
-          done: false, content: long, repo: "gunbc"),
+        fx_authored_wi(identity: "rnfx_PAGELONGTITLE00000000001", id: "page-long-title", content: long, repo: "gunbc"),
       ], edges: []) ],
     } ],
   }

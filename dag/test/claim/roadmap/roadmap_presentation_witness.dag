@@ -258,7 +258,7 @@ test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
     red_control: "",
     out_of_scope: "",
     handback: "")
-  let rn = fx_ticket_row(identity: "rnfx_A2PRES0000000000000001", id: "a2-headline", done: false, t: t)
+  let rn = fx_ticket_row(identity: "rnfx_A2PRES0000000000000001", id: "a2-headline", t: t)
   row_headline(line: rn.line) == "Close the wall — phase 2. Cleanly"
 }
 
@@ -483,8 +483,7 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
 
 fn fx_row_nodes() -> List<RoadmapNode> {
   [
-    fx_authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
-      done: false, content: "row headline — row brief", repo: "gunbc"),
+    fx_authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row", content: "row headline — row brief", repo: "gunbc"),
     fx_authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", content: "parent one"),
     fx_authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", content: "parent two"),
   ]
@@ -558,8 +557,7 @@ test fn witness_scheduling_projects_typed_positions() -> Bool {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
   let child = match nodes.first() { Present { value: rn } => rn Absent => fx_authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", content: "x") }
-  let ready_node = fx_authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
-    done: false, content: "ready row", repo: "gunbc")
+  let ready_node = fx_authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready", content: "ready row", repo: "gunbc")
   let unsized_node = fx_authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", content: "unsized row")
   work_scheduling_key(s: work_scheduling(rn: child, nodes: nodes, edges: edges)) == "not-ready"
     && work_scheduling_key(s: work_scheduling(rn: ready_node, nodes: [ready_node], edges: [])) == "ready"
@@ -907,7 +905,6 @@ fn fx_sized(id: String, content: String) -> RoadmapNode {
   fx_authored_wi(
     identity: join(["rnfx-", id], ""),
     id: id,
-    done: false,
     content: content,
     repo: "gunbc")
 }

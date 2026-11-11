@@ -948,7 +948,7 @@ test fn witness_session_lease_shape_reused() -> Bool {
 }
 
 fn ticket_fixture_node() -> RoadmapNode {
-  fx_ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
+  fx_ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", t: TicketFields {
     headline: "Fixture Headline",
     brief: "A short brief.",
     displaced_cost: "the real displaced cost",
@@ -1298,7 +1298,6 @@ fn specimen_row(parent: NodeParent?) -> RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: unrooted_specimen_id()),
     line: TicketLine {
-      done: false,
       ticket: TicketFields {
         headline: "Specimen headline",
         brief: "Specimen brief",
