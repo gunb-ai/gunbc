@@ -879,6 +879,7 @@ fn host_binding_refusal_text(b: HostBinding) -> String {
 // gunbc.runner.runner_host_grants, which consumes THIS module's operation fold to render its sudoers lines:
 // importing it back would be a cycle, and the slot roster is a fact about the deploy row either way.
 fn runner_microvm_network_slot_identities_of(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
-  let host = deploy.host_label as HostIdentity
+  // No cast of `deploy.host_label` into a HostIdentity here: the slot roster is a fact about the deploy
+  // row, and a declared label is a name -- an identity comes from the registry, never from a String.
   runner_slot_identities_of(deploy: deploy)
 }
