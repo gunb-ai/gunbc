@@ -1,8 +1,14 @@
 // Exercises the REAL, post-fix fold readback functions -- gunbc.host.host_effect_realize::
 // tree_hash_lines and ::tree_ancestor_directories -- which now sort through the native `sort_by`
 // kernel. No host seam is called, so this is elevation-free. It asserts they still order bytewise
-// on a stress set (shared prefixes, a leading '/', non-ASCII) and complete over a large planted
-// set: a regression guard that the readback path stays free of per-entry frame growth.
+// on a stress set (shared prefixes, a leading '/', non-ASCII) and again over a large planted set.
+// These are ORDER / correctness checks at scale, NOT the depth regression guard: the interpreter
+// ceiling here is the default 100,000 (a compiled constant -- no claim lowers it), and the old
+// bytewise mergesort also completed 8,000 entries under it, so "completes at 8,000" does NOT
+// discriminate the fix (gunbc.design_argument::guarantee_ladder: ask whether its RED is authorable).
+// The per-entry-frame-growth RED is the ENROLLED wet pair -- install_fold_converges_at_large_size in
+// local_repo_wet_schedule -- which is red on the mutant at the real ceiling (call-depth at
+// list_at_optional, run16283f) and green on the fix.
 // (adhoc-551ba662-dd5, gunbc.design_argument::earliest_unjustified_boundary.)
 module test.claim.runner.install_readback_sort_probe
 
@@ -34,7 +40,8 @@ test fn real_hash_lines_bytewise_order() -> Bool {
   let l = tree_hash_lines(entries: stress)
   starts_with(s: l, prefix: "10  /root\n") && ends_with(s: l, suffix: "14  é\n")
 }
-// Completes at scale under the lowered ceiling -> the real readback no longer nests frames per entry.
+// Order / correctness at 8,000-entry scale -- NOT a depth guard (see the header: the ceiling is the
+// default 100,000 and the old mergesort also completed 8,000; the depth RED is the enrolled wet pair).
 test fn real_hash_lines_completes_at_8000() -> Bool {
   let big = dbl(current: [TreeFileHash { hex: "aa", path: "aa/bb" }], target: 8000)
   starts_with(s: tree_hash_lines(entries: big), prefix: "aa  ")
