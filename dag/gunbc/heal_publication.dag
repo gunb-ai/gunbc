@@ -8,19 +8,28 @@ import std.algebra { trim }
 import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
 import std.resources { Network }
-import extdeps.cloud.gcp.sts
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
-import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.iam {
-  token_lifetime_wire, admit_token_lifetime, acquire_impersonated_access, gcp_impersonated_presentation,
+  token_lifetime_wire, admit_token_lifetime, gcp_impersonated_presentation,
   AccessTokenLifetime,
-  GcpImpersonatedAccessCredential, GcpImpersonatedAccessAcquired, GcpImpersonatedAccessClockUnread,
-  GcpImpersonatedAccessRefused,
+  GcpImpersonatedAccessCredential,
 }
 import std.credential_admission { CredentialPresented, CredentialPresentationRefused, CredentialUseRequirement }
 import std.access { access_refusal_reason }
 import std.measure { nanosecond }
-import extdeps.github.actions { github_actions_runtime }
+import gunbc.auth.federated_workload_credential {
+  env_value,
+  federated_workload_credential,
+  FederatedWorkloadCredentialMint,
+  FederatedWorkloadCredentialMinted,
+  FederatedWorkloadCredentialLifetimeBeyondOrdinary,
+  FederatedWorkloadCredentialAssertionEndpointMissing,
+  FederatedWorkloadCredentialAssertionAuthMissing,
+  FederatedWorkloadCredentialAssertionRefused,
+  FederatedWorkloadCredentialExchangeRefused,
+  FederatedWorkloadCredentialClockUnread,
+  FederatedWorkloadCredentialImpersonationRefused,
+}
 import gunbc.auth.heal_publisher_federation {
   heal_publisher_assertion_audience,
   heal_publisher_exchange_audience,
@@ -118,13 +127,6 @@ type PublisherRun
 type ObservedBlobContent {
   blob_hex: String
   content: String
-}
-
-fn env_value(name: NonEmptyStr) -> String? {
-  match shell.Env.Get(name: name).value {
-    Absent => none
-    Present { value: raw } => if trim(s: raw) == "" { none } else { Present { value: trim(s: raw) } }
-  }
 }
 
 fn read_candidate_blob(directory: String, blob_hex: String) -> ObservedBlobRead {
@@ -709,20 +711,24 @@ type HealPublisherLifetimeRuling
   = HealPublisherLifetimeAdmitted { lifetime: AccessTokenLifetime }
   | HealPublisherLifetimeRefused { cause: NonEmptyStr }
 
+// THE CEILING SENTENCE, spelled in one place so the ruling below and the mint's beyond-ceiling arm cannot
+// drift: both render the SAME text the recurring-failure-mode record measures. The refused duration is
+// spelled by the API model's encoder -- a refused request still has a spelling, and only upstream owns
+// what one looks like.
+fn heal_publisher_lifetime_ceiling_cause() -> String {
+  concat(
+    "HealPublisherLifetimeBeyondOrdinaryMaximum: the publisher asked for ",
+    token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
+    " of credential, past the lifetime Google grants without the organization-policy constraint this runner cannot observe; nothing was exchanged",
+  )
+}
+
 fn heal_publisher_lifetime_ruling() -> HealPublisherLifetimeRuling {
   // Asked of the API model's one checked constructor, not recomputed here: the publisher may not state a
   // bound, only ask whether the one it wants is grantable (`gunbc.design_argument::single_authority`).
   match admit_token_lifetime(s: heal_publisher_cloud_token_lifetime) {
     Present { value: admitted } => HealPublisherLifetimeAdmitted { lifetime: admitted }
-    Absent => HealPublisherLifetimeRefused {
-      // The refused duration is spelled by the API model's encoder -- a refused request still has a
-      // spelling, and only upstream owns what one looks like.
-      cause: concat(
-        "HealPublisherLifetimeBeyondOrdinaryMaximum: the publisher asked for ",
-        token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
-        " of credential, past the lifetime Google grants without the organization-policy constraint this runner cannot observe; nothing was exchanged",
-      )
-    }
+    Absent => HealPublisherLifetimeRefused { cause: heal_publisher_lifetime_ceiling_cause() }
   }
 }
 
@@ -736,11 +742,42 @@ fn heal_publisher_lifetime_ceiling_refusal() -> Optional<NonEmptyStr> {
   }
 }
 
+// THE PUBLISHER'S ROW FOR THE SHARED MINT. One place binds the publisher's federation coordinates so the
+// mint carries the publisher's audience pair, service account, scope and lifetime, and nothing
+// publisher-specific leaks into the shared mint itself.
+fn heal_publisher_federated_mint() -> FederatedWorkloadCredentialMint {
+  FederatedWorkloadCredentialMint {
+    assertion_audience: heal_publisher_assertion_audience(),
+    exchange_audience: heal_publisher_exchange_audience(),
+    service_account: heal_publisher_service_account,
+    scope: heal_publisher_cloud_scope,
+    lifetime: heal_publisher_cloud_token_lifetime,
+  }
+}
+
+// THE PUBLISHER'S CLOUD CREDENTIAL, minted by the SHARED federated workload credential mint. The mint
+// rules the lifetime ceiling ahead of any send and returns the refusal of whichever leg failed as a TYPED
+// value; this is where the publisher turns each into ITS cause string, byte-identical to what the
+// redaction witness guards. Nothing here re-encodes a leg -- the leaf that used to live below is the
+// shared mint's job now.
 fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
 {
-  match heal_publisher_lifetime_ruling() {
-    HealPublisherLifetimeRefused { cause } => PublisherCloudCredentialNotMinted { cause: cause }
-    HealPublisherLifetimeAdmitted { lifetime } => heal_publisher_cloud_credential_exchange_admitted(lifetime: lifetime)
+  match federated_workload_credential(mint: heal_publisher_federated_mint()) {
+    FederatedWorkloadCredentialMinted { credential: issued } => PublisherCloudCredentialMinted { credential: issued }
+    FederatedWorkloadCredentialLifetimeBeyondOrdinary {} =>
+      PublisherCloudCredentialNotMinted { cause: heal_publisher_lifetime_ceiling_cause() }
+    FederatedWorkloadCredentialAssertionEndpointMissing {} =>
+      PublisherCloudCredentialNotMinted { cause: "HealPublisherFederationMissing: ACTIONS_ID_TOKEN_REQUEST_URL is unset, so the runner has no sidecar to mint the assertion the federation starts from" }
+    FederatedWorkloadCredentialAssertionAuthMissing {} =>
+      PublisherCloudCredentialNotMinted { cause: "HealPublisherFederationMissing: ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset, so the sidecar at that URL cannot be authenticated to" }
+    FederatedWorkloadCredentialAssertionRefused { refusal } =>
+      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAssertionRefused: the runner sidecar refused the assertion: ", rest_refusal_text(o: refusal)) }
+    FederatedWorkloadCredentialExchangeRefused { refusal } =>
+      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }
+    FederatedWorkloadCredentialClockUnread { detail: d } =>
+      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAcquisitionClockUnread: the publisher cannot date its own credential, so it cannot bound its use: ", d) }
+    FederatedWorkloadCredentialImpersonationRefused { refusal } =>
+      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherImpersonationRefused: iamcredentials refused the publisher service account: ", rest_refusal_text(o: refusal)) }
   }
 }
 
@@ -750,69 +787,6 @@ fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Netwo
 fn heal_publisher_cloud_credential_exchange() -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
 {
   heal_publisher_cloud_credential()
-}
-
-// THE THREE LEGS, reached only with a lifetime the API model has already ruled on. Split out so the ceiling
-// is the first decision the mint makes, ahead of any send, and so the mint can only spell the lifetime it
-// was GIVEN: `acquire_impersonated_access` takes the admitted type, whose sole constructor is
-// `extdeps.cloud.gcp.iam::admit_token_lifetime`, so no leg of this exchange can put an unruled lifetime on
-// the wire -- which is the guarantee the seal is for, and the reason the mint no longer re-encodes
-// `heal_publisher_cloud_token_lifetime` itself after the check.
-fn heal_publisher_cloud_credential_exchange_admitted(
-  lifetime: AccessTokenLifetime,
-) -> PublisherCloudCredential uses net: Network, clk: std.resources.Clock
-{
-  match env_value(name: github_actions_runtime.oidc_request_url_env) {
-    Absent =>
-      PublisherCloudCredentialNotMinted { cause: "HealPublisherFederationMissing: ACTIONS_ID_TOKEN_REQUEST_URL is unset, so the runner has no sidecar to mint the assertion the federation starts from" }
-    Present { value: url } =>
-      match env_value(name: github_actions_runtime.oidc_request_token_env) {
-        Absent =>
-          PublisherCloudCredentialNotMinted { cause: "HealPublisherFederationMissing: ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset, so the sidecar at that URL cannot be authenticated to" }
-        Present { value: request_token } =>
-          match github.OIDC.GetToken(
-            audience: heal_publisher_assertion_audience(),
-            request_url: url,
-            request_token: request_token as Secret,
-          ) {
-            RestRefused { refusal } =>
-              PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAssertionRefused: the runner sidecar refused the assertion: ", rest_refusal_text(o: refusal)) }
-            RestAnswered { answer } =>
-              // #16185 named `subject_token_type`/`requested_token_type` explicitly because field
-              // defaults used to resolve in the CALLER's scope; #16196 moved them to the declaring
-              // module, so the `= Jwt`/`= RequestAccessToken` defaults in extdeps.cloud.gcp.sts now
-              // bind here. Verified by execution: the omitted-fields and explicit-fields Exchange legs
-              // are byte-identical, same bound target and host input_digest (path 2).
-              match gcp.STS.Exchange(
-                subject_token: answer.subject_token,
-                audience: heal_publisher_exchange_audience(),
-              ) {
-                RestRefused { refusal } =>
-                  PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }
-                RestAnswered { answer: federated } =>
-                  // THE IMPERSONATION GOES THROUGH THE API MODEL, not the bare operation. `acquire_impersonated_access`
-                  // is the one place that reads the clock BEFORE the send, decodes the response's own `expireTime`
-                  // through the shared RFC 3339 parse, and hands back a credential whose validity is the issuer's
-                  // statement rather than nothing -- calling `gcp.IAM.GenerateAccessToken` here would keep the token
-                  // and throw the expiry away, which is the defect DESIGN names for optional_impersonation and would
-                  // leave the publisher's safety resting on two calls happening to sit next to each other.
-                  match acquire_impersonated_access(
-                    source_token: federated.access_token,
-                    target_service_account: heal_publisher_service_account,
-                    scopes: [heal_publisher_cloud_scope],
-                    lifetime: lifetime,
-                  ) {
-                    GcpImpersonatedAccessClockUnread { detail: d } =>
-                      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAcquisitionClockUnread: the publisher cannot date its own credential, so it cannot bound its use: ", d) }
-                    GcpImpersonatedAccessRefused { refusal: refusal } =>
-                      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherImpersonationRefused: iamcredentials refused the publisher service account: ", rest_refusal_text(o: refusal)) }
-                    GcpImpersonatedAccessAcquired { credential: issued } =>
-                      PublisherCloudCredentialMinted { credential: issued }
-                  }
-              }
-          }
-      }
-  }
 }
 
 fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
