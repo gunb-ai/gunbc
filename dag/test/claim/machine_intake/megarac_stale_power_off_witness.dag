@@ -2,7 +2,7 @@ module test.claim.machine_intake.megarac_stale_power_off_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
-import std.algebra { non_empty_singleton }
+import std.algebra { non_empty_singleton, string_contains }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable, ChassisStatusUndecodable, chassis_observation_is_off }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
@@ -14,7 +14,7 @@ import gunbc.machine_intake.megarac_media_attach {
   ConvergeStepDetachStale,
   ConvergeStepRefuse,
   ConvergenceStep,
-  MegaRacAttachResult,
+  MegaRacAttachResult, SecretFileRemoved, SecretFileResidueRemains,
   MegaRacDetachAdmission,
   MegaRacDetachNotAdmitted,
   MegaRacPresentationObserved,
@@ -24,6 +24,7 @@ import gunbc.machine_intake.megarac_media_attach {
   SessionReleased,
   SessionReleaseNotAttempted,
   SessionReleaseRefused,
+  megarac_close_never_ran,
   ShareBound,
   ShareUnreadable,
   attach_readiness,
@@ -33,10 +34,12 @@ import gunbc.machine_intake.megarac_media_attach {
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved,
+  LookSecretFileLeft, LookSessionNotReleased,
 }
 import gunbc.machine_intake.megarac_boot_media_attach {
   PowerOffForStale,
   PowerOffNotNeeded,
+  PowerOffWithheld,
   megarac_detach_admission,
   megarac_detach_admission_after_power_off,
   megarac_stale_power_off_need,
@@ -75,7 +78,7 @@ fn look(configurations: String) -> MegaRacAttachResult {
     },
     session_release: SessionReleased,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // THE CONVERGE'S OWN DECISION over a presentation and an admission, as the attach will take it.
@@ -174,24 +177,65 @@ test fn an_unbound_share_is_never_powered_off_for() -> Bool {
     },
     session_release: l.session_release,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: unbound, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
 }
 
-test fn a_look_whose_session_leaked_is_never_powered_off_for() -> Bool {
+// A LOOK WHOSE SESSION LEAKED IS WITHHELD, NOT UNNEEDED: a failed cleanup says nothing about the medium.
+test fn a_look_whose_session_leaked_withholds_the_power_off() -> Bool {
   let l = look(configurations: presenting(name: run_stale as String))
-  let leaked = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseRefused { detail: "probe 000" }, baseline: none }
+  let leaked = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseRefused { detail: "probe 000" }, baseline: none , secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: leaked, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
-    PowerOffNotNeeded { reason: _ } => true
+    PowerOffWithheld { cause: LookSessionNotReleased { detail: d } } => d == "probe 000"
     _ => false
   }
 }
 
+// A LOOK THAT LEFT ITS CSRF HEADER FILE WITHHOLDS THE POWER-OFF. The identical look -- a stale census
+// image, share bound, session released -- differing only in whether its bearer file came off the runner:
+// removed powers off for the stale image (positive control), left is withheld with the typed cause.
+test fn a_look_that_left_its_csrf_file_withholds_the_power_off() -> Bool {
+  let l = look(configurations: presenting(name: run_stale as String))
+  let clean = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleased, baseline: none, secret_file: SecretFileRemoved }
+  let left = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleased, baseline: none, secret_file: SecretFileResidueRemains }
+  (match megarac_stale_power_off_need(look: clean, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+    PowerOffForStale { stale_image: _ } => true
+    _ => false
+  })
+    && (match megarac_stale_power_off_need(look: left, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSecretFileLeft } => true
+      _ => false
+    })
+}
+
+// NEVER OPENED IS NOT OPENED-AND-NOT-CLOSED (side chat on gunbc#16247). The identical stale look, differing only
+// in its release: a session OpenSession never allocated is unneeded, the one production writes when the header
+// bracket could not be entered AFTER OpenSession succeeded (megarac_close_never_ran) is a leak and withholds --
+// and a never-opened look that somehow left a file still withholds on the residue rather than reading unneeded.
+test fn a_session_opened_and_never_closed_withholds_and_one_never_opened_does_not() -> Bool {
+  let l = look(configurations: presenting(name: run_stale as String))
+  let never_opened = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseNotAttempted, baseline: none, secret_file: SecretFileRemoved }
+  let left_open = MegaRacAttachResult { outcome: l.outcome, session_release: megarac_close_never_ran(cause: "mktemp -d: Permission denied"), baseline: none, secret_file: SecretFileRemoved }
+  let never_opened_with_residue = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseNotAttempted, baseline: none, secret_file: SecretFileResidueRemains }
+  (match megarac_stale_power_off_need(look: never_opened, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+    PowerOffNotNeeded { reason: r } => string_contains(s: r as String, pattern: "never opened")
+    _ => false
+  })
+    && (match megarac_stale_power_off_need(look: left_open, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSessionNotReleased { detail: d } } => string_contains(s: d, pattern: "CloseSession never ran") && string_contains(s: d, pattern: "Permission denied")
+      _ => false
+    })
+    && (match megarac_stale_power_off_need(look: never_opened_with_residue, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSecretFileLeft } => true
+      _ => false
+    })
+}
+
 test fn a_refused_look_is_never_powered_off_for() -> Bool {
-  let refused = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "HTTP 401" }, session_release: SessionReleaseNotAttempted, baseline: none }
+  let refused = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "HTTP 401" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: refused, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false

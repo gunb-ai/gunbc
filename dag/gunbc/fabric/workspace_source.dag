@@ -27,6 +27,7 @@ import gunbc.fabric.fabric_blob_r2 { FabricBlobPutResult, put_fabric_blob }
 import gunbc.cloudflare.r2_staged_transfer { WriteCredentialShredded, WriteCredentialResidueRemains }
 import gunbc.fabric.fabric_blob_placement { fabric_workspace_object_bound }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
 import gunbc.host.host_effect { LocalShell }
 
 // THE OPERATOR'S REAL WORKSPACE, CARRIED FROM THE HOST THAT HOLDS IT TO THE HOST THAT MEASURES IT.
@@ -711,27 +712,39 @@ fn workspace_run_ok(run: ProcessRunOutcome) -> String? {
   }
 }
 
+// THE PACK LIVES ON ONE HOST, AND BOTH SIDES OF THAT CLAIM ARE NAMES
+// (gunbc.hostname_allocation::observed_host_selector_join; gunbc.plans.fleet_machine_authority
+// section 4.4 (b*)). Where the job runs is what `hostname -s` says -- "butch" on the host the roster
+// calls srv14 -- and where the source lives is a hand-selected host; each resolves through the
+// allocation's selector and the pack runs only when both name the SAME HostIdentity. The identity is
+// what the receipt carries, never either spelling as observed: a receipt stamped with the kernel's
+// word would certify the pack under a name the roster may not have.
 fn workspace_source_pack_wet() -> ProcessExit {
   let host = match hostname_short_read(transport: LocalShell) {
     HostnameShortCaptured { value: v } => v
     HostnameShortCaptureRefused { reason: _ } => ""
   }
-  if host != (workspace_source_pack_host as String) {
-    exit_failure(reason: join(["workspace_source_pack: the source lives on ", workspace_source_pack_host as String, " but this job runs on '", host, "'; dispatch it with host=", workspace_source_pack_host as String], ""))
-  } else {
-    let slot = workspace_agent_state_slot_observe()
-    let slot_line = concat(workspace_agent_state_slot_words(admission: slot), "\n")
-    match slot {
-      AgentStateSlotAbsent { observed: _ } => workspace_source_finish(receipt: join(["workspace_source_pack host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_source_pack: ", slot_line)))
-      AgentStateSlotUnknown { requested: _, observed: _ } => workspace_source_finish(receipt: join(["workspace_source_pack host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_source_pack: ", slot_line)))
-      AgentStateSlotAdmitted { slot: _, root: agent } => {
-        let enumerations = workspace_source_enumerate_all(roots: concat(workspace_source_fixed_roots, [agent]))
-        let head = concat(workspace_source_receipt_head(enumerations: enumerations), slot_line)
-        match workspace_source_refusals(enumerations: enumerations) {
-          Cons { head: _, tail: _ } =>
-            workspace_source_finish(receipt: concat(head, "verdict=refused-source-unreadable\n"), outcome: exit_failure(reason: join(concat(["workspace_source_pack: a source root is unreadable by the runner; no permission is widened here:"], workspace_source_refusals(enumerations: enumerations)), "\n")))
-          Empty => workspace_source_pack_readable(head: head, tallies: workspace_source_tallies(enumerations: enumerations))
-        }
+  match observed_host_selector_join(expected: workspace_source_pack_host as String, observed: host) {
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      exit_failure(reason: join(["workspace_source_pack: ", observed_host_join_refusal_text(cause: c),
+                                 "; dispatch it with host=", workspace_source_pack_host as String], ""))
+    ObservedHostSelectorAgreed { host: identity } => workspace_source_pack_on(host: identity as String)
+  }
+}
+
+fn workspace_source_pack_on(host: String) -> ProcessExit {
+  let slot = workspace_agent_state_slot_observe()
+  let slot_line = concat(workspace_agent_state_slot_words(admission: slot), "\n")
+  match slot {
+    AgentStateSlotAbsent { observed: _ } => workspace_source_finish(receipt: join(["workspace_source_pack host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_source_pack: ", slot_line)))
+    AgentStateSlotUnknown { requested: _, observed: _ } => workspace_source_finish(receipt: join(["workspace_source_pack host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_source_pack: ", slot_line)))
+    AgentStateSlotAdmitted { slot: _, root: agent } => {
+      let enumerations = workspace_source_enumerate_all(roots: concat(workspace_source_fixed_roots, [agent]))
+      let head = concat(workspace_source_receipt_head(enumerations: enumerations), slot_line)
+      match workspace_source_refusals(enumerations: enumerations) {
+        Cons { head: _, tail: _ } =>
+          workspace_source_finish(receipt: concat(head, "verdict=refused-source-unreadable\n"), outcome: exit_failure(reason: join(concat(["workspace_source_pack: a source root is unreadable by the runner; no permission is widened here:"], workspace_source_refusals(enumerations: enumerations)), "\n")))
+        Empty => workspace_source_pack_readable(head: head, tallies: workspace_source_tallies(enumerations: enumerations))
       }
     }
   }
