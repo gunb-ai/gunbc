@@ -3599,6 +3599,7 @@ impl RegenConvergenceModel {
 /// makes it invisible to the bound that exists to see it, which is the failure that row records.
 pub(crate) struct RegenRoundCostModel {
     entry: String,
+    demanded: Vec<String>,
     graph: Rc<crate::v1_compiler_compile::ResolvedGraph>,
     indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
 }
@@ -3608,21 +3609,37 @@ pub(crate) struct RegenRoundCostModel {
 /// orchestrator (#16251 base-mirror run 23857e8a, phase `parent.model_resolve.end
 /// entry=dag/gunbc/regen_round_cost.dag`), on its own past the 3 GiB the generation-begin bound
 /// allows -- so the ceiling is crossed by ONE honest read, not by repeating one. The round evaluates
-/// exactly these five functions of this model (every other call site names its own model), so the
-/// bodies of the rest are owed to no one: `gunbc run` already settles this same route with its `--function` set, and
+/// exactly these five functions of this model, so the bodies of the rest are owed to no one:
+/// `gunbc run` already settles this same route with its `--function` set, and
 /// `cli_run::demanded_typecheck_equivalence` records that a demanded declaration gets the item and
 /// signature a full typecheck gives it and refuses nothing the full typecheck would not.
+///
+/// ONE SPELLING PER NAME, AND ONE GUARD FOR ALL OF THEM. Each name is a const, and it is the const the
+/// call site passes AND the const this list carries, so the set cannot drift from a call site by
+/// re-typing a string. The guard cannot live in the resolve: the interpreter builds its function table
+/// by walking `module.items` (`v1_interpreter::ModuleScopeFragment::fn_entries`), so a declared
+/// function the settle did not realize is STILL CALLABLE, and calling it would evaluate a body no
+/// typecheck ever saw. So every evaluation of this authority goes through
+/// `RegenRoundCostModel::evaluate`, which refuses `UndemandedModelFunction` before it evaluates,
+/// naming the function, the entry, and the set that was owed. A name not declared in the model at all
+/// refuses in the settle's realization audit, as it always did.
+const FN_GENERATION_BOUND: &str = "regen_convergence_generation_bound";
+const FN_BOUND_EXCEEDED: &str = "regen_convergence_bound_exceeded";
+const FN_STAGE_REBUILD_WHOLE_COMPILER: &str = "stage0_stage_rebuild_is_whole_compiler";
+const FN_ACTUATION_TODAY: &str = "stage0_partition_rebuild_is_actuatable_today";
+const FN_RENDER_RECEIPT: &str = "regen_round_cost_render";
 const ROUND_COST_DEMANDED: &[&str] = &[
-    "regen_convergence_generation_bound",
-    "regen_convergence_bound_exceeded",
-    "stage0_stage_rebuild_is_whole_compiler",
-    "stage0_partition_rebuild_is_actuatable_today",
-    "regen_round_cost_render",
+    FN_GENERATION_BOUND,
+    FN_BOUND_EXCEEDED,
+    FN_STAGE_REBUILD_WHOLE_COMPILER,
+    FN_ACTUATION_TODAY,
+    FN_RENDER_RECEIPT,
 ];
 
-/// What the partition-move explanation child asks: one function, so one demanded body chain.
-const PARTITION_MOVE_EXPLANATION_DEMANDED: &[&str] =
-    &["stage0_partition_move_explained_by_affected_inputs"];
+/// What the partition-move explanation child asks: one function, so one demanded body chain. The same
+/// guard covers it, because the child loads its own model with this list.
+const FN_PARTITION_MOVE_EXPLAINED: &str = "stage0_partition_move_explained_by_affected_inputs";
+const PARTITION_MOVE_EXPLANATION_DEMANDED: &[&str] = &[FN_PARTITION_MOVE_EXPLAINED];
 
 impl RegenRoundCostModel {
     fn load(source_roots: &[String], demanded: &[&str]) -> Result<Self, String> {
@@ -3633,9 +3650,32 @@ impl RegenRoundCostModel {
             })?;
         Ok(Self {
             entry,
+            demanded: demanded.iter().map(|name| name.to_string()).collect(),
             graph,
             indices,
         })
+    }
+
+    /// THE ONE WAY THIS AUTHORITY IS EVALUATED. The guard sits here, not at the call sites, because
+    /// there is more than one call site (`rebuild_scope_decision_with`, the round-cost receipt render,
+    /// the actuation probe) and the interpreter would evaluate an unrealized body without complaint.
+    fn evaluate(
+        &self,
+        ctx: &crate::v1_interpreter::InterpContext,
+        function: &str,
+        args: &[(Option<String>, ModelValue)],
+    ) -> Result<ModelValue, String> {
+        if !self.demanded.iter().any(|name| name == function) {
+            return Err(format!(
+                "UndemandedModelFunction: {function} is not among the functions the {} model was settled for ({}); the interpreter reads its function table from the resolved AST, so this call would evaluate a body no typecheck ever saw -- name it in the demanded list beside this call site",
+                self.entry,
+                self.demanded.join(",")
+            ));
+        }
+        crate::v1_interpreter::with_active_context(ctx, || {
+            crate::v1_interpreter::run_in_context_with_args(ctx, function, args, false)
+        })
+        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
     }
 
     fn context(&self) -> crate::v1_interpreter::InterpContext {
@@ -4236,17 +4276,13 @@ fn rebuild_scope_decision_with(
         &crate::v1_interpreter::InterpContext,
     ) -> Result<Vec<(Option<String>, ModelValue)>, String>,
 ) -> Result<ModelValue, String> {
-    use crate::v1_interpreter;
     report_cgroup_memory_diagnostic(&format!(
         "parent.decision.begin entry={} function={function}",
         decider.entry
     ));
     let ctx = decider.context();
     let args = args(&ctx)?;
-    v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
-    })
-    .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+    decider.evaluate(&ctx, function, &args)
 }
 
 /// The modules the host shell package declares PLUS each of its crate roots, read from the files
@@ -4298,7 +4334,7 @@ fn stage_rebuild_is_whole_compiler(
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
         decider,
-        "stage0_stage_rebuild_is_whole_compiler",
+        FN_STAGE_REBUILD_WHOLE_COMPILER,
         vec![(
             Some("boundary_files".to_string()),
             model_string_list(boundary_files),
@@ -4313,7 +4349,7 @@ fn stage_rebuild_is_whole_compiler(
 }
 
 fn regen_convergence_generation_bound(decider: &RegenRoundCostModel) -> Result<i64, String> {
-    match rebuild_scope_decision(decider, "regen_convergence_generation_bound", Vec::new())? {
+    match rebuild_scope_decision(decider, FN_GENERATION_BOUND, Vec::new())? {
         ModelValue::Int(value) => Ok(value),
         other => Err(format!(
             "refusal: regen_convergence_generation_bound returned {} instead of Int",
@@ -4328,7 +4364,7 @@ fn regen_convergence_bound_exceeded(
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
         decider,
-        "regen_convergence_bound_exceeded",
+        FN_BOUND_EXCEEDED,
         vec![(
             Some("generation_ordinal".to_string()),
             ModelValue::Int(generation_ordinal as i64),
@@ -5831,10 +5867,7 @@ fn render_round_cost_receipt(
         ]),
     };
     let args = vec![(Some("receipt".to_string()), receipt)];
-    let rendered = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, "regen_round_cost_render", &args, false)
-    })
-    .map_err(|e| format!("refusal: regen_round_cost_render did not render: {e}"))?;
+    let rendered = decider.evaluate(&ctx, FN_RENDER_RECEIPT, &args)?;
     match rendered {
         Value::Str(ref s) => Ok(s.to_string()),
         other => Err(format!(
@@ -5911,7 +5944,6 @@ fn partition_rebuild_actuation(
     installed_mirrors: &[String],
     host_shell_modules: &[String],
 ) -> Result<PartitionRebuildActuation, String> {
-    use crate::v1_interpreter;
     let ctx = decider.context();
     let call = |function: &str| -> Result<ModelValue, String> {
         let args = vec![
@@ -5925,12 +5957,9 @@ fn partition_rebuild_actuation(
                 model_string_list(host_shell_modules),
             ),
         ];
-        v1_interpreter::with_active_context(&ctx, || {
-            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
-        })
-        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+        decider.evaluate(&ctx, function, &args)
     };
-    let actuatable = match call("stage0_partition_rebuild_is_actuatable_today")? {
+    let actuatable = match call(FN_ACTUATION_TODAY)? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
@@ -6040,7 +6069,7 @@ fn partition_move_explained_by_this_change(
         .map_err(unexplainable)?;
     match rebuild_scope_decision_with(
         &RegenRoundCostModel::load(source_roots, PARTITION_MOVE_EXPLANATION_DEMANDED)?,
-        "stage0_partition_move_explained_by_affected_inputs",
+            FN_PARTITION_MOVE_EXPLAINED,
         |ctx| {
             let mut args = affected_set_model_args(
                 ctx,
