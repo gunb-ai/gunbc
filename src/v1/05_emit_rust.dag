@@ -239,6 +239,8 @@ import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
+  build_value_ref_graph_info,
+  imported_owner_of_bare_ref,
   declared_return_type_node,
   match_unguarded_absent_arm_index, optional_match_arm_sees_present_value,
   expr_span,
@@ -3318,7 +3320,15 @@ fn lookup_item_for_declared_value_ref(resolved_name: String, self_module: String
   } else {
     match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: self_module, decl_name: leaf }) {
       Present { value: info } => ItemFound { info: info }
-      Absent => lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info)
+      // The module's own declaration is shadowed only by a bare reference it EXPLICITLY imported from one
+      // named owner: resolve through that import binding BEFORE the closure-wide leaf-owner index, so a leaf
+      // two modules declare is bound (not left ambiguous) for the importer. This is the resolution the emitter
+      // previously skipped -- imported bare references to a two-owner leaf fell through to LeafAmbiguous, the
+      // bug #16155 patched at call sites. If no import names an owner, the leaf-owner index still decides.
+      Absent => match imported_owner_of_bare_ref(import_index: emit_info.bare_import_owner_index, module_name: self_module, leaf: leaf) {
+        Present { value: owner } => item_lookup_of_optional(found: lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf }))
+        Absent => lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info)
+      }
     }
   }
 }
@@ -3327,9 +3337,126 @@ fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: 
   concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(owner_module: info.module_name, n: leaf, registry: registry))
 }
 
-// ONE REFUSAL TEXT FOR THE AMBIGUOUS LEAF, NAMED SO THE ARMS BELOW CANNOT DRIFT APART.
-fn ambiguous_leaf_refusal(leaf: String) -> String {
-  emit_error_expr(message: concat("ambiguous leaf '", leaf, "' — two modules declare it, so no single declaration can be named"), target: Rust)
+// RESOLUTION-TIME REFUSAL FOR AN AMBIGUOUS BARE DATA VALUE-REFERENCE.
+//
+// THE RUNG THIS CLIMBS. A value-reference to a leaf whose spelling two modules declare used to be
+// bound only at emission: `lookup_item_by_leaf` answered `ItemLeafAmbiguous` and the value-ref arms
+// rendered it as a DIVERGING `panic!(...)` in the emitted crate, so the program COMPILED, the compiler
+// reported zero blocking errors, and the refusal either never ran or surfaced as rustc's misleading
+// "unreachable expression" on the next field. That is gunbc.design_argument::earliest_unjustified_boundary's
+// "wrong compiler and the wrong phase": the fact was held by `reconcile` (which built
+// `item_leaf_owner_modules` from the complete item registry) but refused by the emitter that ran later.
+// `cast_realization_diagnostics` (this module) is the established shape for the next rung -- a pass over
+// the `ResolvedGraph` that mints a located blocking `ErrorNode` BEFORE any byte is emitted. This is that
+// shape for the ambiguous leaf, so the refusal lands in the compiler that HELD the fact (DESIGN.md
+// gunbc.design_argument::fail_closed: "not at all" beats plausible output), and the emitted `panic!` branch
+// is gone rather than kept as a fallback (DESIGN.md gunbc.design_argument::replacement_migration).
+//
+// THE POPULATION IS THE EMITTER'S OWN CLASSIFIER, NOT A PARALLEL PREDICATE. Per gunbc.design_argument::single_authority
+// and fail_closed, the pass does NOT re-implement the value-ref resolution. It calls the emitter's ONE classifier,
+// `classify_value_ref` (the same call `emit_typed_expr_base` makes), on an `EmitGraphInfo` built by
+// `build_value_ref_graph_info` -- which reuses the emitter's own fold (`emit_graph_info_build_state`) and index
+// builders -- and refuses exactly the references the classifier answers `ItemLeafAmbiguous`. That classifier's
+// lookup resolves a bare reference by the
+// referring module's OWN declaration, then its explicit IMPORT binding (`bare_import_owner_index`), then the
+// closure-wide leaf-owner index -- so a leaf two modules declare is bound, not refused, for the module that
+// imported it from one named owner (the population #16155 patched by hand-qualifying six call sites; the old
+// emitter skipped the import step and fell to `LeafAmbiguous`). The keyword/bool/native/variant gates are the
+// classifier's own too, so the pass is a visitor over the emitter's decision, never a second decider of it. The
+// discriminating fixture `v2.test.claim.ambiguous_leaf_value_ref_compile` pins all
+// three outcomes: the bare ambiguous leaf goes red, the imported-bare reference in a two-owner closure and the
+// owner-qualified reference both compile.
+fn ambiguous_leaf_value_ref_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  // The SAME data the emitter decides on, minus what the refusal never reads. build_value_ref_graph_info
+  // reuses the emitter's own fold (emit_graph_info_build_state) and its own leaf/import index builders, so
+  // every ambiguity decision below is made by the emitter's own lookup on the emitter's own data -- and it
+  // runs on the required floor without paying the full build_emit_graph_info (see its comment, and the
+  // 04_items ResolvedGraph no-EmitGraphInfo-carried authority this honours).
+  let emit_info = build_value_ref_graph_info(modules: typed.modules, registry: typed.item_registry)
+  typed.modules |> flat_map(tm => ambiguous_leaf_value_ref_diagnostics_in_module(tm: tm, emit_info: emit_info, registry: typed.item_registry, source_indices: source_indices))
+}
+
+fn ambiguous_leaf_value_ref_diagnostics_in_module(tm: TypedModule, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  let module_name = authored_name_at(source_indices: source_indices, node: tm.module)
+  let value_ref_nodes = concat(
+    tm.items |> flat_map(item => item.children |> flat_map(child => ambiguous_leaf_value_ref_nodes(node: child, source_indices: source_indices))),
+    tm.items |> flat_map(item => match item.body {
+      Present { value: b } => ambiguous_leaf_value_ref_nodes(node: b, source_indices: source_indices)
+      Absent => []
+    })
+  )
+  value_ref_nodes |> flat_map(node => ambiguous_leaf_value_ref_refusal_for_node(node: node, module_name: module_name, registry: registry, emit_info: emit_info, source_indices: source_indices))
+}
+
+// Every `ExprVar` reachable from an expression node, the same `children` + `body` descent
+// `cast_realization_diagnostics_in` uses for casts. Type annotations (`type_annotation`, `resolved_type`)
+// are deliberately NOT walked: the emitter binds a VALUE reference only from these positions, and a type
+// name is never rendered through the value-ref arms, so refusing one here would be a wider net than the
+// emitter's own.
+fn ambiguous_leaf_value_ref_nodes(node: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  let here = match node.expr_data {
+    ExprVar { binding_kind: _ } => [node]
+    _ => []
+  }
+  let nested_body = match node.body {
+    Present { value: b } => ambiguous_leaf_value_ref_nodes(node: b, source_indices: source_indices)
+    Absent => []
+  }
+  concat(here, node.children |> flat_map(c => ambiguous_leaf_value_ref_nodes(node: c, source_indices: source_indices)), nested_body)
+}
+
+// THE EMITTER'S OWN CLASSIFIER, NOT A SECOND PREDICATE. Per gunbc.design_argument::single_authority this does
+// not decide "is this ambiguous" itself and does not restate the keyword/native/variant routing: it walks to
+// each `ExprVar` and calls the ONE function the emitter itself uses to sort a value reference,
+// `classify_value_ref` (the same call `emit_typed_expr_base` makes), and refuses exactly the references that
+// classifier answers `ValueRefRoutingItem { lookup: ItemLeafAmbiguous }` -- the same condition under which the
+// emitter would render the poison. Own-declaration, import binding and the leaf-owner index live in that one
+// classifier's lookup; the keyword/bool/native/variant gates live in the classifier too. Because both sides
+// call the SAME function, neither can drift from the other.
+//
+// WHY THE `children` + `body` WALK IS ENOUGH (gunbc.design_argument::fail_closed backstop). The walk above
+// reaches the expression positions the emitter binds a value reference from. If it ever under-reached (a value
+// position it did not visit), the reference would fall through to the emitter's `ambiguous_leaf_module_refusal`,
+// which renders an identifier NO crate defines -- so rustc fails the build LOUDLY rather than the emitted
+// `panic!` running. Over-refusal is impossible: the classifier answers `ItemLeafAmbiguous` only for a bare leaf
+// no own-declaration/import resolves and that two owners declare, which is precisely what the emitter poisons.
+fn ambiguous_leaf_value_ref_refusal_for_node(node: Node, module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  match node.expr_data {
+    ExprVar { binding_kind: binding_kind } =>
+      // Single authority: the SAME classifier the emitter uses (`emit_typed_expr_base`) sorts this reference.
+      // The check refuses exactly the references the emitter would otherwise render through the
+      // `ambiguous_leaf_module_refusal` poison identifier -- it cannot drift, because it calls the same
+      // function rather than restating its routing (DESIGN gunbc.design_argument::single_authority).
+      match classify_value_ref(
+        texpr: node,
+        module_name: module_name,
+        binding_kind: binding_kind,
+        registry: registry,
+        emit_info: emit_info,
+        source_indices: source_indices
+      ) {
+        ValueRefRoutingItem { resolved_name: resolved_name, name: name, lookup: lookup } =>
+          match lookup {
+            ItemLeafAmbiguous { leaf: ambiguous_leaf } => [make_error_node(
+              diagnostic: AmbiguousReference {
+                name: ambiguous_leaf,
+                candidates: ambiguous_leaf_owner_candidates(leaf: ambiguous_leaf, registry: registry),
+                span: node.span
+              },
+              module_name: module_name)]
+            _ => []
+          }
+        _ => []
+      }
+    _ => []
+  }
+}
+
+// The registry is the single authority for WHICH modules declare the leaf: `item_leaf_owner_modules`
+// marks the leaf ambiguous but carries no owner set, so the located diagnostic names the owners by
+// reading them back from the same rows that made it ambiguous.
+fn ambiguous_leaf_owner_candidates(leaf: String, registry: Map<String, ItemInfo>) -> List<String> {
+  map_values(registry) |> filter(info => info.name == leaf) |> map(info => info.module_name)
 }
 
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
@@ -3927,6 +4054,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
+    bare_import_owner_index: base_info.bare_import_owner_index,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
@@ -4642,6 +4770,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let module_index = build_module_index(modules: [typed_module], leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
+    bare_import_owner_index: base_info.bare_import_owner_index,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
@@ -5978,6 +6107,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let scope = module_emit_scope(typed_module: typed_module)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+    bare_import_owner_index: emit_info.bare_import_owner_index,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -8161,6 +8291,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           }
           let fn_emit_info = EmitGraphInfo {
             item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+            bare_import_owner_index: emit_info.bare_import_owner_index,
             type_summaries: emit_info.type_summaries,
             type_decl_items: emit_info.type_decl_items,
             data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -12123,7 +12254,7 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
       match lookup_item_for_declared_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
         ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
         ItemNotFound =>
           emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
       }
@@ -12131,7 +12262,7 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
       match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
         ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
-        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+        ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
         ItemNotFound =>
           if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
           else { emit_ident(name: leaf, target: Rust) }
@@ -12193,7 +12324,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         } else { body }
       Absent =>
         match lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info) {
-          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
+          ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
           ItemFound { info: info } =>
             {
               let is_data = info.kind == DataItem
@@ -12230,52 +12361,74 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   }
 }
 
+// SINGLE AUTHORITY for how an `ExprVar` value reference is routed to emitted Rust: a keyword, a native
+// variant, an enum variant, or a registry item lookup. `emit_typed_expr_base` dispatches on this, and the
+// compile-time ambiguous-leaf refusal (`ambiguous_leaf_value_ref_refusal_for_node`) dispatches on the SAME
+// value -- so a reference is refused at compile time exactly when the emitter would otherwise render it
+// through the `ambiguous_leaf_module_refusal` poison identifier. Neither can drift from the other, because
+// neither restates the routing (DESIGN gunbc.design_argument::single_authority; the #16220 review).
+type ValueRefRouting
+  = ValueRefKeywordNone
+  | ValueRefKeywordBool { leaf_name: String }
+  | ValueRefNative { spelling: String }
+  | ValueRefVariant { leaf_name: String, enum_name: String }
+  | ValueRefRoutingItem { resolved_name: String, name: String, lookup: ItemLookup }
+
+// The routing order below is the emitter's own sequence, lifted verbatim so that `emit_typed_expr_base` and
+// the compile-time check are the same call, not a copy. Adding a case ahead of the registry lookup lands in
+// exactly one place and both consumers see it together.
+fn classify_value_ref(texpr: Node, module_name: String, binding_kind: VarBindingKind?, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> ValueRefRouting {
+  let n = expr_var_name_at(texpr: texpr, source_indices: source_indices)
+  let leaf_name = value_ref_qualified_leaf(name: n)
+  let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: source_indices)
+  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none {
+    ValueRefKeywordNone
+  } else if leaf_name == "true" || leaf_name == "false" {
+    ValueRefKeywordBool { leaf_name: leaf_name }
+  } else {
+    match rust_native_variant_spelling_of_binding(binding_kind: binding_kind, leaf_name: leaf_name) {
+      Present { value: native } => ValueRefNative { spelling: native }
+      Absent => match variant_parent {
+        Present { value: enum_name } => ValueRefVariant { leaf_name: leaf_name, enum_name: enum_name }
+        Absent =>
+          let resolved_name = value_ref_normalize_self_module(name: n, module_name: module_name)
+          ValueRefRoutingItem { resolved_name: resolved_name, name: n, lookup: lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info) }
+      }
+    }
+  }
+}
+
 fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match texpr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
-      let n = expr_var_name_at(texpr: texpr, source_indices: si)
-      let leaf_name = value_ref_qualified_leaf(name: n)
-      let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
-      if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: texpr.inferred) }
-      else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
-      else {
-        match rust_native_variant_spelling_of_binding(binding_kind: binding_kind, leaf_name: leaf_name) {
-          Present { value: native } => native
-          Absent =>
-        match variant_parent {
-          Present { value: enum_name } =>
-            if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
-              emit_freemonoid_empty_rc_value()
-            } else {
-            let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
-              rust_optional_variant_spelling(name: leaf_name)
-            } else {
-              rust_variant_path(parent: enum_name, rust_name: leaf_name)
-            }
-            if set_contains(shared_types, enum_name) {
-              rust_shared_wrap_ctor(inner_expr: qualified)
-            } else { qualified }
-            }
-          Absent =>
-            let resolved_name = value_ref_normalize_self_module(name: n, module_name: scope.module_name)
-            match lookup_item_for_value_ref(
-              resolved_name: resolved_name,
-              self_module: scope.module_name,
-              binding_kind: binding_kind,
-              registry: registry,
-              emit_info: emit_info
-            ) {
-              ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
-              ItemFound { info: info } =>
-                let is_data = info.kind == DataItem
-                if is_data { concat(emit_value_ref_ident(name: n, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
-                else { emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info) }
-              ItemNotFound =>
-                emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info)
-            }
-        }
-        }
+      match classify_value_ref(texpr: texpr, module_name: scope.module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info, source_indices: si) {
+        ValueRefKeywordNone => emit_none_keyword_for_resolved_type(resolved_type: texpr.inferred)
+        ValueRefKeywordBool { leaf_name: leaf_name } => emit_keyword(key: leaf_name, target: Rust)
+        ValueRefNative { spelling: spelling } => spelling
+        ValueRefVariant { leaf_name: leaf_name, enum_name: enum_name } =>
+          if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
+            emit_freemonoid_empty_rc_value()
+          } else {
+          let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
+            rust_optional_variant_spelling(name: leaf_name)
+          } else {
+            rust_variant_path(parent: enum_name, rust_name: leaf_name)
+          }
+          if set_contains(shared_types, enum_name) {
+            rust_shared_wrap_ctor(inner_expr: qualified)
+          } else { qualified }
+          }
+        ValueRefRoutingItem { resolved_name: resolved_name, name: name, lookup: lookup } =>
+          match lookup {
+            ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_module_refusal(leaf: ambiguous_leaf)
+            ItemFound { info: info } =>
+              let is_data = info.kind == DataItem
+              if is_data { concat(emit_value_ref_ident(name: name, self_module: scope.module_name, registry: registry, emit_info: emit_info), "()") }
+              else { emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info) }
+            ItemNotFound =>
+              emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info)
+          }
       }
     _ => emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   }
@@ -14481,6 +14634,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           Present { value: acc_name } =>
             EmitGraphInfo {
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+              bare_import_owner_index: emit_info.bare_import_owner_index,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
@@ -14525,6 +14679,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           Present { value: acc_name } =>
             EmitGraphInfo {
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+              bare_import_owner_index: emit_info.bare_import_owner_index,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
