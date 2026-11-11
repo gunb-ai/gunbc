@@ -1,5 +1,6 @@
 module gunbc.runner.runner_qualification_floor_job
 
+import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
 import std.optional { Absent, Present }
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.github.actions { Job, Step, RunStep, DispatchInput, InputString, RunsOnExpression }
@@ -11,7 +12,6 @@ import v2.extdeps.languages.bash_build {
 }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.git { git_init_quiet_command, git_fetch_shallow_revision_command, git_checkout_revision_command, git_rev_parse_head_command }
-import gunbc.ci.ci_spec { gunbc_ci_bash_rendered }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_floor_steps_after_checkout, compiler_gate_required_job_env }
 
 // THE QUALIFICATION FLOOR JOB'S CONTRACT, BELOW BOTH OF ITS READERS. gunbc.fleet.fleet_converge_workflow emits the
@@ -43,7 +43,7 @@ data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
 // carries it. This module sits below the workflow model, so it takes that input rather than naming it.
 // THE GUARD IS MODELED, NOT A SHELL STRING (review 86946): every leg is an extdeps.git argv command rendered as a
 // bash node, the comparison is a test over the rev-parse readback and the input, and the whole is emitted by the one
-// node renderer gunbc.ci.ci_spec gunbc_ci_bash_rendered, so a rejected emission is the refusal poison in the
+// node renderer gunbc.ci.ci_bash_step gunbc_ci_bash_rendered, so a rejected emission is the refusal poison in the
 // workflow and never partial text. The working tree is the runner's empty workspace, so the legs act on ".". The
 // fetch names the repository by the runner's own GITHUB_SERVER_URL and GITHUB_REPOSITORY (the repository is public,
 // so the read needs no credential), and both expanded words are variable nodes, never literals.
