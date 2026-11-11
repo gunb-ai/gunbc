@@ -1,5 +1,63 @@
 module test.claim.srv3.srv3_os_install_diagnostic_witness
 
+import AutoinstallRunning { UNKNOWN }
+import BmcVirtualMediaObservation { gunbc.srv3.srv3_os_install_diagnostic }
+import BootAttemptInProgress { UNKNOWN }
+import BootOverrideConsumedNoInstall { UNKNOWN }
+import BootOverrideDisabled { UNKNOWN }
+import BootOverrideOnce { UNKNOWN }
+import BootProgressNone { UNKNOWN }
+import BootProgressOsRunning { UNKNOWN }
+import BootTargetCd { UNKNOWN }
+import BootTargetNone { UNKNOWN }
+import Cr1000aDhcpLeaseTable { extdeps.router.verizon_cr1000a }
+import InstallerHungVerdict { UNKNOWN }
+import IsoPresent { UNKNOWN }
+import IsoServeReadinessObservation { UNKNOWN }
+import KvmFirmwareMenu { UNKNOWN }
+import KvmObservation { gunbc.srv3.srv3_os_install_diagnostic }
+import KvmUnknown { UNKNOWN }
+import LiveTreeDisposition { UNKNOWN }
+import Milliseconds { std.types }
+import NbdServePortObservation { UNKNOWN }
+import NbdServeProcessObservation { UNKNOWN }
+import NbdkitAbsent { UNKNOWN }
+import NonEmptyStr { std.types }
+import On { UNKNOWN }
+import OsInstallActuationObservations { gunbc.srv3.srv3_os_install_diagnostic }
+import OsInstallAttemptIntent { gunbc.srv3.srv3_os_install_diagnostic }
+import OsInstalledVerdict { UNKNOWN }
+import ReadyToBootVerdict { UNKNOWN }
+import RedfishBootSourceOverrideEnabled { extdeps.bmc.types }
+import RedfishSystemBootObservation { gunbc.srv3.srv3_os_install_diagnostic }
+import ServePortAbsent { UNKNOWN }
+import ServePortListening { UNKNOWN }
+import ServeProcessesPresent { UNKNOWN }
+import SolConsoleContentObservation { gunbc.srv3.srv3_os_install_diagnostic }
+import SubstrateInputsOnly { UNKNOWN }
+import TokenPresent { UNKNOWN }
+import UbuntuSeededInstallMediaBuilt { extdeps.provisioning.ubuntu_seeded_install_media }
+import VirtualMediaServeDown { UNKNOWN }
+import bmc_install_debug_checklist_surface_count_is_seven { gunbc.srv3.srv3_os_install_diagnostic }
+import byte_size { std.measure }
+import classify_nbd_serve_readiness { gunbc.srv3.srv3_os_install_diagnostic }
+import classify_router_lease_table { gunbc.srv3.srv3_os_install_diagnostic }
+import diagnose_os_install_actuation { gunbc.srv3.srv3_os_install_diagnostic }
+import diagnose_srv3_install { gunbc.srv3.srv3_os_install_diagnostic }
+import install_diagnostic_verdict_is_boot_override_consumed_failure { gunbc.srv3.srv3_os_install_diagnostic }
+import install_diagnostic_verdict_is_os_installed { gunbc.srv3.srv3_os_install_diagnostic }
+import install_diagnostic_verdict_is_ready_to_boot { gunbc.srv3.srv3_os_install_diagnostic }
+import operator_host_srv3 { gunbc.fleet.fleet_host_identity }
+import srv3_install_hang_no_installer_progress_ms { gunbc.srv3.srv3_os_install_diagnostic }
+import srv3_install_hang_no_router_lease_ms { gunbc.srv3.srv3_os_install_diagnostic }
+import srv3_os_install_attempt_intent_for { gunbc.srv3.srv3_os_install_diagnostic }
+import srv3_os_install_diagnostic_runbook_is_declared { gunbc.srv3.srv3_os_install_diagnostic }
+import srv3_post_install_lease_table_fixture { gunbc.network_identity_subsumption }
+import srv3_pre_install_lease_table { gunbc.network_identity_subsumption }
+import srv3_remote_bmc_probe_observation { gunbc.srv3.srv3_os_install_diagnostic }
+import srv3_seeded_install_media_input_for { gunbc.srv3.srv3_seeded_install_media_artifact }
+import ubuntu_seeded_install_media_built { extdeps.provisioning.ubuntu_seeded_install_media }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn base_observations(
