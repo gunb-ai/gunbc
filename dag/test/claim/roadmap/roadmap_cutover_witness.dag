@@ -32,6 +32,7 @@ test fn every_cutover_step_is_authorized_to_act() -> Bool {
 test fn a_step_without_an_admission_is_reported_and_located() -> Bool {
   let hole = CutoverStep {
     ordinal: 901
+    section: "fixture"
     id: "step-without-an-admission"
     modeled_entry: "gunbc.roadmap.roadmap_event_cli"
     host_effect: "none"
@@ -51,6 +52,7 @@ test fn a_step_without_an_admission_is_reported_and_located() -> Bool {
 test fn a_roadmap_write_without_a_modelled_entry_is_reported() -> Bool {
   let unmodeled = CutoverStep {
     ordinal: 902
+    section: "fixture"
     id: "roadmap-write-without-a-route"
     modeled_entry: ""
     host_effect: "appends an event to the authoritative branch"
@@ -68,6 +70,7 @@ test fn a_roadmap_write_without_a_modelled_entry_is_reported() -> Bool {
 test fn an_unnamed_host_effect_is_reported() -> Bool {
   let silent = CutoverStep {
     ordinal: 903
+    section: "fixture"
     id: "step-with-an-unnamed-host-effect"
     modeled_entry: ""
     host_effect: ""
