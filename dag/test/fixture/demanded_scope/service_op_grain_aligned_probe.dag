@@ -10,15 +10,18 @@ module test.fixture.demanded_scope.service_op_grain_aligned_probe
 // segment (`service shell.Env` in module `extdeps.shell`, reached by `import extdeps.shell`, called as
 // `shell.Env.Get(...)`) -- so the call spine's first segment is exactly the imported module's local name.
 //
-// This module is the ALIGNED control for the entry-body arm: a self-contained service authored under its own
-// module's namespace (`service_op_grain_aligned_probe.SvcAligned` in module
+// This module is the ALIGNED SHAPE CONTROL for the entry-body arm: a self-contained service authored under
+// its own module's namespace (`service_op_grain_aligned_probe.SvcAligned` in module
 // `test.fixture.demanded_scope.service_op_grain_aligned_probe`), with the SAME minimal `Observe` operation
 // shape as the failing probe, imported the SAME braceless way and spelled DIRECTLY in an entry body. It is
-// referenced nowhere else, so it is not realized "for free" through some other demanding entry. Whether the
-// aligned arm RESOLVES on the gunbc-run grain at main while the misaligned arm REFUSES at main is what
-// decides, by execution, that the service's namespace alignment (spine first segment vs the braceless
-// import's local name) -- not the lambda-vs-body position (already ruled out) and not the braceless import
-// per se -- is the discriminator #16156 broke.
+// referenced nowhere else, so it is not realized "for free" through some other demanding entry. Its role is
+// to guard the PRODUCTION-ALIGNED shape (`import extdeps.shell` / `shell.Env.Get(...)`) against a future cut
+// that breaks the namespace-aligned spelling while the other arms still pass. The namespace-alignment
+// hypothesis it was built to test is no longer the open question: the measured failing and green arms share
+// the one dropped link the fix restores -- the rest service's `RestResult` carrier row in the run-grain
+// demand seeds via the `runtime_key_readers` registry. Consumed by
+// `service_op_surface_spelled_in_an_aligned_namespace_entry_body_is_realized` in
+// src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs.
 
 service service_op_grain_aligned_probe.SvcAligned {
   config { endpoint: "https://rest-replay.invalid" }

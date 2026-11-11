@@ -622,6 +622,29 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
                 closure_surface.len(),
                 surface
             );
+            // The instrument's values are ASSERTIONS, not just a dump: each names a link the refusal
+            // would sever, and each must hold for the witness to mean what it says. The census (what
+            // `--source-root dag` scans) must contain the service, so a refusal cannot be blamed on
+            // directory exclusion; the declaring item must be found, be DEMANDED (that is the gate
+            // `realized_declaration_items` applies before `merge_scope_from_imports` lists the parent
+            // entry), and its authored key must be in `realized` -- the exact chain whose break produced
+            // the misattributed `no method surface` refusal.
+            assert!(
+                census_has_service,
+                "the census over graph.modules must contain the service; otherwise this witness is measuring directory exclusion, not the demand wave"
+            );
+            assert!(
+                svc_found,
+                "the service item must be present in its declaring module's item list"
+            );
+            assert!(
+                svc_demanded,
+                "the service item's authored key must pass declaration_demanded, else merge_scope_from_imports silently skips it and the op falls to the Primitive method-pipe"
+            );
+            assert!(
+                realization.realized.contains_key(&svc_authored),
+                "the service item's authored key must be in realized, the gate declaration_demanded applies to it: svc_authored={svc_authored:?}"
+            );
             assert!(
                 service_realized,
                 "the service whose operation the demanded entry spells inside its lambda subject must be realized"
@@ -689,6 +712,79 @@ fn service_op_surface_spelled_in_an_entry_body_is_realized() {
             assert!(
                 service_realized,
                 "the service whose operation the demanded entry spells directly in its body must be realized"
+            );
+            assert!(
+                surface.iter().all(|m| closure_surface.contains(m)),
+                "the demanded grain must refuse no method surface the full closure does not: demanded={surface:?} closure={closure_surface:?}"
+            );
+            assert!(
+                closure_surface.is_empty(),
+                "the full-closure grain must refuse no service method surface: closure={closure_surface:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+// THE ALIGNED SHAPE CONTROL: the SAME entry-body position and braceless whole-module import, but the
+// service is authored under its own module's namespace (`service_op_grain_aligned_probe.SvcAligned`, spine
+// first segment == the import's local name), mirroring the green production shape `import extdeps.shell` /
+// `shell.Env.Get(...)`. This arm guards that production-aligned shape: a future cut that breaks the
+// namespace-aligned spelling while the other arms still pass fails HERE. It consumes
+// dag/test/fixture/demanded_scope/service_op_grain_aligned_probe.dag, whose service is referenced nowhere
+// else, so nothing realizes it "for free".
+#[test]
+fn service_op_surface_spelled_in_an_aligned_namespace_entry_body_is_realized() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let (_sources, intern, si, modules, graph) =
+                graph_from("dag/test/fixture/demanded_scope/service_op_grain.dag");
+            let demand =
+                grain_demand(&modules, &["service_op_spelled_in_aligned_namespace_body"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let service_realized = realization
+                .realized
+                .contains_key("service_op_grain_aligned_probe.SvcAligned");
+            // Demanded-vs-closure through the PRODUCTION ENTRY POINTS (route_messages): same graph,
+            // two scopes; a demanded-only refusal is the realization wave.
+            let demanded = route_messages(
+                &graph,
+                &intern,
+                &si,
+                &["service_op_spelled_in_aligned_namespace_body"],
+            );
+            let closure = route_messages(&graph, &intern, &si, &[]);
+            let surface: Vec<String> = demanded
+                .iter()
+                .filter(|m| {
+                    m.contains("SvcAligned")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
+                })
+                .cloned()
+                .collect();
+            let closure_surface: Vec<String> = closure
+                .iter()
+                .filter(|m| {
+                    m.contains("SvcAligned")
+                        && (m.contains("method surface") || m.contains("no declared frontier row"))
+                })
+                .cloned()
+                .collect();
+            eprintln!(
+                "SERVICE_OP_GRAIN_ALIGNED entry=service_op_spelled_in_aligned_namespace_body service_realized={} demanded_refusals={} closure_refusals={} surface={:?}",
+                service_realized,
+                surface.len(),
+                closure_surface.len(),
+                surface
+            );
+            assert!(
+                service_realized,
+                "the namespace-aligned service whose operation the demanded entry spells directly in its body must be realized"
             );
             assert!(
                 surface.iter().all(|m| closure_surface.contains(m)),
