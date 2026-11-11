@@ -32,6 +32,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_host_mutation_group_for,
   fleet_converge_host_runner_expression,
   fleet_converge_mode_mutation_domain,
+  fleet_converge_workflow_modes,
   fleet_host_mutation_group_prefix,
   fleet_converge_dispatch_inputs,
   fleet_converge_jobs,
@@ -232,6 +233,18 @@ test fn the_job_is_grouped_against_mutations_of_the_host_it_renames() -> Bool {
         && !string_contains(s: group, pattern: "github.event.inputs.host")
         && group == fleet_converge_host_mutation_group_for(field: hostname_converge_target_input_name)
   }
+}
+
+// A CLAUSE OF THE SHARED GROUP IS AN EXPRESSION, NEVER AN INTERPOLATION. Every mode's domain clause is spliced
+// inside the converge job's one `${{ ... }}` group, so a clause carrying its own `${{` makes the whole workflow
+// file one GitHub refuses to parse -- every mode stops dispatching, not only this one. Asserted over every mode,
+// because the clause fold is shared and the next arm to compose a group can make the same mistake.
+test fn no_mode_domain_clause_nests_an_interpolation_inside_the_shared_group() -> Bool {
+  all(fleet_converge_workflow_modes, m => !string_contains(s: fleet_converge_arm_domain_clause(mode: m), pattern: "${{"))
+    && string_contains(
+      s: fleet_converge_arm_domain_clause(mode: HostnameConverge),
+      pattern: join(["format('", fleet_host_mutation_group_prefix, "{0}', github.event.inputs.subject_host)"], ""),
+    )
 }
 
 // THE DOMAIN FOLD SAYS SO TOO, and its arm names the very field the job groups on. A mode whose job sets its
