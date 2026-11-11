@@ -10,7 +10,7 @@ module test.claim.host.host_bmc_paths_witness
 
 import std.logic { Bool }
 import std.optional { Present }
-import product.host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.host.host_layout { bmc_identity_path, bmc_known_hosts_path }
 
 test fn bmc_known_hosts_path_is_the_registry_name_through_the_producer() -> Bool
