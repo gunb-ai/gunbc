@@ -2,83 +2,95 @@ module test.claim.tailscale_machine_name_converge_witness
 
 // WHAT IS FIXED HERE, AND WHAT DECISION THIS ENCODES.
 //
-// gunbc.tailscale_machine_name_converge turns ONE reading of a device's two names -- the tailnet's
-// `Self.HostName` and the operating system's short hostname -- into either a report, one write, or a
-// refusal. Three decisions are arguable and are the ones this file pins:
+// gunbc.tailscale_machine_name_converge turns ONE observation of a device's two names -- the tailnet's
+// `Self.HostName` and the operating system's short hostname -- into either a report, one write, or a refusal.
+// Five decisions are arguable, and they are the ones this file pins:
 //
-//   1. The name a change is measured against is the name the allocation roster allocates for the slot, not
-//      the label spelled by the slot's HostIdentity, and not the FQDN the device answers. gunbc.hostname_allocation
-//      is that authority; an unallocated slot has no target name and the plan refuses rather than
-//      reconstructing one from the spelling.
-//   2. Both names are read in ONE observation, and both are required to answer the requested name before a
-//      write is reported as done. A tailnet half that took the name while the OS half did not is refused: a
-//      later start re-derives the tailnet name from the OS hostname, so that pair is the unstable state the
-//      rename window exists to close, not a converged state.
+//   1. The target name is the fleet machine registry's. Inside a rename window it is the slot's PENDING name
+//      (`next_name_for_fleet_slot`), which is the window's whole content; anywhere else, or for a slot with
+//      nothing pending, it is the slot's current canonical name (`canonical_hostname_for_fleet_slot`). Nothing in
+//      the mode spells a name, and nothing reads a name off the `HostIdentity`'s text -- handles are opaque and a
+//      name is a modeled fact, so an unregistered slot has no target and the run refuses.
+//   2. Convergence is ONE question with ONE answer: do BOTH names answer the target? The plan asks it before a
+//      write and the read-back asks it after one, and they get the same verdict. A device whose tailnet half
+//      already reads the target while its OS half does not is NOT converged -- upstream re-derives the tailnet
+//      name from the OS hostname at the next start -- so the plan owes no write for it and the apply refuses.
 //   3. A write is attempted only inside the rename window. Observe-only is allowed anywhere; an apply is not.
-//   4. A read-back that the device cannot answer is a refusal that says the name's state is now unknown, not a
-//      success and not a pending one.
+//   4. A read-back the device cannot answer is a refusal that says the name's state is now unknown, not a success
+//      and not a pending one.
+//   5. The words that leave the repository -- `status --json`, `set --hostname=`, the SSH route -- come from the
+//      extdeps emitters and the fleet reach model, and are compared by value here.
 //
-// WHY THESE FIXTURES AND NOT A HOST. A claim-run in CI has no tailscaled, and a wet write against a fleet host
-// is forbidden until srv4's rename window (gunbc.plans.fleet_machine_authority P9). So the fixtures here are
-// the bytes the daemon prints, transcribed from a real read-only observation of srv1
-// (`tailscale status --json`: Self.HostName "srv1", Self.DNSName "srv1.tailecbe08.ts.net.") plus `hostname -s`.
-// Those bytes cross a cut in this module -- from fixture text to a compared name -- and that crossing is what
-// the cases are about: each malformed or absent member the upstream can print is a separate cause, so an
-// unreadable name can never become an empty name, an unknown name, or a name that was quietly skipped.
+// WHY THESE FIXTURES AND NOT A HOST. A claim-run has no tailscaled, and a wet write against a fleet host is
+// forbidden until srv4's rename window (gunbc.plans.fleet_machine_authority P9). So the fixtures are the bytes the
+// daemon prints, transcribed from one real read-only observation of srv1 (`tailscale status --json`: Self.HostName
+// "srv1", Self.DNSName "srv1.tailecbe08.ts.net.", plus `hostname -s`: "srv1"). Those bytes cross a cut in this
+// module -- from fixture text to a compared name -- and that crossing is what the cases are about: each malformed
+// or absent member the upstream can print is a separate cause, so an unreadable name can never become an empty
+// name, an unknown name, or a name that was quietly skipped.
 //
-// The last cases drive the REAL emitter and the REAL SSH route of the host-generic run rather than fixtures,
-// so a rename of `set`, of `--hostname`, of `Self.HostName`, or of the fleet reach endpoint is caught here.
+// The registry rows the cases use are real rows of gunbc.hostname_allocation::fleet_machine_registry
+// (srv1 canonical srv1 pending ricky, srv4 canonical srv4 pending fox, host-183527 canonical damien with nothing
+// pending), so a registry edit that renames a row moves these cases with it -- which is the point.
 import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_srv1, operator_host_srv4 }
-import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.hostname_allocation {
+  HostnameAllocation,
+  LegacyHostname,
+  OperatorHostNotRegistered,
+  canonical_hostname_for_fleet_slot,
+  next_name_for_fleet_slot,
+  operator_host_lookup_in,
+}
 import gunbc.tailscale_machine_name_converge {
   ApplyInsideWindow,
-  BothNamesReported,
   DeviceNameAlreadyCurrent,
   DeviceNameChangeOwed,
-  FleetSshNetworkPath,
+  DeviceNameHalvesDiverged,
   NameNotDerivable,
-  NamesUnreadable,
   ObserveOnly,
   OsNameUnusable,
   PlanRefused,
   PrepareWindow,
-  PrepareFleetSshAgentContext,
-  StatusDocumentRefused,
   ReadBackConfirmsRequested,
   ReadBackMachineNameContradicts,
   ReadBackNamesDiverge,
   ReadBackRefused,
   RenameWindow,
-  SshTargetResolved,
-  SshTargetRefused,
+  StatusDocumentRefused,
   TailscaleMachineNameMode,
-  WindowIsNotTheRenameWindow,
   TailscaleMachineNamePlan,
   TailscaleMachineNameWindow,
   WindowUndeclared,
-  administrator_ssh_target,
+  WindowIsNotTheRenameWindow,
+  tailscale_allocated_name_label,
+  tailscale_machine_name_device_names_reading,
   tailscale_machine_name_outcome_wire,
   tailscale_machine_name_plan,
+  tailscale_machine_name_entry_over,
   tailscale_machine_name_plan_refusal_wire,
-  tailscale_machine_name_device_names_reading,
   tailscale_machine_name_read_back,
   tailscale_machine_name_stage_prepare_window_claim,
   tailscale_machine_name_stage_rename_window_claim,
-  tailscale_machine_name_window_parse,
   tailscale_machine_name_window_is_rename_window,
+  tailscale_machine_name_window_parse,
 }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTargetRefused,
+  SshTargetResolved,
+  ssh_target_destination,
+  ssh_target_refusal_text,
+}
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.exec.command { argv_words }
 import extdeps.tailscale.machine_name {
   ReadingRefused,
-  SelfNameRead,
   StatusDocumentUnreadable,
+  StatusHostNameEmpty,
   StatusHostNameMemberAbsent,
   StatusHostNameMemberMalformed,
-  StatusHostNameEmpty,
   StatusSelfMemberAbsent,
-  TailscaleMachineNameRefusal,
-  TailscaleSelfName,
   tailscale_machine_name_refusal_wire,
   tailscale_set_hostname_argv,
   tailscale_set_hostname_command,
@@ -86,34 +98,44 @@ import extdeps.tailscale.machine_name {
   tailscale_status_json_command,
   tailscale_status_self_name,
 }
-import std.algebra { string_contains as contains }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
-import std.types { HostIdentity }
+import std.process { ExitFailure, ProcessExit }
+import product.host_identity { HostIdentity }
+import std.types { Bool, List, String }
 
 // THE OBSERVED BYTES, TRANSCRIBED FROM ONE REAL READ-ONLY OBSERVATION OF srv1. The status document is what
-// `tailscale status --json` printed there; the OS name is what `hostname -s` printed. The second document is
-// the same shape with the OTHER allocated name in it, which is what a host mid-window, or a second host run
-// through the same mode, would answer.
+// `tailscale status --json` printed there; the OS name is what `hostname -s` printed.
 data witness_status_document: String = "{\"Self\": {\"HostName\": \"srv1\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
-
-data witness_other_status_document: String = "{\"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv4.tailecbe08.ts.net.\"}}"
-
-data witness_slot_spelling_document: String = "{\"Self\": {\"HostName\": \"183527\", \"DNSName\": \"183527.tailecbe08.ts.net.\"}}"
-
-// A device whose tailnet name is one allocated name while its FQDN points somewhere else: the name compared is
-// `Self.HostName`, and a run that reached for the FQDN instead would plan a different change from the same bytes.
-data witness_dns_name_document: String = "{\"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
 
 data witness_os_name_srv1: String = "srv1\n"
 
+// THE SAME DEVICE AFTER THE WINDOW MOVED THE OPERATING-SYSTEM HALF AND THE TAILNET HALF HAS NOT FOLLOWED. That
+// pair is the middle of a rename, and the write this mode owes is what closes it.
+data witness_os_name_fox: String = "fox\n"
+
+data witness_fox_status_document: String = "{\"Self\": {\"HostName\": \"fox\", \"DNSName\": \"fox.tailecbe08.ts.net.\"}}"
+
+// A DEVICE ANSWERING ITS OWN SLOT SPELLING. For `operator_host_183527` the registry allocates "damien", so these
+// bytes are the only shape that can tell a target read off the handle from a target read from the registry row:
+// under a spelling-derivation the run would report them as already current and a rename window would do nothing.
+data witness_slot_spelling_document: String = "{\"Self\": {\"HostName\": \"host-183527\", \"DNSName\": \"host-183527.tailecbe08.ts.net.\"}}"
+
+data witness_os_name_slot_spelling: String = "host-183527\n"
+
+// A device whose tailnet name and FQDN point at different names: the name compared is `Self.HostName`, and a run
+// that reached for the FQDN instead would plan a different change from the same bytes.
+data witness_dns_name_document: String = "{\"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
+
+data witness_status_document_srv4: String = "{\"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv4.tailecbe08.ts.net.\"}}"
+
 data witness_os_name_srv4: String = "srv4\n"
 
-data witness_os_name_slot_spelling: String = "183527\n"
-
-// A slot the allocation roster has no row for. It is spelled here as a fixture, not declared in
+// A slot the fleet machine registry has no row for. It is spelled here as a fixture, not declared in
 // gunbc.fleet.fleet_host_identity, so no fleet subject of this repository can ever carry it: the case is about
-// what the mode does when the name authority has nothing to say, and the answer must not be a name invented
-// from the slot's spelling.
+// what the mode does when the name authority has nothing to say, and the answer must not be a name invented from
+// the slot's spelling.
 data witness_unallocated_slot: HostIdentity = "srv-slot-without-an-allocation-row" as HostIdentity
 
 data witness_rename_window: TailscaleMachineNameWindow = tailscale_machine_name_stage_rename_window_claim
@@ -122,84 +144,106 @@ data witness_prepare_window: TailscaleMachineNameWindow = tailscale_machine_name
 
 data witness_undeclared_window: TailscaleMachineNameWindow = tailscale_machine_name_window_parse(claim: "undeclared-stage-claim")
 
-data witness_names_srv1: TailscaleMachineNamePlan = tailscale_machine_name_plan(
+// OUTSIDE A WINDOW THE TARGET IS THE CURRENT NAME, so srv1 answering srv1 is converged and nothing is owed.
+data witness_srv1_outside_window: TailscaleMachineNamePlan = tailscale_machine_name_plan(
   host: operator_host_srv1,
-  window: witness_rename_window,
+  window: witness_prepare_window,
   mode: ObserveOnly,
   names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
 )
 
-data witness_names_srv4_from_srv1: TailscaleMachineNamePlan = tailscale_machine_name_plan(
+// INSIDE srv4's RENAME WINDOW THE TARGET IS THE PENDING NAME. This is the exact state P9 opens: the device answers
+// its current name on both halves, and the one write owed is to `fox`, the name the registry row already carries
+// as pending.
+data witness_srv4_in_window: TailscaleMachineNamePlan = tailscale_machine_name_plan(
   host: operator_host_srv4,
   window: witness_rename_window,
   mode: ObserveOnly,
-  names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
+  names: tailscale_machine_name_device_names_reading(status_document: witness_status_document_srv4, os_name_stdout: witness_os_name_srv4)
 )
 
-// A slot whose ALLOCATED name is not its spelling (`operator_host_183527` is allocated `damien` by
-// gunbc.hostname_allocation). A device answering its own slot spelling is owed a write to the allocated name,
-// which is the only shape a run can produce if the name came from the handle; the same bytes under a
-// derivation-by-spelling would report "already current" and a rename window would do nothing at all.
-data witness_names_slot_spelling: TailscaleMachineNamePlan = tailscale_machine_name_plan(
-  host: operator_host_183527,
-  window: witness_rename_window,
-  mode: ObserveOnly,
-  names: tailscale_machine_name_device_names_reading(status_document: witness_slot_spelling_document, os_name_stdout: witness_os_name_slot_spelling)
-)
-
-test fn both_names_answering_the_allocation_is_a_no_op() -> Bool {
-  match witness_names_srv1 {
-    DeviceNameAlreadyCurrent { machine_name: name, os_name: os_name } =>
-      name == "srv1" && os_name == "srv1"
+// ── THE TARGET COMES FROM THE REGISTRY ROW, NOT FROM THE HANDLE, AND NOT FROM THE MODE ──────────────
+test fn both_names_answering_the_current_name_is_a_no_op_outside_a_window() -> Bool {
+  match witness_srv1_outside_window {
+    DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
+      machine_name == "srv1" && os_name == "srv1"
     _ => false
   }
 }
 
-test fn a_tailnet_name_that_differs_from_the_allocation_owes_one_write_naming_both_ends() -> Bool {
-  match witness_names_srv4_from_srv1 {
+test fn the_rename_window_owes_the_write_to_the_pending_name_of_the_row() -> Bool {
+  match witness_srv4_in_window {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
-      from_name == "srv1" && (to_name as String) == "srv4" && os_name == "srv1"
+      from_name == "srv4" && os_name == "srv4" && (to_name as String) == "fox"
     _ => false
   }
 }
 
-// THE REVERSE DIRECTION IS THE SAME MODE, NOT A SECOND ONE. The rename window's rollback is the same run with
-// the pair swapped, so it is witnessed as the same function over swapped bytes: forward goes srv1 -> srv4,
-// reverse goes srv4 -> srv1, and the two ends are each other's mirror. If the rollback were a separate path it
-// would need its own proof; sharing it means the forward case already covers the words the rollback sends.
+// THE REVERSE DIRECTION IS THE SAME FUNCTION, NOT A SECOND ONE. A rollback is what the same question answers when
+// the row no longer carries a pending name: srv1 inside its window is owed srv1 -> ricky, and the same slot with
+// the row moved back is owed ricky -> srv1. The two plans are each other's mirror, produced by one function over
+// swapped names, which is why the rollback needs no proof of its own.
 test fn the_same_plan_over_the_swapped_pair_is_the_rename_window_rollback() -> Bool {
   match tailscale_machine_name_plan(
     host: operator_host_srv1,
-    window: witness_rename_window,
+    window: witness_prepare_window,
     mode: ObserveOnly,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_other_status_document, os_name_stdout: witness_os_name_srv4)
+    names: tailscale_machine_name_device_names_reading(
+      status_document: "{\"Self\": {\"HostName\": \"ricky\", \"DNSName\": \"ricky.tailecbe08.ts.net.\"}}",
+      os_name_stdout: "ricky\n"
+    )
   ) {
     DeviceNameChangeOwed { from_name: back_from, to_name: back_to, os_name: _ } =>
-      match witness_names_srv4_from_srv1 {
+      match witness_srv4_in_window {
         DeviceNameChangeOwed { from_name: forward_from, to_name: forward_to, os_name: _ } =>
-          back_from == forward_to && (back_to as String) == (forward_from as String)
+          back_from == (forward_to as String) && (back_to as String) == (forward_from as String)
         _ => false
       }
     _ => false
   }
 }
 
-// THE ANTI-NICKNAMING CASE. Every other case here is a slot whose allocated name happens to equal its
-// spelling, where a derivation from the handle would give the same answer by luck. This one cannot: the roster
-// allocates `damien` to the slot spelled `183527`, so a mode that read the name off the handle would report
-// these bytes as already current.
+// THE ANTI-NICKNAMING CASE. `operator_host_183527` is allocated "damien" with nothing pending, so its target is
+// the row's name; a device answering the handle's own spelling is owed a write to "damien". A mode that read the
+// name off the handle would call these bytes current, and the window would report success having written nothing.
 test fn the_allocated_name_and_not_the_slots_spelling_is_what_a_change_is_measured_against() -> Bool {
-  match witness_names_slot_spelling {
+  match tailscale_machine_name_plan(
+    host: operator_host_183527,
+    window: witness_rename_window,
+    mode: ObserveOnly,
+    names: tailscale_machine_name_device_names_reading(
+      status_document: witness_slot_spelling_document,
+      os_name_stdout: witness_os_name_slot_spelling
+    )
+  ) {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
-      from_name == "183527" && os_name == "183527" && (to_name as String) == "damien"
+      from_name == "host-183527" && os_name == "host-183527" && (to_name as String) == "damien"
     _ => false
   }
 }
 
-// AN UNALLOCATED SLOT HAS NO TARGET NAME. The refusal names the slot and the authority that is missing, and no
-// name is reconstructed from the spelling -- gunbc.hostname_allocation fails closed for exactly that reason,
-// and this mode is the caller that has to honour it.
-test fn a_slot_the_allocation_has_no_row_for_refuses_and_names_the_authority() -> Bool {
+// A WINDOW WITH NOTHING PENDING TARGETS THE CURRENT NAME, so a device that already answers the row's name is
+// converged rather than owed a write to itself.
+test fn a_window_with_nothing_pending_targets_the_rows_current_name() -> Bool {
+  match tailscale_machine_name_plan(
+    host: operator_host_183527,
+    window: witness_rename_window,
+    mode: ObserveOnly,
+    names: tailscale_machine_name_device_names_reading(
+      status_document: "{\"Self\": {\"HostName\": \"damien\", \"DNSName\": \"damien.tailecbe08.ts.net.\"}}",
+      os_name_stdout: "damien\n"
+    )
+  ) {
+    DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
+      machine_name == "damien" && os_name == "damien"
+    _ => false
+  }
+}
+
+// AN UNREGISTERED SLOT HAS NO TARGET NAME. The refusal names the slot and the authority that is missing, and no
+// name is reconstructed from the spelling -- the registry fails closed for exactly that reason, and this mode is
+// the caller that has to honour it.
+test fn a_slot_the_registry_has_no_row_for_refuses_and_names_the_authority() -> Bool {
   match tailscale_machine_name_plan(
     host: witness_unallocated_slot,
     window: witness_rename_window,
@@ -210,8 +254,8 @@ test fn a_slot_the_allocation_has_no_row_for_refuses_and_names_the_authority() -
       match reason {
         NameNotDerivable { host: subject, cause: cause } =>
           (subject as String) == "srv-slot-without-an-allocation-row" &&
-          contains(s: cause, pattern: "gunbc.hostname_allocation") &&
-          contains(
+          string_contains(s: cause, pattern: "gunbc.hostname_allocation") &&
+          string_contains(
             s: tailscale_machine_name_plan_refusal_wire(cause: reason),
             pattern: "no allocated hostname registered for"
           )
@@ -221,52 +265,95 @@ test fn a_slot_the_allocation_has_no_row_for_refuses_and_names_the_authority() -
   }
 }
 
-// THE STATE A RENAME WINDOW IS FOR, NOT A REFUSAL. The OS half has already moved and the tailnet half has not:
-// that is the middle of a window, and the write this mode owes is what closes it. A plan that refused here
-// would leave the device to re-derive its tailnet name from the new OS hostname on the next start, which is a
-// change nobody planned.
-test fn a_tailnet_name_lagging_the_os_hostname_owes_the_write_that_closes_the_window() -> Bool {
+// ── ONE CONVERGENCE RULE, ASKED ON BOTH SIDES OF THE WRITE ──────────────────────────────────────────
+// THE STATE THE REVIEW CAUGHT, AND THE ONLY ANSWER TO IT. The tailnet half already reads the pending target while
+// the OS half still reads the old name: the pair is not converged (the next start re-derives the tailnet name from
+// the OS hostname), so the plan owes no write, and an apply refuses rather than writing a name that will not hold.
+test fn a_half_moved_pair_owes_no_write_and_is_never_reported_converged() -> Bool {
   match tailscale_machine_name_plan(
     host: operator_host_srv4,
     window: witness_rename_window,
-    mode: ObserveOnly,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv4)
+    mode: ApplyInsideWindow,
+    names: tailscale_machine_name_device_names_reading(
+      status_document: witness_fox_status_document,
+      os_name_stdout: witness_os_name_srv4
+    )
   ) {
-    DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
-      from_name == "srv1" && os_name == "srv4" && (to_name as String) == "srv4"
+    DeviceNameHalvesDiverged { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+      machine_name == "fox" && os_name == "srv4" && (to_name as String) == "fox"
     _ => false
   }
 }
 
-// AN OS HOSTNAME THE DEVICE WILL NOT ANSWER IS ITS OWN CAUSE. `hostname -s` printing a newline is a device with
-// no configured short name; treating that as "no OS half to compare" would let a write report convergence on
-// one name only.
-test fn an_empty_os_hostname_answer_refuses_with_its_own_cause() -> Bool {
+// THE SAME BYTES THROUGH THE OTHER SIDE OF THE RULE. The plan and the read-back answer one question, so the pair
+// the plan refuses to write is the pair the read-back refuses to confirm -- a fork between the two would show up
+// here as these two arms disagreeing about the same observation.
+test fn the_pair_the_plan_will_not_write_is_the_pair_the_read_back_will_not_confirm() -> Bool {
   match tailscale_machine_name_plan(
     host: operator_host_srv4,
     window: witness_rename_window,
-    mode: ObserveOnly,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: "\n")
+    mode: ApplyInsideWindow,
+    names: tailscale_machine_name_device_names_reading(
+      status_document: witness_fox_status_document,
+      os_name_stdout: witness_os_name_srv4
+    )
   ) {
-    PlanRefused { cause: reason } =>
-      match reason {
-        OsNameUnusable { detail: detail } => contains(s: detail, pattern: "no hostname to compare")
+    DeviceNameHalvesDiverged { machine_name: plan_machine, os_name: plan_os, to_name: plan_to } =>
+      match tailscale_machine_name_read_back(requested: plan_to, names: tailscale_machine_name_device_names_reading(status_document: witness_fox_status_document, os_name_stdout: witness_os_name_srv4)) {
+        ReadBackNamesDiverge { requested: requested, machine_name: machine_name, os_name: os_name } =>
+          (requested as String) == (plan_to as String) && machine_name == plan_machine && os_name == plan_os
         _ => false
       }
     _ => false
   }
 }
 
-// THE STAGE GUARD, CASE 1 OF 3: the additive stage is not the rename window, so an apply there is refused
-// before any name is derived. This is the only arm that refuses a reading that is otherwise actionable -- the
-// plan refuses for the same bytes in the window case above -- which is what makes the guard observable rather
+// THE MIDDLE OF A WINDOW IS NOT A REFUSAL. The OS half has moved and the tailnet half has not: that is the state
+// the window step lands the two halves into between its two writes, and the write this mode owes closes it. A plan
+// that refused here would leave the device to re-derive its tailnet name from the new OS hostname on the next
+// start, which is a change nobody planned.
+test fn a_tailnet_name_lagging_the_os_hostname_owes_the_write_that_closes_the_window() -> Bool {
+  match tailscale_machine_name_plan(
+    host: operator_host_srv4,
+    window: witness_rename_window,
+    mode: ObserveOnly,
+    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document_srv4, os_name_stdout: witness_os_name_fox)
+  ) {
+    DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
+      from_name == "srv4" && os_name == "fox" && (to_name as String) == "fox"
+    _ => false
+  }
+}
+
+// AN OS HOSTNAME THE DEVICE WILL NOT ANSWER IS ITS OWN CAUSE. `hostname -s` printing a bare newline is a device
+// with no configured short name; treating that as "no OS half to compare" would let a write report convergence on
+// one name only.
+test fn an_empty_os_hostname_answer_refuses_with_its_own_cause() -> Bool {
+  match tailscale_machine_name_plan(
+    host: operator_host_srv4,
+    window: witness_rename_window,
+    mode: ObserveOnly,
+    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document_srv4, os_name_stdout: "\n")
+  ) {
+    PlanRefused { cause: reason } =>
+      match reason {
+        OsNameUnusable { detail: detail } => string_contains(s: detail, pattern: "no hostname to compare")
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// ── THE STAGE GATE ─────────────────────────────────────────────────────────────────────────────────
+// THE ADDITIVE STAGE IS NOT THE RENAME WINDOW: an apply there is refused before any name is derived. This is the
+// arm that refuses bytes which ARE actionable inside the window, which is what makes the guard observable rather
 // than a comment.
 test fn an_apply_in_the_prepare_stage_is_refused_by_the_window_gate() -> Bool {
   match tailscale_machine_name_plan(
-    host: operator_host_srv1,
+    host: operator_host_srv4,
     window: witness_prepare_window,
     mode: ApplyInsideWindow,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_other_status_document, os_name_stdout: witness_os_name_srv4)
+    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
   ) {
     PlanRefused { cause: reason } =>
       match reason {
@@ -280,15 +367,15 @@ test fn an_apply_in_the_prepare_stage_is_refused_by_the_window_gate() -> Bool {
   }
 }
 
-// THE STAGE GUARD, CASE 2 OF 3: nothing claimed at all is its own arm, not "some window that is not the
-// rename window". A run that never declared a stage is a different operator mistake from one that declared
-// the wrong stage, and the receipt has to tell them apart.
+// NOTHING CLAIMED AT ALL IS ITS OWN ARM, not "some window that is not the rename window": a run that never
+// declared a stage is a different operator mistake from one that declared the wrong stage, and the receipt has to
+// tell them apart.
 test fn an_apply_with_no_stage_claim_is_refused_and_says_so() -> Bool {
   match tailscale_machine_name_plan(
-    host: operator_host_srv1,
+    host: operator_host_srv4,
     window: witness_undeclared_window,
     mode: ApplyInsideWindow,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_other_status_document, os_name_stdout: witness_os_name_srv4)
+    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
   ) {
     PlanRefused { cause: reason } =>
       match reason {
@@ -304,18 +391,33 @@ test fn an_apply_with_no_stage_claim_is_refused_and_says_so() -> Bool {
   }
 }
 
-// THE STAGE GUARD, CASE 3 OF 3: observe is NOT refused outside the window. Observe-only runs no write, so
-// holding it to the window would strand the read that a window needs in order to plan -- and the read-only
-// observation of srv1 that these fixtures came from could not have run at all.
+// OBSERVE IS NOT REFUSED OUTSIDE THE WINDOW. It runs no write, so holding it to the window would strand the read
+// a window needs in order to plan -- and the read-only observation of srv1 these fixtures came from could not have
+// run at all.
 test fn an_observe_outside_the_rename_window_is_not_refused_by_the_window_gate() -> Bool {
-  match tailscale_machine_name_plan(
-    host: operator_host_srv1,
-    window: witness_prepare_window,
-    mode: ObserveOnly,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
-  ) {
+  match witness_srv1_outside_window {
     DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
       machine_name == "srv1" && os_name == "srv1"
+    _ => false
+  }
+}
+
+test fn the_window_gate_receipt_quotes_the_claim_that_stopped_the_run() -> Bool {
+  match tailscale_machine_name_plan(
+    host: operator_host_srv4,
+    window: witness_prepare_window,
+    mode: ApplyInsideWindow,
+    names: tailscale_machine_name_device_names_reading(status_document: witness_status_document, os_name_stdout: witness_os_name_srv1)
+  ) {
+    PlanRefused { cause: reason } =>
+      string_contains(
+        s: tailscale_machine_name_plan_refusal_wire(cause: reason),
+        pattern: "prepare-window"
+      ) &&
+      string_contains(
+        s: tailscale_machine_name_plan_refusal_wire(cause: reason),
+        pattern: "rename window"
+      )
     _ => false
   }
 }
@@ -329,13 +431,13 @@ test fn the_window_claim_parses_to_its_window_and_an_unclaimed_window_stays_uncl
   }
 }
 
-// AN UNPARSEABLE DOCUMENT REFUSES WITH THAT CAUSE. The alternative the design forbids is the plausible one:
-// a reader that treats unparsable bytes as "no name reported" and then either skips the write or writes an
-// empty name.
+// ── EVERY UNREADABLE NAME IS A DIFFERENT CAUSE ──────────────────────────────────────────────────────
+// AN UNPARSEABLE DOCUMENT REFUSES WITH THAT CAUSE. The alternative the design forbids is the plausible one: a
+// reader that treats unparsable bytes as "no name reported" and then either skips the write or writes an empty name.
 test fn an_unparseable_status_document_refuses_with_that_cause() -> Bool {
   match tailscale_machine_name_plan(
     host: operator_host_srv1,
-    window: witness_rename_window,
+    window: witness_prepare_window,
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(status_document: "not json at all", os_name_stdout: witness_os_name_srv1)
   ) {
@@ -344,7 +446,10 @@ test fn an_unparseable_status_document_refuses_with_that_cause() -> Bool {
         StatusDocumentRefused { cause: cause } =>
           match cause {
             StatusDocumentUnreadable { detail: _ } =>
-              contains(s: tailscale_machine_name_refusal_wire(cause: cause), pattern: "not a JSON document")
+              string_contains(
+                s: tailscale_machine_name_refusal_wire(cause: cause),
+                pattern: "not a JSON document"
+              )
             _ => false
           }
         _ => false
@@ -353,9 +458,9 @@ test fn an_unparseable_status_document_refuses_with_that_cause() -> Bool {
   }
 }
 
-// AN ABSENT `Self` MEMBER IS ITS OWN CAUSE, NOT AN UNPARSEABLE DOCUMENT. The document parses; the daemon just
-// named no device for this run. Collapsing the two would send an operator to a JSON parser when the repair is
-// the daemon's state.
+// AN ABSENT `Self` MEMBER IS ITS OWN CAUSE, NOT AN UNPARSEABLE DOCUMENT: the document parses, and the daemon named
+// no device for this run. Collapsing the two would send an operator to a JSON parser when the repair is the
+// daemon's state.
 test fn a_status_document_without_a_self_member_refuses_with_that_cause() -> Bool {
   match tailscale_status_self_name(status_json: "{\"NotSelf\": {\"HostName\": \"srv1\"}}") {
     ReadingRefused { cause: cause } => cause == StatusSelfMemberAbsent
@@ -363,8 +468,8 @@ test fn a_status_document_without_a_self_member_refuses_with_that_cause() -> Boo
   }
 }
 
-// A SELF WITH NO HOST_NAME MEMBER, AND AN EMPTY ONE, ARE DIFFERENT CAUSES TOO. The second is the one an
-// upstream can actually leave behind after a half-finished rename, and it must not become the name "".
+// A SELF WITH NO `HostName` MEMBER, AND AN EMPTY ONE, ARE DIFFERENT CAUSES TOO. The second is the one an upstream
+// can actually leave behind after a half-finished rename, and it must not become the name "".
 test fn a_self_member_without_a_host_name_refuses_instead_of_inventing_one() -> Bool {
   match tailscale_status_self_name(status_json: "{\"Self\": {\"DNSName\": \"srv1.tailecbe08.ts.net.\"}}") {
     ReadingRefused { cause: cause } => cause == StatusHostNameMemberAbsent
@@ -379,14 +484,13 @@ test fn an_empty_host_name_refuses_rather_than_becoming_a_name_of_nothing() -> B
   }
 }
 
-// A MEMBER OF THE WRONG SHAPE KEEPS THE CAUSE THAT SAYS SO, THROUGH THE PLAN AND INTO THE RECEIPT WORDS --
-// the parser's job is to refuse with a cause that names the member, and the plan's job is not to flatten it.
+// A MEMBER OF THE WRONG SHAPE KEEPS THE CAUSE THAT SAYS SO, THROUGH THE PARSER AND INTO THE RECEIPT WORDS.
 test fn a_malformed_host_name_keeps_its_own_cause_through_the_parser() -> Bool {
   match tailscale_status_self_name(status_json: "{\"Self\": {\"HostName\": 5}}") {
     ReadingRefused { cause: cause } =>
       match cause {
         StatusHostNameMemberMalformed { detail: _ } =>
-          contains(s: tailscale_machine_name_refusal_wire(cause: cause), pattern: "Self.HostName")
+          string_contains(s: tailscale_machine_name_refusal_wire(cause: cause), pattern: "Self.HostName")
         _ => false
       }
     _ => false
@@ -394,12 +498,12 @@ test fn a_malformed_host_name_keeps_its_own_cause_through_the_parser() -> Bool {
 }
 
 // THE NAME COMPARED IS `Self.HostName`, NEVER `Self.DNSName`. The two can disagree -- an upstream restart
-// re-derives the FQDN from the OS hostname, so the DNS name is a projection and the host name is the fact --
-// and a mode that compared the FQDN would plan a different change from these same bytes.
+// re-derives the FQDN from the OS hostname, so the FQDN is a projection and the host name is the fact -- and a mode
+// that compared the FQDN would plan a different change from these same bytes.
 test fn the_name_compared_is_the_host_name_and_never_the_dns_name() -> Bool {
   match tailscale_machine_name_plan(
     host: operator_host_srv4,
-    window: witness_rename_window,
+    window: witness_prepare_window,
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(status_document: witness_dns_name_document, os_name_stdout: witness_os_name_srv4)
   ) {
@@ -409,16 +513,13 @@ test fn the_name_compared_is_the_host_name_and_never_the_dns_name() -> Bool {
   }
 }
 
-// THE READ-BACK RULE, THREE WAYS. After a write the only verdict allowed is what a fresh read says: agreement
-// on BOTH names confirms, the old tailnet name refuses, and a tailnet half that took the name while the OS
-// half did not refuses too -- that pair is the unstable state a window exists to close, because a later start
-// re-derives the tailnet name from the OS hostname.
+// ── THE READ-BACK, AFTER A WRITE THAT WAS ACTUALLY ASKED FOR ────────────────────────────────────────
 test fn a_read_back_where_both_names_answer_the_request_confirms_the_run() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "fox" as DnsLabel,
     names: tailscale_machine_name_device_names_reading(
-      status_document: "{\"Self\": {\"HostName\": \"fox\", \"DNSName\": \"fox.tailecbe08.ts.net.\"}}",
-      os_name_stdout: "fox\n"
+      status_document: witness_fox_status_document,
+      os_name_stdout: witness_os_name_fox
     )
   ) {
     ReadBackConfirmsRequested { machine_name: machine_name, os_name: os_name } =>
@@ -427,37 +528,24 @@ test fn a_read_back_where_both_names_answer_the_request_confirms_the_run() -> Bo
   }
 }
 
+// THE SET'S OWN EXIT CODE IS NOT EVIDENCE: only a fresh read, naming nothing else, closes a write.
 test fn a_read_back_still_answering_the_old_tailnet_name_refuses_the_run() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "fox" as DnsLabel,
     names: tailscale_machine_name_device_names_reading(
-      status_document: witness_status_document,
-      os_name_stdout: witness_os_name_srv1
+      status_document: witness_status_document_srv4,
+      os_name_stdout: witness_os_name_fox
     )
   ) {
     ReadBackMachineNameContradicts { requested: requested, reported: reported, os_name: os_name } =>
-      (requested as String) == "fox" && reported == "srv1" && os_name == "srv1"
-    _ => false
-  }
-}
-
-test fn a_read_back_where_the_tailnet_half_took_the_name_and_the_os_half_did_not_refuses_the_run() -> Bool {
-  match tailscale_machine_name_read_back(
-    requested: "fox" as DnsLabel,
-    names: tailscale_machine_name_device_names_reading(
-      status_document: "{\"Self\": {\"HostName\": \"fox\", \"DNSName\": \"fox.tailecbe08.ts.net.\"}}",
-      os_name_stdout: witness_os_name_srv4
-    )
-  ) {
-    ReadBackNamesDiverge { requested: requested, machine_name: machine_name, os_name: os_name } =>
-      (requested as String) == "fox" && machine_name == "fox" && os_name == "srv4"
+      (requested as String) == "fox" && reported == "srv4" && os_name == "fox"
     _ => false
   }
 }
 
 // A READ-BACK THAT CANNOT BE READ IS A REFUSAL WITH ITS OWN CAUSE, NOT A PENDING SUCCESS. The write already
-// happened, so the run's only honest report is that the name's state is now unknown to it -- and the cause
-// that reaches this arm is whatever the read produced, not a flattened "read-back failed".
+// happened, so the run's only honest report is that the name's state is now unknown to it -- and the cause that
+// reaches this arm is whatever the read produced, not a flattened "read-back failed".
 test fn a_read_back_the_device_cannot_answer_refuses_with_its_own_cause() -> Bool {
   match tailscale_machine_name_read_back(
     requested: "fox" as DnsLabel,
@@ -472,112 +560,106 @@ test fn a_read_back_the_device_cannot_answer_refuses_with_its_own_cause() -> Boo
   }
 }
 
-// THE RECEIPT WORDS A REFUSAL PRODUCED BY THE GATE. The gate's whole point is that an operator can tell, from
-// the receipt, that the stage is what stopped the run -- so the claim actually quoted has to appear in it.
-test fn the_window_gate_receipt_quotes_the_claim_that_stopped_the_run() -> Bool {
-  match tailscale_machine_name_plan(
-    host: operator_host_srv1,
-    window: witness_prepare_window,
-    mode: ApplyInsideWindow,
-    names: tailscale_machine_name_device_names_reading(status_document: witness_other_status_document, os_name_stdout: witness_os_name_srv4)
-  ) {
-    PlanRefused { cause: reason } =>
-      contains(
-        s: tailscale_machine_name_plan_refusal_wire(cause: reason),
-        pattern: "prepare-window"
-      ) &&
-      contains(
-        s: tailscale_machine_name_plan_refusal_wire(cause: reason),
-        pattern: "rename window"
-      )
-    _ => false
-  }
-}
-
-// THE WORDS THAT LEAVE THIS REPOSITORY, FROM THE REAL EMITTER AND NO OTHER. `status --json` is the upstream's
-// spelling, joined by the extdeps argv authority rather than written out here; nothing in the read names a
-// host, a target, or a sudo row, because the read is unprivileged and host-generic.
+// ── THE WORDS THAT LEAVE THIS REPOSITORY, AND THE ROUTE THEY TRAVEL ─────────────────────────────────
+// Compared BY VALUE: this parser has no list patterns, and equality over a whole row is the stronger claim -- it
+// fails if a word is added, removed or reordered.
 test fn the_status_words_are_the_real_emitter_and_carry_no_target_or_host() -> Bool {
-  match tailscale_status_json_argv() {
-    [verb, format] => verb == "status" && format == "--json"
-    _ => false
-  } &&
-  match argv_words(command: tailscale_status_json_command()) {
-    [program, verb, format] =>
-      program == "tailscale" && verb == "status" && format == "--json" && !contains(s: program, pattern: "sudo")
-    _ => false
-  }
+  tailscale_status_json_argv() == ["status", "--json"] &&
+  argv_words(command: tailscale_status_json_command()) == ["tailscale", "status", "--json"]
 }
 
-// THE WRITE WORDS, AS ONE JOINED `--hostname=` WORD. Upstream spells the flag and its value as a single
-// argument (`StringSetFlag`), so an emitter that produced `--hostname` and `fox` as two words would send argv
-// the upstream parser does not accept -- and that mistake is only catchable here, because no fleet host is
-// written to until srv4's rename window. The name is taken from the allocation authority rather than spelled
-// here, so this case cannot drift from the roster.
+// THE WRITE WORDS, AS ONE JOINED `--hostname=` WORD. Upstream spells the flag and its value as a single argument
+// (`StringSetFlag`), so an emitter that produced `--hostname` and `fox` as two words would send argv the upstream
+// parser does not accept -- and that mistake is only catchable here, because no fleet host is written to until
+// srv4's rename window. The name comes from the registry's pending row rather than being spelled here, so the case
+// cannot drift from the registry.
 test fn the_write_words_are_one_joined_hostname_word_not_two() -> Bool {
-  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv4) {
-    Present { value: allocated } =>
-      match tailscale_set_hostname_argv(name: allocated) {
-        [verb, flag_and_value] =>
-          verb == "set" &&
-          flag_and_value == join(["--hostname=", allocated as String], "") &&
-          !contains(s: flag_and_value, pattern: " ")
-        _ => false
-      } &&
-      match argv_words(command: tailscale_set_hostname_command(name: allocated)) {
-        [program, verb, flag_and_value] =>
-          program == "tailscale" && verb == "set" && flag_and_value == join(["--hostname=", allocated as String], "")
-        _ => false
-      }
+  match next_name_for_fleet_slot(fleet_slot: operator_host_srv4) {
+    Present { value: pending } =>
+      (tailscale_allocated_name_label(name: pending) as String) == "fox" &&
+      tailscale_set_hostname_argv(name: tailscale_allocated_name_label(name: pending)) == ["set", "--hostname=fox"] &&
+      argv_words(command: tailscale_set_hostname_command(name: tailscale_allocated_name_label(name: pending))) == ["tailscale", "set", "--hostname=fox"]
     Absent => false
   }
 }
 
-// THE WRITE IS ELEVATED IN THE RUN, NOT IN THE EMITTER: `set` changes a device's configuration, which the
-// client CLI does as root, and the elevation words are extdeps.sudo.elevation's -- applied by the leg, so the
-// emitter row for the read stays unprivileged and cannot silently acquire a sudo row.
+// THE WRITE IS ELEVATED IN THE RUN, NOT IN THE EMITTER: `set` changes a device's configuration, which the client
+// CLI does as root, and the elevation words are extdeps.sudo.elevation's -- applied by the leg. Neither emitter row
+// carries a sudo word, and the two rows differ only in the verb.
 test fn the_emitter_rows_are_privilege_free_and_differ_only_in_the_verb() -> Bool {
-  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv4) {
-    Present { value: allocated } =>
-      match argv_words(command: tailscale_set_hostname_command(name: allocated)) {
-        [write_program, write_verb, write_flag] =>
-          match argv_words(command: tailscale_status_json_command()) {
-            [read_program, read_verb, read_flag] =>
-              write_program == read_program &&
-              write_verb == "set" &&
-              read_verb == "status" &&
-              read_flag == "--json" &&
-              !contains(s: write_program, pattern: "sudo") &&
-              !contains(s: write_flag, pattern: "sudo")
-            _ => false
-          }
-        _ => false
+  join(tailscale_set_hostname_argv(name: "fox" as DnsLabel), " ") == "set --hostname=fox" &&
+  join(argv_words(command: tailscale_status_json_command()), " ") == "tailscale status --json" &&
+  !string_contains(
+    s: join(argv_words(command: tailscale_set_hostname_command(name: "fox" as DnsLabel)), " "),
+    pattern: "sudo"
+  ) &&
+  tailscale_set_hostname_argv(name: "fox" as DnsLabel) != tailscale_status_json_argv()
+}
+
+// THE SSH ROUTE IS THE FLEET REACH MODEL'S, AND THE LEG WORDS ARE HOST-FREE. Two things are checked: the words the
+// legs send carry no upstream domain and no other slot's name, and the route they go over is the resolved
+// `administrator_ssh_target` of the host-generic reach model -- so a new subject needs no spelling anywhere in the
+// mode. The route case is driven by the same registry row, and a slot with no row must refuse rather than resolve.
+test fn the_leg_words_are_host_free_and_the_route_comes_from_the_reach_model() -> Bool {
+  let another = administrator_ssh_target(host: operator_host_srv1)
+  let subject = administrator_ssh_target(host: operator_host_srv4)
+  match another {
+    SshTargetResolved { target: one } =>
+      match subject {
+        SshTargetResolved { target: other } =>
+          ssh_target_destination(target: one) != ssh_target_destination(target: other) &&
+          one.principal == executor_bootstrap_principal.login &&
+          !string_contains(s: ssh_target_destination(target: other), pattern: "srv1") &&
+          !string_contains(s: join(tailscale_set_hostname_argv(name: "fox" as DnsLabel), " "), pattern: ".local.")
+        SshTargetRefused { endpoint: endpoint, refusal: refusal } =>
+          ssh_target_refusal_text(endpoint: endpoint, refusal: refusal) != ""
       }
-    Absent => false
+    SshTargetRefused { endpoint: endpoint, refusal: refusal } =>
+      ssh_target_refusal_text(endpoint: endpoint, refusal: refusal) != ""
   }
 }
 
-// THE SSH ROUTE IS THE FLEET REACH MODEL'S, AND THE LEG WORDS ARE HOST-FREE. Two things are checked: the words
-// the legs send contain no slot literal, and the route they go over is the resolved `administrator_ssh_target`
-// of the host-generic reach model -- so a new subject needs no spelling anywhere in this module.
-test fn the_leg_words_are_host_free_and_the_route_comes_from_the_reach_model() -> Bool {
-  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv4) {
-    Present { value: allocated } =>
-      match administrator_ssh_target(host: operator_host_srv4) {
-        SshTargetResolved { target: target } =>
-          match tailscale_set_hostname_argv(name: allocated) {
-            words =>
-              !contains(s: join(words, " "), pattern: "srv1") &&
-              !contains(s: join(words, " "), pattern: ".local.") &&
-              target.network_path == FleetSshNetworkPath {
-                endpoint_host: operator_host_srv4,
-                endpoint_port: 22,
-              }
-            _ => false
-          }
-        SshTargetRefused { reason: reason } =>
-          contains(s: reason, pattern: "no network path resolved")
-      }
-    Absent => false
+// ── THE ENTRY ADMITS ITS SUBJECT THROUGH THE FLEET MACHINE REGISTRY, BEFORE ANY LEG ────────────────
+// A1 of the plan: the operational roster is the ADMITTED registry. A registry that its own admission refuses
+// admits no machine -- not even a machine outside the collision -- and a label the registry does not carry admits
+// none either. Both refusals happen in the entry, over a lookup the witness hands it, so no leg, no read and no
+// write is reached: the alternative is an SSH connection to a machine no registry names.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn row(slot: String, hostname: String, next: String) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: LegacyHostname { label: hostname as DnsLabel },
+    next_name: if next == "" { Absent } else { Present { value: LegacyHostname { label: next as DnsLabel } } },
   }
+}
+
+// A pending-name collision: "a" answers to fox while "b" awaits fox, and "c" is an uninvolved machine. The
+// admission refuses the WHOLE registry, so a converge against "c" must refuse too.
+data colliding_registry: List<HostnameAllocation> = [row(slot: "a", hostname: "fox", next: ""), row(slot: "b", hostname: "b1", next: "fox"), row(slot: "c", hostname: "c1", next: "")]
+
+fn refused_before_any_leg(exit: ProcessExit, cause: String) -> Bool {
+  match exit {
+    ExitFailure { code: _, reason: why } =>
+      string_contains(s: why, pattern: "tailscale_machine_name_converge") &&
+      string_contains(s: why, pattern: cause)
+    _ => false
+  }
+}
+
+test fn the_entry_refuses_a_host_the_admitted_registry_does_not_carry() -> Bool {
+  refused_before_any_leg(
+    exit: tailscale_machine_name_entry_over(mode: ObserveOnly, lookup: OperatorHostNotRegistered { label: "fixture-unregistered" }),
+    cause: "no operator host is named fixture-unregistered"
+  )
+}
+
+test fn the_entry_refuses_a_registry_that_fails_its_own_admission_even_for_an_uninvolved_machine() -> Bool {
+  refused_before_any_leg(
+    exit: tailscale_machine_name_entry_over(
+      mode: ApplyInsideWindow,
+      lookup: operator_host_lookup_in(allocations: colliding_registry, label: "c")
+    ),
+    cause: "registry is refused (fox is claimed twice)"
+  )
 }

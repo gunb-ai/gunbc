@@ -94,7 +94,20 @@ import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextRefused,
   prepare_fleet_ssh_agent_context,
 }
-import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.hostname_allocation {
+  AllocatedHostName,
+  OperatorHostFound,
+  OperatorHostLookup,
+  OperatorHostNotRegistered,
+  OperatorHostRegistryRefused,
+  DrawnHumanName,
+  LegacyHostname,
+  canonical_hostname_for_fleet_slot,
+  human_name_canonical_hostname,
+  next_name_for_fleet_slot,
+  operator_host_lookup,
+  operator_host_lookup_refusal,
+}
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.tools.hostname { hostname_short_read_command }
@@ -183,23 +196,55 @@ fn tailscale_machine_name_window_wire(window: TailscaleMachineNameWindow) -> Str
 // beside this one, not a change of shape inside it. Nothing downstream (plan, set leg, read-back) knows
 // which question was asked, so P2 and P4 have nothing to move here.
 type TailscaleMachineNameDesired
-  = AllocatedName { name: DnsLabel }
+  = TargetNameAllocated { name: DnsLabel }
   | DesiredNameNotDerivable { host: HostIdentity, cause: String }
 
-fn tailscale_machine_name_desired(host: HostIdentity) -> TailscaleMachineNameDesired {
+// THE LABEL AN ALLOCATED NAME ANSWERS TO. `human_name_canonical_hostname` is the registry's own rendering of a
+// drawn name and the legacy row already holds a label, so this dispatches the two shapes and names no rendering
+// rule of its own -- a second place that joins labels into a hostname would be a fork of the one that DNS, the
+// runner label and the tailnet name all share.
+fn tailscale_allocated_name_label(name: AllocatedHostName) -> DnsLabel {
+  match name {
+    LegacyHostname { label: label } => label
+    DrawnHumanName { name: human, draw: _ } => human_name_canonical_hostname(name: human)
+  }
+}
+
+fn tailscale_machine_name_current_canonical(host: HostIdentity) -> TailscaleMachineNameDesired {
   match canonical_hostname_for_fleet_slot(fleet_slot: host) {
-    Present { value: label } => AllocatedName { name: label }
+    Present { value: label } => TargetNameAllocated { name: label }
     Absent =>
       DesiredNameNotDerivable {
         host: host,
         cause: join(
           [
-            "gunbc.hostname_allocation carries no canonical hostname for fleet slot `", host as String,
+            "gunbc.hostname_allocation carries no current canonical hostname for fleet slot `", host as String,
             "`: a name is a modeled fact, and an unregistered slot has none to converge",
           ],
           ""
         ),
       }
+  }
+}
+
+// THE TARGET, ONE QUESTION. Inside a rename window the target is the registry's PENDING name for the slot --
+// that row is the window's whole content, and a window that ran against the current canonical name instead would
+// write the name the device already answers and report the rename done. Anywhere else, and for a window with
+// nothing pending, the target is the slot's CURRENT canonical name: that is what makes the reverse direction of a
+// rename need no special path, because moving the registry row back and re-running asks this same question and
+// gets the old name. Both questions are the registry's -- this mode holds no name of its own, and an unregistered
+// slot or a registry that fails its own admission yields no target and refuses.
+fn tailscale_machine_name_desired(
+  host: HostIdentity,
+  window: TailscaleMachineNameWindow,
+) -> TailscaleMachineNameDesired {
+  if tailscale_machine_name_window_is_rename_window(window: window) {
+    match next_name_for_fleet_slot(fleet_slot: host) {
+      Present { value: pending } => TargetNameAllocated { name: tailscale_allocated_name_label(name: pending) }
+      Absent => tailscale_machine_name_current_canonical(host: host)
+    }
+  } else {
+    tailscale_machine_name_current_canonical(host: host)
   }
 }
 
@@ -391,10 +436,10 @@ fn tailscale_machine_name_plan(
       cause: WindowIsNotTheRenameWindow { window: window, mode: mode }
     }
   } else {
-    match tailscale_machine_name_desired(host: host) {
+    match tailscale_machine_name_desired(host: host, window: window) {
       DesiredNameNotDerivable { host: subject, cause: cause } =>
         PlanRefused { cause: NameNotDerivable { host: subject, cause: cause } }
-      AllocatedName { name: desired } =>
+      TargetNameAllocated { name: desired } =>
         match tailscale_machine_name_names_against_target(requested: desired, names: names) {
           NameReadUnusable { cause: cause } => PlanRefused { cause: cause }
           BothNamesAnswerTarget { machine_name: machine_name, os_name: os_name } =>
@@ -796,19 +841,38 @@ fn converge_tailscale_machine_name(
 
 // ── THE ENTRIES ────────────────────────────────────────────────────────────────────────────────
 //
-// Both read the subject host from the dispatch's split preconditions, the same way every other
-// fleet-converge entry does -- no host is named here, and a run with no subject refuses before any leg.
-// The stage claim is read from tailscale_machine_name_stage_env_name, so the rename-window license is an
-// invocation claim and never a property of the host. No CI job dispatches these entries yet: the
-// dispatch that carries a stage claim is gunbc.plans.fleet_machine_authority P9.
+// The subject arrives as the operator's label from the dispatch's split preconditions and is ADMITTED through
+// the fleet machine registry (`operator_host_lookup`) before any leg runs: a label the admitted registry does not
+// carry admits no machine, so nothing is read from or written to a host, and a registry that fails its own
+// admission admits nothing either -- including a machine outside the collision (gunbc.plans.fleet_machine_authority
+// A1). No host is named here, and the stage claim is read from tailscale_machine_name_stage_env_name, so the
+// rename-window license is an invocation claim and never a property of a host. No CI job dispatches these entries
+// yet: the dispatch that carries a stage claim is gunbc.plans.fleet_machine_authority P9.
 fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
-  // THE STAGE CLAIM IS READ ONCE, before any leg, and carried into both the run and the receipt: a
-  // receipt whose stage was re-read afterwards could disagree with the run it reports.
-  let window = tailscale_machine_name_window_read()
   match fleet_converge_split_read() {
     SplitRefused { reason: reason } => exit_failure(reason: fleet_converge_split_refusal_line(reason: reason))
-    SplitOk { executor_runner_name: _, subject_host: raw_host } =>
-      match administrator_ssh_target(host: raw_host as HostIdentity) {
+    SplitOk { executor_runner_name: _, subject_host: subject_host } =>
+      tailscale_machine_name_entry_over(
+        mode: mode,
+        lookup: operator_host_lookup(label: subject_host)
+      )
+  }
+}
+
+// THE ENTRY OVER AN ALREADY-TAKEN REGISTRY LOOKUP, so a witness can hand it a refused registry and see the entry
+// refuse before a single leg runs. The two refusal arms print the registry's own sentence, prefixed with this
+// lane's name once, rather than each entry writing its own story about an unadmitted host.
+fn tailscale_machine_name_entry_over(
+  mode: TailscaleMachineNameMode,
+  lookup: OperatorHostLookup,
+) -> ProcessExit {
+  match lookup {
+    OperatorHostFound { host: host } =>
+      // THE STAGE CLAIM IS READ ONCE, after the host is admitted and before any leg, and carried into both the run
+      // and the receipt: a receipt whose stage was re-read afterwards could disagree with the run it reports. An
+      // unadmitted host never reads the stage at all, because it runs nothing.
+      let window = tailscale_machine_name_window_read()
+      match administrator_ssh_target(host: host) {
         SshTargetRefused { endpoint: endpoint, refusal: refusal } =>
           exit_failure(reason: ssh_target_refusal_text(endpoint: endpoint, refusal: refusal))
         SshTargetResolved { target: target } =>
@@ -817,11 +881,11 @@ fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
               exit_failure(reason: join(["fleet ssh context refused: ", cause], ""))
             FleetSshContextReady { context: context, receipt: _ } =>
               tailscale_machine_name_report(
-                host: raw_host as HostIdentity,
+                host: host,
                 window: window,
                 mode: mode,
                 outcome: converge_tailscale_machine_name(
-                  host: raw_host as HostIdentity,
+                  host: host,
                   target: target,
                   context: context,
                   window: window,
@@ -830,6 +894,19 @@ fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
               )
           }
       }
+    OperatorHostNotRegistered { label: label } =>
+      tailscale_machine_name_host_not_admitted(lookup: lookup, label: label)
+    OperatorHostRegistryRefused { key: key } =>
+      tailscale_machine_name_host_not_admitted(lookup: lookup, label: key)
+  }
+}
+
+fn tailscale_machine_name_host_not_admitted(lookup: OperatorHostLookup, label: String) -> ProcessExit {
+  match operator_host_lookup_refusal(lookup: lookup) {
+    Present { value: why } =>
+      exit_failure(reason: join(["tailscale_machine_name_converge: ", why, " (", label, ")"], ""))
+    Absent =>
+      exit_failure(reason: join(["tailscale_machine_name_converge: no fleet machine is admitted for ", label], ""))
   }
 }
 
