@@ -151,6 +151,7 @@ test fn a_lan_capture_without_a_threshold_line_assembles_not_available_not_a_fab
   let c = faithful_captures()
   let bare = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer,
     lan_config_answer: committed("ipmi-get-lan-config", "Set In Progress         : Set Complete\nAuth Type Support       : MD5\n"),
@@ -186,16 +187,17 @@ test fn an_authentication_refused_census_read_assembles_managed_accepted_false()
   }
 }
 
-// RED (fail_closed -- empty is NEVER a refusal, and never a defaulted true). A census read whose body is
-// EMPTY is not the controller refusing the credential; it is a read that did not happen. The assembler must
-// REFUSE with UserAccessRowsUndecodable -- it must not mint managed_accepted:false on an absent read any
+// RED (fail_closed -- a blank read is NEVER a refusal, and never a defaulted true). A census read whose body
+// carries no table -- blank whitespace, no user row and none of the authentication-refusal vendor lines -- is
+// not the controller refusing the credential; it is a read that produced nothing to read. The assembler must
+// REFUSE with UserAccessRowsUndecodable -- it must not mint managed_accepted:false on an empty reading any
 // more than it mints managed_accepted:true. This is the arm that keeps AuthenticationRefused honest: refusal
-// is a specific vendor line, not the absence of bytes.
+// is a specific vendor line, not the absence of a table.
 test fn an_empty_census_answer_refuses_never_a_defaulted_managed_acceptance() -> Bool {
   let c = faithful_captures()
   let empty = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    census_answer: committed("ipmi-user-list", ""),
+    census_answer: committed("ipmi-user-list", "   "),
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
     lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
@@ -212,6 +214,7 @@ test fn a_served_redfish_with_an_unreadable_accounts_body_refuses_never_a_fabric
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    census_answer: c.census_answer,
     redfish_accounts_answer: committed("redfish-accounts", "500 Internal Server Error"),
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
     lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
@@ -230,6 +233,7 @@ test fn a_census_entry_the_collection_does_not_list_refuses() -> Bool {
   let stranger = BmcRedfishCensusServed { accounts: [BmcRedfishAccountCensusEntry { name: "intruder", enabled: true, is_managed_account: true }] }
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: stranger,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
     break_glass_answer: c.break_glass_answer,
@@ -247,6 +251,7 @@ test fn no_break_glass_answer_assembles_unmaterializable_never_a_substituted_ref
   let c = faithful_captures()
   let none_bg = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
     break_glass_answer: Absent,
@@ -268,7 +273,7 @@ test fn a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_c
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
- committed("ipmi-get-user-access", "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      false      SUPERVISOR\n"),
+    census_answer: committed("ipmi-get-user-access", "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      false      SUPERVISOR\n"),
     redfish_accounts_answer: c.redfish_accounts_answer, redfish_surface_answer: c.redfish_surface_answer,
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
     break_glass_answer: c.break_glass_answer,
@@ -288,6 +293,7 @@ test fn a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_ce
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: committed("redfish-surface", "{\"error\":{\"code\":\"Base.1.19.GeneralError\",\"message\":\"denied\"}}"),
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
@@ -326,6 +332,7 @@ test fn a_plaintext_service_root_body_refuses_never_an_unfounded_surface() -> Bo
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: committed("redfish-surface", "<!DOCTYPE html><html><body>404 Not Found</body></html>"),
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
