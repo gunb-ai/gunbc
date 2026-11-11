@@ -147,7 +147,7 @@ fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> De
 fn deploy_target_ssh_proof_structurally_valid(proof: DeployTargetHostProof) -> Bool {
   match proof {
     SshExplicitHost { host: id, ssh_host: h } =>
-      match observed_host_selector_join(expected: id, observed: h) {
+      match observed_host_selector_join(expected: id as String, observed: h as String) {
         ObservedHostSelectorAgreed { host: _ } => true
         ObservedHostSelectorJoinRefused { cause: _ } => false
       }
