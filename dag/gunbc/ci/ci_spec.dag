@@ -1,5 +1,8 @@
 module gunbc.ci.ci_spec
 
+import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_target, gunbc_ci_mtcollins1_fan_observe_target, gunbc_ci_mtcollins1_kvm_observer_observe_target, gunbc_ci_mtcollins1_kvm_observer_release_target, gunbc_ci_mtcollins1_probe_root_statement, gunbc_ci_mtcollins1_ui_status_asset_observe_target }
+import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunbc_ci_sm_decode_payload_program, gunbc_ci_sm_max_time, gunbc_ci_sm_secret_to_dest_file_command }
 import gunbc.fleet.branch_run_grant_broker_workflow { gunbc_ci_branch_run_grant_broker_target }
 import gunbc.heal_publisher_workflow { heal_publisher_cgroup_prelude }
 import gunbc.ci.ci_run_step_target {
@@ -75,9 +78,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_subshell_from_stmts, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
-import extdeps.github.actions_environment { github_output_variable_name }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
@@ -91,7 +91,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
-import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
+import std.measure { second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format, gunbc_ci_auth_header_file_write_command, gunbc_ci_auth_header_file_write_command_to }
@@ -120,7 +120,6 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_invoke_root_stamp_step,
   gunbc_invoke_root_stamp_script,
   gunbc_invoke_step_emit_pipeline,
-  gunbc_invoke_step_orch_refused_poison,
 }
 import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy }
 import gunbc.auth.heal_publisher_federation {
@@ -1052,35 +1051,6 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "runner_guest_image_converge_wet",
 }
 
-data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
-  function: "mtcollins1_fan_observe_wet",
-}
-
-// THE VENDOR UI'S OWN STATUS MAPPING, READ OFF THE CONTROLLER'S SERVED BYTES (gunbc.machine_intake
-// .mtcollins1_ui_status_asset_observation). Read-only: GETs over the session the lane already opens,
-// no media action, no power, no SEL. It is dispatched under the fan observation's mode because the
-// mode list is a closed choice and this probe shares that lane's credential, host and authority.
-data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag",
-  function: "mtcollins1_ui_status_asset_observation_wet",
-}
-
-data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
-  function: "mtcollins1_fan_observe_boot_phase_wet",
-}
-
-
-data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
-  function: "mtcollins1_kvm_observer_observe_wet",
-}
-
-data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
-  function: "mtcollins1_kvm_observer_release_wet",
-}
 
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
@@ -1693,295 +1663,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
   ]
 }
 
-// THE MT. COLLINS BMC CREDENTIAL FETCH, FACTORED SO ONE SECRET HAS ONE FETCH.
-//
-// This lane originally authored a second, standalone Collins prelude beside the boot lane's, which
-// was the gunbc.design_argument::single_authority fork arrived at by not knowing the first one existed: two spellings of "read pinned
-// version 2 of bmc-mtcollins1-gunbc into a 0600 file", drifting independently the first time either
-// one was corrected. The shared half is these four steps and it is exactly the half that is the
-// same fact - the auth header, the curl of THAT secret's access URL, the base64 decode, the mode.
-//
-// WHAT IS DELIBERATELY NOT SHARED, because it is genuinely different per consumer: the RUNNER_TEMP
-// filenames, the trap (the boot prelude's also kills a SOL child and wipes a second key file), the
-// second secret the boot lane needs, and the environment variable each consumer reads its path
-// from. The destination variable is a PARAMETER for that reason: the boot lane names the path in
-// host_reset_bmc_credential_path_env and the fan lane in its own, and folding those into one row
-// would make a consumer's variable a fact about the fetch.
-//
-// THE CALLER SETS DEST_FILE AND RESP_FILE BEFORE CALLING, AND THAT ORDERING IS LOAD-BEARING rather
-// than stylistic: these steps read both as shell variables, so a caller that has not set them
-// decodes into an empty path. The boot prelude's second fetch already relies on exactly this by
-// reassigning DEST_FILE around its call.
-// ONE PINNED SECRET MANAGER VERSION TO THE FILE $DEST_FILE NAMES: the auth header the prelude wrote
-// (HDR_FILE), a bounded curl of the secret's access URL to RESP_FILE, the base64 payload decoded
-// into DEST_FILE. Every prelude that materializes a secret -- the BMC credential, the capability
-// and submission MAC keys, the D0 door's submission key -- consumes THIS producer, so the transport
-// bounds and the decode are one fact (review 69591: a fourth authored copy of this fetch had
-// arrived carrying bounds the other three lacked). The bounds: a handshake to Secret Manager and
-// one small payload.
-data gunbc_ci_sm_connect_timeout: Second = second(count: 10)
-data gunbc_ci_sm_max_time: Second = second(count: 60)
 
-fn gunbc_ci_sm_secret_to_dest_file_command(url: String) -> String {
-  join([
-    "curl -sSf --connect-timeout ", to_string(second_count(s: gunbc_ci_sm_connect_timeout)),
-    " --max-time ", to_string(second_count(s: gunbc_ci_sm_max_time)),
-    " -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", url, "\" && ", gunbc_ci_sm_decode_payload_to_file(),
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: NonEmptyStr) -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: gunbc_ci_sm_secret_to_dest_file_command(url: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(dest_path_env as String, "=\"$DEST_FILE\""))) },
-  ]
-}
-
-// THE FAN OBSERVATION'S PRELUDE IS THE SHARED FETCH PLUS ITS OWN FILE NAMES AND TRAP, AND NOTHING
-// ELSE. It needs no SOL capture, no PID file and no second key, because the mode it serves reads
-// sensors and writes nothing - so its trap has three files to remove and no child to kill.
-fn gunbc_ci_mtcollins1_fan_observe_credential_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-fan-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-fan-sm.json\"") },
-    Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\"' EXIT") },
-  ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: mtcollins1_fan_credential_path_env))
-}
-
-
-// THE FAN LANE'S RUNNER IS THE SAME HAND-SHELL CREDENTIAL TRANSPORT ITS TWO SIBLINGS ARE, AND IT
-// CARRIES THE SAME MARKER. It landed without one, which is the failure worth naming rather than
-// quietly fixing: this same change authored the marker twice, for the approval-keyring lane and the
-// boot lane, and dropped it on the third. A rule a diff observes twice and skips once is not a rule
-// anybody is enforcing, and the marker on the carrier IS the authority (gunbc.design_argument::fail_closed, gunbc.design_argument::how_to_work) - so its
-// absence made this lane invisible to every reader counting what still has to dissolve.
-//
-// It shares the boot lane's dissolution trigger because it shares the boot lane's defect: the
-// credential fetch is modeled as PipelineSteps (gunbc_ci_mtcollins1_bmc_credential_fetch_steps) but
-// each step's body is a shell string built by concat, so the transport is hand-authored even though
-// the pipeline around it is not.
-data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci.ci_spec",
-    decl_name: "gunbc_ci_mtcollins1_fan_observe_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite.")
-
-fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
-      prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
-      function: gunbc_ci_mtcollins1_fan_observe_target.function,
-      claim_run: false,
-      receipt_rel: mtcollins1_fan_observation_receipt_path
-    )
-  )
-}
-
-// THE UI-ASSET PROBE RUNS ON THE MODELED BASH ROUTE, exactly like the kvm observer beside it: the
-// credential fetch, the 0600 file, the trap armed BEFORE the credential touches disk, the strict
-// "did the file arrive" check and the invocation itself are all bash_build nodes rendered by
-// v2.workflow.bash_emit - so this step carries no hand-spelled shell and needs no scaffold marker.
-// The stem only names its temp files; the secret is the SAME pinned BMC credential version the fan
-// lane reads, exported through mtcollins1_fan_credential_path_env by
-// gunbc_ci_mtcollins1_probe_credential_statements, and the probe prints that variable's NAME, never
-// its contents. Strict (typed_fetch_failure: false) because this probe has no fetch-status file of its
-// own: an unreadable credential fails closed at the export, and the probe then refuses at its own
-// credential gate without ever contacting the controller.
-fn gunbc_ci_mtcollins1_ui_status_asset_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-status", target: gunbc_ci_mtcollins1_ui_status_asset_observe_target)
-}
-
-// THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit
-// bash_emit_stmts (review 73415): the modeled route the fan lane's marker names as available, so these
-// steps carry no hand-spelled shell and no scaffold marker. Each probe materializes the one pinned BMC
-// credential the fan series and the boot read -- the shared auth-header format, ONE bounded Secret
-// Manager read (gunbc_ci_sm_connect_timeout / gunbc_ci_sm_max_time) and the shared payload decode --
-// into its own 0600 file under RUNNER_TEMP, with the EXIT trap armed before the credential touches
-// disk; the run line is v2.workflow.gunbc_invoke_step_emit gunbc_run_command, the modeled invocation.
-// ONE RENDERING OF bash_build STATEMENTS INTO A STEP'S SCRIPT TEXT, for every runner authored as nodes;
-// a rejected emission renders the refusal poison, never partial text.
-fn gunbc_ci_bash_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  match bash_emit_stmts(statements: stmts, set_e: set_e) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
-  }
-}
-
-fn gunbc_ci_mtcollins1_probe_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  gunbc_ci_bash_rendered(stmts: stmts, set_e: set_e)
-}
-
-fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
-  bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"]))))
-}
-
-fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_failure: Bool) -> List<Node> {
-  // The status file exists only in the typed lane: the strict lanes' trap never mentions it, so
-  // nothing fetch-status-related rides into the KVM observer's script (control:
-  // fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict).
-  let trap_rm_words = if typed_fetch_failure {
-    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "STATUS_FILE")]
-  } else {
-    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]
-  }
-  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: trap_rm_words)], set_e: false)
-  // THE TYPED FORM (reviews 81077 and 81090 finding B): the bounded Secret Manager read and the payload
-  // decode keep their bounds and still fail LOUDLY on a hang (a timeout kills the step under set -e),
-  // but a refused fetch - non-zero curl, undecodable payload - reports itself through a SIBLING STATUS
-  // FILE ("ok" / "fetch-failed") and DELETES the credential file on refusal. The credential carrier
-  // never holds anything but a credential: a fabricated value inside it would let the observer confuse
-  // "the controller could not be reached" with "the password is this word". The boot-phase entry folds
-  // the status into FanObserveBootPhaseRefused credential=fetch-failed with ExitSuccess, so the step
-  // needs no continue-on-error to keep the boot honest. The status file's name is
-  // mtcollins1_fan_credential_fetch_status_suffix on the module that READS it - writer and reader
-  // share one authority. The untyped form is what the strict lanes -- the KVM observer -- keep: there,
-  // a missing credential must still fail the step by name.
-  let fetch = bcmd(words: [
-    bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-    bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-    bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
-  ])
-  let decode = bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")])
-  let chmod = bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")])
-  let rm_dest = bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "DEST_FILE")])
-  // THE CREDENTIAL IS NOT A STATUS CARRIER: on refusal the credential file is removed and only the
-  // status file says why, so no consumer can read a value this run did not fetch. The success arm
-  // carries its own chmod and its "ok": a chmod left to run unconditionally would die under set -e on
-  // the refused path, where the credential file was just removed, and the step would fail before the
-  // entry could write a receipt.
-  let fetch_pair = if typed_fetch_failure {
-    bash_build_or_else(
-      left: bash_build_and_then(
-        left: rm_dest,
-        right: bash_build_and_then(
-          left: fetch,
-          right: bash_build_and_then(
-            left: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")),
-            right: bash_build_and_then(
-              left: chmod,
-              right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "ok")]), path: bv(name: "STATUS_FILE")),
-            ),
-          ),
-        ),
-      ),
-      right: bash_build_and_then(
-        left: rm_dest,
-        right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "fetch-failed")]), path: bv(name: "STATUS_FILE")),
-      ),
-    )
-  } else {
-    bash_build_and_then(left: fetch, right: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")))
-  }
-  let head = [
-    bcmdl(lits: ["set", "-euo", "pipefail"]),
-    bcmdl(lits: ["umask", "077"]),
-    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
-    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
-    bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
-  ]
-  // THE TRAP MUST NEVER MEET AN UNSET VARIABLE (the cleanup trap is nounset-unsafe as it was
-  // installed): set -u is already on, so an EXIT trap naming $STATUS_FILE while it is still unset
-  // aborts the trap BEFORE rm runs - and the window between the trap and the header write is exactly
-  // where a bearer-token temp file exists. So every name the trap reads is assigned first, the status
-  // included, and any status file a previous attempt left behind is removed at the start of this
-  // attempt, so a stale "ok"/"fetch-failed" can never answer for a fetch that has not run yet. The
-  // strict (KVM) lane names no STATUS_FILE anywhere - trap included.
-  let typed_head = concat(head, [
-    bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])),
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "STATUS_FILE")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-  ])
-  let strict_head = concat(head, [
-    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-  ])
-  // The status assignment now lives in the typed head, before the trap; past the head the typed lane
-  // is just the fetch, while the strict lane still carries the trailing chmod its fetch does not own.
-  let middle = if typed_fetch_failure { [fetch_pair] } else { [fetch_pair, chmod] }
-  let tail = [
-    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
-    gunbc_ci_mtcollins1_probe_root_statement(),
-  ]
-  if typed_fetch_failure {
-    concat(concat(typed_head, middle), tail)
-  } else {
-    concat(concat(strict_head, middle), tail)
-  }
-}
-
-fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {
-  gunbc_ci_mtcollins1_probe_invoke_typed(stem: stem, target: target, typed_fetch_failure: false)
-}
-
-fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarget, typed_fetch_failure: Bool) -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: typed_fetch_failure), set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
-  ], "")
-}
-
-// THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
-// taken tag or the host-off unestablished tag exactly (the latter boots only because the post-power-on chassis-fan read gates it) (a prefix or any-line search would admit a refused receipt whose verbatim controller
-// answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
-// output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
-// under always(), so the refused receipt is still kept.
-fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
-  let output_line = bv(name: github_output_variable_name)
-  let receipt = bl(text: mtcollins1_fan_observation_receipt_path)
-  [bash_build_assign(name: "first_line", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmd(words: [bl(text: "head"), bl(text: "-n"), bl(text: "1"), receipt])), right: bcmdl(lits: ["true"])))),
-  bif_else(
-    cond: bash_build_and_then(
-      left: btest(words: [bl(text: "-f"), receipt]),
-      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix), bl(text: "-o"), bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_unestablished_host_off_line)]),
-    ),
-    then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
-    else_stmts: [
-      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))]), path: output_line),
-      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "cat"), receipt]), path: bv(name: "GITHUB_STEP_SUMMARY")),
-      bcmd(words: [bl(text: "echo"), bl(text: "::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller's verbatim answers are in the job summary and the fan-policy-phase-observation artifact")]),
-      bash_build_exit(code: "1"),
-    ],
-  )]
-}
-
-fn gunbc_ci_fan_outcome_line(outcome: String) -> String {
-  join([mtcollins1_fan_boot_phase_outcome_output, "=", outcome], "")
-}
-
-fn gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_invoke_typed(stem: "mtcollins1-fan-boot-phase", target: gunbc_ci_mtcollins1_fan_observe_boot_phase_target, typed_fetch_failure: true),
-    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false), "\n",
-  ], "")
-}
-
-fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-kvm-observer", target: gunbc_ci_mtcollins1_kvm_observer_observe_target)
-}
-
-// THE PROBE'S always() RELEASE needs no credential: it releases the observer process it started and the
-// unit hold only if this run holds it (gunbc.machine_intake.mtcollins1_kvm_observer_observe
-// mtcollins1_kvm_observer_release_wet).
-fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
-  join([
-    gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmdl(lits: ["set", "-euo", "pipefail"]), gunbc_ci_mtcollins1_probe_root_statement()], set_e: false), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_kvm_observer_release_target.entry, function: gunbc_ci_mtcollins1_kvm_observer_release_target.function, claim_run: false), "\n",
-  ], "")
-}
 
 // THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions `run:`
 // step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`, and its own
@@ -3223,14 +2905,6 @@ fn gunbc_ci_spark_serving_apply_invoke() -> String {
 
 fn gunbc_ci_spark_native_serving_apply_invoke() -> String {
   spark_serving_retired_refuse_script
-}
-
-// The Secret Manager access response's payload decoder, one row for the string-built runners and the
-// bash_build one.
-data gunbc_ci_sm_decode_payload_program: String = "import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))"
-
-fn gunbc_ci_sm_decode_payload_to_file() -> String {
-  join(["python3 -c '", gunbc_ci_sm_decode_payload_program, "' \"$RESP_FILE\" > \"$DEST_FILE\""], "")
 }
 
 fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
