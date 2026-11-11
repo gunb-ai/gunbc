@@ -1,0 +1,72 @@
+module test.claim.serving.scratch_merry_dump3
+
+// SCRATCH, NOT FOR MERGE. Word-level probes with the WORD serializer. DELETE when done.
+
+import std.types { String }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import v2.std.diagnostic { diagnostics_reason_lexemes, Outcome }
+import v2.workflow.bash_command_fold_serialize {
+  bash_fold_serialize_node, bash_fold_serialize_word_node,
+}
+import v2.extdeps.languages.bash_build {
+  bash_build_word_bare, bash_build_word_double_quoted, bash_build_word_positional,
+  bash_build_quoted_text, bash_build_word_kinded, bash_build_command_from_lits,
+  bash_build_with_redir_from_file,
+}
+
+fn probe(label: String, outcome: Outcome<String>) -> String {
+  match outcome {
+    Accepted { value: v } => concat(label, concat(" OK[", concat(v, "]\n")))
+    Rejected { diagnostics: d } =>
+      concat(label, concat(" NO[", concat(diagnostics_reason_lexemes(diagnostics: d), "]\n")))
+  }
+}
+
+fn or_node(outcome: Optional<Node>, kind: Symbol, value: String) -> Node {
+  match outcome {
+    Present { value: n } => n
+    Absent => bash_build_word_kinded(kind: kind, value: value)
+  }
+}
+
+fn main() -> CliWireResponse {
+  let pos0 = or_node(outcome: bash_build_word_positional(index: "0"), kind: ^scratch_pos_refused, value: "0")
+  let qt = or_node(outcome: bash_build_quoted_text(text: "abc"), kind: ^scratch_qt_refused, value: "abc")
+  let bare = or_node(outcome: bash_build_word_bare(text: "abc"), kind: ^scratch_bare_refused, value: "abc")
+  let dq_pos = or_node(outcome: bash_build_word_double_quoted(parts: [pos0]), kind: ^scratch_dq_refused, value: "0")
+  let dq_qt = or_node(outcome: bash_build_word_double_quoted(parts: [qt]), kind: ^scratch_dq_refused, value: "abc")
+  let dq_bare = or_node(outcome: bash_build_word_double_quoted(parts: [bare]), kind: ^scratch_dq_refused, value: "abc")
+  let exec_cmd = bash_build_command_from_lits(lits: ["exec"])
+  CliWirePrintable {
+    bytes: concat(
+      concat(
+        concat(
+          concat(
+            concat("W1_POS0 ", probe(label: "", outcome: bash_fold_serialize_word_node(word: pos0))),
+            concat("W2_DQ_POS ", probe(label: "", outcome: bash_fold_serialize_word_node(word: dq_pos)))
+          ),
+          concat("W3_DQ_QT ", probe(label: "", outcome: bash_fold_serialize_word_node(word: dq_qt)))
+        ),
+        concat("W4_DQ_BARE ", probe(label: "", outcome: bash_fold_serialize_word_node(word: dq_bare)))
+      ),
+      concat(
+        concat(
+          "W5_REDIR_DQ_POS ",
+          probe(
+            label: "",
+            outcome: bash_fold_serialize_node(stmt: bash_build_with_redir_from_file(inner: exec_cmd, path: dq_pos))
+          )
+        ),
+        concat(
+          "W6_REDIR_DQ_QT ",
+          probe(
+            label: "",
+            outcome: bash_fold_serialize_node(stmt: bash_build_with_redir_from_file(inner: exec_cmd, path: dq_qt))
+          )
+        )
+      )
+    ),
+    exit: ExitSuccess,
+  }
+}

@@ -1654,7 +1654,7 @@ fn bash_fold_new_concat_parts_productions() -> List<FormalProduction> {
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_positional_all_word)]
     ),
     grammar_formal_production(
-      lhs: ^bash_production_fold_command_words,
+      lhs: ^bash_production_fold_concat_parts,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_positional_word)]
     ),
     grammar_formal_production(
