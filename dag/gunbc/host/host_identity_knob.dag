@@ -1,5 +1,7 @@
 module gunbc.host.host_identity_knob
 
+import std.types { Bool, String }
+import std.change { KeyedLeafVerdict, keyed_three_way_leaf }
 import product.host_identity { HostIdentity }
 
 type HostIdentityHostnameField

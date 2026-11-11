@@ -1,0 +1,122 @@
+module test.claim.runner.srv14_runner_capacity_witness
+
+// BUTCH (srv14) JOINS RUNNER CAPACITY ON MEASURED FACTS ALONE (B3b). Each claim below pins a fact the
+// B3a fold spends for butch and NOTHING ELSE -- no hand width, no borrowed bound, no session charge.
+// The load-bearing one is the third: butch is the first host that joins while it is ALREADY SERVING,
+// so its fixed-overhead bound must exclude the resident bytes its serving engines hold, because the
+// B4a serving reservation charges those engines their cgroup MemoryMax against the same envelope. If
+// the subtraction is ever dropped, butch pays for its engines twice and the width shrinks by ~40 GiB
+// of double charge -- the RED claim sees the bound jump; the saturating arm keeps a self-contradicting
+// read at 0 instead of a negative.
+//
+// WHY THESE AND NOT "the width is N": the width is derived by gunbc.runner.runner_slot_allocation
+// gunbc_runner_committed_width over every axis, and the serving term is B4a's (#16266) -- until that
+// lands there is no charge to pin, and after it lands butch's width FAILS CLOSED until B4b reads the
+// engines' ceilings from the box. Pinning a number here would either be a hand width wearing a
+// derived name or a claim that flips under another lane's merge. What must not move regardless of who
+// lands what: butch's own MemTotal, butch's base-only overhead, the engine subtraction, no session
+// charge (the operator ruled butch CI-only), and butch standing in the fleet's own offer catalog.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.measure { byte_size, byte_size_count }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv1 }
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostFixedOverhead, HostFixedOverheadMeasured }
+import gunbc.host.host_memory_observation {
+  gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for,
+  srv14_memavailable_quiescent_read, srv14_strata_engine_residency_at_read,
+  host_overhead_upper_bound_excluding_serving, HostMemAvailableQuiescentRead, ServingEngineCgroupResidency,
+}
+import gunbc.session_residency { SessionResidency, NoInteractiveSessions, host_session_residency }
+import gunbc.session_reservation_policy { SessionReservationBytesResolution, ReservationBytesNotApplicable, session_reservation_bytes }
+import gunbc.ci.ci_fleet { fleet_compute_offer_for, ComputeOffer }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn butch_usable_ram_bytes() -> Int {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv14) {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    _ => 0
+  }
+}
+
+fn butch_fixed_overhead_bytes() -> Int {
+  match gunbc_ci_host_fixed_overhead_for(host: operator_host_srv14) {
+    HostFixedOverheadMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    _ => 0
+  }
+}
+
+// BUTCH'S USABLE RAM IS ITS OWN KERNEL'S ANSWER, not B1's 256 GiB inventory nominal: 262937528 kB,
+// read from /proc/meminfo over SSH by the B3b bring-up. An unmeasured host yields 0 here (the refused
+// arms), which this claim separates from the measurement on purpose.
+test fn butch_usable_ram_is_its_own_memtotal_read() -> Bool {
+  butch_usable_ram_bytes() == 269248028672
+}
+
+// BUTCH'S OVERHEAD IS BASE RESIDENCY ONLY: 4842987520 bytes (~4.51 GiB) = the same-instant pair
+// (MemTotal 262937528 kB minus the MemAvailable high-water 218754516 kB) minus BOTH Strata engine
+// cgroups' anon+shmem. It is a measurement, not an allowance: the allowed arms yield 0 here too.
+test fn butch_fixed_overhead_is_base_residency_measured() -> Bool {
+  butch_fixed_overhead_bytes() == 4842987520
+}
+
+// THE LOAD-BEARING RED. The recorded pair, with the engines EXCLUDED, is 4842987520 -- the dispatch
+// spends exactly this. Re-running the same read with an EMPTY engine list is the drop-the-subtraction
+// future: the bound jumps to the full resident 45243404288, i.e. the engines' ~40 GiB is charged a
+// second time on top of B4a's MemoryMax reservation. And an engine sum that exceeds the resident
+// bytes -- a read that contradicted itself -- saturates to 0 rather than wrapping. If someone claims
+// "the subtraction is double counting, drop it", this claim fails at the jump.
+test fn butch_overhead_subtracts_its_serving_engines_RED() -> Bool {
+  let with_engines = host_overhead_upper_bound_excluding_serving(
+    read: srv14_memavailable_quiescent_read,
+    engines: srv14_strata_engine_residency_at_read,
+  )
+  let without_engines = host_overhead_upper_bound_excluding_serving(
+    read: srv14_memavailable_quiescent_read,
+    engines: [] as List<ServingEngineCgroupResidency>,
+  )
+  let overstated_engines = [
+    ServingEngineCgroupResidency { unit: "strata-pool@a.service", anon: byte_size(40000000000), shmem: byte_size(40000000000) },
+  ]
+  let contradicted = host_overhead_upper_bound_excluding_serving(
+    read: srv14_memavailable_quiescent_read,
+    engines: overstated_engines,
+  )
+  byte_size_count(b: with_engines) == 4842987520
+    && byte_size_count(b: without_engines) == 45243404288
+    && byte_size_count(b: without_engines) == 4842987520 + 40400416768
+    && byte_size_count(b: contradicted) == 0
+}
+
+// BUTCH IS CI-ONLY BY OPERATOR RULING, and the ruling is carried as declared-absent residency: the
+// session axis charges NOTHING (NotApplicable), rather than borrowing some session bound. srv1 keeps
+// charging its sessions (the negative control: an interactive host does NOT come out NotApplicable).
+test fn butch_is_ci_only_and_charges_no_session_reservation() -> Bool {
+  match host_session_residency(host: operator_host_srv14) {
+    NoInteractiveSessions =>
+      match session_reservation_bytes(host: operator_host_srv14) {
+        ReservationBytesNotApplicable =>
+          match session_reservation_bytes(host: operator_host_srv1) {
+            ReservationBytesNotApplicable => false
+            _ => true
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// BUTCH STANDS IN THE FLEET'S OWN OFFER CATALOG (the B3a fold iterates fleet_intent_offers, which
+// filters the catalog by ci_runner enrollment): no offer, no fold entry, no capacity -- and the offer
+// carries no hand slot cap, so the only width butch can ever have is the derived one.
+test fn butch_offer_is_in_the_fleet_catalog() -> Bool {
+  match fleet_compute_offer_for(host: operator_host_srv14) {
+    Present { value: o } =>
+      (o.provider as String) == "gunbc-operator-srv14"
+        && (o.supply.physical.identity as String) == (operator_host_srv14 as String)
+    Absent => false
+  }
+}
