@@ -77,40 +77,51 @@ fn row_line(n: RoadmapNode) -> String {
   ], "")
 }
 
-// The log's retired set, refused as an empty list: this probe MEASURES and prints what it found, and
-// a refusal prints as `active retired 0` beside a frontier it could not check — so the refusal is
-// stated in the file's own words above. The projections that gate real work refuse instead
-// (gunbc.roadmap.roadmap_authority frontier_sets_projection); only an instrument may degrade.
-fn roadmap_retired_node_ids_or_empty() -> List<RoadmapNodeId> {
-  match roadmap_retired_node_ids_load() {
-    RetiredNodeIdsLoaded { ids: ids } => ids
-    RetiredNodeIdsRefused { detail: _ } => []
-  }
-}
-
-fn active_nodes_or_empty() -> List<RoadmapNode> {
-  match active_roadmap_nodes_projection() {
-    ActiveRoadmapNodesProjected { nodes: ns } => ns
-    ActiveRoadmapNodesProjectionRefused { detail: _ } => []
-  }
-}
-
+// EVERY NUMBER THIS PROBE PRINTS IS ONE IT READ. Both readers answer with a verdict, and a verdict that
+// refused is printed as the refusal it is — never as 0. gunbc.design_argument::fail_closed: "a failure arm
+// refuses, never widens", and the stronger line under it, that making the wrong statement unwritable beats
+// catching it. An instrument may show less than it was asked for; it may not show a fact it did not
+// observe, because a `0` in a measurement line is read as a measurement. (The two `or_empty` helpers this
+// replaces did exactly that — one of them added by this change, one pre-existing — and the comment on the
+// retired one claimed the refusal was "stated in the file's own words above", which was not true anywhere in
+// this file. The projections that gate real work have always refused: gunbc.roadmap.roadmap_authority
+// frontier_sets_projection.)
 fn probe() -> ProcessExit {
   let declared = declared_roadmap_nodes()
-  let active = active_nodes_or_empty()
   let declared_bad = filter(declared, n => !admissible(n: n))
-  let active_bad = filter(active, n => !admissible(n: n))
-  let retired = roadmap_retired_node_ids_or_empty()
-  let active_retired = filter(active, n => any(retired, r => (r as String) == (n.node as String)))
+  let active = active_roadmap_nodes_projection()
+  let retired = roadmap_retired_node_ids_load()
   let body = join([
     "ROADMAP DENOMINATOR PROBE\n",
     "  declared          ", to_string(count(declared)), "\n",
-    "  active            ", to_string(count(active)), "\n",
     "  declared inadmissible ", to_string(count(declared_bad)), "\n",
-    "  active inadmissible   ", to_string(count(active_bad)), "\n",
-    "  active retired        ", to_string(count(active_retired)), "\n",
+    match active {
+      ActiveRoadmapNodesProjected { nodes: ns } => join([
+        "  active            ", to_string(count(ns)), "\n",
+        "  active inadmissible   ", to_string(count(filter(ns, n => !admissible(n: n)))), "\n",
+        "  active retired        ", match retired {
+          RetiredNodeIdsLoaded { ids: ids } =>
+            to_string(count(filter(ns, n => any(ids, r => (r as String) == (n.node as String)))))
+          RetiredNodeIdsRefused { detail: detail } => join([
+            "REFUSED — ", detail,
+            " (not measured: a 0 in this line would be a number this probe never read)"], "")
+        }, "\n",
+      ], "")
+      ActiveRoadmapNodesProjectionRefused { detail: detail } => join([
+        "  active            REFUSED — ", detail, "\n",
+        "  active inadmissible   REFUSED — ", detail, "\n",
+        "  active retired        REFUSED — ", detail,
+        " (no active set was read, so none of the three active figures is a measurement)\n",
+      ], "")
+    },
     "ACTIVE AND INADMISSIBLE:\n",
-    join(map(active_bad, n => row_line(n: n)), ""),
+    match active {
+      ActiveRoadmapNodesProjected { nodes: ns } =>
+        join(map(filter(ns, n => !admissible(n: n)), n => row_line(n: n)), "")
+      ActiveRoadmapNodesProjectionRefused { detail: detail } => join([
+        "  REFUSED — ", detail,
+        " (the list would be empty because nothing was read, not because nothing is wrong)\n"], "")
+    },
   ], "")
   let w = Filesystem.Write(path: "target/roadmap-denominator-probe.txt", content: body)
   if w.success { ExitSuccess } else { exit_failure(reason: body) }
