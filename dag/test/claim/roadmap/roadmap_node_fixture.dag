@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_con
 // (gunbc.roadmap.roadmap_authority roadmap_node). Production has a single node constructor with optional
 // dispatch facts; witnesses that plant many rows name the shapes they plant here instead of
 // repeating every field. Two families, and the difference is the readiness they plant:
-// - the unbound shapes (fx_authored, fx_ticket_row, fx_superseded) supply no dispatch facts, so the
+// - the unbound shapes (fx_authored, fx_ticket_row) supply no dispatch facts, so the
 //   readiness predicate reads them NOT READY on every fact;
 // - the bound shapes (fx_authored_wi, fx_derivable_wi, fx_ticket_wi) plant a COMPLETE node -- a root
 //   of its own fixture graph, centered, bound to the canary's closing contract -- so its readiness

@@ -8,7 +8,7 @@ import gunbc.site.document { SiteStyles, site_styles, site_styles_css, site_styl
 
 import gunbc.roadmap.roadmap_project { membership_index }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_roadmap_page, fx_authority_subtree_daily_page, fx_multi_parent_ids, fx_live_project_ids }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi }
 
 import gunbc.roadmap.roadmap_spawner { doc_all_edges }
 
@@ -455,19 +455,13 @@ test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool {
   }
 }
 
-fn superseded_dispatch_node() -> RoadmapNode {
-  fx_superseded(identity: "rnfx_8MRNSMQ6RXCDT2FC8ZKY", id: "disp1", by: "successor-lane", content: "dispatch-me")
-}
-
-test fn witness_superseded_node_marked_no_button() -> Bool {
-  match dispatch_doc_html_for(rn: superseded_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "node node-superseded")
-        && string_contains(s: h, pattern: "→ successor-lane")
-        && !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
-  }
-}
+// witness_superseded_node_marked_no_button and its fixture went with the per-node SupersededLine
+// (operator ruling gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08). A page can
+// no longer render a node as superseded from its own row: the only thing that closes a node is the
+// event log, and a node the log has retired is not in the plan the page is built from, so there is
+// no card left to mark and no dispatch button to omit. That fact is claimed where it lives —
+// test.claim.roadmap.roadmap_event_log_witness::a_retired_node_leaves_the_plan_the_way_an_accepted_one_does
+// — and dispatch eligibility itself is claimed in test.claim.roadmap.roadmap_dispatch_actuator_witness.
 
 data readable_witness_enrollment_note: String = "The six readability witnesses below (raw-text style serialization, chip min-width, container centering, the <details> disclosure, the dispatch accent) were authored with the fixes they verify but never bundled into this file's only `test fn`, and discovery keys on the `test fn `/`test data ` prefix — so they had ZERO executing consumers and CI was blind to the exact regressions they were written to catch. Proven by execution rather than by reading, 2026-07-24: reverting `.status` min-width back to width (the original defect) left roadmap_page_keystone_holds returning true. That is the orphaned-enrollment shape DESIGN calls coverage by illusion, and an inert witness is a lie about coverage, so they are enrolled here. Every witness in this file is now reachable from this one entry; adding an unbundled `fn witness_*` is the defect to look for in review."
 

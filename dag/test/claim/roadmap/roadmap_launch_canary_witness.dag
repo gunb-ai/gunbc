@@ -257,6 +257,13 @@ fn lifecycle_is_done(l: WorkLifecycle) -> Bool {
   }
 }
 
+// This fixture's event log holds no retirements. Retirement is a log fact and not a line a node
+// carries (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08), so the population
+// the three lifecycle states above reason over has nothing retired — which is why those states do
+// not close the dependency. The reader that decides is named at its definition:
+// gunbc.roadmap.roadmap_authority::roadmap_retired_node_ids_load.
+fn canary_log_holds_none_retired() -> List<RoadmapNodeId> { [] }
+
 fn child_blocked_under(parent: RoadmapNode) -> Bool {
   blocked_exactly_by(
     doc: canary_doc(nodes: [parent, canary_child()], edges: [roadmap_launch_canary_edge()]),
@@ -270,7 +277,7 @@ fn child_blocked_under(parent: RoadmapNode) -> Bool {
 test fn witness_canary_merged_unaccepted_parent_keeps_child_blocked() -> Bool {
   let parent = canary_parent_derivable()
   lifecycle_is_review(l: work_lifecycle(rn: parent, merged: [1]))
-    && !node_closes_dependency(n: parent)
+    && !node_closes_dependency(retired: canary_log_holds_none_retired(), n: parent)
     && child_blocked_under(parent: parent)
 }
 
@@ -280,7 +287,7 @@ test fn control_unmerged_parent_is_open_not_review() -> Bool {
   let parent = canary_parent_derivable()
   lifecycle_is_open(l: work_lifecycle(rn: parent, merged: []))
     && !lifecycle_is_review(l: work_lifecycle(rn: parent, merged: []))
-    && !node_closes_dependency(n: parent)
+    && !node_closes_dependency(retired: canary_log_holds_none_retired(), n: parent)
     && child_blocked_under(parent: parent)
 }
 
@@ -293,9 +300,19 @@ test fn witness_canary_three_lifecycle_states_are_distinct() -> Bool {
     && lifecycle_is_review(l: work_lifecycle(rn: open, merged: [1]))
     && lifecycle_is_done(l: omitted_node_lifecycle(rn: open, merged: [1], accepted: true))
     && !lifecycle_is_done(l: work_lifecycle(rn: open, merged: [1]))
-    && !node_closes_dependency(n: open)
+    && !node_closes_dependency(retired: canary_log_holds_none_retired(), n: open)
     && child_blocked_under(parent: open)
     && is_ready(doc: canary_graph_parent_accepted(), id: roadmap_launch_canary_child_node_id())
+}
+
+// The same law's other arm, at the spawner grain: the log's Retired event is what closes a
+// dependency edge. One fixture, two populations — the parent closes the edge exactly when the log
+// holds it retired — so the predicate cannot be a restatement of "the row says closed", and it
+// cannot be satisfied by a node that merely looks terminal.
+test fn witness_canary_a_retired_parent_closes_the_dependency_and_an_unretired_one_does_not() -> Bool {
+  let parent = canary_parent_derivable()
+  node_closes_dependency(retired: [parent.node], n: parent)
+    && !node_closes_dependency(retired: canary_log_holds_none_retired(), n: parent)
 }
 
 // Falsifier (a): delete the dependency edge -> the child no longer produces the blocked decision.

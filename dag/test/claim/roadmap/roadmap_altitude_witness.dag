@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_page { roadmap_page_launch_with_stylesheet }
 import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_model { RoadmapNode, section_group }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_superseded }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -80,13 +80,6 @@ fn doc_html(nodes: List<RoadmapNode>) -> String {
   }
 }
 
-// The routine fixture is a superseded row: a node definition carries no acceptance, so an accepted
-// node never reaches this renderer (the acceptance history removes it from the plan first), and
-// superseded is the routine status a definition can still state.
-fn routine_node() -> RoadmapNode {
-  fx_superseded(identity: "rnfx_2K15QJ1CVZY55K15AHJK", id: "alt-done", by: "alt-successor", content: "finished work")
-}
-
 fn open_node() -> RoadmapNode {
   fx_authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", content: "working item")
 }
@@ -99,19 +92,30 @@ fn open_node() -> RoadmapNode {
 // lesson, kept: a done-but-unaccepted node renders review (the acceptance gate), and review is
 // WORKING under the law — the operator's pending gesture holds a section open, which is the
 // attention law agreeing with the acceptance discipline rather than a coincidence. Routine therefore
-// requires a closed fixture, and the one closed status a node definition states is superseded.
+// requires a closed status — and no node definition can state one. Acceptance and retirement are facts
+// of the event log, and a node the log has closed leaves the plan this renderer is built from
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08), so the fold arm is claimed
+// below at the grain the law is written at, the statuses the projection reports, while the page keeps
+// the arms it can still be shown.
 
-test fn altitude_routine_section_folds() -> Bool {
-  let folded = doc_html(nodes: [routine_node()])
-  return string_contains(s: folded, pattern: "<details class=\"section-fold\">")
-    && !string_contains(s: folded, pattern: "<details class=\"section-fold\" open=\"\">")
-    && string_contains(s: folded, pattern: "1 superseded")
+// The fold arm at the status grain, where the law actually lives: what the projection reports as
+// finished is routine, a section of nothing-but-routine folds, and a mixed population does not. The
+// counts come from the same derived wire the renderer prints (roadmap_page.altitude_section), so a
+// status the law mis-files cannot both fold its band and report itself under another label; an
+// unheard-of status is an anomaly, not a quiet fold (gunbc.design_argument::fail_closed).
+test fn altitude_routine_statuses_fold_and_report_their_counts() -> Bool {
+  let wire = section_counts_wire(c: section_counts(statuses: ["done", "superseded"]))
+  return statuses_all_routine(statuses: ["done", "superseded"])
+    && string_contains(s: wire, pattern: "1 done")
+    && string_contains(s: wire, pattern: "1 superseded")
+    && !statuses_all_routine(statuses: ["done", "open"])
+    && !statuses_all_routine(statuses: ["unheard_of"])
 }
 
 test fn altitude_working_member_holds_section_open() -> Bool {
-  let held = doc_html(nodes: [routine_node(), open_node()])
+  let held = doc_html(nodes: [open_node()])
   return string_contains(s: held, pattern: "<details class=\"section-fold\" open=\"\">")
-    && string_contains(s: held, pattern: "1 open · 1 superseded")
+    && string_contains(s: held, pattern: "1 open")
 }
 
 // The client chain proven derived, both directions: the derived key set is exactly the anomaly bands (order from the wire rows), the emitted asset carries the chain over those keys plus the disclosure flip, and the negative arm pins that no non-expanding band appears in an expand test — the exact defect a hand-authored chain would plant.

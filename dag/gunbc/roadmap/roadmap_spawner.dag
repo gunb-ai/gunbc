@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_model {
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
   section_group, roadmap_nodes_by_id, roadmap_nodes_with_id, roadmap_parent_index, roadmap_parent_ids_in,
+  roadmap_node_ids_contain,
 }
 import std.types { Map }
 import std.algebra { empty_map, map_insert, map_lookup }
@@ -177,6 +178,18 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
 
 fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> Bool {
   count(roadmap_parent_ids(edges: edges, node: id)) == 0
+}
+
+// A node CLOSES a dependency edge — the work it was blocking is handed off rather than waited on —
+// when the roadmap event log has taken it off the plan as retired: its successor owns the work.
+// The ids come from the ONE reader the plan projection itself uses,
+// gunbc.roadmap.roadmap_authority::roadmap_retired_node_ids_load, so the closure rule and the plan
+// cannot ever disagree about which nodes are gone; a caller that reads them from anywhere else, or
+// that reads an absent list as "nothing is retired" when that reader refuses, is the second home the
+// ruling deletes (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08). The caller
+// matches the reader's loaded/refused shape; this predicate stays total over the ids it was given.
+fn node_closes_dependency(retired: List<RoadmapNodeId>, n: RoadmapNode) -> Bool {
+  roadmap_node_ids_contain(ids: retired, node: n.node)
 }
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
