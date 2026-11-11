@@ -546,8 +546,7 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
     feeds: "dispatch_stage with STAGE_LOCK removed from its environment, so the boundary would silently not exist"
     must: "refuse"
     refusal_text: "the exclusive-dispatch fence would have no path"
-  }
-,
+  },
   CutoverWitnessCase {
     name: "dispatch_refuses_a_run_at_the_same_revision_from_another_ref"
     carrier: dispatch_witness_carrier
