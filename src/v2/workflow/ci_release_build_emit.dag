@@ -1,6 +1,6 @@
 module v2.workflow.ci_release_build_emit
 
-import gunbc.ci.ci_spec {
+import gunbc.ci.ci_release_build {
   ci_floor_build_verify_stmt,
   ci_release_build_line,
   ci_emitted_release_build_line
