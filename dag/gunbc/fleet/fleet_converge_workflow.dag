@@ -1422,11 +1422,6 @@ fn fleet_converge_reset_subject_map_json() -> String {
 // Binding the mutating ingresses to that lease closes the observer side and this row becomes belt
 // rather than braces; until then the observer exposure is real and undefended, and saying so is the
 // difference between a declared gap and the silent one review 62030 found.
-// THE FIELD THAT NAMES THE MACHINE BEING ACTED UPON, spelled once. Modes whose subject is their executor
-// key their mutation domain to `host`; a mode whose job runs somewhere else has to name the machine it
-// mutates separately, and this is the field it does that with.
-data fleet_converge_subject_host_input_name: NonEmptyStr = "subject_host"
-
 data fleet_converge_reset_subject_mutation_concurrency_group_expression: String = join([
   fleet_host_mutation_group_prefix, "${{ fromJSON('",
   fleet_converge_reset_subject_map_json(),
@@ -2086,13 +2081,14 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 type FleetMutationDomain
   = SubjectDomain { group: String }
   | ExecutorDomain
-  // THE MODE MUTATES A MACHINE IT DOES NOT RUN ON, and the dispatch names that machine in
-  // `fleet_converge_subject_host_input_name` rather than in `host`. Keying such a job to the executor would
-  // let two modes change one machine's identity at the same time -- which is the only thing the host
-  // mutation group exists to prevent. gunbc.host.host_hostname_converge is the first inhabitant: its job
-  // runs on a peer and its subject is the host being renamed.
-  | SubjectHostDomain
-  | TargetHostDomain
+  // THE MODE MUTATES A MACHINE IT DOES NOT RUN ON. `host` names the executor, so grouping such a job on it
+  // would let two modes change one machine's identity at the same time -- the only thing the host mutation
+  // group exists to prevent. WHICH dispatch row carries that machine's name is data, not a second domain:
+  // `target` for the Spark-shaped row that named this arm, `subject_host` for gunbc.host.host_hostname_converge
+  // (whose job runs on a peer and whose subject is the host being renamed). One arm, one group shape -- prefix
+  // plus the machine's name -- so a mode cannot be serialized on a field other than the one its subject is
+  // named in, and no mode needs to invent a name for the same domain.
+  | TargetHostDomain { field: NonEmptyStr }
   | OwnRunConfined
 
 fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
@@ -2123,7 +2119,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkGrantsObserve => ExecutorDomain
     RlmLaunchDeploymentReceipt => ExecutorDomain
     HostResetReturn => ExecutorDomain
-    HostnameConverge => SubjectHostDomain
+    HostnameConverge => TargetHostDomain { field: hostname_converge_target_input_name }
     RunnerHostFileObserve => ExecutorDomain
     HostMemoryObserve => OwnRunConfined
     MicrovmSlotReserve => ExecutorDomain
@@ -2196,7 +2192,9 @@ fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: Stri
   match fleet_converge_mode_mutation_domain(mode: mode) {
     SubjectDomain { group: g } => g
     ExecutorDomain => join([fleet_host_mutation_group_prefix, host], "")
-    TargetHostDomain => join([fleet_host_mutation_group_prefix, target], "")
+    // The fold is the test-time model: the caller hands it the name of the machine acted upon (in `target`),
+    // and the arm says which dispatch row supplies that name in the emitted file.
+    TargetHostDomain { field: _ } => join([fleet_host_mutation_group_prefix, target], "")
     OwnRunConfined => join([fleet_own_run_group_prefix, run_id], "")
   }
 }
@@ -2216,12 +2214,11 @@ fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
     ExecutorDomain => ""
     // The group VALUE is the prefix followed by the machine's name, so a mode that names that machine in a
     // different field still lands in the same group as every job that mutates it. Built through
-    // `extdeps.github.expressions` over the one prefix and the one field name, because the field a mode is
+    // `extdeps.github.expressions` over the one prefix and the arm's own field, because the field a mode is
     // grouped on is the field that decides which machine gets renamed -- a typo there is a job that never
-    // collides with anything, which is exactly what a green run would not show.
-    SubjectHostDomain =>
-      join([when, fleet_converge_host_mutation_group_for(field: fleet_converge_subject_host_input_name), " || "], "")
-    TargetHostDomain => join([when, "format('", fleet_host_mutation_group_prefix, "{0}', github.event.inputs.target) || "], "")
+    // collides with anything, which is exactly what a green run would not show. (This arm used to compose the
+    // string `github.event.inputs.target` by hand, which no mode can reach: no mode declared it.)
+    TargetHostDomain { field: f } => join([when, fleet_converge_host_mutation_group_for(field: f), " || "], "")
     OwnRunConfined => join([when, "format('", fleet_own_run_group_prefix, "{0}', github.run_id) || "], "")
   }
 }
@@ -7666,7 +7663,7 @@ data fleet_converge_host_input: DispatchInput = DispatchInput {
   }
 
 data fleet_converge_subject_host_input: DispatchInput = DispatchInput {
-    name: fleet_converge_subject_host_input_name as String,
+    name: "subject_host",
     description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
     required: false,
     default: none,
@@ -8668,7 +8665,7 @@ data fleet_converge_hostname_converge_apply_gate: Expression = LogicalOr {
 data fleet_converge_hostname_converge_apply_step_if: String = serialize_expression(
   expression: LogicalAnd {
     left: fleet_converge_dispatch_mode_is(mode: HostnameConverge),
-    right: fleet_converge_hostname_converge_confirm_gate,
+    right: fleet_converge_hostname_converge_apply_gate,
   },
 )
 
