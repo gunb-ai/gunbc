@@ -157,8 +157,8 @@ fn dependency_blockers_of(g: ReadinessGap) -> List<String> {
 
 fn is_ready(
   doc: RoadmapDocument,
-  accepted: [RoadmapNodeId],
-  withheld: [RoadmapNodeId],
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
   id: RoadmapNodeId,
 ) -> Bool {
   let frontier = spawn_frontier(doc: doc, merged: [], accepted: accepted, withheld: withheld)
