@@ -1,6 +1,7 @@
 module test.claim.host.host_standup_spine_witness
 
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet.fleet_enrollment { hosts_enrolled_for, CiRunnerParticipation }
 import std.measure { Millisecond, millisecond }
 import gunbc.host.host_standup { host_standup_gap_count, host_standup_gap_count_at_actuation_verdict }
 import gunbc.host.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
@@ -161,12 +162,16 @@ test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
 }
 
 test fn srv3_live_fleet_offer_carries_ci() -> Bool {
-  // 4 -> 6, corrected on this branch (the B3b pin said 5 and was wrong): the filter that builds
-  // fleet_intent_offers admits every catalog offer whose host is CiRunnerParticipation-enrolled,
-  // and the enrollment root (gunbc.fleet.fleet_enrollment fleet_enrollments) carries srv1-srv4,
-  // srv14 AND mtcollins1 -- all six catalog offers pass. The original 4 predated mtcollins1_offer;
-  // the B3b 5 predated noticing mtcollins1's enrollment row. Executed green on this head.
-  fleet_intent_offers.length() == 6
+  // NO COUNT PIN (parent ruling on this branch, after the #16313 pin '== 5' shipped already
+  // wrong and a correction '== 6' was likewise a copied-from-the-tree number): a literal length
+  // is a change-detector -- fail_closed forbids it -- and it drifted twice (mtcollins1 enrolled,
+  // then srv14). The join is stated by IDENTITY instead: the hosts carrying a fleet intent offer
+  // are exactly the hosts enrolled for CiRunnerParticipation, compared host-to-host, and srv3 --
+  // the host this witness is about -- is named by its declaration, not counted.
+  let offer_hosts = map(fleet_intent_offers, o => o.supply.physical.identity as String)
+  let enrolled_ci_hosts = map(hosts_enrolled_for(wanted: CiRunnerParticipation), h => h as String)
+  all(offer_hosts, i => any(enrolled_ci_hosts, h => h == i))
+    && all(enrolled_ci_hosts, h => any(offer_hosts, i => i == h))
     && srv3_offer.supply.physical.identity == operator_host_srv3
 }
 
