@@ -13,6 +13,8 @@ import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 import std.algebra { collection_concat_shape, list_push }
+import std.optional { Absent, Present }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
 // QUARANTINED LEGACY LIFECYCLE (machine-intake ruling 2026-08-29, answer (b)).
 // FactoryDefault -> CredentialsRotated -> OsInstalled -> FabricJoined is a
@@ -220,7 +222,9 @@ type BmcOnboardingPlan {
   bmc: BmcEndpoint
   redfish_system_id: NonEmptyStr
   factory_login: FactoryLogin
-  secret_name: NonEmptyStr
+  // Derived from the machine's registry name via bmc_admin_secret_id (2.3); Absent when the machine has
+  // no registry row, and the caller refuses rather than substituting an id (fail_closed).
+  secret_name: NonEmptyStr?
   rotated_account_role: RedfishAccountRole
   start_phase: BmcOnboardingPhase
 }
@@ -231,6 +235,22 @@ fn bmc_plan_steady_state_phase(plan: BmcOnboardingPlan) -> BmcOnboardingPhase {
 
 fn bmc_plan_steady_state_posture(plan: BmcOnboardingPlan) -> BmcCredentialPosture {
   bmc_phase_credential_posture(phase: bmc_plan_steady_state_phase(plan: plan))
+}
+
+// THE ADMIN-CREDENTIAL SECRET ID, DERIVED FROM THE MACHINE'S NAME IN THE REGISTRY -- the one derivation
+// site for this kind (gunbc.plans.fleet_machine_authority 2.3, "the admin id"; lifted out of
+// altra_onboarding_plan's old concat so the IAM binding rows in gunbc.assimilate.bmc_token_federation and
+// gunbc.auth.fleet_secret_accessor_roster share it). It is `bmc-<name>-admin`, where <name> is the
+// machine's human name read out of gunbc.hostname_allocation.fleet_machine_registry, never the handle cast
+// (D12: a handle is opaque, and today it equals the name -- reading it would keep an old form after a
+// rename). A machine the registry does not know returns Absent; the caller refuses with its own cause
+// rather than substituting an id (gunbc.design_argument::fail_closed). Renaming a fleet machine in the
+// registry renames this secret through this one function and nothing may keep the old form.
+fn bmc_admin_secret_id(machine: HostIdentity) -> NonEmptyStr? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
+    Absent => Absent
+    Present { value: name } => Present { value: concat("bmc-", name as String, "-admin") as NonEmptyStr }
+  }
 }
 
 // ONE HOST CARRIER, EVERY NAME DERIVED FROM IT. The plan carries the fleet host identity beside its
@@ -244,7 +264,7 @@ fn altra_onboarding_plan(host: HostIdentity, bmc_host: NonEmptyStr) -> BmcOnboar
     bmc: BmcEndpoint { host: bmc_host, protocol: Redfish },
     redfish_system_id: asrock_altrad8ud_redfish_system_id,
     factory_login: openbmc_factory_login,
-    secret_name: concat("bmc-", host as String, "-admin") as NonEmptyStr,
+    secret_name: bmc_admin_secret_id(machine: host),
     rotated_account_role: AccountRoleAdministrator,
     start_phase: FactoryDefault,
   }

@@ -140,8 +140,9 @@ fn bmc_health_reader_converge(plan: BmcOnboardingPlan) -> ProcessExit
     AccessTokenSourceSelected { source: s } => match ensure_access_token(source: s) {
       AccessTokenUpsertRequired { plan: p } => return exit_failure(reason: access_token_upsert_required_reason(plan: p))
       AccessTokenEnsureRefused { reason: r } => return exit_failure(reason: r as String)
-      AccessTokenReady { token: t } =>
-        match bmc_custody_credential(secret_id: onboarding_secret_id(plan: plan), token: t) {
+      AccessTokenReady { token: t } => match onboarding_secret_id(plan: plan) {
+        Absent => return exit_failure(reason: "reader: the onboarding host has no machine in the hostname registry, so its admin secret id cannot be derived")
+        Present { value: onboarding_secret } => match bmc_custody_credential(secret_id: onboarding_secret, token: t) {
           CustodyCredentialAbsent => return exit_failure(reason: concat("reader: the administrator credential is not in custody for ", plan.bmc.host as String))
           CustodyCredentialUnreadable { cause: c } => return exit_failure(reason: concat("reader: the administrator credential could not be read from custody: ", c))
           CustodyCredentialHeld { password: admin_password } =>

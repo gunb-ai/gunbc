@@ -111,7 +111,7 @@ test fn a_login_that_was_never_attempted_is_not_a_refused_password() -> Bool {
 // same fleet host, so no argument can pair one host's secret with another's BMC (review 67867).
 test fn every_name_a_plan_uses_derives_from_its_one_host() -> Bool {
   srv3_onboarding_plan.host == operator_host_srv3
-    && srv3_onboarding_plan.secret_name == "bmc-srv3-admin"
+    && srv3_onboarding_plan.secret_name == Present { value: "bmc-srv3-admin" }
     && srv3_onboarding_plan.bmc.host == "192.168.1.192"
     && bmc_health_reader_secret_id(host: srv4_onboarding_plan.host) == Present { value: "bmc-srv4-health-reader" }
     && srv4_onboarding_plan.bmc.host == "192.168.1.195"
