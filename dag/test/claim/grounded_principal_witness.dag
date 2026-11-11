@@ -178,7 +178,12 @@ test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
 }
 
 fn witness_srv1_job_principal_resolves_from_runner() -> Bool {
-  match fleet_deploy_job_principal(runner: srv1_ci_deploy_runner_principal) {
+  // The srv1 runner principal (unit_user root, job_user ghrunner) -- the same shape the generalized
+  // deploy_runner_principal_rows carry for srv1 (the row itself is witnessed in
+  // test.claim.fleet.fleet_access_template_witness). Here we only pin that fleet_deploy_job_principal
+  // resolves the job_user to the roster's ghrunner, never to a fabricated principal.
+  let srv1 = DeployRunnerPrincipal { unit_user: "root", job_user: "ghrunner" }
+  match fleet_deploy_job_principal(runner: srv1) {
     Present { value: p } => grounded_posix_principal_name(p: p) == "ghrunner"
     Absent => false
   }
@@ -193,10 +198,11 @@ test fn witness_deploy_job_principal_unresolved_refuses_not_maps_ghrunner() -> B
 }
 
 test fn witness_two_phase_principal_derives_job_user() -> Bool {
+  let srv1 = DeployRunnerPrincipal { unit_user: "root", job_user: "ghrunner" }
   witness_srv1_job_principal_resolves_from_runner()
-    && srv1_ci_deploy_runner_principal.unit_user == "root"
-    && srv1_ci_deploy_runner_principal.job_user == "ghrunner"
-    && grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) == srv1_ci_deploy_runner_principal.job_user
+    && srv1.unit_user == "root"
+    && srv1.job_user == "ghrunner"
+    && grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) == srv1.job_user
 }
 
 // The host administrator receipt is srv3's, and the ROLE key cannot be answered without a host.

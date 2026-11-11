@@ -35,7 +35,13 @@ import gunbc.runner.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
+import gunbc.fleet.fleet_posix_accounts {
+  DeployRunnerPrincipal,
+  fleet_posix_root_user,
+  fleet_posix_ci_runner_user,
+  fleet_posix_runner_listener_login,
+}
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, HostEnrollmentIntent, fleet_enrollment_intents, hosts_enrolled_among }
 import std.algebra { Cons, Empty }
 
@@ -316,6 +322,56 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
+}
+
+// THE RUNNER PRINCIPAL, AS ROWS KEYED BY THE MACHINE (was the single srv1_ci_deploy_runner_principal
+// datum in gunbc.fleet.fleet_posix_accounts -- a per-host named declaration, which operator ruling D2
+// forbids). unit_user is the systemd User= of the actions-runner unit (the LISTENER); job_user is the
+// deprivileged workflow principal. The listener's login is the account model's single authority
+// (fleet_posix_runner_listener_login, which gunbc.runner.runner_host_medium re-exports as
+// runner_host_medium_runner_account) -- reused, never re-spelled; the root and ghrunner logins are the
+// account model's authorities, likewise reused. srv1-srv4 KEEP their current listener (root) until each
+// host's own B3d cutover -- the row says so, and the row is where the cutover changes. butch (srv14) names
+// gunbc-runner from the start: it is the CI-only host whose listener is the new account, and the converge
+// creates that account because the host's membership rows name it.
+type DeployRunnerPrincipalRow {
+  host: HostIdentity
+  principal: DeployRunnerPrincipal
+}
+
+data deploy_runner_principal_rows: List<DeployRunnerPrincipalRow> = [
+  // srv1-srv4: listener stays root until that host's B3d cutover.
+  DeployRunnerPrincipalRow {
+    host: operator_host_srv1,
+    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
+  },
+  DeployRunnerPrincipalRow {
+    host: operator_host_srv2,
+    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
+  },
+  DeployRunnerPrincipalRow {
+    host: operator_host_srv3,
+    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
+  },
+  DeployRunnerPrincipalRow {
+    host: operator_host_srv4,
+    principal: DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name },
+  },
+  // butch (srv14): the listener IS the new gunbc-runner account.
+  DeployRunnerPrincipalRow {
+    host: operator_host_srv14,
+    principal: DeployRunnerPrincipal { unit_user: fleet_posix_runner_listener_login, job_user: fleet_posix_ci_runner_user.name },
+  },
+]
+
+// THE RUNNER PRINCIPAL FOR A HOST, read from the rows. An unmodeled host is Absent, not a borrowed
+// neighbour's row -- a host with no row has no listener, and inventing one would deploy a runner onto a
+// machine the fleet never described.
+fn deploy_runner_principal_for(host: HostIdentity) -> DeployRunnerPrincipal? {
+  match filter(deploy_runner_principal_rows, r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => Present { value: r.principal }
+    Absent => Absent
+  }
 }
 
 // A REFUSED HOST IS A THIRD DISPOSITION, NOT A SPELLING OF UNMODELED. srv2 is modeled precisely

@@ -18,6 +18,13 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import std.types { NonEmptyStr, List, String, Bool, Int }
 import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_srv14,
+}
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.effects { ExecuteEffect }
@@ -74,14 +81,16 @@ type DeployRunnerPrincipal {
 }
 
 // Two-phase runner principal (#6096 declared-vs-effective): unit_user is the systemd User= on the
-// actions-runner unit (root on srv1); job_user is the deprivileged effective principal for workflow
-// steps (ghrunner on srv1). Deploy authorization and sudoers roster ground on job_user only — never
-// unit_user.
-
-data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal {
-  unit_user: "root",
-  job_user: "ghrunner",
-}
+// actions-runner unit; job_user is the deprivileged effective principal for workflow steps. Deploy
+// authorization and sudoers roster ground on job_user only — never unit_user.
+//
+// THE PRINCIPAL IS NO LONGER A SINGLE srv1 DATUM. It was `srv1_ci_deploy_runner_principal { unit_user:
+// root, job_user: ghrunner }` -- a per-host named declaration, which operator ruling D2 forbids (per-host
+// declarations are mini forks). It is now ROWS keyed by the HostIdentity handle, in
+// gunbc.runner.runner_host_deploy (deploy_runner_principal_rows / deploy_runner_principal_for). srv1-srv4
+// keep their current listener (root) until each host's own B3d cutover; butch (srv14) names gunbc-runner
+// (fleet_posix_runner_listener_login, below, which the runner module re-exports). fleet_deploy_job_principal
+// below still resolves a job_user to a roster principal, unchanged.
 
 // ONE semantic principal population. The two new arms are PRINCIPAL IDENTITIES, not accounts:
 // they carry policy and no operating-system label, because fleet-automation@gunbc is an SSH key
@@ -114,6 +123,96 @@ type FleetPosixAccountKey
   | FleetAccountPublicationHelper
   | FleetAccountNotificationService
   | FleetAccountDeployJob
+  | FleetAccountRunnerListener
+
+// THE ACCOUNT-KEY LABEL, ONE AUTHORITY BESIDE THE TYPE IT LABELS. A total match over
+// FleetPosixAccountKey elsewhere (boot_image_export_ownership's ownership reporting) reads this, so
+// adding an arm here is the single place that must grow -- the fail-closed gate's own specimen
+// (gunbc.recurring_failure_mode.fail_closed_gate_refuses_its_own_repair) is exactly a label match that
+// grew stale when the enum grew, so the label lives with the enum, not beside one consumer.
+fn fleet_account_key_label(key: FleetPosixAccountKey) -> String {
+  match key {
+    FleetAccountRoot => "root"
+    FleetAccountOperator => "operator"
+    FleetAccountCiRunner => "ci-runner"
+    FleetAccountHostAdministrator => "host-administrator"
+    FleetAccountAutomation => "automation"
+    FleetAccountInferenceService => "inference-service"
+    FleetAccountPublicationHelper => "publication-helper"
+    FleetAccountNotificationService => "notification-service"
+    FleetAccountDeployJob => "deploy-job"
+    FleetAccountRunnerListener => "runner-listener"
+  }
+}
+
+fn fleet_account_key_matches(a: FleetPosixAccountKey, b: FleetPosixAccountKey) -> Bool {
+  fleet_account_key_label(key: a) == fleet_account_key_label(key: b)
+}
+
+// THE RUNNER LISTENER'S LOGIN, ONE LITERAL IN THE ACCOUNT MODEL'S HOME. gunbc-runner is the systemd User= of
+// the actions-runner unit (the listener account, FleetAccountRunnerListener). The runner module already names
+// this account (gunbc.runner.runner_host_medium runner_host_medium_runner_account); that declaration is now a
+// re-export of THIS one, so "gunbc-runner" appears exactly once (gunbc.design_argument::single_authority) and
+// the per-host runner-principal rows -- which live in the runner module and must not import runner_host_medium
+// back (it already reaches the deploy module; the edge would close a cycle) -- can name the listener by
+// importing this authority instead. It is a login name, not a PosixUser: the listener is host-assigned and
+// carries no fixed uid, exactly as the automation and service identities are host-assigned.
+data fleet_posix_runner_listener_login: NonEmptyStr = "gunbc-runner"
+
+// WHICH POSIX ACCOUNTS A HOST CARRIES, AS ROWS KEYED BY THE MACHINE. This is the per-host half of the one
+// access template. The principal->account grants (gunbc.fleet.fleet_ssh_access) say, fleet-wide, whose keys
+// an account TYPE carries; these rows say which account TYPES exist on which machine. The converge creates
+// the accounts a host's rows name, so adding the next machine is adding rows -- never a `host == X` branch
+// or a per-host named declaration (operator ruling D2 in gunbc.plans.fleet_machine_naming: per-host
+// declarations are mini forks). No hostname string appears in a value: the key is the HostIdentity handle.
+//
+// THIS IS THE ACCESS-TEMPLATE MEMBERSHIP VIEW, not the grounding/standing model below (PosixAccountOccurrence
+// and its six-state allocation): that answers "is this account's presence on this host grounded and in what
+// standing", this answers "which accounts does the template provision here". They are kept separate on
+// purpose -- conflating them would make a not-yet-grounded account invisible to the converge that is meant
+// to create it.
+type HostAccountMembership {
+  host: HostIdentity
+  account: FleetPosixAccountKey
+}
+
+data fleet_host_account_memberships: List<HostAccountMembership> = [
+  // srv1: the operator's own host. Its runner listener is STILL root until srv1's own B3d cutover, so the
+  // listener account it carries today is FleetAccountRoot, not the runner-listener identity.
+  HostAccountMembership { host: operator_host_srv1, account: FleetAccountRoot },
+  HostAccountMembership { host: operator_host_srv1, account: FleetAccountOperator },
+  HostAccountMembership { host: operator_host_srv1, account: FleetAccountCiRunner },
+  // srv2: the orchestration host. Listener stays root until its B3d cutover.
+  HostAccountMembership { host: operator_host_srv2, account: FleetAccountRoot },
+  HostAccountMembership { host: operator_host_srv2, account: FleetAccountHostAdministrator },
+  HostAccountMembership { host: operator_host_srv2, account: FleetAccountCiRunner },
+  // srv3, srv4: ubuntu host-administrator and the ci-runner. Listener stays root until each host's B3d.
+  HostAccountMembership { host: operator_host_srv3, account: FleetAccountRoot },
+  HostAccountMembership { host: operator_host_srv3, account: FleetAccountHostAdministrator },
+  HostAccountMembership { host: operator_host_srv3, account: FleetAccountCiRunner },
+  HostAccountMembership { host: operator_host_srv4, account: FleetAccountRoot },
+  HostAccountMembership { host: operator_host_srv4, account: FleetAccountHostAdministrator },
+  HostAccountMembership { host: operator_host_srv4, account: FleetAccountCiRunner },
+  // butch (srv14): the already-installed CI-only witness. Only ubuntu exists today; the converge creates the
+  // ci-runner (ghrunner) and the runner listener (gunbc-runner) precisely because its rows name them.
+  HostAccountMembership { host: operator_host_srv14, account: FleetAccountHostAdministrator },
+  HostAccountMembership { host: operator_host_srv14, account: FleetAccountCiRunner },
+  HostAccountMembership { host: operator_host_srv14, account: FleetAccountRunnerListener },
+]
+
+// THE ACCOUNTS A HOST CARRIES, read from the rows. The fold TAKES the rows, so a caller -- and a witness
+// asking about a fixture host that is not yet in the fleet's own rows -- can resolve any machine's accounts
+// with no code change. That is the whole point of the row model: the fifth host needs rows, not a new fn.
+fn accounts_on_host_among(rows: List<HostAccountMembership>, host: HostIdentity) -> List<FleetPosixAccountKey> {
+  map(
+    filter(rows, row => (row.host as String) == (host as String)),
+    row => row.account,
+  )
+}
+
+fn accounts_on_host(host: HostIdentity) -> List<FleetPosixAccountKey> {
+  accounts_on_host_among(rows: fleet_host_account_memberships, host: host)
+}
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -715,6 +814,19 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: service_name_requirements,
         sudo_grants: fleet_posix_deploy_job_sudo_grants(),
       }
+    // THE RUNNER LISTENER: the systemd User= of the actions-runner unit (DeployRunnerPrincipal.unit_user).
+    // It is a service identity, not a login account and not the CI job user -- the listener accepts the
+    // job, the job user (ghrunner) does the work -- so it holds NO sudo of its own. Its login name is the
+    // runner module's authority (gunbc.runner.runner_host_medium runner_host_medium_runner_account =
+    // "gunbc-runner"), never a second literal here; the account is host-assigned, so it carries policy and
+    // no operating-system label, exactly as the automation and service identities already do.
+    FleetAccountRunnerListener =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: [],
+      }
   }
 }
 
@@ -1144,6 +1256,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
     FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
     FleetAccountNotificationService => PrincipalRequiresHostScope { principal: key }
     FleetAccountDeployJob => PrincipalRequiresHostScope { principal: key }
+    FleetAccountRunnerListener => PrincipalRequiresHostScope { principal: key }
   }
 }
 

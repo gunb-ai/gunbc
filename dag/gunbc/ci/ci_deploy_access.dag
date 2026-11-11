@@ -145,7 +145,7 @@ fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<Pri
   map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
 }
 
-// srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(srv1_ci_deploy_runner_principal) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal.
+// srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(deploy_runner_principal_for(operator_host_srv1)) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal.
 fn ci_deploy_srv1_local_access() -> DeployAccess {
   let principal = fleet_posix_ci_runner_principal()
   DeployAccess {

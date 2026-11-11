@@ -221,6 +221,7 @@ import gunbc.runner.runner_host_deploy {
   RunnerHostSpecAbsent,
   runner_host_deploy_for,
   runner_host_spec_for,
+  deploy_runner_principal_for,
   admit_runner_host,
 }
 import gunbc.runner.runner_service_activation {
@@ -3184,15 +3185,19 @@ fn fabric_cell_effect_apply_command_lines(
 
 data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
 
-// THE JOB USER IS A HOST SPEC FACT, NOT A SLOT-POPULATION FACT: a host whose width derived to 0 still has
-// its fabric cells and allocation store, so the zero-width arm reads it from the spec (review 92015) and
-// only an unmodeled or refused host has none.
+// THE JOB USER IS A PRINCIPAL-ROW FACT KEYED BY THE MACHINE, NOT A SLOT-POPULATION FACT. It used to be
+// read off the deploy resolution's width disposition (the zero-width arm reached into the spec, a refused
+// host had none), which conflated "this host's width cannot be derived" with "this host has no runner
+// principal" -- the same conflation review 92015 already rejected for zero-width. The runner principal now
+// lives in deploy_runner_principal_rows (gunbc.runner.runner_host_deploy), one row per modeled host, so the
+// job user is read from the row: a host whose width derived to 0, or whose width is refused, still has its
+// fabric cells, allocation store and runner principal, and only a host the fleet never described (no row)
+// has none. This is the production consumer that makes those rows live on an executing converge route, not
+// only a witness (gunbc.design_argument::consumption).
 fn fleet_converge_host_job_user(host: NonEmptyStr) -> NonEmptyStr? {
-  match runner_host_deploy_for(host: host as HostIdentity) {
-    RunnerHostDeployUnmodeled { host: _ } => Absent
-    RunnerHostDeployRefused { host: _, cause: _ } => Absent
-    RunnerHostDeployZeroWidth { spec: sp } => Present { value: sp.job_user }
-    RunnerHostDeployFound { deploy: d } => Present { value: d.job_user }
+  match deploy_runner_principal_for(host: host as HostIdentity) {
+    Absent => Absent
+    Present { value: principal } => Present { value: principal.job_user }
   }
 }
 
