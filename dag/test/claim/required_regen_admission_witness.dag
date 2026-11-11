@@ -26,7 +26,19 @@ import v2.workflow.required_regen {
   required_regen_run,
   SurfaceDrifted,
   SurfaceMatches,
-  required_regen_sync_admission
+  required_regen_sync_admission,
+  AdmittedAuthorIntroducedMirror,
+  DeclaredPartitionModules,
+  DeclaredPartitionUnavailable,
+  AdmittedAuthorIntroducedModule,
+  RefusedUndeclaredModuleBasename,
+  RefusedAmbiguousDerivation,
+  RefusedAuthorityUnavailable,
+  declared_mirror_basename,
+  missing_mirror_admission,
+  missing_mirror_admissions,
+  missing_mirror_refused_basenames,
+  collect_admitted_new_mirror_paths
 }
 
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
@@ -178,6 +190,12 @@ test fn witness_three_population_states_refuse_separately() -> Bool {
 // because the author obviously just added a module, this goes red — the point, because that same
 // population is what the emitter inventing an unauthored surface looks like; the two are
 // indistinguishable from the populations alone.
+//
+// THE DISCRIMINATOR ADDED BELOW DOES NOT FLIP THIS, AND THAT IS THE TEST'S WHOLE JOB. The arm it
+// carries is `EmittedNotCommitted`, which is what the join produces when NOTHING declared the
+// surface; the admitted arm is a different outcome, reachable only with a declared module behind it
+// (see `witness_a_declared_module_admits_its_projected_mirror`). An admission that decided from
+// these two populations would have to take this case with it, and this witness would go red.
 test fn witness_new_surface_alone_still_refuses() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [
@@ -372,4 +390,129 @@ test fn witness_clean_run_admits_and_still_carries_the_tree() -> Bool {
         && (tree.produced_paths |> any(p => p == "std_algebra.rs"))
     _ => false
   }
+}
+
+// THE AUTHORED DISCRIMINANT: five arms of one decision, each with the case it must NOT confuse.
+// Authority: `v2.workflow.required_regen` `MissingMirrorAuthority` / `MissingMirrorAdmission`; the
+// host realization is `missing_mirror_admission` in src/v1/stage0/src/required_regen_host.rs, and
+// the merge-path verdict is the srv1 heal receipt on
+// `gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs`.
+// Together these five are the whole of what the two populations cannot tell you: which absences a
+// declaration earns and which it does not.
+
+// THE CAPABILITY, ARM FOR ARM. The module's row is the only thing the author wrote; the mirror is
+// absent from the tree and present in the emit. The admission must both ADMIT and NAME THE MODULE
+// — an admission that returned only the basename would not be checkable against the declaration,
+// and could not be distinguished from one minted from the file name.
+test fn witness_a_declared_module_admits_its_projected_mirror() -> Bool {
+  match missing_mirror_admission(
+    basename: "v1_compiler_a_new_cause.rs",
+    authority: DeclaredPartitionModules {
+      names: ["v1.compiler.still", "v1.compiler.a_new_cause"]
+    }
+  ) {
+    AdmittedAuthorIntroducedModule { module: module, basename: basename } =>
+      (module == "v1.compiler.a_new_cause") && (basename == "v1_compiler_a_new_cause.rs")
+    _ => false
+  }
+}
+
+// THE SAME POPULATION WITHOUT THE DECLARATION IS THE BUG THIS WALL EXISTS TO CATCH. Two halves:
+// a name no module spells, and the `main` -> `main_mod` collision answered the wrong way round.
+// The second is the shape-only trap in its purest form — `main.rs` LOOKS like the module `main`, and
+// the declared projection says its mirror is `main_mod.rs`, so admitting on appearance would
+// install a surface the emitter was never authorized to produce.
+test fn witness_an_undeclared_basename_refuses_however_plausible_its_shape() -> Bool {
+  let names = ["v1.compiler.still"]
+  match missing_mirror_admission(
+    basename: "v1_compiler_never_authored.rs",
+    authority: DeclaredPartitionModules { names: names }
+  ) {
+    RefusedUndeclaredModuleBasename { basename: refused } =>
+      (refused == "v1_compiler_never_authored.rs")
+        && (match missing_mirror_admission(
+          basename: "main.rs",
+          authority: DeclaredPartitionModules { names: ["main"] }
+        ) {
+          RefusedUndeclaredModuleBasename { basename: _ } =>
+            declared_mirror_basename(module: "main") == "main_mod.rs"
+          _ => false
+        })
+    _ => false
+  }
+}
+
+// NO FALLBACK ARM. An authority that cannot be read is not an absence of declaration, and it is
+// certainly not permission to consult the rows compiled into the running binary — those belong to
+// the previous build and cannot contain the module being introduced. The reason has to SURVIVE into
+// the arm, because a refusal that cannot say which arm fired is DEFECT 2 of the same row.
+test fn witness_an_unavailable_authority_admits_nothing_and_says_why() -> Bool {
+  match missing_mirror_admission(
+    basename: "v1_compiler_a_new_cause.rs",
+    authority: DeclaredPartitionUnavailable { reason: "partition row unreadable" }
+  ) {
+    RefusedAuthorityUnavailable { basename: basename, reason: reason } =>
+      (basename == "v1_compiler_a_new_cause.rs") && (reason == "partition row unreadable")
+    _ => false
+  }
+}
+
+// THE PROJECTION IS NOT INJECTIVE, SO THE RUN MUST NOT PICK. `a.b_c` and `a.b.c` are different
+// modules and one filename; a first-match search would silently admit whichever row came first,
+// which is an admission decided by row ORDER — the same authority vacuum in a new place. The refusal
+// has to name every module it is refusing between.
+test fn witness_an_ambiguous_projection_refuses_and_names_both_modules() -> Bool {
+  match missing_mirror_admission(
+    basename: "a_b_c.rs",
+    authority: DeclaredPartitionModules { names: ["still", "a.b_c", "a.b.c"] }
+  ) {
+    RefusedAmbiguousDerivation { basename: basename, modules: modules } =>
+      (basename == "a_b_c.rs")
+        && (modules |> any(m => m == "a.b_c"))
+        && (modules |> any(m => m == "a.b.c"))
+    _ => false
+  }
+}
+
+// THE ADMISSION IS NOT A SILENT EXCLUSION. An admitted surface stays in the compared population —
+// it is a surface the candidate has and the tree lacks, so it is planned and installed — while being
+// kept OUT of the missing-mirror remedy list, whose two moves (install the produced mirror, or
+// investigate an invented surface) are addressed to an author who has not declared anything. The
+// RED half is the second assertion: had the admission been implemented by dropping the path from the
+// population, the admitted list would be empty and the wall would read green on a surface nobody
+// installed.
+test fn witness_an_admitted_mirror_is_planned_installed_and_kept_out_of_the_refusal() -> Bool {
+  let outcomes = [
+    SurfaceMatches { relative_path: "std_algebra.rs" },
+    AdmittedAuthorIntroducedMirror {
+      relative_path: "src/v1/stage0/src/v1_compiler_a_new_cause.rs",
+      module: "v1.compiler.a_new_cause"
+    }
+  ]
+  let admissions = missing_mirror_admissions(
+    basenames: ["v1_compiler_a_new_cause.rs", "v1_compiler_never_authored.rs"],
+    authority: DeclaredPartitionModules { names: ["v1.compiler.a_new_cause"] }
+  )
+  (match required_regen_sync_admission(
+    generated_outcomes: outcomes,
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 2,
+    executed_surfaces: 2
+  ) {
+    RequiredRegenSyncRunnable { attempt: _ } => true
+    RequiredRegenSyncRefused { refusals: _ } => false
+  })
+    && (collect_admitted_new_mirror_paths(
+      acc: [],
+      o: AdmittedAuthorIntroducedMirror {
+        relative_path: "src/v1/stage0/src/v1_compiler_a_new_cause.rs",
+        module: "v1.compiler.a_new_cause"
+      }
+    )
+      |> any(p => p == "src/v1/stage0/src/v1_compiler_a_new_cause.rs"))
+    && (missing_mirror_refused_basenames(xs: admissions)
+      |> any(b => b == "v1_compiler_never_authored.rs"))
+    && !(missing_mirror_refused_basenames(xs: admissions)
+      |> any(b => b == "v1_compiler_a_new_cause.rs"))
 }
