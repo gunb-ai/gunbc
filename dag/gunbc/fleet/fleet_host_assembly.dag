@@ -24,12 +24,12 @@ import product.inventory {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_asset_identity {
-  chassis_srv1,
-  chassis_srv2,
-  chassis_srv3,
-  chassis_srv4,
-  cooler_srv3,
-  cooler_srv4,
+  chassis_01,
+  chassis_02,
+  chassis_03,
+  chassis_04,
+  cooler_01,
+  cooler_02,
 }
 // THE CATALOG REFERENCES COME FROM THE CENSUS, THEY ARE NOT MINTED AGAIN HERE. This module used to
 // declare altrad8ud_catalog_ref and cooler_catalog_ref naming the exact declarations
@@ -154,10 +154,10 @@ fn unread_family(family: NonEmptyStr, obligation: NonEmptyStr) -> LotCatalogIden
 }
 
 data srv_assembly_components: List<AssembledComponent> = [
-  unrecorded_component(host: operator_host_srv1, component: chassis_srv1, catalog: CatalogRowExact { row: rosewill_r4000u_catalog_ref }),
-  unrecorded_component(host: operator_host_srv2, component: chassis_srv2, catalog: CatalogRowExact { row: rosewill_r4000u_catalog_ref }),
-  unrecorded_component(host: operator_host_srv3, component: chassis_srv3, catalog: CatalogRowExact { row: rosewill_z2600u_catalog_ref }),
-  unrecorded_component(host: operator_host_srv4, component: chassis_srv4, catalog: CatalogRowExact { row: rosewill_z2600u_catalog_ref }),
+  unrecorded_component(host: operator_host_srv1, component: chassis_01, catalog: CatalogRowExact { row: rosewill_r4000u_catalog_ref }),
+  unrecorded_component(host: operator_host_srv2, component: chassis_02, catalog: CatalogRowExact { row: rosewill_r4000u_catalog_ref }),
+  unrecorded_component(host: operator_host_srv3, component: chassis_03, catalog: CatalogRowExact { row: rosewill_z2600u_catalog_ref }),
+  unrecorded_component(host: operator_host_srv4, component: chassis_04, catalog: CatalogRowExact { row: rosewill_z2600u_catalog_ref }),
   lot_component(host: operator_host_srv1, component: board_srv1, catalog: CatalogRowExact { row: altrad8ud_catalog_ref }, lot: altrad8ud_board_lot_identity),
   lot_component(host: operator_host_srv2, component: board_srv2, catalog: CatalogRowExact { row: altrad8ud_catalog_ref }, lot: altrad8ud_board_lot_identity),
   lot_component(host: operator_host_srv3, component: board_srv3, catalog: CatalogRowExact { row: altrad8ud_catalog_ref }, lot: altrad8ud_board_lot_identity),
@@ -222,18 +222,18 @@ data srv_assembly_components: List<AssembledComponent> = [
     component: drive_srv4,
     catalog: unread_family(family: "host NVMe" as NonEmptyStr, obligation: "Samsung 970 EVO 500 GB is fleet intent, not a source-lot; dredge the purchase" as NonEmptyStr),
   ),
-  lot_component(host: operator_host_srv3, component: cooler_srv3, catalog: CatalogRowExact { row: cooler_catalog_ref }, lot: cooler_srv3_lot_identity),
-  lot_component(host: operator_host_srv4, component: cooler_srv4, catalog: CatalogRowExact { row: cooler_catalog_ref }, lot: cooler_srv4_lot_identity),
+  lot_component(host: operator_host_srv3, component: cooler_01, catalog: CatalogRowExact { row: cooler_catalog_ref }, lot: cooler_srv3_lot_identity),
+  lot_component(host: operator_host_srv4, component: cooler_02, catalog: CatalogRowExact { row: cooler_catalog_ref }, lot: cooler_srv4_lot_identity),
 ]
 
 // Cooler-to-host containments for srv3/srv4 already live in gunbc.fleet.fleet_physical_inventory
 // installed_cooler_containments. CONSUME those same edges here rather than merely noting they
 // exist elsewhere, so the join actually checks the cooler rows against the authority owning them.
 data srv_assembly_containments: List<PhysicalContainment> = concat([
-  ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv1 },
-  ChassisContainsHost { chassis: chassis_srv2, host: operator_host_srv2 },
-  ChassisContainsHost { chassis: chassis_srv3, host: operator_host_srv3 },
-  ChassisContainsHost { chassis: chassis_srv4, host: operator_host_srv4 },
+  ChassisContainsHost { chassis: chassis_01, host: operator_host_srv1 },
+  ChassisContainsHost { chassis: chassis_02, host: operator_host_srv2 },
+  ChassisContainsHost { chassis: chassis_03, host: operator_host_srv3 },
+  ChassisContainsHost { chassis: chassis_04, host: operator_host_srv4 },
   HostContainsComponent { host: operator_host_srv1, component: board_srv1 },
   HostContainsComponent { host: operator_host_srv2, component: board_srv2 },
   HostContainsComponent { host: operator_host_srv3, component: board_srv3 },
@@ -294,8 +294,8 @@ fn every_board_component_is_from_the_four_board_lot(rows: List<AssembledComponen
 }
 
 fn every_cooler_component_is_from_its_lot(rows: List<AssembledComponent>) -> Bool {
-  component_acquired_from_lot(rows: rows, component: cooler_srv3, lot: cooler_srv3_lot_identity)
-    && component_acquired_from_lot(rows: rows, component: cooler_srv4, lot: cooler_srv4_lot_identity)
+  component_acquired_from_lot(rows: rows, component: cooler_01, lot: cooler_srv3_lot_identity)
+    && component_acquired_from_lot(rows: rows, component: cooler_02, lot: cooler_srv4_lot_identity)
 }
 
 fn assembly_covers_component_roster(rows: List<AssembledComponent>) -> Bool {
@@ -303,13 +303,13 @@ fn assembly_covers_component_roster(rows: List<AssembledComponent>) -> Bool {
 }
 
 data srv_assembly_component_roster: List<PhysicalAssetIdentity> = [
-  chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4,
+  chassis_01, chassis_02, chassis_03, chassis_04,
   board_srv1, board_srv2, board_srv3, board_srv4,
   processor_srv1, processor_srv2, processor_srv3, processor_srv4,
   memory_population_srv1, memory_population_srv2, memory_population_srv3, memory_population_srv4,
   psu_srv1_b, psu_srv2, psu_srv3, psu_srv4,
   drive_srv1, drive_srv2, drive_srv3, drive_srv4,
-  cooler_srv3, cooler_srv4,
+  cooler_01, cooler_02,
 ]
 
 // A COMPONENT THAT LEFT ITS HOST. The assembly lists what a host carries now; a unit taken out keeps its
@@ -411,7 +411,7 @@ fn host_installed_components(host: HostIdentity) -> List<PhysicalAssetIdentity> 
 // rebuilt around different units no longer agrees with its figure and refuses it until remeasured.
 data srv1_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv1, processor_srv1, memory_population_srv1, psu_srv1, drive_srv1]
 data srv2_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv2, processor_srv2, memory_population_srv2, psu_srv2, drive_srv2]
-data srv3_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv3, processor_srv3, memory_population_srv3, psu_srv3, drive_srv3, cooler_srv3]
+data srv3_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv3, processor_srv3, memory_population_srv3, psu_srv3, drive_srv3, cooler_01]
 data srv4_assembly_as_measured: List<PhysicalAssetIdentity> = [board_srv4, processor_srv4, memory_population_srv4, psu_srv4, drive_srv4]
 
 fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: PhysicalAssetIdentity, host: HostIdentity) -> Bool {
@@ -463,10 +463,10 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
 // coolers pass through it like every other component. (review 65292 raised this as non-blocking;
 // the expired reason is why it is fixed rather than left.)
 fn assembly_containments_join(rows: List<AssembledComponent>, containments: List<PhysicalContainment>) -> Bool {
-  containment_has_chassis(containments: containments, chassis: chassis_srv1, host: operator_host_srv1)
-    && containment_has_chassis(containments: containments, chassis: chassis_srv2, host: operator_host_srv2)
-    && containment_has_chassis(containments: containments, chassis: chassis_srv3, host: operator_host_srv3)
-    && containment_has_chassis(containments: containments, chassis: chassis_srv4, host: operator_host_srv4)
+  containment_has_chassis(containments: containments, chassis: chassis_01, host: operator_host_srv1)
+    && containment_has_chassis(containments: containments, chassis: chassis_02, host: operator_host_srv2)
+    && containment_has_chassis(containments: containments, chassis: chassis_03, host: operator_host_srv3)
+    && containment_has_chassis(containments: containments, chassis: chassis_04, host: operator_host_srv4)
     && fold(rows, init: true, f: fn(acc, row) {
       acc && (
         containment_has_component(containments: containments, host: row.host, component: row.component)
@@ -476,10 +476,10 @@ fn assembly_containments_join(rows: List<AssembledComponent>, containments: List
     && fold(containments, init: true, f: fn(acc, c) {
       acc && match c {
         ChassisContainsHost { chassis: ch, host: h } =>
-          (physical_asset_identity_eq(a: ch, b: chassis_srv1) && host_identity_eq(a: h, b: operator_host_srv1))
-            || (physical_asset_identity_eq(a: ch, b: chassis_srv2) && host_identity_eq(a: h, b: operator_host_srv2))
-            || (physical_asset_identity_eq(a: ch, b: chassis_srv3) && host_identity_eq(a: h, b: operator_host_srv3))
-            || (physical_asset_identity_eq(a: ch, b: chassis_srv4) && host_identity_eq(a: h, b: operator_host_srv4))
+          (physical_asset_identity_eq(a: ch, b: chassis_01) && host_identity_eq(a: h, b: operator_host_srv1))
+            || (physical_asset_identity_eq(a: ch, b: chassis_02) && host_identity_eq(a: h, b: operator_host_srv2))
+            || (physical_asset_identity_eq(a: ch, b: chassis_03) && host_identity_eq(a: h, b: operator_host_srv3))
+            || (physical_asset_identity_eq(a: ch, b: chassis_04) && host_identity_eq(a: h, b: operator_host_srv4))
         HostContainsComponent { host: h, component: comp } =>
           rows.any(row =>
             host_identity_eq(a: row.host, b: h)

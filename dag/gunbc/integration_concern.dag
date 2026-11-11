@@ -740,7 +740,7 @@ data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
     head: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller"),
     tail: [
       decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
-      decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
+      decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "fleet_machine_registry"),
       decl_ref(module_path: "gunbc.fleet.machine_board", decl_name: "machine_board_rows"),
       decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
     ],
@@ -773,22 +773,47 @@ data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
     },
     tail: [],
   },
-  disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15") },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
-        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_write_controller_witness", decl_name: "srv15_admits_a_per_write_approval_at_its_own_controller"),
-        statement: "the board's write-controller row admits a per-write approval only at the board's own current controller and refuses the standing grant",
-      },
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
-        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_state_admits_only_its_own_controller_and_build"),
-        statement: "the forced-first-rotation and arrival witnesses keep replaying the board's 2026-10-07 factory 403 and Manager captures against the controller as it was then (192.168.1.247, OpenBMC 3.22.00), and still refuse another controller or build",
-      },
+  // CLOSED (smart-crane-730, 2026-11-10; the operator retired srv13 and keeps srv15, "bobo"). The captures
+  // keep their provenance: they replay against the endpoint their own network observation names
+  // (gunbc.machine_intake.mtjade1_factory_network srv13_bmc_observed_network, 192.168.1.247), reached through
+  // gunbc.machine_intake.bmc_rotation_route_evidence observed_bmc_network_endpoint, so no row claims a
+  // controller the board no longer has. Both preserved obligations stay executed by their controls below.
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "7bbb4efaebd8eda775478d65c6ac74692367028b" as CommitSha,
+    superseded: [
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv13" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.fleet.fleet_intent", decl_name: "srv13_baseboard" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller" },
+      HistoricalDeclaration { at: "495211eb3196d6c3e11b7322cf5900f375dce07e" as CommitSha, module_path: "gunbc.machine_intake.bmc_rotation_route_evidence", decl_name: "mtjade1_observed_endpoint" },
     ],
-    next: climbs_when(capability: "a write-controller row (or the witnesses' supplied controller) can name the endpoint a board HAD at a capture's time apart from the endpoint it has now, so srv13's 2026-10-07 captures replay against srv15's board; then operator_host_srv13, srv13_baseboard, srv13_bmc_write_controller and srv13's hostname row are deleted and every srv13 consumer is repointed at srv15"),
-  },
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15"),
+      tail: [
+        decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+        decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route_evidence", decl_name: "observed_bmc_network_endpoint"),
+        decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_credential_policy_witness", decl_name: "first_contact_capture_controller"),
+      ],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_write_controller_witness", decl_name: "srv15_admits_a_per_write_approval_at_its_own_controller"),
+        run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_bmc_write_controller_witness.dag (every test fn), local, at b436f77",
+        conclusion: "all claims PASS; srv15's row admits a per-write approval only at its current controller and refuses the controller the board had at first contact as another endpoint",
+      },
+      tail: [
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_state_admits_only_its_own_controller_and_build"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_bmc_forced_first_rotation_witness.dag (every test fn), local, at 7bbb4ef",
+          conclusion: "10/10 PASS: the 2026-10-07 captures replay at 192.168.1.247 and still refuse another controller or build (the file did not compile at 495211e without this branch's import fix)",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.fleet_naming_witness", decl_name: "witness_binding_for_another_member_refuses"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/fleet_naming_witness.dag (every test fn), local, at 7bbb4ef",
+          conclusion: "37/37 PASS with srv14 standing in as the other member srv13 used to be",
+        },
+      ],
+    },
+  } },
 }
 
 data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = IntegrationConcern {
@@ -1736,7 +1761,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_admission_wall_note"),
     requirement: "the generic comparison forms at the three production fleet-converge sites (host_effect.dag host_effect_is_converge_loop_evidence, fleet_physical_inventory.dag fleet_nominal_rackmount_arithmetic_holds, compute_seat_ensure.dag seat_fell_by) resolve and judge through the declaring-scope equality admission, so the interim constructor-match and measure_count spellings are removed",
-    standing: RequirementUnestablished { decided_by: "the three sites resolving and running in their generic forms once the #15992 root repair lands (its witness rows pin the generic forms as discriminating controls)" },
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") } },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence"),
@@ -1745,7 +1770,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
       decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by"),
     ],
   },
-  question: "INTERIM standing, removal trigger = merge of #15992: until then the production fleet-converge entry (dag/gunbc/runner/runner_host_file_converge.dag) refuses in RESOLVE at these sites (EqualityMemberUnjudgeable: CreateCause routed member inside a generic application at host_effect.dag, Measure sites at fleet_physical_inventory and compute_seat_ensure), so no fleet converge can run. As of #16045 (the fleet_physical_inventory site) and #16099 (the compute_seat_ensure and host_effect sites) the three interim rewrites named here ARE ON MAIN, so that production refusal is closed; what this row carries is the record that they are interim and what their removal depends on. The stopgap preserves the equality refusal policy (no compiler bypass, no weakened admission) and keeps ONE authority per fact: host_effect_converge_loop_reason stays the single reason authority and the data constant host_effect_converge_loop_evidence stays the single constructed value (the constructor SHAPE is honestly duplicated between that constant and the match, see the site comment). Each replaced Measure comparison has SAME-UNIT operands by declaration: fleet site - the declared sum and nominal_rackmount_units_declared are both RackUnit (data nominal_rackmount_units_declared: RackUnit, data operator_switch_shelf_units: RackUnit, catalog rack_units fields carry rack_unit(...) values e.g. extdeps.rack.navepoint rack_units: rack_unit(18)); rack site - data rack_01_catalog_units: RackUnit IS navepoint_18u_open_frame_catalog.rack_units by its own declaration; seat site - seat_fell_by declares before/after/granted all Kibibyte and the difference value of measure_sub over Kibibyte operands is a Kibibyte measure. Under same-unit operands the measure_count cardinality comparison is faithful to the generic equality; measure_count itself neither names nor checks units, so this faithfulness is a property of these sites' declarations, not of the helper. The host_effect constructor-shape duplication carries a silent-drift risk: if either spelling is edited without the other, host_effect_drive_from_evidence classifies the sentinel as OneShot instead of ConvergeLoop with no refusal. The named sentinel control host_effect_apply_witness is NOT EXECUTABLE through the claim route at this pin: the module carries no import lines and its resolve fails on the claim route (executed evidence, stopgap A/B v6 control P-CAND at be3a9b86: 55 distinct unresolved names including LiveTreeDisposition, NodeControlPlane, ConvergeDirective, NonEmptyStr, IdempotencyEvidence, HostConverge; unresolved callees host_effect_apply, host_effect_drive_directive, reconciliation_converged; full diagnostic inventory in the retained 30-P-CAND.stderr). Historical refusal at be3a9b86; in this carrier the row accompanies an explicit-import block addressing exactly those names - imports RESTORED from keen-otter witness-repair-v2 (1d67569427c50b7937c27735f86cf0a0e9493f6a), each imported name re-checked to occur in its module file on main at the base of this PR. NOT EXECUTED at any pin as of this row; no claim of executability success is made either way. It is rostered as an offline local recipe, excluded from CI enumeration by the WitnessExclusionRow for its pattern in gunbc.ci.ci_layer_roots, classification OfflineLocalRecipe: one-time evidence at whatever head it runs, NOT continuous CI enforcement; nothing has executed it at this pin, no gate enrollment exists today, and this row claims none; the unwatched window closes either by the root repair landing (covering the original generic forms) or by explicit gate enrollment of that witness, neither asserted to exist; REMOVAL of the stopgap is triggered by the #15992 root repair landing ALONE (gate enrollment closes the window, it does not remove the interim). #15992 itself remains blocked on a separate E0369 synthesis regression it exposes in the emitted source_root_eval closure (v2-bootstrap 42414168425, E0369 Rc<DemandEngine<Rc<NativeDemandValue>>>), so the wall and its interim both stay open until the root repair lands.",
+        question: "The question this row carried: may the three production sites compare structurally, and where is that decided? While the wall stood the production fleet-converge entry (dag/gunbc/runner/runner_host_file_converge.dag) refused in RESOLVE at these sites (EqualityMemberUnjudgeable: CreateCause routed member inside a generic application at host_effect.dag, Measure sites at fleet_physical_inventory and compute_seat_ensure), so no fleet converge could run. The interim rewrites of #16045 (fleet) and #16099 (compute_seat_ensure, host_effect) closed that production refusal on main, and this row carried the record that they were interim and what their removal depended on. Each interim replaced a Measure comparison whose operands were same-unit by declaration (fleet: the declared sum and nominal_rackmount_units_declared were both RackUnit; rack: data rack_01_catalog_units IS navepoint_18u_open_frame_catalog.rack_units; seat: seat_fell_by declared before/after/granted all Kibibyte), which is why the measure_count cardinality comparison was faithful there -- measure_count names no units, so that faithfulness was a property of those declarations, not of the helper. The host_effect interim carried a drift risk the row recorded at the time: its hand-written match duplicated the constructor shape of data host_effect_converge_loop_evidence, so an edit to one spelling without the other would have classified the sentinel as OneShot instead of ConvergeLoop with no refusal. The named sentinel host_effect_apply_witness was not executable through the claim route at that pin (no import lines; resolve failed on the claim route; inventory in the retained 30-P-CAND.stderr), and it stayed unexecuted: the row claimed no executability either way. It remains rostered as an offline local recipe (WitnessExclusionRow in gunbc.ci.ci_layer_roots, classification OfflineLocalRecipe), with no gate enrollment. The dependency this row named for removal was the root repair, which had itself been blocked by an E0369 synthesis regression in the emitted source_root_eval closure (v2-bootstrap 42414168425, E0369 Rc<DemandEngine<Rc<NativeDemandValue>>>, the occurrence-based pairing of #15992); that pairing was measured unsound and deleted, and the repair that landed judges each written type argument where the declaration's own parameter occurs. The three sites now read as plain structural '==' again and the interims are deleted: see the disposition and the closing sighting, which carry the executions.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "1bdf7152c79b56933e069a66db86293559b191b3",
@@ -1754,6 +1779,91 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
         tail: [],
       },
       account: "Observed subject: main at 1bdf7152c79b56933e069a66db86293559b191b3, clean local release build, binary sha256 acd2d80336c2ce7ac2ff23ec621d5c58a0a4027c47d0be793f2d727015359962 (receipt of quiet-raven-506 / fierce-gull-111): the production fleet-converge entry exits 1 at resolve refusing at fleet_physical_inventory Measure, host_effect CreateCause and compute_seat_ensure Measure. A second observation at 708057ca4b3a4eb046adab96e10586ccb6cb335c (sleek-wren-619, --dry-run resolve) refuses at the same three sites. The turn is between f6f57e7e16cc6b68b2d4e02e3de8adc7d2421996 (fleet run 42230507796 resolved the same entry) and these revisions; the identified trigger is withheld (source range vs build provenance open). The stopgap patch base 4aa7a03c48bb6a0819adfee2cca095fb6ddadea4 is the lineage base, NOT an observation subject. Stopgap prepared at the lane owner's request (keen-otter authorization via cool-badger routing).",
+    },
+    tail: [
+      ConcernSighting {
+        revision: "eeae4193aaf5a1d7054a80eb0100a850244378b0",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
+          tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "is_unit_variant_phantom_argument") }],
+        },
+      account: "Closing read, measured at eeae4193aaf5 with a compiler built from that seed AND with the partition crates (src/v1/stage0_v1_infer, stage0_emit_core, stage0_std_surface) actually recompiled: the generated mirrors are pulled into those crates through #[path] includes outside their own src/, and a build that only rebuilds v1-compiler keeps the previously compiled rule -- that is how an earlier read on this branch reported these entries green while they still refused, and how a later read reported the shipped arms as failing specimens they in fact pass. Both of those reads are withdrawn. Measured with the crates recompiled, the two arms in the position they ship admit Holder<FooBarUnit> on a marker declared in the specimen module, Holder<RackUnitHeight>, Holder<Length>, Pair<Length, Nat> and the written Measure<Length, RackUnitHeight, Nat>, and the three entries that used to refuse each resolve with zero equality rows and zero resolve-failed headers; at 3d34fc61ca6e the same entries refused at host_effect_is_converge_loop_evidence, seat_fell_by and fleet_nominal_rackmount_arithmetic_holds. The only specimen refusals left are the alias-as-argument ones, recorded in their own row. The self-host instrument builds under rustc with zero E0369 where the previous head failed v2-bootstrap with E0369. The whole equality witness module runs 76 PASS and 4 FAIL, and those four fail identically under a compiler built from origin/main, so the repair admits the structural shapes without moving any refusal.",
+      },
+    ],
+  },
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "eeae4193aaf5a1d7054a80eb0100a850244378b0" as CommitSha,
+    // The interim leaves this PR deletes, each cited at the revision that introduced it: #16099 rewrote the
+    // host_effect CreateCause site and seat_fell_by, #16045 rewrote the fleet rackmount arithmetic. With the
+    // root rule in place all three read as plain structural '==' again.
+    superseded: [
+      HistoricalDeclaration { at: "f9bad88f8a569a803a4fbfccbd8d17552fdd9611" as CommitSha, module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence" },
+      HistoricalDeclaration { at: "f9bad88f8a569a803a4fbfccbd8d17552fdd9611" as CommitSha, module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by" },
+      HistoricalDeclaration { at: "3ca4fe166b5d511426dd0ae1ee2b73e0fd70e0b4" as CommitSha, module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_nominal_rackmount_arithmetic_holds" },
+    ],
+    // ONE predicate answers the question at ONE place: the rule every applied reference's arguments go
+    // through, which now carries the two arms it was missing - an argument that is a parameter of the
+    // declaration the walk is inside (roster carried by equality_scope_with_params into
+    // InferScope.enclosing_declared_type_param_names), and a unit-variant phantom marker such as Measure's
+    // Length and RackUnitHeight dimensions.
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+      tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_scope_with_params"), decl_ref(module_path: "v1.compiler.infer", decl_name: "is_unit_variant_phantom_argument")],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "gunbc.host.host_effect", decl_name: "host_effect_is_converge_loop_evidence"),
+        run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/host_effect.dag --function \"\" with a compiler built from the seed at eeae4193aaf5a1d7054a80eb0100a850244378b0, partition crates recompiled",
+        conclusion: "PASS: NoSuchFunction for the empty function name, zero equality rows, zero resolve-failed headers, 825 modules, 5.28 GiB peak. At 3d34fc61ca6e the same entry refused at gunbc.host.host_effect::host_effect_is_converge_loop_evidence.",
+      },
+      tail: [
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "seat_fell_by"),
+          run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/compute/compute_seat_ensure.dag --function \"\" with the same compiler at the same head",
+          conclusion: "PASS: zero equality rows, zero resolve-failed headers, 1042 modules, 6.96 GiB peak -- no OOM, which is what #16115 bought. At 3d34fc61ca6e the same entry refused at gunbc.compute.compute_seat_ensure::seat_fell_by.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_nominal_rackmount_arithmetic_holds"),
+          run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_physical_inventory.dag --function \"\" with the same compiler",
+          conclusion: "PASS: zero equality rows, zero resolve-failed headers, 168 modules, 0.64 GiB. The same entry refused at 3d34fc61ca6e at gunbc.fleet.fleet_physical_inventory::fleet_nominal_rackmount_arithmetic_holds.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "v2.compiler.source_root_eval", decl_name: "source_root_eval"),
+          run: "gunbc test //gunbc/instruments:self-host with the same compiler",
+          conclusion: "exit_status=0 warning_count=0 wall_s=824, zero E0369, zero E0277, zero equality-admission rows; emitted closure d4d72cb053f985a9237f64943237ed38f612b694f53591f68181cab91238e391. The emitted self-host closure that failed with E0369 in v2-bootstrap 42414168425 builds under rustc.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "nested_structural_argument_equality_admits_at_the_use"),
+          run: "claim_batch --source-root dag --source-root src/v2 --wet --entry dag/test/claim/self_host_equality_admission_witness.dag --functions <all 80 test fns of the module>, same compiler",
+          conclusion: "76 PASS, 4 FAIL, 6 minutes wall. The four failures are the optional/Present controls (inferred_collection_key_census_row_is_present_and_the_program_stays_accepted, explicit_present_comparison_stays_admitted, explicit_present_return_stays_admitted, present_spelled_data_initializer_stays_admitted); they fail the same way under a compiler built from origin/main and are owned by #16206, not by this change. Zero equality-admission rows in the whole run.",
+        },
+      ],
+    },
+  } },
+}
+
+data equality_alias_argument_not_expanded_before_admission: IntegrationConcern = IntegrationConcern {
+  identity: "equality_alias_argument_not_expanded_before_admission",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+    requirement: "admission and emission answer the same question about the same set: a type argument the emitter gives a derivable PartialEq is admitted wherever it is written -- spelled as an application directly, or written through a nominal alias that names that application",
+    standing: RequirementUnestablished { decided_by: "one specimen module that writes the same type once directly and once through an alias, run through the equality walk" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer_resolve", decl_name: "expand_nominal_alias_rhs"),
+    ],
+  },
+  question: "An argument written as a nominal alias is refused structural equality admission while the very same type, spelled as an application, is admitted. Measured at 44c956632168157313f00c3afc7878b643882c78 with the wall repair in place, in a module declaring 'type Holder<A> { v: Nat }', 'type Box<A> { a: A }' and 'type MyUnit = Measure<Length, RackUnitHeight, Nat>': 'Holder<Measure<Length, RackUnitHeight, Nat>>' and 'Box<Measure<Length, RackUnitHeight, Nat>>' admit, while 'Holder<RackUnit>', 'Box<RackUnit>' and 'Holder<MyUnit>' -- RackUnit being std.measure's own alias for the same application, MyUnit declared in the specimen module itself -- each refuse at the '==' row with 'equality admission for ... cannot be judged'. The walk does reach expand_nominal_alias_rhs for those names, but that helper returns the right-hand side under with_authored_identity, keeping the alias's own identity, so the guard that decides whether to recurse ('the connective changed, or the identity changed') sees neither change for an alias whose right-hand side is an applied reference, and the arm falls through to refusal instead of judging the application's arguments. Emission has no such gap: the emitted Rust carries the expanded type with its derive, so the disagreement is admission being stricter than emission. The refusal is fail-closed, so nothing unsound follows; the cost is that one program may write the same type two ways and get two answers. Nothing in the three-site wall depends on it -- host_effect, fleet_physical_inventory and compute_seat_ensure all write Measure's application directly -- so it is recorded here rather than folded into the wall repair. The next rung: judge an alias argument by the application its right-hand side is, keeping an alias whose expansion is not admissible refusing, and hold both as executing controls.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "eeae4193aaf5a1d7054a80eb0100a850244378b0",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
+        tail: [],
+      },
+      account: "Read at 44c956632168157313f00c3afc7878b643882c78 with a compiler built from this seed and the partition crates recompiled: the direct spellings admitted and the three alias spellings refused, in one module, at one equality each. The same run admitted the marker arguments this branch's repair was about (Holder<FooBarUnit>, Holder<RackUnitHeight>, Holder<Length>), so the two questions are separable and this one is not a regression introduced here: the alias spellings refused the same way before the arms were hoisted.",
     },
     tail: [],
   },
@@ -2055,7 +2165,7 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
