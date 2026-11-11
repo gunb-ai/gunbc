@@ -329,7 +329,7 @@ fn fleet_host_control_plane_rows() -> List<FleetHostControlPlaneRow> {
 }
 
 fn fleet_host_control_plane(host: HostIdentity) -> NodeControlPlane? {
-  match filter(fleet_host_control_plane_rows(), r => r.host == host).first() {
+  match filter(fleet_host_control_plane_rows(), r => (r.host as String) == (host as String)).first() {
     Present { value: r } => Present { value: r.control_plane }
     Absent => none
   }
@@ -350,7 +350,7 @@ fn fleet_host_ssh_transport_rows() -> List<FleetHostSshTransportRow> {
 }
 
 fn fleet_host_ssh_transport(host: HostIdentity) -> HostEffectTransport? {
-  match filter(fleet_host_ssh_transport_rows(), r => r.host == host).first() {
+  match filter(fleet_host_ssh_transport_rows(), r => (r.host as String) == (host as String)).first() {
     Present { value: r } => Present { value: r.transport }
     Absent => none
   }

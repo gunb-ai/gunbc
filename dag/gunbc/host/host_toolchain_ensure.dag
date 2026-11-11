@@ -99,7 +99,7 @@ fn host_toolchain_direct_access_rows() -> List<HostToolchainDirectAccessRow> {
 }
 
 fn host_toolchain_direct_access(host: HostIdentity) -> DeployAccess? {
-  match filter(host_toolchain_direct_access_rows(), r => r.host == host).first() {
+  match filter(host_toolchain_direct_access_rows(), r => (r.host as String) == (host as String)).first() {
     Present { value: r } => Present { value: r.access }
     Absent => none
   }

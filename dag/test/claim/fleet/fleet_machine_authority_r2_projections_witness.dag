@@ -1,0 +1,68 @@
+module test.claim.fleet.fleet_machine_authority_r2_projections_witness
+
+// R2 acceptance (gunbc.plans.fleet_machine_authority): the per-concern projections are keyed by the
+// host's stable handle, so a real fleet host gets a real answer and a handle that is not in the
+// concern's rows gets a typed absent -- never a value borrowed from another machine. srv9 is an
+// enrolled identity that is deliberately outside the srv1-srv4 executor population, so it is the
+// fixture that would have caught the old defaults: the executing-principal projection used to hand
+// any unknown host the literal "briansrls", and the arm-per-host forms returned a borrowed arm.
+
+import std.logic { Bool }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_srv9,
+}
+import gunbc.host.host_toolchain_ensure { host_toolchain_direct_access }
+import gunbc.fleet.fleet_show_effective_read {
+  fleet_host_control_plane,
+  fleet_host_ssh_transport,
+}
+import gunbc.runner.runner_capacity_operator_access {
+  runner_capacity_executing_principal_for_host,
+}
+
+test fn fleet_hosts_get_a_real_answer_from_every_projection() -> Bool {
+  match host_toolchain_direct_access(host: operator_host_srv1) {
+    Present { value: a } => a.host.identity == operator_host_srv1
+    Absent => false
+  }
+    && match host_toolchain_direct_access(host: operator_host_srv4) {
+      Present { value: a } => a.host.identity == operator_host_srv4
+      Absent => false
+    }
+    && match fleet_host_control_plane(host: operator_host_srv2) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    && match fleet_host_ssh_transport(host: operator_host_srv3) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    && match runner_capacity_executing_principal_for_host(host: operator_host_srv3) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
+test fn a_host_outside_the_population_gets_a_typed_absent_not_a_default() -> Bool {
+  match host_toolchain_direct_access(host: operator_host_srv9) {
+    Present { value: _ } => false
+    Absent => true
+  }
+    && match fleet_host_control_plane(host: operator_host_srv9) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match fleet_host_ssh_transport(host: operator_host_srv9) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match runner_capacity_executing_principal_for_host(host: operator_host_srv9) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
