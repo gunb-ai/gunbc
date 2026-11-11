@@ -13,13 +13,14 @@ import gunbc.runner.runner_capacity_plan {
   runner_capacity_plan,
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
-import gunbc.runner.runner_capacity_realize { runner_capacity_apply_wet_exit }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 
 // TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child
 // workflow only. RunnerCapacity plan half is PR A (#7939 runner_capacity_plan); ADD execution
-// routes through gunbc.runner.runner_capacity_realize (PR C) into shared HostEffect arms from PR B
-// (#7946).
+// is the converge (runner_host_file_converge_ci_wet) — the realize seam that preflighted adds was
+// deleted in B3b (no route invoked it; gunbc.integration_concern
+// runner_capacity_realize_apply_has_no_executing_route closed Integrated), and the apply arm here
+// refuses with that named, so a mistyped invocation stops visibly instead of acting on a dead path.
 
 // approval-broker-dark IS A WORKFLOW RATHER THAN A MODE ON dashboard-srv1, because a mode would
 // have made an additive install one argument away from a release deploy at the exact moment roadmap
@@ -71,7 +72,7 @@ fn apply_runner_capacity_plan(mode: String) -> ProcessExit {
   match parse_apply_mode(value: mode) {
     ModeParseRefused { reason: r } => exit_failure(reason: r)
     ModeParsed { mode: Apply } =>
-      runner_capacity_apply_wet_exit()
+      exit_failure(reason: "runner-capacity apply has no executing route: slot adds actuate only through the converge (gunbc.runner.runner_host_file_converge runner_host_file_converge_ci_wet); the realize seam that preflighted this arm was deleted in B3b — gunbc.integration_concern runner_capacity_realize_apply_has_no_executing_route closed Integrated")
     ModeParsed { mode: Plan } =>
       runner_capacity_plan_exit(
         plan: runner_capacity_plan(
