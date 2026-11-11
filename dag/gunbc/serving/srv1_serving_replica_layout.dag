@@ -34,6 +34,11 @@ import v2.extdeps.languages.bash_build {
 
 }
 import v2.workflow.bash_emit { bash_emit_stmt }
+import v2.std.diagnostic {
+  Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, StageDiagnosticPolicy, Unavailable,
+  bind_outcome, outcome_accepted, outcome_rejected, sequence_outcome, textual_whole_file_locus
+}
+import v2.std.node { symbol_intern_lexeme }
 
 // The TWO-REPLICA SERVING LAYOUT on srv1 (operator, 2026-11-08): two TP=1 vLLM containers, one per RTX
 // PRO 6000 Blackwell card, replacing the single --device nvidia.com/gpu=all TP=1 container that ran since
@@ -1162,82 +1167,284 @@ fn srv1_d_under(name: FilePath) -> String {
 // half-built shell strings. Each returns the node a grammar row knows how to spell;
 // the only function that turns a node into bytes is v2.workflow.bash_emit.
 //
-// A checked builder that refuses has said these bytes cannot be produced. The render
-// returns List<String> and has no error channel, so a refusal puts this text where the
-// line was: it is not shell, it cannot start a container, and it will not match the
-// digest recorded on the host -- which is the only thing that has ever been allowed to
-// say whether this render is right. (The same poison idiom as
-// ci_floor_build_verify_script, dag/gunbc/ci/ci_spec.dag.)
-data srv1_bash_emit_refused_poison: String = "GUNBC-BASH-EMIT-REFUSED"
+// A CHECKED BUILDER THAT REFUSES ENDS THE RENDER. The rows marked CHECKED in
+// v2.extdeps.languages.bash_build refuse to spell a word they cannot guarantee -- a name
+// that is not an identifier, a text carrying `;`, `|`, a quote, a `$`, a backtick or a
+// space. Every helper here, and both renderers, answer with an Outcome, so a refusal comes
+// back as the refusal arm carrying a diagnostic that names the site. Nothing in this module
+// puts a line in the script where a refused word was: a marker line is still a plausible
+// script, it still starts a container, and it only fails where nothing is looking -- the
+// host comparing a digest. The carrier is the one posix_sh_* and v2.std.diagnostic already
+// use (gunbc.design_argument::fail_closed,
+// gunbc.recurring_failure_mode::a_refused_emission_is_rendered_as_a_poison_string_inside_otherwise_valid_output).
 
-fn srv1_bash_poison_node() -> Node {
-  bash_build_command_from_word_nodes(words: [bash_build_word_lit(text: srv1_bash_emit_refused_poison)])
+// A refusal's diagnostic. `reason` is the only field of a Diagnostic that can carry text,
+// so the refusing site is interned into it: `diagnostics_reason_lexemes` reads the site
+// back out of the refusal, which is what lets a control name WHICH site refused instead of
+// only that one did.
+fn srv1_bash_refusal(site: String) -> Diagnostic {
+  Diagnostic {
+    reason: symbol_intern_lexeme(lexeme: concat("srv1_bash_refused:", site)),
+    at: textual_whole_file_locus(file: ^srv1_serving_replica_layout),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
-fn srv1_bash_unwrap(built: Optional<Node>) -> Node {
+// A checked builder's answer, kept. Present is the accepted arm; Absent is the refusal arm,
+// naming the site that asked for the word. There is no arm that renders something anyway.
+fn srv1_bash_node(built: Optional<Node>, site: String) -> Outcome<Node> {
   match built {
-    Present { value: n } => n
-    Absent => srv1_bash_poison_node()
+    Present { value: node } => outcome_accepted(value: node)
+    Absent => outcome_rejected(d: srv1_bash_refusal(site: site))
   }
 }
 
-// A word the lexer would accept unquoted. `bash_build_word_bare` is CHECKED: it refuses
-// a text carrying `;`, `|`, a quote, a `$`, a backtick or a space rather than quoting it
-// for the caller, so an unquoted word here cannot become an injection by way of a config
-// value that grew a metacharacter. Refusal is poison, not a quoting fallback.
-fn srv1_bash_bare(text: String) -> Node {
-  match bash_build_word_bare(text: text) {
-    Present { value: n } => n
-    Absent => srv1_bash_poison_node()
+// The emitter's answer, kept. An emission that came back accepted only WITH diagnostics is
+// not a render either: both of its bad arms answer the refusal carrying the emitter's own
+// diagnostics, so the reason a statement cannot be spelled survives to whoever has to say
+// why nothing was installed.
+fn srv1_bash_emit(stmt: Node) -> Outcome<String> {
+  match bash_emit_stmt(stmt: stmt) {
+    Accepted { value: line, diagnostics: None } => outcome_accepted(value: line)
+    Accepted { value: _, diagnostics: Some { diagnostics: emitted } } => Rejected { diagnostics: emitted }
+    Rejected { diagnostics: emitted } => Rejected { diagnostics: emitted }
   }
+}
+
+// A render assembles its statements and then emits them, in order, and the first refusal is
+// the whole answer -- a script with a hole in it is not a partial result worth keeping.
+data srv1_bash_short_circuit: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: ShortCircuit }
+
+// The parts of one construction, in the order its row wants them: all Present, or the first
+// part's refusal. Nothing is built around a part that is missing.
+fn srv1_bash_parts(parts: List<Outcome<Node>>) -> Outcome<List<Node>> {
+  sequence_outcome(xs: parts, policy: srv1_bash_short_circuit)
+}
+
+// Parts, then the row that spells the statement from them. `build` is that row, and whether
+// the row is total or CHECKED is decided by which of these two wrappers a call site uses:
+// either way the call site's answer is an Outcome.
+fn srv1_bash_built(parts: List<Outcome<Node>>, build: fn(List<Node>) -> Node) -> Outcome<Node> {
+  bind_outcome(o: srv1_bash_parts(parts: parts), f: nodes => outcome_accepted(value: build(nodes)))
+}
+
+// The same, for a row that is itself CHECKED: its own refusal answers the refusal arm naming
+// the site, exactly as a refused word does.
+fn srv1_bash_built_checked(parts: List<Outcome<Node>>, site: String, build: fn(List<Node>) -> Optional<Node>) -> Outcome<Node> {
+  bind_outcome(o: srv1_bash_parts(parts: parts), f: nodes => srv1_bash_node(built: build(nodes), site: site))
+}
+
+// Two parts, then the row. Written per arity so a statement's call site stays one deep
+// instead of nesting a bind per argument.
+fn srv1_bash_built2(first: Outcome<Node>, second: Outcome<Node>, build: fn(Node, Node) -> Node) -> Outcome<Node> {
+  bind_outcome(
+    o: first,
+    f: fn(left) { bind_outcome(o: second, f: fn(right) { outcome_accepted(value: build(left, right)) }) }
+  )
+}
+
+// One part, then the row.
+fn srv1_bash_built1(first: Outcome<Node>, build: fn(Node) -> Node) -> Outcome<Node> {
+  bind_outcome(o: first, f: fn(inner) { outcome_accepted(value: build(inner)) })
+}
+
+// The statements of one render, emitted in order: this is where a list of statements becomes
+// a list of LINES, and a refusal at any point -- in a part, in a row, or in the emitter --
+// becomes the answer instead of one line of an otherwise valid script.
+fn srv1_bash_lines(stmts: List<Outcome<Node>>) -> Outcome<List<String>> {
+  bind_outcome(
+    o: srv1_bash_parts(parts: stmts),
+    f: fn(nodes) {
+      sequence_outcome(xs: map(nodes, node => srv1_bash_emit(stmt: node)), policy: srv1_bash_short_circuit)
+    }
+  )
+}
+
+// A word the lexer would accept unquoted. `bash_build_word_bare` is CHECKED: it refuses such
+// a text rather than quoting it for the caller, so an unquoted word here cannot become an
+// injection by way of a config value that grew a metacharacter. Its refusal is the refusal
+// arm, naming the site (gunbc.design_argument::fail_closed).
+fn srv1_bare_word(site: String, text: String) -> Outcome<Node> {
+  srv1_bash_node(built: bash_build_word_bare(text: text), site: site)
+}
+
+// INERT TEXT, NOT A QUOTED LITERAL. A `lit` word is text handed to the shell already quoted
+// -- the serializer spells it `'text'`, which is right for a word that must arrive as ONE
+// argv entry and wrong for text that must read exactly as written. `quoted_text` is the
+// lane's kind for inert text: emitted verbatim, and the builder refuses it when it carries a
+// character bash would expand (`$`, backquote, double quote, backslash, bang) --
+// gunbc.design_argument::fail_closed.
+fn srv1_bash_inert(site: String, text: String) -> Outcome<Node> {
+  srv1_bash_node(built: bash_build_quoted_text(text: text), site: site)
+}
+
+// `$NAME`, as the host spells it: bare, unbraced. CHECKED: a name that is not an identifier
+// refuses here rather than becoming text the shell would re-read.
+fn srv1_bash_var(site: String, name: String) -> Outcome<Node> {
+  srv1_bash_node(built: bash_build_word_var_bare(name: name), site: site)
+}
+
+// `"$@"`, `$(...)` and the array expansion, all CHECKED rows for the same reason.
+fn srv1_bash_positional_all(site: String, which: String) -> Outcome<Node> {
+  srv1_bash_node(built: bash_build_word_positional_all(which: which), site: site)
+}
+
+fn srv1_bash_array_expansion(site: String, name: String) -> Outcome<Node> {
+  srv1_bash_node(built: bash_build_word_array_expansion(name: name), site: site)
+}
+
+// `${INDEX:?MESSAGE}`: the one parameter expansion in the boot path that carries its own
+// refusal, and a CHECKED row -- the index has to be a positional this lane can spell.
+fn srv1_bash_param_error(site: String, index: String, word: String) -> Outcome<Node> {
+  srv1_bash_node(built: bash_build_word_param_error(index: index, word: word), site: site)
+}
+
+// A comment line, through the comment row rather than written into the file by whoever last
+// rendered it. CHECKED: a comment holding a newline is not a comment.
+fn srv1_bash_comment(site: String, text: String) -> Outcome<Node> {
+  srv1_bash_node(built: bash_build_comment(text: text), site: site)
+}
+
+// `"…"`, one double-quoted word made of the parts the caller built -- a command
+// substitution and inert text, mostly. CHECKED: an unbalanced quote is not a word.
+fn srv1_bash_quoted(site: String, parts: List<Outcome<Node>>) -> Outcome<Node> {
+  srv1_bash_built_checked(parts: parts, site: site, build: words => bash_build_word_double_quoted(parts: words))
 }
 
 // `$D/<suffix>`, the way the installed artifact writes it: a bare expansion and the path
 // under it, joined by the word-concat production, with no quotes anywhere. Not
 // bash_build_word_var: that one is double-quoted, and `>> $D/events.log` is not.
-// INERT TEXT, NOT A QUOTED LITERAL. A `lit` word is text handed to the shell already quoted --
-// the serializer spells it `'text'`, which is right for a word that must arrive as ONE argv
-// entry and wrong for text that must read exactly as written. Both uses here are the second:
-// the suffix after `$D` must read `$D/events.log`, not `$D'/events.log'`, and the run of three
-// spaces between `-nodes` and `-days` is the installed artifact's own spacing, which a quoted
-// literal would freeze into a single argument. `quoted_text` is the lane's kind for inert text:
-// emitted verbatim, and the builder refuses it when it carries a character bash would expand
-// (`$`, backquote, double quote, backslash, bang) -- gunbc.design_argument::fail_closed.
-fn srv1_bash_inert(text: String) -> Node {
-  match bash_build_quoted_text(text: text) {
-    Present { value: n } => n
-    Absent => srv1_bash_poison_node()
-  }
+fn srv1_bash_d_suffix(site: String, suffix: String) -> Outcome<Node> {
+  srv1_bash_built(
+    parts: [srv1_bash_var(site: site, name: "D"), srv1_bash_inert(site: site, text: concat("/", suffix))],
+    build: words => bash_build_word_concat_from_nodes(parts: words)
+  )
 }
 
-fn srv1_bash_d_suffix(suffix: String) -> Node {
-  match bash_build_word_var_bare(name: "D") {
-    Present { value: d } =>
-      bash_build_word_concat_from_nodes(parts: [d, srv1_bash_inert(text: concat("/", suffix))])
-    Absent => srv1_bash_poison_node()
-  }
+fn srv1_bash_d_under(site: String, path: FilePath) -> Outcome<Node> {
+  srv1_bash_d_suffix(site: site, suffix: path as String)
 }
 
-fn srv1_bash_d_under(path: FilePath) -> Node {
-  srv1_bash_d_suffix(suffix: path as String)
+// `<a> && <b>` and `<a> || <b>`: both rows are total, so only the parts can refuse.
+fn srv1_bash_and_then(left: Outcome<Node>, right: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built2(first: left, second: right, build: fn(l, r) { bash_build_and_then(left: l, right: r) })
 }
 
-fn srv1_bash_quoted(parts: List<Node>) -> Node {
-  match bash_build_word_double_quoted(parts: parts) {
-    Present { value: n } => n
-    Absent => srv1_bash_poison_node()
-  }
+fn srv1_bash_or_else(left: Outcome<Node>, right: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built2(first: left, second: right, build: fn(l, r) { bash_build_or_else(left: l, right: r) })
 }
 
-fn srv1_bash_line(stmt: Node) -> String {
-  match bash_emit_stmt(stmt: stmt) {
-    Accepted { value: line, diagnostics: None } => line
-    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => srv1_bash_emit_refused_poison
-    Rejected { diagnostics: _ } => srv1_bash_emit_refused_poison
-  }
+// `NAME=<value>`, and `$( … )`: both rows total, so only the part can refuse.
+fn srv1_bash_assign(name: String, value: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built1(first: value, build: v => bash_build_assign(name: name, value: v))
 }
 
-fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> List<String> {
+fn srv1_bash_cmdsubst(body: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built1(first: body, build: b => bash_build_word_cmdsubst(body: b))
+}
+
+// A command: its words, in order. The row is total -- every word was chosen by a checked
+// row above, which is where a refusal comes from.
+fn srv1_bash_command(words: List<Outcome<Node>>) -> Outcome<Node> {
+  srv1_bash_built(parts: words, build: ws => bash_build_command_from_word_nodes(words: ws))
+}
+
+// `[ … ]`, and `[ a <op> b ]`. An operator outside the row's closed set does not become
+// text: it becomes the refused word kind, which the EMITTER then refuses -- which is why
+// ^srv1_bash_emit keeps the emitter's own diagnostics instead of dropping them.
+fn srv1_bash_test_bracket(words: List<Outcome<Node>>, spelling: TestBracketSpelling) -> Outcome<Node> {
+  srv1_bash_built(parts: words, build: ws => bash_build_test_bracket(words: ws, spelling: spelling))
+}
+
+fn srv1_bash_test_comparison(left: Outcome<Node>, op: String, right: Outcome<Node>, spelling: TestBracketSpelling) -> Outcome<Node> {
+  srv1_bash_built2(
+    first: left,
+    second: right,
+    build: fn(l, r) { bash_build_test_comparison(left: l, op: op, right: r, spelling: spelling) }
+  )
+}
+
+// The redirections, one row each, exactly as the installed file spells them.
+fn srv1_bash_redir_append_file(inner: Outcome<Node>, path: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built2(first: inner, second: path, build: fn(i, p) { bash_build_with_redir_stdout_append_file(inner: i, path: p) })
+}
+
+fn srv1_bash_redir_from_file(inner: Outcome<Node>, path: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built2(first: inner, second: path, build: fn(i, p) { bash_build_with_redir_from_file(inner: i, path: p) })
+}
+
+fn srv1_bash_redir_stderr_to_stdout(inner: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built1(first: inner, build: i => bash_build_with_redir_stderr_to_stdout(inner: i))
+}
+
+fn srv1_bash_redir_stdout_to_stderr(inner: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built1(first: inner, build: i => bash_build_with_redir_stdout_to_stderr(inner: i))
+}
+
+// `docker … >/dev/null 2>&1` — both streams gone, because these probes run at every
+// boot and their noise is not the unit's log. ONE redirection row owns that spelling
+// (^bash_build_with_redir_stdout_and_stderr_null); it is not the `>file` row stacked
+// with the `2>&1` row, which would render a space the installed file does not have.
+fn srv1_launcher_quiet(command: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_built1(first: command, build: i => bash_build_with_redir_stdout_and_stderr_null(inner: i))
+}
+
+// `{ …; }` — one statement made of statements. The row is total; the statements are not.
+fn srv1_bash_brace_group(stmts: List<Outcome<Node>>) -> Outcome<Node> {
+  srv1_bash_built(parts: stmts, build: ss => bash_build_brace_group_from_stmts(stmts: ss))
+}
+
+// `NAME() { … }` — CHECKED: a function name has to be an identifier.
+fn srv1_bash_function_def(site: String, name: String, body: List<Outcome<Node>>) -> Outcome<Node> {
+  srv1_bash_built_checked(parts: body, site: site, build: bs => bash_build_function_def(name: name, body: bs))
+}
+
+// `a; b; c` held as one statement — CHECKED.
+fn srv1_bash_seq(site: String, stmts: List<Outcome<Node>>) -> Outcome<Node> {
+  srv1_bash_built_checked(parts: stmts, site: site, build: ss => bash_build_seq_from_stmts(stmts: ss))
+}
+
+// `case WORD in … esac`, and its two clause rows — CHECKED: a clause pattern has to be a
+// pattern this lane can spell.
+fn srv1_bash_case(site: String, word: Outcome<Node>, clauses: List<Outcome<Node>>) -> Outcome<Node> {
+  bind_outcome(
+    o: word,
+    f: fn(w) {
+      bind_outcome(
+        o: srv1_bash_parts(parts: clauses),
+        f: fn(cs) { srv1_bash_node(built: bash_build_case(word: w, clauses: cs), site: site) }
+      )
+    }
+  )
+}
+
+fn srv1_bash_case_block(site: String, pattern: String, body: List<Outcome<Node>>) -> Outcome<Node> {
+  srv1_bash_built_checked(parts: body, site: site, build: bs => bash_build_case_clause_block(pattern: pattern, body: bs))
+}
+
+fn srv1_bash_case_inline(site: String, pattern: String, body: List<Outcome<Node>>) -> Outcome<Node> {
+  srv1_bash_built_checked(parts: body, site: site, build: bs => bash_build_case_clause_inline(pattern: pattern, body: bs))
+}
+
+// `for NAME in WORDS; do … done` — CHECKED.
+fn srv1_bash_for(site: String, name: String, words: List<Outcome<Node>>, body: List<Outcome<Node>>) -> Outcome<Node> {
+  bind_outcome(
+    o: srv1_bash_parts(parts: words),
+    f: fn(ws) {
+      bind_outcome(
+        o: srv1_bash_parts(parts: body),
+        f: fn(bs) { srv1_bash_node(built: bash_build_for(name: name, words: ws, body: bs), site: site) }
+      )
+    }
+  )
+}
+
+// `exit CODE`: the row is total -- the status is a digit string this module chose.
+fn srv1_bash_exit(code: String) -> Outcome<Node> {
+  outcome_accepted(value: bash_build_exit(code: code))
+}
+
+fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> Outcome<List<String>> {
   let shape = srv1_replica_container_run_shape
   let l1_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))
   let l2_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))
@@ -1245,139 +1452,137 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
   // The driver probe sits inside double quotes in the START line, where bash still
   // performs command substitution -- that is the part this lane had to gain, and it is
   // the part whose bytes are easiest to get wrong, so it is one node, not a splice.
-  let driver_probe = bash_build_word_cmdsubst(
-    body: bash_build_command_from_word_nodes(words: [
-      srv1_bash_bare(text: "nvidia-smi"),
-      srv1_bash_bare(text: "--query-gpu=driver_version"),
-      srv1_bash_bare(text: "--format=csv,noheader")
+  let driver_probe = srv1_bash_cmdsubst(
+    body: srv1_bash_command(words: [
+      srv1_bare_word(site: "container command: driver probe", text: "nvidia-smi"),
+      srv1_bare_word(site: "container command: driver probe", text: "--query-gpu=driver_version"),
+      srv1_bare_word(site: "container command: driver probe", text: "--format=csv,noheader")
     ])
   )
   // The stamp every event line opens with. The installed artifact writes UTC from
   // `date -u +%FT%TZ`; the format string is the one in those bytes and in
   // bash_emit_constructs.dag's `ev_echo_argument_golden`, and it is a bare word because
   // none of its characters are shell meta-characters.
-  let event_stamp = bash_build_word_cmdsubst(
-    body: bash_build_command_from_word_nodes(words: [
-      srv1_bash_bare(text: "date"),
-      srv1_bash_bare(text: "-u"),
-      srv1_bash_bare(text: "+%FT%TZ")
+  let event_stamp = srv1_bash_cmdsubst(
+    body: srv1_bash_command(words: [
+      srv1_bare_word(site: "container command: event stamp", text: "date"),
+      srv1_bare_word(site: "container command: event stamp", text: "-u"),
+      srv1_bare_word(site: "container command: event stamp", text: "+%FT%TZ")
     ])
   )
-  let logger = srv1_bash_unwrap(
-    built: bash_build_function_def(
+  let logger = srv1_bash_function_def(site: "container command: event logger",
       name: "ev",
       body: [
-        bash_build_with_redir_stdout_append_file(
-          inner: bash_build_command_from_word_nodes(words: [
-            srv1_bash_bare(text: "echo"),
-            srv1_bash_quoted(parts: [
+        srv1_bash_redir_append_file(
+          inner: srv1_bash_command(words: [
+            srv1_bare_word(site: "container command: event logger", text: "echo"),
+            srv1_bash_quoted(site: "container command: event logger", parts: [
               event_stamp,
-              srv1_bash_inert(text: " "),
-              srv1_bash_unwrap(built: bash_build_word_positional_all(which: "*"))
+              srv1_bash_inert(site: "container command: event logger", text: " "),
+              srv1_bash_positional_all(site: "container command: event logger", which: "*")
             ])
           ]),
-          path: srv1_bash_d_suffix(suffix: "events.log")
+          path: srv1_bash_d_suffix(site: "container command: event logger", suffix: "events.log")
         )
       ]
     )
-  )
-  let setup = srv1_bash_unwrap(
-    built: bash_build_seq_from_stmts(stmts: [
-      bash_build_assign(name: "D", value: srv1_bash_bare(text: config.tls_material.container_dir as String)),
+
+  let setup = srv1_bash_seq(site: "container command: serve directory", stmts: [
+      srv1_bash_assign(name: "D", value: srv1_bare_word(site: "container command: serve directory", text: config.tls_material.container_dir as String)),
       logger
     ])
-  )
-  let mint_tls = bash_build_command_from_word_nodes(words: [
-    srv1_bash_bare(text: "openssl"),
-    srv1_bash_bare(text: "req"),
-    srv1_bash_bare(text: "-x509"),
-    srv1_bash_bare(text: "-newkey"),
-    srv1_bash_bare(text: "ec"),
-    srv1_bash_bare(text: "-pkeyopt"),
-    srv1_bash_bare(text: concat("ec_paramgen_curve:", shape.tls_curve as String)),
+
+  let mint_tls = srv1_bash_command(words: [
+    srv1_bare_word(site: "container command: mint TLS", text: "openssl"),
+    srv1_bare_word(site: "container command: mint TLS", text: "req"),
+    srv1_bare_word(site: "container command: mint TLS", text: "-x509"),
+    srv1_bare_word(site: "container command: mint TLS", text: "-newkey"),
+    srv1_bare_word(site: "container command: mint TLS", text: "ec"),
+    srv1_bare_word(site: "container command: mint TLS", text: "-pkeyopt"),
+    srv1_bare_word(site: "container command: mint TLS", text: concat("ec_paramgen_curve:", shape.tls_curve as String)),
     // The space run before `-days` is a line-continuation remnant from the operator's
     // script and it is in the bytes the host carries. It is carried here by the one word
     // that holds it, not by a join that would have to lie about being a single space.
-    srv1_bash_inert(text: "-nodes   -days"),
-    srv1_bash_bare(text: days),
-    srv1_bash_bare(text: "-subj"),
-    srv1_bash_bare(text: concat("/CN=", shape.tls_subject_common_name as String)),
-    srv1_bash_bare(text: "-keyout"),
-    srv1_bash_d_under(path: config.tls_material.key_path),
-    srv1_bash_bare(text: "-out"),
-    srv1_bash_d_under(path: config.tls_material.cert_path)
+    srv1_bash_inert(site: "container command: mint TLS", text: "-nodes   -days"),
+    srv1_bare_word(site: "container command: mint TLS", text: days),
+    srv1_bare_word(site: "container command: mint TLS", text: "-subj"),
+    srv1_bare_word(site: "container command: mint TLS", text: concat("/CN=", shape.tls_subject_common_name as String)),
+    srv1_bare_word(site: "container command: mint TLS", text: "-keyout"),
+    srv1_bash_d_under(site: "container command: mint TLS", path: config.tls_material.key_path),
+    srv1_bare_word(site: "container command: mint TLS", text: "-out"),
+    srv1_bash_d_under(site: "container command: mint TLS", path: config.tls_material.cert_path)
   ])
-  let tls_guard = bash_build_or_else(
-    left: bash_build_and_then(
-      left: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.key_path)], spelling: BracketBare),
-      right: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.cert_path)], spelling: BracketBare)
+  let tls_guard = srv1_bash_or_else(
+    left: srv1_bash_and_then(
+      left: srv1_bash_test_bracket(words: [srv1_bare_word(site: "container command: TLS material guard", text: "-s"), srv1_bash_d_under(site: "container command: TLS material guard", path: config.tls_material.key_path)], spelling: BracketBare),
+      right: srv1_bash_test_bracket(words: [srv1_bare_word(site: "container command: TLS material guard", text: "-s"), srv1_bash_d_under(site: "container command: TLS material guard", path: config.tls_material.cert_path)], spelling: BracketBare)
     ),
-    right: bash_build_with_redir_stderr_to_stdout(
-      inner: bash_build_with_redir_stdout_append_file(
+    right: srv1_bash_redir_stderr_to_stdout(
+      inner: srv1_bash_redir_append_file(
         inner: mint_tls,
-        path: srv1_bash_d_suffix(suffix: "events.log")
+        path: srv1_bash_d_suffix(site: "container command: TLS material guard", suffix: "events.log")
       )
     )
   )
   let gpu_uuid = srv1_replica_gpu_uuid_text(replica: replica)
-  let start_event = bash_build_command_from_word_nodes(words: [
-    srv1_bash_bare(text: "ev"),
-    srv1_bash_quoted(parts: [
-      srv1_bash_inert(text: concat(
+  let start_event = srv1_bash_command(words: [
+    srv1_bare_word(site: "container command: start event", text: "ev"),
+    srv1_bash_quoted(site: "container command: start event", parts: [
+      srv1_bash_inert(site: "container command: start event", text: concat(
         concat(concat(concat(concat("START srv1 gpu", to_string(replica.index)), " "), gpu_uuid), " (driver "),
         ""
       )),
       driver_probe,
-      srv1_bash_inert(text: concat(
+      srv1_bash_inert(site: "container command: start event", text: concat(
         concat(concat(concat(concat(", TP", to_string(config.tensor_parallel_size)), ", cache ram-disk, L1 "), l1_gib), "G, L2 "),
         concat(l2_gib, "G, disk-first, TLS)")
       ))
     ])
   ])
   let args_path = shape.engine_args_container_path as String
-  let argv_guard = bash_build_or_else(
-    left: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_bare(text: args_path)], spelling: BracketBare),
-    right: bash_build_brace_group_from_stmts(stmts: [
-      bash_build_command_from_word_nodes(words: [
-        srv1_bash_bare(text: "ev"),
-        srv1_bash_quoted(parts: [srv1_bash_inert(text: concat("FATAL rendered engine argv file missing: ", args_path))])
+  let argv_guard = srv1_bash_or_else(
+    left: srv1_bash_test_bracket(words: [srv1_bare_word(site: "container command: argv guard", text: "-s"), srv1_bare_word(site: "container command: argv guard", text: args_path)], spelling: BracketBare),
+    right: srv1_bash_brace_group(stmts: [
+      srv1_bash_command(words: [
+        srv1_bare_word(site: "container command: argv guard", text: "ev"),
+        srv1_bash_quoted(site: "container command: argv guard", parts: [srv1_bash_inert(site: "container command: argv guard", text: concat("FATAL rendered engine argv file missing: ", args_path))])
       ]),
-      bash_build_exit(code: "3")
+      srv1_bash_exit(code: "3")
     ])
   )
-  let load_argv = bash_build_with_redir_from_file(
-    inner: bash_build_command_from_word_nodes(words: [
-      srv1_bash_bare(text: "mapfile"),
-      srv1_bash_bare(text: "-t"),
-      srv1_bash_bare(text: "ENGINE_ARGS")
+  let load_argv = srv1_bash_redir_from_file(
+    inner: srv1_bash_command(words: [
+      srv1_bare_word(site: "container command: load argv", text: "mapfile"),
+      srv1_bare_word(site: "container command: load argv", text: "-t"),
+      srv1_bare_word(site: "container command: load argv", text: "ENGINE_ARGS")
     ]),
-    path: srv1_bash_bare(text: args_path)
+    path: srv1_bare_word(site: "container command: load argv", text: args_path)
   )
-  let serve = bash_build_with_redir_stderr_to_stdout(
-    inner: bash_build_with_redir_stdout_append_file(
-      inner: bash_build_command_from_word_nodes(words: [
-        srv1_bash_bare(text: "exec"),
-        srv1_bash_unwrap(built: bash_build_word_array_expansion(name: "ENGINE_ARGS"))
+  let serve = srv1_bash_redir_stderr_to_stdout(
+    inner: srv1_bash_redir_append_file(
+      inner: srv1_bash_command(words: [
+        srv1_bare_word(site: "container command: serve", text: "exec"),
+        srv1_bash_array_expansion(site: "container command: serve", name: "ENGINE_ARGS")
       ]),
-      path: srv1_bash_d_suffix(suffix: "serve.log")
+      path: srv1_bash_d_suffix(site: "container command: serve", suffix: "serve.log")
     )
   )
-  [
+  srv1_bash_lines(stmts: [
     // 1. The event logger every later line writes through, and the directory it writes in.
-    srv1_bash_line(stmt: setup),
+    setup,
     // 2. TLS, guarded so a restart never re-mints a certificate the router's pinned CA would reject.
-    srv1_bash_line(stmt: tls_guard),
+    tls_guard,
     // 3. The START event: which card this replica came up on, at what driver, with what cache
     //    tiers. An operator reads this line in events.log after an incident, so its shape is a
     //    row, not prose.
-    srv1_bash_line(stmt: start_event),
+    start_event,
     // 4. The argv file the helper wrote must be there before exec reads it into the array.
-    srv1_bash_line(stmt: argv_guard),
+    argv_guard,
     // 5. Null-delimited read, so an argument that contains a space survives intact.
-    srv1_bash_line(stmt: load_argv),
+    load_argv,
     // 6. The engine, with the argv array expanded as-is and the log appended.
-    srv1_bash_line(stmt: serve)
-  ]
+    serve
+  ])
 }
 
 // The `docker run` line for one replica, with every value rendered -- no host shell variable survives into
@@ -1389,7 +1594,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
 // and the launcher refuses to run without it. The pool key mount is retained read-only even though the engine
 // stopped reading it: the unit contract verifies the mount set, and dropping a mount mid-window would put a
 // second change in flight under a switch whose entire value is that the diff is attributable.
-fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> List<String> {
+fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> Outcome<List<String>> {
   let shape = srv1_replica_container_run_shape
   let memory_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_replica_host_budget.cgroup_memory_limit)))
   let shm_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: shape.shm_size)))
@@ -1442,18 +1647,35 @@ fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchC
     "--entrypoint" as String, shape.entrypoint as String,
     config.image_digest as String,
     "-lc" as String,
-    // ONE shell word, quoted by the emitter's `lit` row (^srv1_bash_arg), not by a
-    // string operation here. The inner script holds double quotes, `$(...)`, `${...}` and
-    // newlines, and it is the argument the container's bash receives: unquoted, the first
-    // newline would end the `docker run` on the host and the rest of the script would run
-    // THERE. It is stored UNQUOTED in the argv row -- a pre-quoted string pasted in as a
-    // whole would be hand shell wearing a data row's clothes -- and `lit` is total, so a
-    // future line that grows a single quote is escaped by the row instead of truncating
-    // the container command.
-    string_concat_join(srv1_replica_container_command_lines(replica: replica, config: config), "\n"),
   ]
-  concat(concat(concat(identity, published), mounted), entered)
+  // The script is ONE shell word, quoted by the emitter's `lit` row (^srv1_bash_arg), not
+  // by a string operation here. The inner script holds double quotes, `$(...)`, `${...}`
+  // and newlines, and it is the argument the container's bash receives: unquoted, the
+  // first newline would end the `docker run` on the host and the rest of the script would
+  // run THERE. It is stored UNQUOTED in the argv row -- a pre-quoted string pasted in as a
+  // whole would be hand shell wearing a data row's clothes -- and `lit` is total, so a
+  // future line that grows a single quote is escaped by the row instead of truncating
+  // the container command.
+  //
+  // And the script is a RENDER, so the argv is an Outcome: an argv whose container command
+  // refused is the refusal arm carrying the reason. There is no `docker run` with a marker
+  // line where a refused statement was, which is what the install-time `docker inspect`
+  // comparison and the witness claim srv1_replica_container_run_shape_is_the_argv both
+  // read: they compare a command that exists, or there is nothing to compare.
+  bind_outcome(
+    o: srv1_replica_container_command_lines(replica: replica, config: config),
+    f: script => outcome_accepted(
+      value: concat(
+        concat(concat(identity, published), mounted),
+        concat(entered, [string_concat_join(script, "\n")])
+      )
+    )
+  )
 }
+
+// `cmd >&2` — a diagnostic. Its own function because the launcher writes to stderr on
+// every refusal path, and a refusal that went to stdout would be lost in the unit's
+// journal alongside the engine's own noise.
 
 // THE INSTALLED LAUNCHER, rendered. These are the bytes of /usr/local/sbin/lil-replica-launch; their sha256
 // on-host is what srv1_replica_launcher_sha256 records, and
@@ -1502,30 +1724,26 @@ fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchC
 // unquoted, its first newline would end the `docker run` on the host and the rest of
 // the script would run THERE). An argv element is ONE word, so the four tokens of
 // `docker run -d` are four elements, not one glued string.
-fn srv1_bash_arg(text: String) -> Node {
+//
+// THIS IS THE ONE PLACE A REFUSED `bare` IS ANSWERED BY `lit`, and it is not a fallback
+// around a refusal: both rows spell the SAME argv word, one quoted and one not, and `lit`
+// is total -- it cannot refuse, so nothing is invented where a word should be. Everywhere
+// else in this module a refusal ends the render.
+fn srv1_bash_arg(text: String) -> Outcome<Node> {
   match bash_build_word_bare(text: text) {
-    Present { value: word } => word
-    Absent => bash_build_word_lit(text: text)
+    Present { value: word } => outcome_accepted(value: word)
+    Absent => outcome_accepted(value: bash_build_word_lit(text: text))
   }
 }
 
-// `$NAME`, as the host spells it: bare, unbraced.
-fn srv1_bash_var(name: String) -> Node {
-  match bash_build_word_var_bare(name: name) {
-    Present { value: word } => word
-    Absent => srv1_bash_poison_node()
-  }
-}
 
 // `cmd >&2` — a diagnostic. Its own function because the launcher writes to stderr on
 // every refusal path, and a refusal that went to stdout would be lost in the unit's
 // journal alongside the engine's own noise.
-fn srv1_launcher_diagnostic(message: Node) -> Node {
-  srv1_bash_unwrap(
-    built: bash_build_with_redir_stdout_to_stderr(
-      inner: bash_build_command_from_word_nodes(
-        words: [srv1_bash_bare(text: "echo"), message]
-      )
+fn srv1_launcher_diagnostic(message: Outcome<Node>) -> Outcome<Node> {
+  srv1_bash_redir_stdout_to_stderr(
+    inner: srv1_bash_command(
+      words: [srv1_bare_word(site: "launcher diagnostic", text: "echo"), message]
     )
   )
 }
@@ -1533,29 +1751,29 @@ fn srv1_launcher_diagnostic(message: Node) -> Node {
 // `[ TEST ] || { echo "…" >&2; exit CODE; }` — the launcher's input guard, and the
 // reason a stale args file cannot boot anything. The brace group is one statement, so
 // the guard is one statement, so the emitter's own row for it is what decides the
+// bytes. The test, the message fragments and the code all arrive as what their rows
+// answered: nothing here is rendered when a part refused.
+
+// `[ TEST ] || { echo "…" >&2; exit CODE; }` — the launcher's input guard, and the
+// reason a stale args file cannot boot anything. The brace group is one statement, so
+// the guard is one statement, so the emitter's own row for it is what decides the
 // bytes.
-fn srv1_launcher_input_guard(test: Node, message_parts: List<Node>, code: String) -> Node {
-  srv1_bash_unwrap(
-    built: bash_build_or_else(
-      left: test,
-      right: srv1_bash_unwrap(
-        built: bash_build_brace_group_from_stmts(
-          stmts: [
-            srv1_launcher_diagnostic(message: srv1_bash_quoted(parts: message_parts)),
-            bash_build_exit(code: code)
-          ]
-        )
-      )
+
+// `[ TEST ] || { echo "…" >&2; exit CODE; }` — the launcher's input guard, and the
+// reason a stale args file cannot boot anything. The brace group is one statement, so
+// the guard is one statement, so the emitter's own row for it is what decides the
+// bytes.
+fn srv1_launcher_input_guard(test: Outcome<Node>, message_parts: List<Outcome<Node>>, code: String) -> Outcome<Node> {
+  let site = "launcher input guard"
+  srv1_bash_or_else(
+    left: test,
+    right: srv1_bash_brace_group(
+      stmts: [
+        srv1_launcher_diagnostic(message: srv1_bash_quoted(site: site, parts: message_parts)),
+        srv1_bash_exit(code: code)
+      ]
     )
   )
-}
-
-// `docker … >/dev/null 2>&1` — both streams gone, because these probes run at every
-// boot and their noise is not the unit's log. ONE redirection row owns that spelling
-// (^bash_build_with_redir_stdout_and_stderr_null); it is not the `>file` row stacked
-// with the `2>&1` row, which would render a space the installed file does not have.
-fn srv1_launcher_quiet(command: Node) -> Node {
-  bash_build_with_redir_stdout_and_stderr_null(inner: command)
 }
 
 // One half of the TLS identity: if the replica's own copy is missing, take it from the
@@ -1565,37 +1783,46 @@ fn srv1_launcher_quiet(command: Node) -> Node {
 // operators are deliberately NOT used; this is the bracket form the installed file
 // uses, one file per guard, so a half-written key beside an intact certificate cannot
 // be read as "nothing is missing".
-fn srv1_launcher_tls_copy_guard(serve_dir: String, source_dir: String, file_name: String) -> Node {
+
+
+// One half of the TLS identity: if the replica's own copy is missing, take it from the
+// identity source. The `[ a != b ]` test makes the arm that OWNS the source directory a
+// genuine no-op — copying a file onto itself is an error, not a no-op, and an arm that
+// died there would take a healthy replica down at boot. The operator's `-a`/`-o`
+// operators are deliberately NOT used; this is the bracket form the installed file
+// uses, one file per guard, so a half-written key beside an intact certificate cannot
+// be read as "nothing is missing".
+fn srv1_launcher_tls_copy_guard(serve_dir: String, source_dir: String, file_name: String) -> Outcome<Node> {
   let own = concat(concat(serve_dir, "/"), file_name)
   let from = concat(concat(source_dir, "/"), file_name)
-  srv1_bash_unwrap(
-    built: bash_build_and_then(
-      left: bash_build_test_comparison(
-        left: srv1_bash_quoted(parts: [srv1_bash_inert(text: own)]),
-        op: "!=",
-        right: srv1_bash_quoted(parts: [srv1_bash_inert(text: from)]), spelling: BracketBare
-      ),
-      right: srv1_bash_unwrap(
-        built: bash_build_brace_group_from_stmts(
-          stmts: [
-            srv1_bash_unwrap(
-              built: bash_build_or_else(
-                left: bash_build_test_bracket(
-                  words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_inert(text: own)])], spelling: BracketBare
-                ),
-                right: bash_build_command_from_word_nodes(
-                  words: [
-                    srv1_bash_bare(text: "sudo"), srv1_bash_bare(text: "-n"),
-                    srv1_bash_bare(text: "cp"), srv1_bash_bare(text: "-p"),
-                    srv1_bash_quoted(parts: [srv1_bash_inert(text: from)]),
-                    srv1_bash_quoted(parts: [srv1_bash_inert(text: own)])
-                  ]
-                )
-              )
-            )
-          ]
+  let site = "launcher TLS copy guard"
+  srv1_bash_and_then(
+    left: srv1_bash_test_comparison(
+      left: srv1_bash_quoted(site: site, parts: [srv1_bash_inert(site: site, text: own)]),
+      op: "!=",
+      right: srv1_bash_quoted(site: site, parts: [srv1_bash_inert(site: site, text: from)]),
+      spelling: BracketBare
+    ),
+    right: srv1_bash_brace_group(
+      stmts: [
+        srv1_bash_or_else(
+          left: srv1_bash_test_bracket(
+            words: [
+              srv1_bare_word(site: site, text: "-s"),
+              srv1_bash_quoted(site: site, parts: [srv1_bash_inert(site: site, text: own)])
+            ],
+            spelling: BracketBare
+          ),
+          right: srv1_bash_command(
+            words: [
+              srv1_bare_word(site: site, text: "sudo"), srv1_bare_word(site: site, text: "-n"),
+              srv1_bare_word(site: site, text: "cp"), srv1_bare_word(site: site, text: "-p"),
+              srv1_bash_quoted(site: site, parts: [srv1_bash_inert(site: site, text: from)]),
+              srv1_bash_quoted(site: site, parts: [srv1_bash_inert(site: site, text: own)])
+            ]
+          )
         )
-      )
+      ]
     )
   )
 }
@@ -1603,25 +1830,29 @@ fn srv1_launcher_tls_copy_guard(serve_dir: String, source_dir: String, file_name
 // One arm's TLS identity guard, both halves — and the trailing `|| true` that keeps
 // the guard from deciding the launch's exit status: a replica that already has its
 // identity must not be held hostage by a test that evaluated false.
-fn srv1_replica_tls_identity_guard_statement(replica: Srv1ServingReplicaSpec) -> Node {
+
+// One arm's TLS identity guard, both halves — and the trailing `|| true` that keeps
+// the guard from deciding the launch's exit status: a replica that already has its
+// identity must not be held hostage by a test that evaluated false.
+
+// One arm's TLS identity guard, both halves — and the trailing `|| true` that keeps
+// the guard from deciding the launch's exit status: a replica that already has its
+// identity must not be held hostage by a test that evaluated false.
+fn srv1_replica_tls_identity_guard_statement(replica: Srv1ServingReplicaSpec) -> Outcome<Node> {
   let serve = replica.host_serve_dir as String
   let src = srv1_tls_identity_source_dir as String
-  srv1_bash_unwrap(
-    built: bash_build_or_else(
-      left: srv1_bash_unwrap(
-        built: bash_build_brace_group_from_stmts(
-          stmts: [
-            srv1_launcher_tls_copy_guard(
-              serve_dir: serve, source_dir: src, file_name: srv1_tls_key_file_name as String
-            ),
-            srv1_launcher_tls_copy_guard(
-              serve_dir: serve, source_dir: src, file_name: srv1_tls_cert_file_name as String
-            )
-          ]
+  srv1_bash_or_else(
+    left: srv1_bash_brace_group(
+      stmts: [
+        srv1_launcher_tls_copy_guard(
+          serve_dir: serve, source_dir: src, file_name: srv1_tls_key_file_name as String
+        ),
+        srv1_launcher_tls_copy_guard(
+          serve_dir: serve, source_dir: src, file_name: srv1_tls_cert_file_name as String
         )
-      ),
-      right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "true")])
-    )
+      ]
+    ),
+    right: srv1_bash_command(words: [srv1_bare_word(site: "launcher TLS identity guard", text: "true")])
   )
 }
 
@@ -1632,77 +1863,96 @@ fn srv1_replica_tls_identity_guard_statement(replica: Srv1ServingReplicaSpec) ->
 // retained gpu.sh polls for up to 300 s. `for i in $(seq 1 150)` with `sleep 2` is that
 // poll, from the row's container name: a lesson the operator learned at 3am, kept
 // inside the artifact instead of inside their memory of it.
-fn srv1_replica_supervisor_race_statement(name: String) -> Node {
-  let inspect = srv1_bash_unwrap(
-    built: bash_build_or_else(
-      left: srv1_launcher_quiet(
-        command: bash_build_command_from_word_nodes(
-          words: [
-            srv1_bash_bare(text: "docker"), srv1_bash_bare(text: "container"),
-            srv1_bash_bare(text: "inspect"), srv1_bash_bare(text: name)
-          ]
-        )
-      ),
-      right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "break")])
-    )
+
+// The removal race, as its own statement. `docker run --name X` fails while a container
+// named X still exists, so the restart path (systemd restarting the unit after a killed
+// container has EXITED but not been removed) dies on a name conflict unless the old one
+// is removed first — and on 2026-11-08 removal itself stalled, which is why the
+// retained gpu.sh polls for up to 300 s. `for i in $(seq 1 150)` with `sleep 2` is that
+// poll, from the row's container name: a lesson the operator learned at 3am, kept
+// inside the artifact instead of inside their memory of it.
+fn srv1_replica_supervisor_race_statement(name: String) -> Outcome<Node> {
+  let site = "launcher removal race"
+  let inspect = srv1_bash_or_else(
+    left: srv1_launcher_quiet(
+      command: srv1_bash_command(
+        words: [
+          srv1_bare_word(site: site, text: "docker"), srv1_bare_word(site: site, text: "container"),
+          srv1_bare_word(site: site, text: "inspect"), srv1_bare_word(site: site, text: name)
+        ]
+      )
+    ),
+    right: srv1_bash_command(words: [srv1_bare_word(site: site, text: "break")])
   )
-  let remove = srv1_bash_unwrap(
-    built: bash_build_or_else(
-      left: srv1_launcher_quiet(
-        command: bash_build_command_from_word_nodes(
-          words: [
-            srv1_bash_bare(text: "docker"), srv1_bash_bare(text: "rm"),
-            srv1_bash_bare(text: "-f"), srv1_bash_bare(text: name)
-          ]
-        )
-      ),
-      right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "true")])
-    )
+  let remove = srv1_bash_or_else(
+    left: srv1_launcher_quiet(
+      command: srv1_bash_command(
+        words: [
+          srv1_bare_word(site: site, text: "docker"), srv1_bare_word(site: site, text: "rm"),
+          srv1_bare_word(site: site, text: "-f"), srv1_bare_word(site: site, text: name)
+        ]
+      )
+    ),
+    right: srv1_bash_command(words: [srv1_bare_word(site: site, text: "true")])
   )
-  srv1_bash_unwrap(
-    built: bash_build_for(
-      name: "i",
-      words: [
-        srv1_bash_unwrap(
-          built: bash_build_word_cmdsubst(
-            body: srv1_bash_unwrap(
-              built: bash_build_seq_from_stmts(
-                stmts: [
-                  bash_build_command_from_word_nodes(
-                    words: [
-                      srv1_bash_bare(text: "seq"), srv1_bash_bare(text: "1"),
-                      srv1_bash_bare(text: "150")
-                    ]
-                  )
-                ]
-              )
+  srv1_bash_for(
+    site: site,
+    name: "i",
+    words: [
+      srv1_bash_cmdsubst(
+        body: srv1_bash_seq(
+          site: site,
+          stmts: [
+            srv1_bash_command(
+              words: [
+                srv1_bare_word(site: site, text: "seq"), srv1_bare_word(site: site, text: "1"),
+                srv1_bare_word(site: site, text: "150")
+              ]
             )
-          )
+          ]
         )
-      ],
-      body: [
-        inspect,
-        remove,
-        bash_build_command_from_word_nodes(
-          words: [srv1_bash_bare(text: "sleep"), srv1_bash_bare(text: "2")]
-        )
-      ]
-    )
+      )
+    ],
+    body: [
+      inspect,
+      remove,
+      srv1_bash_command(words: [srv1_bare_word(site: site, text: "sleep"), srv1_bare_word(site: site, text: "2")])
+    ]
   )
 }
 
 // The container this arm starts: every argv element of the typed shape, each one
 // emitted as ONE word through ^srv1_bash_arg. The list itself stays data — the row
 // srv1_replica_container_run_shape and this module's argv groups remain the place the
+// shape is described; what is no longer data is how each element is quoted. The argv
+// arrives as an Outcome because the container script inside it is a render: an argv
+// whose script refused never reaches `docker run`.
+
+// The container this arm starts: every argv element of the typed shape, each one
+// emitted as ONE word through ^srv1_bash_arg. The list itself stays data — the row
+// srv1_replica_container_run_shape and this module's argv groups remain the place the
 // shape is described; what is no longer data is how each element is quoted.
+
+// The container this arm starts. EVERY argv element is one word of the host command, and
+// each one goes through a checked word row: the list stays data, but the last element of
+// it is a render, so an argv whose script refused never becomes a `docker run`.
 fn srv1_replica_docker_run_statement(
   replica: Srv1ServingReplicaSpec,
   config: Srv1LaunchConfig
-) -> Node {
-  bash_build_command_from_word_nodes(
-    words: map(srv1_replica_docker_argv(replica: replica, config: config), a => srv1_bash_arg(text: a)) as List<Node>
+) -> Outcome<Node> {
+  bind_outcome(
+    o: srv1_replica_docker_argv(replica: replica, config: config),
+    f: elements => srv1_bash_command(words: map(elements, a => srv1_bash_arg(text: a)) as List<Outcome<Node>>)
   )
 }
+
+// The success line, with the identity it came up on: which card, at what port pair,
+// from which rendered argv file. One double-quoted word, because the operator greps it
+// out of the journal.
+
+// The success line, with the identity it came up on: which card, at what port pair,
+// from which rendered argv file. One double-quoted word, because the operator greps it
+// out of the journal.
 
 // The success line, with the identity it came up on: which card, at what port pair,
 // from which rendered argv file. One double-quoted word, because the operator greps it
@@ -1710,7 +1960,8 @@ fn srv1_replica_docker_run_statement(
 fn srv1_launcher_started_echo(
   replica: Srv1ServingReplicaSpec,
   config: Srv1LaunchConfig
-) -> Node {
+) -> Outcome<Node> {
+  let site = "launcher started echo"
   let message = string_concat_join(
     [
       "lil-replica: started " as String,
@@ -1728,10 +1979,30 @@ fn srv1_launcher_started_echo(
     ],
     ""
   )
-  bash_build_command_from_word_nodes(
-    words: [srv1_bash_bare(text: "echo"), srv1_bash_quoted(parts: [srv1_bash_inert(text: message)])]
+  srv1_bash_command(
+    words: [
+      srv1_bare_word(site: site, text: "echo"),
+      srv1_bash_quoted(site: site, parts: [srv1_bash_inert(site: site, text: message)])
+    ]
   )
 }
+
+// The five statements of one arm. Each is its own statement node, so the case row puts
+// them one per line at its own indent; the arm is the complete rendered launch for that
+// replica, which is what leaves no shell variable for a typo or an empty environment to
+// redefine (the retained gpu.sh set $NAME/$GPU/$KV/$EXTRA from an arm and interpolated
+// them unquoted — `$EXTRA` expanding to nothing is how it entered the boot path).
+//
+// The ANSWER IS A LIST OF OUTCOMES, not an Outcome of a list: each statement is refused
+// or accepted on its own, and the list is assembled by the case clause that takes it
+// (^srv1_bash_case_block, which sequences it). No element of it can be a marker line:
+// a refused statement is the refused arm, and the arm's render ends there.
+
+// The five statements of one arm. Each is its own statement node, so the case row puts
+// them one per line at its own indent; the arm is the complete rendered launch for that
+// replica, which is what leaves no shell variable for a typo or an empty environment to
+// redefine (the retained gpu.sh set $NAME/$GPU/$KV/$EXTRA from an arm and interpolated
+// them unquoted — `$EXTRA` expanding to nothing is how it entered the boot path).
 
 // The five statements of one arm. Each is its own statement node, so the case row puts
 // them one per line at its own indent; the arm is the complete rendered launch for that
@@ -1741,22 +2012,21 @@ fn srv1_launcher_started_echo(
 fn srv1_replica_launcher_arm_body(
   replica: Srv1ServingReplicaSpec,
   config: Srv1LaunchConfig
-) -> List<Node> {
+) -> List<Outcome<Node>> {
+  let site = "launcher arm"
   let name = replica.container_name as String
   [
     srv1_replica_tls_identity_guard_statement(replica: replica),
-    srv1_bash_unwrap(
-      built: bash_build_or_else(
-        left: srv1_launcher_quiet(
-          command: bash_build_command_from_word_nodes(
-            words: [
-              srv1_bash_bare(text: "docker"), srv1_bash_bare(text: "rm"),
-              srv1_bash_bare(text: "-f"), srv1_bash_bare(text: name)
-            ]
-          )
-        ),
-        right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "true")])
-      )
+    srv1_bash_or_else(
+      left: srv1_launcher_quiet(
+        command: srv1_bash_command(
+          words: [
+            srv1_bare_word(site: site, text: "docker"), srv1_bare_word(site: site, text: "rm"),
+            srv1_bare_word(site: site, text: "-f"), srv1_bare_word(site: site, text: name)
+          ]
+        )
+      ),
+      right: srv1_bash_command(words: [srv1_bare_word(site: site, text: "true")])
     ),
     srv1_replica_supervisor_race_statement(name: name),
     srv1_replica_docker_run_statement(replica: replica, config: config),
@@ -1764,182 +2034,179 @@ fn srv1_replica_launcher_arm_body(
   ]
 }
 
-fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: Srv1LaunchConfig) -> List<String> {
+fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: Srv1LaunchConfig) -> Outcome<List<String>> {
   let known = string_concat_join(map(replicas, r => to_string(r.index)) as List<String>, " ")
   // The header is the file's own explanation of what it is, emitted through the comment
   // row rather than written into the file by whoever last rendered it.
-  let header = map(
-    [
-      "#!/bin/bash" as String,
-      "# GENERATED by gunbc.serving.srv1_serving_replica_layout (srv1_replica_launcher_lines)." as String,
-      "# DO NOT EDIT ON THE HOST. Edit the .dag rows and re-render: the installed file's sha256 is recorded" as String,
-      "# as srv1_replica_launcher_sha256, so a hand edit here is a disagreement with a row, on purpose." as String,
-      "#" as String,
-      "# This is what lil-replica@.service execs. The operator's ~/strata-test/srv1_lil_serve_gpu.sh stays on" as String,
-      "# the host, unchanged, as the restore path -- but it is no longer the boot path, because its engine" as String,
-      "# line carried the pool key in argv and an unbound EXTRA-arguments suffix, and this renders neither." as String,
-    ],
-    line => srv1_bash_line(stmt: srv1_bash_unwrap(built: bash_build_comment(text: line)))
-  ) as List<String>
-  let preamble = [
-    srv1_bash_line(
-      stmt: bash_build_command_from_word_nodes(
-        words: [srv1_bash_bare(text: "set"), srv1_bash_bare(text: "-u")]
-      )
-    ),
-    // The only parameter expansion left in the boot path: the index systemd passes as
-    // %i. `${1:?…}` refuses an absent index in the shell itself, before any of this
-    // module's code could be asked to interpret a missing one.
-    srv1_bash_line(
-      stmt: bash_build_assign(
+  let header = srv1_bash_lines(
+    stmts: map(
+      [
+        "#!/bin/bash" as String,
+        "# GENERATED by gunbc.serving.srv1_serving_replica_layout (srv1_replica_launcher_lines)." as String,
+        "# DO NOT EDIT ON THE HOST. Edit the .dag rows and re-render: the installed file's sha256 is recorded" as String,
+        "# as srv1_replica_launcher_sha256, so a hand edit here is a disagreement with a row, on purpose." as String,
+        "#" as String,
+        "# This is what lil-replica@.service execs. The operator's ~/strata-test/srv1_lil_serve_gpu.sh stays on" as String,
+        "# the host, unchanged, as the restore path -- but it is no longer the boot path, because its engine" as String,
+        "# line carried the pool key in argv and an unbound EXTRA-arguments suffix, and this renders neither." as String,
+      ],
+      line => srv1_bash_comment(site: "launcher header", text: line)
+    ) as List<Outcome<Node>>
+  )
+  let preamble = srv1_bash_lines(
+    stmts: [
+      srv1_bash_command(words: [srv1_bare_word(site: "launcher preamble", text: "set"), srv1_bare_word(site: "launcher preamble", text: "-u")]),
+      // The only parameter expansion left in the boot path: the index systemd passes as
+      // %i. `${1:?…}` refuses an absent index in the shell itself, before any of this
+      // module's code could be asked to interpret a missing one.
+      srv1_bash_assign(
         name: "IDX",
-        value: srv1_bash_unwrap(
-          built: bash_build_word_param_error(
-            index: "1", word: "usage: lil-replica-launch <replica-index>"
-          )
+        value: srv1_bash_param_error(
+          site: "launcher preamble",
+          index: "1", word: "usage: lil-replica-launch <replica-index>"
         )
-      )
-    ),
-    srv1_bash_line(
-      stmt: bash_build_assign(
+      ),
+      srv1_bash_assign(
         name: "ARGS_DIR",
-        value: srv1_bash_bare(text: srv1_replica_rendered_args_dir as String)
-      )
-    ),
-    srv1_bash_line(
-      stmt: bash_build_assign(
+        value: srv1_bare_word(site: "launcher preamble", text: srv1_replica_rendered_args_dir as String)
+      ),
+      srv1_bash_assign(
         name: "ENV_FILE",
-        value: srv1_bash_bare(text: config.api_key_reference.host_env_file as String)
-      )
-    ),
-    // The refusals come BEFORE any arm, and therefore before any `docker run`. Rendered
-    // after the case they would still exit non-zero — on a host where the container had
-    // already been started, which is the opposite of a refusal: an unserved replica plus
-    // a stale container, and a unit that looks like it started something. A launcher
-    // that is going to refuse must refuse before it touches docker.
-    srv1_bash_line(
-      stmt: bash_build_assign(
+        value: srv1_bare_word(site: "launcher preamble", text: config.api_key_reference.host_env_file as String)
+      ),
+      // The refusals come BEFORE any arm, and therefore before any `docker run`. Rendered
+      // after the case they would still exit non-zero — on a host where the container had
+      // already been started, which is the opposite of a refusal: an unserved replica plus
+      // a stale container, and a unit that looks like it started something. A launcher
+      // that is going to refuse must refuse before it touches docker.
+      srv1_bash_assign(
         name: "ARGS",
-        value: srv1_bash_unwrap(
-          built: bash_build_word_concat_from_nodes(
-            parts: [
-              srv1_bash_var(name: "ARGS_DIR"),
-              srv1_bash_bare(text: "/replica-"),
-              srv1_bash_var(name: "IDX"),
-              srv1_bash_bare(text: ".args"),
-            ]
-          )
+        value: srv1_bash_built(
+          parts: [
+            srv1_bash_var(site: "launcher preamble", name: "ARGS_DIR"),
+            srv1_bare_word(site: "launcher preamble", text: "/replica-"),
+            srv1_bash_var(site: "launcher preamble", name: "IDX"),
+            srv1_bare_word(site: "launcher preamble", text: ".args"),
+          ],
+          build: ps => bash_build_word_concat_from_nodes(parts: ps)
         )
-      )
-    ),
-    srv1_bash_line(
-      stmt: srv1_launcher_input_guard(
-        test: bash_build_test_bracket(
-          words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_var(name: "ARGS")])], spelling: BracketBare
+      ),
+      srv1_launcher_input_guard(
+        test: srv1_bash_test_bracket(
+          words: [srv1_bare_word(site: "launcher preamble", text: "-s"), srv1_bash_quoted(site: "launcher preamble", parts: [srv1_bash_var(site: "launcher preamble", name: "ARGS")])], spelling: BracketBare
         ),
         message_parts: [
-          srv1_bash_inert(text: "lil-replica: rendered engine argv "),
-          srv1_bash_var(name: "ARGS"),
-          srv1_bash_inert(text: " is missing or empty"),
+          srv1_bash_inert(site: "launcher preamble", text: "lil-replica: rendered engine argv "),
+          srv1_bash_var(site: "launcher preamble", name: "ARGS"),
+          srv1_bash_inert(site: "launcher preamble", text: " is missing or empty"),
         ],
         code: "3"
-      )
-    ),
-    srv1_bash_line(
-      stmt: srv1_launcher_input_guard(
-        test: bash_build_test_bracket(
-          words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_var(name: "ENV_FILE")])], spelling: BracketBare
+      ),
+      srv1_launcher_input_guard(
+        test: srv1_bash_test_bracket(
+          words: [srv1_bare_word(site: "launcher preamble", text: "-s"), srv1_bash_quoted(site: "launcher preamble", parts: [srv1_bash_var(site: "launcher preamble", name: "ENV_FILE")])], spelling: BracketBare
         ),
         message_parts: [
-          srv1_bash_inert(text: "lil-replica: engine key env file "),
-          srv1_bash_var(name: "ENV_FILE"),
-          srv1_bash_inert(text: " is missing or empty"),
+          srv1_bash_inert(site: "launcher preamble", text: "lil-replica: engine key env file "),
+          srv1_bash_var(site: "launcher preamble", name: "ENV_FILE"),
+          srv1_bash_inert(site: "launcher preamble", text: " is missing or empty"),
         ],
         code: "4"
-      )
-    ),
-    // The 0600 refusal is here for the same reason the env file is not in argv: it holds
-    // the pool's bearer key, and a boot path that read it after someone relaxed its mode
-    // would be reading a file any local user could have written.
-    srv1_bash_line(
-      stmt: srv1_launcher_input_guard(
-        test: bash_build_test_comparison(
+      ),
+      // The 0600 refusal is here for the same reason the env file is not in argv: it holds
+      // the pool's bearer key, and a boot path that read it after someone relaxed its mode
+      // would be reading a file any local user could have written.
+      srv1_launcher_input_guard(
+        test: srv1_bash_test_comparison(
           left: srv1_bash_quoted(
+            site: "launcher preamble",
             parts: [
-              srv1_bash_unwrap(
-                built: bash_build_word_cmdsubst(
-                  body: bash_build_command_from_word_nodes(
-                    words: [
-                      srv1_bash_bare(text: "stat"), srv1_bash_bare(text: "-c"),
-                      srv1_bash_bare(text: "%a"),
-                      srv1_bash_quoted(parts: [srv1_bash_var(name: "ENV_FILE")]),
-                    ]
-                  )
+              srv1_bash_cmdsubst(
+                body: srv1_bash_command(
+                  words: [
+                    srv1_bare_word(site: "launcher preamble", text: "stat"), srv1_bare_word(site: "launcher preamble", text: "-c"),
+                    srv1_bare_word(site: "launcher preamble", text: "%a"),
+                    srv1_bash_quoted(site: "launcher preamble", parts: [srv1_bash_var(site: "launcher preamble", name: "ENV_FILE")]),
+                  ]
                 )
               )
             ]
           ),
           op: "=",
-          right: srv1_bash_quoted(parts: [srv1_bash_inert(text: "600")]), spelling: BracketBare
+          right: srv1_bash_quoted(site: "launcher preamble", parts: [srv1_bash_inert(site: "launcher preamble", text: "600")]), spelling: BracketBare
         ),
         message_parts: [
-          srv1_bash_inert(text: "lil-replica: "),
-          srv1_bash_var(name: "ENV_FILE"),
-          srv1_bash_inert(text: " must be mode 0600"),
+          srv1_bash_inert(site: "launcher preamble", text: "lil-replica: "),
+          srv1_bash_var(site: "launcher preamble", name: "ENV_FILE"),
+          srv1_bash_inert(site: "launcher preamble", text: " must be mode 0600"),
         ],
         code: "5"
-      )
-    ),
-    srv1_bash_line(
-      stmt: bash_build_assign(
+      ),
+      srv1_bash_assign(
         name: "KNOWN_INDEXES",
-        value: srv1_bash_quoted(parts: [srv1_bash_inert(text: known)])
-      )
-    ),
-  ]
+        value: srv1_bash_quoted(site: "launcher preamble", parts: [srv1_bash_inert(site: "launcher preamble", text: known)])
+      ),
+    ]
+  )
   let arms = map(
     replicas,
-    r => srv1_bash_unwrap(
-      built: bash_build_case_clause_block(
-        pattern: to_string(r.index),
-        body: srv1_replica_launcher_arm_body(replica: r, config: config)
-      )
+    r => srv1_bash_case_block(
+      site: "launcher arm",
+      pattern: to_string(r.index),
+      body: srv1_replica_launcher_arm_body(replica: r, config: config)
     )
-  ) as List<Node>
+  ) as List<Outcome<Node>>
   // The unknown index goes down before anything is started, on stderr, with the roster
   // in the message — `%i` comes from a unit name an operator can type.
-  let fallback = srv1_bash_unwrap(
-    built: bash_build_case_clause_inline(
-      pattern: "*",
-      body: [
-        srv1_launcher_diagnostic(
-          message: srv1_bash_quoted(
-            parts: [
-              srv1_bash_inert(text: "lil-replica: unknown replica index '"),
-              srv1_bash_var(name: "IDX"),
-              srv1_bash_inert(text: "' (known: "),
-              srv1_bash_var(name: "KNOWN_INDEXES"),
-              srv1_bash_inert(text: ")"),
-            ]
-          )
-        ),
-        bash_build_exit(code: "2"),
-      ]
+  let fallback = srv1_bash_case_inline(
+    site: "launcher arm fallback",
+    pattern: "*",
+    body: [
+      srv1_launcher_diagnostic(
+        message: srv1_bash_quoted(
+          site: "launcher arm fallback",
+          parts: [
+            srv1_bash_inert(site: "launcher arm fallback", text: "lil-replica: unknown replica index '"),
+            srv1_bash_var(site: "launcher arm fallback", name: "IDX"),
+            srv1_bash_inert(site: "launcher arm fallback", text: "' (known: "),
+            srv1_bash_var(site: "launcher arm fallback", name: "KNOWN_INDEXES"),
+            srv1_bash_inert(site: "launcher arm fallback", text: ")"),
+          ]
+        )
+      ),
+      srv1_bash_exit(code: "2"),
+    ]
+  )
+  let case_lines = srv1_bash_lines(
+    stmts: [srv1_bash_case(site: "launcher case", word: srv1_bash_var(site: "launcher case", name: "IDX"), clauses: concat(arms, [fallback]))]
+  )
+  // THE THREE PARTS ARE OUTCOMES, so the launcher comes back as lines only when every
+  // statement in it was emitted: a refused guard is the render's refusal, carrying its
+  // reason, and there is no launcher to install.
+  bind_outcome(
+    o: header,
+    f: hs => bind_outcome(
+      o: preamble,
+      f: ps => bind_outcome(
+        o: case_lines,
+        f: cs => outcome_accepted(value: concat(concat(hs, ps), cs))
+      )
     )
   )
-  let case_line = srv1_bash_line(
-    stmt: srv1_bash_unwrap(
-      built: bash_build_case(word: srv1_bash_var(name: "IDX"), clauses: concat(arms, [fallback]))
-    )
-  )
-  concat(concat(header, preamble), [case_line])
 }
 
-// The launcher as installed, in one string. CLI entry:
+// The launcher as installed, in one string — OR the refusal, carrying the reason. CLI
+// entry:
 //   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_launcher
-// prints these bytes and nothing else.
-fn srv1_render_replica_launcher() -> String {
-  concat(string_concat_join(srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: srv1_admitted_launch_config), "\n"), "\n")
+// prints these bytes and nothing else when every statement in the launcher was emitted,
+// and prints the refusal when one was not. There is no third answer: a launcher with a
+// hole where a refused statement was is not printed, so it cannot be piped into a file
+// on the host and cannot be installed by whoever is holding the pipe.
+fn srv1_render_replica_launcher() -> Outcome<String> {
+  bind_outcome(
+    o: srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: srv1_admitted_launch_config),
+    f: lines => outcome_accepted(value: concat(string_concat_join(lines, "\n"), "\n"))
+  )
 }
 
 // The rendered engine argv for the admitted config, one token per line -- the body of
@@ -1956,8 +2223,13 @@ fn srv1_render_replica_engine_args() -> String {
 // sha256sum on the installed files and the two must agree: the printed channel that carries the render is a
 // human/agent-readable channel, not a byte channel, so the transport is only trusted once the digest matches.
 // A render whose digest cannot be reproduced on the host has not been installed, whatever the log says.
-fn srv1_render_replica_launcher_sha256() -> String {
-  sha256_hex_of_text(text: srv1_render_replica_launcher())
+// The launcher's digest is an Outcome because the bytes it digests are an Outcome: a render that
+// refused has no digest, and a digest invented for it would be a claim that something was installed.
+fn srv1_render_replica_launcher_sha256() -> Outcome<String> {
+  bind_outcome(
+    o: srv1_render_replica_launcher(),
+    f: bytes => outcome_accepted(value: sha256_hex_of_text(text: bytes))
+  )
 }
 
 fn srv1_render_replica_engine_args_sha256() -> String {
