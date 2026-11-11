@@ -42,6 +42,8 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_hostname_converge_readopt_step,
   fleet_converge_job_needs,
   fleet_converge_mode_job_id,
+  fleet_converge_release_bins_job_id,
+  fleet_converge_dispatch_input_interpolation,
   fleet_converge_workflow_mode_wire,
   fleet_converge_workflow_modes,
   fleet_converge_yml_after_dispatch_input_capacity,
@@ -453,11 +455,27 @@ test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
 
 // THE JOB WAITS ON THE RELEASE BINS, which is what lets it run on a peer that has no checkout of its own
 // to build from.
+// The job must wait for the release-pack producer before it touches a host, or its steps run a binary that
+// has not been built yet. Asserted THROUGH THE DECLARATION, not through a name: `fleet_converge_release_bins_job_id`
+// is `"build"`, and this leg had the literal "release-bins" -- the prose word for the job, not its id -- so it was
+// red against a correct edge row. A leg that spells an id instead of reading the function that owns it is the same
+// defect class as the mode reading its target out of the wrong input row.
 test fn the_job_needs_the_release_bins_job() -> Bool {
   any(
     fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostnameConverge)),
-    n => n == "release-bins",
+    n => n == (fleet_converge_release_bins_job_id as String),
   )
+}
+
+// The row is not the emission. This asserts the SAME fact on the emitted job, so an emitter that dropped the
+// `needs` field -- or a mode job id that no longer matches its edge row, which would put the lookup's REFUSED
+// sentinel into `needs` -- is red here rather than shipping a job that downloads a release pack nobody built.
+test fn the_emitted_job_needs_the_release_pack_producer() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      any(job.needs, n => n == (fleet_converge_release_bins_job_id as String))
+  }
 }
 
 
@@ -572,12 +590,19 @@ test fn the_target_and_the_peer_are_read_from_different_declared_fields() -> Boo
           let target = step_env_value(step: plan, key: hostname_converge_target_env_name as String)
           let peer = step_env_value(step: plan, key: hostname_converge_peer_env_name as String)
           let act = step_env_value(step: plan, key: hostname_converge_act_env_name as String)
-          string_contains(s: target, pattern: join(["github.event.inputs.", hostname_converge_target_input_name as String], ""))
-            && string_contains(s: peer, pattern: join(["github.event.inputs.", hostname_converge_peer_input_name as String], ""))
-            && string_contains(s: act, pattern: join(["github.event.inputs.", hostname_converge_act_input_name as String], ""))
+          // each role's value IS the interpolation of its own declared row, compared through the very helper
+          // the emitter uses -- and the three rows are pairwise distinct, which is the property this leg exists
+          // for. It previously tried to prove distinctness by substring (`!string_contains(target, "host")`),
+          // which is false because `subject_host` contains `host`: the target's row was a superstring of the
+          // peer's, so a correct mode was red. Substring reasoning cannot compare field identities.
+          target == fleet_converge_dispatch_input_interpolation(input: hostname_converge_target_input_name as String)
+            && peer == fleet_converge_dispatch_input_interpolation(input: hostname_converge_peer_input_name as String)
+            && act == fleet_converge_dispatch_input_interpolation(input: hostname_converge_act_input_name as String)
+            && (hostname_converge_target_input_name as String) != (hostname_converge_peer_input_name as String)
+            && (hostname_converge_target_input_name as String) != (hostname_converge_act_input_name as String)
+            && (hostname_converge_peer_input_name as String) != (hostname_converge_act_input_name as String)
             && target != peer
-            && !string_contains(s: target, pattern: hostname_converge_peer_input_name as String)
-            && !string_contains(s: peer, pattern: hostname_converge_target_input_name as String)
+            && peer != act
       }
   }
 }
