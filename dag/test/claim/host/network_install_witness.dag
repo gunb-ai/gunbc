@@ -54,7 +54,11 @@ import gunbc.auth.standing_operator_grant {
   StandingArrivalArchive, StandingArrivalFirmwareQualification,
 }
 import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization, InterlockPending }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv14, operator_host_srv15 }
+import gunbc.fleet.site_pxe_edge_converge {
+  site_pxe_edge_request_admission, site_pxe_edge_request_bindings,
+  site_pxe_edge_request_withheld, site_pxe_edge_request_gate_causes,
+}
 import gunbc.provisioning.install_target_disk { TargetDiskReading, DiskReported, NotRead, LsblkBlockReport }
 
 import gunbc.host.network_install {
@@ -70,11 +74,35 @@ import gunbc.host.network_install {
   NetworkInstallBindingEvidence, BindingStagedAndReadBack, BindingAbsent, BindingWriteFailed,
   BindingReadBackMismatch,
   NetworkInstallOsObservation, InstalledOsObserved, InstalledOsNotObserved,
+  network_install_client_for, network_install_requests_for,
   NetworkInstallDispatch, NetworkInstallDispatchAdmitted, NetworkInstallDispatchRefused,
   InstallAlreadyCompleted, JournalUnreadable, network_install_dispatch_admission,
-  network_install_refused_receipt, network_install_receipt_lines,
-  network_install_may_reset, network_install_settle_boot_once,
-  network_install_boot_once_read_back, network_install_boot_param5_receipt_line,
+  NetworkInstallReceipt, network_install_refused_receipt, network_install_receipt_lines,
+  NetworkInstallBootVerdict, InstallBootProceeds, InstallBootWithheld, network_install_boot_verdict,
+}
+import gunbc.machine_intake.oob_boot_handoff {
+  OobBootHandoffOutcome, BootControlIssued, BootSelectionRefused, BootSelectionNotApplied,
+  BootSelectionUnverifiable, BootSelectionFlagInvalid, BootSelectionNotOneShot, BootSelectionFirmwareMismatch,
+  PowerStateReadFailed, PowerCommandRefused, PowerCommandAcceptedNoTransition, BootHandoffNotAdmitted,
+  OobPowerAction, OobPowerCycle, OobBootHandoffAdmission, OobHandoffPowerControlUnavailable,
+  ObservedPowerTransition, PoweredOn, PowerTransitionProgress, PowerNeverLeftOn,
+  boot_readback_verdict, BootReadbackConfirmed, BootReadbackFlagInvalid, BootReadbackNotOneShot,
+  BootReadbackFirmwareMismatch, BootReadbackSelectorAbsent,
+}
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity,
+  CapabilityPowerControl, CapabilityBootSourceOverride,
+}
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection, IpmiBootPxe, uefi_once_boot_selection,
+  ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering,
+  ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering,
+}
+import extdeps.bmc.ipmitool_observed_output {
+  ipmitool_bootparam5_no_override, ipmitool_bootparam5_valid_after_bootdev_none,
+  ipmitool_bootparam5_cdrom_efi_next_boot,
 }
 
 // ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
@@ -254,6 +282,7 @@ fn dispatch(
         secured: secured,
         board: Absent,
         route: ByPerWriteApproval,
+        capability_row: install_capability_row(),
         qualification: Absent,
         journal: journal,
         hold: hold,
@@ -271,7 +300,7 @@ fn dispatch(
 // THE SAME DISPATCH, WITH ONLY THE OS OBSERVATION VARIED, so the positive/negative pair above compares one
 // fact against the same everything-else.
 fn dispatch_with_os(os_observation: NetworkInstallOsObservation) -> NetworkInstallDispatch {
-  match mtcollins_controller() {
+  match mtcollins1_controller() {
     Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 BMC rows this witness drives are absent; see w_the_committed_controller_this_file_drives_is_bound" } }
     Present { value: controller } => match secured_standing() {
       Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 secure standing this witness drives is absent; see w_the_committed_controller_this_file_drives_is_bound" } }
@@ -286,6 +315,7 @@ fn dispatch_with_os(os_observation: NetworkInstallOsObservation) -> NetworkInsta
         secured: secured,
         board: Absent,
         route: ByPerWriteApproval,
+        capability_row: install_capability_row(),
         qualification: Absent,
         journal: JournalSlotAbsent,
         hold: HoldFree,
@@ -762,64 +792,6 @@ test fn w_the_committed_controller_this_file_drives_is_bound() -> Bool {
   }
 }
 
-// ── THE SETTLE GATE: NO RESET WITHOUT THE CONTROLLER'S OWN READ-BACK (2b's property, re-asserted here) ──
-
-// THE WORKFLOW NEVER PLANS A LEGACY BOOT, AND A PLAN THAT WAS NEVER SETTLED RESETS NOTHING: the staged plan
-// carries [Set, ReadBack] and no reset step. This is 2b's guarantee re-asserted at the workflow's own gate —
-// 2c must not widen it, and a run that skipped the observation gets no reset.
-test fn w_the_planner_alone_resets_nothing_through_the_workflow_gate() -> Bool {
-  match mtcollins1_standing() {
-    Absent => false
-    Present { value: standing } =>
-      let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
-      !network_install_may_reset(plan: staged) && !boot_once_has_reset(plan: staged)
-  }
-}
-
-// THE 2b PROPERTY, AT 2c's GATE. The plan is built by 2b's own core over the COMMITTED bound standing, then the
-// run executes [Set, ReadBack] and hands the workflow the CONTROLLER'S OWN RECORD. Three readings, three
-// outcomes: the record that says the override took as written admits the reset; a record still saying
-// Continuous (the set did not stick) refuses; a record naming Legacy firmware refuses, because the arm64 fleet
-// boots UEFI and resetting into the wrong firmware is worse than not resetting at all.
-test fn w_only_the_controllers_own_matching_record_admits_the_reset() -> Bool {
-  match mtcollins1_standing() {
-    Absent => false
-    Present { value: standing } =>
-      let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
-      let matched = BootOnceReadbackObserved { setting: boot_once_intended_setting(target: BootTargetPxe) }
-      let still_continuous = BootOnceReadbackObserved {
-        setting: BootOnceSetting {
-          target: BootTargetPxe, enabled: BootOverrideContinuous, mode: BootOverrideModeUefi,
-        }
-      }
-      let legacy = BootOnceReadbackObserved {
-        setting: BootOnceSetting {
-          target: BootTargetPxe, enabled: BootOverrideOnce, mode: BootOverrideModeLegacy,
-        }
-      }
-      network_install_may_reset(plan: network_install_settle_boot_once(plan: staged, observed: matched)) &&
-        !network_install_may_reset(
-          plan: network_install_settle_boot_once(plan: staged, observed: still_continuous)
-        ) &&
-        !network_install_may_reset(plan: network_install_settle_boot_once(plan: staged, observed: legacy)) &&
-        !boot_once_has_reset(plan: network_install_settle_boot_once(plan: staged, observed: legacy))
-  }
-}
-
-// THE SAME GATE ON A CONTROL THAT NEVER ANSWERED: an absent read-back is a mismatch, so the reset is dropped.
-// A BMC that accepted a PATCH and then went silent must not have its host rebooted into an installer nobody
-// confirmed is set.
-test fn w_a_silent_controller_resets_nothing() -> Bool {
-  match mtcollins1_standing() {
-    Absent => false
-    Present { value: standing } =>
-      let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
-      !network_install_may_reset(
-        plan: network_install_settle_boot_once(plan: staged, observed: BootOnceReadbackAbsent)
-      )
-  }
-}
-
 // ── THE THREE GATES THE FOUR PLAN OBLIGATIONS DEPEND ON BUT DO NOT NAME ─────────────────────────
 
 // A BINDING WHOSE WRITE FAILED REFUSES like an absent one: the run does not boot a client into a file it is not
@@ -895,177 +867,224 @@ test fn w_a_refused_run_still_writes_a_receipt_saying_nothing_was_reset() -> Boo
     network_install_receipt_lines(receipt: receipt).length() == 13
 }
 
-// ─────────── THE IPMI READ-BACK MAPPING: THE ONE JUDGMENT CALL, PINNED OVER REAL RENDERINGS ───────────
+// ─────────── THE ROUTE'S WORD, RE-NAMED FOR THE INSTALL ───────────
 //
-// The boot goes over IPMI (the arrival door's transport and session, managed credential by -f file), and 2b's
-// settle consumes a Redfish-shaped BootOnceReadback. network_install_boot_once_read_back is where the
-// controller's `chassis bootparam get 5` answer becomes that type, so it is where a wrong reading becomes a
-// reset. Every case below is driven through the REAL decode
-// (extdeps.bmc.ipmi_boot_selection ipmi_boot_flags_reading_of_bootparam_get) over a committed observed stdout
-// from that same module, or over a parameter-data line whose bytes are spelled out — never over a
-// BootOnceReadback handed in by this file, which would test nothing but my own hope.
+// The destructive step is gated INSIDE gunbc.machine_intake.oob_boot_handoff, by that module's own
+// boot_readback_verdict over the `chassis bootparam get 5` answer it took itself. 2c adds NO second judgment
+// over those bytes (manager ruling msg_51c06c2f): the install continuation is what 2c decides, from the route's
+// outcome arms. These claims pin that one mapping — which arm lets the install proceed, and that a withheld
+// boot carries the controller's OWN words into the receipt. The withheld cases are driven over COMMITTED stdout
+// renderings from extdeps.bmc.ipmitool_observed_output and cross-checked against the route's own verdict, so a
+// mapping that quietly let an unconfirmed boot through fails here instead of on a unit.
 
-fn param5_stdout(hex: String) -> String {
-  join(
-    [
-      "Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\nBoot parameter data: ",
-      hex,
-      "\n Boot Flags :\n",
-    ],
-    ""
-  )
+// THE ONE BOOT INTENT the workflow can have, taken from the caller that drives the route.
+fn install_selection() -> IpmiBootSelection {
+  uefi_once_boot_selection(device: IpmiBootPxe)
 }
 
-fn read_back_of(hex: String) -> BootOnceReadback {
-  network_install_boot_once_read_back(
-    reading: ipmi_boot_flags_reading_of_bootparam_get(stdout: param5_stdout(hex: hex))
-  )
+// THE RELEASE ROW THE ROUTE RE-CHECKS. Its firmware identity is the one the COMMITTED observation of a real
+// controller reports (mtcollins1's, the only BMC-observed unit with committed rows), and the two capabilities
+// are the ones the boot needs — the route refuses a row whose release lacks either, so this is an input the
+// route can still say no to, not a fixture asserting its own pass.
+fn install_release_identity() -> BmcFirmwareReleaseIdentity {
+  match mtcollins1_rows() {
+    Absent => BmcFirmwareReleaseIdentity {
+      family: AmiMegaRac,
+      raw_version: "6.37" as NonEmptyStr,
+      semantic_version: Absent,
+    }
+    Present { value: m } => match m.access {
+      BmcAccessObserved { observation: o } => o.identity.firmware
+      BmcAccessUnobserved { endpoint: _ } => BmcFirmwareReleaseIdentity {
+        family: AmiMegaRac,
+        raw_version: "6.37" as NonEmptyStr,
+        semantic_version: Absent,
+      }
+    }
+  }
 }
 
-// THE POSITIVE CONTROL, AND IT IS A REAL INPUT: the bytes are produced by the model's own builder for the one
-// selection the fleet may set (uefi_once_boot_selection over PXE), decoded back by the model's own reader, and
-// the verdict is 2b's — staged plan, this reading, settle, reset admitted.
-test fn w_the_controller_saying_pxe_once_efi_admits_the_reset() -> Bool {
-  match ipmi_boot_flags_parameter_hex(selection: uefi_once_boot_selection(device: IpmiBootPxe)) {
-    Present { value: hex } => match mtcollins1_standing() {
-      Absent => false
-      Present { value: standing } =>
-        let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
-        let settled = network_install_settle_boot_once(
-          plan: staged, observed: read_back_of(hex: hex)
-        )
-        match read_back_of(hex: hex) {
-          BootOnceReadbackObserved { setting: setting } =>
-            setting.enabled == BootOverrideOnce && setting.mode == BootOverrideModeUefi &&
-              network_install_may_reset(plan: settled)
-          BootOnceReadbackAbsent => false
+fn install_capability_row() -> BmcFirmwareReleaseCapabilityRow {
+  BmcFirmwareReleaseCapabilityRow {
+    firmware: install_release_identity(),
+    capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride],
+  }
+}
+
+// THE SELECTED-DEVICE TEXT THE ROUTE USES for the one selection it can make, taken from the model's own
+// rendering rather than typed by hand, so the receipt line a claim asserts is the line the run would print.
+fn install_selected_text() -> NonEmptyStr {
+  ipmi_boot_expected_device_rendering(selection: install_selection())
+}
+
+// A RECEIPT FOR A WITHHELD BOOT, shaped as the wet entry shapes it: nothing installed, nothing journaled, the
+// binding withdrawn, and the controller's answer kept verbatim.
+fn withheld_boot_receipt(readback: String) -> NetworkInstallReceipt {
+  NetworkInstallReceipt {
+    host: install_unit,
+    serial: expected_serial,
+    model: Absent,
+    decided_at: 1793300001000,
+    binding_path: "srv15_host_nic_mac",
+    boot_issued: false,
+    boot_readback: readback,
+    install_read_back: false,
+    install_evidence: "none",
+    binding_withdrawn: true,
+    completion_recorded: false,
+    refused: true,
+    refusal: "boot withheld by the controller",
+  }
+}
+
+// THE MAPPING IS TOTAL AND ONLY ONE ARM PROCEEDS. The issued control is the single arm that lets the install
+// go on; each of the ten others withholds. The discriminating red: hand any withheld arm back as
+// InstallBootProceeds and this claim fails — including the arms whose names sound benign, because "the chassis
+// never showed the transition" is exactly a boot that did not happen.
+test fn w_the_issued_control_is_the_only_arm_that_lets_the_install_proceed() -> Bool {
+  let selected = install_selected_text()
+  let arms: List<OobBootHandoffOutcome> = [
+    BootSelectionRefused,
+    BootSelectionNotApplied { requested: selected, readback: ipmitool_bootparam5_cdrom_efi_next_boot },
+    BootSelectionUnverifiable { requested: selected, readback: ipmitool_bootparam5_no_override },
+    BootSelectionFlagInvalid { requested: selected, readback: ipmitool_bootparam5_no_override },
+    BootSelectionNotOneShot { requested: selected, readback: ipmitool_bootparam5_valid_after_bootdev_none },
+    BootSelectionFirmwareMismatch { requested: selected, readback: ipmitool_bootparam5_cdrom_efi_next_boot },
+    PowerStateReadFailed { selected: selected, observed_state: ChassisUnreadable },
+    PowerCommandRefused { selected: selected, action: OobPowerCycle },
+    PowerCommandAcceptedNoTransition {
+      selected: selected,
+      action: OobPowerCycle,
+      progress: PowerNeverLeftOn,
+      last_observed: ChassisPowerRead { power_on: true },
+    },
+    BootHandoffNotAdmitted { admission: OobHandoffPowerControlUnavailable },
+  ]
+  let issued = BootControlIssued {
+    selected: selected,
+    power: PoweredOn,
+    admitted: install_release_identity(),
+  }
+  match network_install_boot_verdict(outcome: issued) {
+    InstallBootProceeds { selected: named } =>
+      named == selected && all(arms, arm => arm_withholds(arm: arm))
+    InstallBootWithheld { reason: _, readback: _ } => false
+  }
+}
+
+// ONE ARM, ONE ANSWER, as a named function so the quantified claim above reads as a statement about arms
+// rather than about lambda syntax.
+fn arm_withholds(arm: OobBootHandoffOutcome) -> Bool {
+  match network_install_boot_verdict(outcome: arm) {
+    InstallBootWithheld { reason: _, readback: _ } => true
+    InstallBootProceeds { selected: _ } => false
+  }
+}
+
+// A READ-BACK THE ROUTE WOULD NOT CONFIRM WITHHOLDS THE INSTALL, AND ITS WORDS SURVIVE VERBATIM. All three
+// committed renderings are real `bootparam get 5` outputs whose bytes the model can read: one says Boot Flag
+// Invalid, one is valid but names no boot device, one is a valid EFI CD/DVD one-shot — which is the device-not-
+// pxe case, the one that would install from the wrong medium if the install went ahead on it. Each fails the
+// route's OWN verdict against the pxe selection, and each withholds the install through the mapping.
+fn case_withholds(readback: String, sel: IpmiBootSelection) -> Bool {
+  match boot_readback_verdict(readback: readback, selection: sel) {
+    BootReadbackConfirmed => false
+    _ => match network_install_boot_verdict(outcome: BootSelectionNotOneShot {
+      requested: install_selected_text(),
+      readback: readback,
+    }) {
+      InstallBootWithheld { reason: reason, readback: kept } => kept == readback && reason != ""
+      InstallBootProceeds { selected: _ } => false
+    }
+  }
+}
+
+test fn w_a_read_back_the_route_would_not_confirm_withholds_the_install() -> Bool {
+  let sel = install_selection()
+  let cases: List<String> = [
+    ipmitool_bootparam5_no_override,
+    ipmitool_bootparam5_valid_after_bootdev_none,
+    ipmitool_bootparam5_cdrom_efi_next_boot,
+  ]
+  all(cases, readback => case_withholds(readback: readback, sel: sel))
+}
+
+// THE POSITIVE CONTROL IS THE ROUTE'S OWN CONFIRMATION, NOT MY SAY-SO: a read-back assembled from the model's
+// four expected renderings for the pxe selection is one the route CONFIRMS, and that is the run whose install
+// proceeds. The red: assemble it with the persistence rendering swapped for the persistent one, so the route
+// says NotOneShot, and the proceed branch must not be reachable.
+test fn w_the_install_proceeds_only_on_a_read_back_the_route_confirms() -> Bool {
+  let sel = install_selection()
+  let confirmed = concat("Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\n Boot Flags :\n   - ", ipmi_boot_expected_flag_rendering(selection: sel) as String, "\n   - ", ipmi_boot_expected_persistence_rendering(selection: sel) as String, "\n   - ", ipmi_boot_expected_mode_rendering(selection: sel) as String, "\n   - Boot Device Selector : ", ipmi_boot_expected_device_rendering(selection: sel) as String, "\n")
+  match boot_readback_verdict(readback: confirmed, selection: sel) {
+    BootReadbackConfirmed => match network_install_boot_verdict(outcome: BootControlIssued {
+      selected: install_selected_text(),
+      power: PoweredOn,
+      admitted: install_release_identity(),
+    }) {
+      InstallBootProceeds { selected: _ } => true
+      InstallBootWithheld { reason: _, readback: _ } => false
+    }
+    _ => false
+  }
+}
+
+// A WITHHELD BOOT STILL LEAVES A RECEIPT, and it says three things no operator wants to reconstruct from logs:
+// nothing was booted, nothing was journaled, and what the controller actually answered. The count is pinned so a
+// dropped field shows up as a failed claim rather than a silently thinner artifact.
+test fn w_a_withheld_boot_still_writes_a_receipt_carrying_the_controllers_words() -> Bool {
+  let words = ipmitool_bootparam5_valid_after_bootdev_none
+  let receipt = withheld_boot_receipt(readback: words)
+  let lines = network_install_receipt_lines(receipt: receipt)
+  receipt.refused && !receipt.boot_issued && !receipt.install_read_back && !receipt.completion_recorded &&
+    lines.length() == 13 &&
+    all(lines, line => !starts_with(s: line, prefix: "boot_issued=") || line == "boot_issued=false") &&
+    all(lines, line => !starts_with(s: line, prefix: "boot_readback=") || line == concat("boot_readback=", words))
+}
+
+// ───────────────── THE DERIVED REQUEST, AND WHY AN INSTALLED HOST IS SAFE TWICE OVER ─────────────────
+//
+// These two claims are the half that moved here from test.claim.fleet.site_pxe_edge_converge_witness when the
+// standing install-request list was deleted (2026-11-11, ruling msg_40c346af): PXE 0's witness now witnesses
+// that the STANDING converge serves nothing, and what it used to witness about the production request — that it
+// binds bobo's measured NIC exactly once — is witnessed here, against the request this module derives.
+
+// THE REQUEST THIS MODULE DERIVES FOR BOBO BINDS HIS MEASURED NIC EXACTLY ONCE, nothing withheld and no gate
+// cause: the arm64 chain, the disk serial and model the 2026-10-29 capture reported, decided inside the window
+// that reading carries. RED: drop bobo's NIC row and the list is empty (0 bindings); break the serial, and the
+// admission withholds instead of binding (the withheld count is non-zero) — which is the same refusal the disk
+// claims above pin from the other side.
+test fn w_bobo_s_derived_request_binds_his_nic_exactly_once() -> Bool {
+  let admissions = map(
+    network_install_requests_for(host: operator_host_srv15),
+    r => site_pxe_edge_request_admission(request: r, decided_at: reading_instant + window)
+  )
+  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0 &&
+    length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0 &&
+    length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
+}
+
+// AN INSTALLED HOST IS PROTECTED TWICE, AND THE SECOND PROTECTION IS THE ONE THAT MATTERS. Butch has no
+// install-client binding, so there is nothing at the edge to stage for him and the workflow cannot even name a
+// file — that is protection one, and it is a row, which means it is a thing someone could add by accident. So
+// it is not the protection anyone relies on: even with a binding staged and a disk admitted, a POSITIVE
+// observation that the machine is running an OS refuses the dispatch. Both halves are asserted here, and the
+// second is the reason a mistyped row does not cost a machine its disk.
+test fn w_an_installed_host_is_protected_by_more_than_an_absent_row() -> Bool {
+  match network_install_client_for(host: operator_host_srv14) {
+    Absent =>
+      length(network_install_requests_for(host: operator_host_srv14)) == 0 &&
+        match network_install_client_for(host: install_unit) {
+          Absent => length(network_install_requests_for(host: install_unit)) == 0 && match dispatch_with_os(
+            os_observation: InstalledOsObserved {
+              host: install_unit, evidence: "uname -r answered 6.8.0-58-generic" as NonEmptyStr
+            }
+          ) {
+            NetworkInstallDispatchRefused { cause: _ } => true
+            NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+          }
+          Present { value: _ } => false
         }
-    }
-    Absent => false
-  }
-}
-
-// RED, THE CASE THE FLEET HAS ACTUALLY SEEN. Boot run 41573858366 read '8000000000' — Boot Flag VALID with
-// Boot Device Selector "No override" — because `chassis bootdev none` clears the selector and leaves the valid
-// bit set. A mapping that looked at the valid bit alone would call this a successful PXE set and reset the
-// machine into whatever the firmware fancies. It must refuse.
-test fn w_a_valid_flag_naming_no_device_refuses_the_reset() -> Bool {
-  match read_back_of(hex: "8000000000") {
-    BootOnceReadbackObserved { setting: setting } =>
-      match mtcollins1_standing() {
-        Absent => false
-        Present { value: standing } => !network_install_may_reset(
-          plan: network_install_settle_boot_once(
-            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
-            observed: read_back_of(hex: "8000000000")
-          )
-        )
-      }
-    BootOnceReadbackAbsent => true
-  }
-}
-
-// RED: PERSISTENT, NOT ONCE. Bit 6 set is an override that survives the boot; 2b's settle refuses Continuous,
-// and this proves the mapping does not quietly translate it into Once — which would pin bobo to the installer
-// for every boot after this one.
-test fn w_a_persistent_override_refuses_the_reset() -> Bool {
-  match read_back_of(hex: "c004000000") {
-    BootOnceReadbackObserved { setting: setting } =>
-      setting.enabled == BootOverrideContinuous && match mtcollins1_standing() {
-        Absent => false
-        Present { value: standing } => !network_install_may_reset(
-          plan: network_install_settle_boot_once(
-            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
-            observed: read_back_of(hex: "c004000000")
-          )
-        )
-      }
-    BootOnceReadbackAbsent => false
-  }
-}
-
-// RED: LEGACY, NOT EFI. Bit 5 clear. This fleet boots UEFI; the workflow itself plans no Legacy boot, and a
-// controller answering Legacy must be refused rather than obeyed.
-test fn w_a_legacy_override_refuses_the_reset() -> Bool {
-  match read_back_of(hex: "8004000000") {
-    BootOnceReadbackObserved { setting: setting } =>
-      setting.mode == BootOverrideModeLegacy && match mtcollins1_standing() {
-        Absent => false
-        Present { value: standing } => !network_install_may_reset(
-          plan: network_install_settle_boot_once(
-            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
-            observed: read_back_of(hex: "8004000000")
-          )
-        )
-      }
-    BootOnceReadbackAbsent => false
-  }
-}
-
-// RED: THE WRONG DEVICE. 'a014000000' is the committed CD/DVD EFI next-boot rendering — the state a BMC lands
-// in when virtual media is left attached. The mapping must report it AS CD/DVD (so the receipt says what the
-// BMC said) and the settle must refuse it.
-test fn w_a_cdrom_override_is_reported_as_cdrom_and_refused() -> Bool {
-  match read_back_of(hex: "a014000000") {
-    BootOnceReadbackObserved { setting: setting } =>
-      setting.target == BootTargetCd && match mtcollins1_standing() {
-        Absent => false
-        Present { value: standing } => !network_install_may_reset(
-          plan: network_install_settle_boot_once(
-            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
-            observed: read_back_of(hex: "a014000000")
-          )
-        )
-      }
-    BootOnceReadbackAbsent => false
-  }
-}
-
-// RED: THE FLAGS ARE NOT SET AT ALL. The committed no-override rendering ('0000000000', Boot Flag Invalid) is
-// not "nothing was asked for so anything goes" — it is no reading, and no reset.
-test fn w_unset_boot_flags_are_no_reading_and_reset_nothing() -> Bool {
-  match read_back_of(hex: "0000000000") {
-    BootOnceReadbackAbsent => match mtcollins1_standing() {
-      Absent => false
-      Present { value: standing } => !network_install_may_reset(
-        plan: network_install_settle_boot_once(
-          plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
-          observed: read_back_of(hex: "0000000000")
-        )
-      )
-    }
-    BootOnceReadbackObserved { setting: _ } => false
-  }
-}
-
-// RED: AN ANSWER THAT IS NOT AN ANSWER. A truncated parameter line, or one whose digits do not decode, is no
-// reading — the same refusal as silence, and it is what keeps a partial capture (a timed-out ipmitool, a cut
-// pipe) from being read as compliance.
-test fn w_a_truncated_or_unparseable_answer_resets_nothing() -> Bool {
-  match network_install_boot_once_read_back(
-    reading: ipmi_boot_flags_reading_of_bootparam_get(stdout: "Boot parameter data: a014\n")
-  ) {
-    BootOnceReadbackAbsent => match network_install_boot_once_read_back(
-      reading: ipmi_boot_flags_reading_of_bootparam_get(stdout: "Boot parameter version: 1\n")
-    ) {
-      BootOnceReadbackAbsent => match network_install_boot_once_read_back(reading: Absent) {
-        BootOnceReadbackAbsent => true
-        BootOnceReadbackObserved { setting: _ } => false
-      }
-      BootOnceReadbackObserved { setting: _ } => false
-    }
-    BootOnceReadbackObserved { setting: _ } => false
-  }
-}
-
-// THE RECEIPT CARRIES WHAT THE CONTROLLER SAID, not the verdict derived from it: the bytes appear in the line
-// an operator reads when a run refused to reset.
-test fn w_the_receipt_records_the_controllers_own_bytes() -> Bool {
-  match ipmi_boot_flags_reading_of_bootparam_get(stdout: param5_stdout(hex: "c004000000")) {
-    Present { value: flags } =>
-      (network_install_boot_param5_receipt_line(reading: Present { value: flags }) as String) ==
-        "boot_param5=valid,persistent=yes,efi=yes,selector=1" &&
-        (network_install_boot_param5_receipt_line(reading: Absent) as String) == "boot_param5=no-answer"
-    Absent => false
+    Present { value: _ } => false
   }
 }

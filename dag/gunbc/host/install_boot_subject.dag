@@ -9,18 +9,25 @@
 // entry, and forging a ManagedHost row to reach it is exactly the membership forgery that entry's
 // BootOnceHostNotManaged refusal exists to make unavailable.
 //
-// THIS MODULE ADDS AN ADMISSION, NOT A PLANNER. There is one planner core on main,
-// gunbc.host.managed_host_boot_once plan_boot_once_on_standing, and plan_install_boot_once below calls it.
-// A second planner would be a fork: each rule it restated (firmware before target alphabet before bound
-// controller; the read-back-before-reset ordering; the intended setting being fixed save the target) could
-// then drift from the first. The two entries share that core and differ ONLY in who may stand in front of a
-// controller:
+// THIS MODULE ADDS AN ADMISSION AND A CALLER, NOT A BOOT ENGINE. There is one live boot-once route on main,
+// gunbc.machine_intake.oob_boot_handoff oob_boot_handoff: it sends the boot-device override once, reads boot
+// parameter 5 back, and issues the power action only when its verdict on THAT READING says the override is
+// valid, one-shot, EFI and named. A second route would be a fork: each rule it restated (the write, the
+// read-back before the power action, the flag-valid/one-shot/EFI/named-device judgment) could then drift from
+// the first, and the destructive step would have two authorities. So the entries below share that ONE route
+// and differ only in who may stand in front of a controller:
 //
-//   gunbc.host.managed_host_boot_once boot_once_plan_for_managed_host — a managed host, admitted by
-//     gunbc.host.managed_host managed_host_admission;
-//   this module admit_install_boot_subject + plan_install_boot_once — an admitted arrival subject with a
+//   gunbc.host.managed_host_boot_handoff boot_drive_handoff — a managed host, admitted by
+//     gunbc.host.managed_host_boot admit_boot_subject, called by the mtcollins1 boot run;
+//   this module admit_install_boot_subject + install_boot_drive_handoff — an admitted arrival subject with a
 //     bound, secured controller whose committed write controller admits the boot-device write, for one
-//     install.
+//     install. Same route, same credential standing (a path, never bytes), same renderer helpers from
+//     gunbc.host.managed_host_boot_handoff; the boot intent is pinned here to pxe/once/EFI so no caller can
+//     name a device.
+//
+// What 2c does with the outcome is a SEPARATE question from whether the controller may be driven: the route's
+// verdict gates the power action, and gunbc.host.network_install maps those arms into the install receipt and
+// refuses the INSTALL continuation on any arm short of issued. It adds no second judgment over the same bytes.
 //
 // IDENTITY IS NOT MEMBERSHIP, AND THAT IS THE HONEST ROUTE. Every srv15 fact on main is keyed by HostIdentity
 // and none of them is a managed-host row: its controller row
@@ -63,23 +70,38 @@ import product.host_identity {
 }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.access_profile { BmcAccessObservationStanding }
-import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishBootSourceOverrideMode }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessObservation }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection,
+  IpmiBootPxe,
+  uefi_once_boot_selection,
+}
+import std.optional { Present, Absent }
 import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import gunbc.machine_intake.oob_boot_handoff { OobBootHandoffOutcome, oob_boot_handoff }
 import gunbc.host.bmc_control_binding {
   BmcControlStanding,
   BmcControlBound,
   BmcControlAccessUnobserved,
   BmcControlNotSecured,
   BmcControlEndpointMismatch,
+  BmcControlBoundRoute,
   bmc_control_binding,
+  bmc_control_route_endpoint,
+  bmc_control_route_account,
+  bmc_control_route_observation,
+}
+import gunbc.host.managed_host_boot_handoff {
+  CredentialPathMissing,
+  CredentialPathGiven,
+  boot_handoff_password_file,
+  boot_handoff_not_issued,
 }
 import gunbc.host.managed_host_boot_once {
-  BootOncePlan,
   BoundControllerFound,
   BoundControllerAbsent,
   bound_controller_of,
-  plan_boot_once_on_standing
 }
 import gunbc.machine_intake.arrival_subject {
   ArrivalConvergePopulationRow,
@@ -106,9 +128,19 @@ import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment
 // that was authorized and the endpoint that receives the override cannot drift apart.
 type InstallBootSubject sole_constructor {
   host: HostIdentity
-  controller: BmcControllerEndpoint
+  // THE BOUND, SECURED CONTROL ROUTE itself, not a copy of its fields: the endpoint, the managed account
+  // and the access observation the live route runs against are all read off THIS route by
+  // gunbc.host.bmc_control_binding, so a subject cannot name a controller its route does not name.
+  route: BmcControlBoundRoute
+  // THE MANAGED ACCOUNT, read off the same route by 2b's own `bound_controller_of` at admission. It is
+  // stored because the admission PROVED it present (ControllerHasNoAccount otherwise refuses) and the
+  // receipt must name the credential the run used; it is not a second authority over who the account is.
   account: NonEmptyStr
-  control: BmcControlStanding
+  // THE RELEASE ROW THE BOOT ADMISSION WAS DECIDED ON, carried from the caller that resolved it against
+  // the catalog. gunbc.machine_intake.oob_boot_handoff refuses a row whose release does not accept
+  // writes; the row is passed through, never re-resolved here, because the observation's own firmware
+  // field records what was probed at INTAKE and is the wrong release after a reflash.
+  capability_row: BmcFirmwareReleaseCapabilityRow
 }
 
 // WHY A UNIT MAY NOT BE BOOTED ONCE, by named cause. Each names the fact and carries the evidence it came
@@ -149,6 +181,7 @@ fn admit_install_boot_subject(
   secured: BmcSecureStanding,
   board: BoardAuthorityRef?,
   route: BmcWriteRoute,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
   qualification: RunnerThroughputAssessment<HostIdentity>?
 ) -> InstallBootSubjectAdmission {
   let arrival = admit_arrival_subject_in(population: population, managed: managed, wire: subject as String)
@@ -161,7 +194,7 @@ fn admit_install_boot_subject(
     ArrivalSubjectOutsideGrant { wire: _ } =>
       InstallBootSubjectRefused { cause: ArrivalNotAdmitted { subject: subject, cause: arrival } }
     ArrivalSubjectInPopulation { subject: _ } => match control {
-      BmcControlBound { route: _ } => match bound_controller_of(standing: control) {
+      BmcControlBound { route: bound_route } => match bound_controller_of(standing: control) {
         BoundControllerFound { endpoint: bound_endpoint, account: account } =>
           if (bound_endpoint.host as String) == (intended_controller.host as String) {
             match select_bmc_write_controller(
@@ -175,9 +208,9 @@ fn admit_install_boot_subject(
                 InstallBootSubjectAdmitted {
                   subject: InstallBootSubject {
                     host: subject,
-                    controller: bound_endpoint,
+                    route: bound_route,
                     account: account,
-                    control: control,
+                    capability_row: capability_row,
                   }
                 }
               BmcWriteControllerRefused { cause: write_cause } => InstallBootSubjectRefused {
@@ -204,33 +237,70 @@ fn admit_install_boot_subject(
   }
 }
 
-// THE PLANNER CALL, in one place, so the one-core rule stays checkable by name. A caller cannot reach
-// plan_boot_once_on_standing with a standing it assembled; it hands me the admitted subject and I hand the
-// core the standing the admission proved. Everything the core guarantees is unchanged for this route: a
-// Legacy mode refuses before the controller, only the allowed target alphabet passes, and the result is a
-// STAGED plan whose reset is admitted only by settle_boot_once_read_back against the OBSERVED read-back.
-fn plan_install_boot_once(
+// THE BOOT, DRIVEN THROUGH THE ONE LIVE ROUTE. The boot-once is not planned and settled here: 2c boots a
+// client into an installer over the SAME route a managed host uses --
+// gunbc.machine_intake.oob_boot_handoff, which sends `chassis bootdev <device> options=efiboot` ONCE, reads
+// boot parameter 5 back, and issues the power action only when its own verdict on THAT READING says the
+// override is valid, one-shot, EFI, and named. That verdict is the sole gate on the destructive step; this
+// function adds no second gate over the same bytes, and the caller below maps the outcome arms into the
+// receipt and refuses the INSTALL continuation on any arm short of issued. The device and mode are pinned
+// here -- pxe, one-shot, EFI -- because a network install has exactly one boot intent, so no caller gets to
+// name a device; only the credential path is supplied, and it is a path, never bytes.
+type InstallBootHandoff
+  = InstallBootHandoffDriven { subject: HostIdentity, outcome: OobBootHandoffOutcome }
+  // The run reached the boot with no credential path. Refused BEFORE any controller write: an unauthenticated
+  // attempt against a unit with a lockout budget spends that budget for nothing.
+  | InstallBootHandoffCredentialMissing { subject: HostIdentity }
+
+// THE ONE BOOT INTENT THIS WORKFLOW CAN HAVE: the firmware boots the installer from the NIC, once, in EFI
+// mode, and falls back to the disk afterwards. Built by extdeps.bmc.ipmi_boot_selection's own builder, which
+// is what the managed-host route uses, so both lanes send the same bytes for the same intent.
+fn install_boot_selection() -> IpmiBootSelection {
+  uefi_once_boot_selection(device: IpmiBootPxe)
+}
+
+fn install_boot_drive_handoff(
   subject: InstallBootSubject,
-  target: RedfishBootSourceOverrideTarget,
-  mode: RedfishBootSourceOverrideMode
-) -> BootOncePlan {
-  plan_boot_once_on_standing(control: subject.control, target: target, mode: mode)
+  password_file_raw: String,
+) -> InstallBootHandoff
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_after_binding"),
+  ]
+{
+  match boot_handoff_password_file(raw: password_file_raw) {
+    CredentialPathMissing => InstallBootHandoffCredentialMissing { subject: subject.host }
+    CredentialPathGiven { path: credential_path } => InstallBootHandoffDriven {
+      subject: subject.host,
+      outcome: oob_boot_handoff(
+        observation: bmc_control_route_observation(route: subject.route),
+        username: subject.account,
+        password_file: credential_path,
+        selection: install_boot_selection(),
+        capability_row: subject.capability_row,
+      ),
+    }
+  }
 }
 
 // THE SUBJECT'S OWN FACTS, exposed as functions because the fields are sealed. An installer receipt needs
-// the controller and the account by name; it may not read a field it was not given.
+// the controller and the account by name; it may not read a field it was not given. Both are read off the
+// route the admission captured, so the receipt names the controller the run actually drove.
 fn install_boot_subject_host(subject: InstallBootSubject) -> HostIdentity {
   subject.host
 }
 
 fn install_boot_subject_controller(subject: InstallBootSubject) -> BmcControllerEndpoint {
-  subject.controller
+  bmc_control_route_endpoint(route: subject.route)
 }
 
 fn install_boot_subject_account(subject: InstallBootSubject) -> NonEmptyStr {
   subject.account
 }
 
-fn install_boot_subject_control(subject: InstallBootSubject) -> BmcControlStanding {
-  subject.control
+fn install_boot_subject_observation(subject: InstallBootSubject) -> BmcAccessObservation {
+  bmc_control_route_observation(route: subject.route)
+}
+
+fn install_boot_subject_capability_row(subject: InstallBootSubject) -> BmcFirmwareReleaseCapabilityRow {
+  subject.capability_row
 }

@@ -30,13 +30,15 @@
 //      with a bound, secured controller whose committed write controller admits the boot-device write. srv15
 //      is NOT a managed host and this route does not pretend otherwise.
 //   3. THE DISK. admit_install_target_disk, then its pin, then the CONTENTS PRECONDITION below.
-//   4. THE BINDING. The edge's install file for this client must be staged AND read back before the boot is
-//      planned at all — a client with no binding gets no Redfish PATCH, because there is nothing for it to
-//      boot into. The staged binding is what the boot gate reads.
-//   5. THE BOOT. 2b's own planner core through plan_install_boot_once, then [Set, ReadBack], then the
-//      OBSERVED read-back into settle_boot_once_read_back. The reset is admitted only by the reading the
-//      controller gave back; a caller-supplied read-back would defeat the property, so this module exposes no
-//      entry that takes one.
+//   4. THE BINDING. The edge's install file for this client must be staged AND read back before any boot is
+//      attempted at all — a client with no binding gets no controller write, because there is nothing for it
+//      to boot into. The staged-and-read-back binding is the gate the dispatch reads.
+//   5. THE BOOT. ONE live route: gunbc.machine_intake.oob_boot_handoff, reached through
+//      gunbc.host.install_boot_subject install_boot_drive_handoff, which sends the boot-device override ONCE
+//      (pxe, EFI — pinned there, not by the caller), reads boot parameter 5 back, and issues the power action
+//      ONLY when its own verdict on THAT reading says the override is valid, one-shot, EFI and named. That
+//      verdict is the SOLE gate on the destructive step; 2c adds no second judgment over the same bytes, and
+//      the install continuation is withheld on every arm short of an issued control.
 //   6. THE READ-BACK, then THE WITHDRAWAL, then THE RECORD. Completion is recorded only after the install is
 //      read back AND the binding is verified gone; if the binding survives, the run fails and NO completion is
 //      written, so a retry is possible instead of a host left with a live installer binding and an
@@ -61,25 +63,24 @@ import std.list { list_member, first_where }
 import product.host_identity {
   HostIdentity
 }
-import extdeps.bmc.types {
-  BootTargetPxe,
-  BootTargetNone,
-  BootTargetCd,
-  RedfishBootSourceOverrideTarget,
-  BootOverrideModeUefi,
-  BootOverrideModeLegacy,
-  BootOverrideOnce,
-  BootOverrideContinuous
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseCapabilityRow,
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
 }
-import extdeps.bmc.ipmi_boot_selection {
-  IpmiBootFlagsReading,
-  IpmiBootDevice,
-  IpmiBootPxe,
-  IpmiBootCdrom,
-  IpmiSelectorNoOverride,
-  IpmiSelectorModeled,
-  IpmiSelectorUnmodeled,
-  ipmi_boot_selector_reading
+import gunbc.machine_intake.oob_boot_handoff {
+  OobBootHandoffOutcome,
+  BootControlIssued,
+  BootSelectionRefused,
+  BootSelectionNotApplied,
+  BootSelectionUnverifiable,
+  BootSelectionFlagInvalid,
+  BootSelectionNotOneShot,
+  BootSelectionFirmwareMismatch,
+  PowerStateReadFailed,
+  PowerCommandRefused,
+  PowerCommandAcceptedNoTransition,
+  BootHandoffNotAdmitted,
 }
 import gunbc.host.install_boot_subject {
   InstallBootSubject,
@@ -87,22 +88,9 @@ import gunbc.host.install_boot_subject {
   InstallBootSubjectRefused,
   InstallBootSubjectRefusalCause,
   admit_install_boot_subject,
-  plan_install_boot_once
-}
-import gunbc.host.managed_host_boot_once {
-  BootOnceSetting,
-  BootOnceReadbackObserved,
-  BootOnceReadbackAbsent,
-  BootOncePlan,
-  BootOnceStaged,
-  BootOnceRefused,
-  BootOnceReadback,
-  BootOnceResetAdmitted,
-  BootOnceResetRefused,
-  settle_boot_once_read_back,
-  boot_once_has_reset,
-  BootOnceRefusalCause,
-  BootOnceHostUnbound
+  install_boot_drive_handoff,
+  InstallBootHandoffDriven,
+  InstallBootHandoffCredentialMissing,
 }
 import extdeps.storage.device_identification { device_identification_token_text }
 import gunbc.provisioning.install_target_disk {
@@ -271,7 +259,7 @@ fn admit_target_disk_contents(
 data network_install_journal_slot_prefix: NonEmptyStr = "network-install-completion/"
 
 fn network_install_journal_slot_key(host: HostIdentity, serial: NonEmptyStr) -> NonEmptyStr {
-  join([network_install_journal_slot_prefix, host as String, "/", serial], "")
+  concat(network_install_journal_slot_prefix, host as String, "/", serial)
 }
 
 // WHAT THE SLOT SAYS. Four readings, because "absent", "unreadable" and "not what we wrote" are three
@@ -388,7 +376,7 @@ fn network_install_completion_instant(completion: NetworkInstallCompletion) -> E
 //   OS       an installed OS is POSITIVELY observed on the unit → refuse (an absent observation is not a
 //            refusal: a unit being installed is precisely a unit that cannot answer SSH yet).
 //   BOOT     only now is the boot-once planned, through 2b's core, and even then it is STAGED: the reset still
-//            waits for the OBSERVED read-back in network_install_settle_boot_once.
+//            gates the power action on the OBSERVED read-back in its own boot_readback_verdict.
 //
 // WHY THE DISPATCH NAMES THE SERIAL. A network install is always for ONE named disk; there is no "install
 // onto whatever is in the bay". The journal key needs the serial before the disk is admitted, and the honest
@@ -412,6 +400,17 @@ type NetworkInstallBindingEvidence
   | BindingAbsent { client: NonEmptyStr }
   | BindingWriteFailed { client: NonEmptyStr, reason: NonEmptyStr }
   | BindingReadBackMismatch { client: NonEmptyStr, path: NonEmptyStr, reason: NonEmptyStr }
+
+// THE PATH THE EDGE HOLDS, if the read-back named one. "none" is the honest answer for a binding that never
+// landed: the receipt must still print a field, and it must not print a path that does not exist.
+fn network_install_binding_path(binding: NetworkInstallBindingEvidence) -> NonEmptyStr {
+  match binding {
+    BindingStagedAndReadBack { client: _, path: path } => path
+    BindingReadBackMismatch { client: _, path: path, reason: _ } => path
+    BindingAbsent { client: _ } => "none"
+    BindingWriteFailed { client: _, reason: _ } => "none"
+  }
+}
 
 // WHETHER THE UNIT IS ALREADY RUNNING AN INSTALLED OS, as a POSITIVE observation only. The three readings are
 // deliberately not collapsed: "observed installed" is a fact that refuses, while "did not answer" is the
@@ -452,12 +451,16 @@ type NetworkInstallDispatchRefusalCause
   | ContentsNotAdmitted { contents: TargetDiskContents }
   // BINDING. Nothing was staged for this client, or it was not verified — so no PATCH is planned.
   | EdgeBindingNotStaged { host: HostIdentity, client: NonEmptyStr, reason: String }
+  // REQUEST. The unit has no install-client row, so no request can be derived and there is nothing to stage
+  // at the edge. Distinct from a refused dispatch: this unit is not an install target at all.
+  | InstallClientUnknown { host: HostIdentity }
+  // CREDENTIAL. The run reached the boot with no credential path. Nothing at the controller was touched — this
+  // is the arm that proves a missing secret spends no lockout budget — but the staged binding is still residue
+  // and is withdrawn.
+  | BootCredentialMissing { host: HostIdentity }
   // OS. A positive observation of an installed OS on a unit this run means to install: almost certainly the
   // wrong unit, or a unit whose completion was never journaled. Refuse and let a human look.
   | InstalledOsAlreadyObserved { host: HostIdentity, evidence: NonEmptyStr }
-  // BOOT. 2b's own refusal (Legacy firmware, a target outside the allowed alphabet, an unbound controller, a
-  // read-back mismatch at settle). A plan that was refused plans no Set.
-  | BootOnceRefusedByController { cause: BootOnceRefusalCause }
 
 type NetworkInstallDispatch
   = NetworkInstallDispatchAdmitted {
@@ -468,7 +471,6 @@ type NetworkInstallDispatch
       model: Optional<NonEmptyStr>
       decided_at: EpochMs
       binding: NetworkInstallBindingEvidence
-      plan: BootOncePlan
     }
   | NetworkInstallDispatchRefused { cause: NetworkInstallDispatchRefusalCause }
 
@@ -485,6 +487,7 @@ fn network_install_dispatch_admission(
   secured: BmcSecureStanding,
   board: BoardAuthorityRef?,
   route: BmcWriteRoute,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
   qualification: RunnerThroughputAssessment<HostIdentity>?,
   journal: NetworkInstallJournalReading,
   hold: NetworkInstallHoldReading,
@@ -495,37 +498,48 @@ fn network_install_dispatch_admission(
   binding: NetworkInstallBindingEvidence,
   os_observation: NetworkInstallOsObservation
 ) -> NetworkInstallDispatch {
+  match network_install_journal_and_hold_gate(
+    journal: journal, hold: hold, host: host, expected_serial: expected_serial, dispatch_owner: dispatch_owner
+  ) {
+    Absent => network_install_admit_subject(
+      population: population, managed: managed, host: host, expected_serial: expected_serial,
+      intended_controller: intended_controller, observed: observed, secured: secured, board: board,
+      route: route, capability_row: capability_row, qualification: qualification,
+      reading: reading, decided_at: decided_at,
+      window: window, contents_report: contents_report, binding: binding, os_observation: os_observation
+    )
+    Present { value: cause } => NetworkInstallDispatchRefused { cause: cause }
+  }
+}
+
+// THE FIRST TWO GATES, SPEAKABLE ON THEIR OWN. The run must be able to ask "may I touch anything for this
+// unit?" BEFORE it stages a binding at the edge, because staging is an effect and a unit that is already
+// installed, or is being installed by another dispatch, must not have its client pinned to an installer even
+// briefly. This is the ONE statement of those two gates: the dispatch admission above calls it, so the early
+// question and the authoritative question cannot drift apart.
+fn network_install_journal_and_hold_gate(
+  journal: NetworkInstallJournalReading,
+  hold: NetworkInstallHoldReading,
+  host: HostIdentity,
+  expected_serial: NonEmptyStr,
+  dispatch_owner: NonEmptyStr
+) -> Optional<NetworkInstallDispatchRefusalCause> {
   match journal {
-    JournalSlotCompleted { completed_at: completed_at } => NetworkInstallDispatchRefused {
-      cause: InstallAlreadyCompleted { host: host, serial: expected_serial, completed_at: completed_at },
-    }
-    JournalSlotUnreadable { detail: detail } => NetworkInstallDispatchRefused {
-      cause: JournalUnreadable { host: host, serial: expected_serial, detail: detail },
-    }
-    JournalSlotMalformed { payload: payload } => NetworkInstallDispatchRefused {
-      cause: JournalPayloadMalformed { host: host, serial: expected_serial, payload: payload },
-    }
+    JournalSlotCompleted { completed_at: completed_at } =>
+      Present { value: InstallAlreadyCompleted { host: host, serial: expected_serial, completed_at: completed_at } }
+    JournalSlotUnreadable { detail: detail } =>
+      Present { value: JournalUnreadable { host: host, serial: expected_serial, detail: detail } }
+    JournalSlotMalformed { payload: payload } =>
+      Present { value: JournalPayloadMalformed { host: host, serial: expected_serial, payload: payload } }
     JournalSlotAbsent => match hold {
       HoldHeldBy { owner: owner } =>
         if owner == dispatch_owner {
-          network_install_admit_subject(
-            population: population, managed: managed, host: host, expected_serial: expected_serial,
-            intended_controller: intended_controller, observed: observed, secured: secured, board: board,
-            route: route, qualification: qualification, reading: reading, decided_at: decided_at,
-            window: window, contents_report: contents_report, binding: binding,
-            os_observation: os_observation
-          )
+          Absent
         } else {
-          NetworkInstallDispatchRefused { cause: HostHeldByAnotherDispatch { host: host, owner: owner } }
+          Present { value: HostHeldByAnotherDispatch { host: host, owner: owner } }
         }
-      HoldUnreadable { detail: detail } =>
-        NetworkInstallDispatchRefused { cause: HostHoldUnreadable { host: host, detail: detail } }
-      HoldFree => network_install_admit_subject(
-        population: population, managed: managed, host: host, expected_serial: expected_serial,
-        intended_controller: intended_controller, observed: observed, secured: secured, board: board,
-        route: route, qualification: qualification, reading: reading, decided_at: decided_at,
-        window: window, contents_report: contents_report, binding: binding, os_observation: os_observation
-      )
+      HoldUnreadable { detail: detail } => Present { value: HostHoldUnreadable { host: host, detail: detail } }
+      HoldFree => Absent
     }
   }
 }
@@ -542,6 +556,7 @@ fn network_install_admit_subject(
   secured: BmcSecureStanding,
   board: BoardAuthorityRef?,
   route: BmcWriteRoute,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
   qualification: RunnerThroughputAssessment<HostIdentity>?,
   reading: TargetDiskReading,
   decided_at: EpochMs,
@@ -566,12 +581,13 @@ fn network_install_admit_subject(
     BindingReadBackMismatch { client: client, path: _, reason: reason } => NetworkInstallDispatchRefused {
       cause: EdgeBindingNotStaged {
         host: host, client: client,
-        reason: join(["the staged file did not read back as written: ", reason], ""),
+        reason: concat("the staged file did not read back as written: ", reason),
       }
     }
     BindingStagedAndReadBack { client: _, path: _ } => match admit_install_boot_subject(
       population: population, managed: managed, subject: host, intended_controller: intended_controller,
-      observed: observed, secured: secured, board: board, route: route, qualification: qualification
+      observed: observed, secured: secured, board: board, route: route, capability_row: capability_row,
+      qualification: qualification
     ) {
       InstallBootSubjectRefused { cause: cause } =>
         NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: cause } }
@@ -636,10 +652,10 @@ fn network_install_check_pin(
             InstalledOsObserved { host: _, evidence: evidence } => NetworkInstallDispatchRefused {
               cause: InstalledOsAlreadyObserved { host: host, evidence: evidence },
             }
-            InstalledOsNotObserved => network_install_plan_boot(
+            InstalledOsNotObserved => network_install_admitted_dispatch(
               host: host, subject: subject, disk: disk, pin: pin, decided_at: decided_at, binding: binding
             )
-            InstalledOsUnreadable { detail: _ } => network_install_plan_boot(
+            InstalledOsUnreadable { detail: _ } => network_install_admitted_dispatch(
               host: host, subject: subject, disk: disk, pin: pin, decided_at: decided_at, binding: binding
             )
           }
@@ -648,12 +664,14 @@ fn network_install_check_pin(
   }
 }
 
-// STEP 7: THE BOOT PLAN, reached only with an admitted disk, admitted contents, and a staged-and-read-back
-// binding. It goes through 2b's ONE core via gunbc.host.install_boot_subject plan_install_boot_once, with the
-// mode pinned UEFI and the target pinned PXE: this workflow boots one client into one installer, so it exposes
-// no caller choice of target. The result is STAGED — it carries [Set, ReadBack] and no reset. The reset is
-// admitted only by network_install_settle_boot_once below, against what the controller actually said.
-fn network_install_plan_boot(
+// STEP 7: THE BOOT STEP. Nothing is PLANNED here and no controller answer is judged here. The binding gate
+// above (BindingAbsent / BindingWriteFailed / BindingReadBackMismatch each refuse with a cause naming the
+// client) is what proves the edge is serving this client's install file; the boot then goes through the ONE
+// live route -- gunbc.machine_intake.oob_boot_handoff, reached through gunbc.host.install_boot_subject
+// install_boot_drive_handoff -- whose own verdict on the boot-parameter-5 reading IT took is the SOLE gate on
+// the power action. The device and mode are pinned inside that caller (pxe, once, EFI), so no caller of this
+// module can name a device, and 2c adds no second judgment over those bytes.
+fn network_install_admitted_dispatch(
   host: HostIdentity,
   subject: InstallBootSubject,
   disk: InstallTargetDisk,
@@ -661,32 +679,20 @@ fn network_install_plan_boot(
   decided_at: EpochMs,
   binding: NetworkInstallBindingEvidence
 ) -> NetworkInstallDispatch {
-  match plan_install_boot_once(subject: subject, target: BootTargetPxe, mode: BootOverrideModeUefi) {
-    BootOnceRefused { cause: cause } =>
-      NetworkInstallDispatchRefused { cause: BootOnceRefusedByController { cause: cause } }
-    BootOnceStaged { account: _, controller: _, setting: _ } => NetworkInstallDispatchAdmitted {
-      host: host,
-      subject: subject,
-      disk: disk,
-      serial: device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String,
-      model: network_install_pin_model_text(pin: pin),
-      decided_at: decided_at,
-      binding: binding,
-      plan: plan_install_boot_once(subject: subject, target: BootTargetPxe, mode: BootOverrideModeUefi),
-    }
-    // The planner core cannot return these — it stages, and only a settled read-back produces them — but a
-    // match over an imported sum names every variant, and a plan that has ALREADY been settled must not be
-    // re-dispatched as if it were fresh: it is refused here rather than re-planned.
-    BootOnceResetAdmitted { account: _, steps: _ } =>
-      NetworkInstallDispatchRefused { cause: BootOnceRefusedByController { cause: BootOnceHostUnbound } }
-    BootOnceResetRefused { account: _, steps: _, cause: _ } =>
-      NetworkInstallDispatchRefused { cause: BootOnceRefusedByController { cause: BootOnceHostUnbound } }
+  NetworkInstallDispatchAdmitted {
+    host: host,
+    subject: subject,
+    disk: disk,
+    serial: device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String,
+    model: network_install_pin_model_text(pin: pin),
+    decided_at: decided_at,
+    binding: binding,
   }
 }
 
 // THE MODEL'S DISK MODEL STRING, carried into the receipt as Optional text: the seed renders match{serial,
 // model} when a model was reported, and the receipt must say which of the two the pin held. Absent is not an
-// error — it is a serial-only pin, which is exactly the lever for a disk whose reported model drifts.
+// error -- it is a serial-only pin, which is exactly the lever for a disk whose reported model drifts.
 fn network_install_pin_model_text(pin: AutoinstallDiskPin) -> Optional<NonEmptyStr> {
   match autoinstall_disk_pin_model(pin: pin) {
     Absent => Absent
@@ -694,25 +700,62 @@ fn network_install_pin_model_text(pin: AutoinstallDiskPin) -> Optional<NonEmptyS
   }
 }
 
-// THE ONLY ROUTE FROM A STAGED PLAN TO A RESET, and it takes the READ-BACK THE CONTROLLER GAVE. This is 2b's
-// property, not a re-statement of it: the caller runs the plan's [Set, ReadBack] steps, OBSERVES the override
-// the controller now reports, and hands the observed BootOnceReadback here. There is no variant of this
-// function that accepts an intended setting, a caller-authored expectation, or a plan that already has a reset:
-// pass a reading that does not match the intended setting and settle returns a plan with the reset dropped and
-// BootOnceResetRefused naming both readings, so the host is never reset into an installer nobody confirmed.
-fn network_install_settle_boot_once(plan: BootOncePlan, observed: BootOnceReadback) -> BootOncePlan {
-  settle_boot_once_read_back(plan: plan, observed: observed)
-}
+// THE ROUTE'S WORD, RE-NAMED FOR THE INSTALL. The power action was already gated by the route's own verdict;
+// this is not a second judgment over those bytes, it is the install decision that FOLLOWS: may this run go on
+// to expect an installer on the target disk, and what does the receipt say. Every arm short of an issued
+// control withholds the install -- the run then withdraws the edge binding and records a refused receipt, so a
+// boot that never happened cannot leave a client pinned to a menu. The controller's own words travel with the
+// withholding, because the thing an operator needs after a refusal is what the BMC actually answered.
+type NetworkInstallBootVerdict
+  = InstallBootProceeds { selected: NonEmptyStr }
+  | InstallBootWithheld { reason: String, readback: String }
 
-// WHETHER A SETTLED PLAN MAY BE RESET. The wet entry checks this and nothing else before the reset, and it
-// records the two facts separately in the receipt so "the read-back vetoed the boot" is distinguishable from
-// "the controller was never touched".
-fn network_install_may_reset(plan: BootOncePlan) -> Bool {
-  match plan {
-    BootOnceStaged { account: _, controller: _, setting: _ } => boot_once_has_reset(plan: plan)
-    BootOnceRefused { cause: _ } => false
-    BootOnceResetAdmitted { account: _, steps: _ } => boot_once_has_reset(plan: plan)
-    BootOnceResetRefused { account: _, steps: _, cause: _ } => boot_once_has_reset(plan: plan)
+fn network_install_boot_verdict(outcome: OobBootHandoffOutcome) -> NetworkInstallBootVerdict {
+  match outcome {
+    BootControlIssued { selected: selected, power: _, admitted: _ } => InstallBootProceeds {
+      selected: selected
+    }
+    BootSelectionRefused => InstallBootWithheld {
+      reason: "the controller would not accept the boot-device write at all",
+      readback: "no-readback",
+    }
+    BootSelectionNotApplied { requested: requested, readback: readback } => InstallBootWithheld {
+      reason: concat("the override for ", requested as String, " did not take effect"),
+      readback: readback,
+    }
+    BootSelectionUnverifiable { requested: requested, readback: readback } => InstallBootWithheld {
+      reason: concat("the read-back for ", requested as String, " could not be decoded"),
+      readback: readback,
+    }
+    BootSelectionFlagInvalid { requested: requested, readback: readback } => InstallBootWithheld {
+      reason: concat("the boot flags reported for ", requested as String, " are not valid"),
+      readback: readback,
+    }
+    BootSelectionNotOneShot { requested: requested, readback: readback } => InstallBootWithheld {
+      reason: concat("the override reported for ", requested as String, " is not one-shot"),
+      readback: readback,
+    }
+    BootSelectionFirmwareMismatch { requested: requested, readback: readback } => InstallBootWithheld {
+      reason: concat("the firmware cannot apply ", requested as String),
+      readback: readback,
+    }
+    PowerStateReadFailed { selected: selected, observed_state: _ } => InstallBootWithheld {
+      reason: concat("the chassis state before ", selected as String, " could not be read"),
+      readback: "no-readback",
+    }
+    PowerCommandRefused { selected: selected, action: _ } => InstallBootWithheld {
+      reason: concat("the power action for ", selected as String, " was refused"),
+      readback: "no-readback",
+    }
+    PowerCommandAcceptedNoTransition { selected: selected, action: _, progress: _, last_observed: _ } =>
+      InstallBootWithheld {
+        reason: concat("the chassis never showed the transition for ", selected as String),
+        readback: "no-readback",
+      }
+    BootHandoffNotAdmitted { admission: _ } => InstallBootWithheld {
+      reason: "the boot handoff was not admitted for this controller or release",
+      readback: "no-readback",
+    }
   }
 }
 
@@ -727,8 +770,12 @@ type NetworkInstallReceipt {
   model: Optional<NonEmptyStr>
   decided_at: EpochMs
   binding_path: NonEmptyStr
-  override_read_back: Bool
-  reset_issued: Bool
+  // WHETHER THE ROUTE ISSUED THE CONTROL. Not "this module admitted a reset": the route that owns the power
+  // action says whether it issued it, and this is what it said.
+  boot_issued: Bool
+  // WHAT THE CONTROLLER ANSWERED ITS OWN READ-BACK WITH, verbatim, or the literal "no-readback" when the run
+  // stopped before a reading existed. A refusal that does not carry the controller's words is unauditable.
+  boot_readback: String
   install_read_back: Bool
   install_evidence: NonEmptyStr
   binding_withdrawn: Bool
@@ -739,22 +786,22 @@ type NetworkInstallReceipt {
 
 fn network_install_receipt_lines(receipt: NetworkInstallReceipt) -> List<String> {
   [
-    join(["host=", receipt.host as String], ""),
-    join(["target_serial=", receipt.serial], ""),
+    concat("host=", receipt.host as String),
+    concat("target_serial=", receipt.serial),
     match receipt.model {
       Absent => "target_model=<not reported: serial-only pin>"
-      Present { value: model } => join(["target_model=", model as String], "")
+      Present { value: model } => concat("target_model=", model as String)
     },
-    join(["install_decided_at=", receipt.decided_at as String], ""),
-    join(["edge_binding_path=", receipt.binding_path], ""),
-    join(["override_read_back_before_reset=", if receipt.override_read_back { "true" } else { "false" }], ""),
-    join(["reset_issued=", if receipt.reset_issued { "true" } else { "false" }], ""),
-    join(["install_read_back=", if receipt.install_read_back { "true" } else { "false" }], ""),
-    join(["install_evidence=", receipt.install_evidence], ""),
-    join(["edge_binding_withdrawn=", if receipt.binding_withdrawn { "true" } else { "false" }], ""),
-    join(["completion_recorded=", if receipt.completion_recorded { "true" } else { "false" }], ""),
-    join(["refused=", if receipt.refused { "true" } else { "false" }], ""),
-    join(["refusal=", receipt.refusal], ""),
+    concat("install_decided_at=", receipt.decided_at as String),
+    concat("edge_binding_path=", receipt.binding_path),
+    concat("boot_issued=", if receipt.boot_issued { "true" } else { "false" }),
+    concat("boot_readback=", receipt.boot_readback),
+    concat("install_read_back=", if receipt.install_read_back { "true" } else { "false" }),
+    concat("install_evidence=", receipt.install_evidence),
+    concat("edge_binding_withdrawn=", if receipt.binding_withdrawn { "true" } else { "false" }),
+    concat("completion_recorded=", if receipt.completion_recorded { "true" } else { "false" }),
+    concat("refused=", if receipt.refused { "true" } else { "false" }),
+    concat("refusal=", receipt.refusal),
   ]
 }
 
@@ -768,8 +815,8 @@ fn network_install_refused_receipt(host: HostIdentity, serial: NonEmptyStr, deci
     model: Absent,
     decided_at: decided_at,
     binding_path: "none",
-    override_read_back: false,
-    reset_issued: false,
+    boot_issued: false,
+    boot_readback: "no-readback",
     install_read_back: false,
     install_evidence: "none",
     binding_withdrawn: false,
@@ -869,103 +916,514 @@ fn network_install_requests_for(host: HostIdentity) -> List<SitePxeEdgeInstallRe
   }
 }
 
-// ───────────────────────────── THE CONTROLLER'S WORD, CARRIED TO THE SETTLE ─────────────────────────────
+// ───────────────────────────── THE ONE-SHOT RUN ─────────────────────────────
 //
-// ONE MAPPING, AND IT IS THE ONLY JUDGMENT CALL IN THE BOOT PATH. The boot goes over IPMI — `chassis
-// bootdev pxe options=efiboot` to set, `chassis bootparam get 5` to read back — because that is the transport
-// and session the arrival door's census reads already use for a unit in srv15's population, with the managed
-// credential supplied by `-f <file>` rather than on the command line. 2b's planner and settle are unchanged and
-// stay the single authority on whether a reset may be issued; what they consume is a `BootOnceReadback`, and the
-// controller does not speak Redfish here. So this function is where the machine's own words become that type,
-// and it is deliberately a MAPPING AND NOTHING ELSE: it decodes, it does not decide. Every case that is not
-// "the controller says it will boot this device once, in EFI, on the next boot" arrives as a reading the settle
-// will refuse — never as the reading this run wanted.
+// THE SEQUENCE, IN CODE, ONCE. The plan item's whole safety case is an ORDER of effects, so the order lives in
+// one function rather than in a workflow YAML someone can reorder:
 //
-// THE DECODE ITSELF IS NOT MINE. `ipmi_boot_flags_reading_of_bootparam_get` (extdeps.bmc.ipmi_boot_selection)
-// already parses the ten hex digits ipmitool prints after "Boot parameter data: " into the four bits that
-// matter, cited to IPMI v2.0 rev 1.1's Get/Set System Boot Options, boot option parameter 5; and
-// `ipmi_boot_selector_reading` already says whether a selector names a device this model can select, keeps an
-// unmodelled selector as the number it is, and separates "no override" from every device. Re-deriving any of
-// that here would be a second model of the same byte.
+//   1. read the journal and the hold. If either refuses, STOP — nothing at the edge, no controller write. This
+//      is the same gate the dispatch admission applies (network_install_journal_and_hold_gate), asked early
+//      precisely because a unit that is already installed, or is mid-install by another dispatch, must not have
+//      its client pinned to an installer even briefly.
+//   2. take the durable exclusive hold for this dispatch, and re-apply the gate on what the take answered: a
+//      hold that cannot be read refuses (HostHoldUnreadable), and a hold owned by someone else refuses.
+//   3. derive the request from the admitted client binding and read the disk (the caller reads the row and the
+//      contents capture; both are observations, never literals).
+//   4. stage the binding at the edge and READ IT BACK — the port returns the evidence the run saw at the edge,
+//      not what it hoped to write.
+//   5. the dispatch admission, which re-checks journal and hold, admits the subject, admits the disk
+//      (admit_install_target_disk, dated at the instant this run's clock answered), admits the contents,
+//      refuses a pin that names no single disk or a different disk, refuses a positive observation of an
+//      installed OS, and only then admits the boot step on a proven binding.
+//   6. the boot, through the ONE live route (install_boot_drive_handoff). Its own verdict on its own
+//      boot-parameter-5 reading gates the power action; this run only maps the outcome arms.
+//   7. on any withheld boot: withdraw the binding and record a refused receipt. Nothing is journaled, so the
+//      unit stays retryable.
+//   8. read the install back. Not read back → withdraw, withheld receipt, nothing journaled.
+//   9. withdraw the binding and VERIFY it is gone — before completion, never after.
+//  10. admit the completion (which itself refuses unless the install was read back AND the withdrawal verified)
+//      and record it through the durable store's compare-and-set. A concurrent dispatcher that recorded first
+//      wins the CAS and this run reports the install as unjournaled rather than rewriting a completion.
+//  11. the receipt, always — including the refusal that stopped at step 1, carrying the controller's words if
+//      the run ever reached a controller.
 //
-// WHAT EACH CASE BECOMES, and why:
-//   flag bit clear             → BootOnceReadbackAbsent. The BMC has no boot flags set at all. Treating "the
-//                                flags are unset" as "unset is what I asked for" is how a machine that ignored
-//                                the set gets rebooted anyway.
-//   selector 0, flags valid    → target None, so the settle's own target check refuses. This is the case the
-//                                fleet has actually seen: boot run 41573858366 read `8000000000` — Boot Flag
-//                                Valid with Boot Device Selector "No override" — after `chassis bootdev none`,
-//                                which clears the selector and leaves the valid bit set. A reader that looked
-//                                only at the valid bit would call that a successful PXE set.
-//   selector names another     → that device's target (Cd for CD/DVD), refused by the same check, and refused
-//   device                     BY NAME: the receipt and the refusal say what the BMC reported rather than
-//                                saying "mismatch".
-//   selector the spec defines  → BootOnceReadbackAbsent. The controller is answering with something this model
-//   but this model             cannot name; "some device, unclear which" is not a boot target, and a reset is
-//   cannot name                never issued on "unclear".
-//   bit 6 set (persistent)     → enabled Continuous, which 2b's settle refuses, because an override that
-//                                survives the boot is a machine pinned to the installer for every boot after
-//                                this one — the repeat path again, this time inside the firmware.
-//   bit 5 clear (legacy)       → mode Legacy, refused: this fleet boots UEFI, and a reset into the wrong
-//                                firmware is worse than no reset at all.
-fn network_install_boot_once_read_back(reading: Optional<IpmiBootFlagsReading>) -> BootOnceReadback {
-  match reading {
-    Absent => BootOnceReadbackAbsent
-    Present { value: flags } =>
-      if !flags.flag_valid {
-        BootOnceReadbackAbsent
-      } else {
-        match ipmi_boot_selector_reading(selector: flags.device_selector) {
-          IpmiSelectorModeled { device: device } => BootOnceReadbackObserved {
-            setting: BootOnceSetting {
-              target: network_install_boot_target_of_device(device: device),
-              enabled: if flags.persistent { BootOverrideContinuous } else { BootOverrideOnce },
-              mode: if flags.efi { BootOverrideModeUefi } else { BootOverrideModeLegacy },
-            }
+// THE PORTS ARE THE EFFECTS, AND THEY ARE ALL REQUIRED. A run cannot be assembled without saying how each
+// effect happens, which is what keeps this function evaluable in a witness: the witness supplies ports whose
+// answers are the committed readings, and the ORDER below is what the claims then pin.
+type NetworkInstallJournalQuery {
+  host: HostIdentity
+  serial: NonEmptyStr
+}
+
+type NetworkInstallHoldRequest {
+  host: HostIdentity
+  owner: NonEmptyStr
+}
+
+type NetworkInstallInstallQuery {
+  host: HostIdentity
+  serial: NonEmptyStr
+  decided_at: EpochMs
+}
+
+type NetworkInstallRunPorts {
+  // THE COMPLETION JOURNAL, as the durable compare-and-set store under the host-state root on srv4 answers it.
+  read_journal: fn(NetworkInstallJournalQuery) -> NetworkInstallJournalReading
+  // THE DURABLE EXCLUSIVE HOLD, read and taken through std.durable_exclusive_hold's realization.
+  read_hold: fn(HostIdentity) -> NetworkInstallHoldReading
+  acquire_hold: fn(NetworkInstallHoldRequest) -> NetworkInstallHoldReading
+  // THE EDGE. stage takes the ONE request this run derived and reads the edge back; withdraw takes the empty
+  // request list (standing converge serves no install binding, so withdrawal is what a converge with nothing
+  // to render produces) and the run verifies the file is gone.
+  stage_binding: fn(SitePxeEdgeInstallRequest) -> NetworkInstallBindingEvidence
+  withdraw_binding: fn(HostIdentity) -> Bool
+  // THE INSTALL, read back from the unit: an OS observation naming the target, or nothing.
+  observe_install: fn(NetworkInstallInstallQuery) -> Bool
+  // THE COMPLETION, through the store's compare-and-set against the Absent this run read.
+  commit_completion: fn(NetworkInstallCompletion) -> Bool
+}
+
+type NetworkInstallRunOutcome
+  // A gate refused before the unit was touched. Nothing at the edge, no controller write, nothing journaled.
+  = NetworkInstallRunRefused { receipt: NetworkInstallReceipt }
+  // The unit was reached and something short of a verified install happened: the binding is withdrawn and the
+  // receipt says what the controller answered. Retryable — the journal is still Absent.
+  | NetworkInstallRunWithheld { receipt: NetworkInstallReceipt }
+  // Install read back, binding verified gone, completion recorded.
+  | NetworkInstallRunCompleted { receipt: NetworkInstallReceipt }
+
+fn network_install_run_completed(outcome: NetworkInstallRunOutcome) -> Bool {
+  match outcome {
+    NetworkInstallRunCompleted { receipt: _ } => true
+    NetworkInstallRunWithheld { receipt: _ } => false
+    NetworkInstallRunRefused { receipt: _ } => false
+  }
+}
+
+fn network_install_run_receipt(outcome: NetworkInstallRunOutcome) -> NetworkInstallReceipt {
+  match outcome {
+    NetworkInstallRunCompleted { receipt: receipt } => receipt
+    NetworkInstallRunWithheld { receipt: receipt } => receipt
+    NetworkInstallRunRefused { receipt: receipt } => receipt
+  }
+}
+
+fn network_install_run(
+  ports: NetworkInstallRunPorts,
+  host: HostIdentity,
+  expected_serial: NonEmptyStr,
+  dispatch_owner: NonEmptyStr,
+  password_file_raw: String,
+  request: SitePxeEdgeInstallRequest?,
+  population: List<ArrivalConvergePopulationRow>,
+  managed: List<HostIdentity>,
+  intended_controller: BmcControllerEndpoint,
+  observed: BmcAccessObservationStanding,
+  secured: BmcSecureStanding,
+  board: BoardAuthorityRef?,
+  route: BmcWriteRoute,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  qualification: RunnerThroughputAssessment<HostIdentity>?,
+  reading: TargetDiskReading,
+  decided_at: EpochMs,
+  window: Milliseconds,
+  contents_report: DiskContentsReport,
+  os_observation: NetworkInstallOsObservation
+) -> NetworkInstallRunOutcome {
+  let journal = ports.read_journal(query: NetworkInstallJournalQuery { host: host, serial: expected_serial })
+  let hold = ports.read_hold(host: host)
+  match network_install_journal_and_hold_gate(
+    journal: journal, hold: hold, host: host, expected_serial: expected_serial, dispatch_owner: dispatch_owner
+  ) {
+    Present { value: cause } => NetworkInstallRunRefused {
+      receipt: network_install_refused_receipt(
+        host: host, serial: expected_serial, decided_at: decided_at,
+        refusal: network_install_refusal_text(cause: cause)
+      ),
+    }
+    Absent => match ports.acquire_hold(request: NetworkInstallHoldRequest { host: host, owner: dispatch_owner }) {
+      // The take is what matters, not the earlier read: two dispatches can both read an empty journal, and only
+      // one of them can hold the unit.
+      HoldHeldBy { owner: owner } =>
+        if owner == dispatch_owner {
+          network_install_run_staged(
+            ports: ports, host: host, expected_serial: expected_serial, dispatch_owner: dispatch_owner,
+            password_file_raw: password_file_raw, request: request, population: population, managed: managed,
+            intended_controller: intended_controller, observed: observed, secured: secured, board: board,
+            route: route, capability_row: capability_row, qualification: qualification, reading: reading,
+            decided_at: decided_at, window: window, contents_report: contents_report,
+            os_observation: os_observation, journal: journal
+          )
+        } else {
+          NetworkInstallRunRefused {
+            receipt: network_install_refused_receipt(
+              host: host, serial: expected_serial, decided_at: decided_at,
+              cause: HostHeldByAnotherDispatch { host: host, owner: owner }
+            ),
           }
-          IpmiSelectorNoOverride => BootOnceReadbackObserved {
-            setting: BootOnceSetting {
-              target: BootTargetNone,
-              enabled: if flags.persistent { BootOverrideContinuous } else { BootOverrideOnce },
-              mode: if flags.efi { BootOverrideModeUefi } else { BootOverrideModeLegacy },
-            }
+        }
+      HoldUnreadable { detail: detail } => NetworkInstallRunRefused {
+        receipt: network_install_refused_receipt(
+          host: host, serial: expected_serial, decided_at: decided_at,
+          cause: HostHoldUnreadable { host: host, detail: detail }
+        ),
+      }
+      HoldFree => network_install_run_staged(
+        ports: ports, host: host, expected_serial: expected_serial, dispatch_owner: dispatch_owner,
+        password_file_raw: password_file_raw, request: request, population: population, managed: managed,
+        intended_controller: intended_controller, observed: observed, secured: secured, board: board,
+        route: route, capability_row: capability_row, qualification: qualification, reading: reading,
+        decided_at: decided_at, window: window, contents_report: contents_report,
+        os_observation: os_observation, journal: journal
+      )
+    }
+  }
+}
+
+// STEPS 3-11, reached only with the unit held by this dispatch. A unit with no derived request (no install
+// client row, or no disk row) never reaches the edge at all: there is no binding to stage.
+fn network_install_run_staged(
+  ports: NetworkInstallRunPorts,
+  host: HostIdentity,
+  expected_serial: NonEmptyStr,
+  dispatch_owner: NonEmptyStr,
+  password_file_raw: String,
+  request: SitePxeEdgeInstallRequest?,
+  population: List<ArrivalConvergePopulationRow>,
+  managed: List<HostIdentity>,
+  intended_controller: BmcControllerEndpoint,
+  observed: BmcAccessObservationStanding,
+  secured: BmcSecureStanding,
+  board: BoardAuthorityRef?,
+  route: BmcWriteRoute,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  qualification: RunnerThroughputAssessment<HostIdentity>?,
+  reading: TargetDiskReading,
+  decided_at: EpochMs,
+  window: Milliseconds,
+  contents_report: DiskContentsReport,
+  os_observation: NetworkInstallOsObservation,
+  journal: NetworkInstallJournalReading
+) -> NetworkInstallRunOutcome {
+  match request {
+    Absent => NetworkInstallRunRefused {
+      receipt: network_install_refused_receipt(
+        host: host, serial: expected_serial, decided_at: decided_at,
+        cause: InstallClientUnknown { host: host }
+      ),
+    }
+    Present { value: one_request } =>
+      network_install_after_binding(
+        dispatch: network_install_dispatch_admission(
+          population: population, managed: managed, host: host, expected_serial: expected_serial,
+          dispatch_owner: dispatch_owner, intended_controller: intended_controller, observed: observed,
+          secured: secured, board: board, route: route, capability_row: capability_row,
+          qualification: qualification, journal: journal,
+          hold: HoldHeldBy { owner: dispatch_owner },
+          reading: reading, decided_at: decided_at, window: window, contents_report: contents_report,
+          binding: ports.stage_binding(request: one_request), os_observation: os_observation
+        ),
+        ports: ports,
+        host: host,
+        serial: expected_serial,
+        password_file_raw: password_file_raw,
+        decided_at: decided_at,
+      )
+  }
+}
+
+// THE BOOT AND WHAT FOLLOWS IT. The withheld arms all converge on the same two duties: withdraw the binding,
+// and write a receipt that says so — including when the credential was missing, which is the case where no
+// controller was touched at all and the binding is the only residue.
+fn network_install_after_binding(
+  dispatch: NetworkInstallDispatch,
+  ports: NetworkInstallRunPorts,
+  host: HostIdentity,
+  serial: NonEmptyStr,
+  password_file_raw: String,
+  decided_at: EpochMs
+) -> NetworkInstallRunOutcome {
+  match dispatch {
+    NetworkInstallDispatchRefused { cause: cause } => match cause {
+      _ => NetworkInstallRunWithheld {
+        receipt: network_install_withdrawn_refusal(
+          ports: ports, host: host, serial: serial, decided_at: decided_at, cause: cause
+        ),
+      }
+    }
+    NetworkInstallDispatchAdmitted {
+      host: host,
+      subject: subject,
+      disk: disk,
+      serial: serial,
+      model: model,
+      decided_at: admitted_at,
+      binding: binding,
+    } => match install_boot_drive_handoff(subject: subject, password_file_raw: password_file_raw) {
+      InstallBootHandoffCredentialMissing { subject: _ } => NetworkInstallRunWithheld {
+        receipt: network_install_withdrawn_refusal(
+          ports: ports, host: host, serial: serial, decided_at: admitted_at,
+          cause: BootCredentialMissing { host: host }
+        ),
+      }
+      InstallBootHandoffDriven { subject: _, outcome: outcome } =>
+        match network_install_boot_verdict(outcome: outcome) {
+          InstallBootWithheld { reason: reason, readback: readback } => NetworkInstallRunWithheld {
+            receipt: network_install_withdrawn_boot_receipt(
+              ports: ports, host: host, serial: serial, model: model, decided_at: admitted_at,
+              binding: binding, readback: readback, reason: reason
+            ),
           }
-          IpmiSelectorUnmodeled { selector: _ } => BootOnceReadbackAbsent
+          InstallBootProceeds { selected: selected } => network_install_after_boot(
+            ports: ports, host: host, serial: serial, model: model, decided_at: admitted_at,
+            binding: binding, selected: selected
+          )
+        }
+    }
+  }
+}
+
+// THE INSTALL, THE WITHDRAWAL, THE JOURNAL — IN THAT ORDER. Completion is admitted only after the install was
+// read back AND the withdrawal was verified, and it is recorded through the compare-and-set; anything less
+// leaves the journal Absent so the next dispatch can try again.
+fn network_install_after_boot(
+  ports: NetworkInstallRunPorts,
+  host: HostIdentity,
+  serial: NonEmptyStr,
+  model: Optional<NonEmptyStr>,
+  decided_at: EpochMs,
+  binding: NetworkInstallBindingEvidence,
+  selected: NonEmptyStr
+) -> NetworkInstallRunOutcome {
+  let binding_path = network_install_binding_path(binding: binding)
+  let install_seen = ports.observe_install(query: NetworkInstallInstallQuery {
+    host: host,
+    serial: serial,
+    decided_at: decided_at,
+  })
+  let withdrawn = ports.withdraw_binding(host: host)
+  match admit_network_install_completion(
+    host: host,
+    serial: serial,
+    completed_at: decided_at,
+    install_receipt: selected,
+    install_read_back: install_seen,
+    binding_withdrawn_verified: withdrawn,
+    binding_path: binding_path
+  ) {
+    NetworkInstallCompletionRefusedInstallUnread { host: _ } => NetworkInstallRunWithheld {
+      receipt: NetworkInstallReceipt {
+        host: host,
+        serial: serial,
+        model: model,
+        decided_at: decided_at,
+        binding_path: binding_path,
+        boot_issued: true,
+        boot_readback: selected,
+        install_read_back: false,
+        install_evidence: "not-read-back",
+        binding_withdrawn: withdrawn,
+        completion_recorded: false,
+        refused: false,
+        refusal: "",
+      },
+    }
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: _, path: path } => NetworkInstallRunWithheld {
+      receipt: NetworkInstallReceipt {
+        host: host,
+        serial: serial,
+        model: model,
+        decided_at: decided_at,
+        binding_path: path,
+        boot_issued: true,
+        boot_readback: selected,
+        install_read_back: true,
+        install_evidence: selected,
+        binding_withdrawn: false,
+        completion_recorded: false,
+        refused: false,
+        refusal: "the edge still serves the install file; nothing was journaled",
+      },
+    }
+    NetworkInstallCompletionAdmitted { completion: completion } =>
+      match ports.commit_completion(completion: completion) {
+        true => NetworkInstallRunCompleted {
+          receipt: NetworkInstallReceipt {
+            host: host,
+            serial: serial,
+            model: model,
+            decided_at: decided_at,
+            binding_path: binding_path,
+            boot_issued: true,
+            boot_readback: selected,
+            install_read_back: true,
+            install_evidence: selected,
+            binding_withdrawn: true,
+            completion_recorded: true,
+            refused: false,
+            refusal: "",
+          },
+        }
+        // The CAS was lost: someone else recorded a completion for this (unit, serial) while this run booted
+        // it. That is reported, never overwritten, and the run is not a completion.
+        false => NetworkInstallRunWithheld {
+          receipt: NetworkInstallReceipt {
+            host: host,
+            serial: serial,
+            model: model,
+            decided_at: decided_at,
+            binding_path: binding_path,
+            boot_issued: true,
+            boot_readback: selected,
+            install_read_back: true,
+            install_evidence: selected,
+            binding_withdrawn: true,
+            completion_recorded: false,
+            refused: false,
+            refusal: "another dispatch recorded the completion first; this run journaled nothing",
+          },
         }
       }
   }
 }
 
-// THE SELECTOR'S OWN NAME, not the name this run hoped for. CD/DVD is the other device this model can select
-// (extdeps.bmc.ipmi_boot_selection ipmi_boot_selectable_devices), and it is the device the BMC lands on when
-// someone leaves virtual media attached — a real state on this fleet, and one that must be reported rather
-// than quietly refused as "no override".
-fn network_install_boot_target_of_device(device: IpmiBootDevice) -> RedfishBootSourceOverrideTarget {
-  match device {
-    IpmiBootPxe => BootTargetPxe
-    IpmiBootCdrom => BootTargetCd
+fn network_install_withdrawn_refusal(
+  ports: NetworkInstallRunPorts,
+  host: HostIdentity,
+  serial: NonEmptyStr,
+  decided_at: EpochMs,
+  cause: NetworkInstallDispatchRefusalCause
+) -> NetworkInstallReceipt {
+  let receipt = network_install_refused_receipt(host: host, serial: serial, decided_at: decided_at, cause: cause)
+  NetworkInstallReceipt {
+    host: receipt.host,
+    serial: receipt.serial,
+    model: receipt.model,
+    decided_at: receipt.decided_at,
+    binding_path: receipt.binding_path,
+    boot_issued: false,
+    boot_readback: "no-readback",
+    install_read_back: false,
+    install_evidence: "none",
+    binding_withdrawn: ports.withdraw_binding(host: host),
+    completion_recorded: false,
+    refused: true,
+    refusal: receipt.refusal,
   }
 }
 
-// THE SAME READING, AS THE RECEIPT RECORDS IT — the bytes the controller actually answered, not the verdict
-// derived from them. When a run refuses to reset, the thing an operator needs is what the BMC said, and the
-// only honest way to have it in the receipt is to carry the reading alongside the setting rather than
-// reconstruct it from the verdict afterwards.
-fn network_install_boot_param5_receipt_line(reading: Optional<IpmiBootFlagsReading>) -> String {
-  match reading {
-    Absent => "boot_param5=no-answer"
-    Present { value: flags } => join(
-      [
-        "boot_param5=",
-        if flags.flag_valid { "valid" } else { "invalid" },
-        ",persistent=",
-        if flags.persistent { "yes" } else { "no" },
-        ",efi=",
-        if flags.efi { "yes" } else { "no" },
-        ",selector=",
-        flags.device_selector as String,
-      ],
-      ""
-    )
+fn network_install_withdrawn_boot_receipt(
+  ports: NetworkInstallRunPorts,
+  host: HostIdentity,
+  serial: NonEmptyStr,
+  model: Optional<NonEmptyStr>,
+  decided_at: EpochMs,
+  binding: NetworkInstallBindingEvidence,
+  readback: String,
+  reason: String
+) -> NetworkInstallReceipt {
+  NetworkInstallReceipt {
+    host: host,
+    serial: serial,
+    model: model,
+    decided_at: decided_at,
+    binding_path: network_install_binding_path(binding: binding),
+    boot_issued: false,
+    boot_readback: readback,
+    install_read_back: false,
+    install_evidence: "none",
+    binding_withdrawn: ports.withdraw_binding(host: host),
+    completion_recorded: false,
+    refused: true,
+    refusal: reason,
+  }
+}
+
+// ───────────────────────────── WHY NOTHING BOOTED, IN ONE LINE ─────────────────────────────
+//
+// The receipt carries a refusal string, and a refusal string that says "refused" is worth nothing at 3am. Every
+// arm names the fact that failed. TOTAL over the cause sum, so a new cause is a compile error here rather than a
+// receipt that prints an empty field.
+fn network_install_refusal_text(cause: NetworkInstallDispatchRefusalCause) -> String {
+  match cause {
+    InstallAlreadyCompleted { host: host, serial: serial, completed_at: completed_at } =>
+      concat("a completed install for ", host as String, " disk ", serial, " was already recorded at ", completed_at as String)
+    JournalUnreadable { host: host, serial: serial, detail: detail } =>
+      concat("the completion journal for ", host as String, " disk ", serial, " would not answer (", detail, ")")
+    JournalPayloadMalformed { host: host, serial: serial, payload: payload } =>
+      concat("the completion journal for ", host as String, " disk ", serial, " answered with a payload that is not an instant (", payload, ")")
+    HostHeldByAnotherDispatch { host: host, owner: owner } =>
+      concat("another dispatch holds ", host as String, " (owner ", owner, ")")
+    HostHoldUnreadable { host: host, detail: detail } =>
+      concat("the exclusive hold on ", host as String, " would not answer (", detail, ")")
+    BootSubjectRefused { cause: cause } => network_install_boot_subject_cause_text(cause: cause)
+    DiskAdmissionWithheld { cause: cause } => network_install_disk_cause_text(cause: cause)
+    TargetNamesNoSingleDisk { host: host } =>
+      concat("the admitted reading cannot name one disk to erase for ", host as String)
+    TargetDiskIsNotTheDispatchedOne { host: host, expected: expected, reported: reported } =>
+      concat("the disk this run named (", expected, ") is not the disk the reading reported (", reported, ")")
+    TargetDiskReadingCarriesNoArtifact { host: host } =>
+      concat("the reading that would authorize an erase for ", host as String, " names no artifact")
+    ContentsNotAdmitted { contents: contents } => network_install_contents_cause_text(contents: contents)
+    EdgeBindingNotStaged { host: host, client: client, reason: reason } =>
+      concat("no install binding is served for client ", client, " of ", host as String, " (", reason, ")")
+    InstallClientUnknown { host: host } =>
+      concat("no install client row for ", host as String, "; nothing was staged at the edge")
+    BootCredentialMissing { host: host } =>
+      concat("no credential path for ", host as String, "; the controller was not contacted")
+    InstalledOsAlreadyObserved { host: host, evidence: evidence } =>
+      concat("an installed OS was observed on ", host as String, " (", evidence, ")")
+  }
+}
+
+// THE SUBJECT'S OWN REFUSALS, RENDERED. Which of the four facts failed -- membership, the bound and secured
+// route, the route naming a controller at all, or the write controller -- is the difference between "this unit
+// is not an install target" and "go bind its controller".
+fn network_install_boot_subject_cause_text(cause: InstallBootSubjectRefusalCause) -> String {
+  match cause {
+    ArrivalNotAdmitted { subject: subject, cause: _ } =>
+      concat("the unit is not an admitted arrival subject for this door (", subject as String, ")")
+    ControllerNotBound { subject: subject, standing: _ } =>
+      concat("the controller is not a bound, secured control route (", subject as String, ")")
+    ControllerHasNoAccount { subject: subject } =>
+      concat("the bound route names no managed account to drive it with (", subject as String, ")")
+    ControllerIsNotTheBoundOne { subject: subject, wanted: wanted, bound: bound } =>
+      concat("the run named controller ", wanted.host as String, " but the unit is bound to ", bound.host as String)
+    WriteControllerRefused { subject: subject, cause: _ } =>
+      concat("the unit's committed write controller refuses a boot-device write (", subject as String, ")")
+  }
+}
+
+// THE DISK'S OWN REFUSALS, RENDERED, including the one the fleet sees most: a reading that reported a model and
+// no serial, which names a family of disks and so names none.
+fn network_install_disk_cause_text(cause: InstallTargetDiskWithheldCause) -> String {
+  match cause {
+    TargetDiskNeverRead { host: host, why: why } =>
+      concat("the target disk was never read (", host as String, ": ", why, ")")
+    NoTargetDiskReported { host: host, source: _, captured_in: captured_in, report: report } =>
+      concat("the reading reported no target disk (", host as String, " from ", captured_in, ": ", report, ")")
+    TargetDiskIdentityUnusable { host: host, source: _, cause: _ } =>
+      concat("the reported identity cannot be used as a match token (", host as String, ")")
+    TargetDiskSerialNotReported { host: host, source: _, reported: _ } =>
+      concat("the reading reported a model with no serial, which names no single disk (", host as String, ")")
+    TargetDiskReadingFromTheFuture { host: host, read_at: read_at, decided_at: decided_at } =>
+      concat("the reading is dated after the instant it was decided (", host as String, " read_at ", read_at as String, " > ", decided_at as String, ")")
+    TargetDiskReadingStale { host: host, read_at: read_at, decided_at: decided_at, deadline: deadline } =>
+      concat("the reading went stale before it was decided (", host as String, " read_at ", read_at as String, " deadline ", deadline as String, " decided ", decided_at as String, ")")
+  }
+}
+
+// THE CONTENTS' OWN REFUSALS, RENDERED. "A reader was missing" and "the blank came from another artifact" are
+// different operators' problems, and neither is "the disk has data on it".
+fn network_install_contents_cause_text(contents: TargetDiskContents) -> String {
+  match contents {
+    NoPartitionTableOrFilesystemReported { captured_in: captured_in, read_at: _, readers: _ } =>
+      concat("the target disk reported no partition table and no filesystem (", captured_in, ")")
+    PartitionTableOrFilesystemReported { captured_in: captured_in, read_at: _, readers: _ } =>
+      concat("the target disk carries a partition table or a filesystem (", captured_in, "); erasing it is a prior-life effect this workflow does not perform")
+    ContentsNotRead { reason: reason } =>
+      concat("the target disk's contents were never read (", reason, ")")
+    ContentsEvidenceFromAnotherArtifact { reported: reported, identity: identity } =>
+      concat("the blank disk was read from ", reported, " but the serial and model came from ", identity)
   }
 }

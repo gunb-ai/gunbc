@@ -577,6 +577,10 @@ fn oob_boot_handoff(
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
     decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
+    // THE INSTALL CALLER. A unit being installed boots over the SAME route a managed host boots over — the
+    // admission that lets it stand here is gunbc.host.install_boot_subject admit_install_boot_subject, and the
+    // boot intent is pinned by install_boot_selection there (pxe, once, EFI) so this caller names no device.
+    decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "install_boot_drive_handoff"),
   ]
 {
   let admission = oob_boot_handoff_admission_for_row(observation: observation, capability_row: capability_row)

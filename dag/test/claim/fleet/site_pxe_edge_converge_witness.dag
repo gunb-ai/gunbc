@@ -50,6 +50,10 @@ import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeS
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
+import gunbc.host.network_install {
+  network_install_no_requests,
+  network_install_requests_for,
+}
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
@@ -180,7 +184,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpListenUnobservable,
   HttpLegNotNeeded,
   HttpLegActivation,
-  site_pxe_edge_install_requests,
   site_pxe_edge_seed_rendering,
   SeedRendered,
   SeedTargetDiskWithheld,
@@ -1068,17 +1071,27 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   }
 }
 
-// THE PRODUCTION HEAD'S REQUEST, srv15, is admitted by the public seed authority, which refuses any credential
-// field by name, and binds its own measured NIC to the arm64 chain exactly once: nothing is withheld and no gate
-// cause is raised. srv14 is installed, so its NIC binds no install at all: restoring its request (a wipe of an
-// installed host on its next network boot) or dropping srv15's turns this red.
-test fn the_production_requests_bind_srv15_and_not_the_installed_srv14() -> Bool {
-  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
+// THE STANDING CONVERGE SERVES NO INSTALL FILE. It used to serve srv15's: there was a standing request list, a
+// standing request is a standing binding, and a binding here wipes a disk — the edge re-renders whatever it
+// serves, so an installed host would have its installer file put back by the next converge and erased again by a
+// later PXE boot. The list is gone (2026-11-11, ruling msg_40c346af on this lane) and the mode's own entry passes
+// the empty list, which makes the standing converge the WITHDRAWAL rather than a server. This claim is that
+// protection: over the list the standing mode passes, nothing binds, nothing is withheld, and no gate cause is
+// raised — and neither of the fleet's two real NICs appears in the served set.
+//
+// RED: any standing install request returning turns this red, and that is precisely the repeat-wipe path. It is
+// NOT softened into "the fold is well behaved": the same fold over a NON-empty request list binds, and that half
+// is witnessed in test.claim.host.network_install_witness (the request 2c derives for bobo binds its measured NIC
+// exactly once), so this claim cannot be satisfied by a fold that binds nothing at all.
+test fn the_standing_converge_binds_no_install_file_at_all() -> Bool {
+  let admissions = map(network_install_no_requests,
+    r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && length(bindings) == 0
     && production_request_binds_none(client: srv14_install_client, bindings: bindings)
-    && production_request_binds_once(client: srv15_install_client, bindings: bindings)
+    && production_request_binds_none(client: srv15_install_client, bindings: bindings)
 }
 
 fn production_request_binds_none(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
@@ -1391,7 +1404,7 @@ test fn a_disk_nobody_read_is_withheld_with_a_typed_cause() -> Bool {
 // outage for the rest of the fleet — and the reverse failure, an install authorized because the fleet's one
 // unread disk was quietly skipped, is what the typed cause exists to make visible.
 test fn a_withheld_disk_withholds_only_its_own_host() -> Bool {
-  let admissions = map(append(site_pxe_edge_install_requests, [srv14_request()]), r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
+  let admissions = map(append(network_install_requests_for(host: operator_host_srv15), [srv14_request()]), r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(bindings) == 1
     && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
