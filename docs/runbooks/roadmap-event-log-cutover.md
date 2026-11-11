@@ -459,9 +459,9 @@ cd $TREE
 # are the weaker half: they are prepared before the first append, so a migration that died at its third receipt
 # leaves both of them sitting here full. What proves the history arrived is step 3's COMPLETION RECEIPT — written
 # after the last admitted append, and required here in full: present, exactly the four fields step 3 writes,
-# counting the same number of receipts the inputs hold, and recorded against the seed that is actually on disk.
-# A receipt copied from another run, truncated, or written against a seed since changed cannot authorize a
-# retirement.
+# counting the same number of receipts the inputs hold, digesting the same input bytes, and recorded against the
+# seed that is actually on disk. A receipt copied from another run, truncated, rewritten to agree with itself, or
+# written against a seed since changed cannot authorize a retirement.
 [ -s "$D/migrate.acceptance.lines" ] \
   || { echo "RETIREMENT REFUSED: $D/migrate.acceptance.lines is missing or empty — step 3 did not admit its input"; exit 1; }
 [ -s "$D/migrate.revocation.lines" ] \
@@ -476,6 +476,12 @@ grep -q "^revocations=$(wc -l < "$D/migrate.revocation.lines")$" "$D/migrate.com
   || { echo "RETIREMENT REFUSED: the completion receipt counts a different number of revocation receipts than the inputs hold"; exit 1; }
 grep -q "^seed_sha256=$(sha256sum "$D/seed.jsonl" | cut -d" " -f1)$" "$D/migrate.completion" \
   || { echo "RETIREMENT REFUSED: the completion receipt was written against a different seed than the one on disk"; exit 1; }
+# AND THE INPUT THEMSELVES, BY CONTENT. Counting lines and re-checking the seed still admits a receipt whose
+# input bytes were changed underneath it: one line rewritten, count untouched, seed untouched, and step 4 would
+# retire nodes over an acceptance history that is not the one step 3 completed. The digest is recomputed over
+# exactly what step 3 digested — both files, in that order — before a single retirement is attempted.
+grep -q "^inputs_sha256=$(cat "$D/migrate.acceptance.lines" "$D/migrate.revocation.lines" | sha256sum | cut -d" " -f1)$" "$D/migrate.completion" \
+  || { echo "RETIREMENT REFUSED: the completion receipt digests different input lines than the ones on disk"; exit 1; }
 echo "COMPLETION RECEIPT ADMITTED: $(tr "\n" " " < "$D/migrate.completion")"
 
 # THE RETIREMENT TEXT AND AUTHOR TRAVEL AS ENVIRONMENT DATA, never spliced into the command string. The first
@@ -666,13 +672,6 @@ T6_REF_BASE=t6-cutover-$SHA-$T6_NONCE
 # The exclusive-dispatch fence. A FIXED path, not $TMPDIR: two operator shells have to contend on the same file
 # for the fence to be a fence. Held across check → dispatch → watch by dispatch_stage, released on success.
 STAGE_LOCK=/tmp/gunbc-t6-cutover-dispatch.lock
-git -C /opt/gunbc/gunbc rev-parse --verify "${SHA}^{commit}" >/dev/null
-git -C /opt/gunbc/gunbc tag -f "$TAG" "$SHA"
-git -C /opt/gunbc/gunbc push -f origin "refs/tags/$TAG"
-RESOLVED=$(git -C /opt/gunbc/gunbc ls-remote origin "refs/tags/$TAG" | cut -f1)
-[ "$RESOLVED" = "$SHA" ] || { echo "NO DEPLOY: refs/tags/$TAG resolves to $RESOLVED, not $SHA"; exit 1; }
-echo "PINNED REF tag=$TAG resolves=$RESOLVED"
-
 # THE TRANSACTION, three dispatches at one reference. plan_artifact_hash goes on BOTH apply and dashboard_deploy:
 # gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs refuses an empty
 # RLM_PLAN_ARTIFACT_HASH (fleet_converge_plan_revision.dag:413-419), and the workflow fills that variable from

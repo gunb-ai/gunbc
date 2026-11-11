@@ -91,6 +91,7 @@
 #   retirement_refuses_a_truncated_completion_receipt
 #   retirement_refuses_a_completion_receipt_whose_counts_disagree
 #   retirement_refuses_a_completion_receipt_written_against_another_seed
+#   retirement_refuses_input_lines_the_completion_receipt_never_digested
 #
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
@@ -835,6 +836,27 @@ EOF
   [ "$RC" -ne 0 ] || fail "G12: a receipt written against a different seed authorized a retirement"
   echo "$OUT" | grep -qF 'different seed than the one on disk' || fail "G12: the refusal did not name the seed: [$OUT]"
   [ ! -s "$APPEND_LOG" ] || fail "G12: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # ---- round ten, F6 (review 93394): the receipt must digest the INPUT LINES, not just count them ---------
+  # G11 moves the counts, G12 moves the seed; neither of them can see this case. One acceptance line is rewritten
+  # with a different approver: the line COUNT is untouched, the seed is untouched, so the receipt still agrees with
+  # itself field for field — only a digest recomputed over the two input files tells step 4 that the history it is
+  # about to retire over is not the history step 3 completed. Without that check the retired nodes would stand on an
+  # acceptance record nobody signed.
+  seed_export; run_migrate "the migration completes, then one input line is rewritten in place"
+  [ "$LAST_RC" -eq 0 ] || fail "G13: the migration should have completed before this case: [$LAST_OUT]"
+  BEFORE=$(wc -l < "$GEXP/migrate.acceptance.lines")
+  sed -i '1s|principal:google-oidc/accounts/116084671989231734979|principal:google-oidc/accounts/999999999999999999999|' "$GEXP/migrate.acceptance.lines"
+  [ "$(wc -l < "$GEXP/migrate.acceptance.lines")" = "$BEFORE" ] \
+    || fail "G13: the rewrite changed the line count, so this fixture no longer tells a count from a digest"
+  grep -q '999999999999999999999' "$GEXP/migrate.acceptance.lines" \
+    || fail "G13: the rewrite never landed — this case would be witnessing nothing"
+  grep -q '116084671989231734979' "$GEXP/seed.jsonl" \
+    || fail "G13: the seed lost its approver too, so the case no longer isolates the input lines from the seed"
+  run_retire "step 4 over input lines the completion receipt never digested"
+  [ "$RC" -ne 0 ] || fail "G13: step 4 retired over inputs whose bytes differ from the ones the completed migration digested — a count and a seed digest cannot see this"
+  echo "$OUT" | grep -qF 'digests different input lines' || fail "G13: the refusal did not name the input digest: [$OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G13: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
 fi
 echo
 
