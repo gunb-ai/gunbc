@@ -584,7 +584,16 @@ test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
   }
 }
 
-test fn witness_record_after_remains_superseded_on_superseded_line_refuses_frontier_sets() -> Bool {
+// RENAMED to the law it proves. This case used to ask whether a live acceptance replayed for a node whose
+// AUTHORED LINE was superseded refuses the frontier projection. There is no superseded line any more: a
+// retirement is a Retired event in the roadmap event log (operator ruling
+// gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08), so the question is now whether a
+// live acceptance replayed for a node THE LOG RETIRES refuses -- and it must, because retirement ends the
+// node's story and acceptance completes it: a log holding both is contradicted, not averaged. The node is
+// therefore named in the retired set the claim passes, and the refusal it must locate is the one the
+// authority projection emits for that contradiction, located by node
+// ('live-receipt-on-retired-node:<node>', dag/gunbc/roadmap/roadmap_authority.dag:6583-6586).
+test fn witness_live_receipt_on_a_log_retired_node_refuses_frontier_sets() -> Bool {
   let prior = live_acceptance_event_history()
   match first(
     prior |> filter(e =>
@@ -604,9 +613,11 @@ test fn witness_record_after_remains_superseded_on_superseded_line_refuses_front
         AcceptanceRecorded { receipt } =>
           match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: concat(prior, [
             AcceptanceRecorded { receipt: receipt },
-          ]) }, retired: RetiredNodeIdsLoaded { ids: [] }) {
+          ]) }, retired: RetiredNodeIdsLoaded {
+            ids: [tnid(s: "entry-graph-union-construction")],
+          }) {
             FrontierSetsProjectionRefused { detail } =>
-              detail == concat("live-receipt-on-superseded-line:", "entry-graph-union-construction")
+              detail == concat("live-receipt-on-retired-node:", "entry-graph-union-construction")
             FrontierSetsProjected { accepted: _, withheld: _ } => false
           }
       }
