@@ -63,9 +63,10 @@ import gunbc.tailscale_machine_name_converge {
   ApplyInsideWindow,
   DeviceNameAlreadyCurrent,
   DeviceNameChangeOwed,
-  DeviceNameHalvesDiverged,
+  DeviceNameOsHalfNotAtTarget,
   NameNotDerivable,
   ObserveOnly,
+  OsHalfNotTarget,
   OsNameUnusable,
   PlanRefused,
   PrepareWindow,
@@ -83,6 +84,7 @@ import gunbc.tailscale_machine_name_converge {
   tailscale_allocated_name_label,
   tailscale_machine_name_device_names_reading,
   tailscale_machine_name_entry_over,
+  tailscale_machine_name_name_verdict_wire,
   tailscale_machine_name_plan,
   tailscale_machine_name_plan_refusal_wire,
   tailscale_machine_name_read_back,
@@ -175,9 +177,23 @@ data witness_srv4_window_before_flip: TailscaleMachineNamePlan = tailscale_machi
   names: tailscale_machine_name_device_names_reading(status_document: witness_status_document_srv4, os_name_stdout: witness_os_name_srv4)
 )
 
-// THE ROW AFTER ITS FLIP: host-183527 is canonically `damien` with nothing pending, which is the state the
-// hostname/tailnet step is entered in. A device still answering its slot spelling owes one write to `damien`.
+// THE ROW AFTER ITS FLIP, MID-STEP. host-183527 is canonically `damien` with nothing pending, and the window step
+// has landed its operating-system half (`hostname -s` already answers damien) while the tailnet half still answers
+// the slot spelling. That is the ONLY state in which this mode is owed its write: the half upstream re-derives
+// from is already the target, so setting the tailnet name lands both halves and survives the next start.
 data witness_183527_after_flip: TailscaleMachineNamePlan = tailscale_machine_name_plan(
+  host: operator_host_183527,
+  window: witness_rename_window,
+  mode: ApplyInsideWindow,
+  names: tailscale_machine_name_device_names_reading(
+    status_document: witness_slot_spelling_document,
+    os_name_stdout: witness_os_name_damien
+  )
+)
+
+// THE SAME ROW ONE HALF-STEP EARLIER: the operating-system hostname still answers the slot spelling, so the tailnet
+// write is not owed -- and writing it would leave the OS half behind, which this mode's own read-back then refuses.
+data witness_183527_hostname_half_missing: TailscaleMachineNamePlan = tailscale_machine_name_plan(
   host: operator_host_183527,
   window: witness_rename_window,
   mode: ApplyInsideWindow,
@@ -221,11 +237,11 @@ test fn a_rename_window_whose_row_still_carries_a_pending_name_refuses_because_t
 // other than an owed write, and the second fails only if the write it names is the wrong one. One claim per
 // question, so a RED says which half of the expectation broke.
 //
-// THE STATE THE STEP IS ACTUALLY ENTERED IN, AND THE ANTI-NICKNAMING CASE. The row has been flipped (host-183527
-// canonically `damien`, nothing pending), so the target is the row's name; a device still answering the handle's
-// own spelling -- in BOTH halves -- owes one write to it. A mode that read the name off the handle would call
-// these bytes current, and a mode that asked only whether the OS half matched would refuse to write at all.
-test fn after_the_flip_a_device_answering_neither_half_owes_a_write() -> Bool {
+// THE STATE THE STEP IS ENTERED IN ONCE ITS HOSTNAME HALF HAS LANDED, AND THE ANTI-NICKNAMING CASE. The row has
+// been flipped (host-183527 canonically `damien`, nothing pending), so the target is the row's name; a device whose
+// tailnet half still answers the handle's own spelling owes one write to it. A mode that read the name off the
+// handle would call these bytes current and do nothing at all.
+test fn after_the_flip_a_device_whose_tailnet_half_still_answers_the_slot_owes_the_write() -> Bool {
   match witness_183527_after_flip {
     DeviceNameChangeOwed { from_name: _, to_name: _, os_name: _ } => true
     _ => false
@@ -235,7 +251,43 @@ test fn after_the_flip_a_device_answering_neither_half_owes_a_write() -> Bool {
 test fn the_write_owed_after_the_flip_runs_from_the_slot_spelling_to_the_rows_name() -> Bool {
   match witness_183527_after_flip {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
-      from_name == "host-183527" && os_name == "host-183527" && (to_name as String) == "damien"
+      from_name == "host-183527" && os_name == "damien" && (to_name as String) == "damien"
+    _ => false
+  }
+}
+
+// ONE HALF-STEP EARLIER IS NOT A WRITE THIS MODE OWES. The reviewer's failure case, made a claim: OS hostname
+// still `host-183527`, tailnet name still `host-183527`, target `damien`. Setting only the tailnet name here would
+// leave the OS half behind, so the read-back of that same write refuses the device the run had just written, and
+// the next Tailscale start re-derives the tailnet name away from the target. The plan refuses before touching the
+// device, and its words send the operator to the half of the window step that sets the hostname.
+test fn a_window_step_that_has_not_landed_the_os_hostname_half_writes_nothing() -> Bool {
+  match witness_183527_hostname_half_missing {
+    DeviceNameOsHalfNotAtTarget { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+      match tailscale_machine_name_read_back(
+        requested: to_name,
+        names: tailscale_machine_name_device_names_reading(
+          status_document: witness_slot_spelling_document,
+          os_name_stdout: witness_os_name_slot_spelling
+        )
+      ) {
+        ReadBackOsHalfNotAtRequest { requested: requested, machine_name: back_name, os_name: back_os } =>
+          machine_name == "host-183527" &&
+          os_name == "host-183527" &&
+          (to_name as String) == "damien" &&
+          (requested as String) == "damien" &&
+          back_name == machine_name &&
+          back_os == os_name &&
+          string_contains(
+            s: tailscale_machine_name_name_verdict_wire(
+              verdict: OsHalfNotTarget {
+                machine_name: machine_name, os_name: os_name, requested: to_name
+              }
+            ),
+            pattern: "land the operating-system hostname first"
+          )
+        _ => false
+      }
     _ => false
   }
 }
@@ -258,9 +310,11 @@ test fn a_window_with_nothing_pending_targets_the_rows_current_name() -> Bool {
 }
 
 // THE DIRECTION IS SET BY THE ROW, NOT BY THE MODE, AND A PENDING NAME IS NEVER A TARGET. Over one slot with a
-// pending row and no window: answering the canonical name is current, and answering the PENDING name is owed a
-// write BACK to the canonical name. That is the rollback shape -- a device ahead of the row, or a row reverted --
-// produced by the same question, with no second path and no pending name ever written.
+// pending row and no window: answering the canonical name is current, and a device whose OS hostname has come back
+// to the canonical name while its tailnet name still answers the PENDING name is owed one write BACK to the
+// canonical name. That is the rollback shape -- the row reverted, the window's hostname half landed, the tailnet
+// half owed -- produced by the same question as the forward direction, with no second path and no pending name
+// ever written.
 test fn a_device_answering_a_pending_name_owes_a_write_back_outside_a_window() -> Bool {
   match tailscale_machine_name_plan(
     host: operator_host_srv1,
@@ -268,7 +322,7 @@ test fn a_device_answering_a_pending_name_owes_a_write_back_outside_a_window() -
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: "{\"Self\": {\"HostName\": \"ricky\", \"DNSName\": \"ricky.tailecbe08.ts.net.\"}}",
-      os_name_stdout: "ricky\n"
+      os_name_stdout: "srv1\n"
     )
   ) {
     DeviceNameChangeOwed { from_name: _, to_name: _, os_name: _ } => true
@@ -283,12 +337,12 @@ test fn that_write_runs_from_the_pending_name_back_to_the_rows_canonical_name() 
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: "{\"Self\": {\"HostName\": \"ricky\", \"DNSName\": \"ricky.tailecbe08.ts.net.\"}}",
-      os_name_stdout: "ricky\n"
+      os_name_stdout: "srv1\n"
     )
   ) {
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
       from_name == "ricky" &&
-      os_name == "ricky" &&
+      os_name == "srv1" &&
       (to_name as String) == "srv1" &&
       match witness_srv1_outside_window {
         DeviceNameAlreadyCurrent { machine_name: current_name, os_name: current_os } =>
@@ -338,7 +392,7 @@ test fn a_half_moved_pair_owes_no_write_and_is_never_reported_converged() -> Boo
       os_name_stdout: witness_os_name_slot_spelling
     )
   ) {
-    DeviceNameHalvesDiverged { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+    DeviceNameOsHalfNotAtTarget { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
       machine_name == "damien" && os_name == "host-183527" && (to_name as String) == "damien"
     _ => false
   }
@@ -357,7 +411,7 @@ test fn the_pair_the_plan_will_not_write_is_the_pair_the_read_back_will_not_conf
       os_name_stdout: witness_os_name_slot_spelling
     )
   ) {
-    DeviceNameHalvesDiverged { machine_name: plan_machine, os_name: plan_os, to_name: plan_to } =>
+    DeviceNameOsHalfNotAtTarget { machine_name: plan_machine, os_name: plan_os, to_name: plan_to } =>
       match tailscale_machine_name_read_back(
         requested: plan_to,
         names: tailscale_machine_name_device_names_reading(

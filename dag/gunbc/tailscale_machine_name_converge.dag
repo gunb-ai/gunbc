@@ -12,8 +12,9 @@ module gunbc.tailscale_machine_name_converge
 //            it), and `hostname -s` for the OS hostname. Two upstream surfaces, two extdeps rows.
 //   PLAN     the name the device SHOULD carry -- the canonical hostname allocated to its fleet slot, from
 //            gunbc.hostname_allocation, never a name read off the handle's spelling -- against the names the
-//            device reports. Equal -> nothing is owed. Different -> a set is owed, in whichever direction
-//            the allocation says.
+//            device reports. Equal -> nothing is owed. Different -> a set is owed ONLY when the OS hostname
+//            half already answers the target, in whichever direction the allocation says; while the OS half is
+//            behind, this mode refuses before touching the device (WHY THE OS HALF GOES FIRST, below).
 //   APPLY    `tailscale set --hostname=<name>`, elevated, through the same SSH route as the read.
 //   READ BACK both names AGAIN, independently, and require BOTH to read the requested name. The tailnet
 //            half landing while the OS half did not is the unstable state this window exists to close
@@ -27,6 +28,15 @@ module gunbc.tailscale_machine_name_converge
 // enforces uniqueness across the tailnet. A zero exit code means the daemon accepted the request; only
 // the device's own subsequent report says what the tailnet now calls it. So a run that applied and then
 // could not see the desired name is a REFUSAL, not a success with a note.
+//
+// WHY THE OS HALF OF THE WINDOW STEP GOES FIRST. The window step is one change to two names: the operating-system
+// hostname and the tailnet machine name. Their order is not free. Upstream re-derives the tailnet name from the OS
+// hostname the next time Tailscale starts, so a tailnet name set while the OS hostname still reads the old value is
+// correct only until that start, and this mode's own read-back would refuse the device it had just written. So the
+// hostname half -- the sibling hostname-converge mode's write, not this module's -- lands first, and this mode is
+// only ever owed its `set` from the state where `hostname -s` already answers the target. It enforces that instead
+// of trusting the window to be sequenced correctly: every device state whose OS half is behind is a refusal, with a
+// cause that names the missing half, before any write (@ref(gunbc.design_argument::fail_closed)).
 //
 // WHY THE OBSERVE COMES FIRST. The same extdeps module records that whether a device's machine name
 // follows an OS hostname change on its own is a per-device pref (upstream: auto-generation is on by
@@ -289,21 +299,24 @@ type TailscaleMachineNameDeviceNames
 // that reports a device converged in exactly the state a later start un-converges
 // (@ref(gunbc.design_argument::single_authority), @ref(gunbc.design_argument::fail_closed)).
 //
-// The two halves are not symmetric, and the asymmetry is forced by upstream: the tailnet name is re-derived from
-// the OS hostname the next time Tailscale starts. So "not at the target" splits into two different states, and
-// conflating them is what made a device that simply has not been renamed yet look un-convergable:
-//   - the tailnet half is ALREADY at the target while the OS half is not: the unstable half-moved state. This mode
-//     cannot repair it (writing the tailnet name again would read correct only until the next start) and must not
-//     report it converged, so it gets its own verdict and no write: `OsHalfNotTarget`.
-//   - NEITHER half is at the target: the ordinary state of a device before its rename. The window flips the row
-//     first, so the target is already the new name, and this mode's write is the tailnet half of the change the
-//     window step is making (the OS half is the hostname write in the same step). It owes a write:
-//     `NeitherHalfAtTarget`.
+// THE TWO HALVES ARE NOT SYMMETRIC, and the asymmetry is forced by upstream: the tailnet name is re-derived from
+// the OS hostname the next time Tailscale starts. So the OS half decides whether this mode's write can hold, and
+// there are exactly three states:
+//   - BOTH halves answer the target: converged.
+//   - The OS half answers the target and the tailnet half does not: the state this mode's write is FOR, and the
+//     only one it is owed. Writing the tailnet half here lands both halves on the target and survives the next
+//     start, because the half upstream re-derives from is already right.
+//   - The OS half does not answer the target -- whatever the tailnet half reads, at the target or not: NO WRITE.
+//     A tailnet-only write from there leaves the OS half behind, so this mode's own read-back would refuse the
+//     device it had just written, and the next Tailscale start re-derives the tailnet name away from the target
+//     the window is converging on. The window step has to land the operating-system hostname first, and that
+//     half is the sibling hostname mode's write, not this one's; so this mode refuses before touching anything.
+//     `OsHalfNotTarget` covers both of its sub-states -- the half-moved pair, and a device whose rename has not
+//     started -- because the repair is the same one and the tailnet write is wrong from both.
 type TailscaleMachineNameNameVerdict
   = BothNamesAnswerTarget { machine_name: NonEmptyStr, os_name: String }
   | TailnetHalfLagsTarget { machine_name: NonEmptyStr, os_name: String }
   | OsHalfNotTarget { machine_name: NonEmptyStr, os_name: String, requested: DnsLabel }
-  | NeitherHalfAtTarget { machine_name: NonEmptyStr, os_name: String, requested: DnsLabel }
   | NameReadUnusable { cause: TailscaleMachineNamePlanRefusal }
 
 fn tailscale_machine_name_names_against_target(
@@ -313,16 +326,16 @@ fn tailscale_machine_name_names_against_target(
   match names {
     NamesUnreadable { cause: cause } => NameReadUnusable { cause: cause }
     BothNamesReported { machine_name: machine_name, dns_name: _, os_name: os_name } =>
-      if (machine_name as String) == (requested as String) {
-        if os_name == (requested as String) {
+      if os_name == (requested as String) {
+        if (machine_name as String) == (requested as String) {
           BothNamesAnswerTarget { machine_name: machine_name, os_name: os_name }
         } else {
-          OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested }
+          TailnetHalfLagsTarget { machine_name: machine_name, os_name: os_name }
         }
-      } else if os_name == (requested as String) {
-        TailnetHalfLagsTarget { machine_name: machine_name, os_name: os_name }
       } else {
-        NeitherHalfAtTarget { machine_name: machine_name, os_name: os_name, requested: requested }
+        // The OS half is behind, so no write is owed here no matter what the tailnet half reads: either the pair
+        // is half-moved or the rename has not started. Both are repaired by the window's hostname half.
+        OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested }
       }
   }
 }
@@ -345,10 +358,12 @@ fn tailscale_machine_name_name_verdict_wire(verdict: TailscaleMachineNameNameVer
     OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
       join(
         [
-          "the OS hostname reads `", os_name, "` and the tailnet name reads `", machine_name,
-          "`; the target is `", requested as String,
-          "` and this mode writes only the tailnet half, so the pair is not convergable from here: a window step",
-          " that lands the operating-system half first is what makes the tailnet write stick past the next start",
+          "the OS hostname reads `", os_name, "` and the target is `", requested as String,
+          "`; the tailnet name reads `", machine_name,
+          "`, and this mode writes only the tailnet half. From here that write cannot hold: its own read-back",
+          " would refuse the device it had just written, and the next Tailscale start re-derives the tailnet name",
+          " from the OS hostname. The window step has to land the operating-system hostname first -- that half is",
+          " the sibling hostname mode's write, not this one's",
         ],
         ""
       )
@@ -359,7 +374,7 @@ fn tailscale_machine_name_name_verdict_wire(verdict: TailscaleMachineNameNameVer
 type TailscaleMachineNamePlan
   = DeviceNameAlreadyCurrent { machine_name: NonEmptyStr, os_name: String }
   | DeviceNameChangeOwed { from_name: NonEmptyStr, to_name: DnsLabel, os_name: String }
-  | DeviceNameHalvesDiverged { machine_name: NonEmptyStr, os_name: String, to_name: DnsLabel }
+  | DeviceNameOsHalfNotAtTarget { machine_name: NonEmptyStr, os_name: String, to_name: DnsLabel }
   | PlanRefused { cause: TailscaleMachineNamePlanRefusal }
 
 fn tailscale_machine_name_plan_refusal_wire(cause: TailscaleMachineNamePlanRefusal) -> String {
@@ -476,10 +491,10 @@ fn tailscale_machine_name_plan(
             DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name }
           TailnetHalfLagsTarget { machine_name: machine_name, os_name: os_name } =>
             DeviceNameChangeOwed { from_name: machine_name, to_name: desired, os_name: os_name }
-          NeitherHalfAtTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
-            DeviceNameChangeOwed { from_name: machine_name, to_name: requested, os_name: os_name }
           OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
-            DeviceNameHalvesDiverged { machine_name: machine_name, os_name: os_name, to_name: requested }
+            DeviceNameOsHalfNotAtTarget {
+              machine_name: machine_name, os_name: os_name, to_name: requested
+            }
         }
     }
   }
@@ -520,10 +535,6 @@ fn tailscale_machine_name_read_back(
     OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
       ReadBackOsHalfNotAtRequest {
         requested: requested, machine_name: machine_name, os_name: os_name
-      }
-    NeitherHalfAtTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
-      ReadBackMachineNameContradicts {
-        requested: requested, reported: machine_name, os_name: os_name
       }
   }
 }
@@ -648,7 +659,7 @@ type TailscaleMachineNameOutcome
       machine_name: NonEmptyStr,
       os_name: String,
     }
-  | NameHalvesDiverged {
+  | OsHalfNotAtTargetReported {
       host: HostIdentity,
       machine_name: NonEmptyStr,
       os_name: String,
@@ -752,7 +763,7 @@ fn tailscale_machine_name_outcome_wire(outcome: TailscaleMachineNameOutcome) -> 
         ],
         ""
       )
-    NameHalvesDiverged { host: host, machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+    OsHalfNotAtTargetReported { host: host, machine_name: machine_name, os_name: os_name, to_name: to_name } =>
       join(
         [
           host as String, ": ",
@@ -778,7 +789,7 @@ fn tailscale_machine_name_outcome_settled(outcome: TailscaleMachineNameOutcome) 
       machine_name: machine_name,
       os_name: os_name,
     } => true
-    NameHalvesDiverged { host: host, machine_name: machine_name, os_name: os_name, to_name: to_name } => true
+    OsHalfNotAtTargetReported { host: host, machine_name: machine_name, os_name: os_name, to_name: to_name } => true
     RunRefused { host: host, cause: cause } => false
   }
 }
@@ -802,9 +813,9 @@ fn converge_tailscale_machine_name(
       RunRefused { host: host, cause: RunPlanRefused { cause: cause } }
     DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
       NameAlreadyCurrent { host: host, machine_name: machine_name, os_name: os_name }
-    DeviceNameHalvesDiverged { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+    DeviceNameOsHalfNotAtTarget { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
       if mode == ObserveOnly {
-        NameHalvesDiverged {
+        OsHalfNotAtTargetReported {
           host: host,
           machine_name: machine_name,
           os_name: os_name,
