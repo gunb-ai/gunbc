@@ -155,8 +155,8 @@ data srv14_memavailable_quiescent_read: HostMemAvailableQuiescentRead = HostMemA
   host: operator_host_srv14,
   account: "tidy-swift-586",
   read_at: "2026-11-11T10:42:33Z (five same-instant samples 2 s apart; the MemTotal/MemAvailable pair and both cgroups' anon+shmem were stable across all five -- MemAvailable's high-water is the one recorded, per gunbc_ci_host_memavailable_observation_note)",
-  host_total: kibibyte_to_byte_size(kb: 262937528),
-  mem_available: kibibyte_to_byte_size(kb: 218754516),
+  host_total: kibibyte_to_byte_size(k: 262937528),
+  mem_available: kibibyte_to_byte_size(k: 218754516),
 }
 
 fn serving_engine_residency_total(rows: List<ServingEngineCgroupResidency>) -> ByteSize {
