@@ -15,6 +15,7 @@ module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 // avoid.
 
 import std.types { Bool, List, String }
+import std.algebra { string_contains }
 import std.optional { Absent, Present }
 import extdeps.github.actions { DispatchInputType, InputChoice, Job, RunsOnExpression, SelfHosted, Step, RunStep }
 import gunbc.fleet.fleet_converge_workflow {
@@ -32,10 +33,16 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_modes,
 }
 import gunbc.host.host_hostname_converge {
+  hostname_converge_attempt_env_name,
+  hostname_converge_confirm_env_name,
   hostname_converge_confirm_options,
+  hostname_converge_direction_env_name,
   hostname_converge_direction_options,
   hostname_converge_mode,
+  hostname_converge_peer_env_name,
+  hostname_converge_readopt_env_name,
   hostname_converge_readopt_options,
+  hostname_converge_target_env_name,
 }
 
 data hostname_converge_job_id: String = "hostname-converge"
@@ -213,4 +220,97 @@ test fn the_job_needs_the_release_bins_job() -> Bool {
     fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostnameConverge)),
     n => n == "release-bins",
   )
+}
+
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE STEP ENV IS PART OF THE MODE'S CONTRACT (review 93449).
+// The emitted `if:` on the apply step is not the only lock on actuation: the apply entry re-reads the
+// confirm variable from its ENVIRONMENT as a second check, and the independent read-back goes red on an
+// unchanged name only when it knows actuation was confirmed. Both read it from the environment, so an
+// omitted `kv` line does not fail anything visible -- it degrades the mode into one that refuses to apply
+// forever while its read-back reports success on a name that never changed. That is precisely the
+// green-without-converging outcome the mode's own comment forbids, and it is invisible to a witness that
+// only reads step names, `if:` conditions and runs-on. So the assertion is over the whole env contract of
+// every step, built from the names the module itself exports: a name that goes missing from the emitted
+// steps turns this red, whichever name it is (gunbc.design_argument::fail_closed).
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+fn step_env_keys(step: Step) -> List<String> {
+  match step {
+    RunStep {
+      name: _,
+      id: _,
+      run: _,
+      shell: _,
+      env: Present { value: entries },
+      working_directory: _,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: _,
+    } => map(entries, e => e.key)
+    _ => []
+  }
+}
+
+// The contract is the module's own env names, never literals repeated here -- a rename on either side
+// moves both the emitter and this expectation together (gunbc.design_argument::single_authority).
+fn hostname_converge_env_contract() -> List<String> {
+  [
+    hostname_converge_target_env_name as String,
+    hostname_converge_peer_env_name as String,
+    hostname_converge_direction_env_name as String,
+    hostname_converge_readopt_env_name as String,
+    hostname_converge_confirm_env_name as String,
+    hostname_converge_attempt_env_name as String,
+  ]
+}
+
+fn mode_steps(job: Job) -> List<Step> {
+  filter(job.steps, s => starts_with(s: step_name_text(step: s), prefix: "hostname converge:"))
+}
+
+fn env_carries_all(keys: List<String>) -> Bool {
+  all(hostname_converge_env_contract(), n => any(keys, k => k == n))
+}
+
+// THE APPLY STEP AND THE READ-BACK STEP CARRY THE CONFIRM GATE. These are the two steps whose behaviour
+// changes on it, and the two the review found running without it.
+test fn the_apply_and_read_back_steps_carry_the_confirm_gate() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      let actuating =
+        filter(
+          mode_steps(job: job),
+          s =>
+            string_contains(s: step_name_text(step: s), pattern: "wet apply")
+              || string_contains(s: step_name_text(step: s), pattern: "own name back"),
+        )
+      length(actuating) == 2
+        && all(
+          actuating,
+          s => any(step_env_keys(step: s), k => k == (hostname_converge_confirm_env_name as String)),
+        )
+  }
+}
+
+// EVERY STEP CARRIES THE WHOLE CONTRACT, not merely the variable that happened to go missing. The plan
+// step needs the same pair and direction to fold against, and the re-adopt step needs both to know which
+// baseline it is admitting; a step env assembled one `kv` at a time is where a name gets dropped.
+test fn every_hostname_converge_step_carries_the_full_env_contract() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      let steps = mode_steps(job: job)
+      length(steps) == 4 && all(steps, s => env_carries_all(keys: step_env_keys(step: s)))
+  }
+}
+
+// THE CONFIRM VARIABLE IS NOT A SIXTH STRING THAT HAPPENS TO APPEAR: it is read by the CLI entries
+// through the same exported name, so the emitted key and the read name cannot disagree without one of
+// these two legs going red.
+test fn the_confirm_env_name_is_the_one_the_entries_read() -> Bool {
+  (hostname_converge_confirm_env_name as String) == "FLEET_CONVERGE_HOSTNAME_CONFIRM"
+    && any(hostname_converge_env_contract(), k => k == (hostname_converge_confirm_env_name as String))
 }

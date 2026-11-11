@@ -8589,13 +8589,18 @@ fn fleet_converge_hostname_converge_runner_spec() -> RunnerSpec {
 
 // THE TARGET, THE PEER, THE DIRECTION AND THE GATES TRAVEL AS ENVIRONMENT, each named once in
 // gunbc.host.host_hostname_converge so a step and its entry cannot drift apart
-// (gunbc.design_argument::single_authority).
+// (gunbc.design_argument::single_authority). The confirm gate travels too: the apply entry re-checks it
+// as a second lock beside the step's `if:`, and the independent read-back only goes red on a wrong name
+// when it knows actuation was confirmed. Drop this line and the mode silently degrades -- apply always
+// refuses, and read-back reports success on a name that never changed -- so the emitter witness asserts
+// every step carries all six (gunbc.design_argument::fail_closed).
 fn fleet_converge_hostname_converge_step_env() -> List<YamlKeyValue> {
   [
     kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: join(["${{ ", fleet_host_input_expression, " }}"], ""))),
     kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_peer }}")),
     kv(key: hostname_converge_direction_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_direction }}")),
     kv(key: hostname_converge_readopt_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_readopt }}")),
+    kv(key: hostname_converge_confirm_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_confirm }}")),
     kv(key: hostname_converge_attempt_env_name as String, value: yaml_string(s: "${{ github.run_id }}-${{ github.run_attempt }}")),
   ]
 }
