@@ -112,7 +112,7 @@ import gunbc.machine_intake.bmc_credential_policy {
   PublishedCredentialChangeForced,
   bmc_credential_policy_key_eq,
 }
-import gunbc.machine_intake.bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
+import gunbc.machine_intake.bmc_rotation_route_evidence { manager_read_receipt, observed_bmc_network_endpoint }
 import gunbc.machine_intake.bmc_recovery_route { RecoveryRouteUnavailable, recovery_route_unavailability, InBandRecoveryStanding }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
 import gunbc.machine_intake.prior_life_boundary {
@@ -278,7 +278,7 @@ fn observe_access(key: StepInstanceKey, read: CurrentManagerRead) -> Observation
           if length(o.firmware_version) == 0 {
             ObservationRefused { cause: FirmwareVersionUnread }
           } else {
-            match mtjade1_observed_endpoint(network: identity.endpoint) {
+            match observed_bmc_network_endpoint(network: identity.endpoint) {
               Absent => ObservationRefused { cause: EndpointUnobserved }
               Present { value: endpoint } =>
                 match manager_read_receipt(read: identity) {
@@ -1505,7 +1505,7 @@ fn admit_forced_first_rotation_precedes_prior_life(
   // them here would be a validation where construction holds, gunbc.design_argument::fail_closed.) The build confirmation in the
   // ladder below is then confirmation of the SAME controller's inference: a matching pair from another
   // controller (the foreign-controller RED) cannot reach it.
-  let access_read_endpoint = match mtjade1_observed_endpoint(network: read.identity.endpoint) {
+  let access_read_endpoint = match observed_bmc_network_endpoint(network: read.identity.endpoint) {
     Present { value: e } => (e.host as String)
     Absent => ""
   }
