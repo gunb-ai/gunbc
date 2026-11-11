@@ -1,6 +1,7 @@
 module gunbc.host.managed_host_boot_once
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Second, second }
 import std.optional { Present, Absent }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget, RedfishBootSourceOverrideEnabled, RedfishBootSourceOverrideMode,
@@ -63,6 +64,21 @@ type BootOnceRefusalCause
 type BootOncePlan
   = BootOncePlanned { account: NonEmptyStr, steps: List<BootOnceStep> }
   | BootOnceRefused { cause: BootOnceRefusalCause }
+
+// THE READ-BACK DELAY, WITH ONE TYPED HOME. A boot-once that PATCHes the override and immediately reads it
+// back reads a setting the controller had not yet applied — so it waits first. The wait lives here, and the
+// value travels with its provenance: a caller reads the row, it does not re-derive a bare number. Relocated
+// out of the deleted srv3 boot-once leaf (PXE 2b); realized in-band by gunbc.host.host_effect_realize's
+// BootOnceReadBackSleep arm.
+type BootOnceReadBackSleepDuration sole_constructor {
+  duration: Second
+  source: NonEmptyStr
+}
+
+data boot_once_read_back_sleep: BootOnceReadBackSleepDuration = BootOnceReadBackSleepDuration {
+  duration: second(count: 45),
+  source: "the BMC needs ~45s to apply the boot override before the read-back reflects it",
+}
 
 // THE ADMITTED SETTING IS FIXED SAVE THE TARGET: one-shot, UEFI. A caller chooses Pxe or Cd; the one-shot
 // and the firmware mode are not caller-choice, which is what keeps a boot-once a boot-once.
