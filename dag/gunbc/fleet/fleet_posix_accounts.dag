@@ -18,13 +18,6 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import std.types { NonEmptyStr, List, String, Bool, Int }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-  operator_host_srv14,
-}
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.effects { ExecuteEffect }
@@ -159,60 +152,16 @@ fn fleet_account_key_matches(a: FleetPosixAccountKey, b: FleetPosixAccountKey) -
 // carries no fixed uid, exactly as the automation and service identities are host-assigned.
 data fleet_posix_runner_listener_login: NonEmptyStr = "gunbc-runner"
 
-// WHICH POSIX ACCOUNTS A HOST CARRIES, AS ROWS KEYED BY THE MACHINE. This is the per-host half of the one
-// access template. The principal->account grants (gunbc.fleet.fleet_ssh_access) say, fleet-wide, whose keys
-// an account TYPE carries; these rows say which account TYPES exist on which machine. The converge creates
-// the accounts a host's rows name, so adding the next machine is adding rows -- never a `host == X` branch
-// or a per-host named declaration (operator ruling D2 in gunbc.plans.fleet_machine_naming: per-host
-// declarations are mini forks). No hostname string appears in a value: the key is the HostIdentity handle.
-//
-// THIS IS THE ACCESS-TEMPLATE MEMBERSHIP VIEW, not the grounding/standing model below (PosixAccountOccurrence
-// and its six-state allocation): that answers "is this account's presence on this host grounded and in what
-// standing", this answers "which accounts does the template provision here". They are kept separate on
-// purpose -- conflating them would make a not-yet-grounded account invisible to the converge that is meant
-// to create it.
-type HostAccountMembership {
-  host: HostIdentity
-  account: FleetPosixAccountKey
-}
-
-data fleet_host_account_memberships: List<HostAccountMembership> = [
-  // srv1: the operator's own host. Its runner listener is STILL root until srv1's own B3d cutover, so the
-  // listener account it carries today is FleetAccountRoot, not the runner-listener identity.
-  HostAccountMembership { host: operator_host_srv1, account: FleetAccountRoot },
-  HostAccountMembership { host: operator_host_srv1, account: FleetAccountOperator },
-  HostAccountMembership { host: operator_host_srv1, account: FleetAccountCiRunner },
-  // srv2: the orchestration host. Listener stays root until its B3d cutover.
-  HostAccountMembership { host: operator_host_srv2, account: FleetAccountRoot },
-  HostAccountMembership { host: operator_host_srv2, account: FleetAccountHostAdministrator },
-  HostAccountMembership { host: operator_host_srv2, account: FleetAccountCiRunner },
-  // srv3, srv4: ubuntu host-administrator and the ci-runner. Listener stays root until each host's B3d.
-  HostAccountMembership { host: operator_host_srv3, account: FleetAccountRoot },
-  HostAccountMembership { host: operator_host_srv3, account: FleetAccountHostAdministrator },
-  HostAccountMembership { host: operator_host_srv3, account: FleetAccountCiRunner },
-  HostAccountMembership { host: operator_host_srv4, account: FleetAccountRoot },
-  HostAccountMembership { host: operator_host_srv4, account: FleetAccountHostAdministrator },
-  HostAccountMembership { host: operator_host_srv4, account: FleetAccountCiRunner },
-  // butch (srv14): the already-installed CI-only witness. Only ubuntu exists today; the converge creates the
-  // ci-runner (ghrunner) and the runner listener (gunbc-runner) precisely because its rows name them.
-  HostAccountMembership { host: operator_host_srv14, account: FleetAccountHostAdministrator },
-  HostAccountMembership { host: operator_host_srv14, account: FleetAccountCiRunner },
-  HostAccountMembership { host: operator_host_srv14, account: FleetAccountRunnerListener },
-]
-
-// THE ACCOUNTS A HOST CARRIES, read from the rows. The fold TAKES the rows, so a caller -- and a witness
-// asking about a fixture host that is not yet in the fleet's own rows -- can resolve any machine's accounts
-// with no code change. That is the whole point of the row model: the fifth host needs rows, not a new fn.
-fn accounts_on_host_among(rows: List<HostAccountMembership>, host: HostIdentity) -> List<FleetPosixAccountKey> {
-  map(
-    filter(rows, row => (row.host as String) == (host as String)),
-    row => row.account,
-  )
-}
-
-fn accounts_on_host(host: HostIdentity) -> List<FleetPosixAccountKey> {
-  accounts_on_host_among(rows: fleet_host_account_memberships, host: host)
-}
+// WHICH ACCOUNTS A HOST CARRIES IS NOT A SECOND TABLE. The per-host account set is DERIVED, not stored: the
+// runner accounts a host names come from its deploy_runner_principal_row (gunbc.runner.runner_host_deploy --
+// unit_user names the listener, job_user names the ci-runner), and the host-administrator (ubuntu) account is
+// present wherever the principal->account grants (gunbc.fleet.fleet_ssh_access) grant it. A separate
+// host->account membership table was removed: it re-decided the listener (FleetAccountRunnerListener vs
+// FleetAccountRoot) independently of the principal row's unit_user, which is a fork (single_authority), and it
+// had no consumer in this change. Creating the OS accounts on a host is B3b (butch joins capacity) and B3d
+// (srv1-srv4 listener cutover) -- the named consumers, each with its trigger -- and they will read the
+// principal rows, not a parallel membership table. No hostname string appears in a value: the key is the
+// HostIdentity handle.
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",

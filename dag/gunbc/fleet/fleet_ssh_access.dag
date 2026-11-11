@@ -170,29 +170,32 @@ data fleet_access_principals: List<FleetAccessPrincipal> = [
 // operator key); node-orch and fleet-automation are granted to the host-administrator account only. The
 // ci-runner and the runner listener carry NO inbound key: ghrunner is reached as the CI job user and
 // gunbc-runner is the systemd listener, neither is SSH-reached.
+//
+// A grant references the PRINCIPAL DECLARATION itself, not a re-spelled name. A free string joined by
+// equality would let a typo or rename in a grant row silently match no principal -- that principal's key
+// would then quietly vanish from the account's desired authorized_keys, and the reconcile would treat the
+// account as converged without it. That is silent wrongness, forbidden outright (fail_closed, the guarantee
+// ladder). Referencing the datum makes a bad grant a compile error, not a runtime no-op.
 type FleetPrincipalAccountGrant {
-  principal: NonEmptyStr
+  principal: FleetAccessPrincipal
   account: FleetPosixAccountKey
 }
 
 data fleet_principal_account_grants: List<FleetPrincipalAccountGrant> = [
-  FleetPrincipalAccountGrant { principal: "briansrls", account: FleetAccountOperator },
-  FleetPrincipalAccountGrant { principal: "briansrls", account: FleetAccountHostAdministrator },
-  FleetPrincipalAccountGrant { principal: "node-orch", account: FleetAccountHostAdministrator },
-  FleetPrincipalAccountGrant { principal: "fleet-automation", account: FleetAccountHostAdministrator },
+  FleetPrincipalAccountGrant { principal: fleet_principal_operator, account: FleetAccountOperator },
+  FleetPrincipalAccountGrant { principal: fleet_principal_operator, account: FleetAccountHostAdministrator },
+  FleetPrincipalAccountGrant { principal: fleet_principal_node_orch, account: FleetAccountHostAdministrator },
+  FleetPrincipalAccountGrant { principal: fleet_principal_fleet_automation, account: FleetAccountHostAdministrator },
 ]
 
 // THE PROJECTION: an account's authorized_keys = exactly the keys of the principals granted to it. This is
 // the single consumer-facing answer to "whose keys go on this account"; the reconcile and the install routes
-// read it, so a key on an account that no principal is granted to cannot be produced here.
+// read it, so a key on an account that no principal is granted to cannot be produced here. The key comes
+// straight off the referenced principal datum -- there is no name to join on, so nothing can silently miss.
 fn authorized_keys_for_account(account: FleetPosixAccountKey) -> List<SshPublicKey> {
-  let granted = map(
+  map(
     filter(fleet_principal_account_grants, g => fleet_account_key_matches(a: g.account, b: account)),
-    g => g.principal,
-  )
-  flat_map(
-    fleet_access_principals,
-    p => if any(granted, n => n == p.principal) { [p.public_key] } else { [] },
+    g => g.principal.public_key,
   )
 }
 

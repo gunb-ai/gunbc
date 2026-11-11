@@ -9,17 +9,13 @@ import gunbc.fleet.fleet_ssh_access {
   node_orch_ssh_key,
 }
 import gunbc.fleet.fleet_posix_accounts {
-  FleetPosixAccountKey,
   FleetAccountRoot,
   FleetAccountOperator,
   FleetAccountCiRunner,
   FleetAccountHostAdministrator,
   FleetAccountRunnerListener,
-  HostAccountMembership,
-  fleet_account_key_label,
-  accounts_on_host,
-  accounts_on_host_among,
   fleet_posix_runner_listener_login,
+  fleet_posix_ci_runner_user,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14 }
 import gunbc.runner.runner_host_deploy { deploy_runner_principal_for }
@@ -66,10 +62,6 @@ fn same_key_set(a: List<SshPublicKey>, b: List<SshPublicKey>) -> Bool {
 
 fn has_key(keys: List<SshPublicKey>, k: SshPublicKey) -> Bool {
   any(key_materials(keys: keys), m => m == k.material as String)
-}
-
-fn account_labels(accounts: List<FleetPosixAccountKey>) -> List<String> {
-  map(accounts, a => fleet_account_key_label(key: a))
 }
 
 // ---- 1. each account's key set equals EXACTLY its principals' keys, no more ----
@@ -132,35 +124,25 @@ test fn node_orch_reaches_host_administrator_and_not_root() -> Bool {
     && !has_key(keys: authorized_keys_for_account(account: FleetAccountRunnerListener), k: node_orch_ssh_key)
 }
 
-// ---- 3. a fifth fixture host gets its accounts from rows, with no code change ----
+// ---- 3. a host the fleet describes ONLY as rows resolves, with no code change ----
 
-// butch (srv14) is the first real host whose accounts come purely from rows: ubuntu already exists, and the
-// ci-runner and runner-listener are named by its membership rows.
-test fn butch_gets_its_accounts_from_rows() -> Bool {
-  let expected = ["host-administrator", "ci-runner", "runner-listener"]
-  let got = account_labels(accounts: accounts_on_host(host: operator_host_srv14))
-  count(got) == 3 && has_all(hay: got, needle: expected)
-}
-
-// THE DISCRIMINATING WITNESS: a host that is NOT in the fleet's own rows yet. Hand the SAME fold rows naming
-// its accounts and it resolves them -- no new fn, no `host == X` branch. The fold taking the rows is what
-// makes "add the next machine" boring: it is rows, not code.
-test fn a_fifth_fixture_host_gets_its_accounts_from_rows_with_no_code_change() -> Bool {
-  let fifth = "srv-fixture-5" as HostIdentity
-  let fifth_rows = [
-    HostAccountMembership { host: fifth, account: FleetAccountHostAdministrator },
-    HostAccountMembership { host: fifth, account: FleetAccountCiRunner },
-    HostAccountMembership { host: fifth, account: FleetAccountRunnerListener },
-  ]
-  let expected = ["host-administrator", "ci-runner", "runner-listener"]
-  let got = account_labels(accounts: accounts_on_host_among(rows: fifth_rows, host: fifth))
-  count(got) == 3 && has_all(hay: got, needle: expected)
-}
-
-// And the fold is honest about a host the fleet has NOT described: with the fleet's own rows, a host that has
-// no rows resolves to NO accounts -- it borrows nothing.
-test fn a_host_with_no_rows_resolves_to_no_accounts() -> Bool {
-  count(accounts_on_host(host: "srv-fixture-5" as HostIdentity)) == 0
+// THE DISCRIMINATING PAIR for "adding the next machine is rows, not code": the SAME fold
+// (deploy_runner_principal_for) resolves a host the fleet added purely as a data row -- srv14 (butch), which
+// has no per-host code and no `host == srv14` branch anywhere -- and refuses a host the fleet never described
+// (it returns Absent, borrowing no neighbour's row). A model that special-cased srv14, or that let an
+// unmodeled host borrow a neighbour's listener, fails one half of this pair. The per-host account set is
+// therefore carried by rows alone; creating the OS accounts from them is B3b/B3d (declared consumers).
+test fn the_runner_principal_fold_is_general_not_per_host() -> Bool {
+  let butch_resolves = match deploy_runner_principal_for(host: operator_host_srv14) {
+    Present { value: p } =>
+      p.unit_user == fleet_posix_runner_listener_login && p.job_user == fleet_posix_ci_runner_user.name
+    Absent => false
+  }
+  let fixture_refused = match deploy_runner_principal_for(host: "srv-fixture-5" as HostIdentity) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  butch_resolves && fixture_refused
 }
 
 // ---- 4. srv1 still renders root as its listener; butch renders gunbc-runner ----
