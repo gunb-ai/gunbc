@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 import v2.std.grammar { node_atom_identity_optional }
 import std.types { List, Map }
 import v2.compiler.target_serialize { target_serialize_source_from_model, target_serialize_source_from_selected_row }
-import v2.extdeps.languages.bash { bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_assign_emitted, bash_stmt_assign_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_stmt_if_emitted, bash_stmt_if_target_model, bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_pipe_emitted, bash_stmt_pipe_target_model, bash_stmt_subshell_emitted, bash_stmt_subshell_target_model, bash_redir_stderr_to_file_source_text, bash_redir_from_file_source_text, bash_redir_to_file_source_text, bash_redir_append_to_file_source_text, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_word_cmdsubst_emitted, bash_word_cmdsubst_target_model , bash_stmt_brace_group_emitted, bash_stmt_brace_group_target_model, bash_stmt_seq_emitted, bash_stmt_seq_target_model, bash_stmt_function_def_emitted, bash_stmt_function_def_target_model, bash_stmt_case_emitted, bash_stmt_case_target_model, bash_stmt_case_clause_block_emitted, bash_stmt_case_clause_block_target_model, bash_stmt_case_clause_inline_emitted, bash_stmt_case_clause_inline_target_model, bash_stmt_comment_emitted, bash_stmt_comment_target_model, bash_stmt_for_emitted, bash_stmt_for_target_model, bash_stmt_array_assign_emitted, bash_stmt_array_assign_target_model, bash_word_bare_emitted, bash_word_bare_target_model, bash_word_array_expansion_emitted, bash_word_array_expansion_target_model, bash_word_param_error_emitted, bash_word_param_error_target_model, bash_word_positional_all_emitted, bash_word_positional_all_target_model, bash_word_positional_emitted, bash_word_positional_target_model, bash_word_var_bare_emitted, bash_word_var_bare_target_model, bash_word_double_quoted_emitted, bash_word_double_quoted_target_model, bash_word_quoted_text_emitted, bash_word_quoted_text_target_model }
+import v2.extdeps.languages.bash { bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_assign_emitted, bash_stmt_assign_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_stmt_if_emitted, bash_stmt_if_target_model, bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_pipe_emitted, bash_stmt_pipe_target_model, bash_stmt_subshell_emitted, bash_stmt_subshell_target_model, bash_redir_stderr_to_file_source_text, bash_redir_from_file_source_text, bash_redir_to_file_source_text, bash_redir_append_to_file_source_text, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_word_cmdsubst_emitted, bash_word_cmdsubst_target_model , bash_stmt_brace_group_emitted, bash_stmt_brace_group_target_model, bash_stmt_seq_emitted, bash_stmt_seq_target_model, bash_stmt_function_def_emitted, bash_stmt_function_def_target_model, bash_stmt_case_emitted, bash_stmt_case_target_model, bash_stmt_case_clause_block_emitted, bash_stmt_case_clause_block_target_model, bash_stmt_case_clause_inline_emitted, bash_stmt_case_clause_inline_target_model, bash_kw_case_block_stmt_sep_text, bash_stmt_comment_emitted, bash_stmt_comment_target_model, bash_stmt_for_emitted, bash_stmt_for_target_model, bash_stmt_array_assign_emitted, bash_stmt_array_assign_target_model, bash_word_bare_emitted, bash_word_bare_target_model, bash_word_array_expansion_emitted, bash_word_array_expansion_target_model, bash_word_param_error_emitted, bash_word_param_error_target_model, bash_word_positional_all_emitted, bash_word_positional_all_target_model, bash_word_positional_emitted, bash_word_positional_target_model, bash_word_var_bare_emitted, bash_word_var_bare_target_model, bash_word_double_quoted_emitted, bash_word_double_quoted_target_model, bash_word_quoted_text_emitted, bash_word_quoted_text_target_model }
 import v2.extdeps.languages.bash_build { bash_build_stmt_list_single, bash_build_subshell, bash_build_is_bare_word, bash_build_is_name, bash_build_is_digits, bash_build_is_positional_all, bash_build_is_positional, bash_build_is_quoted_text, bash_build_is_test_operator }
 import v2.extdeps.languages.bash_orch_if { bash_stmt_if_else_emitted, bash_stmt_if_else_target_model }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused, bash_fold_relation_row_witness, bash_fold_target_model_for_row, bash_fold_translation_rules_budget_for_row, bash_fold_unsupported_variant_diagnostic }
@@ -163,10 +163,18 @@ fn bash_fold_serialize_selected_row(emitted: Node, target: TargetModel, row: Nod
   }
 }
 
-fn bash_fold_serialize_stmts_semi_from(
+// The separator is a PARAMETER because it belongs to the row that owns the
+// construct's line structure, not to this function: a brace group, a subshell and a
+// one-line case arm join their statements with "; ", while a BLOCK case arm puts one
+// statement per line at its own indent (^bash_kw_case_block_stmt_sep_text). Both
+// spellings are the same list in the Bash manual's sense ("List of Commands":
+// pipelines separated by ; … or <newline>"), so neither is a string patch — each is
+// the separator the adopting row declares.
+fn bash_fold_serialize_stmts_from(
   acc: String,
   first: Bool,
-  rest: List<Node>
+  rest: List<Node>,
+  sep: String
 ) -> Outcome<String> {
   match list_head(xs: rest) {
     Absent => Accepted { value: acc, diagnostics: None }
@@ -174,10 +182,10 @@ fn bash_fold_serialize_stmts_semi_from(
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
         f: fn(part) {
-          let next = if first { part } else { concat(acc, concat("; ", part)) }
+          let next = if first { part } else { concat(acc, concat(sep, part)) }
           match list_tail(xs: rest) {
             Present { value: t } =>
-              bash_fold_serialize_stmts_semi_from(acc: next, first: false, rest: t)
+              bash_fold_serialize_stmts_from(acc: next, first: false, rest: t, sep: sep)
             Absent => Accepted { value: next, diagnostics: None }
           }
         }
@@ -185,8 +193,12 @@ fn bash_fold_serialize_stmts_semi_from(
   }
 }
 
+fn bash_fold_serialize_stmts_with(stmts: List<Node>, sep: String) -> Outcome<String> {
+  bash_fold_serialize_stmts_from(acc: "", first: true, rest: stmts, sep: sep)
+}
+
 fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
-  bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
+  bash_fold_serialize_stmts_with(stmts: stmts, sep: "; ")
 }
 
 // Statement-list encoding is a nonempty cons spine: one statement child, or
@@ -258,6 +270,17 @@ fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> Outcome<String> {
     o: bash_fold_flatten_stmt_list(list_node: list_node),
     f: fn(stmts) {
       bash_fold_serialize_stmts_semi(stmts: stmts)
+    }
+  )
+}
+
+// The block-case-arm spelling: the same list, separated by the case row's own
+// line separator. See ^bash_kw_case_block_stmt_sep_text.
+fn bash_fold_serialize_stmt_list_with(list_node: Node, sep: String) -> Outcome<String> {
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: list_node),
+    f: fn(stmts) {
+      bash_fold_serialize_stmts_with(stmts: stmts, sep: sep)
     }
   )
 }
@@ -1191,11 +1214,17 @@ fn bash_fold_serialize_case_clause_node(clause: Node) -> Outcome<String> {
               match node_atom_identity_optional(node: pattern_node) {
                 Present { value: pattern } =>
                   match list_at_optional(xs: positional_child_target_nodes(node: clause), index: 2) {
+                    // The two arms separate their statements differently and each
+                    // separator comes from the row that owns that arm's line structure
+                    // (^bash_kw_case_block_stmt_sep_text); neither is spelled here.
                     Present { value: body } =>
-                      bind_outcome(
-                        o: bash_fold_serialize_stmt_list_semi(list_node: body),
-                        f: fn(body_spelling) {
-                          if tag == ^bash_production_fold_case_clause_block {
+                      if tag == ^bash_production_fold_case_clause_block {
+                        bind_outcome(
+                          o: bash_fold_serialize_stmt_list_with(
+                            list_node: body,
+                            sep: bash_kw_case_block_stmt_sep_text
+                          ),
+                          f: fn(body_spelling) {
                             bash_fold_serialize_emit_from_node(
                               emitted: bash_stmt_case_clause_block_emitted,
                               target: bash_stmt_case_clause_block_target_model(
@@ -1203,7 +1232,12 @@ fn bash_fold_serialize_case_clause_node(clause: Node) -> Outcome<String> {
                                 body: body_spelling
                               )
                             )
-                          } else if tag == ^bash_production_fold_case_clause_inline {
+                          }
+                        )
+                      } else if tag == ^bash_production_fold_case_clause_inline {
+                        bind_outcome(
+                          o: bash_fold_serialize_stmt_list_semi(list_node: body),
+                          f: fn(body_spelling) {
                             bash_fold_serialize_emit_from_node(
                               emitted: bash_stmt_case_clause_inline_emitted,
                               target: bash_stmt_case_clause_inline_target_model(
@@ -1211,13 +1245,13 @@ fn bash_fold_serialize_case_clause_node(clause: Node) -> Outcome<String> {
                                 body: body_spelling
                               )
                             )
-                          } else {
-                            bash_fold_serialize_refused(
-                              variant: ^bash_fold_serialize_case_clause_tag_unknown
-                            )
                           }
-                        }
-                      )
+                        )
+                      } else {
+                        bash_fold_serialize_refused(
+                          variant: ^bash_fold_serialize_case_clause_tag_unknown
+                        )
+                      }
                     Absent => bash_fold_serialize_refused(
                       variant: ^bash_fold_serialize_positional_child_absent
                     )

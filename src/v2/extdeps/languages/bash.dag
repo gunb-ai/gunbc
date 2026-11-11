@@ -2719,6 +2719,19 @@ data bash_kw_case_pattern_sep_text: String = ")"
 data bash_kw_case_clause_sep_text: String = ";;"
 data bash_kw_case_clause_indent_text: String = "\n  "
 data bash_kw_case_block_lead_text: String = "\n    "
+
+// How the statements INSIDE a block arm are separated. Bash manual, node "List of
+// Commands": "A list is a sequence of one or more pipelines separated by one of the
+// operators ;, &&, ||, |&, or ;;&, and optionally terminated by one of ;, &, or
+// <newline>" — a newline is a list separator exactly as ';' is, so one command per
+// line is the grammar's own spelling, not decoration. This row already owns the
+// arm's line structure (the "\n  " pattern indent and the "\n    " leads above and
+// below the body), so it owns the separator inside the body too: a block arm is the
+// line-oriented spelling, and `bash_kw_case_inline_lead_text` / "; " is the
+// one-liner spelling. Rendering a block arm's statements with "; " would put a
+// five-statement arm on one 800-column line, which is what the installed launcher
+// does NOT look like.
+data bash_kw_case_block_stmt_sep_text: String = "\n    "
 data bash_kw_case_inline_lead_text: String = " "
 data bash_kw_case_arm_newline_text: String = "\n"
 data bash_kw_esac_text: String = "esac"

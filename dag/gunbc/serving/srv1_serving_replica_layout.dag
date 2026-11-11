@@ -5,7 +5,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_seq_from_stmts, bash_build_function_def, bash_build_exit, bash_build_test_bracket,
   bash_build_brace_group_from_stmts, bash_build_with_redir_stdout_append_file,
   bash_build_with_redir_stdout_to_stderr, bash_build_with_redir_stderr_to_stdout,
-  bash_build_with_redir_from_file,
+  bash_build_with_redir_from_file, bash_build_with_redir_stdout_and_stderr_null,
+  bash_build_case, bash_build_case_clause_block, bash_build_case_clause_inline, bash_build_for,
+  bash_build_comment, bash_build_test_comparison, bash_build_word_param_error,
   bash_build_word_bare, bash_build_word_var_bare, bash_build_word_concat_from_nodes,
   bash_build_assign,
   bash_build_word_double_quoted, bash_build_word_cmdsubst, bash_build_quoted_text,
@@ -1469,7 +1471,10 @@ fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchC
   let identity = concat(
     concat(
       [
-        "docker run -d" as String,
+        // Three argv elements, not one glued string: an argv element is one word, and
+        // each one is emitted through a checked word builder (^srv1_bash_arg) later. The
+        // joined line below is byte-identical to what was installed.
+        "docker" as String, "run" as String, "-d" as String,
         "--name" as String, replica.container_name as String,
         "--restart" as String, shape.restart_policy as String,
       ],
@@ -1504,12 +1509,15 @@ fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchC
     "--entrypoint" as String, shape.entrypoint as String,
     config.image_digest as String,
     "-lc" as String,
-    // One shell word, single-quoted. The inner script holds double quotes, `$(...)`, `${...}` and newlines, and
-    // it is the argument the container's bash receives: unquoted, the first newline would end the `docker run`
-    // on the host and the rest of the script would run THERE. Single quotes suffice because no line of the
-    // rendered script contains one -- which the witness asserts, because a future row that introduced one would
-    // otherwise silently truncate the container command instead of failing.
-    srv1_single_quoted(string_concat_join(srv1_replica_container_command_lines(replica: replica, config: config), "\n")),
+    // ONE shell word, quoted by the emitter's `lit` row (^srv1_bash_arg), not by a
+    // string operation here. The inner script holds double quotes, `$(...)`, `${...}` and
+    // newlines, and it is the argument the container's bash receives: unquoted, the first
+    // newline would end the `docker run` on the host and the rest of the script would run
+    // THERE. It is stored UNQUOTED in the argv row -- a pre-quoted string pasted in as a
+    // whole would be hand shell wearing a data row's clothes -- and `lit` is total, so a
+    // future line that grows a single quote is escaped by the row instead of truncating
+    // the container command.
+    string_concat_join(srv1_replica_container_command_lines(replica: replica, config: config), "\n"),
   ]
   concat(concat(concat(identity, published), mounted), entered)
 }
@@ -1533,144 +1541,465 @@ fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchC
 // the fix, the very gap srv1_helper_adoption_verification_gap exists to close. The 0600 refusal is here for
 // the same reason: the env file holds the pool's bearer key, and a boot path that read it after someone
 // relaxed its mode would be reading a file any local user could have written.
-// One shell word in single quotes: nothing expands inside it on the host, which is exactly what the
-// container-side script needs -- its own `$D`, `$(...)` and `${...}` must survive to the container untouched.
-fn srv1_single_quoted(body: String) -> String {
-  concat(concat("'", body), "'")
+// ── THE LAUNCHER RENDER, AS NODES ────────────────────────────────────────────
+//
+// Every line this emits is a statement BUILT by the checked builders of
+// v2.extdeps.languages.bash_build and SERIALIZED by the emitter — the same route the
+// container command above takes, for the same reason: what is installed on the host
+// must be what the grammar produced, so that a control which re-derives the bytes can
+// disagree with a hand edit instead of agreeing with whoever typed last. What is still
+// a .dag string below is a VALUE — a path, a message fragment, an argv element, a
+// comment's text — never shell syntax: no concatenation here assembles a `[`, a `;;`,
+// a redirection operator or a quote.
+//
+// The bytes are the bytes installed at /usr/local/sbin/lil-replica-launch; the on-host
+// sha256 of that file is the row in srv1_installed_boot_path_artifacts_2026_11_09, and
+// the_install_and_run_receipts_hold_their_own_claim (dag/test/claim/serving/
+// srv1_replica_rendered_boot_path_witness.dag) re-derives this render and compares
+// against it. That control, not a preference about formatting, is why the case arms
+// read the way they do: one statement per line is the installed file, and it is the
+// case row's own layout — ^bash_kw_case_block_stmt_sep_text in
+// v2.extdeps.languages.bash — rather than a string join performed here.
+
+// One word from an argv element: bare when every character of it is bare-safe, a
+// single-quoted literal otherwise. The choice is the GRAMMAR's, not a guess: `bare`
+// is checked and refuses what it cannot spell, and `lit` is the row for text that has
+// to keep its spaces (the container's whole inner script, which holds double quotes,
+// `$(...)`, `${...}` and newlines and must reach the container's bash untouched —
+// unquoted, its first newline would end the `docker run` on the host and the rest of
+// the script would run THERE). An argv element is ONE word, so the four tokens of
+// `docker run -d` are four elements, not one glued string.
+fn srv1_bash_arg(text: String) -> Node {
+  match bash_build_word_bare(text: text) {
+    Present { value: word } => word
+    Absent => bash_build_word_lit(text: text)
+  }
 }
 
-// A path in double quotes, the way the launcher's own lines quote the paths it copies.
-fn srv1_quoted(path: String) -> String {
-  concat(concat("\"", path), "\"")
+// `$NAME`, as the host spells it: bare, unbraced.
+fn srv1_bash_var(name: String) -> Node {
+  match bash_build_word_var_bare(name: name) {
+    Present { value: word } => word
+    Absent => srv1_bash_poison_node()
+  }
 }
 
-// One half of the TLS identity: if the replica's own copy is missing, take it from the identity source. The
-// `[ a != b ]` test makes the arm that OWNS the source directory a genuine no-op -- copying a file onto itself
-// is an error, not a no-op, and an arm that died there would take a healthy replica down at boot.
-fn srv1_tls_copy_guard(serve_dir: String, source_dir: String, file_name: String) -> String {
-  let own = concat(concat(serve_dir, "/"), file_name)
-  let from = concat(concat(source_dir, "/"), file_name)
-  concat(
-    concat(
-      concat(
-        concat(concat(concat("[ ", srv1_quoted(own)), " != "), srv1_quoted(from)),
-        " ] && { [ -s "
-      ),
-      srv1_quoted(own)
-    ),
-    concat(
-      concat(" ] || sudo -n cp -p ", srv1_quoted(from)),
-      concat(concat(" ", srv1_quoted(own)), "; }")
+// `cmd >&2` — a diagnostic. Its own function because the launcher writes to stderr on
+// every refusal path, and a refusal that went to stdout would be lost in the unit's
+// journal alongside the engine's own noise.
+fn srv1_launcher_diagnostic(message: Node) -> Node {
+  srv1_bash_unwrap(
+    built: bash_build_with_redir_stdout_to_stderr(
+      inner: bash_build_command_from_word_nodes(
+        words: [srv1_bash_bare(text: "echo"), message]
+      )
     )
   )
 }
 
-// One arm's TLS identity guard, both halves. They are checked and copied separately because a half-written key
-// beside an intact certificate is exactly the state in which an "is either file missing" shortcut would decide
-// nothing is missing -- and the pair is what the router verifies. The trailing `|| true` keeps the guard from
-// deciding the launch's exit status: a replica that already has its identity must not be held hostage by a
-// test that evaluated false.
-fn srv1_replica_tls_identity_guard_line(replica: Srv1ServingReplicaSpec) -> String {
+// `[ TEST ] || { echo "…" >&2; exit CODE; }` — the launcher's input guard, and the
+// reason a stale args file cannot boot anything. The brace group is one statement, so
+// the guard is one statement, so the emitter's own row for it is what decides the
+// bytes.
+fn srv1_launcher_input_guard(test: Node, message_parts: List<Node>, code: String) -> Node {
+  srv1_bash_unwrap(
+    built: bash_build_or_else(
+      left: test,
+      right: srv1_bash_unwrap(
+        built: bash_build_brace_group_from_stmts(
+          stmts: [
+            srv1_launcher_diagnostic(message: srv1_bash_quoted(parts: message_parts)),
+            bash_build_exit(code: code)
+          ]
+        )
+      )
+    )
+  )
+}
+
+// `docker … >/dev/null 2>&1` — both streams gone, because these probes run at every
+// boot and their noise is not the unit's log. ONE redirection row owns that spelling
+// (^bash_build_with_redir_stdout_and_stderr_null); it is not the `>file` row stacked
+// with the `2>&1` row, which would render a space the installed file does not have.
+fn srv1_launcher_quiet(command: Node) -> Node {
+  bash_build_with_redir_stdout_and_stderr_null(inner: command)
+}
+
+// One half of the TLS identity: if the replica's own copy is missing, take it from the
+// identity source. The `[ a != b ]` test makes the arm that OWNS the source directory a
+// genuine no-op — copying a file onto itself is an error, not a no-op, and an arm that
+// died there would take a healthy replica down at boot. The operator's `-a`/`-o`
+// operators are deliberately NOT used; this is the bracket form the installed file
+// uses, one file per guard, so a half-written key beside an intact certificate cannot
+// be read as "nothing is missing".
+fn srv1_launcher_tls_copy_guard(serve_dir: String, source_dir: String, file_name: String) -> Node {
+  let own = concat(concat(serve_dir, "/"), file_name)
+  let from = concat(concat(source_dir, "/"), file_name)
+  srv1_bash_unwrap(
+    built: bash_build_and_then(
+      left: bash_build_test_comparison(
+        left: srv1_bash_quoted(parts: [srv1_bash_inert(text: own)]),
+        op: "!=",
+        right: srv1_bash_quoted(parts: [srv1_bash_inert(text: from)])
+      ),
+      right: srv1_bash_unwrap(
+        built: bash_build_brace_group_from_stmts(
+          stmts: [
+            srv1_bash_unwrap(
+              built: bash_build_or_else(
+                left: bash_build_test_bracket(
+                  words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_inert(text: own)])]
+                ),
+                right: bash_build_command_from_word_nodes(
+                  words: [
+                    srv1_bash_bare(text: "sudo"), srv1_bash_bare(text: "-n"),
+                    srv1_bash_bare(text: "cp"), srv1_bash_bare(text: "-p"),
+                    srv1_bash_quoted(parts: [srv1_bash_inert(text: from)]),
+                    srv1_bash_quoted(parts: [srv1_bash_inert(text: own)])
+                  ]
+                )
+              )
+            )
+          ]
+        )
+      )
+    )
+  )
+}
+
+// One arm's TLS identity guard, both halves — and the trailing `|| true` that keeps
+// the guard from deciding the launch's exit status: a replica that already has its
+// identity must not be held hostage by a test that evaluated false.
+fn srv1_replica_tls_identity_guard_statement(replica: Srv1ServingReplicaSpec) -> Node {
   let serve = replica.host_serve_dir as String
   let src = srv1_tls_identity_source_dir as String
-  concat(
-    concat(
-      concat(
-        concat("    { ", srv1_tls_copy_guard(serve_dir: serve, source_dir: src, file_name: srv1_tls_key_file_name as String)),
-        "; "
+  srv1_bash_unwrap(
+    built: bash_build_or_else(
+      left: srv1_bash_unwrap(
+        built: bash_build_brace_group_from_stmts(
+          stmts: [
+            srv1_launcher_tls_copy_guard(
+              serve_dir: serve, source_dir: src, file_name: srv1_tls_key_file_name as String
+            ),
+            srv1_launcher_tls_copy_guard(
+              serve_dir: serve, source_dir: src, file_name: srv1_tls_cert_file_name as String
+            )
+          ]
+        )
       ),
-      srv1_tls_copy_guard(serve_dir: serve, source_dir: src, file_name: srv1_tls_cert_file_name as String)
-    ),
-    "; } || true"
+      right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "true")])
+    )
   )
+}
+
+// The removal race, as its own statement. `docker run --name X` fails while a container
+// named X still exists, so the restart path (systemd restarting the unit after a killed
+// container has EXITED but not been removed) dies on a name conflict unless the old one
+// is removed first — and on 2026-11-08 removal itself stalled, which is why the
+// retained gpu.sh polls for up to 300 s. `for i in $(seq 1 150)` with `sleep 2` is that
+// poll, from the row's container name: a lesson the operator learned at 3am, kept
+// inside the artifact instead of inside their memory of it.
+fn srv1_replica_supervisor_race_statement(name: String) -> Node {
+  let inspect = srv1_bash_unwrap(
+    built: bash_build_or_else(
+      left: srv1_launcher_quiet(
+        command: bash_build_command_from_word_nodes(
+          words: [
+            srv1_bash_bare(text: "docker"), srv1_bash_bare(text: "container"),
+            srv1_bash_bare(text: "inspect"), srv1_bash_bare(text: name)
+          ]
+        )
+      ),
+      right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "break")])
+    )
+  )
+  let remove = srv1_bash_unwrap(
+    built: bash_build_or_else(
+      left: srv1_launcher_quiet(
+        command: bash_build_command_from_word_nodes(
+          words: [
+            srv1_bash_bare(text: "docker"), srv1_bash_bare(text: "rm"),
+            srv1_bash_bare(text: "-f"), srv1_bash_bare(text: name)
+          ]
+        )
+      ),
+      right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "true")])
+    )
+  )
+  srv1_bash_unwrap(
+    built: bash_build_for(
+      name: "i",
+      words: [
+        srv1_bash_unwrap(
+          built: bash_build_word_cmdsubst(
+            body: srv1_bash_unwrap(
+              built: bash_build_seq_from_stmts(
+                stmts: [
+                  bash_build_command_from_word_nodes(
+                    words: [
+                      srv1_bash_bare(text: "seq"), srv1_bash_bare(text: "1"),
+                      srv1_bash_bare(text: "150")
+                    ]
+                  )
+                ]
+              )
+            )
+          )
+        )
+      ],
+      body: [
+        inspect,
+        remove,
+        bash_build_command_from_word_nodes(
+          words: [srv1_bash_bare(text: "sleep"), srv1_bash_bare(text: "2")]
+        )
+      ]
+    )
+  )
+}
+
+// The container this arm starts: every argv element of the typed shape, each one
+// emitted as ONE word through ^srv1_bash_arg. The list itself stays data — the row
+// srv1_replica_container_run_shape and this module's argv groups remain the place the
+// shape is described; what is no longer data is how each element is quoted.
+fn srv1_replica_docker_run_statement(
+  replica: Srv1ServingReplicaSpec,
+  config: Srv1LaunchConfig
+) -> Node {
+  bash_build_command_from_word_nodes(
+    words: map(srv1_replica_docker_argv(replica: replica, config: config), a => srv1_bash_arg(text: a)) as List<Node>
+  )
+}
+
+// The success line, with the identity it came up on: which card, at what port pair,
+// from which rendered argv file. One double-quoted word, because the operator greps it
+// out of the journal.
+fn srv1_launcher_started_echo(
+  replica: Srv1ServingReplicaSpec,
+  config: Srv1LaunchConfig
+) -> Node {
+  let message = string_concat_join(
+    [
+      "lil-replica: started " as String,
+      replica.container_name as String,
+      " on GPU " as String,
+      to_string(replica.index),
+      " (" as String,
+      srv1_replica_gpu_uuid_text(replica: replica),
+      ") publishing host port " as String,
+      to_string(replica.host_port),
+      " to container port " as String,
+      to_string(config.container_port),
+      " from the rendered argv " as String,
+      srv1_replica_engine_args_host_path(replica: replica) as String,
+    ],
+    ""
+  )
+  bash_build_command_from_word_nodes(
+    words: [srv1_bash_bare(text: "echo"), srv1_bash_quoted(parts: [srv1_bash_inert(text: message)])]
+  )
+}
+
+// The five statements of one arm. Each is its own statement node, so the case row puts
+// them one per line at its own indent; the arm is the complete rendered launch for that
+// replica, which is what leaves no shell variable for a typo or an empty environment to
+// redefine (the retained gpu.sh set $NAME/$GPU/$KV/$EXTRA from an arm and interpolated
+// them unquoted — `$EXTRA` expanding to nothing is how it entered the boot path).
+fn srv1_replica_launcher_arm_body(
+  replica: Srv1ServingReplicaSpec,
+  config: Srv1LaunchConfig
+) -> List<Node> {
+  let name = replica.container_name as String
+  [
+    srv1_replica_tls_identity_guard_statement(replica: replica),
+    srv1_bash_unwrap(
+      built: bash_build_or_else(
+        left: srv1_launcher_quiet(
+          command: bash_build_command_from_word_nodes(
+            words: [
+              srv1_bash_bare(text: "docker"), srv1_bash_bare(text: "rm"),
+              srv1_bash_bare(text: "-f"), srv1_bash_bare(text: name)
+            ]
+          )
+        ),
+        right: bash_build_command_from_word_nodes(words: [srv1_bash_bare(text: "true")])
+      )
+    ),
+    srv1_replica_supervisor_race_statement(name: name),
+    srv1_replica_docker_run_statement(replica: replica, config: config),
+    srv1_launcher_started_echo(replica: replica, config: config),
+  ]
 }
 
 fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: Srv1LaunchConfig) -> List<String> {
-  // One arm per roster row, and each arm carries its replica's removal race ahead of its `docker run`. The
-  // loop is not decoration: `docker run --name X` fails while a container named X still exists, so the
-  // restart path (systemd restarting the unit after a killed container has EXITED but not been removed) dies
-  // on a name conflict unless the old one is removed first -- and on 2026-11-08 removal itself stalled, which
-  // is why the retained gpu.sh polls for up to 300 s. Rendering that here, from the row's container name,
-  // keeps a lesson the operator learned at 3am inside the artifact instead of inside their memory of it.
   let known = string_concat_join(map(replicas, r => to_string(r.index)) as List<String>, " ")
-  let arms = flat_map(replicas, r =>
-    concat(
-      concat(
-        [
-          concat(concat("  ", to_string(r.index)), ")") as String,
-          srv1_replica_tls_identity_guard_line(replica: r),
-          concat(concat("    docker rm -f ", r.container_name as String), " >/dev/null 2>&1 || true") as String,
-          concat(
-            concat(
-              concat(
-                concat("    for i in $(seq 1 150); do docker container inspect ", r.container_name as String),
-                " >/dev/null 2>&1 || break; docker rm -f "
-              ),
-              r.container_name as String
-            ),
-            " >/dev/null 2>&1 || true; sleep 2; done"
-          ) as String,
-          concat("    ", string_concat_join(srv1_replica_docker_argv(replica: r, config: config), " ")) as String,
-          concat(
-            concat(
-              concat(
-                concat(
-                  concat(
-                    concat(
-                      concat(
-                        concat(concat("    echo \"lil-replica: started ", r.container_name as String), " on GPU "),
-                        to_string(r.index)
-                      ),
-                      " ("
-                    ),
-                    srv1_replica_gpu_uuid_text(replica: r)
-                  ),
-                  concat(concat(") publishing host port ", to_string(r.host_port)), " to container port ")
-                ),
-                to_string(config.container_port)
-              ),
-              " from the rendered argv "
-            ),
-            concat(srv1_replica_engine_args_host_path(replica: r) as String, "\"")
-          ) as String,
+  // The header is the file's own explanation of what it is, emitted through the comment
+  // row rather than written into the file by whoever last rendered it.
+  let header = map(
+    [
+      "#!/bin/bash" as String,
+      "# GENERATED by gunbc.serving.srv1_serving_replica_layout (srv1_replica_launcher_lines)." as String,
+      "# DO NOT EDIT ON THE HOST. Edit the .dag rows and re-render: the installed file's sha256 is recorded" as String,
+      "# as srv1_replica_launcher_sha256, so a hand edit here is a disagreement with a row, on purpose." as String,
+      "#" as String,
+      "# This is what lil-replica@.service execs. The operator's ~/strata-test/srv1_lil_serve_gpu.sh stays on" as String,
+      "# the host, unchanged, as the restore path -- but it is no longer the boot path, because its engine" as String,
+      "# line carried the pool key in argv and an unbound EXTRA-arguments suffix, and this renders neither." as String,
+    ],
+    line => srv1_bash_line(stmt: srv1_bash_unwrap(built: bash_build_comment(text: line)))
+  ) as List<String>
+  let preamble = [
+    srv1_bash_line(
+      stmt: bash_build_command_from_word_nodes(
+        words: [srv1_bash_bare(text: "set"), srv1_bash_bare(text: "-u")]
+      )
+    ),
+    // The only parameter expansion left in the boot path: the index systemd passes as
+    // %i. `${1:?…}` refuses an absent index in the shell itself, before any of this
+    // module's code could be asked to interpret a missing one.
+    srv1_bash_line(
+      stmt: bash_build_assign(
+        name: "IDX",
+        value: srv1_bash_unwrap(
+          built: bash_build_word_param_error(
+            index: "1", word: "usage: lil-replica-launch <replica-index>"
+          )
+        )
+      )
+    ),
+    srv1_bash_line(
+      stmt: bash_build_assign(
+        name: "ARGS_DIR",
+        value: srv1_bash_bare(text: srv1_replica_rendered_args_dir as String)
+      )
+    ),
+    srv1_bash_line(
+      stmt: bash_build_assign(
+        name: "ENV_FILE",
+        value: srv1_bash_bare(text: config.api_key_reference.host_env_file as String)
+      )
+    ),
+    // The refusals come BEFORE any arm, and therefore before any `docker run`. Rendered
+    // after the case they would still exit non-zero — on a host where the container had
+    // already been started, which is the opposite of a refusal: an unserved replica plus
+    // a stale container, and a unit that looks like it started something. A launcher
+    // that is going to refuse must refuse before it touches docker.
+    srv1_bash_line(
+      stmt: bash_build_assign(
+        name: "ARGS",
+        value: srv1_bash_unwrap(
+          built: bash_build_word_concat_from_nodes(
+            parts: [
+              srv1_bash_var(name: "ARGS_DIR"),
+              srv1_bash_bare(text: "/replica-"),
+              srv1_bash_var(name: "IDX"),
+              srv1_bash_bare(text: ".args"),
+            ]
+          )
+        )
+      )
+    ),
+    srv1_bash_line(
+      stmt: srv1_launcher_input_guard(
+        test: bash_build_test_bracket(
+          words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_var(name: "ARGS")])]
+        ),
+        message_parts: [
+          srv1_bash_inert(text: "lil-replica: rendered engine argv "),
+          srv1_bash_var(name: "ARGS"),
+          srv1_bash_inert(text: " is missing or empty"),
         ],
-        ["    ;;" as String]
+        code: "3"
+      )
+    ),
+    srv1_bash_line(
+      stmt: srv1_launcher_input_guard(
+        test: bash_build_test_bracket(
+          words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_var(name: "ENV_FILE")])]
+        ),
+        message_parts: [
+          srv1_bash_inert(text: "lil-replica: engine key env file "),
+          srv1_bash_var(name: "ENV_FILE"),
+          srv1_bash_inert(text: " is missing or empty"),
+        ],
+        code: "4"
+      )
+    ),
+    // The 0600 refusal is here for the same reason the env file is not in argv: it holds
+    // the pool's bearer key, and a boot path that read it after someone relaxed its mode
+    // would be reading a file any local user could have written.
+    srv1_bash_line(
+      stmt: srv1_launcher_input_guard(
+        test: bash_build_test_comparison(
+          left: srv1_bash_quoted(
+            parts: [
+              srv1_bash_unwrap(
+                built: bash_build_word_cmdsubst(
+                  body: bash_build_command_from_word_nodes(
+                    words: [
+                      srv1_bash_bare(text: "stat"), srv1_bash_bare(text: "-c"),
+                      srv1_bash_bare(text: "%a"),
+                      srv1_bash_quoted(parts: [srv1_bash_var(name: "ENV_FILE")]),
+                    ]
+                  )
+                )
+              )
+            ]
+          ),
+          op: "=",
+          right: srv1_bash_quoted(parts: [srv1_bash_inert(text: "600")])
+        ),
+        message_parts: [
+          srv1_bash_inert(text: "lil-replica: "),
+          srv1_bash_var(name: "ENV_FILE"),
+          srv1_bash_inert(text: " must be mode 0600"),
+        ],
+        code: "5"
+      )
+    ),
+    srv1_bash_line(
+      stmt: bash_build_assign(
+        name: "KNOWN_INDEXES",
+        value: srv1_bash_quoted(parts: [srv1_bash_inert(text: known)])
+      )
+    ),
+  ]
+  let arms = map(
+    replicas,
+    r => srv1_bash_unwrap(
+      built: bash_build_case_clause_block(
+        pattern: to_string(r.index),
+        body: srv1_replica_launcher_arm_body(replica: r, config: config)
       )
     )
-  ) as List<String>
-  concat(
-    concat(
-      [
-        "#!/bin/bash" as String,
-        "# GENERATED by gunbc.serving.srv1_serving_replica_layout (srv1_replica_launcher_lines)." as String,
-        "# DO NOT EDIT ON THE HOST. Edit the .dag rows and re-render: the installed file's sha256 is recorded" as String,
-        "# as srv1_replica_launcher_sha256, so a hand edit here is a disagreement with a row, on purpose." as String,
-        "#" as String,
-        "# This is what lil-replica@.service execs. The operator's ~/strata-test/srv1_lil_serve_gpu.sh stays on" as String,
-        "# the host, unchanged, as the restore path -- but it is no longer the boot path, because its engine" as String,
-        "# line carried the pool key in argv and an unbound EXTRA-arguments suffix, and this renders neither." as String,
-        "set -u" as String,
-        "IDX=$\{1:?usage: lil-replica-launch <replica-index>}" as String,
-        concat("ARGS_DIR=", srv1_replica_rendered_args_dir as String) as String,
-        concat("ENV_FILE=", config.api_key_reference.host_env_file as String) as String,
-        // The refusals come BEFORE any arm, and therefore before any `docker run`. Rendered after the case
-        // they would still exit non-zero -- on a host where the container had already been started, which is
-        // the opposite of a refusal: an unserved replica plus a stale container, and a unit that looks like it
-        // started something. A launcher that is going to refuse must refuse before it touches docker.
-        concat("ARGS=$ARGS_DIR/replica-$IDX.args" as String),
-        "[ -s \"$ARGS\" ] || { echo \"lil-replica: rendered engine argv $ARGS is missing or empty\" >&2; exit 3; }" as String,
-        "[ -s \"$ENV_FILE\" ] || { echo \"lil-replica: engine key env file $ENV_FILE is missing or empty\" >&2; exit 4; }" as String,
-        "[ \"$(stat -c %a \"$ENV_FILE\")\" = \"600\" ] || { echo \"lil-replica: $ENV_FILE must be mode 0600\" >&2; exit 5; }" as String,
-        concat(concat("KNOWN_INDEXES=\"", known), "\"") as String,
-        "case $IDX in" as String,
-      ],
-      arms
-    ),
-    [
-      concat("  *) echo \"lil-replica: unknown replica index '$IDX' (known: $KNOWN_INDEXES)\" >&2; exit 2 ;;" as String),
-      "esac" as String,
-    ]
+  ) as List<Node>
+  // The unknown index goes down before anything is started, on stderr, with the roster
+  // in the message — `%i` comes from a unit name an operator can type.
+  let fallback = srv1_bash_unwrap(
+    built: bash_build_case_clause_inline(
+      pattern: "*",
+      body: [
+        srv1_launcher_diagnostic(
+          message: srv1_bash_quoted(
+            parts: [
+              srv1_bash_inert(text: "lil-replica: unknown replica index '"),
+              srv1_bash_var(name: "IDX"),
+              srv1_bash_inert(text: "' (known: "),
+              srv1_bash_var(name: "KNOWN_INDEXES"),
+              srv1_bash_inert(text: ")"),
+            ]
+          )
+        ),
+        bash_build_exit(code: "2"),
+      ]
+    )
   )
+  let case_line = srv1_bash_line(
+    stmt: srv1_bash_unwrap(
+      built: bash_build_case(word: srv1_bash_var(name: "IDX"), clauses: concat(arms, [fallback]))
+    )
+  )
+  concat(concat(header, preamble), [case_line])
 }
 
 // THE SCAFFOLD MARKER FOR THE NEW LAUNCHER RENDER, on its own carrier. review 92788 is right that the gpu.sh

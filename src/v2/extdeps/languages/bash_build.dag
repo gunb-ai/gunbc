@@ -1171,6 +1171,18 @@ fn bash_build_with_redir_stdout_to_stderr(inner: Node) -> Node {
   bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stdout_to_stderr)
 }
 
+// THE DISCARD-BOTH-STREAMS REDIRECTION, spelled by the row that owns it. srv1's
+// launcher writes its docker probes as `docker rm -f X >/dev/null 2>&1`; the phrase of
+// v2.extdeps.languages.bash bash_redir_stdout_and_stderr_null is exactly that text,
+// glued. Composing the same-looking bytes by nesting the `>file` row with the `2>&1`
+// row does NOT reproduce them: the to_file row's concrete syntax is "> " with a space
+// (its lex span carries it), so the nest renders `> /dev/null 2>&1` -- a different token
+// sequence from the one in the installed file this render is digest-pinned to. One
+// redirection is one construct; reach for its row before arranging two that resemble it.
+fn bash_build_with_redir_stdout_and_stderr_null(inner: Node) -> Node {
+  bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stdout_and_stderr_null)
+}
+
 // THE OPERATORS OF A BRACKET TEST, AS A CLOSED SET. bash(1), node "Bash Conditional
 // Expressions", lists the primaries a conditional expression is built from: the unary
 // file and handle tests (-b -c -d -e -f -g -G -h -k -p -r -S -s -t -u -w -x -O -N -v -R),
