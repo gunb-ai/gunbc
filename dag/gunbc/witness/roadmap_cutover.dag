@@ -111,7 +111,7 @@ data cutover_step_rows: List<CutoverStep> = [
     modeled_entry: "gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs (admission) behind the fleet-converge workflow's dashboard_dispatch_run (dispatch)"
     host_effect: "installs and starts the staged build on the host through the modeled deploy, and pushes the cutover tag it was dispatched against"
     writes_roadmap_state: false
-    admission: "verification passed, the dispatched reference resolves to the staged revision, and each stage's run is positively identified at that revision declaring the mode it was dispatched for"
+    admission: "verification passed; the dispatched reference resolves to the staged revision; the pre-dispatch run snapshot succeeded and is non-empty; no dispatch of this revision is already queued or in progress; exactly ONE new run appeared (two is a race and is refused, not guessed); and that run declares the mode it was dispatched for at that revision and concluded successfully"
   },
   CutoverStep {
     ordinal: 8
@@ -273,6 +273,125 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
     feeds: "the same, with the run concluding failure"
     must: "refuse"
     refusal_text: "NO DEPLOY"
+  },
+  CutoverWitnessCase {
+    name: "citations_join_the_runbook_headings_to_the_model_rows_both_ways"
+    carrier: runbook_witness_carrier
+    feeds: "the shipped runbook, and the step ids read out of cutover_step_rows rather than retyped into the witness"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "a_citation_naming_an_unmodelled_step_is_reported"
+    carrier: runbook_witness_carrier
+    feeds: "the runbook with one heading citing a step the model does not have — a paragraph someone renamed by hand"
+    must: "refuse"
+    refusal_text: "not a modelled step"
+  },
+  CutoverWitnessCase {
+    name: "a_modelled_step_without_its_citation_is_reported"
+    carrier: runbook_witness_carrier
+    feeds: "the runbook with the staging heading's citation removed, so the operator would run without ever seeing step 2b"
+    must: "refuse"
+    refusal_text: "is cited 0 time(s)"
+  },
+  CutoverWitnessCase {
+    name: "rollback_starts_exactly_the_units_the_export_found_active"
+    carrier: runbook_witness_carrier
+    feeds: "the exported measurement with two of the five admitted units recorded active, and DISPOSITION 7A"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "rollback_refuses_an_export_naming_a_unit_off_the_roster"
+    carrier: runbook_witness_carrier
+    feeds: "the same export with a unit this cutover does not own added to it"
+    must: "refuse"
+    refusal_text: "not in the admitted five-unit roster"
+  },
+  CutoverWitnessCase {
+    name: "rollback_refuses_a_roster_unit_the_export_never_measured"
+    carrier: runbook_witness_carrier
+    feeds: "the same export with one admitted unit's line missing — its state is unknown, so 'was down' is a guess"
+    must: "refuse"
+    refusal_text: "has no line for"
+  },
+  CutoverWitnessCase {
+    name: "rollback_refuses_an_export_that_measured_nothing"
+    carrier: runbook_witness_carrier
+    feeds: "an empty export file: nothing was ever measured, so nothing may be started"
+    must: "refuse"
+    refusal_text: "missing or empty"
+  },
+  CutoverWitnessCase {
+    name: "the_restart_fixture_can_see_the_defect_it_was_written_for"
+    carrier: runbook_witness_carrier
+    feeds: "the same export in the shape the defective rollback read it — a second unit list pasted in front of the states"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "the_manifest_reaches_the_reader_intact_through_the_environment"
+    carrier: runbook_witness_carrier
+    feeds: "the exported seed as JSONL, including the historical revocation whose reason carries an apostrophe"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "the_interpolated_manifest_shape_is_refused_by_the_shell_that_parses_it"
+    carrier: runbook_witness_carrier
+    feeds: "the same manifest spliced INTO the command string, which is the shape step 6 no longer has"
+    must: "refuse"
+    refusal_text: "SHAPE REFUSED"
+  },
+  CutoverWitnessCase {
+    name: "the_witness_itself_fails_when_a_guard_stops_refusing"
+    carrier: runbook_witness_carrier
+    feeds: "a copy of the runbook whose argument guard no longer refuses, run through this very witness"
+    must: "refuse"
+    refusal_text: "was NOT refused"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_snapshot_whose_command_failed"
+    carrier: dispatch_witness_carrier
+    feeds: "a gh whose pre-dispatch snapshot exits nonzero — the pipeline used to report tr's zero instead, so every existing run looked new"
+    must: "refuse"
+    refusal_text: "the pre-dispatch run snapshot"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_snapshot_that_came_back_empty"
+    carrier: dispatch_witness_carrier
+    feeds: "a snapshot that succeeds with no ids: an empty exclusion set is not a correlation"
+    must: "refuse"
+    refusal_text: "is empty"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_dispatch_already_in_flight_at_the_revision"
+    carrier: dispatch_witness_carrier
+    feeds: "a workflow_dispatch run at the revision still queued or in progress when this stage is asked to dispatch"
+    must: "refuse"
+    refusal_text: "queued or in progress"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_an_in_flight_check_that_failed"
+    carrier: dispatch_witness_carrier
+    feeds: "a gh whose in-flight query exits nonzero; the boundary cannot be assumed"
+    must: "refuse"
+    refusal_text: "the in-flight check"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_two_new_runs_at_one_revision"
+    carrier: dispatch_witness_carrier
+    feeds: "two runs appearing at once for one stage: taking the first proves nothing about which this invocation created"
+    must: "refuse"
+    refusal_text: "two dispatches are racing"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_poll_that_failed"
+    carrier: dispatch_witness_carrier
+    feeds: "a gh whose candidate query exits nonzero mid-poll"
+    must: "refuse"
+    refusal_text: "the poll for mode=plan failed"
   }
 ]
 
@@ -340,7 +459,7 @@ data runbook_scaffold: Disposition = Scaffold {
 
 data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
 
-data runbook_loc_delta_net: Int = 917
+data runbook_loc_delta_net: Int = 1040
 data runbook_test_discriminator: String = "drop_in_round_trip_with_pre_existing_and_deploy_added"
 
 data runbook_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: TWO capabilities, because they retire DIFFERENT halves of tools/roadmap_cutover_runbook_witness.sh. (1) orch-emitted, for the residual shell (the sudo/systemd-run/systemctl stubs and the case assertions): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a function definition carrying a case statement over globs, a here-doc that writes a stub script, an array assignment read back as a whole-array expansion, or command substitution inside a test predicate — a missing target-language capability (class (b) of the hand-shell gate), not an unauthored migration. (2) modelled, for the witness process: its cases are the rows above (cutover_witness_case_rows) and its helpers are loaded from docs/runbooks/roadmap-event-log-cutover.md, never copied. When those rows run as a gunbc test row in gunbc.instrument_targets through the modelled filesystem and host-effect routes, this file is DELETED rather than emitted.")
@@ -349,9 +468,11 @@ data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissoluti
 
 // THE SIZE OF THE DEBT, NOT A CELEBRATION OF IT: net new hand-written shell this PR adds, per carrier. Counted
 // interim scaffold, not a census shrink; the review that asked for these rows named the count as the thing to
-// watch, so it lives where a claim can read it rather than in prose.
-data runbook_witness_loc_delta_net: Int = 200
-data dispatch_witness_loc_delta_net: Int = 88
+// watch, so it lives where a claim can read it rather than in prose. Counting rule, so the number is checkable and
+// not prose that quietly rots: wc -l of each carrier, every line of which this PR adds (all three files are new in
+// it). Re-measure with: wc -l docs/runbooks/roadmap-event-log-cutover.md tools/roadmap_cutover_*.sh
+data runbook_witness_loc_delta_net: Int = 480
+data dispatch_witness_loc_delta_net: Int = 136
 
 // Each carrier names the case that distinguishes it — the one that would pass on any nonzero exit if the witness
 // were weak, which is why it is the discriminator and not the admitting case.

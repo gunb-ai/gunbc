@@ -21,6 +21,15 @@
 #           $1 to the literal string "runbook" — step 1 would export into a relative directory of that name and
 #           step 7 would read the wrong export. `bash -n` cannot see that class; this can.
 #   PART B  the drop-in export/restore round trip, with a PRE-EXISTING drop-in and a DEPLOYMENT-ADDED one.
+#   PART C  the join between the runbook's step headings and the model's rows, in BOTH directions: every modelled
+#           step is cited by exactly one heading, and every citation names a modelled step. The step ids are read
+#           out of gunbc.witness.roadmap_cutover, so neither file can silently grow a step the other does not know.
+#   PART D  the rollback's restart leg, EXECUTED against a stateful systemctl stub: the units the export found
+#           active really receive `systemctl start`, the ones it found inactive really do not, and an export that
+#           is empty, off-roster, or missing a roster unit refuses with the readers still down. D5 proves the
+#           fixture can see the defect it was written for (the pasted-second-list shape starts nothing).
+#   PART E  the expected manifest arrives byte-for-byte through RUNE's environment and never through argv; E2
+#           runs the shape the runbook no longer uses and requires it to arrive CORRUPT, so E1 is not vacuous.
 #
 # Nothing in this file is a second authority: RUNF, UNITS, export_drop_ins, restore_drop_ins and need are loaded
 # out of the runbook at run time, so the thing being witnessed is literally the text the operator runs, and a
@@ -30,10 +39,15 @@
 # `systemctl` resolve to stubs on PATH. Run before the migration is authorized, not after it fails.
 #
 # Run:  bash tools/roadmap_cutover_runbook_witness.sh docs/runbooks/roadmap-event-log-cutover.md
+#       (optional second argument: the path to dag/gunbc/witness/roadmap_cutover.dag)
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
 [ -f "$RB" ] || { echo "WITNESS REFUSED: no runbook at [$RB] — there is nothing to witness"; exit 2; }
 FAILURES=0
+HELPERS_MISSING=
+MODEL_ARG=${2:-}
+MODEL=${MODEL_ARG:-$(cd "$(dirname "$RB")/../.." && pwd)/dag/gunbc/witness/roadmap_cutover.dag}
+fail() { echo "FAIL $*"; FAILURES=$((FAILURES+1)); }
 TMP=$(mktemp -d); SBIN=$TMP/sbin; SUDO=$TMP/bin; EXPORT_DIR=/opt/gunbc/exports/t6-20261110T230000Z
 TB=$TMP/guard1.sh; TB7=$TMP/guard7.sh
 mkdir -p "$SBIN" "$SUDO"
@@ -44,7 +58,7 @@ slice_from() { # $1 = exact first line, $2 = prefix of the last line
 }
 load_from_runbook() { # $1 = label, $2 = exact first line, $3 = prefix of last line
   local body; body=$(slice_from "$2" "$3")
-  if [ -z "$body" ]; then echo "WITNESS REFUSED: the runbook has no [$1] starting at [$2] — refusing to invent one"; FAILURES=$((FAILURES+1)); return 1; fi
+  if [ -z "$body" ]; then echo "WITNESS REFUSED: the runbook has no [$1] starting at [$2] — refusing to invent one"; FAILURES=$((FAILURES+1)); HELPERS_MISSING=1; return 1; fi
   eval "$body"
   echo "loaded from the runbook: $1"
 }
@@ -108,20 +122,69 @@ printf '%s\n' "$GUARD7" > "$TB7"; echo 'echo "GUARD HELD: D=$D SHA=$2"' >> "$TB7
 sha40=$(printf 'a%.0s' {1..40})
 
 echo "--- A1: correct helper, one data argument (step 1 passes \$D) ---"
-RUNF "$EXPORT_DIR" < "$TB"; echo "A1 rc=$? — 0 and the absolute path echoed back are required"
+# These five are ASSERTIONS, not commentary. An earlier pass printed "A1 rc=1 — 0 and the absolute path are
+# required" next to a rc of 1 and still exited 0, because nothing turned the printed expectation into a
+# condition: the witness reported results it did not enforce, and a guard that stopped working would have
+# passed. Every case now states the exit status it requires AND the diagnostic it requires, and a case that
+# disagrees with its own expectation increments FAILURES.
+OUT=$(RUNF "$EXPORT_DIR" < "$TB" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -eq 0 ] || fail "A1: the correct helper refused a well-formed call (rc=$RC)"
+printf '%s' "$OUT" | grep -qF "GUARD HELD: D=$EXPORT_DIR" \
+  || fail "A1: \$D did not arrive intact — no 'GUARD HELD: D=$EXPORT_DIR' in the output"
 
 echo "--- A2: the SHIFTED helper (a filler word after --), same script ---"
 RUNF_shifted() { sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash -s -- runbook "$@"; }
-RUNF_shifted "$EXPORT_DIR" < "$TB"; echo "A2 rc=$? — nonzero plus the located refusal is the required behaviour"
+OUT=$(RUNF_shifted "$EXPORT_DIR" < "$TB" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "A2: the SHIFTED helper was NOT refused — a shifted delivery would export into a relative directory named 'runbook'"
+printf '%s' "$OUT" | grep -qF 'argument delivery shifted' \
+  || fail "A2: the refusal did not name the defect (expected the runbook's own 'argument delivery shifted')"
 
 echo "--- A3: correct helper, two data arguments (step 7 passes \$D then \$SHA) ---"
-RUNF "$EXPORT_DIR" "$sha40" < "$TB7"; echo "A3 rc=$? — 0 with both values intact is required"
+OUT=$(RUNF "$EXPORT_DIR" "$sha40" < "$TB7" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -eq 0 ] || fail "A3: the correct helper refused a well-formed two-argument call (rc=$RC)"
+printf '%s' "$OUT" | grep -qF "GUARD HELD: D=$EXPORT_DIR SHA=$sha40" \
+  || fail "A3: \$D and \$SHA did not both arrive intact (expected 'GUARD HELD: D=$EXPORT_DIR SHA=$sha40')"
 
 echo "--- A4: the same script through the SHIFTED helper — the guard must refuse ---"
-RUNF_shifted "$EXPORT_DIR" "$sha40" < "$TB7"; echo "A4 rc=$? — nonzero is required"
+OUT=$(RUNF_shifted "$EXPORT_DIR" "$sha40" < "$TB7" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "A4: the SHIFTED helper was NOT refused on step 7's script"
+printf '%s' "$OUT" | grep -qF 'argument delivery shifted' \
+  || fail "A4: the refusal did not name the defect (expected 'argument delivery shifted')"
 
 echo "--- A5: a revision that is not 40 hex is refused by step 7's own guard ---"
-RUNF "$EXPORT_DIR" "not-a-sha" < "$TB7"; echo "A5 rc=$? — nonzero is required"
+OUT=$(RUNF "$EXPORT_DIR" "not-a-sha" < "$TB7" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "A5: a non-hex revision was accepted"
+printf '%s' "$OUT" | grep -qF 'which is not 40 hex' \
+  || fail "A5: the refusal did not say why (expected 'which is not 40 hex')"
+
+# A6: THE WITNESS ITSELF MUST BE ABLE TO FAIL. The five cases above are only worth what they enforce, so the
+# enforcement is tested: the runbook is copied with step 1's argument guard neutralised (the refusal replaced by
+# a no-op) and the WHOLE witness is re-run against that copy. If the mutation does not make the witness exit
+# nonzero, the A-series is narration again and this case says so.
+if [ -n "${RUNBOOK_WITNESS_NOMETA:-}" ]; then
+  echo "--- A6: skipped (this IS the meta run) ---"
+else
+  MUT=$TMP/mutated-runbook.md
+  sed 's|^  \*) echo "RUNF REFUSED: the export directory arrived as \[\$D\] — argument delivery shifted"; exit 1 ;;$|  *) : ;;|' "$RB" > "$MUT"
+  if [ "$(grep -cF 'RUNF REFUSED: the export directory arrived as' "$MUT")" = "$(grep -cF 'RUNF REFUSED: the export directory arrived as' "$RB")" ]; then
+    fail "A6: the mutation did not land — step 1's guard text was not found to neutralise, so this case proves nothing"
+  else
+    SELF=${BASH_SOURCE[0]:-$0}
+    CHILD_LOG=$TMP/meta-child.log
+    RUNBOOK_WITNESS_NOMETA=1 bash "$SELF" "$MUT" "$MODEL" > "$CHILD_LOG" 2>&1; RC=$?
+    OUT=$(cat "$CHILD_LOG")
+    echo "    (meta run: script [$SELF], mutated book [$MUT], rc=$RC, $(wc -c < "$CHILD_LOG") bytes)"
+    grep -E '^(FAIL|WITNESS REFUSED)' "$CHILD_LOG" | sed 's/^/    /'
+    [ "$RC" -ne 0 ] || fail "A6: a runbook whose argument guard never refuses still passed the witness — the A-series enforces nothing"
+    grep -q 'A2' "$CHILD_LOG" || fail "A6: the witness failed (rc=$RC) but its output names no A2 case"
+    echo "    A6 OK: a neutralised guard makes the witness itself exit $RC"
+  fi
+fi
 echo
 
 echo "================ PART B: the drop-in round trip, pre-existing AND deployment-added ================"
@@ -158,6 +221,259 @@ grep -q 'units/drop-ins/gunbc-roadmap.service.d/pre-existing.conf' "$EXP/units.d
 ( need "an unsatisfied predicate" false; echo "SHOULD NOT REACH" ) && fail "need() did not stop the script"
 echo "ROUND TRIP OK: every unit's drop-in directory returned to its own path, byte-identical; the"
 echo "               deployment-added one is gone; the pre-cutover ones (on both units) are back."
+echo
+
+echo "================ PART C: the runbook's headings and the model's rows join both ways ================"
+# The model is the authority for what the cutover IS (cutover_step_rows); the runbook is the text the operator
+# runs, and each of its step headings cites the row that authorises it. The step ids live in the MODEL and
+# nowhere else: they are read out of the .dag below, never retyped into this file, so a step can be added to one
+# file and be refused for not being in the other. A paragraph that is not a row, and a row nobody runs, both fail here.
+if [ ! -f "$MODEL" ]; then
+  echo "WITNESS REFUSED: no model at [$MODEL] — the step ids are read from it, not invented here"
+  FAILURES=$((FAILURES+1))
+else
+  model_step_ids() { awk '/^data cutover_step_rows/,/^]/' "$MODEL" | sed -n 's/^[[:space:]]*id: "\([^"]*\)".*/\1/p'; }
+  cited_ids()      { sed -n 's/^## .*— row `\([^`]*\)`.*/\1/p' "$1"; }
+  # one problem line per defect; silence means the join is exact in both directions
+  check_citations() {
+    local id n
+    for id in $(model_step_ids); do
+      n=$(cited_ids "$1" | grep -c "^${id}$")
+      [ "$n" -eq 1 ] || echo "step [$id] is cited $n time(s); exactly one heading must cite it"
+    done
+    for id in $(cited_ids "$1"); do
+      model_step_ids | grep -q "^${id}$" || echo "the runbook cites row [$id], which is not a modelled step"
+    done
+  }
+  NMODEL=$(model_step_ids | wc -l); NCITED=$(cited_ids "$RB" | wc -l)
+  echo "model rows: $NMODEL   runbook headings citing a row: $NCITED   (model: $MODEL)"
+  [ "$NMODEL" -gt 0 ] || fail "not one step id could be read from the model — the join would pass by emptiness"
+
+  PROBLEMS=$(check_citations "$RB")
+  if [ -z "$PROBLEMS" ]; then echo "C1 OK: every modelled step is cited by exactly one heading, and every citation names a modelled step"
+  else echo "$PROBLEMS"; fail "the shipped runbook and the model do not join" ; fi
+
+  # C2: a citation that names nothing — a step renamed in prose, or a paragraph someone added by hand.
+  GHOST=$TMP/red_ghost.md; sed 's/— row `observe`/— row `observed`/' "$RB" > "$GHOST"
+  OUT=$(check_citations "$GHOST")
+  { echo "$OUT" | grep -q 'not a modelled step' && echo "$OUT" | grep -q '\[observed\]'; } \
+    || fail "C2: a citation naming an unmodelled step was not reported (got: ${OUT:-<nothing>})"
+  [ -n "$OUT" ] || fail "C2 red case passed silently"
+
+  # C3: a modelled step nobody runs any more — its heading lost its citation, so the operator would never see it.
+  LOST=$TMP/red_lost.md; sed 's/ — row `stage`//' "$RB" > "$LOST"
+  OUT=$(check_citations "$LOST")
+  { echo "$OUT" | grep -q 'step \[stage\] is cited 0 time(s)' && ! echo "$OUT" | grep -q 'not a modelled step'; } \
+    || fail "C3: a modelled step without its citation was not reported, or something else was (got: ${OUT:-<nothing>})"
+
+  if [ -n "$PROBLEMS" ]; then echo "(the C2/C3 red cases above are the witness refusing a broken book, which is what they exist for)"; fi
+  [ "$FAILURES" -eq 0 ] && echo "CITATIONS OK: the book the operator runs and the rows that authorise it are the same nine steps, in both directions."
+  echo
+fi
+
+echo "================ PART D: the rollback starts exactly the units the export found active ================"
+# Step 7 restarts what step 2 measured, and the first version of it restarted NOTHING: the export lines already
+# read `<unit> <state>`, and pasting a second unit list in front of them made `read -r U STATE` bind
+# `<unit> active` to STATE, so no line ever equalled `active`. A rollback that reports a failure while leaving
+# the readers down is worse than one that crashes, so the leg is extracted from the runbook and EXECUTED against
+# a stateful systemctl stub: what it starts, and what it refuses to start, are both observed.
+slice_until() { # $1 = exact first line, $2 = exact last line (both matched at column 0)
+  awk -v b="$1" -v e="$2" '$0==b{f=1} f{print} f && $0==e{exit}' "$RB"
+}
+RESTORE_LEG=$(slice_until 'sudo systemctl reset-failed "${UNITS[@]}" || true' 'fi')
+NEED_FN=$(slice_from 'need() { local what="$1"; shift; if ! "$@"; then echo "ROLLBACK REFUSED: $what — nothing is started"; exit 1; fi; }' 'need() {')
+[ -n "$RESTORE_LEG" ] || fail "PART D: the rollback's restore leg could not be located in the runbook — refusing to invent one"
+[ -n "$NEED_FN" ]     || fail "PART D: need() could not be loaded from the runbook"
+
+CTL=$TMP/ctl; install -d -m 0755 "$CTL"
+cat > "$CTL/systemctl" <<'EOF'
+#!/usr/bin/env bash
+# A stateful stand-in: `start` records that the unit was started, `is-active` answers from what has been started.
+# Without the state, an is-active that always says "active" would let a rollback that started nothing pass.
+case "${1:-}" in
+  start) shift; for u in "$@"; do echo "$u" >> "$CTL_STARTED"; done ;;
+  is-active)
+    if [ -f "$CTL_STARTED" ] && grep -qx "${2:-}" "$CTL_STARTED"; then echo active; else echo inactive; fi ;;
+  reset-failed) : ;;
+  *) echo "systemctl-fake $*" ;;
+esac
+EOF
+chmod +x "$CTL/systemctl"
+
+# The leg is run through the REAL helper (RUNF, loaded from the runbook), with the export directory as data, so
+# argument delivery and the restart behaviour are witnessed in the same shape the operator uses.
+mk_leg() {
+  { printf 'set -euo pipefail\nD=$1\nDISPOSITION=$2\n'
+    printf 'UNITS=(%s)\n' "$(printf '"%s" ' "${UNITS[@]}")"
+    printf '%s\n' "$NEED_FN"
+    printf '%s\n' "$RESTORE_LEG"; } > "$TMP/leg.sh"
+}
+RBEXP=$TMP/rollback-export; install -d -m 0755 "$RBEXP"
+export CTL_STARTED=$TMP/started.log
+
+echo "--- D1: two of five recorded active, DISPOSITION 7A — those two and only those two must come up ---"
+printf '%s\n' "gunbc-roadmap.service active" "gunbc-roadmap-tailnet-door.service active" \
+  "gunbc-roadmap-belt-discovery.service inactive" "gunbc-roadmap-belt-exit.service inactive" \
+  "gunbc-roadmap-belt-credential-recovery.service inactive" > "$RBEXP/units.active.before"
+: > "$CTL_STARTED"; mk_leg; OUT=$(PATH="$CTL:$SUDO:$SBIN:$PATH" RUNF "$RBEXP" 7A < "$TMP/leg.sh" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -eq 0 ] || fail "D1: the rollback refused a well-formed export (rc=$RC)"
+grep -qx 'gunbc-roadmap.service' "$CTL_STARTED"        || fail "D1: a unit the export found active was NEVER started — this is the reported defect"
+grep -qx 'gunbc-roadmap-tailnet-door.service' "$CTL_STARTED" || fail "D1: the tailnet door was never started"
+for U in gunbc-roadmap-belt-discovery.service gunbc-roadmap-belt-exit.service gunbc-roadmap-belt-credential-recovery.service; do
+  ! grep -qx "$U" "$CTL_STARTED" || fail "D1: $U was recorded INACTIVE and the rollback started it anyway"
+done
+printf '%s' "$OUT" | grep -qF 'RESTORED 2 unit(s)' || fail "D1: the rollback did not report restoring 2 units (got: $(printf '%s' "$OUT" | tr '\n' '|'))"
+
+echo "--- D2: the export names a unit this cutover does not own — refuse, and start nothing ---"
+printf '%s\n' "gunbc-roadmap.service active" "not-our-unit.service active" > "$RBEXP/units.active.before"
+: > "$CTL_STARTED"; OUT=$(PATH="$CTL:$SUDO:$SBIN:$PATH" RUNF "$RBEXP" 7A < "$TMP/leg.sh" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "D2: an off-roster unit in the export was accepted"
+printf '%s' "$OUT" | grep -qF 'not in the admitted five-unit roster' || fail "D2: the refusal did not name the roster"
+[ ! -s "$CTL_STARTED" ] || fail "D2: it refused and started something anyway: $(tr '\n' ' ' < "$CTL_STARTED")"
+
+echo "--- D3: a roster unit has no line in the export — refusing to guess that it was down ---"
+printf '%s\n' "gunbc-roadmap.service active" "gunbc-roadmap-tailnet-door.service active" \
+  "gunbc-roadmap-belt-discovery.service inactive" "gunbc-roadmap-belt-exit.service inactive" > "$RBEXP/units.active.before"
+: > "$CTL_STARTED"; OUT=$(PATH="$CTL:$SUDO:$SBIN:$PATH" RUNF "$RBEXP" 7A < "$TMP/leg.sh" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "D3: a missing export line was silently read as 'was down'"
+printf '%s' "$OUT" | grep -qF 'has no line for' || fail "D3: the refusal did not say which unit is unmeasured"
+
+echo "--- D4: an empty export — no measurement, no rollback start ---"
+: > "$RBEXP/units.active.before"
+: > "$CTL_STARTED"; OUT=$(PATH="$CTL:$SUDO:$SBIN:$PATH" RUNF "$RBEXP" 7A < "$TMP/leg.sh" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "D4: an empty export was accepted"
+printf '%s' "$OUT" | grep -qF 'missing or empty' || fail "D4: the refusal did not say the export was missing or empty"
+
+echo "--- D5: the fixture must be able to see the defect it exists for (the pasted-list shape) ---"
+# Same export, same leg — but the export is built the way the defective rollback READ it, with a second unit
+# list pasted in front of it. If a rollback regressed to that shape, this witness must see zero starts; if it
+# does not see them, the fixture has gone blind and this case fails.
+printf '%s\n' "gunbc-roadmap.service active" "gunbc-roadmap-tailnet-door.service active" \
+  "gunbc-roadmap-belt-discovery.service inactive" "gunbc-roadmap-belt-exit.service inactive" \
+  "gunbc-roadmap-belt-credential-recovery.service inactive" > "$RBEXP/units.active.before"
+PASTED=$TMP/pasted-shape.before
+paste -d' ' <(printf '%s\n' "${UNITS[@]}") "$RBEXP/units.active.before" > "$PASTED"
+cp "$PASTED" "$RBEXP/units.active.before"
+: > "$CTL_STARTED"; OUT=$(PATH="$CTL:$SUDO:$SBIN:$PATH" RUNF "$RBEXP" 7A < "$TMP/leg.sh" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+if grep -q . "$CTL_STARTED"; then
+  fail "D5: the pasted-list shape started $(tr '\n' ' ' < "$CTL_STARTED") — the leg no longer reads the export directly, so the shape that hid the defect is back"
+else
+  echo "    D5 OK: the pasted shape starts nothing at all, which is the defect this PART was written to catch"
+fi
+echo
+
+echo "================ PART E: the manifest arrives as DATA, not as shell ================"
+# Step 5 passes the expected manifest through the environment (systemd-run --setenv), and step 6 now does the
+# same. An earlier step-6 put it INSIDE the command string that RUN hands to `bash -lc`, and the JSON's own
+# quotes were then parsed as shell by the shell systemd-run spawns: the reviewer reproduced an object arriving
+# as several arguments with its quotes removed. The manifest is the cutover's evidence, and one historical line
+# of it carries an apostrophe in a revocation reason, so both are used here verbatim.
+slice_from_t() { # like slice_from but both anchors are matched AFTER leading blanks are dropped
+  awk -v b="$2" -v e="$3" '{t=$0; sub(/^[ \t]+/,"",t)} t==b{f=1} f{print} f && index(t,e)==1{exit}' "$RB"
+}
+load_from_runbook_t() { # $1 = label, $2 = first line (blanks-insensitive), $3 = prefix of last line (blanks-insensitive)
+  local body; body=$(slice_from_t x "$2" "$3")
+  if [ -z "$body" ]; then echo "WITNESS REFUSED: the runbook has no [$1] starting at [$2] — refusing to invent one"; FAILURES=$((FAILURES+1)); HELPERS_MISSING=1; return 1; fi
+  eval "$body"
+  echo "loaded from the runbook: $1"
+}
+# RUNE closes on an INDENTED line (`         sudo systemd-run … "$CMD"; }`), so the anchors are matched with
+# leading blanks dropped: an end anchor at column 0 would never match, and a slice that runs to EOF would eval
+# the runbook's prose.
+load_from_runbook_t "RUNE, the environment-passing helper" \
+  'RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done' 'sudo systemd-run'
+load_from_runbook_t "RUN, the plain transient-unit helper" \
+  'RUN()  { sudo systemd-run --wait --collect --pipe --uid=briansrls -p MemoryMax=24G bash -lc "$1"; }' \
+  'RUN()  { sudo systemd-run'
+[ -z "$HELPERS_MISSING" ] || { echo "WITNESS REFUSED: the runbook did not supply RUN/RUNE"; exit 1; }
+
+REC=$TMP/record; install -d -m 0755 "$REC"
+cat > "$REC/systemd-run" <<'EOF'
+#!/usr/bin/env bash
+# Records argv and every --setenv value EXACTLY as received, then runs what the real one would run.
+: > "$ARGV_FILE"; : > "$ENV_FILE"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --setenv=*) printf '%s\n' "${1#--setenv=}" >> "$ENV_FILE"; export "${1#--setenv=}"; shift ;;
+    -p) shift 2 ;;
+    --uid|--uid=*|--wait|--collect|--pipe) shift ;;
+    bash) shift; printf '%s\n' "$*" >> "$ARGV_FILE"; exec bash "$@" ;;
+    *) echo "systemd-run-fake: unexpected argument [$1]" >&2; exit 2 ;;
+  esac
+done
+EOF
+cat > "$REC/sudo" <<'EOF'
+#!/usr/bin/env bash
+exec "$@"
+EOF
+cat > "$REC/gunbc" <<'EOF'
+#!/usr/bin/env bash
+# Stands in for the reader binary, recording ONE LINE PER ARGUMENT in a form that survives embedded newlines and
+# quotes. The question is never what the operator typed: it is what the reader is handed once the shell systemd-run
+# spawns has finished with it.
+: > "$ARGS_FILE"
+for a in "$@"; do printf '%q\n' "$a" >> "$ARGS_FILE"; done
+EOF
+chmod +x "$REC/systemd-run" "$REC/sudo" "$REC/gunbc"
+export ARGV_FILE=$TMP/argv.txt ENV_FILE=$TMP/env.txt ARGS_FILE=$TMP/args.txt
+
+MANIFEST=$TMP/seed.jsonl
+printf '%s\n' \
+  '{"kind":"acceptance","node":"roadmap-item-1","receipt":{"principal":"principal:google-oidc/accounts/116084671989231734979","id":"receipt-1"}}' \
+  '{"kind":"revocation","node":"roadmap-item-2","exact_prior_receipt":"receipt-2","reason":"operator revoked: it was the customer'\''s own row, not ours"}' \
+  '{"kind":"acceptance","node":"roadmap-item-3","receipt":{"principal":"principal:google-oidc/accounts/116084671989231734979","id":"receipt-3"}}' \
+  > "$MANIFEST"
+ROSTER='entry-graph-union-construction,shell-dag-floor-peak-calibration-rows'
+
+echo "--- E1: RUNE delivers the manifest byte-for-byte, and none of it is in argv ---"
+# The command is the runbook's shape: an ABSOLUTE $BIN (a `bash -l` rebuilds PATH, which is exactly why the runbook
+# never relies on a bare word) that reads both expectations out of the environment.
+BIN_E=$REC/gunbc
+CMD="$BIN_E run --function roadmap_event_log_read_back_cli --arg expected_manifest=\"\$EXPECTED_MANIFEST\" --arg retired_roster=\"\$EXPECTED_ROSTER\""
+: > "$ARGS_FILE"; : > "$ENV_FILE"
+PATH="$REC:$SUDO:$PATH" RUNE "EXPECTED_MANIFEST=$(cat "$MANIFEST")" "EXPECTED_ROSTER=$ROSTER" >/dev/null 2>&1
+RC=$?
+[ "$RC" -eq 0 ] || fail "E1: the environment shape exited $RC"
+# --setenv entries arrive in order and the manifest's own newlines are DATA, not separators, so the first entry is
+# the manifest with its prefix removed, and the roster is its own entry.
+awk 'NR==1{sub(/^EXPECTED_MANIFEST=/,""); print; next} /^EXPECTED_ROSTER=/{exit} {print}' "$ENV_FILE" > "$TMP/env.manifest.got"
+diff -q "$MANIFEST" "$TMP/env.manifest.got" >/dev/null \
+  || fail "E1: the manifest did not arrive in the environment byte-for-byte ($(grep -c . "$MANIFEST") lines expected, $(grep -c . "$TMP/env.manifest.got") received)"
+grep -qx "EXPECTED_ROSTER=$ROSTER" "$ENV_FILE" || fail "E1: the retired roster did not arrive in the environment as its own entry"
+# THE OBSERVATION THAT MATTERS: not what was typed, but what the reader is handed. One argument, the whole file,
+# apostrophe-bearing revocation line included, byte-for-byte.
+printf '%q\n' "expected_manifest=$(cat "$MANIFEST")" > "$TMP/arg.expected"
+grep -F 'expected_manifest=' "$ARGS_FILE" | head -1 > "$TMP/arg.got" || true
+diff -q "$TMP/arg.expected" "$TMP/arg.got" >/dev/null \
+  || fail "E1: the manifest did not reach the reader as one intact argument (got: $(cut -c1-140 "$TMP/arg.got"))"
+grep -qF 'operator revoked' "$ARGS_FILE" || fail "E1: the apostrophe-bearing revocation line did not survive the trip"
+grep -qF 'EXPECTED_MANIFEST' "$ARGV_FILE" || fail "E1: the command line no longer reads the manifest from the environment"
+
+echo "--- E2: the unsafe interpolated shape must be CAUGHT corrupting it (the fixture's own eyes) ---"
+SAFE_CMD="$CMD"
+MANIFEST_TEXT=$(cat "$MANIFEST")
+# The shape step 6 used to have, reproduced FAITHFULLY: the manifest's own text is spliced into the command string
+# by the SHELL THAT BUILDS IT, so the JSON's quotes arrive in the source the inner bash parses. (`$(cat …)` inside
+# the string would NOT reproduce it — a substitution the inner shell performs stays data; it is the outer splice
+# that turns data back into syntax. That distinction is why RUNE's environment is the fix and not a rewording.)
+CMD="$BIN_E run --function roadmap_event_log_read_back_cli --arg expected_manifest=\"$MANIFEST_TEXT\" --arg retired_roster=\"$ROSTER\""
+: > "$ARGS_FILE"; : > "$ENV_FILE"
+PATH="$REC:$SUDO:$PATH" RUN "$CMD" >/dev/null 2>&1
+RC2=$?
+NARG=$(grep -c . "$ARGS_FILE" || true)
+if [ "$RC2" -ne 0 ]; then
+  echo "    E2 OK: SHAPE REFUSED — the interpolated shape never even ran; the spliced JSON left the inner shell with a syntax error (rc=$RC2). That is the strongest form of the finding: the old step 6 could have failed to certify anything at all"
+elif diff -q "$TMP/arg.expected" <(grep -F 'expected_manifest=' "$ARGS_FILE" | head -1) >/dev/null 2>&1; then
+  fail "E2: the interpolated shape arrived INTACT — the fixture has gone blind, so E1 would prove nothing about the shape step 6 no longer uses"
+else
+  echo "    E2 OK: SHAPE REFUSED — the interpolated shape arrives ALTERED across $NARG arguments (the JSON's own quotes parsed as shell by the shell systemd-run spawns), which is why step 6 uses RUNE"
+fi
+CMD="$SAFE_CMD"
 echo
 
 if [ "$FAILURES" -eq 0 ]; then echo "ALL ASSERTIONS HOLD"; else echo "$FAILURES ASSERTION(S) FAILED"; fi
