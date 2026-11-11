@@ -60,6 +60,9 @@ import std.optional { Absent, Optional, Present }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
+  ContentHashCrossFamilyIncomparable,
+  ContentHashDifferent,
+  ContentHashEqual,
   Sha256Digest,
   Sha256Hash,
   compare_content_hash,
