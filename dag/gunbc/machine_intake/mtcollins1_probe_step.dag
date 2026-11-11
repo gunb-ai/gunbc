@@ -33,7 +33,7 @@ import gunbc.auth.secret_manager_shell_fetch {
   gunbc_ci_sm_decode_payload_program,
   gunbc_ci_sm_secret_to_dest_file_command
 }
-import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
+import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statement }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
@@ -182,10 +182,6 @@ fn gunbc_ci_mtcollins1_ui_status_asset_observe_invoke() -> String {
 // Manager read (gunbc_ci_sm_connect_timeout / gunbc_ci_sm_max_time) and the shared payload decode --
 // into its own 0600 file under RUNNER_TEMP, with the EXIT trap armed before the credential touches
 // disk; the run line is v2.workflow.gunbc_invoke_step_emit gunbc_run_command, the modeled invocation.
-fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
-  bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["pwd"]))))
-}
-
 fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_failure: Bool) -> List<Node> {
   // The status file exists only in the typed lane: the strict lanes' trap never mentions it, so
   // nothing fetch-status-related rides into the KVM observer's script (control:
@@ -272,7 +268,7 @@ fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_fai
   let middle = if typed_fetch_failure { [fetch_pair] } else { [fetch_pair, chmod] }
   let tail = [
     bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bash_build_word_var(name: "DEST_FILE")])]),
-    gunbc_ci_mtcollins1_probe_root_statement(),
+    gunbc_ci_repo_root_statement(),
   ]
   if typed_fetch_failure {
     concat(concat(typed_head, middle), tail)
@@ -336,7 +332,7 @@ fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
 // mtcollins1_kvm_observer_release_wet).
 fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
   join([
-    gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_mtcollins1_probe_root_statement()], set_e: false), "\n",
+    gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_repo_root_statement()], set_e: false), "\n",
     gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_kvm_observer_release_target.entry, function: gunbc_ci_mtcollins1_kvm_observer_release_target.function, claim_run: false), "\n",
   ], "")
 }

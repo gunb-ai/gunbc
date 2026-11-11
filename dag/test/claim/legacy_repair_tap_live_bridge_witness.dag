@@ -7,7 +7,7 @@ import std.optional { Present, Absent }
 import std.content_hash { structural_content_hash }
 import std.decl_ref { decl_ref }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
-import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
+import gunbc.generated_artifact { artifact_path, WholeCorpusCompileMeasuredRootDemandsArtifact }
 import extdeps.git.object_store { git_sha1_object_id }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject,
@@ -52,7 +52,7 @@ fn xl1_fixture_root_tap() -> Xl1PrimaryRootTap {
   emit_rust_reference_derived_rows_bridge(
     ["dag/test/fixture/reference_derived_graph", "dag/std"],
     whole_corpus_compile_repository as String,
-    whole_corpus_compile_demand_projection_path()
+    artifact_path(a: WholeCorpusCompileMeasuredRootDemandsArtifact)
   )
 }
 
@@ -79,7 +79,7 @@ test fn the_live_census_over_the_measured_fixture_root_counts_its_rows() -> Bool
 }
 
 test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
-  match emit_rust_reference_derived_rows_bridge([], whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path()) {
+  match emit_rust_reference_derived_rows_bridge([], whole_corpus_compile_repository as String, artifact_path(a: WholeCorpusCompileMeasuredRootDemandsArtifact)) {
     Xl1PrimaryRootRefused { cause: c } => string_contains(s: c, pattern: "empty")
     Xl1PrimaryRootObserved {
       primary_root: _,
