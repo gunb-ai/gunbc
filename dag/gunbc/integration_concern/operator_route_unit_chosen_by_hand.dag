@@ -1,0 +1,64 @@
+module gunbc.integration_concern.operator_route_unit_chosen_by_hand
+
+// RAISED BY WORK ITEM adhoc-9058fcaa-636 (the srv4 strata operator route), 2026-11-07, on PR #16043.
+// The operator route's serving unit became a POLICY FACT (harness_operator_unit_policy) rather than a
+// second hard-wired route (DESIGN 3: a policy, not a type and not a mechanism). Reading it from
+// product.fabric.selection's priced supply fold was ruled out at authoring: a route is not priced supply
+// structure (CandidateOffer carries structure only), and the serving -> select_supply path is itself a
+// declared frontier. So the hand-chosen constant forks std.decision select_realization: both answer
+// "which realization serves this demand", and while the unit is a constant the fold's chosen supply and
+// the operator route's unit can disagree with nothing checking it. WHY IT IS NOT BLOCKING TODAY, stated
+// against the state THIS diff leaves (my first version claimed exactly one operator candidate existed,
+// which this very diff falsifies by adding the srv4 strata row -- review 91848): TWO route rows now exist,
+// so the disagreement is expressible in principle. What keeps it from mattering today is contingent, not
+// structural -- the policy names the fabric router, the strata figures are all TranscribedUncited so a
+// strata round refuses at the wire before any request leaves (gunbc.harness.harness_reasoning_wire
+// harness_strata_reasoning_kwargs), and nothing else can select a second route. The obligation is carried,
+// not deferred silently: the lookup refuses with a typed cause when the policy names a unit no row
+// carries, on bind, placement AND observation, and those refusals are witnessed.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Present }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, operator_route_sighting_revision, operator_route_unit_chosen_by_hand_authorities }
+
+data operator_route_unit_chosen_by_hand: IntegrationConcern = IntegrationConcern {
+  identity: "operator_route_unit_chosen_by_hand",
+  kind: SuspectedFork {
+    authorities: operator_route_unit_chosen_by_hand_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "operator_route_for_unit"),
+    tail: [
+      decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_bind_operator"),
+      decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_operator_placement_for_unit"),
+    ],
+  },
+  question: "Which authority names the serving unit of the operator route: the harness_operator_unit_policy value, or std.decision select_realization once serving offers reach the priced supply fold? While the unit is a hand-chosen constant, can the fold's chosen supply and the operator route's unit disagree with nothing checking?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: operator_route_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "harness_operator_unit_policy") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "std.decision", decl_name: "select_realization") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "operator_route_for_unit") },
+        ],
+      },
+      account: "Seen while porting the lab's srv4 strata operator route to main: the port needed ONE fact naming which serving unit the operator endpoint answers for, and the only shaped choice available was a policy constant, beside the decision home that exists to make exactly that choice.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "std.decision", decl_name: "select_realization") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "operator_route_for_unit"),
+        control: Present { value: decl_ref(module_path: "test.claim.operator_endpoint_witness", decl_name: "the_placement_path_refuses_when_no_row_carries_the_named_unit") },
+        statement: "when the choice moves to the decision home, a policy naming a unit no route row carries must still refuse with its typed cause on BOTH bind and placement -- no fallback to the fleet seat, because the refusal IS the point of the lookup (DESIGN 5: refuse, never widen)",
+      },
+    ],
+    next: climbs_when(capability: "serving offers reach product.fabric.selection as priced supply structure (the flex_select_supply_consumer_frontier), so std.decision select_realization chooses over operator routes and harness_operator_unit_policy retires with this row"),
+  },
+}

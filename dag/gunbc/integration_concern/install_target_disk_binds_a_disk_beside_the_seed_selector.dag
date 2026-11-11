@@ -1,0 +1,55 @@
+module gunbc.integration_concern.install_target_disk_binds_a_disk_beside_the_seed_selector
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, HomeUnresolved, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, install_target_disk_binds_a_disk_beside_the_seed_selector_authorities, pxe_2a_base_revision }
+
+data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConcern = IntegrationConcern {
+  identity: "install_target_disk_binds_a_disk_beside_the_seed_selector",
+  kind: SuspectedFork {
+    authorities: install_target_disk_binds_a_disk_beside_the_seed_selector_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+    tail: [
+      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_pinned_match"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "TargetDiskSelector"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "BoundDiskEvidence"),
+    ],
+  },
+  question: "Is 'the disk this install may erase is the one with this observed serial' one decision or two? select_target_disk matches a TargetDiskSelector over a probe's whole population and mints sealed DiskSelectionProvenance with matched/observed counts; admit_install_target_disk admits ONE reported reading against a clock and a freshness window and renders upstream's storage.layout.match keys. The second cannot be fed the first honestly (a one-element population would claim discrimination nobody enumerated) and the first has no instant in its type, so neither can absorb the other today. What unifies them is the observation both want: a host's disk identity, read once, admitted once.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: pxe_2a_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "DiskSelectionProvenance") },
+        ],
+      },
+      account: "Raised by the 2026-11-10 review of gunbc#16275 against the PR that added gunbc.provisioning.install_target_disk. Read both modules in full: the seed's selection answers WHICH OF THE REPORTED POPULATION does a rule pick, is sealed to select_target_disk by DiskSelectionProvenance's admit_callers wall, and is consumed by bind_ubuntu_autoinstall_seed; the carrier answers MAY THIS INSTALL BE ACTUATED given this reading and this instant, is consumed by gunbc.fleet.site_pxe_edge_converge's install payload and gunbc.os_install_emit. The overlap is real — both turn an observed serial into a binding — and the difference is not cosmetic: a one-element call to select_target_disk would mint provenance claiming matched 1 of observed 1 over a population nobody enumerated, and that selection carries no read time, so the operator's requirement (refuse when the identity is no longer current) cannot be stated in it. Recorded rather than silently kept apart: the shared root is the disk observation, and PXE 2c is the first consumer that will hold both halves in one run.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "where does an admitted disk observation live, so that a population selection and a freshness-bound authorization are two readings of one record rather than two records? Candidates are gunbc.provisioning.install_target_disk's carrier, the seed's sealed DiskSelectionProvenance, or a third module beside extdeps.storage.device_identification — undecided until a run holds both.",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+        control: Absent,
+        statement: "a unification keeps what the carrier's admission refuses today: a reading never taken, a reader that reported no disk, an identity whose text is a glob, a reading whose fields hold no serial so no extdeps.os.ubuntu_autoinstall AutoinstallDiskPin can be built, a reading from after the decision, and a reading older than the caller's window — each still with its typed cause, and the site still withholding per host with the other hosts served",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),
+        control: Absent,
+        statement: "a unification keeps the seed's discriminating-power evidence (matched and observed counts over the population the probe reported) rather than loosening it to a serial string someone typed",
+      },
+    ],
+    next: climbs_when(capability: "PXE 2c lands — the workflow that reads the target disk identity in the SAME run as the boot, so one run holds both the host's enumerated disk population and a freshness-bound authorization for the disk it boots. At that revision: feed select_target_disk its population from admitted TargetDiskReading rows, or mint the seed's DiskSelectionProvenance from an InstallTargetDisk, and delete whichever of the two bindings stops being the authority. A third spelling of 'the disk is the one with this serial' before then is a defect, not a convenience."),
+  },
+}

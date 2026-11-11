@@ -1,0 +1,59 @@
+module gunbc.integration_concern.fleet_automation_principal_has_two_names
+
+// THE FLEET AUTOMATION PRINCIPAL HAS TWO NAMES (recorded 2026-11-08, PR 16079). The automation identity is
+// spelled by two declarations that never import each other: gunbc.fleet.fleet_posix_accounts
+// fleet_automation_user (name "gunbc-fleet", uid/gid 1001, the srv automation allocations) and
+// gunbc.fleet.fleet_ssh_locus fleet_automation_principal_login ("gunbc-automation", the login the fleet SSH
+// transport authenticates as and whose authorized_keys hold the fleet roster). They coexisted as separate
+// standing notes until 16079 gave the diskless runner boot stage a REAL login account under the transport's
+// name on every boot, which makes the divergence material: two routes could create two accounts or write the
+// fleet keys to the wrong home. It is recorded UNRESOLVED -- which name is THE fleet automation principal is
+// NOT decided by this row (gunbc.design_argument::single_authority).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Present }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, HomeUnresolved, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, fleet_automation_principal_has_two_names_authorities }
+
+data fleet_automation_principal_has_two_names: IntegrationConcern = IntegrationConcern {
+  identity: "fleet_automation_principal_has_two_names",
+  kind: SuspectedFork {
+    authorities: fleet_automation_principal_has_two_names_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "fleet_automation_user"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_ssh_locus", decl_name: "fleet_automation_principal_login"),
+      decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_fleet_authorized_keys_command"),
+    ],
+  },
+  question: "Which declaration is the fleet automation principal's ONE authoritative POSIX identity -- fleet_automation_user (name gunbc-fleet, uid/gid 1001, the srv automation allocations) or fleet_automation_principal_login (gunbc-automation, the login the fleet SSH transport authenticates as and whose authorized_keys hold the fleet roster)? If they are one principal, one of these is a fork of the other; if they are two accounts, the boot stage that realizes a login account and the SSH locus that authenticates it must agree on which one, and the fleet keys must land in exactly one home.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "29452aa0398d504c37ec856acafe5caa7c304e35",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "fleet_automation_user") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_ssh_locus", decl_name: "fleet_automation_principal_login") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_fleet_authorized_keys_command") },
+        ],
+      },
+      account: "PR 16079's diskless runner boot stage (gunbc.runner.runner_host_medium runner_host_fleet_authorized_keys_command) was given the transport login fleet_automation_principal_login (gunbc-automation) -- it creates that account and writes the fleet authorized_keys into its home on every boot -- while the same automation identity is modelled elsewhere as fleet_automation_user (gunbc-fleet, uid/gid 1001) in fleet_posix_accounts, which owns the srv automation allocations and its login shell. The two names had coexisted as separate standing notes with no import between them; a boot-time account creation and authorized_keys write makes the divergence material rather than cosmetic, so it is recorded unresolved instead of the boot stage silently adopting one name.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "Which module owns the fleet automation principal's single POSIX identity -- gunbc.fleet.fleet_posix_accounts (fleet_automation_user, gunbc-fleet) or gunbc.fleet.fleet_ssh_locus (fleet_automation_principal_login, gunbc-automation)? Neither imports the other's name today; resolving names one authoritative declaration and makes the boot stage, the SSH-transport login, and the srv automation allocations all read it.",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_fleet_authorized_keys_command"),
+        control: Present { value: decl_ref(module_path: "test.claim.runner.runner_host_medium_fleet_keys_witness", decl_name: "the_fleet_boot_stage_authorizes_exactly_the_fleet_roster") },
+        statement: "the boot stage writes exactly the fleet roster (gunbc.fleet.fleet_ssh_access fleet_authorized_keys) into ONE automation login's authorized_keys and no other principal; whichever name is designated authoritative, that witness must still pin the same login and the same two keys -- a resolution may not silently move the fleet keys to a different account or add a third identity",
+      },
+    ],
+    next: climbs_when(capability: "one of fleet_automation_user and fleet_automation_principal_login is designated the authoritative fleet automation principal, the other is aliased to it or removed, and the boot stage, the SSH-transport login, and the srv automation allocations all read the surviving name -- proven by an existing witness that changes if either name is renamed, so the two cannot silently diverge again"),
+  },
+}

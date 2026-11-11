@@ -1,0 +1,43 @@
+module gunbc.integration_concern.runner_capacity_realize_apply_has_no_executing_route
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, runner_capacity_realize_apply_has_no_executing_route_authorities }
+
+data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = IntegrationConcern {
+  identity: "runner_capacity_realize_apply_has_no_executing_route",
+  kind: SuspectedFork {
+    authorities: runner_capacity_realize_apply_has_no_executing_route_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+      decl_ref(module_path: "gunbc.apply", decl_name: "apply_wet"),
+    ],
+  },
+  question: "Which authority realizes runner slot adds: runner_capacity_realize's apply path or runner_host_file_converge_ci_wet? Only the latter has an executing route in CI (fleet-converge.yml); gunbc.apply::apply_wet is never invoked by any workflow.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "855daebfec53",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet") }],
+      },
+      account: "git grep origin/main finds no workflow that runs gunbc.apply apply_wet. fleet-converge.yml invokes fleet_converge_apply_wet, gcp_iam_*_apply_wet and branch_run_grant_apply_wet, never gunbc.apply. So runner_capacity_realize's apply has no executing route, while runner_host_file_converge_ci_wet is the route that actually converges slots. Two places answer 'realize runner slot adds' and only one runs.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit"),
+        control: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds"),
+        statement: "the capacity realize seam plans and preflights per-host additions, producing typed receipts; whether it executes or defers to the converge path is B3b's decision",
+      },
+    ],
+    next: climbs_when(capability: "B3b decides whether runner_capacity_realize is deleted or wired to an executing route"),
+  },
+}

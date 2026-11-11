@@ -1,0 +1,34 @@
+module gunbc.integration_concern.typed_argv_allowlist_refuses_a_modeled_format_constant
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, lab_stat_format_refusal }
+
+data typed_argv_allowlist_refuses_a_modeled_format_constant: IntegrationConcern = IntegrationConcern {
+  identity: "typed_argv_allowlist_refuses_a_modeled_format_constant",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_portable_argv_char_allowed"),
+    requirement: "a command word that a modeled constant DECLARES (the stat format gunbc.owned_directory owned_directory_stat_format, spelled %F|%U|%G|%a) is admitted by the typed argv route that carries it over ssh, instead of being refused as an unportable token",
+    standing: RequirementEstablished { by: lab_stat_format_refusal },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.owned_directory", decl_name: "owned_directory_stat_format"),
+    tail: [
+      decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_portable_argv_char_allowed"),
+      decl_ref(module_path: "gunbc.executor_privileged_operation", decl_name: "ReadDirectoryIdentity"),
+    ],
+  },
+  question: "How does a modeled format constant reach a remote typed argv without widening the portable character allowlist by hand: does the format word travel as a typed value the route quotes, or is the route-local allowlist a second authority over what a declared word may spell?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0c283689c72649d1ee996cf3f52ae1949636006f",
+      evidence: FreeSemigroup {
+        head: lab_stat_format_refusal,
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.owned_directory", decl_name: "owned_directory_stat_format") }],
+      },
+      account: "srv1_lab_dashboard_preflight_wet at this head returned the source decision Ready, then refused at step initial-reconcile: the stat of /opt/gunbc-lab was carried over ssh and typed_argv refused the argv token %F|%U|%G|%a as outside the portable allowlist. The word is the one owned_directory_stat_format declares. The srv1 lab no longer reaches this route (its transport is selected local from placement), so the defect stays live for any genuinely remote apply, srv2 next.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

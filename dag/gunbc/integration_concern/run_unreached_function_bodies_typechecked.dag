@@ -1,0 +1,37 @@
+module gunbc.integration_concern.run_unreached_function_bodies_typechecked
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.types { CommitSha }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, Integrated, IntegrationConcern, IntegrationEvidence, RequirementEstablished, RetainedExecutionResult, SuspectedCapabilityGap }
+
+data run_unreached_function_bodies_typechecked: IntegrationConcern = IntegrationConcern {
+  identity: "run_unreached_function_bodies_typechecked",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped"),
+    requirement: "a gunbc run typechecks the function bodies its requested functions can reach, not every body of every module the import closure names, while every refusal for reachable code and every non-function declaration check still fires",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired_scoped"),
+    tail: [decl_ref(module_path: "v1.compiler.compile", decl_name: "run_settle_compile_options")],
+  },
+  question: "Is the typecheck of function bodies no requested function reaches owed by a gunbc run? Split from run_closure_typecheck_exceeds_eval_demand, which keeps the signature and type-environment cost.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired") },
+        tail: [],
+      },
+      account: "The body-typecheck half of the pre-entry cost recorded under run_closure_typecheck_exceeds_eval_demand.",
+    },
+    tail: [],
+  },
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "71a247184d78679d9d526b4674713ba077270118" as CommitSha,
+    superseded: [],
+    replacement: FreeSemigroup { head: decl_ref(module_path: "v1.compiler.infer", decl_name: "typecheck_scoped"), tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "reconcile_scoped")] },
+    executions: FreeSemigroup { head: RetainedExecutionResult { control: decl_ref(module_path: "test.fixture.demanded_scope.scoped_pair", decl_name: "broken_entry"), run: "gunbc run --entry dag/test/fixture/demanded_scope/scoped_pair.dag --function broken_entry vs clean_entry", conclusion: "a reachable type error refuses; an unreached one (unreached_broken) runs; declared as gunbc.rung_drop gunbc_run_unreached_function_bodies_not_typechecked" }, tail: [RetainedExecutionResult { control: decl_ref(module_path: "gunbc.fleet.fleet_converge_plan_cli", decl_name: "fleet_converge_plan_wet"), run: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_operator_cli_entry, pre-change binary vs scoped", conclusion: "resolve_entry_graph_inclusive 1,528,505 -> 780,254 ms; reconcile 21 min -> 9 min; max_rss 16.9 -> 15.8 GiB; still not inside the 15-minute plan budget (signature/type-env cost remains in run_closure_typecheck_exceeds_eval_demand)" }] },
+  } },
+}

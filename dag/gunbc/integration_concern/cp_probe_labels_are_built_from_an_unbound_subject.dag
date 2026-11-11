@@ -1,0 +1,73 @@
+module gunbc.integration_concern.cp_probe_labels_are_built_from_an_unbound_subject
+
+// THE FCI-1 INSTRUMENT STILL BUILDS LABELS FROM AN UNBOUND SUBJECT. The 2026-11-09 review of the
+// srv3/srv4 fabric-slot ruling found that gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot()
+// was a TOTAL function over the refusal arms of its own subject gate, and ~29 call sites used it to build
+// allocation keys, /opt/fabric-cells paths and systemctl unit names -- so "the caller checked the gate
+// first" was the only thing between a refusal and an effect. That is what gunbc.design_argument::fail_closed
+// forbids ("a failure arm refuses, never widens"; "making it unwritable" beats catching the wrong state).
+// The effect surface is closed: the legs that mutate -- market reservation, the CAS attempt, the release
+// commit, the host preconditions, the live cell observation, the systemctl read -- now take
+// cp_probe_authorized_slot and act only on the identity BOUND by the roster's Selected arm, and a refusal
+// projects a marker that names no host and no committed index, so it cannot name a cell.
+// What remains is the label half: about twenty key/path/report builders still read the projection. Under a
+// refusal they build marker-shaped labels, which is safe today only because the effects no longer consume
+// them -- a fact about the callers, not about the types. Carrying the bound identity down those builders and
+// deleting the total projection is the rung; it was not taken here because it changes the signature of
+// nearly every observation helper in a ~4,000-line instrument whose wet paths cannot be exercised hermetically.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data cp_probe_labels_are_built_from_an_unbound_subject: IntegrationConcern = IntegrationConcern {
+  identity: "cp_probe_labels_are_built_from_an_unbound_subject",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    requirement: "a refused subject must be unable to produce a label that a leg can carry forward: every key, path and unit builder takes the RunnerSlotIdentity bound by the subject gate's Selected arm, and the total projection over the refusal arms is deleted",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    tail: [
+      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
+      decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_label"),
+    ],
+  },
+  question: "Do the key/path builders take the bound RunnerSlotIdentity as a parameter (the shape fci1_bounded_controls_legs already uses), or does the label surface collapse into a single builder that is handed the selection once per instrument run? And once no caller remains, can cp_probe_slot be deleted rather than documented?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8ca9a3a44194e713da051e7b764b501e93436cd2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+        ],
+      },
+      account: "Raised by the 2026-11-09 review of the srv3/srv4 ruling, which counted the call sites and quoted the new comment admitting the value 'can only reach a caller that skipped the gate'. The review is right that the comment was not a fix. The same review's remedy -- bind the Selected identity in the helpers -- is now carried by every mutating leg and is witnessed in test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness; the builders are what is left.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome {
+      model: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_authorized_slot"),
+        control: Absent,
+        statement: "no leg that mutates OR READS the market, the allocation store or the host may obtain a slot, or an answer about a cell, except through the identity bound by the subject gate's Selected arm -- a refusal is an arm of its own type (AllocationSlotNoSubject, Fci1SlotNoSubject, Fci1BindingNoSubject, AllocationSlotRefusedNoSubject), never the arm that a real observation of an empty directory produces; a row that lets a mutating leg read the projection instead goes red here",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_no_subject_label"),
+        control: Absent,
+        statement: "a refusal projects only the label string that names its own absence, which is not a host the fleet has, so a label built on a refusal cannot name a real cell; the projection itself is an Optional and no reader or writer may obtain an identity from a refusal at all -- only the pure builders in the residual scope may consume the label -- the property that keeps those uses from being a hazard while this rung stands",
+      },
+    ],
+    next: climbs_when(capability: "the RESIDUAL key, path and report builders -- pure label and wire sites only, since every effectful reader and writer was gated on the selection on 2026-11-09 (review 92425) -- take the Selected-bound identity and gunbc.instruments.fabric_control_plane_live_probe::cp_probe_slot is deleted, so no function in the instrument can name a slot the roster did not select"),
+  },
+}

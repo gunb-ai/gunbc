@@ -1,0 +1,40 @@
+module gunbc.integration_concern.emitter_never_moves_unique_accumulator_field
+
+// A linear (non-backtracking) accumulator that is a record field is copied on every persistent update:
+// record-update lowering emits rc_map_insert(record.field.clone(), ..). Measured: aliased im insert
+// 1.7-3.7 us (grows with size) vs uniquely owned 0.38-0.52 us. The v2 parser's own sharing is
+// backtracking, so it was fixed at its source (SpanIndex built from the committed tree) and this
+// emitter gap is recorded, not built.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, accumulator_move_source_revision }
+
+data emitter_never_moves_unique_accumulator_field: IntegrationConcern = IntegrationConcern {
+  identity: "emitter_never_moves_unique_accumulator_field",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.ownership", decl_name: "build_movable_set"),
+    requirement: "the v1 emitter moves a uniquely-owned accumulator field (projection b.f of a threaded non-fold accumulator) into a persistent update (rc_map_insert, merge, list push, set insert) instead of cloning it, so a linear accumulator does not copy-on-write every update",
+    standing: RequirementUnestablished { decided_by: "a prototype of the sound rule, fail-closed (wrong liveness is rustc E0507/E0382, never mem::take), run on the parse ladder: if the linear accumulator's update cost falls to the uniquely-owned figure, the rule is established" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.ownership", decl_name: "build_movable_set"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.ownership", decl_name: "moved_at_its_only_argument"),
+      decl_ref(module_path: "v1.compiler.ownership", decl_name: "analyze_dying_base_sites"),
+    ],
+  },
+  question: "Should one liveness rule subsume build_movable_set/moved_at_its_only_argument, FoldAccUnwrapProof/fold_body_safe_field_moves and analyze_dying_base_sites (TCO only) so a projection of a threaded accumulator is moved when it dies at the update?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: accumulator_move_source_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.ownership", decl_name: "build_movable_set") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.ownership", decl_name: "analyze_dying_base_sites") }],
+      },
+      account: "Microbench: aliased im insert 1.7-3.7 us vs uniquely owned 0.38-0.52 us vs std HashMap 0.10 us. An emitter move rule was prototyped and captured 0% on the parser (IDX_UNIQUE=0) because that sharing is backtracking; the existing leaves none covers a projection of a threaded non-fold accumulator.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

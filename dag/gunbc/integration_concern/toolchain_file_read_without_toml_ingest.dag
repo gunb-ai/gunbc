@@ -1,0 +1,31 @@
+module gunbc.integration_concern.toolchain_file_read_without_toml_ingest
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data toolchain_file_read_without_toml_ingest: IntegrationConcern = IntegrationConcern {
+  identity: "toolchain_file_read_without_toml_ingest",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.languages.toml.types", decl_name: "TomlDocument"),
+    requirement: "Read rust-toolchain.toml's channel through a TOML ingest into TomlDocument, so header comments, whitespace, dotted keys and escapes are the grammar's, not a scanner's.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel"), tail: [decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_requirement")] },
+  question: "TOML has an emit side only; the toolchain file's one field is read by a bounded line scanner that covers comments, header whitespace and the dotted form, and refuses typed (naming the form) on escapes and multi-line values. A TOML ingest grammar (rows in extdeps/languages/toml) would replace it; a file the scanner misreads refuses typed as naming no channel.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c2ae07a9d9e3d8f8f0003ce93777043547b7eaf8",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel") }, tail: [] },
+      account: "Remote-build PR 2 needs one field of one file; building a TOML ingest grammar is a separate language-layer change (review 91579).",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "extdeps.languages.toml.types", decl_name: "TomlDocument") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_requirement"), control: Absent, statement: "A toolchain file naming a channel yields a requirement; one that names none refuses typed, never defaults." }],
+    next: climbs_when(capability: "A TOML ingest into TomlDocument exists; rustup_toolchain_file_channel then reads toolchain.channel from the document and the line scanner is deleted."),
+  },
+}

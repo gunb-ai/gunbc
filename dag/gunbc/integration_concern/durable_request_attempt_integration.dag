@@ -1,0 +1,34 @@
+module gunbc.integration_concern.durable_request_attempt_integration
+
+// Separate integration obligations by their semantic owners; none grants the whole lifecycle.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import std.types { CommitSha }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesHistorical, ConcernSighting, ExistingHome, HistoricalDeclaration, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data durable_request_attempt_integration: IntegrationConcern = IntegrationConcern {
+  identity: "durable_request_attempt_integration",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState"),
+    requirement: "Connect durably accepted request identity to fenced attempt minting and recovery without a second live attempt or either direct launch bypass.",
+    standing: RequirementEstablished { by: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState"), tail: [decl_ref(module_path: "gunbc.durable_handoff_host", decl_name: "HostAcceptedRequest"), decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_provide")] },
+  question: "Connect durably accepted request identity to fenced attempt minting and recovery without a second live attempt or either direct launch bypass.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
+      evidence: FreeSemigroup { head: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } }, tail: [] },
+      account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.durable_handoff_host", decl_name: "HostAcceptedRequest"), control: Absent, statement: "Acceptance precedes dispatch; same request reattaches without duplicate execution." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.deploy_transition_bootstrap", decl_name: "unit_quiescence_admission"), control: Absent, statement: "Resource release requires independently proved quiescence; terminal receipt arrival is not descendant discharge." }],
+    next: climbs_when(capability: "PR 3 controller consumes accepted requests and existing attempt CAS semantics; PR 6 deletes both direct local launch paths; restart, cancellation and lost-launch controls prove no overlapping attempts."),
+  },
+}

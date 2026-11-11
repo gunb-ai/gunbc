@@ -1,0 +1,33 @@
+module gunbc.integration_concern.host_effect_apply_witness_import_block_absent
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+data host_effect_apply_witness_import_block_absent: IntegrationConcern = IntegrationConcern {
+  identity: "host_effect_apply_witness_import_block_absent",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "witness_discovery_scan_dirs"),
+    requirement: "every .dag rostered as a claim witness carries its import block, so the claim route resolves it, and one scheduled gate executes the rostered witnesses -- so that a claim-critical witness stays loadable and its claim stays checked",
+    standing: RequirementUnestablished { decided_by: "a claim-batch run of test.claim.host.host_effect_apply_witness that loads the module and reports its assertion results" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.host.host_effect_apply_witness", decl_name: "witness_shell_on_host_success_converges"),
+    tail: [
+      decl_ref(module_path: "gunbc.offline_local_recipe", decl_name: "offline_local_recipes"),
+    ],
+  },
+  question: "A claim witness whose import block is absent cannot LOAD: resolve refuses it on unresolved names, so the claim it asserts is never checked. This row records the repair for the one witness the equality wall depends on -- the named sentinel control for gunbc.host.host_effect::host_effect_drive_from_evidence -- and states plainly that it is NOT executed anywhere. The module is rostered in gunbc.offline_local_recipe (offline_local_recipes) as an OfflineLocalRecipe and excluded from CI enumeration by the WitnessExclusionRow for its pattern in gunbc.ci.ci_layer_roots: one-time evidence at whatever head it runs, NOT continuous CI enforcement. So the import block being present is checked by nothing that runs on a branch, and the witness's own assertions were checked by nothing at all at this pin. The repair restores keen-otter's explicit imports (witness-repair-v2 1d67569427c50b7937c27735f86cf0a0e9493f6a) rather than adding new assertions. REMOVAL TRIGGER: this row closes when a scheduled route executes the module -- an enrollment in the gate family that runs claim witnesses, or the removal of its WitnessExclusionRow together with a scheduled claim-batch run -- and reports its results.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "1ef0872a7e4e4fa7cf3df8ffc590b8447476e01a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_effect_apply_witness", decl_name: "witness_shell_on_host_success_converges") },
+        tail: [],
+      },
+      account: "Read at 1ef0872a7e4e4fa7cf3df8ffc590b8447476e01a (this PR's base): dag/test/claim/host/host_effect_apply_witness.dag carried no import line, while its body names symbols across std.algebra, std.types, std.effects, std.live_tree, std.realization_reconcile, extdeps.access.posix_effective_principal, extdeps.bmc.types, gunbc.host.host_effect, gunbc.host.host_effect_realize, gunbc.host.host_converge, gunbc.fleet.fleet_intent and gunbc.live_deploy.desired. The repair restores keen-otter's import block and re-checked that every imported name occurs in its module file at that revision. Not executed here: this lane is barred from running the seed, and CI does not execute witnesses.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
