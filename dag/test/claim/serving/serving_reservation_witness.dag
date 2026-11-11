@@ -27,7 +27,7 @@ module test.claim.serving.serving_reservation_witness
 //     --entry dag/test/claim/serving/serving_reservation_witness.dag \
 //     --functions <the witness_* names, comma-joined>
 import std.types { Bool }
-import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv14 }
 import gunbc.serving.serving_reservation {
@@ -68,7 +68,7 @@ test fn witness_a_non_prod_serving_host_is_charged_for_memory_by_its_own_identit
   // And srv3's pin withholds no runner cores: it is modelled with no exclusive cpuset, so width is untouched
   // on the CPU axis even while the memory axis pays. (A collapse that ignored non-prod hosts would charge
   // srv3 nothing; a collapse that charged the affinity arm would withhold cores -- either breaks this.)
-  let srv3_withholds_no_cores = host_cores_withheld_from_runner(operator_host_srv3) == 0
+  let srv3_withholds_no_cores = hardware_thread_count_value(t: host_cores_withheld_from_runner(operator_host_srv3)) == 0
   srv3_memory_charged && srv3_withholds_no_cores
 }
 

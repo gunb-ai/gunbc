@@ -36,6 +36,7 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
           && match host_cpu_admitted_width(host: h.identity) {
             CpuWidthDerived { slots: n } => h.runner_count <= n
             CpuWidthOfferAbsent { host: _ } => false
+            CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
           }
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
           && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: h.runner_count))

@@ -52,7 +52,7 @@ module gunbc.serving.serving_reservation
 import std.types { List, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
-import std.measure { ByteSize, byte_size_count, byte_size }
+import std.measure { ByteSize, byte_size_count, byte_size, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
@@ -269,17 +269,22 @@ fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation>
   }
 }
 
-// HOW MANY CORES A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive cores only. An
-// affinity-pinned host, or a host whose engine cpuset is unread (no CPU reservation), gives back zero cores here
-// -- which is the witness, stated.
-fn host_cores_withheld_from_runner(host: HostIdentity) -> Nat {
-  match host_reservations_for(host) {
+// HOW MANY CORES A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive cores only, in the
+// SAME carrier the width axis uses (`HardwareThreadCount`), so the width derivation subtracts a hardware-thread
+// quantity from a hardware-thread quantity and never unwraps the measure to mix a bare scalar with it (unit rule,
+// gunbc.design_argument::single_authority). The per-replica count still comes from core INDICES as a plain Nat
+// (cpu_reservation_excluded_cores -- an index-derived count, not a measure); only the total that meets the host's
+// thread count is lifted into the carrier. An affinity-pinned host, or a host whose engine cpuset is unread (no CPU
+// reservation), withholds zero cores -- which is the witness, stated.
+fn host_cores_withheld_from_runner(host: HostIdentity) -> HardwareThreadCount {
+  let cores = match host_reservations_for(host) {
     Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + match c.cpu {
       Present { value: cpu } => cpu_reservation_excluded_cores(cpu)
       Absent => 0
     })
     Absent => 0
   }
+  hardware_thread_count(count: cores)
 }
 
 // HOW MUCH MEMORY A SERVING HOST COMMITS TO ITS SERVING REPLICAS, for EVERY serving host -- not the prod-role

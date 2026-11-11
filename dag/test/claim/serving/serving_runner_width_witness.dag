@@ -23,13 +23,13 @@ module test.claim.serving.serving_runner_width_witness
 //     --entry dag/test/claim/serving/serving_runner_width_witness.dag \
 //     --functions witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_byte,witness_an_affinity_pin_leaves_the_cpu_axis_whole_where_an_exclusive_pin_withholds_its_cores
 import std.types { Bool }
-import std.measure { byte_size, byte_size_count, hardware_thread_count }
+import std.measure { byte_size, byte_size_count, hardware_thread_count, hardware_thread_count_value }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv14 }
 import gunbc.runner.runner_slot_allocation {
   RunnerMemoryEnvelopeDerived, RunnerMemoryEnvelopeUnestablished,
   host_runner_memory_envelope_resolution, host_runner_memory_envelope_resolution_with_serving,
-  cpu_width_of_threads_withheld,
+  cpu_width_of_threads_withheld, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted,
 }
 import gunbc.serving.serving_reservation { host_memory_reserved, host_cores_withheld_from_runner }
 
@@ -86,13 +86,40 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
     && butch_closed
 }
 
-// CPU: AFFINITY LEAVES THE WIDTH WHOLE, EXCLUSIVE PAYS ITS CORES. The axis is fed by the withheld count and
-// nothing else -- an affinity pin withholds zero and keeps all 128 offered threads; a pin that took 40 cores
-// exclusively offers 88. srv3's real pin is affinity, so its withheld count is zero and its axis is whole.
+// CPU: AFFINITY LEAVES THE WIDTH WHOLE, EXCLUSIVE PAYS ITS CORES, OVER-COMMIT REFUSES. The axis is fed by the
+// withheld count and nothing else -- an affinity pin withholds zero and keeps all 128 offered threads; a pin that
+// took 40 cores exclusively offers 88 (cores_per_slot = 1). srv3's real pin is affinity, so its withheld count is
+// zero and its axis is whole. And (review 93506) a reservation set LARGER than the machine is a typed refusal, not
+// a clamped zero -- while a genuine zero (withheld equals threads) stays CpuWidthDerived { slots: 0 }, a distinct arm.
 test fn witness_an_affinity_pin_leaves_the_cpu_axis_whole_where_an_exclusive_pin_withholds_its_cores() -> Bool {
-  let whole = cpu_width_of_threads_withheld(threads: hardware_thread_count(count: 128), withheld_cores: 0)
-  let minus_forty = cpu_width_of_threads_withheld(threads: hardware_thread_count(count: 128), withheld_cores: 40)
-  let srv3_whole = host_cores_withheld_from_runner(operator_host_srv3) == 0
-    && cpu_width_of_threads_withheld(threads: hardware_thread_count(count: 128), withheld_cores: host_cores_withheld_from_runner(operator_host_srv3)) == 128
-  whole == 128 && minus_forty == 88 && srv3_whole
+  let whole = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 128), withheld: hardware_thread_count(count: 0)) {
+    CpuWidthDerived { slots: n } => n == 128
+    CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
+  }
+  let minus_forty = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 128), withheld: hardware_thread_count(count: 40)) {
+    CpuWidthDerived { slots: n } => n == 88
+    CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
+  }
+  let srv3_withholds_none = hardware_thread_count_value(t: host_cores_withheld_from_runner(operator_host_srv3)) == 0
+  let srv3_whole = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 128), withheld: host_cores_withheld_from_runner(operator_host_srv3)) {
+    CpuWidthDerived { slots: n } => n == 128
+    CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
+  }
+  // THE DISCRIMINATING RED (review 93506): exclusive cores EXCEED the machine's threads. Before the fix this
+  // returned CpuWidthDerived { slots: 0 } -- a fabrication no reader could tell from a genuinely empty host.
+  let over_committed_is_a_refusal = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 4), withheld: hardware_thread_count(count: 5)) {
+    CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => true
+    CpuWidthDerived { slots: _ } => false
+    CpuWidthOfferAbsent { host: _ } => false
+  }
+  // A GENUINE zero -- withheld EQUALS threads, offered pool 0 -- is a derived width, the arm DISTINCT from the refusal.
+  let genuine_zero_still_derives = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 4), withheld: hardware_thread_count(count: 4)) {
+    CpuWidthDerived { slots: n } => n == 0
+    CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
+  }
+  whole && minus_forty && srv3_withholds_none && srv3_whole && over_committed_is_a_refusal && genuine_zero_still_derives
 }

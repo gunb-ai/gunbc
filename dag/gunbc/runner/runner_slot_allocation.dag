@@ -931,36 +931,58 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // core), so the gap has no width consequence today; it is kept as an axis so a host that is not an
 // M128-30, or a future cores_per_slot policy above 1, is charged by construction.
 //
-// THE QUOTIENT STAYS IN THE CARRIER: threads over threads-per-slot, both HardwareThreadCount.
-fn compute_host_cpu_admitted_width(host: ComputeHost) -> Int {
-  cpu_width_of_threads_withheld(threads: compute_host_cpu_threads(host: host), withheld_cores: host_cores_withheld_from_runner(host: host.identity))
+// THE QUOTIENT STAYS IN THE CARRIER: threads over threads-per-slot, both HardwareThreadCount. The withheld cores
+// arrive in that SAME carrier (host_cores_withheld_from_runner), so the offered pool is a hardware-thread
+// subtraction, never a bare scalar mixed into one (unit rule, gunbc.design_argument::single_authority).
+//
+// THE CPU AXIS, PRICED IN THE CARRIER (B4a, 2026-11-10; over-commit typed 2026-11-11). Until recently this axis
+// had NO CPU reservation: every core was offered to runner slots, kept as an axis so a host that is not an
+// M128-30, or a cores_per_slot policy above 1, is charged by construction. A serving replica that takes cores
+// EXCLUSIVELY is that day arriving: exclusively-withheld cores belong to no other tenant, so they cannot be offered
+// to CI. An AFFINITY pin -- a cpuset the engine may run on -- is NOT withheld; the runner keeps those cores and the
+// width is unchanged. Only the exclusive arm reduces width, by exactly the cores withheld (witnessed in
+// test.claim.serving.serving_runner_width_witness). srv3/srv4/butch pin AFFINITIVELY, so their offered threads are
+// unchanged and the axis stays non-binding, as the 2026-09-19 ruling intends.
+//
+// FAIL CLOSED, NOT CLAMPED (review 93506, gunbc.design_argument::fail_closed). This function used to return an
+// ordinary Int and floor-clamp an over-committed host (exclusive cores exceed host threads) to zero -- a fabrication
+// no reader could tell from a host that genuinely offers nothing. A reservation set larger than the machine is
+// CONTRADICTORY input, so it now refuses: measure_sub (std.measure) decides the offered pool, and
+// MeasureSubtrahendExceedsMinuend becomes the typed CpuWidthOverCommitted arm rather than a plausible zero. A
+// genuine zero -- withheld EQUALS threads -- stays CpuWidthDerived { slots: 0 }, distinct from the refusal.
+fn compute_host_cpu_admitted_width(host: ComputeHost) -> HostCpuWidthResolution {
+  cpu_width_of_threads_withheld(
+    host: host.identity,
+    threads: compute_host_cpu_threads(host: host),
+    withheld: host_cores_withheld_from_runner(host: host.identity))
 }
 
-// THE CPU AXIS, NOW PRICED (B4a, 2026-11-10). Until today this axis had NO CPU reservation: every core was
-// offered to runner slots (the comment above said so and kept the axis for the day it binds -- a future
-// cores_per_slot above 1, or a box that is not an M128-30). A serving replica that takes cores EXCLUSIVELY is
-// that day arriving: exclusively-withheld cores belong to no other tenant and so cannot be offered to CI. An
-// AFFINITY pin -- a cpuset the engine may run on -- is NOT withheld; the runner keeps those cores and the width
-// is unchanged. The derivation's decision, witnessed in test.claim.serving.serving_runner_width_witness:
-// only the exclusive arm reduces width, and it reduces it by exactly the cores withheld. srv3/srv4 pin their
-// engines AFFINITIVELY, so their offered threads are unchanged (the axis stays 128 and non-binding, as the
-// 2026-09-19 ruling intends); a host that reserved cores exclusively offers the pool minus the withheld count,
-// and the committed width falls by it once the axis binds. Fail closed: a host whose exclusive reservations
-// exceed its cores offers zero -- over-committed and visibly so, never under-priced.
-fn cpu_width_of_threads_withheld(threads: HardwareThreadCount, withheld_cores: Nat) -> Int {
-  let total = hardware_thread_count_value(t: threads)
-  let available = if withheld_cores <= total { total - withheld_cores } else { 0 }
-  measure_fit_count_floor(capacity: hardware_thread_count(count: available), each: gunbc_runner_cores_per_slot()) as Int
+// THE SINGLE HOME OF THE CPU SUBTRACTION. Both operands are HardwareThreadCount; measure_sub (std.measure) decides
+// the offered pool and REFUSES an over-commit (MeasureSubtrahendExceedsMinuend -> CpuWidthOverCommitted) rather than
+// clamping to a fabricated zero. A genuine zero (withheld equals threads -> offered 0) is CpuWidthDerived { slots: 0 },
+// a distinct arm. Exposed for the width witness, which exercises the arithmetic and both refusals without a fleet row.
+fn cpu_width_of_threads_withheld(host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount) -> HostCpuWidthResolution {
+  match measure_sub(a: threads, b: withheld) {
+    MeasureDifference { value: available } =>
+      CpuWidthDerived { slots: measure_fit_count_floor(capacity: available, each: gunbc_runner_cores_per_slot()) as Int }
+    MeasureSubtrahendExceedsMinuend =>
+      CpuWidthOverCommitted { host: host, threads: threads, withheld: withheld }
+  }
 }
 
 type HostCpuWidthResolution
   = CpuWidthDerived { slots: Int }
   | CpuWidthOfferAbsent { host: HostIdentity }
+  // CONTRADICTORY INPUT, refused not clamped: the host's exclusive serving reservations exceed its threads, so no
+  // offered pool exists and the cores axis admits no width. Located (host) and quantitative (threads/withheld) so a
+  // reader sees it is over-committed, not empty. Distinct from CpuWidthDerived { slots: 0 } (a host that exactly
+  // withholds all its threads) -- the state-space conflation gunbc.recurring_failure_mode state_space_conflation warns of.
+  | CpuWidthOverCommitted { host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount }
 
 fn host_cpu_admitted_width(host: HostIdentity) -> HostCpuWidthResolution {
   match fleet_compute_offer_for(host: host) {
     Absent => CpuWidthOfferAbsent { host: host }
-    Present { value: o } => CpuWidthDerived { slots: compute_host_cpu_admitted_width(host: o.supply.physical) }
+    Present { value: o } => compute_host_cpu_admitted_width(host: o.supply.physical)
   }
 }
 
@@ -986,6 +1008,11 @@ data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THRE
 type WidthAxisStanding
   = AxisAdmits { axis: NonEmptyStr, slots: Int }
   | AxisUnmeasured { axis: NonEmptyStr, reason: NonEmptyStr }
+  // CONTRADICTORY, not unobserved. The axis's inputs are present but mutually inconsistent (e.g. exclusive serving
+  // reservations exceed the machine's threads), so the axis REFUSES. It is NOT AxisUnmeasured: that name means the
+  // input was never read and the remedy is to observe it, whereas here the remedy is to fix the reservation. Naming
+  // them apart is the state_space_conflation guard this module already applies to memory.
+  | AxisRefused { axis: NonEmptyStr, reason: NonEmptyStr }
 
 fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
   match standing {
@@ -993,6 +1020,8 @@ fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
       join([a as String, " admits ", to_string(n)], "")
     AxisUnmeasured { axis: a, reason: _ } =>
       join([a as String, " unmeasured"], "")
+    AxisRefused { axis: a, reason: r } =>
+      join([a as String, " REFUSED: ", r as String], "")
   }
 }
 
@@ -1049,6 +1078,15 @@ fn width_axes_of(f: HostWidthFacts) -> List<WidthAxisStanding> {
   }
   let cpu = match f.cpu {
     CpuWidthDerived { slots: n } => AxisAdmits { axis: "cores" as NonEmptyStr, slots: n }
+    CpuWidthOverCommitted { host: _, threads: t, withheld: w } =>
+      AxisRefused {
+        axis: "cores" as NonEmptyStr,
+        reason: join([
+          "exclusive serving reservations withhold ", to_string(hardware_thread_count_value(t: w)),
+          " cores from a machine of ", to_string(hardware_thread_count_value(t: t)),
+          " threads -- contradictory input, refused not clamped (fail_closed)",
+        ], "") as NonEmptyStr,
+      }
     CpuWidthOfferAbsent { host: _ } =>
       AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: "the host has no gunbc.ci.ci_fleet compute offer, so its processors are unknown and the cores axis states no width" as NonEmptyStr }
   }
@@ -1065,6 +1103,7 @@ fn width_axis_binds_at(standing: WidthAxisStanding, committed: Int) -> Bool {
   match standing {
     AxisAdmits { axis: _, slots: n } => n == committed
     AxisUnmeasured { axis: _, reason: _ } => false
+    AxisRefused { axis: _, reason: _ } => false
   }
 }
 
@@ -1106,6 +1145,7 @@ fn width_binding_head(host: HostIdentity) -> String {
         match a {
           AxisAdmits { axis: x, slots: _ } => x as String
           AxisUnmeasured { axis: x, reason: _ } => x as String
+          AxisRefused { axis: x, reason: _ } => x as String
         }), "+"),
     ], "")
   } else {
@@ -1121,6 +1161,10 @@ fn host_width_binding_label(host: HostIdentity) -> String {
     match a {
       AxisAdmits { axis: _, slots: _ } => false
       AxisUnmeasured { axis: _, reason: _ } => true
+      // A refused axis is NOT unmeasured -- calling it that would tell the operator to observe a fact that is
+      // present but contradictory; the remedy is to fix the reservation, not to read again. It surfaces through the
+      // committed-width refusal (RunnerWidthUnresolved + its cause text), not as an unmeasured axis.
+      AxisRefused { axis: _, reason: _ } => false
     })
   join([
     width_binding_head(host: host),
@@ -1129,6 +1173,7 @@ fn host_width_binding_label(host: HostIdentity) -> String {
         match a {
           AxisAdmits { axis: x, slots: _ } => x as String
           AxisUnmeasured { axis: x, reason: _ } => x as String
+          AxisRefused { axis: x, reason: _ } => x as String
         }), "+"), " unmeasured"], "")
     } else {
       ""
@@ -1195,6 +1240,9 @@ type RunnerWidthUnresolvedCause
   = WidthMemoryDenominatorUnestablished { host: HostIdentity, cause: NonEmptyStr }
   | WidthSlotShapeInadmissible { reason: NonEmptyStr }
   | WidthComputeOfferAbsent { host: HostIdentity }
+  // CONTRADICTORY INPUT refused, not clamped: a host whose exclusive serving reservations exceed its threads.
+  // Located (host) and quantitative (threads/withheld) so a downstream refusal QUOTES the shortfall (fail_closed).
+  | WidthCpuOverCommitted { host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount }
 
 type RunnerWidthResolution
   = RunnerWidthDerived { slots: Int }
@@ -1220,6 +1268,13 @@ fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> Stri
       join([
         "the committed runner width of ", h as String,
         " is UNRESOLVED, not zero: the host has no gunbc.ci.ci_fleet compute offer, so its processors are unknown and the cores axis states no width",
+      ], "")
+    WidthCpuOverCommitted { host: h, threads: t, withheld: w } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: its exclusive serving reservations withhold ", to_string(hardware_thread_count_value(t: w)),
+        " cores from a machine of only ", to_string(hardware_thread_count_value(t: t)),
+        " threads -- contradictory input, REFUSED rather than clamped to a plausible zero (fail_closed)",
       ], "")
   }
 }
@@ -1262,6 +1317,8 @@ fn committed_width_of_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationR
           match f.cpu {
             CpuWidthOfferAbsent { host: h } =>
               RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
+            CpuWidthOverCommitted { host: h, threads: t, withheld: w } =>
+              RunnerWidthUnresolved { cause: WidthCpuOverCommitted { host: h, threads: t, withheld: w } }
             CpuWidthDerived { slots: by_cpu } =>
               RunnerWidthDerived { slots: derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: rows) }
           }
