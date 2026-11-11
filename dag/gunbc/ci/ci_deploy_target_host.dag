@@ -11,6 +11,7 @@ import gunbc.hostname_read {
   HostnameShortCaptureRefused,
 }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { observed_host_selector_join, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.ci.ci_fleet { srv1_offer, ComputeOffer }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
@@ -135,9 +136,21 @@ fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> De
   }
 }
 
+// THE SSH DESTINATION IS A SPELLING AND IS RESOLVED LIKE ANY OTHER. This used to be `h == id`: an assertion
+// that the name the caller hands to ssh is character-for-character the machine's identity, which is the same
+// confusion this branch removes everywhere else. It holds only of the handful of machines whose kernel
+// hostname still equals their identity, and refused every SSH deploy aimed at a machine that has been given
+// a human name -- srv14 answers "butch", so a deploy to srv14 over ssh was structurally invalid while the
+// machine sat unconverged. Both sides now go through the join, so the destination is accepted exactly when
+// it names the machine the proof claims to deploy to, and a destination that is nobody's, or is somebody
+// else's, is refused with the registry's own reason rather than a bare false.
 fn deploy_target_ssh_proof_structurally_valid(proof: DeployTargetHostProof) -> Bool {
   match proof {
-    SshExplicitHost { host: id, ssh_host: h } => h == id
+    SshExplicitHost { host: id, ssh_host: h } =>
+      match observed_host_selector_join(expected: id as String, observed: h as String) {
+        ObservedHostSelectorAgreed { host: _ } => true
+        ObservedHostSelectorJoinRefused { cause: _ } => false
+      }
     RunnerIdentityOnHost { host: _ } => true
   }
 }
@@ -149,6 +162,15 @@ fn runner_name_proves_host_identity(runner_name: String, host: HostIdentity) -> 
     || runner_name.ends_with(suffix: concat("@", host))
 }
 
+// THE KERNEL'S ANSWER PROVES NOTHING ABOUT THE HOST UNTIL THE ALLOCATION RESOLVES IT
+// (gunbc.hostname_allocation::observed_host_identity; gunbc.plans.fleet_machine_authority section 4.4 (b*)).
+// The old form asked whether the observed spelling EQUALLED the target identity -- true on a machine
+// that has no name of its own, false on srv14 answering "butch" and on every host this program
+// renames. Both words now go through the one join (gunbc.hostname_allocation
+// ::observed_host_selector_join): the target identity the dispatch selected and the name this machine
+// answers to agree on a HostIdentity or contribute no proof at all -- and a refusal keeps its cause
+// rather than collapsing into a string comparison. The runner's registered LABEL remains the other
+// proof, because that is the routing token the runner presented, not the kernel's word about itself.
 fn deploy_target_runner_identity_proves_host(
   proof: DeployTargetHostProof,
   observed_hostname: String,
@@ -156,7 +178,10 @@ fn deploy_target_runner_identity_proves_host(
 ) -> Bool {
   match proof {
     RunnerIdentityOnHost { host: id } =>
-      (observed_hostname == id)
+      (match observed_host_selector_join(expected: id, observed: observed_hostname) {
+        ObservedHostSelectorAgreed { host: _ } => true
+        ObservedHostSelectorJoinRefused { cause: _ } => false
+      })
         || runner_name_proves_host_identity(runner_name: observed_runner_name, host: id)
     SshExplicitHost { host: _, ssh_host: _ } => true
   }

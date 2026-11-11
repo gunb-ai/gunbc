@@ -69,7 +69,7 @@ import gunbc.rust_emitted_crate { EmittedRustCrate }
 import gunbc.rust_emitted_edge { EmittedEdge }
 import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics, cast_realization_diagnostics }
 
-import v1.compiler.emit_rust { emit_rust_selected }
+import v1.compiler.emit_rust { emit_rust_selected, ambiguous_leaf_value_ref_diagnostics }
 
 import v1.compiler.emit_python { emit_python }
 
@@ -1663,10 +1663,16 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
         } else {
           []
         }
+      // An ambiguous bare data value-reference is refused HERE, at the resolution boundary that built
+      // `item_leaf_owner_modules` from the complete item registry, and never reaches the emitter (which
+      // used to render it as a diverging `panic!`). Unconditional -- like the typecheck diagnostics beside
+      // it this is a correctness gate, not an analysis the interpreter may opt out of (DESIGN.md
+      // gunbc.design_argument::fail_closed). See `ambiguous_leaf_value_ref_diagnostics` in v1.compiler.emit_rust.
+      let ambiguous_leaf_diags = ambiguous_leaf_value_ref_diagnostics(typed: typed, source_indices: source_indices)
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, test_reference_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, test_reference_diags, ambiguous_leaf_diags),
         provider_demands: pass.provider_demands,
         source_indices: source_indices,
         complexity: complexity,
