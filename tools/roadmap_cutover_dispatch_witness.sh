@@ -59,6 +59,9 @@
 #   dispatch_refuses_the_prelude_when_the_read_back_was_never_verified
 #   activation_refuses_an_admission_whose_verification_could_not_be_redone
 #   activation_refuses_an_admission_with_no_verification_attempt_recorded
+#   activation_refuses_a_forged_admission_pair
+#   activation_refuses_a_verification_name_that_cannot_be_destroyed
+#   activation_refuses_a_verification_whose_name_cannot_be_published
 #
 set -u
 RB=${1:?usage: roadmap_cutover_dispatch_witness.sh <path to the runbook>}
@@ -416,40 +419,49 @@ S5_AT=$(grep -n 'the only state from which step 5b may be entered' "$RB" | head 
 [ -n "$S5_AT" ] || { echo "WITNESS REFUSED: the runbook no longer carries step 5's admission line, so neither its mint nor its admission can be lifted and the consumer would be tested against a fixture the producer does not write"; exit 1; }
 # The mint comes FIRST in step 5 — that ordering is the whole point — so the anchors are located globally and then
 # checked to sit inside step 5's own fence, rather than searched forward from the admission line.
-MINT_FROM=$(grep -n '^VERIFY_ATTEMPT=\$(printf' "$RB" | head -1 | cut -d: -f1)
-MINT_TO=$(awk -v s="${MINT_FROM:-0}" 'NR>=s && /exit 1; \}/ {print NR; exit}' "$RB")
+MINT_FROM=$(grep -n '^VERIFY_ATTEMPT=$(printf' "$RB" | head -1 | cut -d: -f1)
+DESTROY_FROM=$(grep -n '^if \[ -e "\$D/verify.attempt" \]' "$RB" | head -1 | cut -d: -f1)
 ADMIT_FROM=$(grep -n "^  { echo 'MIGRATION VERIFIED'" "$RB" | head -1 | cut -d: -f1)
 ADMIT_TO=$(grep -n '^  } > "\$D/migration\.verified"$' "$RB" | head -1 | cut -d: -f1)
-[ -n "$MINT_FROM" ] && [ -n "$ADMIT_FROM" ] && [ -n "$ADMIT_TO" ] \
-  || { echo "WITNESS REFUSED: step 5's mint or admission anchors are not where the runbook is supposed to define them ($RB:$S5_AT) — the lift is refused rather than hand-written"; exit 1; }
+[ -n "$MINT_FROM" ] && [ -n "$DESTROY_FROM" ] && [ -n "$ADMIT_FROM" ] && [ -n "$ADMIT_TO" ] \
+  || { echo "WITNESS REFUSED: step 5's mint, one-act destruction or admission anchors are not where the runbook is supposed to define them ($RB:$S5_AT) — the lift is refused rather than hand-written"; exit 1; }
+DESTROY_TO=$(awk -v s="$DESTROY_FROM" 'NR>s && /^fi$/ {print NR; exit}' "$RB")
+PUBLISH_FROM=$(grep -n '^printf .*"\$VERIFY_ATTEMPT" > "\$D/verify.attempt"' "$RB" | head -1 | cut -d: -f1)
+# The publish is TWO refusals — the write, and the read-back that must agree with it. Lift through the last one
+# before the admission, or the witness would certify a publish block that had quietly lost its read-back.
+PUBLISH_TO=$(awk -v s="${PUBLISH_FROM:-0}" -v e="${ADMIT_FROM:-0}" 'NR>=s && NR<e && /exit 1; \}/ {n=NR} END{print n}' "$RB")
+[ -n "$DESTROY_TO" ] && [ -n "$PUBLISH_FROM" ] && [ -n "$PUBLISH_TO" ] \
+  || { echo "WITNESS REFUSED: step 5's destruction act or its publish-and-read-back could not be lifted from $RB (destroy=$DESTROY_FROM..${DESTROY_TO:-?} publish=${PUBLISH_FROM:-?}..${PUBLISH_TO:-?}) — the order this witness certifies would be the fixture's, not the producer's"; exit 1; }
 FENCE_START=$(awk -v a="$ADMIT_FROM" 'NR<a && /^[[:space:]]*```bash$/ {n=NR} END{print n+0}' "$RB")
-[ "$MINT_FROM" -gt "$FENCE_START" ] && [ "$MINT_FROM" -lt "$ADMIT_FROM" ] && [ "$ADMIT_FROM" -lt "$ADMIT_TO" ] \
-  && [ "$ADMIT_TO" -lt "$S5_AT" ] \
-  || { echo "WITNESS REFUSED: step 5's mint and admission are not in the order step 5 must keep (fence=$FENCE_START mint=$MINT_FROM admission=$ADMIT_FROM..$ADMIT_TO admit-line=$S5_AT) — the mint has to precede the admission inside the same fence, which is the ordering that stops a refused step 5 being spoken for by its own old documents"; exit 1; }
-MINT_LINES=$([ -n "$MINT_FROM" ] && [ -n "$MINT_TO" ] && sed -n "${MINT_FROM},${MINT_TO}p" "$RB")
-ADMIT_LINES=$([ -n "$ADMIT_FROM" ] && [ -n "$ADMIT_TO" ] && sed -n "${ADMIT_FROM},${ADMIT_TO}p" "$RB")
-[ -n "$MINT_LINES" ] || { echo "WITNESS REFUSED: step 5's verification-attempt mint could not be lifted from $RB:$S5_AT, so the admission this witness produces would be a copy rather than the producer's own output"; exit 1; }
-[ -n "$ADMIT_LINES" ] || { echo "WITNESS REFUSED: step 5's admission block could not be lifted from $RB:$S5_AT, so the consumer would be tested against a document the producer does not write"; exit 1; }
-# The runbook's OWN mint-and-invalidate block. Whether the attempt name is refreshed BEFORE the
-# deletion or after it is exactly what decides the stale-admission case, so a re-run has to be
-# performed by the runbook's text; imitating it here would let this witness pass on an order the
-# producer does not have.
-MINTI_END=$(awk -v s="${MINT_FROM:-0}" 'NR>s && /^done$/ {print NR; exit}' "$RB")
-MINTI_LINES=$([ -n "$MINT_FROM" ] && [ -n "$MINTI_END" ] && sed -n "${MINT_FROM},${MINTI_END}p" "$RB")
-[ -n "$MINTI_LINES" ] || { echo "WITNESS REFUSED: step 5's mint-and-invalidate block could not be lifted from $RB (mint at $MINT_FROM, no closing 'done' after it), so a refused step 5 could not be produced by the producer's own text"; exit 1; }
-printf '%s\n' "$MINTI_LINES" | grep -q '"$D/read-back.out"' \
-  || { echo "WITNESS REFUSED: the lifted mint-and-invalidate block does not reach step 5's invalidation (no read-back.out in it) — the re-run would delete nothing and the stale case would prove nothing"; exit 1; }
-# The ordering that the stale-admission case exists to protect: the name is minted BEFORE the previous
-# attempt's documents are destroyed. Checked, not assumed — and the block must be exactly one loop, or
-# the lift has swept past step 5's deletion and is certifying something else.
-MINT_BEFORE_DEL=$(awk -v s="${MINT_FROM:-0}" 'NR>s && /^for stale in / {print NR; exit}' "$RB")
-[ -n "$MINT_BEFORE_DEL" ] && [ "$MINT_FROM" -lt "$MINT_BEFORE_DEL" ] \
-  || { echo "WITNESS REFUSED: step 5 mints its verification name at line $MINT_FROM but its invalidation loop starts at ${MINT_BEFORE_DEL:-nowhere} — the name has to be recorded BEFORE the previous attempt's documents are destroyed, otherwise a step 5 that refuses on the deletion leaves the previous attempt's name standing and its own old documents speak for it"; exit 1; }
-[ "$(printf '%s\n' "$MINTI_LINES" | grep -c '^for stale in ')" = 1 ] \
-  && [ "$(printf '%s\n' "$MINTI_LINES" | grep -c '^done$')" = 1 ] \
-  || { echo "WITNESS REFUSED: the lifted mint-and-invalidate block is not one invalidation loop ($(printf '%s\n' "$MINTI_LINES" | grep -c '^for stale in ') loops, $(printf '%s\n' "$MINTI_LINES" | grep -c '^done$') closes) — the refused re-entry could not be reproduced from step 5's own text"; exit 1; }
+# THE ORDER, CHECKED AND NOT ASSUMED: mint, then ONE act that destroys the previous authorization, then publish
+# this attempt's name, then the admission. Publish-before-destroy is the defect this ordering exists to prevent, so
+# a runbook that reordered these lines has to make THIS witness fail rather than let the consumer cases pass on a
+# producer that no longer carries the guarantee.
+[ "$MINT_FROM" -gt "$FENCE_START" ] && [ "$MINT_FROM" -lt "$DESTROY_FROM" ] \
+  && [ "$DESTROY_TO" -lt "$PUBLISH_FROM" ] && [ "$PUBLISH_TO" -lt "$ADMIT_FROM" ] \
+  && [ "$ADMIT_FROM" -lt "$ADMIT_TO" ] && [ "$ADMIT_TO" -lt "$S5_AT" ] \
+  || { echo "WITNESS REFUSED: step 5's lines are not in the order it must keep (fence=$FENCE_START mint=$MINT_FROM destroy=$DESTROY_FROM..$DESTROY_TO publish=$PUBLISH_FROM..$PUBLISH_TO admission=$ADMIT_FROM..$ADMIT_TO admit-line=$S5_AT) — the previous attempt's documents have to be destroyed BEFORE this attempt publishes its name, or a failed publication leaves the old name beside the old admission"; exit 1; }
+MINT_LINES=$(sed -n "${MINT_FROM}p" "$RB")
+DESTROY_LINES=$(sed -n "${DESTROY_FROM},${DESTROY_TO}p" "$RB")
+PUBLISH_LINES=$(sed -n "${PUBLISH_FROM},${PUBLISH_TO}p" "$RB")
+ADMIT_LINES=$(sed -n "${ADMIT_FROM},${ADMIT_TO}p" "$RB")
+[ -n "$MINT_LINES" ] && [ -n "$DESTROY_LINES" ] && [ -n "$PUBLISH_LINES" ] && [ -n "$ADMIT_LINES" ] \
+  || { echo "WITNESS REFUSED: one of step 5's four blocks (mint, one-act destruction, publish, admission) lifted empty from $RB:$S5_AT — a copy would let the consumer pass against a producer that does not exist"; exit 1; }
+# The destruction has to be ONE act naming all three documents. A loop that deletes them one at a time stops at its
+# first failure and leaves the pair intact, which is the defect the one-act form closes.
+[ "$(printf '%s\n' "$DESTROY_LINES" | grep -c 'rm -f --')" = 1 ] \
+  || { echo "WITNESS REFUSED: step 5's destruction is not one rm act ($(printf '%s\n' "$DESTROY_LINES" | grep -c 'rm -f --') of them) — a previous attempt's name and the document naming it have to go together or not at all"; exit 1; }
+for doc in '$D/verify.attempt' '$D/migration.verified' '$D/read-back.out'; do
+  printf '%s\n' "$DESTROY_LINES" | grep -qF "$doc" \
+    || { echo "WITNESS REFUSED: step 5's one destruction act does not name $doc — the consumer would be trusting a document the producer never agreed to destroy"; exit 1; }
+done
+[ "$(printf '%s\n' "$DESTROY_LINES" | grep -c 'for stale in ')" = 1 ] \
+  && [ "$(printf '%s\n' "$DESTROY_LINES" | grep -cE '^[[:space:]]*done$')" = 1 ] \
+  || { echo "WITNESS REFUSED: step 5's destruction act does not re-check every operand it claims to have removed ($(printf '%s\n' "$DESTROY_LINES" | grep -c 'for stale in ') absence loops) — an rm that reports success and leaves a file behind must be caught here, not by step 5b"; exit 1; }
+printf '%s\n' "$PUBLISH_LINES" | grep -q '> "\$D/verify.attempt"' \
+  && printf '%s\n' "$PUBLISH_LINES" | grep -q 'cat "\$D/verify.attempt"' \
+  || { echo "WITNESS REFUSED: step 5 publishes its verification name without reading it back — a write that fails while an old file survives would then be indistinguishable from a fresh attempt"; exit 1; }
 printf '%s\n' "$ADMIT_LINES" | grep -q 'ATTEMPT=$VERIFY_ATTEMPT' \
-  || { echo "WITNESS REFUSED: the lifted admission block carries no ATTEMPT= field — step 5 stopped naming its verifications, and step 5b's binding gate would be reading a field nobody writes"; exit 1; }
 
 PRE_CMD=$(grep -m1 -- '--function roadmap_event_log_read_back_cli' "$RB")
 PRE_MANIFEST=$(grep -m1 '^MANIFEST=' "$RB")
@@ -461,11 +473,14 @@ TIPV=$(printf 'd%.0s' {1..40})   # where the event branch stands, as the stub gi
 
 run_prelude() { # $1 label, $2 admit|refuse, $3 expected diagnostic, rest: STUB_* overrides and SKIP_VERIFIED=1
   local label="$1" want="$2" say="$3"; shift 3
-  local PD=$TMP/prelude PDIR=$TMP/prelude/D RCT=$TMP/prelude_rune_calls skipv="" stale="" noatt="" kv
+  local PD=$TMP/prelude PDIR=$TMP/prelude/D RCT=$TMP/prelude_rune_calls skipv="" stale="" noatt="" unatt="" nopub="" forged="" kv
   for kv in "$@"; do case "$kv" in
     SKIP_VERIFIED=1) skipv=1 ;;
     STALE_ADMISSION=1) stale=1 ;;
     NO_VERIFY_ATTEMPT=1) noatt=1 ;;
+    UNDELETABLE_ATTEMPT=1) unatt=1 ;;
+    UNWRITABLE_ATTEMPT=1) nopub=1 ;;
+    FORGED_ADMISSION=1) forged=1 ;;
   esac; done
   rm -rf "$PD"; install -d "$PD" "$PDIR/branch"
   : > "$RCT"; : > "$TMP/prelude_state"; : > "$TMP/prelude_gh"; : > "$TMP/prelude_git"
@@ -484,64 +499,116 @@ STUBBED
   printf 'READ-BACK OK 1 record(s) agree with the seed\n' > "$PDIR/read-back.out"
   # The verification is named and its admission written by the runbook's own lines, run under the same stub git the
   # prelude sees, so TIP_NOW and READ_BACK_SHA256 are computed the way the producer computes them — not pasted.
-  produce_admission() { # $1 = admit (write the admission too) | mint (name only, which is all a step 5 does before its first fallible act)
+  # The producer, run by the producer's own lines. `entry` = mint, destroy the previous authorization in one act,
+  # publish this attempt's name; `admit` adds the admission that names it. ONE shell for the whole entry: the
+  # publish and the admission both expand $VERIFY_ATTEMPT, so running the lifted blocks in separate shells would
+  # write an empty name and every consumer case below would pass for the wrong reason.
+  produce_admission() { # $1 = entry | admit
+    local script="$MINT_LINES
+$DESTROY_LINES
+$PUBLISH_LINES"
+    if [ "$1" = admit ]; then
+      script="$script
+$ADMIT_LINES"
+    fi
     env PATH="$BIN:$PATH" D="$PDIR" SHA="$SHA" BIN="$PD/gunbc-stub" TREE="$PD/tree" \
-        STUB_TIP="$TIPV" GIT_CALLS="$TMP/prelude_git_producer" bash -c "$MINT_LINES" \
-      || { echo "WITNESS BUG: step 5's mint refused in the fixture, so no consumer case below means anything"; exit 1; }
+        STUB_TIP="$TIPV" GIT_CALLS="$TMP/prelude_git_producer" bash -c "set -u
+$script" \
+      || { echo "WITNESS BUG: step 5's own entry lines refused in the fixture, so no consumer case below means anything"; exit 1; }
     [ "$1" = admit ] || return 0
-    # ONE shell for mint + admission: the admission line expands $VERIFY_ATTEMPT, so running the two lifted blocks
-    # in separate shells would write an empty name and every consumer case below would pass for the wrong reason.
-    env PATH="$BIN:$PATH" D="$PDIR" SHA="$SHA" BIN="$PD/gunbc-stub" TREE="$PD/tree" \
-        STUB_TIP="$TIPV" GIT_CALLS="$TMP/prelude_git_producer" bash -c "$MINT_LINES
-$ADMIT_LINES" \
-      || { echo "WITNESS BUG: step 5's admission block refused in the fixture"; exit 1; }
     [ -s "$PDIR/verify.attempt" ] || { echo "WITNESS BUG: the producer wrote no verification attempt"; exit 1; }
     [ "$(sed -n 's/^ATTEMPT=//p' "$PDIR/migration.verified")" = "$(head -n1 "$PDIR/verify.attempt")" ] \
-      || { echo "WITNESS BUG: the producer's own admission does not name its own attempt — the runbook's step 5 text is broken, not this witness"; exit 1; }
+      || { echo "WITNESS BUG: the producer's own admission does not name its own attempt — the runbook's step 5 text is broken, not this witness"; }
+  }
+  # A pass-through `rm` that refuses exactly one named target. Everything else about it matches the real rm — every
+  # operand attempted, non-zero status if any failed — because the runbook's one-act destruction depends on that
+  # behaviour and a stub that stopped at the first refusal would certify a guarantee the real rm does not give.
+  rmstub() {
+    install -d "$TMP/rmstub"
+    cat > "$TMP/rmstub/rm" <<'RMSTUB2'
+#!/usr/bin/env bash
+flags=(); targets=(); rc=0
+for a in "$@"; do case "$a" in --) ;; -*) flags+=("$a");; *) targets+=("$a");; esac; done
+for p in "${targets[@]}"; do
+  if [ -n "${STUB_RM_FAIL_ON:-}" ] && [[ "$p" == *"$STUB_RM_FAIL_ON"* ]]; then
+    echo "rm: cannot remove '$p': Operation not permitted" >&2; rc=1; continue
+  fi
+  /usr/bin/rm "${flags[@]}" -- "$p" || rc=1
+done
+exit "$rc"
+RMSTUB2
+    chmod 0755 "$TMP/rmstub/rm"
+  }
+  # The re-entry, performed by the runbook's own mint-and-destroy lines (the publish is NOT in them, which is the
+  # point: an entry that cannot destroy the previous authorization must not publish a name either).
+  re_enter() { # $1 = the rm target that will refuse
+    rmstub
+    local out rc=0
+    out=$(env PATH="$TMP/rmstub:$BIN:$PATH" D="$PDIR" STUB_RM_FAIL_ON="$1" \
+        bash -c "set -u
+$MINT_LINES
+$DESTROY_LINES" 2>&1) || rc=$?
+    [ "$rc" -ne 0 ] \
+      || { echo "WITNESS BUG: the refused step 5 re-entry exited 0 — it did not refuse the deletion it was told to refuse, so its consumer state is not the state under test: [$out]"; exit 1; }
+    echo "$out" | grep -q 'MIGRATION REFUSED' \
+      || { echo "WITNESS BUG: the refused step 5 re-entry exited $rc without its refusal diagnostic: [$out]"; exit 1; }
   }
   if [ "$stale" = 1 ]; then
-    # THE PRODUCER'S OWN REFUSAL STATE, produced rather than described: step 5 runs to completion (mint A1 +
-    # admission A1), then is entered again and re-mints (A2) — which is where the runbook's step 5 stands when its
-    # deletion is refused, both of the PREVIOUS attempt's documents still on disk. The consumer then attempts the
-    # deploy against exactly that directory.
+    # THE PRODUCER'S OWN REFUSAL STATE, produced rather than described. Step 5 runs to completion (name A, admission
+    # naming A). It is then entered again and its `rm` refuses `migration.verified`: the act fails, the admission
+    # stays, and everything the act COULD remove — this attempt's published name among it — is gone. That is the
+    # reviewer's publication scenario: an admission that cannot be destroyed, and no name left standing beside it.
     produce_admission admit
-    # The re-entry is the RUNBOOK's mint-and-invalidate block, run with its `rm` refusing its FIRST
-    # target. That is the state that matters: the loop stops at the failure, so BOTH of the previous
-    # attempt's documents survive, the digest of the read-back still there matches, the revision and
-    # the live tip match, and only the name written before the deletion separates this attempt from
-    # the one that produced those documents. Refusing the second target instead would leave
-    # read-back.out destroyed, and the gate would then refuse on a missing digest — a different hole,
-    # and a case that certified the wrong predicate.
-    local re_run_rc re_run_out
-  # A pass-through `rm` that refuses exactly one named target, so the re-entry can be made to fail
-  # where the runbook's own deletion is. It deletes normally otherwise, so nothing else in this
-  # witness sees a different `rm`.
-  install -d "$TMP/rmstub"
-  printf '%s\n' '#!/usr/bin/env bash' \
-    'if [ -n "${STUB_RM_FAIL_ON:-}" ]; then' \
-    '  for a in "$@"; do case "$a" in *"$STUB_RM_FAIL_ON"*) echo "rm: cannot remove '"'"'$a'"'"': Operation not permitted" >&2; exit 1;; esac; done' \
-    'fi' \
-    'exec /usr/bin/rm "$@"' > "$TMP/rmstub/rm"
-  chmod 0755 "$TMP/rmstub/rm"
-    re_run_out=$(env PATH="$TMP/rmstub:$BIN:$PATH" D="$PDIR" STUB_RM_FAIL_ON='read-back.out' \
-      bash -c "set -u
-$MINTI_LINES" 2>&1)
-    re_run_rc=$?
-    [ "$re_run_rc" -ne 0 ] \
-      || { echo "WITNESS BUG: the refused step 5 re-run exited 0 — it did not refuse the deletion it was told to refuse, so its consumer state is not the state under test: [$re_run_out]"; exit 1; }
-    echo "$re_run_out" | grep -q 'MIGRATION REFUSED' \
-      || { echo "WITNESS BUG: the refused step 5 re-run exited $re_run_rc without its refusal diagnostic: [$re_run_out]"; exit 1; }
-    [ "$(sed -n 's/^ATTEMPT=//p' "$PDIR/migration.verified")" != "$(head -n1 "$PDIR/verify.attempt")" ] \
-      || { echo "WITNESS BUG: the refused re-entry left admission and attempt file agreeing, so this case would prove nothing"; exit 1; }
+    re_enter 'migration.verified'
+    [ ! -e "$PDIR/verify.attempt" ] \
+      || { echo "WITNESS BUG: the refused re-entry left a published name standing, so the consumer would be facing a live pair rather than a broken one"; exit 1; }
+    [ -s "$PDIR/migration.verified" ] \
+      || { echo "WITNESS BUG: the injected failure never happened — the admission this case says cannot be destroyed was destroyed"; exit 1; }
+  elif [ "$unatt" = 1 ]; then
+    # The mirror: the NAME cannot be destroyed. The same act takes the admission and the read-back with it, so the
+    # consumer faces an orphaned name with no document left to match it.
+    produce_admission admit
+    re_enter 'verify.attempt'
+    [ -s "$PDIR/verify.attempt" ] \
+      || { echo "WITNESS BUG: the injected failure never happened — the attempt name this case says cannot be destroyed was destroyed"; exit 1; }
+    [ ! -e "$PDIR/migration.verified" ] \
+      || { echo "WITNESS BUG: the admission survived the act that was supposed to take it, so step 5b would find a pair again"; exit 1; }
+  elif [ "$nopub" = 1 ]; then
+    # A publication that cannot be performed: with the previous authorization already destroyed by the successful
+    # entry above, the name's path is occupied by something `printf >` cannot write. The publish block must refuse,
+    # and nothing may be left that step 5b could read as a verification.
+    produce_admission admit
+    # Only the NAME's path is made unwritable; the admission from the completed entry stays, so the consumer is
+    # facing the state the reviewer described — a verification document with nothing behind it — rather than the
+    # missing-admission gate it would hit first if this fixture cleared both.
+    rm -f -- "$PDIR/verify.attempt" \
+      || { echo "WITNESS BUG: the fixture could not clear the published name before the publication injection"; exit 1; }
+    mkdir -p "$PDIR/verify.attempt" \
+      || { echo "WITNESS BUG: the fixture could not put an unwritable object at the attempt name's path"; exit 1; }
+    local pub_rc=0
+    env PATH="$BIN:$PATH" D="$PDIR" bash -c "set -u
+VERIFY_ATTEMPT=f00df00df00df00d
+$PUBLISH_LINES" >/dev/null 2>&1 || pub_rc=$?
+    [ "$pub_rc" -ne 0 ] \
+      || { echo "WITNESS BUG: step 5's publish block accepted a name it could not write — the read-back is not being performed"; exit 1; }
+  elif [ "$forged" = 1 ]; then
+    # A pair the producer cannot produce: the admission from a completed step 5 and a name nobody minted. The
+    # consumer's equality predicate is what stands between that pair and a deployment, so it needs a case — and the
+    # honest way to give it one is to say the state is forged rather than to pretend a refusal can leave it behind.
+    produce_admission admit
+    rm -f -- "$PDIR/verify.attempt" \
+      || { echo "WITNESS BUG: the fixture could not clear the published name before forging it"; exit 1; }
+    printf '%s\n' 'deadbeefdeadbeef' > "$PDIR/verify.attempt" \
+      || { echo "WITNESS BUG: the fixture could not forge a verification name"; exit 1; }
   elif [ "$noatt" = 1 ]; then
     produce_admission admit
     rm -f -- "$PDIR/verify.attempt" || { echo "WITNESS BUG: the fixture could not remove the attempt file"; exit 1; }
   elif [ "$skipv" != 1 ]; then
     produce_admission admit
   else
-    # A real step 5 names the verification BEFORE anything fallible, so even a step 5 that never produced an
-    # admission leaves its name behind. Minting here is what keeps this case from passing on the wrong gate.
-    produce_admission mint
+    # A step 5 that named its verification and never reached an admission: the entry lines run, the admission does
+    # not. Minting here is what keeps this case from passing on the wrong gate.
+    produce_admission entry
   fi
   # set -u is the point; sleep is neutralised; the helpers and the inherited step-5 lines come from the runbook itself
   { printf 'set -u\n'
@@ -616,13 +683,14 @@ echo "    refused (rc=$LAST_RC): [$(printf '%s' "$LAST_OUT" | tail -c 200)]"
 [ "$(grep -c ' tag ' "$TMP/prelude_git")" = 0 ] \
   || prelude_fail "it minted a dispatch reference before the gate refused"
 
-echo "--- the same whole fence after a step 5 that REFUSED on a failed invalidation: zero dispatches ---"
-# The reviewer's sequence in one case: a successful verification, then a re-run whose invalidation was refused,
-# then the consumer attempted. Every other predicate the prelude has is satisfied by the surviving documents —
-# same revision, same digest of the read-back still there, same live tip — so only the verification name the
-# admission carries can stop a deployment here.
-run_prelude "the activation prelude on documents a refused step 5 left behind" refuse \
-  'does not name THIS verification' STALE_ADMISSION=1
+echo "--- the same whole fence after a step 5 that REFUSED on a failed destruction: zero dispatches ---"
+# The reviewer's publication sequence, produced by the runbook's own lines: a successful verification, then a
+# re-entry whose `rm` refuses the admission. The act fails, so step 5 refuses — and the name it had published is
+# gone with everything else the act could remove, while the admission it could not remove stands alone. Every other
+# predicate the prelude has is satisfied by that surviving document (same revision, same read-back digest, same
+# live tip), so only the absence of a name behind it can stop a deployment here.
+run_prelude "the activation prelude on an admission whose name its own destruction took" refuse \
+  'no verification attempt is recorded' STALE_ADMISSION=1
 echo "    refused (rc=$LAST_RC): [$(printf '%s' "$LAST_OUT" | tail -c 220)]"
 [ "$(grep -c 'workflow run' "$TMP/prelude_gh")" = 0 ] \
   || prelude_fail "it dispatched $(grep -c 'workflow run' "$TMP/prelude_gh") run(s) on an admission from a step 5 that refused — activation would have happened behind a refused verification"
@@ -631,6 +699,33 @@ echo "    refused (rc=$LAST_RC): [$(printf '%s' "$LAST_OUT" | tail -c 220)]"
 [ ! -s "$TMP/prelude_pushed" ] \
   || prelude_fail "it pushed a ref: [$(cat "$TMP/prelude_pushed")]"
 
+echo "--- the same whole fence when the admission is paired with a name no producer minted: zero dispatches ---"
+# The binding predicate's own case. The producer can no longer reach this state — the assertions in the stale mode
+# above certify that a refused entry leaves no published name beside the admission it could not remove — so the
+# pair is forged here on purpose: it is what the consumer's equality check is for, and a predicate nobody can
+# violate is not a predicate.
+run_prelude "the activation prelude on a forged admission-and-name pair" refuse \
+  'does not name THIS verification' FORGED_ADMISSION=1
+[ "$(grep -c 'workflow run' "$TMP/prelude_gh")" = 0 ] \
+  || prelude_fail "it dispatched $(grep -c 'workflow run' "$TMP/prelude_gh") run(s) on an admission whose name was never minted by step 5"
+[ ! -s "$TMP/prelude_pushed" ] \
+  || prelude_fail "it pushed a ref from a forged pair: [$(cat "$TMP/prelude_pushed")]"
+
+echo "--- the same whole fence when the verification NAME cannot be destroyed: zero dispatches ---"
+# The mirror of the case above: the name survives the refused act and the admission does not, so the consumer is
+# left with an orphaned name and nothing to match it against.
+run_prelude "the activation prelude when only the verification name survived the refused act" refuse \
+  'step 5 never admitted the read-back' UNDELETABLE_ATTEMPT=1
+[ "$(grep -c 'workflow run' "$TMP/prelude_gh")" = 0 ] \
+  || prelude_fail "it dispatched $(grep -c 'workflow run' "$TMP/prelude_gh") run(s) on an orphaned verification name"
+
+echo "--- the same whole fence when the verification name cannot be published: zero dispatches ---"
+# The reviewer's repro class made concrete: the name's path cannot be written, so nothing is published, and the
+# admission that survives from the earlier successful entry has no name standing behind it.
+run_prelude "the activation prelude when this attempt could not publish its verification name" refuse \
+  'no verification attempt is recorded' UNWRITABLE_ATTEMPT=1
+[ "$(grep -c 'workflow run' "$TMP/prelude_gh")" = 0 ] \
+  || prelude_fail "it dispatched $(grep -c 'workflow run' "$TMP/prelude_gh") run(s) with a verification name that was never published"
 echo "--- the same whole fence with the verification name missing entirely: zero dispatches ---"
 # The other way an admission can arrive without a live producer: an export whose admission was copied in and whose
 # mint file is not there. Refused with its own words, because the repair differs from the case above — there the

@@ -325,8 +325,9 @@ set -euo pipefail
 # branch that may since have been restored — is byte-for-byte indistinguishable from a fresh one, because the
 # inputs are re-prepared from the same export. Only a name mints per attempt and cannot be inherited.
 ATTEMPT=$(printf '%s-%s-%s' "$(date -u +%FT%TZ)" "$$" "${RANDOM}${RANDOM}" | sha256sum | cut -c1-16)
-printf '%s\n' "$ATTEMPT" > "$D/migrate.attempt" \
-  || { echo "MIGRATION REFUSED: this attempt could not be recorded in $D/migrate.attempt — an unrecorded attempt cannot be told from an earlier one, which is the hole step 4 would then fall into"; exit 1; }
+# The name exists only in this shell until the pair below has been destroyed. Publishing it first would mean a
+# failed publication leaves the PREVIOUS attempt's name on disk — and the previous receipt next to it, which is
+# exactly what step 4 admits on. So: mint here, destroy there, publish after.
 # ONE COMPLETION PER ATTEMPT. The receipt written at the end of this step is the ONLY thing step 4 demands before
 # it retires anything, and this step writes it only after the LAST admitted append — so when a retry begins, the
 # PREVIOUS attempt's receipt is still standing on disk. A replay that dies on its third append would leave step 4
@@ -338,13 +339,27 @@ printf '%s\n' "$ATTEMPT" > "$D/migrate.attempt" \
 # immutable file, another user's ownership), and a deletion that fails silently leaves the previous attempt's
 # receipt sitting on the exact path step 4 reads. It also comes BEFORE `cd "$TREE"`: a checkout that cannot be
 # entered must not be able to fail after an old receipt has been left standing to be trusted.
-if [ -e "$D/migrate.completion" ]; then
-  rm -f -- "$D/migrate.completion" \
-    || { echo "MIGRATION REFUSED: could not destroy $D/migrate.completion — a previous attempt's receipt must not survive to authorize step 4"; exit 1; }
-  [ ! -e "$D/migrate.completion" ] \
-    || { echo "MIGRATION REFUSED: $D/migrate.completion still exists although the delete reported success — treat it as live and refuse"; exit 1; }
-  echo "STALE INVALIDATED: $D/migrate.completion (this attempt is $ATTEMPT)"
+if [ -e "$D/migrate.attempt" ] || [ -e "$D/migrate.completion" ]; then
+  # ONE ACT, BOTH HALVES OF THE AUTHORIZATION. `rm` visits every operand even after one of them fails, so a partial
+  # failure still breaks the pair: whichever of the two could be removed is gone, and step 4 needs BOTH the name and
+  # the receipt naming it. Deleting only the receipt (the previous shape of this step) left a path to a usable
+  # authorization: an unwritable $D/migrate.attempt keeps the previous attempt's name, and if this step then refused
+  # before rewriting it, the previous receipt still matched it.
+  rm -f -- "$D/migrate.attempt" "$D/migrate.completion" \
+    || { echo "MIGRATION REFUSED: could not destroy $D/migrate.attempt and $D/migrate.completion in one act — a previous attempt's name and receipt must not survive together to authorize step 4"; exit 1; }
+  for stale in "$D/migrate.attempt" "$D/migrate.completion"; do
+    [ ! -e "$stale" ] \
+      || { echo "MIGRATION REFUSED: $stale still exists although the delete reported success — treat it as live and refuse"; exit 1; }
+  done
+  echo "STALE INVALIDATED: $D/migrate.attempt $D/migrate.completion (this attempt is $ATTEMPT)"
 fi
+# PUBLISH THE NAME, THEN READ IT BACK. The file was destroyed above, so anything in it now was written by this
+# attempt — and the read-back says so in words rather than by assumption: a truncated or racing write is refused
+# here, not discovered by step 4 comparing two documents this run does not control.
+printf '%s\n' "$ATTEMPT" > "$D/migrate.attempt" \
+  || { echo "MIGRATION REFUSED: this attempt could not be recorded in $D/migrate.attempt — an unrecorded attempt cannot be told from an earlier one, which is the hole step 4 would then fall into"; exit 1; }
+[ "$(cat "$D/migrate.attempt")" = "$ATTEMPT" ] \
+  || { echo "MIGRATION REFUSED: $D/migrate.attempt does not hold the name this attempt minted (it holds $(head -c 24 "$D/migrate.attempt" | tr -d '\n')) — step 4 would be comparing against a name this run never wrote"; exit 1; }
 cd "$TREE"
 
 # THE SEED IS RE-VERIFIED BY DIGEST, NOT BY COUNT, BEFORE ANYTHING IS APPENDED. Step 1 hashed the seed it
@@ -516,7 +531,7 @@ grep -q "^inputs_sha256=$(cat "$D/migrate.acceptance.lines" "$D/migrate.revocati
 # and it is the only one that cannot be inherited: step 3 mints a fresh one per run and records it in
 # $D/migrate.attempt before anything can fail.
 [ -s "$D/migrate.attempt" ] \
-  || { echo "RETIREMENT REFUSED: $D/migrate.attempt is missing — no attempt was recorded, so no receipt can be shown to belong to this run"; exit 1; }
+  || { echo "RETIREMENT REFUSED: $D/migrate.attempt is missing — no attempt was recorded, so no receipt can be shown to belong to this run while $D/migrate.completion sits beside it and the receipt names $(sed -n 's/^attempt=//p' "$D/migrate.completion" 2>/dev/null || echo '<unreadable>')"; exit 1; }
 ATTEMPT_NOW=$(head -n1 "$D/migrate.attempt")
 [ "${#ATTEMPT_NOW}" -eq 16 ] \
   || { echo "RETIREMENT REFUSED: the recorded attempt is [$ATTEMPT_NOW], which is not the 16-character name step 3 mints"; exit 1; }
@@ -586,32 +601,43 @@ instead of certifying.
 # leaves the PREVIOUS attempt's documents standing: the `grep '^MIGRATION VERIFIED'` below is satisfied by the stale
 # document, the digest it records is the digest of that stale document, and activation is certified by a read-back
 # that never happened in this attempt. Both go together — an admission missing half its evidence is no admission.
-# THE VERIFICATION IS NAMED BEFORE ANYTHING CAN FAIL, and the admission document written at the end of this step
-# carries that name; step 5b compares them BEFORE it contacts GitHub. A checked deletion is necessary and is not
-# sufficient: if destroying one of the two documents fails, step 5 refuses — and BOTH of the previous attempt's
-# documents are still on disk, because the loop stops at the failure. Step 5b then finds a `migration.verified`
-# that exists, binds this revision, digests the read-back that is still there, and matches the live tip. Every one
-# of its predicates can pass on documents this attempt never wrote. The name is what separates them: this line
-# rewrites $D/verify.attempt on every entry into the step, so a refused re-run leaves the CURRENT name beside the
-# PREVIOUS attempt's admission, and the two cannot be made to agree by anything that survived.
+# THE VERIFICATION IS NAMED, AND THE PREVIOUS AUTHORIZATION IS DESTROYED IN ONE ACT BEFORE THAT NAME IS PUBLISHED.
+# Step 5b compares the name in $D/verify.attempt with the name the admission carries, BEFORE it contacts GitHub.
+# Two failure shapes had to die together, and neither is closed by the other:
+#   * a checked deletion that stops at its first failure — step 5 refuses with BOTH of the previous attempt's
+#     documents still on disk, and step 5b finds a `migration.verified` that exists, binds this revision, digests
+#     the read-back that is still there, and matches the live tip;
+#   * a publication that fails — the previous attempt's name survives in $D/verify.attempt, beside the previous
+#     admission that already names it, and nothing downstream can tell the pair from a fresh one.
+# The order below kills both: the name is minted in this shell only, the documents are destroyed by ONE `rm` (which
+# visits every operand even after one of them fails, so a partial failure still breaks the pair), and only then is
+# the name published and read back. Any failure after this point leaves step 5b missing one of the documents it
+# needs, or holding an admission that names a value no file carries.
 VERIFY_ATTEMPT=$(printf '%s-%s-%s' "$(date -u +%FT%TZ)" "$$" "${RANDOM}${RANDOM}" | sha256sum | cut -c1-16)
-printf '%s\n' "$VERIFY_ATTEMPT" > "$D/verify.attempt" \
-  || { echo "MIGRATION REFUSED: this verification could not be recorded in $D/verify.attempt — an unrecorded verification cannot be told from an earlier one, which is the hole step 5b would then fall into"; exit 1; }
 # THE DELETION IS AN ADMISSION PREDICATE. This fence does not run under `set -e` (it cannot: its job is to inspect
 # a failing read-back and print its refusal), so a bare `rm -f` whose status nobody reads is not a gate — a
 # deletion that fails (read-only mount, immutable file, another user's ownership) leaves the PREVIOUS attempt's
 # document on the exact path the check below reads, and `grep '^MIGRATION VERIFIED'` is then satisfied by a
 # read-back that never ran in this attempt. Status checked, absence re-checked, and it happens BEFORE the
 # read-back is issued, so nothing can be measured against a document this run did not produce.
-for stale in "$D/read-back.out" "$D/migration.verified"; do
-  if [ -e "$stale" ]; then
-    rm -f -- "$stale" \
-      || { echo "MIGRATION REFUSED: could not destroy $stale — an admission document from a previous attempt must not survive to authorize this one"; exit 1; }
+if [ -e "$D/verify.attempt" ] || [ -e "$D/migration.verified" ] || [ -e "$D/read-back.out" ]; then
+  # ONE ACT, THREE HALVES OF THE AUTHORIZATION. `rm` visits every operand even after one of them fails, so a partial
+  # failure still breaks the pair: whatever could be removed is gone, and step 5b needs the admission, the name it
+  # carries, and the read-back whose digest the admission records.
+  rm -f -- "$D/verify.attempt" "$D/migration.verified" "$D/read-back.out" \
+    || { echo "MIGRATION REFUSED: could not destroy $D/verify.attempt, $D/migration.verified and $D/read-back.out in one act — a previous attempt's verification must not survive to authorize this one"; exit 1; }
+  for stale in "$D/verify.attempt" "$D/migration.verified" "$D/read-back.out"; do
     [ ! -e "$stale" ] \
       || { echo "MIGRATION REFUSED: $stale still exists although the delete reported success — treat it as live and refuse"; exit 1; }
-    echo "STALE INVALIDATED: $stale"
-  fi
-done
+  done
+  echo "STALE INVALIDATED: $D/verify.attempt $D/migration.verified $D/read-back.out (this verification is $VERIFY_ATTEMPT)"
+fi
+# PUBLISH THE NAME, THEN READ IT BACK — the file was destroyed above, so anything in it now was written by this
+# attempt, and the read-back says so instead of leaving step 5b to discover it by comparing two documents.
+printf '%s\n' "$VERIFY_ATTEMPT" > "$D/verify.attempt" \
+  || { echo "MIGRATION REFUSED: this verification could not be recorded in $D/verify.attempt — an unrecorded verification cannot be told from an earlier one, which is the hole step 5b would then fall into"; exit 1; }
+[ "$(cat "$D/verify.attempt")" = "$VERIFY_ATTEMPT" ] \
+  || { echo "MIGRATION REFUSED: $D/verify.attempt does not hold the name this verification minted (it holds $(head -c 24 "$D/verify.attempt" | tr -d '\n')) — step 5b would be comparing against a name this run never wrote"; exit 1; }
 
 MANIFEST="$(cat "$D/seed.jsonl")"   # the fabric store contributes nothing today (verified at step 1: acceptance.count is 0);
                                     # if acceptance.before is not empty, append each object's payload.line as step 3 derives them
@@ -727,7 +753,8 @@ test -s "$D/migration.verified"                     || { echo 'NO DEPLOY: step 5
 # $D/verify.attempt on entry, before anything fallible; the admission carries the name of the run that produced it.
 # Both names are printed on refusal, because "step 5 refused and its old admission is still standing" and
 # "someone copied an admission in from another export" are different incidents with different repairs.
-[ -s "$D/verify.attempt" ]                          || { echo 'NO DEPLOY: no verification attempt is recorded — nothing shows the admission below came from a step 5 that ran to completion'; exit 1; }
+{ [ -f "$D/verify.attempt" ] && [ -s "$D/verify.attempt" ]; } \
+                                                    || { echo 'NO DEPLOY: no verification attempt is recorded — nothing shows the admission below came from a step 5 that ran to completion'; exit 1; }
 VERIFY_ATTEMPT_NOW=$(head -n1 "$D/verify.attempt")
 [ "${#VERIFY_ATTEMPT_NOW}" -eq 16 ]                 || { echo "NO DEPLOY: the recorded verification attempt is [$VERIFY_ATTEMPT_NOW], not the 16 characters step 5 mints"; exit 1; }
 ADMIT_ATTEMPT=$(sed -n 's/^ATTEMPT=//p' "$D/migration.verified")

@@ -105,6 +105,9 @@
 #   verification_refuses_when_the_stale_admission_cannot_be_destroyed
 #   observation_refuses_when_the_stale_report_cannot_be_destroyed
 #   retirement_refuses_a_receipt_that_names_an_earlier_attempt
+#   migration_refuses_when_the_stale_attempt_name_cannot_be_destroyed
+#   migration_refuses_a_name_it_cannot_publish
+#   the_one_act_destruction_depends_on_rm_attempting_every_operand
 #
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
@@ -712,16 +715,28 @@ GITSTUB
   # is also what a deletion that failed would look like if the check behind it were missing.
   cat > "$GB/rm" <<'RMSTUB'
 #!/usr/bin/env bash
-targets=()
-for a in "$@"; do case "$a" in -*) ;; *) targets+=("$a") ;; esac; done
-if [ -n "${STUB_RM_FAIL_ON:-}" ]; then
-  for p in "${targets[@]}"; do
-    case "$p" in
-      *"$STUB_RM_FAIL_ON"*) printf 'stub rm: cannot remove %s: Operation not permitted\n' "$p" >&2; exit 1 ;;
-    esac
-  done
-fi
-exec /bin/rm "$@"
+# One failure knob; everything else matches the real `rm`. EVERY operand is attempted and the status is
+# non-zero if any of them failed — that is what GNU rm does (`rm -f some_dir file` reports the directory
+# and still unlinks the file), and the runbook's one-act invalidation rests on it. A stub that gave up on
+# its first refusal would let these witnesses certify a pair-breaking guarantee the real rm does not give,
+# which is worse than not testing it at all.
+flags=(); targets=(); rc=0
+for a in "$@"; do
+  case "$a" in
+    --) ;;
+    -*) flags+=("$a") ;;
+    *)  targets+=("$a") ;;
+  esac
+done
+for p in "${targets[@]}"; do
+  if [ -n "${STUB_RM_FAIL_ON:-}" ] && [[ "$p" == *"$STUB_RM_FAIL_ON"* ]]; then
+    printf 'stub rm: cannot remove %s: Operation not permitted\n' "$p" >&2
+    rc=1
+    continue
+  fi
+  /bin/rm "${flags[@]}" -- "$p" || rc=1
+done
+exit "$rc"
 RMSTUB
   chmod +x "$GB/rm"
 
@@ -1079,13 +1094,21 @@ echo
   echo "$LAST_OUT" | grep -qF 'could not destroy' \
     || fail "G23: the refusal did not name the failed deletion: [$LAST_OUT]"
   [ ! -s "$APPEND_LOG" ] || fail "G23: it appended anyway: $(wc -l < "$APPEND_LOG") line(s)"
-  # …and the surviving receipt must not authorize step 4. It is intact, self-consistent and digests the right
-  # bytes; the ONLY thing that distinguishes it from a fresh one is the attempt it names, which step 3 rewrote
-  # before it hit the failed deletion. This is the assertion the field-count and digest checks cannot make.
+  # …and the surviving receipt must not authorize step 4. THIS is the guarantee the one-act destruction buys: the
+  # operand the stub refused is still there, the act reported failure and step 3 refused — but the attempt name was
+  # taken by the same act, because rm visits every operand even after one of them fails. A receipt with no attempt
+  # standing behind it is the state step 4 must refuse, and it is reached without depending on the name happening
+  # to have been rewritten first.
+  [ ! -e "$GEXP/migrate.attempt" ] \
+    || fail "G23: the refused act left BOTH halves of the authorization standing — one-act destruction is what breaks the pair, and here it did not"
+  [ -s "$GEXP/migrate.completion" ] \
+    || fail "G23: the injected failure never happened — the receipt this case says cannot be destroyed was destroyed"
   run_retire "step 4 attempted over the receipt that survived the refused deletion"
-  [ "$LAST_RC" -ne 0 ] || fail "G23: step 4 retired over a receipt left by an attempt this run never completed"
-  echo "$LAST_OUT" | grep -qF 'does not name THIS attempt' \
-    || fail "G23: the refusal did not name the attempt binding: [$LAST_OUT]"
+  [ "$LAST_RC" -ne 0 ] || fail "G23: step 4 retired over a receipt whose attempt name no longer exists"
+  echo "$LAST_OUT" | grep -qF 'migrate.attempt' \
+    || fail "G23: the refusal did not name the attempt file whose absence is the reason: [$LAST_OUT]"
+  echo "$LAST_OUT" | grep -qF 'no attempt was recorded' \
+    || fail "G23: the refusal did not say why a surviving receipt authorizes nothing: [$LAST_OUT]"
   echo "$LAST_OUT" | grep -qF "the receipt names $STALE_ATTEMPT" \
     || fail "G23: the refusal did not show WHICH attempt the receipt came from, so an operator could not tell a stale receipt from a mis-set attempt file: [$LAST_OUT]"
   [ ! -s "$APPEND_LOG" ] || fail "G23: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
@@ -1118,17 +1141,23 @@ echo
     || fail "G24: the refusal did not name the failed deletion: [$LAST_OUT]"
   echo "$LAST_OUT" | grep -vF 'could not destroy' | grep -qF 'MIGRATION VERIFIED' \
     && fail "G24: it printed the activation admission after a refused deletion"
-  # THE STATE THE CONSUMER MUST NOT BE ABLE TO USE, produced rather than described. The deletion loop stops at its
-  # first failure, so BOTH of the previous attempt's documents are still on disk — the reviewer's premise, asserted
-  # here so the consumer case in the dispatch witness is known to reproduce a state step 5 really leaves.
+  # THE STATE THE CONSUMER MUST NOT BE ABLE TO USE, produced rather than described — and now broken by the act
+  # itself. The operand that could not be destroyed is still there (the injected failure is real, and the case would
+  # otherwise be testing an empty directory); every operand that COULD be destroyed is gone, because rm visits them
+  # all. Step 5b needs the admission, the name it carries and the read-back whose digest it records, so any one of
+  # them missing is enough, and the act guarantees at least one is.
   [ -s "$GEXP/read-back.out" ] \
-    || fail "G24: the read-back the refused re-run could not destroy is gone, so the consumer case would be testing an empty directory"
-  [ -s "$GEXP/migration.verified" ] \
-    || fail "G24: the admission the refused re-run could not destroy is gone, so the consumer case would be testing an empty directory"
-  [ -s "$GEXP/verify.attempt" ] \
-    || fail "G24: the re-run did not record its own verification attempt before refusing — an unrecorded entry is what lets the old admission speak for it"
-  [ "$(sed -n 's/^ATTEMPT=//p' "$GEXP/migration.verified")" != "$(head -n1 "$GEXP/verify.attempt")" ] \
-    || fail "G24: the surviving admission still names the current attempt file, so step 5b would deploy on it — the mint must come BEFORE the deletion"
+    || fail "G24: the injected failure never happened — the read-back this case says cannot be destroyed was destroyed"
+  [ ! -e "$GEXP/migration.verified" ] \
+    || fail "G24: the admission survived the refused act next to a name that no longer exists — the act was supposed to take it with the read-back, and step 5b would be reading a half-broken pair"
+  [ ! -e "$GEXP/verify.attempt" ] \
+    || fail "G24: a refused entry left a published verification name standing — that name is what an admission has to match, so publishing it before the destruction succeeded is the hole this order closes"
+  # The invariant, stated once as a predicate rather than as a per-file hope: no admission may survive that names a
+  # name some file publishes. Either side being absent is enough; both being present is the failure.
+  if [ -e "$GEXP/migration.verified" ] && [ -e "$GEXP/verify.attempt" ]; then
+    [ "$(sed -n 's/^ATTEMPT=//p' "$GEXP/migration.verified")" != "$(head -n1 "$GEXP/verify.attempt")" ] \
+      || fail "G24: an admission and a published name from a refused entry still agree, so step 5b would deploy on documents it never wrote"
+  fi
 
   # G25: step 6 restarts and the previous attempt's report cannot be destroyed
   seed_export; run_migrate "the migration completes"; run_retire "step 4 retires the two nodes"
@@ -1141,6 +1170,67 @@ echo
     || fail "G25: the refusal did not name the failed deletion: [$LAST_OUT]"
   echo "$LAST_OUT" | grep -qF 'STANDING ADMITTED' \
     && fail "G25: it published a standing count after a refused deletion"
+
+  # ---- G26 / G27: the ATTEMPT NAME itself is the thing that fails. The previous three cases destroy the
+  # consumer-facing document; these two take the name, which is what the reviewer's publication finding is about:
+  # if publishing a name can fail while the previous name survives beside the previous receipt, every consumer
+  # binding in the runbook is speaking for a run that never happened.
+  # G26: step 3 restarts and the previous attempt's NAME cannot be destroyed
+  seed_export; run_migrate "the first migration completes"
+  [ "$LAST_RC" -eq 0 ] || fail "G26: the first migration should have completed: [$LAST_OUT]"
+  [ -s "$GEXP/migrate.attempt" ] || fail "G26: the completed migration published no attempt name, so the case would test nothing"
+  run_migrate "a retry whose previous attempt name cannot be destroyed" STUB_RM_FAIL_ON=migrate.attempt
+  [ "$LAST_RC" -ne 0 ] || fail "G26: step 3 continued after it could not destroy the previous attempt's name"
+  echo "$LAST_OUT" | grep -qF 'could not destroy' \
+    || fail "G26: the refusal did not name the failed destruction: [$LAST_OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G26: it appended anyway: $(wc -l < "$APPEND_LOG") line(s)"
+  [ -s "$GEXP/migrate.attempt" ] \
+    || fail "G26: the injected failure never happened — the name this case says cannot be destroyed was destroyed"
+  [ ! -e "$GEXP/migrate.completion" ] \
+    || fail "G26: the receipt survived the act that took the name, so step 4 would find a pair again — one rm over both operands is what guarantees it does not"
+  run_retire "step 4 attempted with only an orphaned attempt name on disk"
+  [ "$LAST_RC" -ne 0 ] || fail "G26: step 4 retired on a name with no receipt behind it"
+  echo "$LAST_OUT" | grep -qF 'step 3 never wrote' \
+    || fail "G26: the refusal did not name the receipt whose absence is the reason: [$LAST_OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G26: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # G27: the destruction succeeded and the PUBLICATION cannot be performed. With the path occupied by something
+  # `printf >` cannot write, step 3's own publish block must refuse — and refuse by reading the file back, not by
+  # trusting the write's status, which is the difference between "the write reported success" and "the name is there".
+  PUBLISH_FROM=$(grep -n '^printf .*"\$ATTEMPT" > "\$D/migrate.attempt"' "$RB" | head -1 | cut -d: -f1)
+  PUBLISH_TO=$(grep -n 'does not hold the name this attempt minted' "$RB" | head -1 | cut -d: -f1)
+  [ -n "$PUBLISH_FROM" ] && [ -n "$PUBLISH_TO" ] \
+    || { echo "G27: step 3's publish-and-read-back block could not be lifted from $RB (write=${PUBLISH_FROM:-?} read-back=${PUBLISH_TO:-?}) — the case would be testing a copy"; FAILS=$((FAILS + 1)); }
+  if [ -n "$PUBLISH_FROM" ] && [ -n "$PUBLISH_TO" ]; then
+    PUBLISH_LINES=$(sed -n "${PUBLISH_FROM},$((PUBLISH_TO + 1))p" "$RB")
+    seed_export; run_migrate "the first migration completes"
+    [ "$LAST_RC" -eq 0 ] || fail "G27: the first migration should have completed: [$LAST_OUT]"
+    /bin/rm -f -- "$GEXP/migrate.attempt" \
+      || fail "G27: the fixture could not clear the published name"
+    mkdir -p "$GEXP/migrate.attempt" \
+      || fail "G27: the fixture could not put an unwritable object at the name's path"
+    PUB_RC=0
+    env D="$GEXP" ATTEMPT=abc123abc123abc1 bash -c "set -u
+$PUBLISH_LINES" >/dev/null 2>&1 || PUB_RC=$?
+    [ "$PUB_RC" -ne 0 ] \
+      || fail "G27: step 3's publish block accepted a name it could not write — the read-back is not being performed"
+    [ ! -f "$GEXP/migrate.attempt" ] \
+      || fail "G27: a name was published where the write could not have reached it"
+  fi
+
+  # G28: the PREMISE the one-act destruction rests on, tested against the real rm rather than asserted in a
+  # comment. If a future rm stopped at its first refusal, `rm -f name receipt` would leave the pair intact and every
+  # guarantee in steps 3 and 5 would be folklore — so this is checked here, with the operating system, not here.
+  PREM=$TMP/rm_premise; install -d "$PREM"
+  mkdir -p "$PREM/blocked"; : > "$PREM/removable"
+  PREM_RC=0; /usr/bin/rm -f -- "$PREM/blocked" "$PREM/removable" 2>/dev/null || PREM_RC=$?
+  [ "$PREM_RC" -ne 0 ] \
+    || fail "G28: the real rm reported success while refusing a directory operand — what else does it report success for?"
+  [ -e "$PREM/blocked" ] \
+    || fail "G28: the real rm removed an operand it was expected to refuse, so the injected failures elsewhere are not what they claim"
+  [ ! -e "$PREM/removable" ] \
+    || fail "G28: the real rm STOPPED at its first refusal — a previous attempt's name and receipt would then survive the one-act destruction together, and the design has to change (delete each operand separately and require every deletion to be an admission)"
+  echo "  [the real rm attempts every operand; the one-act destruction rests on that and it is checked]" OK
 
 echo "================ PART I: the hand-shell LOC rows agree with the carriers they describe ================"
 # The LOC rows are the scaffold's own account of how much temporary shell it introduces — F5's admission is about

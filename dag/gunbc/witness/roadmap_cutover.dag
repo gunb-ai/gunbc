@@ -614,14 +614,58 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
   CutoverWitnessCase {
     name: "activation_refuses_an_admission_whose_verification_could_not_be_redone"
     carrier: dispatch_witness_carrier
-    feeds: "the reviewer's sequence in one case: step 5 completes (its mint and its admission block executed from the runbook's own text, not copied), then is entered again and re-mints before its invalidation is made to fail, leaving BOTH of the previous attempt's documents on disk; the activation prelude is then attempted against that export, where every other predicate it has is satisfied — same revision, same read-back digest, same live tip — so only the verification name the admission carries can stop it"
+    feeds: "the reviewer's publication sequence, produced by the runbook's own lines: step 5 completes (its mint, its one-act destruction and its admission executed from the runbook's text, not copied), then is entered again and its rm refuses the admission — the act fails, so the name it had published is gone with everything else the act could remove, and the admission it could not remove stands alone with every other predicate satisfied" entered again and re-mints before its invalidation is made to fail, leaving BOTH of the previous attempt's documents on disk; the activation prelude is then attempted against that export, where every other predicate it has is satisfied — same revision, same read-back digest, same live tip — so only the verification name the admission carries can stop it"
     must: "refuse"
-    refusal_text: "does not name THIS verification"
+    refusal_text: "no verification attempt is recorded"
   }
   CutoverWitnessCase {
     name: "activation_refuses_an_admission_with_no_verification_attempt_recorded"
     carrier: dispatch_witness_carrier
     feeds: "an export handed to step 5b whose admission is present but whose $D/verify.attempt is not — a copied-in admission is the only way that state arises, and it needs a different repair from the case above, so it refuses with its own words"
+    must: "refuse"
+    refusal_text: "no verification attempt is recorded"
+  }
+
+  CutoverWitnessCase {
+    name: "migration_refuses_when_the_stale_attempt_name_cannot_be_destroyed"
+    carrier: runbook_witness_carrier
+    feeds: "step 3 over an export whose previous attempt published a name and a completion receipt, re-entered with the name the only operand rm cannot remove — the act fails, so step 3 refuses; the receipt goes with it, and step 4 is left with an orphaned name and retires nothing"
+    must: "refuse"
+    refusal_text: "could not destroy"
+  }
+  CutoverWitnessCase {
+    name: "migration_refuses_a_name_it_cannot_publish"
+    carrier: runbook_witness_carrier
+    feeds: "step 3's own publish-and-read-back block, lifted, run with the name's path occupied by something `printf >` cannot write — the block must refuse by reading the file back rather than by trusting the write's status"
+    must: "refuse"
+    refusal_text: "does not hold the name this attempt minted"
+  }
+  CutoverWitnessCase {
+    name: "the_one_act_destruction_depends_on_rm_attempting_every_operand"
+    carrier: runbook_witness_carrier
+    feeds: "the premise the whole cross-step authorization design rests on, tested against the operating system's rm: every operand is attempted even after one is refused. If rm ever stopped at its first refusal, a previous attempt's name and receipt would survive the one-act destruction together and the design would have to change"
+    must: "refuse"
+    refusal_text: "the design has to change"
+  }
+
+  CutoverWitnessCase {
+    name: "activation_refuses_a_forged_admission_pair"
+    carrier: dispatch_witness_carrier
+    feeds: "the consumer's equality predicate, which the producer can no longer defeat: a completed step 5's admission beside a name no mint ever produced. The state is forged by the witness on purpose — the assertions in the refused-destruction case prove a real refusal cannot leave that pair behind, and a predicate nobody can violate is not a predicate"
+    must: "refuse"
+    refusal_text: "does not name THIS verification"
+  }
+  CutoverWitnessCase {
+    name: "activation_refuses_a_verification_name_that_cannot_be_destroyed"
+    carrier: dispatch_witness_carrier
+    feeds: "the mirror of the refused destruction: the attempt name is the operand that cannot be removed, so the same act takes the admission and the read-back with it and step 5b is left with an orphaned name and nothing to match it against — zero dispatches, zero references minted"
+    must: "refuse"
+    refusal_text: "step 5 never admitted the read-back"
+  }
+  CutoverWitnessCase {
+    name: "activation_refuses_a_verification_whose_name_cannot_be_published"
+    carrier: dispatch_witness_carrier
+    feeds: "the reviewer's publication repro: after a completed step 5, the name's path is occupied by something `printf >` cannot write, step 5's own publish block refuses, and the admission that survives has no name standing behind it — zero dispatches, zero references minted"
     must: "refuse"
     refusal_text: "no verification attempt is recorded"
   }
@@ -832,7 +876,7 @@ data runbook_scaffold: Disposition = Scaffold {
 
 data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
 
-data runbook_loc_delta_net: Int = 1524
+data runbook_loc_delta_net: Int = 1551
 data runbook_test_discriminator: String = "drop_in_round_trip_with_pre_existing_and_deploy_added"
 
 data runbook_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: TWO capabilities, because they retire DIFFERENT halves of tools/roadmap_cutover_runbook_witness.sh. (1) orch-emitted, for the residual shell (the sudo/systemd-run/systemctl stubs and the case assertions): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a function definition carrying a case statement over globs, a here-doc that writes a stub script, an array assignment read back as a whole-array expansion, or command substitution inside a test predicate — a missing target-language capability (class (b) of the hand-shell gate), not an unauthored migration. (2) modelled, for the witness process: its cases are the rows above (cutover_witness_case_rows) and its helpers are loaded from docs/runbooks/roadmap-event-log-cutover.md, never copied. When those rows run as a gunbc test row in gunbc.instrument_targets through the modelled filesystem and host-effect routes, this file is DELETED rather than emitted.")
@@ -844,8 +888,8 @@ data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissoluti
 // watch, so it lives where a claim can read it rather than in prose. Counting rule, so the number is checkable and
 // not prose that quietly rots: wc -l of each carrier, every line of which this PR adds (all three files are new in
 // it). Re-measure with: wc -l docs/runbooks/roadmap-event-log-cutover.md tools/roadmap_cutover_*.sh
-data runbook_witness_loc_delta_net: Int = 1221
-data dispatch_witness_loc_delta_net: Int = 687
+data runbook_witness_loc_delta_net: Int = 1311
+data dispatch_witness_loc_delta_net: Int = 782
 
 // Each carrier names the case that distinguishes it — the one that would pass on any nonzero exit if the witness
 // were weak, which is why it is the discriminator and not the admitting case.
