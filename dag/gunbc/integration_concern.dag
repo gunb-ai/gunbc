@@ -2278,7 +2278,7 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
         account: "B3b (tidy-swift-586) read the realize apply seam end to end: runner_capacity_apply_host_plan's add arm refuses EVERY host plan that carries slot adds with a typed reason naming runner_host_file_converge_ci_wet ('this seam preflights and receipts, it does not actuate'), and runner_capacity_apply_wet_exit exits failure whenever any host refused. Realize never reports success for an action that did not run, so it does not realize a slot add: the converge is the only route that does. An intermediate reading kept realize as a refusing seam; the manager's review set the correct test -- a kept path needs a production caller, and none exists (below).",
       },
       ConcernSighting {
-        revision: "26ba18c76e4a",
+        revision: "41ce84841aa3",
         evidence: FreeSemigroup {
           head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
           tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.apply", decl_name: "apply_wet") }],
@@ -2289,7 +2289,7 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
   },
   disposition: Integrated {
     evidence: IntegrationEvidence {
-      integrated_at: "26ba18c76e4a",
+      integrated_at: "41ce84841aa3",
       superseded: [
         HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", name: "runner_capacity_apply_wet_exit", revision: "26ba18c76e4a" },
         HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", name: "runner_capacity_apply_plan", revision: "26ba18c76e4a" },
