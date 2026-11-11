@@ -568,6 +568,29 @@ fn first_ordinal(route: List<DispatchRecord>, name: String) -> Int {
   match ordinals_where(route: route, keep: fn(r) { operation_name(r: r) == name }).first() { Present { value: o } => o Absent => 0 - 1 }
 }
 
+// AN ORDERING CLAIM HOLDS ONLY OVER TWO OPERATIONS THAT BOTH RAN. first_ordinal answers -1 for an operation
+// the route never dispatched, so a bare `first_ordinal(a) < first_ordinal(b)` was satisfied by `a` never
+// running at all -- an ordering claim that could not tell "a before b" from "no a" (side chat on gunbc#16247).
+// Every ordering claim in this matrix goes through this one predicate.
+fn precedes(route: List<DispatchRecord>, earlier: String, later: String) -> Bool {
+  let a = first_ordinal(route: route, name: earlier)
+  let b = first_ordinal(route: route, name: later)
+  a >= 0 && b >= 0 && a < b
+}
+
+// THE GUARD ITSELF: an ordering over a route that never dispatched either operation, or only one of them, is
+// false; the route a real attempt dispatched still orders (the healthy census claims above use it).
+test fn an_ordering_claim_is_false_when_either_operation_never_ran() -> Bool {
+  match run_attempt(world: healthy_census_world()) {
+    WitnessReturned { value: _, route } =>
+      precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && !precedes(route: route, earlier: "a.never.Dispatched", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && !precedes(route: route, earlier: "megarac.Media.StartMedia", later: "a.never.Dispatched")
+        && !precedes(route: [], earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+    _ => false
+  }
+}
+
 fn outcome_reason(a: MtCollins1BootAttempt) -> String {
   mtcollins1_boot_exit_reason(outcome: a.outcome)
 }
@@ -592,9 +615,9 @@ test fn a_host_that_never_prints_a_census_refuses_at_the_deadline() -> Bool {
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
         && count_named(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") == 1
-        && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "gunbc.machine_intake.sol_hold.ActivateHeld", later: "megarac.Media.StartMedia")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -612,8 +635,8 @@ test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
       census_ended(a: value)
         && outcome_reason(a: value) == "ok"
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld")
-        && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld") < first_ordinal(route: route, name: "Filesystem.Delete")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.SolDeactivate", later: "gunbc.machine_intake.sol_hold.ReleaseHeld")
+        && precedes(route: route, earlier: "gunbc.machine_intake.sol_hold.ReleaseHeld", later: "Filesystem.Delete")
         && count_named(route: route, name: "Filesystem.Delete") == 2
         && controller_writes_are_under_the_hold(route: route)
     _ => false
@@ -1029,10 +1052,10 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
         && sdr_reads_after_power_on(route: route) == 0
         && fan_gate_abandoned(a: value)
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisPowerControl", later: "diagnostic.ipmi.Tool.SolDeactivate")
         && teardown_within(route: route, bound: 60)
         && end_release_stopped(end: value.end_media)
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "megarac.Media.StopMedia")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.SolDeactivate", later: "megarac.Media.StopMedia")
         && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "end_media=")
         && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "this attempt's own session stopped and read back as gone")
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
@@ -1336,8 +1359,8 @@ test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() 
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
-        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StopMedia", later: "megarac.Media.StartMedia")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -1355,7 +1378,7 @@ test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_reco
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
         && count_named(route: route, name: "megarac.Media.StopMedia") == 0
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -1366,7 +1389,7 @@ test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: Present { value: 16 }, cd: megarac_cleared_cd_at_the_current_build()))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -1378,8 +1401,8 @@ test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_b
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: false, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
-        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StopMedia", later: "megarac.Media.StartMedia")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -1422,7 +1445,9 @@ test fn a_pre_power_look_whose_session_leaked_stops_before_any_attach_session_or
     && (match run_attempt(world: host_on_with_stale(close_releases: true)) {
       WitnessReturned { value: _, route } =>
         count_named(route: route, name: "megarac.Media.OpenSession") >= 2
-          && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
+          && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") >= 1
+          && count_named(route: route, name: "megarac.Media.StartMedia") >= 1
+          && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisPowerControl", later: "megarac.Media.StartMedia")
       _ => false
     })
 }
@@ -1511,6 +1536,7 @@ test fn an_attempt_that_ends_with_the_host_off_stops_its_own_session() -> Bool {
         && string_contains(s: outcome_reason(a: value), pattern: "end-of-attempt") == false
         && end_release_stopped(end: value.end_media)
         && count_named(route: route, name: "megarac.Media.StopMedia") == 1
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") >= 1
         && first_ordinal(route: route, name: "megarac.Media.StopMedia") > last_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
@@ -1595,7 +1621,7 @@ test fn a_pending_override_is_cleared_before_this_attempt_sets_its_own() -> Bool
     WitnessReturned { value, route, state } =>
       count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") >= 2
         && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") >= 0
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisBootOptionsClear", later: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
         && override_stale_words(a: value) == "stale override cleared"
         && override_release_words(a: value) == "cleared"
         && !controller_left_the_override_pending(w: state)
@@ -1616,7 +1642,7 @@ test fn a_refused_attempt_releases_the_override_it_set() -> Bool {
     WitnessReturned { value, route, state } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") == 1
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions", later: "diagnostic.ipmi.Tool.ChassisBootOptionsClear")
         && override_release_words(a: value) == "cleared"
         && !controller_left_the_override_pending(w: state)
         && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_release=cleared")
