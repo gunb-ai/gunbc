@@ -1079,6 +1079,43 @@ fn bash_build_word_positional(index: String) -> Optional<Node> {
   }
 }
 
+// THE EXIT-STATUS PARAMETER, `$?`. Bash manual, node "Special Parameters": `$?` expands
+// to the exit status of the most recently executed foreground pipeline. It is a word of
+// its own row rather than a variable, because it is not a name: `bash_build_is_name`
+// refuses `?` and must keep refusing it. The value is fixed, so the constructor has
+// nothing to get wrong; the serializer re-checks the value on the way out
+// (v2.workflow.bash_command_fold_serialize) so a node fabricated with any other text
+// under this kind is refused rather than spelled.
+//
+// Why the row exists: `dag/gunbc/ci/ci_failure_class.dag` recorded the floor attempt's
+// exit status with `bash_build_word_var(name: "?")`. When the variable row became a
+// checked constructor, that call started yielding a refused word, the wrapper's whole
+// program failed to serialize, and its caller substituted the error-script fallback --
+// so a command that was never run reported a failure, and only a witness that reads the
+// wrapper's bytes can see it. A missing row has to be loud, and it has to have somewhere
+// to be added.
+fn bash_build_is_exit_status(which: String) -> Bool {
+  which == "?"
+}
+
+fn bash_build_word_exit_status_bare() -> Node {
+  bash_build_word_kinded(kind: ^bash_fold_word_kind_exit_status, value: "?")
+}
+
+// `"$?"` -- the form an assignment to a status variable takes, and the bytes the CI
+// wrapper has always emitted. The quoting is the double-quoted row's, exactly as
+// `"$X"` is (bash_build_word_var); this builder contributes only the parameter, and the
+// parts list it passes is never empty, which is the only thing that row refuses on.
+fn bash_build_word_exit_status() -> Node {
+  match bash_build_word_double_quoted(parts: [bash_build_word_exit_status_bare()]) {
+    Present { value: quoted } => quoted
+    Absent => bash_build_word_kinded(
+      kind: ^bash_build_refused_double_quoted,
+      value: "$?"
+    )
+  }
+}
+
 fn bash_build_word_positional_all(which: String) -> Optional<Node> {
   if which == "*" || which == "@" {
     Present {

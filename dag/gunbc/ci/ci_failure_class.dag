@@ -10,6 +10,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_assign,
   bash_build_assign_lit,
   bash_build_command_with_words,
+  bash_build_word_exit_status,
   bash_build_if_from_stmts,
   bash_build_negation,
   bash_build_or_else,
@@ -607,7 +608,12 @@ fn wrap_command_with_floor_attempt_receipt_stmts(command: String) -> List<Node> 
           ]
         )
       ),
-      bash_build_assign(name: "GUNBC_FLOOR_EXIT", value: bash_build_word_var(name: "?"))
+      // The attempt's status, through the row that owns `$?` -- see
+      // bash_build_word_exit_status. It was `bash_build_word_var(name: "?")`, which the
+      // checked variable row rightly refuses: `?` is not a name. The refusal used to fall
+      // through to this module's error-script fallback, i.e. a floor attempt that never
+      // ran its command and reported a failure.
+      bash_build_assign(name: "GUNBC_FLOOR_EXIT", value: bash_build_word_exit_status())
     ],
     concat(
       floor_attempt_receipt_write_stmts(),

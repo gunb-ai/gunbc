@@ -29,6 +29,7 @@ import v2.extdeps.languages.bash {
   bash_kw_in_text
 }
 import v2.extdeps.languages.bash_build {
+  bash_build_word_exit_status,
   bash_build_array_assign,
   bash_build_brace_group_from_stmts,
   bash_build_case,
@@ -790,5 +791,55 @@ test fn quoted_operator_is_not_the_operator() -> Bool {
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// ── the exit-status special parameter, `$?` ────────────────────────────────
+// Bash manual, node "Special Parameters": `$?` is the exit status of the most recently
+// executed foreground pipeline. It is not a name, so it is not a variable. The row exists
+// because the CI floor-attempt wrapper (dag/gunbc/ci/ci_failure_class.dag) needs exactly
+// this text and had been asking the VARIABLE row for it, which the checked constructor
+// refuses; a refused word inside the wrapper made the whole program fail to serialize and
+// the caller swapped in its error-script fallback -- a floor that never ran its command.
+// dag/test/claim/ci/ci_failure_class_witness.dag's
+// witness_posix_shell_reserved_exits_are_infra_not_subject reads the wrapper's bytes;
+// these keep the row itself honest.
+
+data exit_status_assign_golden: String = "GUNBC_FLOOR_EXIT=\"$?\"\n"
+
+fn exit_status_assign_stmt() -> Node {
+  bash_build_assign(
+    name: "GUNBC_FLOOR_EXIT",
+    value: bash_build_word_exit_status()
+  )
+}
+
+test fn exit_status_parameter_serializes_the_installed_shape() -> Bool {
+  emits(stmt: exit_status_assign_stmt(), golden: exit_status_assign_golden)
+}
+
+// RED: the emitter re-checks the value, so a node fabricated under this kind with any
+// other text is refused with the reason naming what it refused. `$` plus arbitrary text
+// must not be reachable by fabricating a node.
+test fn exit_status_refuses_a_forged_value_at_the_emitter() -> Bool {
+  match bash_emit_stmts(
+    statements: [command([
+      bash_build_word_kinded(kind: ^bash_fold_word_kind_exit_status, value: "0")
+    ])],
+    set_e: false
+  ) {
+    Rejected { diagnostics: d } =>
+      diagnostics_reason_lexemes(diagnostics: d) == "bash_fold_serialize_exit_status_unsafe"
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED: `?` is still not a variable name. If the variable row ever grew an exception for
+// it, this row would be dead code and `$?` would again be spelled by a builder that
+// claims `?` names a variable.
+test fn var_row_still_refuses_the_exit_status_question_mark() -> Bool {
+  match bash_build_word_var_bare(name: "?") {
+    Absent => true
+    Present { value: _ } => false
   }
 }

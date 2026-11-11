@@ -4,7 +4,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import std.types { List, Map }
 import v2.compiler.target_serialize { target_serialize_source_from_model, target_serialize_source_from_selected_row }
 import v2.extdeps.languages.bash { bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_assign_emitted, bash_stmt_assign_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_stmt_if_emitted, bash_stmt_if_target_model, bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_pipe_emitted, bash_stmt_pipe_target_model, bash_stmt_subshell_emitted, bash_stmt_subshell_target_model, bash_redir_stderr_to_file_source_text, bash_redir_from_file_source_text, bash_redir_to_file_source_text, bash_redir_append_to_file_source_text, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_word_cmdsubst_emitted, bash_word_cmdsubst_target_model , bash_stmt_brace_group_emitted, bash_stmt_brace_group_target_model, bash_stmt_seq_emitted, bash_stmt_seq_target_model, bash_stmt_function_def_emitted, bash_stmt_function_def_target_model, bash_stmt_case_emitted, bash_stmt_case_target_model, bash_stmt_case_clause_block_emitted, bash_stmt_case_clause_block_target_model, bash_stmt_case_clause_inline_emitted, bash_stmt_case_clause_inline_target_model, bash_kw_case_block_stmt_sep_text, bash_stmt_comment_emitted, bash_stmt_comment_target_model, bash_stmt_for_emitted, bash_stmt_for_target_model, bash_stmt_array_assign_emitted, bash_stmt_array_assign_target_model, bash_word_bare_emitted, bash_word_bare_target_model, bash_word_array_expansion_emitted, bash_word_array_expansion_target_model, bash_word_param_error_emitted, bash_word_param_error_target_model, bash_word_positional_all_emitted, bash_word_positional_all_target_model, bash_word_positional_emitted, bash_word_positional_target_model, bash_word_var_bare_emitted, bash_word_var_bare_target_model, bash_word_double_quoted_emitted, bash_word_double_quoted_target_model, bash_word_quoted_text_emitted, bash_word_quoted_text_target_model }
-import v2.extdeps.languages.bash_build { bash_build_stmt_list_single, bash_build_subshell, bash_build_is_bare_word, bash_build_is_name, bash_build_is_digits, bash_build_is_positional_all, bash_build_is_positional, bash_build_is_quoted_text, bash_build_is_test_operator }
+import v2.extdeps.languages.bash_build { bash_build_stmt_list_single, bash_build_subshell, bash_build_is_bare_word, bash_build_is_name, bash_build_is_digits, bash_build_is_positional_all, bash_build_is_positional, bash_build_is_quoted_text, bash_build_is_test_operator , bash_build_is_exit_status }
 import v2.extdeps.languages.bash_orch_if { bash_stmt_if_else_emitted, bash_stmt_if_else_target_model }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused, bash_fold_relation_row_witness, bash_fold_target_model_for_row, bash_fold_translation_rules_budget_for_row, bash_fold_unsupported_variant_diagnostic }
 import std.algebra { list_head, list_tail, list_at_optional }
@@ -549,6 +549,35 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
                   Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
                 }
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
+          } else if kind == ^bash_fold_word_kind_exit_status {
+            // `$?`, the exit-status special parameter (Bash manual, "Special
+            // Parameters"). The row supplies the `$` and the node carries the `?`; the
+            // way OUT re-checks it, so a node fabricated with another value -- the shape
+            // a hand-built or stale node would have -- is refused instead of putting `$`
+            // plus arbitrary text into a generated script.
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
+              Present { value: text_node } =>
+                match node_atom_identity_optional(node: text_node) {
+                  Present { value: text } =>
+                    if bash_build_is_exit_status(which: text) {
+                      bash_fold_serialize_leaf_node(
+                        emitted: word,
+                        production_binding: ^bash_production_fold_exit_status_word,
+                        rule_name: ^bash_production_fold_exit_status_word
+                      )
+                    } else {
+                      bash_fold_serialize_refused(
+                        variant: ^bash_fold_serialize_exit_status_unsafe
+                      )
+                    }
+                  Absent => bash_fold_serialize_refused(
+                    variant: ^bash_fold_serialize_node_shape_refused
+                  )
+                }
+              Absent => bash_fold_serialize_refused(
+                variant: ^bash_fold_serialize_positional_child_absent
+              )
             }
           } else if kind == ^bash_fold_word_kind_var_bare {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
