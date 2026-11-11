@@ -40,7 +40,7 @@ import gunbc.machine_intake.arrival_converge { grant_discharges_bmc_secure_accou
 import gunbc.machine_intake.arrival_run { arrival_wet_prefix_from_unobserved_world }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, standing_grant_arm_interlock, StandingGrantHost,
-  StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite, StandingD0ReleaseToFleet,
+  StandingArrivalArchive, StandingArrivalFirmwareQualification, StandingBmcSecureAccountWrite, StandingD0ReleaseToFleet,
 }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
@@ -79,8 +79,8 @@ test fn w_mtjade1_is_admitted_and_mtcollins1_and_outsiders_refuse_before_effect(
 }
 
 test fn w_grant_covers_arrival_arms_on_mtjade1_only() -> Bool {
-  standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalArchive)
-    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeFirmwareQualification)
+  standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingArrivalArchive)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingArrivalFirmwareQualification)
     && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
     && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
     && !grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1)
@@ -192,7 +192,7 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
         declaration_ref_display_key(ref: s) == "gunbc.auth.mtjade1_arrival_federation::mtjade1_arrival_firmware_qualification_effect"
       Absent => false
     }
-    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
+    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingArrivalFirmwareQualification) {
       InterlockPending { obligation: _ } => true
       InterlockedBy { hold: _ } => false
     }

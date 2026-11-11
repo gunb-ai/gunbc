@@ -25,7 +25,7 @@ import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
 import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time, gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_host_budget_preflight_invoke }
-import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name, fleet_converge_apply_pointer_env_name }
+import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name, fleet_converge_apply_pointer_env_name, gunbc_fleet_converge_apply_receipt_artifact_dir, gunbc_fleet_converge_apply_receipt_artifact_name, gunbc_fleet_converge_plan_artifact_name }
 import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
 import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_receipt_path, runner_user_session_converge_receipt_artifact_name, runner_user_session_converge_mode_wire }
@@ -254,7 +254,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_spark_runtime_image_probe_invoke,
   gunbc_ci_spark_wireless_link_converge_invoke,
   gunbc_ci_spark_grants_observe_invoke,
-  gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
   gunbc_ci_approval_broker_dark_install_invoke,
@@ -266,8 +265,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_rlm_launch_deployment_receipt_invoke,
   gunbc_live_deploy_receipt_artifact_name,
   gunbc_live_deploy_receipt_artifact_dir,
-  gunbc_fleet_converge_apply_receipt_artifact_name,
-  gunbc_fleet_converge_apply_receipt_artifact_dir,
   gunbc_rlm_launch_deployment_receipt_artifact_name,
   gunbc_rlm_launch_deployment_receipt_artifact_dir,
 }
