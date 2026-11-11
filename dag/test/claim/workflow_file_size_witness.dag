@@ -5,7 +5,7 @@ import std.types { Bool, String }
 import std.measure { byte_size, byte_size_count }
 import std.algebra { string_contains }
 import extdeps.github.actions { workflow_file_size_max, workflow_file_within, workflow_file_octets }
-import gunbc.generated_artifact { FleetConvergeYamlArtifact, GitignoreArtifact }
+import gunbc.generated_artifact { FleetConvergeYamlArtifact, GitignoreArtifact, GithooksPreCommitArtifact }
 import gunbc.tier_o_artifact_emit {
   tier_o_artifact_body, tier_o_workflow_admitted, TierOArtifactBody, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO,
 }
@@ -40,7 +40,12 @@ test fn an_oversize_workflow_is_refused_with_its_path_and_size() -> Bool {
     TierOArtifactProduced { content } => content == "name: x\n"
     _ => false
   }
-  over && at
+  // the limit's scope is .github/workflows: the same bytes at another location are not measured against it
+  let elsewhere = match tier_o_workflow_admitted(a: GithooksPreCommitArtifact, committed: "name: x\n", max: byte_size(count: 7)) {
+    TierOArtifactProduced { content } => content == "name: x\n"
+    _ => false
+  }
+  over && at && elsewhere
 }
 
 // THE REAL ROUTE (gunbc.design_argument::witness_one_interface pairing claim): the committed fleet-converge
