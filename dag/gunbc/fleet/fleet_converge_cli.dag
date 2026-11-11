@@ -1079,9 +1079,9 @@ fn fleet_converge_hostname_converge_dispatch_admission_wet() -> ProcessExit {
 // here is a live name nobody could read — a plan folded over a state no one read is not a plan.
 fn fleet_converge_hostname_converge_plan_wet() -> ProcessExit {
   match hostname_converge_resolution_from_env() {
-    Refused { cause: c } =>
+    ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "plan")
-    Resolved { request: request } => hostname_converge_plan_exit(request: request)
+    PairResolved { request: request } => hostname_converge_plan_exit(request: request)
   }
 }
 
@@ -1089,7 +1089,7 @@ fn hostname_converge_plan_exit(request: HostnameConvergeRequest) -> ProcessExit 
   let step = hostname_converge_plan_step(request: request)
   let line = hostname_converge_plan_line(request: request, step: step)
   match step {
-    PlanRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "plan")
+    PlanStepRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "plan")
     Planned { plan: _, live: _, stamp: _ } => hostname_converge_report_exit(line: line)
   }
 }
@@ -1112,9 +1112,9 @@ fn fleet_converge_hostname_converge_apply_wet() -> ProcessExit {
     )
   }
   match hostname_converge_resolution_from_env() {
-    Refused { cause: c } =>
+    ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "apply")
-    Resolved { request: request } => hostname_converge_apply_exit(request: request)
+    PairResolved { request: request } => hostname_converge_apply_exit(request: request)
   }
 }
 
@@ -1122,14 +1122,14 @@ fn hostname_converge_apply_exit(request: HostnameConvergeRequest) -> ProcessExit
   let step = hostname_converge_apply_step(request: request)
   let line = hostname_converge_apply_line(result: step)
   match step {
-    Applied { settle: _, live_before: _, converged: converged } =>
+    ApplyDone { settle: _, live_before: _, converged: converged } =>
       if converged {
         hostname_converge_report_exit(line: line)
       } else {
         hostname_converge_refusal_exit(line: line, step: "apply")
       }
-    NotApplied { plan: _, live_before: _, reason: _ } => hostname_converge_refusal_exit(line: line, step: "apply")
-    ApplyRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "apply")
+    ApplySkipped { plan: _, live_before: _, reason: _ } => hostname_converge_refusal_exit(line: line, step: "apply")
+    ApplyStepRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "apply")
   }
 }
 
@@ -1141,9 +1141,9 @@ fn hostname_converge_apply_exit(request: HostnameConvergeRequest) -> ProcessExit
 fn fleet_converge_hostname_converge_read_back_wet() -> ProcessExit {
   let actuation_confirmed = hostname_converge_env_value(name: hostname_converge_confirm_env_name) == "converge"
   match hostname_converge_resolution_from_env() {
-    Refused { cause: c } =>
+    ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "read-back")
-    Resolved { request: request } => hostname_converge_read_back_exit(request: request, actuation_confirmed: actuation_confirmed)
+    PairResolved { request: request } => hostname_converge_read_back_exit(request: request, actuation_confirmed: actuation_confirmed)
   }
 }
 
@@ -1151,13 +1151,13 @@ fn hostname_converge_read_back_exit(request: HostnameConvergeRequest, actuation_
   let step = hostname_converge_read_back_step(request: request)
   let line = hostname_converge_read_back_line(result: step)
   match step {
-    ReadBack { observed: _, settle: _, matches_settle: matches_settle } =>
+    ReadBackDone { observed: _, settle: _, matches_settle: matches_settle } =>
       if matches_settle || !actuation_confirmed {
         hostname_converge_report_exit(line: line)
       } else {
         hostname_converge_refusal_exit(line: line, step: "read-back")
       }
-    ReadBackRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "read-back")
+    ReadBackStepRefused { cause: _ } => hostname_converge_refusal_exit(line: line, step: "read-back")
   }
 }
 
@@ -1167,9 +1167,9 @@ fn hostname_converge_read_back_exit(request: HostnameConvergeRequest, actuation_
 // red, so a run can never be read as having re-adopted when it did not.
 fn fleet_converge_hostname_converge_readopt_wet() -> ProcessExit {
   match hostname_converge_resolution_from_env() {
-    Refused { cause: c } =>
+    ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "re-adopt")
-    Resolved { request: request } => hostname_converge_readopt_exit(request: request)
+    PairResolved { request: request } => hostname_converge_readopt_exit(request: request)
   }
 }
 

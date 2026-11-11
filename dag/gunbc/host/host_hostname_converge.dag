@@ -137,9 +137,9 @@ fn hostname_converge_pair(
 // witness's third case is unreadable without them, and a refusal that does not name what it refused is
 // a dead end rather than an instruction (gunbc.design_argument::fail_closed).
 type HostnameConvergePlan
-  = ApplyPlan { guard: NonEmptyStr, settle: NonEmptyStr }
-  | NoopPlan { live: NonEmptyStr }
-  | ConflictPlan { live: NonEmptyStr, base: NonEmptyStr, desired: NonEmptyStr }
+  = ConvergeApply { guard: NonEmptyStr, settle: NonEmptyStr }
+  | ConvergeNoop { live: NonEmptyStr }
+  | ConvergeConflict { live: NonEmptyStr, base: NonEmptyStr, desired: NonEmptyStr }
 
 fn hostname_converge_plan(
   direction: HostnameConvergeDirection,
@@ -158,41 +158,41 @@ fn hostname_converge_plan(
     base: pair.guard as DnsLabel,
     desired: pair.settle as DnsLabel,
   ) {
-    ApplyPlan { base: b, desired: d } => ApplyPlan { guard: b as NonEmptyStr, settle: d as NonEmptyStr }
-    NoopPlan => NoopPlan { live: live }
-    ConflictPlan { verdict: _ } => ConflictPlan { live: live, base: base, desired: desired }
+    ApplyPlan { base: b, desired: d } => ConvergeApply { guard: b as NonEmptyStr, settle: d as NonEmptyStr }
+    NoopPlan => ConvergeNoop { live: live }
+    ConflictPlan { verdict: _ } => ConvergeConflict { live: live, base: base, desired: desired }
   }
 }
 
 fn hostname_converge_plan_is_apply(plan: HostnameConvergePlan) -> Bool {
   match plan {
-    ApplyPlan { guard: _, settle: _ } => true
-    NoopPlan { live: _ } => false
-    ConflictPlan { live: _, base: _, desired: _ } => false
+    ConvergeApply { guard: _, settle: _ } => true
+    ConvergeNoop { live: _ } => false
+    ConvergeConflict { live: _, base: _, desired: _ } => false
   }
 }
 
 fn hostname_converge_plan_is_noop(plan: HostnameConvergePlan) -> Bool {
   match plan {
-    ApplyPlan { guard: _, settle: _ } => false
-    NoopPlan { live: _ } => true
-    ConflictPlan { live: _, base: _, desired: _ } => false
+    ConvergeApply { guard: _, settle: _ } => false
+    ConvergeNoop { live: _ } => true
+    ConvergeConflict { live: _, base: _, desired: _ } => false
   }
 }
 
 fn hostname_converge_plan_is_conflict(plan: HostnameConvergePlan) -> Bool {
   match plan {
-    ApplyPlan { guard: _, settle: _ } => false
-    NoopPlan { live: _ } => false
-    ConflictPlan { live: _, base: _, desired: _ } => true
+    ConvergeApply { guard: _, settle: _ } => false
+    ConvergeNoop { live: _ } => false
+    ConvergeConflict { live: _, base: _, desired: _ } => true
   }
 }
 
 fn hostname_converge_plan_wire(plan: HostnameConvergePlan) -> NonEmptyStr {
   match plan {
-    ApplyPlan { guard: _, settle: _ } => "apply" as NonEmptyStr
-    NoopPlan { live: _ } => "noop" as NonEmptyStr
-    ConflictPlan { live: _, base: _, desired: _ } => "conflict" as NonEmptyStr
+    ConvergeApply { guard: _, settle: _ } => "apply" as NonEmptyStr
+    ConvergeNoop { live: _ } => "noop" as NonEmptyStr
+    ConvergeConflict { live: _, base: _, desired: _ } => "conflict" as NonEmptyStr
   }
 }
 
@@ -229,9 +229,9 @@ fn hostname_converge_plan_fold_text(
 
 fn hostname_converge_plan_detail(plan: HostnameConvergePlan) -> String {
   match plan {
-    ApplyPlan { guard: g, settle: s } => join(["live=", g as String, " settles=", s as String], "")
-    NoopPlan { live: l } => join(["live=", l as String, " is already the settled name", ""], "")
-    ConflictPlan { live: l, base: b, desired: d } =>
+    ConvergeApply { guard: g, settle: s } => join(["live=", g as String, " settles=", s as String], "")
+    ConvergeNoop { live: l } => join(["live=", l as String, " is already the settled name", ""], "")
+    ConvergeConflict { live: l, base: b, desired: d } =>
       join(
         [
           "live=", l as String,
@@ -278,8 +278,8 @@ type HostnameConvergeRequest {
 }
 
 type HostnameConvergeResolution
-  = Resolved { request: HostnameConvergeRequest }
-  | Refused { cause: HostnameConvergeRefusalCause }
+  = PairResolved { request: HostnameConvergeRequest }
+  | ResolutionRefused { cause: HostnameConvergeRefusalCause }
 
 fn hostname_converge_refusal_wire(cause: HostnameConvergeRefusalCause) -> NonEmptyStr {
   match cause {
@@ -398,21 +398,21 @@ fn hostname_converge_resolve(
   attempt_raw: String,
 ) -> HostnameConvergeResolution {
   match hostname_converge_direction_of(raw: direction_raw) {
-    Absent => Refused { cause: DirectionUnknown { raw: direction_raw } }
+    Absent => ResolutionRefused { cause: DirectionUnknown { raw: direction_raw } }
     Present { value: direction } =>
       match resolve_host_selector(selector: target_selector) {
-        HostSelectorUnknown { selector: s } => Refused { cause: TargetSelectorUnknown { selector: s } }
+        HostSelectorUnknown { selector: s } => ResolutionRefused { cause: TargetSelectorUnknown { selector: s } }
         HostSelectorAmbiguous { selector: s, candidates: c } =>
-          Refused { cause: TargetSelectorAmbiguous { selector: s, candidates: c } }
+          ResolutionRefused { cause: TargetSelectorAmbiguous { selector: s, candidates: c } }
         HostSelectorRegistryRefused { key: k } =>
-          Refused { cause: TargetSelectorRefused { selector: target_selector, key: k } }
+          ResolutionRefused { cause: TargetSelectorRefused { selector: target_selector, key: k } }
         HostSelectorResolved { host: target } =>
           match resolve_host_selector(selector: peer_selector) {
-            HostSelectorUnknown { selector: s } => Refused { cause: PeerSelectorUnknown { selector: s } }
+            HostSelectorUnknown { selector: s } => ResolutionRefused { cause: PeerSelectorUnknown { selector: s } }
             HostSelectorAmbiguous { selector: s, candidates: c } =>
-              Refused { cause: PeerSelectorAmbiguous { selector: s, candidates: c } }
+              ResolutionRefused { cause: PeerSelectorAmbiguous { selector: s, candidates: c } }
             HostSelectorRegistryRefused { key: k } =>
-              Refused { cause: PeerSelectorRefused { selector: peer_selector, key: k } }
+              ResolutionRefused { cause: PeerSelectorRefused { selector: peer_selector, key: k } }
             HostSelectorResolved { host: peer } =>
               hostname_converge_resolve_pair(
                 target: target,
@@ -432,10 +432,10 @@ fn hostname_converge_resolve_pair(
   attempt_raw: String,
 ) -> HostnameConvergeResolution {
   if target == peer {
-    Refused { cause: PeerIsTarget { host: target as NonEmptyStr } }
+    ResolutionRefused { cause: PeerIsTarget { host: target as NonEmptyStr } }
   } else {
     match fleet_compute_host_for_identity(identity: target) {
-      Absent => Refused { cause: TargetHostUnbound { host: target as NonEmptyStr } }
+      Absent => ResolutionRefused { cause: TargetHostUnbound { host: target as NonEmptyStr } }
       Present { value: host } => hostname_converge_bind(
         target: target,
         peer: peer,
@@ -455,10 +455,10 @@ fn hostname_converge_bind(
   attempt_raw: String,
 ) -> HostnameConvergeResolution {
   match deployed_intent_v0_persisted_for_slot(fleet_slot: target) {
-    Absent => Refused { cause: NoCommittedBaseline { host: target as NonEmptyStr } }
+    Absent => ResolutionRefused { cause: NoCommittedBaseline { host: target as NonEmptyStr } }
     Present { value: base } =>
       match deployed_intent_v1_from_fleet_slot(fleet_slot: target, target_host: host) {
-        Absent => Refused { cause: DesiredNameUnreadable { host: target as NonEmptyStr } }
+        Absent => ResolutionRefused { cause: DesiredNameUnreadable { host: target as NonEmptyStr } }
         Present { value: desired } =>
           hostname_converge_open_route(
             target: target,
@@ -488,7 +488,7 @@ fn hostname_converge_open_route(
   attempt_raw: String,
 ) -> HostnameConvergeResolution {
   match prepare_fleet_ssh_agent_context(attempt_raw: attempt_raw) {
-    FleetSshContextRefused { cause: c } => Refused { cause: SshAgentContextRefused { reason: c } }
+    FleetSshContextRefused { cause: c } => ResolutionRefused { cause: SshAgentContextRefused { reason: c } }
     FleetSshContextReady { context: context, receipt: _ } =>
       hostname_converge_bind_transport(
         target: target,
@@ -514,9 +514,9 @@ fn hostname_converge_bind_transport(
   let endpoint = fleet_probe_endpoint_for(host: target as String)
   match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: host_identity_operator_principal_name()) {
     SshTargetRefused { endpoint: _, refusal: _ } =>
-      Refused { cause: SshRouteRefused { host: target as NonEmptyStr, endpoint: endpoint } }
+      ResolutionRefused { cause: SshRouteRefused { host: target as NonEmptyStr, endpoint: endpoint } }
     SshTargetResolved { target: ssh_target } =>
-      Resolved {
+      PairResolved {
         request: hostname_converge_request(
           target: target,
           peer: peer,
@@ -564,7 +564,7 @@ fn hostname_converge_request(
 // passed it along would be certifying its own write rather than the machine's state
 // (gunbc.design_argument::witness_one_interface).
 type HostnameConvergeLive
-  = Live { name: NonEmptyStr }
+  = LiveRead { name: NonEmptyStr }
   | LiveRefused { cause: HostnameConvergeRefusalCause }
 
 fn hostname_converge_live(request: HostnameConvergeRequest) -> HostnameConvergeLive {
@@ -574,7 +574,7 @@ fn hostname_converge_live(request: HostnameConvergeRequest) -> HostnameConvergeL
     probed_at: clock_now_probed_at_or_unknown(),
   ) {
     Absent => LiveRefused { cause: LiveNameUnreadable { host: request.target as NonEmptyStr } }
-    Present { value: obs } => Live { name: obs.short_hostname as NonEmptyStr }
+    Present { value: obs } => LiveRead { name: obs.short_hostname as NonEmptyStr }
   }
 }
 
@@ -598,12 +598,12 @@ fn hostname_converge_fold(request: HostnameConvergeRequest, live: NonEmptyStr) -
 // STEP ONE: THE DRY PLAN. It reads the live name and folds it; it never acts.
 type HostnameConvergePlanStep
   = Planned { plan: HostnameConvergePlan, live: NonEmptyStr, stamp: NonEmptyStr }
-  | PlanRefused { cause: HostnameConvergeRefusalCause }
+  | PlanStepRefused { cause: HostnameConvergeRefusalCause }
 
 fn hostname_converge_plan_step(request: HostnameConvergeRequest) -> HostnameConvergePlanStep {
   match hostname_converge_live(request: request) {
-    LiveRefused { cause: c } => PlanRefused { cause: c }
-    Live { name: live } => hostname_converge_planned(request: request, live: live)
+    LiveRefused { cause: c } => PlanStepRefused { cause: c }
+    LiveRead { name: live } => hostname_converge_planned(request: request, live: live)
   }
 }
 
@@ -627,14 +627,14 @@ fn hostname_converge_planned(request: HostnameConvergeRequest, live: NonEmptyStr
 // verdict permits it, and the CAS inside the effect acts only while the live name still equals the
 // guard the script was built under.
 type HostnameConvergeApplyStep
-  = Applied { settle: NonEmptyStr, live_before: NonEmptyStr, converged: Bool }
-  | NotApplied { plan: HostnameConvergePlan, live_before: NonEmptyStr, reason: String }
-  | ApplyRefused { cause: HostnameConvergeRefusalCause }
+  = ApplyDone { settle: NonEmptyStr, live_before: NonEmptyStr, converged: Bool }
+  | ApplySkipped { plan: HostnameConvergePlan, live_before: NonEmptyStr, reason: String }
+  | ApplyStepRefused { cause: HostnameConvergeRefusalCause }
 
 fn hostname_converge_apply_step(request: HostnameConvergeRequest) -> HostnameConvergeApplyStep {
   match hostname_converge_live(request: request) {
-    LiveRefused { cause: c } => ApplyRefused { cause: c }
-    Live { name: live_before } =>
+    LiveRefused { cause: c } => ApplyStepRefused { cause: c }
+    LiveRead { name: live_before } =>
       hostname_converge_apply_folded(
         request: request,
         plan: hostname_converge_fold(request: request, live: live_before),
@@ -649,7 +649,7 @@ fn hostname_converge_apply_folded(
   live_before: NonEmptyStr,
 ) -> HostnameConvergeApplyStep {
   if !hostname_converge_plan_is_apply(plan: plan) {
-    NotApplied {
+    ApplySkipped {
       plan: plan,
       live_before: live_before,
       reason: "the fold did not admit an apply, so no hostnamectl write was attempted",
@@ -657,7 +657,7 @@ fn hostname_converge_apply_folded(
   } else {
     match hostname_converge_identity_plan(plan: plan) {
       Absent =>
-        NotApplied {
+        ApplySkipped {
           plan: plan,
           live_before: live_before,
           reason: "the admitted fold produced no effect cell, so nothing was attempted",
@@ -671,13 +671,13 @@ fn hostname_converge_apply_folded(
           fixture_actor: none,
         ) {
           Absent =>
-            NotApplied {
+            ApplySkipped {
               plan: plan,
               live_before: live_before,
               reason: "the gated apply refused the effect before running it",
             }
           Present { value: reconciliation } =>
-            Applied {
+            ApplyDone {
               settle: hostname_converge_settle_of(plan: plan),
               live_before: live_before,
               converged: reconciliation_converged(r: reconciliation),
@@ -692,7 +692,7 @@ fn hostname_converge_apply_folded(
 // exactly the `SetHostnameCas` cell the in-place loop builds and cannot invent an effect of its own.
 fn hostname_converge_identity_plan(plan: HostnameConvergePlan) -> HostIdentityPlan? {
   match plan {
-    ApplyPlan { guard: g, settle: s } =>
+    ConvergeApply { guard: g, settle: s } =>
       Present {
         value: host_identity_plan_from_verdict(
           verdict: host_identity_patch_from_intents(
@@ -704,8 +704,8 @@ fn hostname_converge_identity_plan(plan: HostnameConvergePlan) -> HostIdentityPl
           desired: s as DnsLabel,
         ),
       }
-    NoopPlan { live: _ } => none
-    ConflictPlan { live: _, base: _, desired: _ } => none
+    ConvergeNoop { live: _ } => none
+    ConvergeConflict { live: _, base: _, desired: _ } => none
   }
 }
 
@@ -715,8 +715,8 @@ fn hostname_converge_identity_plan(plan: HostnameConvergePlan) -> HostIdentityPl
 // own — including after an apply that never ran — and still say what the machine actually answers
 // (gunbc.design_argument::witness_one_interface).
 type HostnameConvergeReadBackStep
-  = ReadBack { observed: NonEmptyStr, settle: NonEmptyStr, matches_settle: Bool }
-  | ReadBackRefused { cause: HostnameConvergeRefusalCause }
+  = ReadBackDone { observed: NonEmptyStr, settle: NonEmptyStr, matches_settle: Bool }
+  | ReadBackStepRefused { cause: HostnameConvergeRefusalCause }
 
 fn hostname_converge_settle_for_direction(request: HostnameConvergeRequest) -> NonEmptyStr {
   match request.direction {
@@ -727,9 +727,9 @@ fn hostname_converge_settle_for_direction(request: HostnameConvergeRequest) -> N
 
 fn hostname_converge_read_back_step(request: HostnameConvergeRequest) -> HostnameConvergeReadBackStep {
   match hostname_converge_live(request: request) {
-    LiveRefused { cause: c } => ReadBackRefused { cause: c }
-    Live { name: observed } =>
-      ReadBack {
+    LiveRefused { cause: c } => ReadBackStepRefused { cause: c }
+    LiveRead { name: observed } =>
+      ReadBackDone {
         observed: observed,
         settle: hostname_converge_settle_for_direction(request: request),
         matches_settle: observed == hostname_converge_settle_for_direction(request: request),
@@ -739,9 +739,9 @@ fn hostname_converge_read_back_step(request: HostnameConvergeRequest) -> Hostnam
 
 fn hostname_converge_settle_of(plan: HostnameConvergePlan) -> NonEmptyStr {
   match plan {
-    ApplyPlan { guard: _, settle: s } => s
-    NoopPlan { live: l } => l
-    ConflictPlan { live: _, base: _, desired: _ } => "none" as NonEmptyStr
+    ConvergeApply { guard: _, settle: s } => s
+    ConvergeNoop { live: l } => l
+    ConvergeConflict { live: _, base: _, desired: _ } => "none" as NonEmptyStr
   }
 }
 
@@ -810,7 +810,7 @@ type HostnameConvergeAdoptStep
 fn hostname_converge_readopt_step(request: HostnameConvergeRequest) -> HostnameConvergeAdoptStep {
   match hostname_converge_live(request: request) {
     LiveRefused { cause: c } => AdoptReadRefused { cause: c }
-    Live { name: live } =>
+    LiveRead { name: live } =>
       hostname_converge_readopt_judged(request: request, live: live)
   }
 }
@@ -876,7 +876,7 @@ fn hostname_converge_plan_line(request: HostnameConvergeRequest, step: HostnameC
         ],
         "",
       )
-    PlanRefused { cause: c } => hostname_converge_refusal_line(cause: c)
+    PlanStepRefused { cause: c } => hostname_converge_refusal_line(cause: c)
   }
 }
 
@@ -893,7 +893,7 @@ fn hostname_converge_refusal_line(cause: HostnameConvergeRefusalCause) -> String
 
 fn hostname_converge_apply_line(result: HostnameConvergeApplyStep) -> String {
   match result {
-    Applied { settle: s, live_before: before, converged: converged } =>
+    ApplyDone { settle: s, live_before: before, converged: converged } =>
       join(
         [
           "hostname_converge applied settle=", s as String,
@@ -903,7 +903,7 @@ fn hostname_converge_apply_line(result: HostnameConvergeApplyStep) -> String {
         ],
         "",
       )
-    NotApplied { plan: plan, live_before: before, reason: r } =>
+    ApplySkipped { plan: plan, live_before: before, reason: r } =>
       join(
         [
           "hostname_converge not-applied kind=", hostname_converge_plan_wire(plan: plan) as String,
@@ -913,13 +913,13 @@ fn hostname_converge_apply_line(result: HostnameConvergeApplyStep) -> String {
         ],
         "",
       )
-    ApplyRefused { cause: c } => hostname_converge_refusal_line(cause: c)
+    ApplyStepRefused { cause: c } => hostname_converge_refusal_line(cause: c)
   }
 }
 
 fn hostname_converge_read_back_line(result: HostnameConvergeReadBackStep) -> String {
   match result {
-    ReadBack { observed: o, settle: s, matches_settle: m } =>
+    ReadBackDone { observed: o, settle: s, matches_settle: m } =>
       join(
         [
           "hostname_converge read-back observed=", o as String,
@@ -929,7 +929,7 @@ fn hostname_converge_read_back_line(result: HostnameConvergeReadBackStep) -> Str
         ],
         "",
       )
-    ReadBackRefused { cause: c } => hostname_converge_refusal_line(cause: c)
+    ReadBackStepRefused { cause: c } => hostname_converge_refusal_line(cause: c)
   }
 }
 

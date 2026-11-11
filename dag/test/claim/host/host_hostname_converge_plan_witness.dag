@@ -21,13 +21,13 @@ module test.claim.host.host_hostname_converge_plan_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import gunbc.host.host_hostname_converge {
-  ApplyPlan,
-  ConflictPlan,
+  ConvergeApply,
+  ConvergeConflict,
   Forward,
   HostnameConvergeAdoptJudgement,
   HostnameConvergePair,
   HostnameConvergePlan,
-  NoopPlan,
+  ConvergeNoop,
   PeerSelectorRefused,
   PeerSelectorUnknown,
   Rollback,
@@ -59,7 +59,7 @@ data other_name: NonEmptyStr = "someone-elses-box"
 // after the name has been set, and the mode must not write again.
 test fn live_equal_desired_is_noop() -> Bool {
   match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: desired_name) {
-    NoopPlan { live: l } => l == desired_name && hostname_converge_plan_is_noop(plan: NoopPlan { live: l })
+    ConvergeNoop { live: l } => l == desired_name && hostname_converge_plan_is_noop(plan: ConvergeNoop { live: l })
     _ => false
   }
 }
@@ -69,8 +69,8 @@ test fn live_equal_desired_is_noop() -> Bool {
 // the three-way merge exists for.
 test fn live_equal_base_is_apply_naming_both_sides() -> Bool {
   match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: stale_base) {
-    ApplyPlan { guard: g, settle: s } =>
-      g == stale_base && s == desired_name && hostname_converge_plan_is_apply(plan: ApplyPlan { guard: g, settle: s })
+    ConvergeApply { guard: g, settle: s } =>
+      g == stale_base && s == desired_name && hostname_converge_plan_is_apply(plan: ConvergeApply { guard: g, settle: s })
     _ => false
   }
 }
@@ -80,11 +80,11 @@ test fn live_equal_base_is_apply_naming_both_sides() -> Bool {
 // a hostname is how a box gets renamed to the wrong thing.
 test fn live_matching_neither_refuses_naming_base_and_desired() -> Bool {
   match hostname_converge_plan(direction: Forward, base: stale_base, desired: desired_name, live: other_name) {
-    ConflictPlan { live: l, base: b, desired: d } =>
+    ConvergeConflict { live: l, base: b, desired: d } =>
       l == other_name
         && b == stale_base
         && d == desired_name
-        && hostname_converge_plan_is_conflict(plan: ConflictPlan { live: l, base: b, desired: d })
+        && hostname_converge_plan_is_conflict(plan: ConvergeConflict { live: l, base: b, desired: d })
     _ => false
   }
 }
@@ -150,9 +150,9 @@ type PairCheck = BothConflict { base: NonEmptyStr, desired: NonEmptyStr, live: N
 
 fn pair_of(before: HostnameConvergePlan, after: HostnameConvergePlan) -> PairCheck {
   match before {
-    ConflictPlan { live: l1, base: b, desired: d } =>
+    ConvergeConflict { live: l1, base: b, desired: d } =>
       match after {
-        ConflictPlan { live: l2, base: _, desired: _ } =>
+        ConvergeConflict { live: l2, base: _, desired: _ } =>
           if l1 == l2 {
             BothConflict { base: b, desired: d, live: l1 }
           } else {
@@ -177,14 +177,14 @@ test fn rollback_swaps_guard_and_settle() -> Bool {
 
 test fn rollback_applies_where_the_window_already_set_the_name() -> Bool {
   match hostname_converge_plan(direction: Rollback, base: stale_base, desired: desired_name, live: desired_name) {
-    ApplyPlan { guard: g, settle: s } => g == desired_name && s == stale_base
+    ConvergeApply { guard: g, settle: s } => g == desired_name && s == stale_base
     _ => false
   }
 }
 
 test fn rollback_is_noop_back_at_the_previous_name() -> Bool {
   match hostname_converge_plan(direction: Rollback, base: stale_base, desired: desired_name, live: stale_base) {
-    NoopPlan { live: l } => l == stale_base
+    ConvergeNoop { live: l } => l == stale_base
     _ => false
   }
 }
@@ -235,7 +235,7 @@ data srv2_desired_name: NonEmptyStr = "srv2"
 
 test fn srv2_dry_run_against_its_current_name_is_noop() -> Bool {
   match hostname_converge_plan(direction: Forward, base: srv2_stored_base, desired: srv2_desired_name, live: srv2_live_name) {
-    NoopPlan { live: l } => l == srv2_live_name && l == srv2_desired_name
+    ConvergeNoop { live: l } => l == srv2_live_name && l == srv2_desired_name
     _ => false
   }
 }
@@ -245,7 +245,7 @@ test fn srv2_dry_run_against_its_current_name_is_noop() -> Bool {
 // re-adopt would be a write in disguise.
 test fn srv2_after_readopt_still_noop() -> Bool {
   match hostname_converge_plan(direction: Forward, base: srv2_live_name, desired: srv2_desired_name, live: srv2_live_name) {
-    NoopPlan { live: l } => l == srv2_live_name
+    ConvergeNoop { live: l } => l == srv2_live_name
     _ => false
   }
 }
