@@ -97,7 +97,7 @@ import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_p
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
   LiveDeployServeUnitGrammarRefused,
-  approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on,
+  approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on, approval_broker_unit_address_is_resolvable,
   attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
   attempt_unit_spool_answer_mode, publication_spool_request_mode,
   AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_service_unit_file,
@@ -896,7 +896,7 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
 // env file and orders itself after the sidecar unit, so a broker swap ahead of them leaves systemd
 // unable to start it (run 39545280023). The broker's own enable and restart are lifecycle legs.
 fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DeployApplyLeg> {
-  if deployment_owns_the_host_approval_broker(spec: spec) {
+  if deployment_owns_the_host_approval_broker(spec: spec) && approval_broker_unit_address_is_resolvable(spec: spec) {
     let owner = spec.approval_broker.service_user
     concat(concat([
       ApplyLegBrokerTree { revision: revision },
