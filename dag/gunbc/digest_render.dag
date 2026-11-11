@@ -105,15 +105,15 @@ fn render_review_states(states: List<String>) -> String {
 }
 
 fn render_pull_request_digest_line(view: PullRequestDigestView) -> String {
-  let title = "#\{view.subject.number\} \{view.subject.title\}"
+  let title = join(["#", to_string(view.subject.number), " ", view.subject.title], "")
   let status = render_readiness(readiness: view.readiness)
   let reviews = render_review_states(states: view.review_states)
-  "\{title\} -- \{status\} -- reviews: \{reviews\} -- head: \{view.subject.head_sha\}"
+  join([title, " -- ", status, " -- reviews: ", reviews, " -- head: ", view.subject.head_sha], "")
 }
 
 fn render_pull_request_digest_block(view: PullRequestDigestView) -> String {
   let entries = [
-    kv_pair(key: "PR", sep: ": ", value: "#\{view.subject.number\} \{view.subject.title\}"),
+    kv_pair(key: "PR", sep: ": ", value: join(["#", to_string(view.subject.number), " ", view.subject.title], "")),
     kv_pair(key: "URL", sep: ": ", value: view.subject.url),
     kv_pair(key: "Base", sep: ": ", value: view.subject.base_ref),
     kv_pair(key: "Head", sep: ": ", value: view.subject.head_sha),
