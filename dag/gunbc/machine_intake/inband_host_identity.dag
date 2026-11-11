@@ -192,7 +192,7 @@ type InbandSectionScan { inside: Bool, rows: List<String> }
 fn inband_section_rows(content: String, marker: NonEmptyStr) -> List<String> {
   let head = join(["### ", marker as String], "")
   let lines = map(split(s: content, delimiter: "\n"), l => trim(l))
-  fold(lines, init: InbandSectionScan { inside: false, rows: [] }, f: fn(acc: InbandSectionScan, line: String) {
+  fold(lines, init: InbandSectionScan { inside: false, rows: [] }, f: fn(acc, line) {
     if acc.inside {
       if starts_with(s: line, prefix: "### ") {
         InbandSectionScan { inside: false, rows: acc.rows }
@@ -380,7 +380,7 @@ fn inband_board_fields(content: String, row: InbandHostIdentityCaptureRow) -> In
   let boards = inband_section_rows(content: content, marker: row.board_section)
   if length(boards) == 0 {
     InbandBoardFieldsRefused { gap: InbandBoardSectionCount { marker: row.board_section, count: 0 } }
-  } else
+  } else {
     match inband_section_field(rows: boards, field: "Serial Number") {
       FruFieldGap { gap: FruFieldAbsent { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries no such line" } }
       FruFieldGap { gap: FruFieldRepeated { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries more than one line" } }
@@ -398,6 +398,7 @@ fn inband_board_fields(content: String, row: InbandHostIdentityCaptureRow) -> In
             }
         }
     }
+  }
 }
 
 // What attributed the read, when it is attributed: the MAC of the bound host NIC, or the address of the bound

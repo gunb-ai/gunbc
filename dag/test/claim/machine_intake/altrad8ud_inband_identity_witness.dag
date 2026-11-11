@@ -55,8 +55,6 @@ import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
 }
 
-uses fs: std.resources.Filesystem
-
 // The board the capture claims, against the fleet's own board row: the catalog label ends with the product the
 // capture printed, which is the same relation the reader checks -- asserted here so a reader that stopped
 // checking it would fail this claim.
