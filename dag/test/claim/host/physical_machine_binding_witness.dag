@@ -30,7 +30,7 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, provisioning_over_bmc_via_virtual_media }
 import gunbc.fleet.fleet_host_backing { HostUnitUnobserved, resolve_host_unit }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_key_standing,
@@ -73,7 +73,7 @@ data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_mtcollins1,
   participation: [],
   backing: OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: Present { value: UnitKeyBound { key: unit_b } },
   },
 }
@@ -84,7 +84,7 @@ data red2_enrollment_resolved_same: HostEnrollmentIntent = HostEnrollmentIntent 
   host: operator_host_mtcollins1,
   participation: [],
   backing: OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: Present { value: UnitKeyBound { key: unit_a } },
   },
 }
@@ -230,7 +230,7 @@ data srv_style_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_mtcollins1,
   participation: [],
   backing: OwnedMachine {
-    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    provisioning: provisioning_over_bmc_via_virtual_media(),
     unit: Absent,
   },
 }
