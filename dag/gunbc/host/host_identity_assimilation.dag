@@ -54,7 +54,7 @@ type HostIdentityAssimilationReceipt {
 }
 
 data gunbc_host_identity_assimilation_scope_disposition: Disposition = std.disposition.Terminal {
-  reason: "Closed-loop converge-from-base: host_identity_converge_from_base takes the PERSISTED DeployedIntentV0 (a committed .dag data row — gunbc.deployed_intent_v0's gunbc_srv1_deployed_intent_v0_persisted / gunbc_srv2_deployed_intent_v0_persisted) as its base ARGUMENT, never re-derives base from a live read. Adoption (gunbc.host.host_identity_adopt, run once, out of band) and converge (this module, run every reconcile pass) are split so a run cannot silently promote drift into the new base — the three-way merge's Conflict arm stays reachable (host_identity_plan_from_verdict maps Conflict to ConflictPlan, whose plan_effect_script is structurally Absent, so host_identity_apply_gated never constructs a shell script for a conflicted leaf — no-shell-on-conflict by construction, not by a runtime check on the Conflict variant)."
+  reason: "Closed-loop converge-from-base: host_identity_converge_with_observation takes the PERSISTED DeployedIntentV0 (a committed .dag data row — gunbc.deployed_intent_v0's gunbc_srv1_deployed_intent_v0_persisted / gunbc_srv2_deployed_intent_v0_persisted) as its base ARGUMENT, never re-derives base from a live read. Adoption (gunbc.host.host_identity_adopt, run once, out of band) and converge (this module, run every reconcile pass) are split so a run cannot silently promote drift into the new base — the three-way merge's Conflict arm stays reachable (host_identity_plan_from_verdict maps Conflict to ConflictPlan, whose plan_effect_script is structurally Absent, so host_identity_apply_gated never constructs a shell script for a conflicted leaf — no-shell-on-conflict by construction, not by a runtime check on the Conflict variant)."
 }
 
 data gunbc_host_identity_assimilation_model_marker: NonEmptyStr = "gunbc.host_identity_assimilation.v0"
@@ -181,26 +181,6 @@ fn host_identity_converge_with_observation(
   } }
 }
 
-fn host_identity_converge_from_base(
-  target: HostIdentityAssimilationTarget,
-  probed_at: NonEmptyStr,
-) -> HostIdentityAssimilationReceipt? {
-  match target.desired {
-    Absent => none
-    Present { value: desired } =>
-      match host_identity_observation_live(target: target.control_plane, transport: target.transport, probed_at: probed_at) {
-        Absent => none
-        Present { value: precondition_obs } =>
-          host_identity_converge_with_observation(
-            target: target,
-            desired: desired,
-            precondition_obs: precondition_obs,
-            probed_at: probed_at,
-          )
-      }
-  }
-}
-
 // THE PER-HOST WET ENTRIES THAT WERE HERE ARE GONE. `host_identity_assimilation_target_srv1` / `_srv2`
 // and `host_identity_assimilate_srv1_wet` / `_srv2_wet` named a machine six times over — a fleet slot, a
 // compute host, a control-plane cell, an access row, a committed baseline and an entry each — so joining
@@ -215,6 +195,16 @@ fn host_identity_converge_from_base(
 // The per-host adoption wrappers beside them are gone with them — gunbc.host.host_identity_adopt's
 // host_identity_adopt_srv1_live / _srv2_live, the host-generic driver those two alone fed, and the entry
 // that could only ever be satisfied by passing one of them — because adopting a baseline is now the
-// generic mode's own typed step, gunbc.host.host_hostname_converge hostname_converge_readopt_step, which
-// is judged against the live name instead of hard-wired to a machine. A caller-less tail of a deleted
-// leaf is a second path too (gunbc.design_argument::consumption).
+// The loop's ENTRY POINT went the same way: host_identity_converge_from_base had exactly two callers at
+// main 7e57510bb50 — host_identity_assimilate_srv1_wet and _srv2_wet — so deleting those left it caller-less,
+// and a caller-less tail is the same red. It is not reusable in its place, and that is not a defect of either:
+// it sequences fold -> gated apply -> independent read-back -> no-op re-run in ONE call, while the mode must
+// emit those as three separately gated workflow steps (a dry plan the operator reads before anything is
+// written, a write behind a second lock, a read-back that only goes red after a confirmed apply) and must
+// carry a direction. What stays here is therefore the core it shared with the mode,
+// host_identity_converge_with_observation — consumed by gunbc.test.claim.host.host_identity_observation_witness,
+// so the independent read-back and the no-op re-run remain in the codebase rather than being re-implemented
+// beside them. The mode calls the SAME fold the core calls: host_identity_precondition_verdict is
+// host_identity_patch_from_intents over the same DeployedIntentV0 / HostIdentityObservation / DeployedIntentV1
+// carriers, so the peer mode and the in-place core cannot disagree about what a state means
+// (gunbc.design_argument::single_authority).
