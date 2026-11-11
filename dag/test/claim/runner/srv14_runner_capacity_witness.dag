@@ -17,7 +17,8 @@ module test.claim.runner.srv14_runner_capacity_witness
 // lands what: butch's own MemTotal, butch's base-only overhead, the engine subtraction, no session
 // charge (the operator ruled butch CI-only), and butch standing in the fleet's own offer catalog.
 
-import std.types { Bool, Int, List, NonEmptyStr, Option, Present, Absent, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
 import std.measure { byte_size, byte_size_count }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv1 }
@@ -30,7 +31,6 @@ import gunbc.host.host_memory_observation {
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { SessionReservationBytesResolution, ReservationBytesNotApplicable, session_reservation_bytes }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for, ComputeOffer }
-import gunbc.fleet.fleet_intent { ComputeSupplyFacts }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
