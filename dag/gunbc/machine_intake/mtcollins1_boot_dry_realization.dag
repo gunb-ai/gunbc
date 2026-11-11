@@ -52,6 +52,12 @@ type MtCollins1BootWorld {
   worker: ModeledWorker
   console: ModeledHostConsole
   media: MegaRacMediaWorld
+  // WHETHER mktemp -d REFUSES on this worker. A fault injected at that one operation, standing for any refusal
+  // the real mktemp reports (a full or read-only temp volume, EACCES on the template's parent): the private
+  // secret-file bracket cannot enter, which is the arm a MegaRAC session that was opened but never closed
+  // comes from (gunbc.machine_intake.megarac_media_attach SessionCloseNeverRan). Owner-only mkdir and every
+  // other filesystem operation are unaffected, so the boot reaches the attach before the fault bites.
+  mktemp_refused: Bool
 }
 
 // THE WORKER'S SSH AGENT: whether it holds the fleet automation key. Its listing follows
@@ -111,23 +117,23 @@ type ModeledHostConsole {
 }
 
 fn with_bmc(w: MtCollins1BootWorld, bmc: BmcWorld) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
+  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused }
 }
 
 fn with_fs(w: MtCollins1BootWorld, fs: ModeledFilesystem) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused }
 }
 
 fn with_worker(w: MtCollins1BootWorld, worker: ModeledWorker) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: worker, console: w.console, media: w.media }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused }
 }
 
 fn with_console(w: MtCollins1BootWorld, console: ModeledHostConsole) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: console, media: w.media }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: console, media: w.media, mktemp_refused: w.mktemp_refused }
 }
 
 fn with_media(w: MtCollins1BootWorld, media: MegaRacMediaWorld) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: media }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: media, mktemp_refused: w.mktemp_refused }
 }
 
 fn appended(fs: ModeledFilesystem, path: String, text: String) -> ModeledFilesystem {
@@ -243,7 +249,7 @@ fn with_notice_watcher(w: MtCollins1BootWorld, capture_path: String, token: Stri
   let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: second(count: 0)), comm: "bash", cmdline: "bash -c gunbc-sol-notice-watch", capture_path: capture_path, diagnostic_path: "", alive: true }
   let fs = fs_with_file(fs: fs_with_file(fs: w.fs, path: concat(capture_path, mtcollins1_sol_notice_ready_suffix), content: concat(token, "\n")), path: mtcollins1_sol_notice_watcher_path(capture_path: capture_path), content: process_identity(p: p))
   let env = list_snoc_item(xs: w.environment, item: ModeledVariable { name: mtcollins1_sol_notice_token_env as String, value: token })
-  started(w: MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }, p: p, fs: fs)
+  started(w: MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused }, p: p, fs: fs)
 }
 
 fn exited_step<S>(state: S, stdout: String, exit_code: Int) -> OperationStep<S> {
@@ -450,7 +456,7 @@ fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1Boo
     // The CSRF header file the attach and the UI observation stage via gunbc.auth.private_secret_file
     // needs its mktemp/writeowneronly/rm/rmdir effects realized over the SAME modeled filesystem the
     // file transport uses -- without them the modeled bracket faults the instant it enters.
-    private_secret_file_bindings(get: fn(w) { w.fs }, put: with_fs, cwd: fn(w) { dry_worker_checkout }),
+    private_secret_file_bindings(get: fn(w) { w.fs }, put: with_fs, cwd: fn(w) { dry_worker_checkout }, mktemp_refused: fn(w) { w.mktemp_refused }),
   )
   let local_commands = exact_invocation_binding(at: shell_exec_run_argv_operation, inputs: ["program", "arguments"], table: [
     ModeledInvocation {

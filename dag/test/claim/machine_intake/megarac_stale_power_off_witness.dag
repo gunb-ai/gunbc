@@ -16,7 +16,6 @@ import gunbc.machine_intake.megarac_media_attach {
   ConvergenceStep,
   MegaRacAttachResult, SecretFileRemoved, SecretFileResidueRemains,
   MegaRacDetachAdmission,
-  MegaRacDetachAdmitted,
   MegaRacDetachNotAdmitted,
   MegaRacPresentationObserved,
   MegaRacRawRead,
@@ -25,6 +24,7 @@ import gunbc.machine_intake.megarac_media_attach {
   SessionReleased,
   SessionReleaseNotAttempted,
   SessionReleaseRefused,
+  megarac_close_never_ran,
   ShareBound,
   ShareUnreadable,
   attach_readiness,
@@ -34,7 +34,7 @@ import gunbc.machine_intake.megarac_media_attach {
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved,
-  MegaRacStalePowerOffWithheld, LookSecretFileLeft, LookSessionNotReleased,
+  LookSecretFileLeft, LookSessionNotReleased,
 }
 import gunbc.machine_intake.megarac_boot_media_attach {
   PowerOffForStale,
@@ -211,12 +211,25 @@ test fn a_look_that_left_its_csrf_file_withholds_the_power_off() -> Bool {
     })
 }
 
-// A WITHHELD POWER-OFF NEVER ADMITS THE DETACH, even over a reading of OFF, which admits it when unneeded.
-test fn a_withheld_power_off_never_admits_the_detach() -> Bool {
-  let off = ChassisPowerRead { power_on: false }
-  (match megarac_detach_admission_after_power_off(power: off, off: MegaRacStalePowerOffNotNeeded { reason: "the host was read off" }) { MegaRacDetachAdmitted => true  _ => false })
-    && (match megarac_detach_admission_after_power_off(power: off, off: MegaRacStalePowerOffWithheld { cause: LookSecretFileLeft }) {
-      MegaRacDetachNotAdmitted { reason: r } => string_contains(s: r as String, pattern: "stale power-off was withheld")
+// NEVER OPENED IS NOT OPENED-AND-NOT-CLOSED (side chat on gunbc#16247). The identical stale look, differing only
+// in its release: a session OpenSession never allocated is unneeded, the one production writes when the header
+// bracket could not be entered AFTER OpenSession succeeded (megarac_close_never_ran) is a leak and withholds --
+// and a never-opened look that somehow left a file still withholds on the residue rather than reading unneeded.
+test fn a_session_opened_and_never_closed_withholds_and_one_never_opened_does_not() -> Bool {
+  let l = look(configurations: presenting(name: run_stale as String))
+  let never_opened = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseNotAttempted, baseline: none, secret_file: SecretFileRemoved }
+  let left_open = MegaRacAttachResult { outcome: l.outcome, session_release: megarac_close_never_ran(cause: "mktemp -d: Permission denied"), baseline: none, secret_file: SecretFileRemoved }
+  let never_opened_with_residue = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseNotAttempted, baseline: none, secret_file: SecretFileResidueRemains }
+  (match megarac_stale_power_off_need(look: never_opened, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+    PowerOffNotNeeded { reason: r } => string_contains(s: r as String, pattern: "never opened")
+    _ => false
+  })
+    && (match megarac_stale_power_off_need(look: left_open, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSessionNotReleased { detail: d } } => string_contains(s: d, pattern: "CloseSession never ran") && string_contains(s: d, pattern: "Permission denied")
+      _ => false
+    })
+    && (match megarac_stale_power_off_need(look: never_opened_with_residue, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSecretFileLeft } => true
       _ => false
     })
 }

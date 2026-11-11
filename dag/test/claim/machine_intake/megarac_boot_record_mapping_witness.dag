@@ -28,8 +28,8 @@ import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerR
 import gunbc.host.boot_attempt {
   HostPowerState, PowerOn, PowerOff, PowerUnread,
   BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
-  StalePowerOffNotNeeded, StalePowerOffWithheld, StalePowerOffObserved, StalePowerOffCommandRefused, StalePowerOffNotObserved,
-  MediaAttachNotAttempted, MediaAttachAttempted,
+  StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused, StalePowerOffNotObserved,
+  MediaAttachNotAttempted, MediaAttachAttempted, MediaAttachWithheld,
   HandoffConfirmed, HandoffAttemptedUnconfirmed,
   HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
   EndMediaNotTaken, EndMediaObserved,
@@ -108,7 +108,7 @@ import gunbc.host.smpro_platform_capability { SmproReading, SmproNotTaken }
 import gunbc.host.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   BmcChannelRead, BmcChannelStanding, BmcChannelFailed, BmcTimeout, HarnessFinding,
-  MegaRacStalePowerOff, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffWithheld, LookSecretFileLeft, MegaRacStalePowerOffObserved,
+  MegaRacStalePowerOff, MegaRacStalePowerOffNotNeeded, MegaRacMediaAttachWithheld, LookSecretFileLeft, MegaRacStalePowerOffObserved,
   MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotObserved,
   MegaRacMediaAttach, MegaRacMediaAttachNotAttempted, MegaRacMediaAttachAttempted,
   MegaRacHandoff, MegaRacHandoffNotReached, MegaRacHandoffWithheldAtRecheck, MegaRacHandoffAttempted,
@@ -333,7 +333,7 @@ test fn an_unanswered_look_is_unread_not_not_served() -> Bool {
   }
 }
 
-// ── STALE POWER OFF: all five arms, with the power readings classified too ───────────
+// ── STALE POWER OFF: all four arms, with the power readings classified too ───────────
 
 test fn stale_not_needed_carries_its_reason() -> Bool {
   match megarac_stale_power_off_record(r: MegaRacStalePowerOffNotNeeded { reason: "already off" }) {
@@ -342,11 +342,21 @@ test fn stale_not_needed_carries_its_reason() -> Bool {
   }
 }
 
-test fn stale_withheld_maps_to_the_neutral_withheld_with_its_cause() -> Bool {
-  match megarac_stale_power_off_record(r: MegaRacStalePowerOffWithheld { cause: LookSecretFileLeft }) {
-    StalePowerOffWithheld { reason: r } => string_contains(s: r as String, pattern: "CSRF header file was LEFT ON THE RUNNER")
+// A WITHHELD ATTACH maps to the neutral withheld arm with its medium, its power and its cause, and derives the
+// not-ready finding: no presentation was produced, and the reason says why.
+test fn a_withheld_attach_maps_to_the_neutral_withheld_arm_and_derives_not_ready() -> Bool {
+  let raw = MegaRacMediaAttachWithheld { attempt: "ipmi-77", medium_image_name: "census.iso", medium_image_sha256: "ab", power: a_power(), cause: LookSecretFileLeft, look: presented_result() }
+  let neutral = megarac_media_attach_record(r: raw)
+  (match neutral {
+    MediaAttachWithheld { medium_image_name: n, medium_image_sha256: h, power: p, reason: r } =>
+      n == "census.iso" && h == "ab" && p == PowerOn && string_contains(s: r as String, pattern: "CSRF header file was LEFT ON THE RUNNER")
     _ => false
-  }
+  })
+    && (match megarac_boot_run_record(raw: run_with_media(media: raw), console: a_console(), identity: an_identity(), harness: no_harness()).media {
+      MediaAttachWithheld { medium_image_name: _, medium_image_sha256: _, power: _, reason: _ } => true
+      _ => false
+    })
+    && has_derived(findings: derived_of(raw: run_with_media(media: raw)), f: MediaAttachNotReady { record: neutral })
 }
 
 test fn stale_observed_keeps_the_image_and_classifies_before() -> Bool {
@@ -378,6 +388,7 @@ test fn a_stale_power_off_never_observed_keeps_both_readings() -> Bool {
 test fn media_not_attempted_carries_only_its_reason() -> Bool {
   match megarac_media_attach_record(r: MegaRacMediaAttachNotAttempted { reason: "no medium" }) {
     MediaAttachNotAttempted { reason: r } => r == "no medium"
+    MediaAttachWithheld { medium_image_name: _, medium_image_sha256: _, power: _, reason: _ } => false
     MediaAttachAttempted {
       medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, presentation: _,
     } => false
@@ -399,6 +410,7 @@ test fn media_attempted_keeps_the_medium_and_drops_the_transport_handle() -> Boo
     MediaAttachAttempted { medium_image_name: n, medium_image_sha256: s, power: p, presentation: pr, stale_power_off: _ } =>
       n == "census.iso" && s == "ab" && p == PowerOn && pr == Presented
     MediaAttachNotAttempted { reason: _ } => false
+    MediaAttachWithheld { medium_image_name: _, medium_image_sha256: _, power: _, reason: _ } => false
   }
 }
 
@@ -773,6 +785,16 @@ fn a_full_run() -> MegaRacRunRecord {
   }
 }
 
+// The stopped run with only its media arm replaced: what a withheld attach leaves behind.
+fn run_with_media(media: MegaRacMediaAttach) -> MegaRacRunRecord {
+  let r = a_stopped_run()
+  MegaRacRunRecord {
+    census_ended: r.census_ended, end_media: r.end_media, handoff_media: r.handoff_media, media: media,
+    smpro_power_on: r.smpro_power_on, smpro_census: r.smpro_census, override_before: r.override_before, override_after: r.override_after,
+    override_clears: r.override_clears, override: r.override, power_after: r.power_after, timing: r.timing, fan_gate: r.fan_gate,
+  }
+}
+
 // A boot where nothing was reached at all, assembled from raw arms rather than the adapter's
 // not-taken helper -- so the classification, not the constructor, is what is being checked.
 fn a_stopped_run() -> MegaRacRunRecord {
@@ -808,6 +830,7 @@ test fn a_full_run_classifies_as_a_boot_that_ran() -> Bool {
     MediaAttachAttempted { medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _,
                            presentation: _ } => true
     MediaAttachNotAttempted { reason: _ } => false
+    MediaAttachWithheld { medium_image_name: _, medium_image_sha256: _, power: _, reason: _ } => false
   }
     && match r.handoff_media {
          HandoffMediaAttempted { handoff: _, after: _ } => true
@@ -847,6 +870,7 @@ test fn a_stopped_run_classifies_as_not_taken_throughout() -> Bool {
     MediaAttachNotAttempted { reason: _ } => true
     MediaAttachAttempted { medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _,
                            presentation: _ } => false
+    MediaAttachWithheld { medium_image_name: _, medium_image_sha256: _, power: _, reason: _ } => false
   }
     && match r.handoff_media {
          HandoffMediaNotReached { reason: _ } => true

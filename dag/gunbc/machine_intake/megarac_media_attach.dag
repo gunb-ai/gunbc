@@ -119,10 +119,18 @@ import extdeps.languages.json.parse {
 // SUCCEEDING probe before the close, under a parsed X-CSRFTOKEN, is evidence the cookie no longer
 // authenticates; every other outcome, and any probe that used a sentinel header, stays
 // SessionReleaseRefused.
+//
+// NEVER OPENED IS NOT OPENED-AND-NOT-CLOSED. SessionReleaseNotAttempted means OpenSession did not
+// succeed, so nothing was allocated and nothing was owed. A session that WAS opened and whose close
+// never ran -- the CSRF header bracket could not be entered, and the close needs the header file -- is
+// SessionCloseNeverRan: still allocated on the controller, a leak exactly like a refused release. The
+// two used to share the first arm, which read a leaked session as one never opened (side chat on
+// gunbc#16247; the same confusion as the unreadable-token leak below, recorded at SessionCsrfStanding).
 type SessionRelease
   = SessionReleased
   | SessionReleaseRefused { detail: String }
   | SessionReleaseNotAttempted
+  | SessionCloseNeverRan { detail: NonEmptyStr }
 
 // WHETHER THE BRACKET THAT STAGED THE CSRF HEADER FILE GOT IT BACK OFF DISK. This is orthogonal to
 // the attach verdict: a session can attach, present, close cleanly, AND still leave its 0600 header
@@ -178,8 +186,8 @@ type MegaRacAttachOutcome
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
   // THE BRACKET THAT WOULD STAGE THE CSRF HEADER FILE NEVER ENTERED -- the fresh 0700 dir or the O_EXCL
-  // 0600 file could not be created, so the session was never opened with a file-backed header and NOTHING
-  // that used the session ran (CloseSession included, hence SessionReleaseNotAttempted upstream). A typed,
+  // 0600 file could not be created. OpenSession had ALREADY succeeded, but NOTHING that used the session
+  // ran, CloseSession included, so the session is left allocated (SessionCloseNeverRan upstream). A typed,
   // located refusal of the whole attach: we never fall back to putting the token on argv. Residue from the
   // half-made directory is reported separately on the receipt's `secret_file`, not folded into this verdict.
   | MegaRacSecretFileNotEntered { detail: NonEmptyStr }
@@ -689,6 +697,13 @@ fn megarac_session_csrf(session_body: String) -> String? {
   }
 }
 
+// THE ONE STANDING FOR A SESSION THIS MODULE OPENED AND COULD NOT CLOSE because the header bracket never
+// entered: both sites that open a session and then stage its header file answer it, so neither can say
+// "never opened" for an allocated session.
+fn megarac_close_never_ran(cause: NonEmptyStr) -> SessionRelease {
+  SessionCloseNeverRan { detail: concat("the session was opened, but the CSRF header file could not be staged, so CloseSession never ran: ", cause as String) as NonEmptyStr }
+}
+
 fn megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
@@ -760,14 +775,14 @@ fn megarac_attach_remote_image(
         PrivateSecretFileNotEntered { cause: c } =>
           MegaRacAttachResult {
             outcome: MegaRacSecretFileNotEntered { detail: c },
-            session_release: SessionReleaseNotAttempted,
+            session_release: megarac_close_never_ran(cause: c),
             baseline: none,
             secret_file: SecretFileRemoved,
           }
         PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
           MegaRacAttachResult {
             outcome: MegaRacSecretFileNotEntered { detail: c },
-            session_release: SessionReleaseNotAttempted,
+            session_release: megarac_close_never_ran(cause: c),
             baseline: none,
             secret_file: SecretFileResidueRemains,
           }
@@ -820,14 +835,14 @@ fn megarac_release_unreadable_session(
     PrivateSecretFileNotEntered { cause: c } =>
       MegaRacAttachResult {
         outcome: MegaRacSecretFileNotEntered { detail: c },
-        session_release: SessionReleaseNotAttempted,
+        session_release: megarac_close_never_ran(cause: c),
         baseline: none,
         secret_file: SecretFileRemoved,
       }
     PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
       MegaRacAttachResult {
         outcome: MegaRacSecretFileNotEntered { detail: c },
-        session_release: SessionReleaseNotAttempted,
+        session_release: megarac_close_never_ran(cause: c),
         baseline: none,
         secret_file: SecretFileResidueRemains,
       }

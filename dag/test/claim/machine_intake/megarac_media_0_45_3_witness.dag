@@ -1128,7 +1128,7 @@ fn interlude_world() -> MegaRacMediaWorld {
     withdraw_after_ready: none,
     error_after_ready: none,
     error_clears_on_stop: false,
-    stop_at_ready: none,
+    stop_at_ready: none, close_releases: true,
   }
 }
 

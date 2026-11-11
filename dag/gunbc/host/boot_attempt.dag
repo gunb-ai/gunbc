@@ -107,7 +107,6 @@ fn presentation_text(p: BootPresentation) -> String {
 
 type StaleMediumPowerOff
   = StalePowerOffNotNeeded { reason: NonEmptyStr }
-  | StalePowerOffWithheld { reason: NonEmptyStr }
   | StalePowerOffObserved { stale_image: String, before: HostPowerState }
   | StalePowerOffCommandRefused { stale_image: String, before: HostPowerState }
   | StalePowerOffNotObserved { stale_image: String, before: HostPowerState, last: HostPowerState }
@@ -115,15 +114,18 @@ type StaleMediumPowerOff
 fn stale_power_off_text(record: StaleMediumPowerOff) -> String {
   match record {
     StalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
-    StalePowerOffWithheld { reason: r } => concat("power-off WITHHELD, the attempt refuses: ", r as String)
     StalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", host_power_text(state: b), ") to replace stale '", i, "', observed off"], "")
     StalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by the controller"], "")
     StalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", host_power_text(state: l)], "")
   }
 }
 
+// WITHHELD is not "not attempted": the attempt read the host on with a stale medium and took a read-only
+// look to decide the power-off, and that look failed its own cleanup, so the attempt stopped before any
+// attach session or media write. `reason` names the cause.
 type MediaAttachRecord
   = MediaAttachNotAttempted { reason: NonEmptyStr }
+  | MediaAttachWithheld { medium_image_name: NonEmptyStr, medium_image_sha256: NonEmptyStr, power: HostPowerState, reason: NonEmptyStr }
   | MediaAttachAttempted {
       medium_image_name: NonEmptyStr,
       medium_image_sha256: NonEmptyStr,
@@ -134,6 +136,8 @@ type MediaAttachRecord
 fn media_attach_text(record: MediaAttachRecord) -> String {
   match record {
     MediaAttachNotAttempted { reason: r } => concat("not attempted: ", r as String)
+    MediaAttachWithheld { medium_image_name: n, medium_image_sha256: h, power: p, reason: r } =>
+      join(["'", n, "' (sha256: ", h, ") WITHHELD before any attach session or media write (host was ", host_power_text(state: p), "): ", r as String], "")
     MediaAttachAttempted { medium_image_name: n, medium_image_sha256: h, power: p, stale_power_off: s, presentation: pr } =>
       join([
         "'", n, "' (sha256: ", h, ") ",
@@ -629,6 +633,8 @@ fn run_record_derived_findings(record: BootRunRecord) -> List<DerivedFinding> {
   // ctrl's predicate-dissolution rule).
   let attach = match record.media {
     MediaAttachNotAttempted { reason: _ } => []
+    // No presentation was produced; the harness raises the same not-ready finding over the raw record.
+    MediaAttachWithheld { medium_image_name: _, medium_image_sha256: _, power: _, reason: _ } => [MediaAttachNotReady { record: record.media }]
     MediaAttachAttempted {
       medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, presentation: p
     } =>

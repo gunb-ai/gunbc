@@ -75,6 +75,10 @@ type MegaRacMediaWorld {
   error_after_ready: Int?
   error_clears_on_stop: Bool
   stop_at_ready: Int?
+  // WHETHER CloseSession FREES THE SESSION. false models the controller this lane saturated: the DELETE is
+  // answered, the session stays allocated, and the post-close probe still authenticates -- so the release
+  // fold reads SessionReleaseRefused. It is a fault the boot must survive, not a reading of a build.
+  close_releases: Bool
 }
 
 // THE CLEARED CD ROW AS THE BUILD THE ADMIT GATE SUPPLIES REPORTS IT. This is the release the boot asks the
@@ -103,11 +107,11 @@ fn megarac_session_by_jar(world: MegaRacMediaWorld, cookie_jar: String) -> Bool 
 }
 
 fn megarac_with_sessions(world: MegaRacMediaWorld, sessions: List<MegaRacSession>, next_session: Int) -> MegaRacMediaWorld {
-  MegaRacMediaWorld { sessions: sessions, next_session: next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+  MegaRacMediaWorld { sessions: sessions, next_session: next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready, close_releases: world.close_releases }
 }
 
 fn megarac_with_cd(world: MegaRacMediaWorld, cd: MegaRacCdRow) -> MegaRacMediaWorld {
-  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready, close_releases: world.close_releases }
 }
 
 type MegaRacOpened {
@@ -138,6 +142,7 @@ fn megarac_session_valid_by_header(world: MegaRacMediaWorld, cookie_jar: String,
 }
 
 fn megarac_close_session_by_header(world: MegaRacMediaWorld, cookie_jar: String, header_content: String) -> MegaRacMediaWorld {
+  if world.close_releases == false { return world }
   megarac_with_sessions(
     world: world,
     sessions: map(world.sessions, s => if s.cookie_jar == cookie_jar && megarac_csrf_header_content(token: s.csrf_token) == header_content { MegaRacSession { cookie_jar: s.cookie_jar, csrf_token: s.csrf_token, open: false } } else { s }),
@@ -223,7 +228,7 @@ fn megarac_stop_media(world: MegaRacMediaWorld) -> MegaRacMediaWorld {
 }
 
 fn megarac_with_error(world: MegaRacMediaWorld, code: Int) -> MegaRacMediaWorld {
-  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready, close_releases: world.close_releases }
 }
 
 // A PRESENTATION CAN BE LOST AFTER IT WAS READY: withdraw_at, when set, is the instant the controller
@@ -236,7 +241,7 @@ fn megarac_media_advance(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaW
     Absent => readied
     Present { value: at } =>
       if second_count(s: at) <= second_count(s: now) {
-        MegaRacMediaWorld { sessions: readied.sessions, next_session: readied.next_session, share: readied.share, mount_cd: readied.mount_cd, cd_error_code: readied.cd_error_code, images: readied.images, cd: megarac_cleared_cd_at_the_current_build(), ready_after: readied.ready_after, withdraw_at: none, withdraw_after_ready: readied.withdraw_after_ready, error_after_ready: readied.error_after_ready, error_clears_on_stop: readied.error_clears_on_stop, stop_at_ready: readied.stop_at_ready }
+        MegaRacMediaWorld { sessions: readied.sessions, next_session: readied.next_session, share: readied.share, mount_cd: readied.mount_cd, cd_error_code: readied.cd_error_code, images: readied.images, cd: megarac_cleared_cd_at_the_current_build(), ready_after: readied.ready_after, withdraw_at: none, withdraw_after_ready: readied.withdraw_after_ready, error_after_ready: readied.error_after_ready, error_clears_on_stop: readied.error_clears_on_stop, stop_at_ready: readied.stop_at_ready, close_releases: readied.close_releases }
       } else { readied }
   }
 }
@@ -271,6 +276,6 @@ fn megarac_withdrawal_armed_after_error(world: MegaRacMediaWorld, ready: Second)
   match world.withdraw_after_ready {
     Absent => world
     Present { value: after } =>
-      MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: Present { value: second(count: second_count(s: ready) + second_count(s: after)) }, withdraw_after_ready: none, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready }
+      MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: Present { value: second(count: second_count(s: ready) + second_count(s: after)) }, withdraw_after_ready: none, error_after_ready: world.error_after_ready, error_clears_on_stop: world.error_clears_on_stop, stop_at_ready: world.stop_at_ready, close_releases: world.close_releases }
   }
 }

@@ -500,7 +500,7 @@ fn fs_remove_directory(fs: ModeledFilesystem, dir: String) -> ModeledFilesystem 
   }
 }
 
-fn private_secret_file_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S, cwd: fn(S) -> String) -> List<OperationBinding<S>> {
+fn private_secret_file_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S, cwd: fn(S) -> String, mktemp_refused: fn(S) -> Bool) -> List<OperationBinding<S>> {
   // mktemp -d, plain: the model puts the fresh directory under /tmp, the same default the real
   // mktemp uses when RUNNER_TEMP is unset. mktemp prints the new directory on stdout with a trailing
   // newline; the bracket trims it and joins the secret's file name onto it.
@@ -511,14 +511,26 @@ fn private_secret_file_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, M
       elapsed: second(count: 0),
     }
   }
+  // A REFUSED mktemp answers as the real one does -- non-zero, nothing on stdout, a diagnostic on stderr --
+  // and creates nothing, so the bracket reads it as never entered.
+  let refused_step = fn(state) {
+    OperationObserved {
+      observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "mktemp: failed to create directory: Permission denied\n" } },
+      state: state,
+      elapsed: second(count: 0),
+    }
+  }
   let making_dir = fn(state, call) {
-    let fs = get(state)
-    let dir = fs_fresh_private_dir_name(fs: fs, parent: "/tmp", at: 0)
-    made_step(put(state, fs_add_directory(fs: fs, dir: dir)), dir)
+    if mktemp_refused(state) { refused_step(state) } else {
+      let fs = get(state)
+      let dir = fs_fresh_private_dir_name(fs: fs, parent: "/tmp", at: 0)
+      made_step(put(state, fs_add_directory(fs: fs, dir: dir)), dir)
+    }
   }
   // mktemp -d TEMPLATE: the template's directory becomes the parent, so a set RUNNER_TEMP puts the
   // private directory inside the space the caller named, exactly as the bracket intends.
   let making_templated = fn(state, call) {
+    if mktemp_refused(state) { refused_step(state) } else {
     match operation_input_text(invocation: call.invocation, name: "template") {
       Absent => OperationHarnessFault { reason: "mktemp -d was dispatched with a template operand missing" as NonEmptyStr }
       Present { value: template } => {
@@ -526,6 +538,7 @@ fn private_secret_file_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, M
         let dir = fs_fresh_private_dir_name(fs: fs, parent: fs_parent(path: template), at: 0)
         made_step(put(state, fs_add_directory(fs: fs, dir: dir)), dir)
       }
+    }
     }
   }
   // rm -f PATH: deletes the file; `rm -f` reports success whether or not the file was there.

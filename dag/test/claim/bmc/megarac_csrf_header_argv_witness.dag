@@ -144,7 +144,7 @@ fn empty_media() -> MegaRacMediaWorld {
     withdraw_at: none,
     withdraw_after_ready: none,
     error_after_ready: none,
-    error_clears_on_stop: false, stop_at_ready: none,
+    error_clears_on_stop: false, stop_at_ready: none, close_releases: true,
   }
 }
 

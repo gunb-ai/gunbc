@@ -59,7 +59,7 @@ import gunbc.runner.runner_browser_toolchain {
 import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path }
 import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacEndMedia, MegaRacEndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, megarac_run_record_text, MegaRacRunRecord }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacEndMedia, MegaRacEndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, megarac_run_record_text, MegaRacRunRecord, MegaRacMediaAttachWithheld, LookSessionNotReleased, LookSecretFileLeft }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import gunbc.machine_intake.megarac_media_attach { MegaRacOwnSessionEnded, OwnSessionStopped, SessionReleased }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused }
@@ -217,7 +217,7 @@ fn world_for_reset_route(observer_label: String, run_id: String) -> MtCollins1Bo
     agent: base.agent,
     remote_hosts: base.remote_hosts,
     worker: base.worker,
-    console: base.console,
+    console: base.console, mktemp_refused: base.mktemp_refused
   }
 }
 
@@ -454,7 +454,7 @@ fn healthy_media() -> MegaRacMediaWorld {
     withdraw_at: none,
     withdraw_after_ready: none,
     error_after_ready: none,
-    error_clears_on_stop: false, stop_at_ready: none,
+    error_clears_on_stop: false, stop_at_ready: none, close_releases: true,
   }
 }
 
@@ -499,7 +499,7 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
     clock: ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] },
     worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400, principal: runner_principal },
     console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
-    media: healthy_media(),
+    media: healthy_media(), mktemp_refused: false
   })
 }
 
@@ -697,7 +697,7 @@ fn media_varied(media: MegaRacMediaWorld) -> MtCollins1BootWorld {
 fn media_with(images: List<MegaRacImage>, share: MegaRacShare, cd: MegaRacCdRow, ready_after: Int, withdraw_after_ready: Second?) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: [], next_session: 1, share: share, mount_cd: 1, cd_error_code: 0, images: images, cd: cd,
-    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false, stop_at_ready: none,
+    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false, stop_at_ready: none, close_releases: true,
   }
 }
 
@@ -724,7 +724,7 @@ fn reached_no_power_action(route: List<DispatchRecord>) -> Bool {
 fn without_runner_temp(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: filter(w.environment, v => v.name != "RUNNER_TEMP"),
-    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 
@@ -758,7 +758,7 @@ fn srv2_with_record(content: String?) -> ModeledRemoteHost {
 fn with_srv2(w: MtCollins1BootWorld, srv2: ModeledRemoteHost) -> MtCollins1BootWorld {
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment,
-    agent: w.agent, remote_hosts: [srv2], clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+    agent: w.agent, remote_hosts: [srv2], clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 
@@ -1165,7 +1165,7 @@ fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld
 fn as_another_run_in(w: MtCollins1BootWorld, run_id: String, pid_namespace: String) -> MtCollins1BootWorld {
   let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
   let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid_namespace: pid_namespace, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
-  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused }
 }
 
 // THE NEXT ATTEMPT RECOVERS THE DEAD RUN'S HOLD (finding 2, repaired in #12555). The interrupted run
@@ -1246,7 +1246,7 @@ fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1Boo
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
     clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_snoc_item(xs: w.clock.jumps, item: ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
-    worker: w.worker, console: w.console, media: w.media,
+    worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 
@@ -1291,7 +1291,7 @@ fn media_errored(code: Int, clears: Bool, after_ready: Int?, cd: MegaRacCdRow) -
     sessions: [], next_session: 1, share: real_share, mount_cd: 1, cd_error_code: code,
     images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], cd: cd,
     ready_after: second(count: 12), withdraw_at: none, withdraw_after_ready: none,
-    error_after_ready: after_ready, error_clears_on_stop: clears, stop_at_ready: none,
+    error_after_ready: after_ready, error_clears_on_stop: clears, stop_at_ready: none, close_releases: true,
   }
 }
 
@@ -1301,7 +1301,7 @@ fn media_stopping(code: Int) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: w.sessions, next_session: w.next_session, share: w.share, mount_cd: w.mount_cd, cd_error_code: w.cd_error_code,
     images: w.images, cd: w.cd, ready_after: w.ready_after, withdraw_at: w.withdraw_at, withdraw_after_ready: w.withdraw_after_ready,
-    error_after_ready: w.error_after_ready, error_clears_on_stop: w.error_clears_on_stop, stop_at_ready: Present { value: code },
+    error_after_ready: w.error_after_ready, error_clears_on_stop: w.error_clears_on_stop, stop_at_ready: Present { value: code }, close_releases: w.close_releases,
   }
 }
 
@@ -1385,6 +1385,80 @@ test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_b
   }
 }
 
+// THE HOST IS ON WITH A STALE IMAGE OF THIS LANE, so the attempt takes a read-only look to decide the power-off.
+// `close_releases` is the one fact varied: whether the controller frees the look's session on CloseSession.
+fn host_on_with_stale(close_releases: Bool) -> MtCollins1BootWorld {
+  let m = media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image))
+  let w = media_varied(media: MegaRacMediaWorld {
+    sessions: m.sessions, next_session: m.next_session, share: m.share, mount_cd: m.mount_cd, cd_error_code: m.cd_error_code,
+    images: m.images, cd: m.cd, ready_after: m.ready_after, withdraw_at: m.withdraw_at, withdraw_after_ready: m.withdraw_after_ready,
+    error_after_ready: m.error_after_ready, error_clears_on_stop: m.error_clears_on_stop, stop_at_ready: m.stop_at_ready,
+    close_releases: close_releases,
+  })
+  with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))
+}
+
+// A PRE-POWER LOOK WHOSE SESSION LEAKED STOPS THE ATTEMPT BEFORE ANY ATTACH SESSION OR MEDIA WRITE (side chat on
+// gunbc#16247): a gate after the attach cannot revoke a StartMedia already sent. On the real route the look is
+// the ONLY session opened, nothing is stopped or started, no power action is taken, and the attempt's media
+// record is the typed withheld arm naming the cause. The control is the identical world whose controller frees
+// sessions: there the look is clean, the host is powered off for the stale image, and the attach follows --
+// so the stop is the leak's doing, not the world's.
+test fn a_pre_power_look_whose_session_leaked_stops_before_any_attach_session_or_media_write() -> Bool {
+  (match run_attempt(world: host_on_with_stale(close_releases: false)) {
+    WitnessReturned { value, route } =>
+      count_named(route: route, name: "megarac.Media.OpenSession") == 1
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && reached_no_power_action(route: route)
+        && (match value.media {
+          MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: c, look: _ } =>
+            match c { LookSessionNotReleased { detail: _ } => true  LookSecretFileLeft => false }
+          _ => false
+        })
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "WITHHELD before any attach session or media write")
+    _ => false
+  })
+    && (match run_attempt(world: host_on_with_stale(close_releases: true)) {
+      WitnessReturned { value: _, route } =>
+        count_named(route: route, name: "megarac.Media.OpenSession") >= 2
+          && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
+      _ => false
+    })
+}
+
+fn with_mktemp_refused(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
+    clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: true,
+  }
+}
+
+// A PRE-POWER LOOK OPENED ITS SESSION AND COULD NOT STAGE THE CSRF HEADER FILE (side chat on gunbc#16247, P1a,
+// through the route). mktemp refuses on the worker, so the look's bracket never enters AFTER OpenSession
+// succeeded: the real attach path answers SessionCloseNeverRan, the stale power-off is withheld on it, and the
+// attempt stops with ONE OpenSession, no media write, no power action, and the typed record whose cause names
+// the close that never ran. The positive control is the same world with mktemp working, in the claim above.
+test fn a_pre_power_look_that_could_not_stage_its_header_file_is_withheld_as_a_session_left_open() -> Bool {
+  match run_attempt(world: with_mktemp_refused(w: host_on_with_stale(close_releases: true))) {
+    WitnessReturned { value, route } =>
+      count_named(route: route, name: "megarac.Media.OpenSession") == 1
+        && count_named(route: route, name: "megarac.Media.CloseSession") == 0
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && reached_no_power_action(route: route)
+        && (match value.media {
+          MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: c, look: _ } =>
+            match c {
+              LookSessionNotReleased { detail: d } => string_contains(s: d, pattern: "CloseSession never ran") && string_contains(s: d, pattern: "no private directory could be created")
+              LookSecretFileLeft => false
+            }
+          _ => false
+        })
+    _ => false
+  }
+}
+
 // A FOREIGN IMAGE IS PRESENTED -- not a census image of this lane. It is not this workflow's to stop:
 // the attempt refuses and writes nothing to the media.
 test fn a_foreign_presented_image_is_not_stopped() -> Bool {
@@ -1464,7 +1538,7 @@ fn with_named_receipt(w: MtCollins1BootWorld, path: String, nonce: String) -> Mt
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs,
     environment: concat(w.environment, [ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_RECEIPT", value: path }, ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_NONCE", value: nonce }]),
-    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 

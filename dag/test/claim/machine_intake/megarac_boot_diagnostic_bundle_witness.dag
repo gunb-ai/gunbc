@@ -13,6 +13,7 @@ import gunbc.machine_intake.megarac_sensor_observation { SdrSocketNamingBound, S
 import gunbc.machine_intake.megarac_kvm_still { KvmObserverRecord, kvm_observer_record_not_started }
 import std.algebra { string_contains }
 import gunbc.machine_intake.megarac_media_attach {
+  MegaRacAttachResult, MegaRacSessionRefused, SessionReleaseRefused, SecretFileRemoved, SecretFileResidueRemains, MegaRacSecretFileStanding,
   AttachReadiness, PresentingRow, ReadinessLook, ReadinessStarted, ReadinessConnecting, ReadinessStartedUnbound,
 }
 import extdeps.bmc.megarac { RedirectionStartedConnectionAccepted, RedirectionConnecting }
@@ -34,6 +35,7 @@ import extdeps.bmc.ipmi_boot_selection {
   IpmiBootCdrom, uefi_once_boot_selection,
 }
 import gunbc.host.boot_attempt {
+  CredentialMayRemain,
   AttemptIdentityUnavailable,
   AttemptRunId,
   BootOverrideConsumption,
@@ -75,6 +77,7 @@ import gunbc.host.boot_console_observation {
   console_size_of_stat,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  MegaRacMediaAttachWithheld, LookSessionNotReleased, megarac_standing_findings,
   BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParamNotTaken, BootParamRead, BootParamUnread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, BootOverrideClears, boot_override_clears_none_found, boot_param5_override_is_pending, megarac_override_release, BootParam5ClearIssued, ClearWriteAccepted, OverrideClearLeftPending, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, readiness_look_text, redfish_budget_refusal, redfish_collection_assembly,
 }
 import extdeps.bmc.ipmitool_observed_output {
@@ -217,6 +220,40 @@ fn bundle_bmc_silent() -> BootDiagnosticBundle {
     run: no_run(),
     screen: no_screen(),
   }
+}
+
+// A PRE-POWER LOOK THAT LEAKED ITS SESSION AND ALSO LEFT ITS CSRF HEADER FILE (side chat on gunbc#16247). The
+// withheld cause is the leak, and the residue is a second, independent fact: the real harness generation
+// (megarac_boot_findings over a bundle whose run record holds the withheld attach) must still name the file
+// and raise CredentialMayRemain. The control is the identical record whose look removed its file.
+fn withheld_by_a_leaky_look(secret_file: MegaRacSecretFileStanding) -> BootDiagnosticBundle {
+  let b = bundle_bmc_silent()
+  let r = no_run()
+  let look = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "fixture look" }, session_release: SessionReleaseRefused { detail: "the session probe still succeeded after CloseSession" }, baseline: none, secret_file: secret_file }
+  let run = MegaRacRunRecord {
+    census_ended: r.census_ended, end_media: r.end_media, handoff_media: r.handoff_media,
+    media: MegaRacMediaAttachWithheld { attempt: "35800000000", medium_image_name: "gunbc-mtcollins1-census.iso", medium_image_sha256: "30ca88d43f891399", power: ChassisPowerRead { power_on: true }, cause: LookSessionNotReleased { detail: "the session probe still succeeded after CloseSession" }, look: look },
+    smpro_power_on: r.smpro_power_on, smpro_census: r.smpro_census, override_before: r.override_before, override_after: r.override_after,
+    override: r.override, override_clears: r.override_clears, power_after: r.power_after, timing: r.timing, fan_gate: r.fan_gate,
+  }
+  BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+    smpro: b.smpro, inventory: b.inventory, console: b.console, run: run, screen: b.screen }
+}
+
+fn raises_credential_may_remain(bundle: BootDiagnosticBundle) -> Bool {
+  let f = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle))
+  any(megarac_standing_findings(raw: f.harness), m => match m { CredentialMayRemain => true  _ => false })
+}
+
+test fn a_pre_power_look_that_leaked_and_left_its_file_raises_both_whatever_the_withheld_cause() -> Bool {
+  let left = withheld_by_a_leaky_look(secret_file: SecretFileResidueRemains)
+  let clean = withheld_by_a_leaky_look(secret_file: SecretFileRemoved)
+  any(found(bundle: left), t => string_contains(s: t, pattern: "CSRF header file was left on the runner by: the pre-power look"))
+    && any(found(bundle: left), t => string_contains(s: t, pattern: "withheld before any attach session or media write"))
+    && raises_credential_may_remain(bundle: left)
+    && !any(found(bundle: clean), t => string_contains(s: t, pattern: "CSRF header file was left on the runner"))
+    && any(found(bundle: clean), t => string_contains(s: t, pattern: "withheld before any attach session or media write"))
+    && !raises_credential_may_remain(bundle: clean)
 }
 
 // WHAT THE BUNDLE FOUND, rendered: the power-on fold's decoded errors and stage anomalies, then the
