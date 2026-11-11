@@ -316,11 +316,25 @@ service diagnostic.ipmi.Tool {
   // managed username/password-file) is an INPUT, never baked in here (operator ruling D2). All credentialed
   // with the MANAGED account and guarded by a timeout, the way SelListAuthenticated is.
   //
-  // LOCKOUT SAFETY (the reason there is NO published-credential user-test operation): OpenBMC 3.22.00 on
+  // LOCKOUT SAFETY (and why there is NO user-test operation at all -- review 93420): OpenBMC 3.22.00 on
   // ALTRAD8UD-1L2T has a tight lockout budget. The published (factory) retirement is DERIVED on the managed
   // account under the credential-policy row (gunbc.machine_intake.bmc_credential_policy; the shared-store
-  // retirement route in gunbc.machine_intake.bmc_secure), NEVER probed. UserTestManaged is the ONLY user-test
-  // operation and the driver must invoke it with the managed credential only; a published login is never spent.
+  // retirement route in gunbc.machine_intake.bmc_secure), NEVER probed. There is deliberately no
+  // `ipmitool user test` operation: it took the tested password as a POSITIONAL argv word (readable from
+  // /proc/<pid>/cmdline and ps), violating the repo rule that a secret binds to stdin and never to argv
+  // (extdeps.bmc.http). The managed account's acceptance is instead READ from the authenticated census reads
+  // below -- UserList / ChannelGetAccess / LanPrint authenticate AS the managed account via -U/-f
+  // {password_file}, so a read that served its table proves the controller accepts the managed credential
+  // (see gunbc.machine_intake.bmc_account_state_parsers ipmi_authenticated_census_read). A published login is
+  // never spent; the only route to these operations in production (gunbc.machine_intake.bmc_account_state_live
+  // bmc_account_state_live_read) has no published-credential parameter.
+  //
+  // NOT `readonly`, and why: each of the three reads establishes an RMCP+ session, and a FAILED authentication
+  // -- a refused credential -- spends the tight lockout budget, which is a controller state change. An
+  // operation that CAN spend the lockout budget must not be labelled readonly, or the budget gate under-counts
+  // it and a wrong credential could lock the BMC out (review 93420#2). They therefore carry the same flag
+  // discipline as a write. They authenticate ONLY with the managed account's credential; none takes a separate
+  // tested password, so none can spend the budget on a credential that is not the managed one.
 
   // The user list on a channel: `ipmitool user list <channel>` -- feeds the get-access rows the parser decodes.
   operation UserList {
@@ -332,7 +346,6 @@ service diagnostic.ipmi.Tool {
       exit_code: Int from "exit_code",
       success: Bool from "exit_success",
     }
-    readonly
     transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "user", "list", "{channel}"] }
     exit {
       0 => Unit
@@ -350,7 +363,6 @@ service diagnostic.ipmi.Tool {
       exit_code: Int from "exit_code",
       success: Bool from "exit_success",
     }
-    readonly
     transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "channel", "getaccess", "{channel}"] }
     exit {
       0 => Unit
@@ -370,47 +382,10 @@ service diagnostic.ipmi.Tool {
       exit_code: Int from "exit_code",
       success: Bool from "exit_success",
     }
-    readonly
     transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "lan", "print", "{channel}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool lan print failed"
-    }
-  }
-
-  // `ipmitool user test <user_id> <16|20> <password>` — a RAW transport primitive that models what the
-  // command actually takes (external_upstreams: "model what the API actually returns"). The command's real
-  // syntax is grounded in artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt:
-  //     user test 2 20 <new>   ->  Success
-  //     user test 2 20 admin   ->  Failure: password incorrect
-  // The `<16|20>` password length and the `<password>` value under test are POSITIONAL and the length is
-  // REQUIRED (omitting them makes ipmitool print a usage error or hang at an interactive prompt until
-  // `timeout` kills it, exit 124, and it never yields the acceptance signal). The `-U/-f` pair is the
-  // SESSION credential that authenticates the raw command; the positional `<password>` is the value being
-  // tested for `user_id`. SUCCESS IS READ FROM THE STDOUT WORD (`Success` / `Failure: ...`) by
-  // gunbc.machine_intake.bmc_account_state_parsers ipmi_user_test_verdict_from_output, NOT from the exit
-  // code (a tested-but-wrong password still exits 0 and prints `Failure`).
-  // LOCKOUT SAFETY (review 93410#2, stated honestly): this operation is raw transport — it takes whatever
-  // username/password the caller hands it and does NOT itself know managed from published. The managed-only
-  // discipline is the CALLER's obligation, enforced at the gunbc boundary: gunbc.machine_intake.
-  // bmc_account_state_live bmc_account_state_live_read has no published-credential parameter and DERIVES the
-  // published account's standing under the credential-policy row rather than probing it, so on the only
-  // route that reaches this operation in production a published-credential login is not constructible. It is
-  // NOT enforced by this operation's name.
-  operation UserTestManaged {
-    requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, user_id: NonEmptyStr, password_len: NonEmptyStr, password: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
-    output {
-      stdout: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
-    readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "user", "test", "{user_id}", "{password_len}", "{password}"] }
-    exit {
-      0 => Unit
-      nonzero => String "ipmitool user test failed"
     }
   }
 

@@ -16,8 +16,8 @@ module gunbc.machine_intake.bmc_account_state_live
 // binding (a later change, written against PXE 1b #16299) and the wet dispatch (fleet-converge
 // arrival_converge on srv1, dispatched by the manager) are the DECLARED LATER consumers of this entry --
 // privileged_effect_census records that arrival_converge_wet does not yet invoke BmcSecure Apply. When those
-// land, the dispatch is the party that RUNS the four extdeps.bmc.ipmi operations added with this change
-// (UserList / ChannelGetAccess / LanPrint / UserTestManaged) and the extdeps.bmc.http GET operations,
+// land, the dispatch is the party that RUNS the three extdeps.bmc.ipmi operations added with this change
+// (UserList / ChannelGetAccess / LanPrint) and the extdeps.bmc.http GET operations,
 // materializes the managed secret through gunbc.auth.secret_ref_credential.fetch_secret_ref_credential, reads
 // the clock through gunbc.clock_read.observer_clock_read, and writes each response to the content-addressed
 // evidence store, reading its EvidenceRef back -- producing the raw committed captures THIS module consumes.
@@ -28,7 +28,7 @@ module gunbc.machine_intake.bmc_account_state_live
 // the published credential has NO parameter on this path -- the reader only ever takes ManagedCredentialReference
 // / the goal's break-glass reference and derives the published retirement, so a published login cannot be
 // requested THROUGH THIS ENTRY. This is a property of the READER, not of the raw extdeps operations: the wet
-// operations it feeds (UserTestManaged and friends) take any username/password/positional password and enforce
+// operations it feeds (UserList / ChannelGetAccess / LanPrint) take any username/password_file and enforce
 // nothing themselves -- their managed-only discipline is the DISPATCH's obligation, and it is secure only
 // because this entry, the sole production caller, exposes no published-credential parameter, never because an
 // operation is named "Managed" (review 93410#2); (b) an instant cannot be a

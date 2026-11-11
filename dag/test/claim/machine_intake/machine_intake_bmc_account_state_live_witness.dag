@@ -93,7 +93,6 @@ fn live_captures(surface_body: String) -> BmcAccountStateCaptures {
     channel: 1,
     channel_members: members(),
     redfish_census: root_census(),
-    managed_answer: commit_captured_response(read: "ipmi-user-test-managed", response: "Success"),
     census_answer: commit_captured_response(read: "ipmi-get-user-access", response: getaccess_capture),
     redfish_accounts_answer: commit_captured_response(read: "redfish-accounts", response: accounts_capture),
     redfish_surface_answer: commit_captured_response(read: "redfish-surface", response: surface_body),
