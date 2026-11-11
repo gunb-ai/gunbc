@@ -70,7 +70,7 @@ test fn order_matches_imported_comparator() -> Bool {
 // RED: a differing order is detected -- the reversed order is NOT equal to the native order.
 test fn red_differing_order_detected() -> Bool { to_lines(native_sorted()) != to_lines(reversed_sorted()) }
 
-// ---- tree_metadata_merge_disagreement: pins the rewrite's observable contract (DESIGN §6b) ----
+// ---- tree_metadata_merge_disagreement: pins the rewrite's observable contract (gunbc.design_argument::earliest_unjustified_boundary) ----
 // tree_metadata_merge_disagreement (the metadata readback's agreement walk) was rewritten from a
 // SELF-recursive list walk -- whose depth grew with the number of metadata entries -- to a native
 // left-fold carrying the observed tail. That rewrite must report the SAME first disagreement, in path

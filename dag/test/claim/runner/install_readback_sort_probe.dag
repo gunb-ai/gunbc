@@ -3,7 +3,7 @@
 // kernel. No host seam is called, so this is elevation-free. It asserts they still order bytewise
 // on a stress set (shared prefixes, a leading '/', non-ASCII) and complete over a large planted
 // set: a regression guard that the readback path stays free of per-entry frame growth.
-// (adhoc-551ba662-dd5, DESIGN §6b.)
+// (adhoc-551ba662-dd5, gunbc.design_argument::earliest_unjustified_boundary.)
 module test.claim.runner.install_readback_sort_probe
 
 import gunbc.host.host_effect_realize { tree_hash_lines, tree_ancestor_directories, TreeFileHash }
