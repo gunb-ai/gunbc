@@ -27313,8 +27313,8 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 /// carries a typed projection (`ProjectedToken` / `UnprojectableForm { form }`) the way the
 /// materialization row already does, and the policy fold reads it. At that point the empty
 /// string has no way to be written and this arm becomes a refusal at the boundary rather
-/// than a degradation inside it. Carried as a row in
-/// `gunbc.seed_closed_vocabulary_wildcard_census`.
+/// than a degradation inside it. It was carried as a row in
+/// `gunbc.seed_closed_vocabulary_wildcard_census` until that census was retired on 2026-11-10.
 fn extdeps_argv_expr_token(
     node: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,

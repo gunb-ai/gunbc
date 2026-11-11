@@ -335,7 +335,7 @@ type ReplacementWitnessCoverageStanding
       restoration_trigger: NonEmptyStr,
     }
 
-// THE POLARITY, and it is the same one gunbc.deleted_cadence_reference_census carries: an
+// THE POLARITY, and it is the same one gunbc.deleted_cadence_reference_census carried: an
 // EXECUTING claim must produce a receipt whose cadence has a live route, and an UNCONSUMED
 // claim must be false the moment that cadence acquires one. Neither arm is a transcription
 // and neither can be satisfied by a surviving witness file, a local recipe or a command name.
