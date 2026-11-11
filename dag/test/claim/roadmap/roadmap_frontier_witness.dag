@@ -42,26 +42,6 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   }
 }
 
-// A node the document still shows, with no ending of its own. Nothing a ROW says closes a
-// dependency any more: an accepted node and a retired node leave the document WITH THEIR EDGES
-// through gunbc.roadmap.roadmap_authority frontier_sets_projection before the frontier is computed,
-// and what the frontier sees is what the log has not ended. (The `SupersededLine` this fixture used
-// to build is deleted; the closure of a dependency is witnessed where the withholding is decided —
-// dag/test/claim/roadmap/roadmap_event_log_witness.dag.)
-fn closed_node(base: RoadmapNode) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_QBNJEXMAX2KQWS838BE3" as RoadmapNodeIdentity,
-    node: base.node,
-    line: PlainLine { content: "closed" },
-    carriers: base.carriers,
-    dispatch: base.dispatch,
-    execution: base.execution,
-    owner: base.owner,
-    parent: none,
-    centering: none,
-  }
-}
-
 fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_CMY81J4ZCKAVZFQEAEFV" as RoadmapNodeIdentity,
@@ -98,8 +78,8 @@ test fn witness_ready_matches_next_spawnable() -> Bool {
   let node_b = sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
   let edges: List<RoadmapEdge> = []
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [100])
-  let spawnable = next_spawnable(doc: doc, merged: [100])
+  let frontier = spawn_frontier(doc: doc, merged: [100], accepted: [], withheld: [])
+  let spawnable = next_spawnable(doc: doc, merged: [100], accepted: [], withheld: [])
   count(frontier.ready) == count(spawnable)
     && any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "child-ready"))
 }
@@ -109,7 +89,7 @@ test fn witness_upcoming_is_blocked_sized_node() -> Bool {
   let node_b = sized_derivable(id: "child-blocked", prs: [200], title: "Child Blocked")
   let edges = [RoadmapEdge { child: roadmap_frontier_nid(s: "child-blocked"), parent: roadmap_frontier_nid(s: "parent-open") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [])
+  let frontier = spawn_frontier(doc: doc, merged: [], accepted: [], withheld: [])
   any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "child-blocked"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "child-blocked"))
 }
@@ -117,7 +97,7 @@ test fn witness_upcoming_is_blocked_sized_node() -> Bool {
 test fn witness_merged_unsigned_node_stays_ready_for_acceptance() -> Bool {
   let node = sized_derivable(id: "review-node", prs: [999], title: "Review Node")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [999])
+  let frontier = spawn_frontier(doc: doc, merged: [999], accepted: [], withheld: [])
   any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "review-node"))
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "review-node"))
 }
@@ -128,30 +108,38 @@ test fn witness_merged_unsigned_parent_does_not_unblock_child() -> Bool {
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
   let frontier = spawn_frontier(
     doc: fixture_doc(nodes: [parent, child], edges: [edge]),
-    merged: [999])
+    merged: [999], accepted: [], withheld: [])
   any(frontier.ready, n => n.node == parent.node)
     && any(frontier.upcoming, n => n.node == child.node)
     && !any(frontier.ready, n => n.node == child.node)
 }
 
 // THE CLOSURE IS THE WITHDRAWAL, NOT A ROW'S WORD. When the log ends a node — an acceptance, or a
-// retirement — the projection takes the node AND its edges out of the document
-// (active_roadmap_nodes_for_accepted / active_roadmap_edges_for_accepted), so the child is left with
-// no parent to wait on and is ready without anyone asking a row whether it is over. The withheld
-// node itself never reaches this function at all; that is claimed at the projection.
+// retirement — the node leaves the plan and its edges stop gating, so the child is left with nothing
+// to wait on. The two asks below are the same document and the same merged set; the only difference
+// is what the log has taken off the plan, which is what makes the pair mean withdrawal rather than a
+// fixture that never had a parent.
 test fn witness_withdrawn_parent_leaves_the_child_ready() -> Bool {
+  let parent = sized_derivable(id: "closing-parent", prs: [700], title: "Closing Parent")
   let child = sized_derivable(id: "after-close", prs: [701], title: "After Close")
-  let frontier = spawn_frontier(
-    doc: fixture_doc(nodes: [child], edges: []),
-    merged: [])
-  any(frontier.ready, n => n.node == child.node)
-    && count(frontier.upcoming) == 0
+  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  let doc = fixture_doc(nodes: [parent, child], edges: [edge])
+  let while_open = spawn_frontier(
+    doc: doc, merged: [700], accepted: [], withheld: [],
+  )
+  let after_the_log = spawn_frontier(
+    doc: doc, merged: [700], accepted: [], withheld: [parent.node],
+  )
+  any(while_open.upcoming, n => n.node == child.node)
+    && !any(while_open.ready, n => n.node == child.node)
+    && any(after_the_log.ready, n => n.node == child.node)
+    && count(after_the_log.upcoming) == 0
 }
 
 test fn witness_unsized_excluded_from_frontier() -> Bool {
   let node = undispatchable_derivable(id: "unsized-open", prs: [], title: "NotDispatchable")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [])
+  let frontier = spawn_frontier(doc: doc, merged: [], accepted: [], withheld: [])
   count(frontier.ready) == 0
     && count(frontier.upcoming) == 0
 }
@@ -162,7 +150,7 @@ test fn witness_buckets_are_disjoint() -> Bool {
   let node_c = sized_derivable(id: "c-alone", prs: [300], title: "C")
   let edges = [RoadmapEdge { child: roadmap_frontier_nid(s: "b-blocked"), parent: roadmap_frontier_nid(s: "a-open") }]
   let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [300])
+  let frontier = spawn_frontier(doc: doc, merged: [300], accepted: [], withheld: [])
   any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "a-open"))
     && any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "c-alone"))
     && any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "b-blocked"))

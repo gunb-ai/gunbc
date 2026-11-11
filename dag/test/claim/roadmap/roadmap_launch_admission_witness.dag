@@ -509,7 +509,7 @@ fn unbound_child() -> RoadmapNode {
 
 test fn witness_unspecified_contract_refused_where_frontier_admits() -> Bool {
   let doc = canary_doc(nodes: [unbound_child()], edges: [])
-  let frontier_admits = any(spawn_frontier(doc: doc, merged: []).ready, n => n.node == roadmap_launch_canary_child_node_id())
+  let frontier_admits = any(spawn_frontier(doc: doc, merged: [], accepted: [], withheld: []).ready, n => n.node == roadmap_launch_canary_child_node_id())
   frontier_admits
     && not_ready_missing(a: decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: launch_graph_of_document(doc: doc), node_id: child_id()), gap: "contract")
 }
@@ -670,7 +670,9 @@ fn timer_pass_over_canary(standing: LaunchHostStanding) -> BeltLaunchPass {
   belt_tick_launch_pass(
     standing: standing,
     state: AutomaticReady,
-    frontier: spawn_frontier(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]), merged: []),
+    frontier: spawn_frontier(doc: canary_doc(nodes: [canary_parent(), canary_child()], edges: [roadmap_launch_canary_edge()]),
+      merged: [], accepted: [], withheld: [],
+    ),
     graph: graph(),
     merged: [],
     tmux_live: [],

@@ -4987,11 +4987,15 @@ fn belt_run_once_in(
         discovery: belt_discover_for_instance(instance: instance),
         slots_cutover: AttemptSlotsCutoverNotRun { reason: "the roadmap authority projection refused, so this tick runs no actuation pass" },
       }
-    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
+    // accepted and withheld go to the frontier rather than being dropped here: which work is still on
+    // the plan is the projection's answer, and the spawner must apply the same one (its plan_edges).
+    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
       belt_tick_for_instance(
         instance: instance,
         state: roadmap_belt_production_spawn_mode,
-        frontier: spawn_frontier(doc: doc, merged: authored_merged_prs()),
+        frontier: spawn_frontier(
+          doc: doc, merged: authored_merged_prs(), accepted: accepted, withheld: withheld,
+        ),
         cap: belt_capacity_of_instance(instance),
         spawn_workdir: spawn_workdir,
       )
