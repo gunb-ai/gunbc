@@ -49,10 +49,23 @@ data srv3_os_lan_ipv4_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data srv3_fleet_slot_host_name: HostName = HostName {
-  name: DomainName { labels: ["srv3" as DnsLabel] },
-  qualification: PartiallyQualified,
+// THE NAME THIS FIXTURE REPORTS OVER DHCP IS NOT THIS MODULE'S TO HOLD. What a host answers with is
+// the hostname its ALLOCATION carries (gunbc.hostname_allocation::canonical_hostname_for_fleet_slot),
+// and a hand-written copy of that name here is a second authority over it: rename srv3 and this row
+// would go on certifying a lease for a name no host answers to, while the subsumption check beside it
+// -- which reads the allocation -- moved on. So the fixture derives its label from the roster (the
+// plan's hand-literal row, gunbc.plans.fleet_machine_authority section 4.4), and a slot with no
+// allocated hostname reports the empty name and subsumes NOTHING: a host the roster cannot name is a
+// host whose lease cannot prove anything (fail closed, never a name reconstructed from the identity).
+fn srv3_observed_client_host_name() -> HostName {
+  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv3) {
+    Present { value: allocated } =>
+      HostName { name: DomainName { labels: [allocated] }, qualification: PartiallyQualified }
+    Absent => HostName { name: DomainName { labels: [] }, qualification: PartiallyQualified }
+  }
 }
+
+data srv3_fleet_slot_host_name: HostName = srv3_observed_client_host_name()
 
 fn network_identity_subsumes_fleet_slot(
   fleet_slot: HostIdentity,

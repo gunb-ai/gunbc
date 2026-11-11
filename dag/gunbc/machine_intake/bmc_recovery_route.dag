@@ -1,13 +1,13 @@
 module gunbc.machine_intake.bmc_recovery_route
 
-import std.types { Bool, Int, List, NonEmptyStr, Port, String }
-import std.algebra { length }
+import std.types { Bool, Int, List, NonEmptyStr, Port, String, string_non_empty }
+import std.algebra { length, string_contains }
 import std.interval { closed_interval, interval_high, interval_low, IntervalRefused }
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
 // in_band_argv_credential_option). Absent/Present are still needed for MATCHING.
 import std.optional { Present, Absent, optional_present, optional_absent, optional_prefer_first_present }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.content_hash {
   Sha256Digest, Sha256Hash, content_hash_of_value,
 }
