@@ -1132,7 +1132,7 @@ fn network_install_run_staged(
     }
     Present { value: one_request } =>
       network_install_after_binding(
-        subject: install_subject,
+        provision_subject: install_subject,
         dispatch: network_install_dispatch_admission(
           population: population, managed: managed, host: host, expected_serial: expected_serial,
           dispatch_owner: dispatch_owner, intended_controller: intended_controller, observed: observed,
@@ -1157,7 +1157,7 @@ fn network_install_run_staged(
 fn network_install_after_binding(
   dispatch: NetworkInstallDispatch,
   ports: NetworkInstallRunPorts,
-  subject: NetworkInstallSubject,
+  provision_subject: NetworkInstallSubject,
   host: HostIdentity,
   serial: NonEmptyStr,
   password_file_raw: String,
@@ -1195,7 +1195,7 @@ fn network_install_after_binding(
             ),
           }
           InstallBootProceeds { selected: selected } => network_install_after_boot(
-            ports: ports, host: host, subject: subject, serial: serial, model: model, decided_at: admitted_at,
+            ports: ports, host: host, subject: provision_subject, serial: serial, model: model, decided_at: admitted_at,
             binding: binding, selected: selected
           )
         }
