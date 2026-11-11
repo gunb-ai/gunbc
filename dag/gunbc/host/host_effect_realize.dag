@@ -4380,11 +4380,10 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
       match apply_mode_for_host(host: host_converge.identity) {
         Absent =>
           NotConverged {
-            reason:
-              concat(
-                concat("host_effect_apply: the host ", host_converge.identity as String),
-                " carries no converge apply mode -- it is not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollment_intents), so there is no reload mode to run its converge under.",
-              ),
+            reason: concat(
+              concat("host_effect_apply: the host ", host_converge.identity as String),
+              " carries no converge apply mode -- it is not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollment_intents), so there is no reload mode to run its converge under.",
+            ),
             applied: intent,
           }
         Present { value: apply_mode } =>
