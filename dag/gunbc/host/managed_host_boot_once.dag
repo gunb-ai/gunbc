@@ -4,10 +4,8 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget, RedfishBootSourceOverrideEnabled, RedfishBootSourceOverrideMode,
-  BootOverridePxe, BootOverrideCd, BootOverrideContinuous, BootOverrideOnce,
+  BootTargetPxe, BootTargetCd, BootOverrideContinuous, BootOverrideOnce,
   BootOverrideModeUefi, BootOverrideModeLegacy,
-  redfish_boot_source_override_target_eq, redfish_boot_source_override_enabled_eq,
-  redfish_boot_source_override_mode_eq,
 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import gunbc.host.bmc_control_binding {
@@ -69,22 +67,21 @@ type BootOncePlan
 // THE ADMITTED SETTING IS FIXED SAVE THE TARGET: one-shot, UEFI. A caller chooses Pxe or Cd; the one-shot
 // and the firmware mode are not caller-choice, which is what keeps a boot-once a boot-once.
 fn boot_once_intended_setting(target: RedfishBootSourceOverrideTarget) -> BootOnceSetting {
-  BootOnceSetting { target: target, enabled: BootOverrideOnce {}, mode: BootOverrideModeUefi {} }
+  BootOnceSetting { target: target, enabled: BootOverrideOnce, mode: BootOverrideModeUefi }
 }
 
 // THE TWO TARGETS A BOOT-ONCE MAY BE ASKED FOR: Pxe or Cd. Anything else on the Redfish override alphabet
 // is not a PXE bring-up boot-once and refuses, rather than quietly booting something else.
 fn boot_once_target_is_allowed(target: RedfishBootSourceOverrideTarget) -> Bool {
-  redfish_boot_source_override_target_eq(a: target, b: BootOverridePxe {})
-    || redfish_boot_source_override_target_eq(a: target, b: BootOverrideCd {})
+  target == BootTargetPxe || target == BootTargetCd
 }
 
 // THE READ-BACK MATCHES ONLY WHEN EVERY FIELD TAKES THE SETTING IT WAS WRITTEN WITH: same target, still
 // one-shot, still UEFI. A partial read-back is a mismatch, which refuses and resets nothing.
 fn boot_once_setting_matches(expected: BootOnceSetting, observed: BootOnceSetting) -> Bool {
-  redfish_boot_source_override_target_eq(a: expected.target, b: observed.target)
-    && redfish_boot_source_override_enabled_eq(a: expected.enabled, b: observed.enabled)
-    && redfish_boot_source_override_mode_eq(a: expected.mode, b: observed.mode)
+  expected.target == observed.target
+    && expected.enabled == observed.enabled
+    && expected.mode == observed.mode
 }
 
 // THE BOUND CONTROLLER, OR NOTHING. The endpoint and the account are read THROUGH the route's binding,
@@ -119,7 +116,7 @@ fn plan_boot_once_on_standing(
   mode: RedfishBootSourceOverrideMode,
   readback: BootOnceReadback,
 ) -> BootOncePlan {
-  if redfish_boot_source_override_mode_eq(a: mode, b: BootOverrideModeLegacy {}) {
+  if mode == BootOverrideModeLegacy {
     BootOnceRefused { cause: BootOnceFirmwareLegacy }
   } else if !boot_once_target_is_allowed(target: target) {
     BootOnceRefused { cause: BootOnceTargetNotAllowed { target: target } }
@@ -211,10 +208,14 @@ fn boot_once_has_reset(plan: BootOncePlan) -> Bool {
   match plan {
     BootOnceRefused { cause: _ } => false
     BootOncePlanned { account: _, steps: steps } =>
-      any(steps, f: (s) => match s {
-        BootOnceReset { controller: _ } => true
-        BootOnceSet { controller: _, setting: _ } => false
-        BootOnceReadBack { controller: _, expected: _ } => false
-      })
+      fold(
+        steps,
+        init: false,
+        f: (acc, s) => match s {
+          BootOnceReset { controller: _ } => true
+          BootOnceSet { controller: _, setting: _ } => acc
+          BootOnceReadBack { controller: _, expected: _ } => acc
+        },
+      )
   }
 }

@@ -3,11 +3,11 @@ module test.claim.host.managed_host_boot_once_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.bmc.types {
-  BootOverridePxe, BootOverrideContinuous, BootOverrideModeUefi, BootOverrideModeLegacy,
+  BootTargetPxe, BootOverrideContinuous, BootOverrideModeUefi, BootOverrideModeLegacy,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host {
-  ManagedHost, managed_membership_for, OrdinaryMember, managed_host_fixture,
+  ManagedHost, managed_membership_for, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_fixture,
 }
 import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.managed_host_boot_once {
@@ -23,16 +23,16 @@ import gunbc.host.managed_host_boot_once {
 
 // A matching read-back: the controller reports exactly the setting a boot-once drives to (Pxe, Once, UEFI).
 fn a_matching_readback() -> BootOnceReadback {
-  BootOnceReadbackObserved { setting: boot_once_intended_setting(target: BootOverridePxe {}) }
+  BootOnceReadbackObserved { setting: boot_once_intended_setting(target: BootTargetPxe) }
 }
 
 // A read-back that did NOT take: the override came back still Continuous, so the boot would repeat.
 fn a_stuck_readback() -> BootOnceReadback {
   BootOnceReadbackObserved {
     setting: BootOnceSetting {
-      target: BootOverridePxe {},
-      enabled: BootOverrideContinuous {},
-      mode: BootOverrideModeUefi {},
+      target: BootTargetPxe,
+      enabled: BootOverrideContinuous,
+      mode: BootOverrideModeUefi,
     },
   }
 }
@@ -40,8 +40,9 @@ fn a_stuck_readback() -> BootOnceReadback {
 fn mtcollins1_row() -> ManagedHost {
   match managed_membership_for(host: operator_host_mtcollins1) {
     Present { value: OrdinaryMember { host: h } } => h
-    // No ordinary member under the real roster: there is no positive case to witness, so re-derive (never
-    // reached in the evaluated tree, where mtcollins1 is the one ordinary member).
+    Present { value: MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } } => h
+    // No member under the real roster: there is no positive case to witness, so re-derive (never reached
+    // in the evaluated tree, where mtcollins1 is a member).
     Absent => mtcollins1_row()
   }
 }
@@ -52,8 +53,8 @@ fn mtcollins1_row() -> ManagedHost {
 test fn w_a_host_that_is_not_a_managed_member_is_refused() -> Bool {
   match boot_once_for_managed_host(
     host: "srv1" as NonEmptyStr,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeUefi {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
     readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => true
@@ -65,8 +66,8 @@ test fn w_a_host_that_is_not_a_managed_member_is_refused() -> Bool {
 test fn w_the_managed_member_gets_a_boot_once() -> Bool {
   match boot_once_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeUefi {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
     readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => false
@@ -79,8 +80,8 @@ test fn w_the_managed_member_gets_a_boot_once() -> Bool {
 test fn w_a_legacy_boot_once_is_refused() -> Bool {
   match boot_once_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeLegacy {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeLegacy,
     readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => true
@@ -92,8 +93,8 @@ test fn w_a_legacy_boot_once_is_refused() -> Bool {
 test fn w_the_uefi_boot_once_is_planned() -> Bool {
   match boot_once_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeUefi {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
     readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => false
@@ -107,8 +108,8 @@ test fn w_the_read_back_precedes_the_reset() -> Bool {
   boot_once_read_back_precedes_reset(
     plan: boot_once_for_managed_host(
       host: "mtcollins1" as NonEmptyStr,
-      target: BootOverridePxe {},
-      mode: BootOverrideModeUefi {},
+      target: BootTargetPxe,
+      mode: BootOverrideModeUefi,
       readback: a_matching_readback(),
     ),
   )
@@ -118,8 +119,8 @@ test fn w_the_read_back_precedes_the_reset() -> Bool {
 test fn w_a_mismatched_read_back_refuses_with_no_reset() -> Bool {
   let stuck = boot_once_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeUefi {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
     readback: a_stuck_readback(),
   )
   match stuck {
@@ -132,9 +133,9 @@ test fn w_a_mismatched_read_back_refuses_with_no_reset() -> Bool {
 test fn w_an_absent_read_back_refuses_with_no_reset() -> Bool {
   let unanswered = boot_once_for_managed_host(
     host: "mtcollins1" as NonEmptyStr,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeUefi {},
-    readback: BootOnceReadbackAbsent {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
+    readback: BootOnceReadbackAbsent,
   )
   match unanswered {
     BootOnceRefused { cause: _ } => !boot_once_has_reset(plan: unanswered)
@@ -158,8 +159,8 @@ test fn w_a_second_managed_host_gets_a_boot_once_from_its_rows() -> Bool {
   let control = bmc_control_binding(observed: second.access, secured: second.secure)
   let planned = plan_boot_once_on_standing(
     control: control,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeUefi {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
     readback: a_matching_readback(),
   )
   match planned {
@@ -173,8 +174,8 @@ test fn w_a_second_managed_host_gets_a_boot_once_from_its_rows() -> Bool {
 test fn w_a_second_host_is_planned_only_from_a_bound_row_not_a_name() -> Bool {
   match boot_once_for_managed_host(
     host: "srv1" as NonEmptyStr,
-    target: BootOverridePxe {},
-    mode: BootOverrideModeUefi {},
+    target: BootTargetPxe,
+    mode: BootOverrideModeUefi,
     readback: a_matching_readback(),
   ) {
     BootOnceRefused { cause: _ } => true
