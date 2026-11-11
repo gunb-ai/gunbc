@@ -8,6 +8,8 @@ import product.host_identity { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { unbound_dissolution }
+import std.algebra { FreeMonoid, contains, for_all }
+import v2.std.text { string_eq }
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
@@ -506,3 +508,24 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 // It was `ci_heal_author_commit_regen_command` while heal's author-commit arm was its only caller;
 // that arm is gone with the push, and the command is not heal's (gunbc#10958).
 data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
+
+// WHAT THIS MODULE MUST NOT IMPORT, stated where its lightness is owned. Every importer of this
+// registry -- 69 modules today -- pays for this module's whole import closure, so an import that
+// serves nothing here is a tax on all of them: the registry once reached the whole-corpus admission
+// chain through the measured-root demands RENDERER for two path constants, 695 modules and 2.45 GiB
+// of peak RSS for a directory and a file name that artifact_location above now holds as a literal row.
+// These two paths are the named heavy side, at identity grain -- a byte or file-count limit would
+// drift with unrelated growth and pass a closure that swapped one heavy import for another. Same
+// shape as gunbc.roadmap.privileged_helper_closure's declared exclusion, not a second mechanism for
+// it. The consumer is test.claim.generated_artifact_closure_witness, whose live claim goes red the
+// moment either path is imported here again.
+data generated_artifact_forbidden_closure_paths: List<String> = [
+  "dag/gunbc/whole_corpus_compile_demand_projection.dag",
+  "dag/gunbc/whole_corpus_compile_admission.dag"
+]
+
+// Judged on a CLOSURE rather than on this module's own import lines: the closure is what every
+// importer pays for, and a transitive edge reaches the heavy side as cheaply as a direct one.
+fn generated_artifact_closure_excludes_forbidden(closure: FreeMonoid<String>) -> Bool {
+  for_all(xs: closure, predicate: fn(path) { !contains(xs: generated_artifact_forbidden_closure_paths, item: path, eq: string_eq) })
+}
