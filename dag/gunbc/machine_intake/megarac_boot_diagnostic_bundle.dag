@@ -132,6 +132,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacPresentationObserved,
   PresentationStillReady,
   PresentationNoLongerReady,
+  PresentationServingConditionUnsatisfied,
   PresentationStillServed,
   presentation_still_served,
   ShareBound,
@@ -547,6 +548,9 @@ fn megarac_look_presentation(r: MegaRacAttachResult) -> BootPresentation {
     // The presentation was served; the residue is a separate fact, reported by csrf_header_file_harness.
     PresentationReadyButSecretFileLeft => Presented
     PresentationNoLongerReady { reason: why } => PresentationNotServed { reason: why as NonEmptyStr }
+    // The controller answered, and under the serving law its answer is not a served presentation; the
+    // reason says the condition failed and names the code, never that the medium was withdrawn.
+    PresentationServingConditionUnsatisfied { cd_error: cd } => PresentationNotServed { reason: serving_condition_text(cd: cd) as NonEmptyStr }
     PresentationUnobserved { reason: why } => PresentationUnread { reason: why as NonEmptyStr }
   }
 }
@@ -947,7 +951,7 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
         e.server_address as String, ":", e.source_path as String, " over ", megarac_share_type_wire(t: e.share_type), " with mount_cd 1, observed ",
         o.server_address, ":", o.source_path, " over ", o.share_type, " with mount_cd ", o.mount_cd,
       ], "") }
-    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _, general: _, configurations: _ } =>
+    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _, general: _, configurations: _, admitted_route: _ } =>
       Present { value: "a read-only presentation observation reached an attach decision; observations never attach and never open the handoff" }
     MegaRacShareUnreadable { detail: d } =>
       Present { value: concat("the controller's remote-media share settings could not be read, so which share image names resolve in is UNKNOWN; nothing was written: ", d) }
@@ -1098,7 +1102,7 @@ type MegaRacHandoff
 
 fn observation_text(r: MegaRacAttachResult) -> String {
   match r.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: rd, cd_error: cd, general: g, configurations: c } =>
+    MegaRacPresentationObserved { share: sh, readiness: rd, cd_error: cd, general: g, configurations: c, admitted_route: _ } =>
       join([
         "share ", match sh { ShareBound => "bound"  ShareMismatch { observed: o } => concat("MISMATCH ", concat(o.server_address, concat(":", o.source_path)))  ShareUnreadable { detail: d } => concat("UNREADABLE ", d) },
         "; row ", readiness_reading_text(r: rd),
@@ -1121,12 +1125,19 @@ fn megarac_handoff_media_text(h: MegaRacHandoff) -> String {
   }
 }
 
+// THE ONE WORDING of the serving law failing on a look: the row is still Started and bound, so this is
+// not a withdrawal; what failed is the condition an already-presented row was admitted under.
+fn serving_condition_text(cd: CdErrorReading) -> String {
+  concat("the serving condition is no longer satisfied: the presentation was admitted on the already-presented route, which holds it to cd_error_code 0, and general settings now read cd_error_code ", cd_reading_text(r: cd))
+}
+
 fn recheck_text(v: PresentationStillServed) -> String {
   match v {
     PresentationStillReady => "served"
     PresentationReadyButSessionHeld { held: r } => concat("served, but the look's own session was ", session_release_text(standing: r))
     PresentationReadyButSecretFileLeft => concat("served, but the look's own CSRF header file was ", megarac_secret_file_text(standing: SecretFileResidueRemains))
     PresentationNoLongerReady { reason: why } => concat("AFFIRMED not served: ", why as String)
+    PresentationServingConditionUnsatisfied { cd_error: cd } => serving_condition_text(cd: cd)
     PresentationUnobserved { reason: why } => concat("UNOBSERVED (indeterminate, not a withdrawal): ", why as String)
   }
 }
@@ -1145,6 +1156,7 @@ fn handoff_media_harness(h: MegaRacHandoff) -> List<HarnessFinding> {
         PresentationReadyButSessionHeld { held: _ } => [MegaRacPresentationAfterHandoff { look: a }]
         PresentationReadyButSecretFileLeft => []
         PresentationNoLongerReady { reason: _ } => [MegaRacPresentationAfterHandoff { look: a }]
+        PresentationServingConditionUnsatisfied { cd_error: _ } => [MegaRacPresentationAfterHandoff { look: a }]
         PresentationUnobserved { reason: _ } => [MegaRacPresentationAfterHandoff { look: a }]
       })
   }
@@ -2429,6 +2441,7 @@ fn harness_finding_text(f: HarnessFinding) -> String {
     MegaRacPresentationAfterHandoff { look: a } => match presentation_still_served(result: a) {
       PresentationStillReady => "after the handoff the presentation was still served"
       PresentationNoLongerReady { reason: why } => concat("the presentation was LOST at or after the boot-device and power handoff (", why as String, "): ", observation_text(r: a))
+      PresentationServingConditionUnsatisfied { cd_error: cd } => concat("after the handoff the presentation was not affirmed lost, but ", serving_condition_text(cd: cd), ": ", observation_text(r: a))
       PresentationUnobserved { reason: why } => concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", why as String, "): ", observation_text(r: a))
       PresentationReadyButSessionHeld { held: r } => concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))
       PresentationReadyButSecretFileLeft => "after the handoff the presentation was still served"

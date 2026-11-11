@@ -182,7 +182,7 @@ type MegaRacAttachOutcome
   | MegaRacConfigurationsUnreadable { detail: String }
   | MegaRacShareMismatch { expected: MegaRacShareBinding, observed: MegaRacObservedShare }
   | MegaRacShareUnreadable { detail: String }
-  | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness, cd_error: CdErrorReading, general: MegaRacRawRead, configurations: MegaRacRawRead }
+  | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness, cd_error: CdErrorReading, general: MegaRacRawRead, configurations: MegaRacRawRead, admitted_route: MegaRacAttachRoute? }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
   // THE BRACKET THAT WOULD STAGE THE CSRF HEADER FILE NEVER ENTERED -- the fresh 0700 dir or the O_EXCL
@@ -302,7 +302,12 @@ type MegaRacDetachAdmission
 // open, token parse and observed release, so an observation cannot leak a session either.
 type MegaRacSessionTask
   = MegaRacConverge { policy: MegaRacReplacementPolicy }
-  | MegaRacObserve { share: MegaRacShareBinding }
+  // admitted_route IS THE PROVENANCE THE LOOK IS JUDGED UNDER: the route by which this attempt's attach
+  // admitted the presentation the look re-reads, absent when no attach admitted one (the look before a
+  // stale power-off, an end look after a withheld attach). presentation_still_served applies the serving
+  // law to it, so the pre-handoff recheck holds an already-presented row to cd_error_code 0 exactly as
+  // the initial admission did.
+  | MegaRacObserve { share: MegaRacShareBinding, admitted_route: MegaRacAttachRoute? }
   | MegaRacReleaseOwn { policy: MegaRacOwnReleasePolicy }
 
 // THE THIRD TASK ENDS THIS ATTEMPT'S OWN SESSION. Boot run 39868779331 ended with its census row still
@@ -888,7 +893,7 @@ fn megarac_attach_then_release(
       )
       MegaRacConvergence { baseline: c.baseline, outcome: c.outcome }
     }
-    MegaRacObserve { share: share } =>
+    MegaRacObserve { share: share, admitted_route: ar } =>
       MegaRacConvergence { baseline: MegaRacMediaBaseline { general_read: false, general: "", configurations_read: false, configurations: "" }, outcome: megarac_observe_with_token(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
@@ -896,6 +901,7 @@ fn megarac_attach_then_release(
         image_name: image_name,
         firmware: firmware,
         share: share,
+        admitted_route: ar,
       ) }
     MegaRacReleaseOwn { policy: policy } =>
       MegaRacConvergence { baseline: MegaRacMediaBaseline { general_read: false, general: "", configurations_read: false, configurations: "" }, outcome: megarac_release_own_with_token(
@@ -910,7 +916,7 @@ fn megarac_attach_then_release(
 
   let baseline = match task {
     MegaRacConverge { policy: _ } => Present { value: converged.baseline }
-    MegaRacObserve { share: _ } => none
+    MegaRacObserve { share: _, admitted_route: _ } => none
     MegaRacReleaseOwn { policy: _ } => none
   }
   return MegaRacAttachResult {
@@ -2519,6 +2525,7 @@ fn megarac_observe_with_token(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   share: MegaRacShareBinding,
+  admitted_route: MegaRacAttachRoute?,
 ) -> MegaRacAttachOutcome
 {
   let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_header_file: csrf_header_file)
@@ -2535,6 +2542,7 @@ fn megarac_observe_with_token(
     cd_error: cd_error_of_raw(r: general, firmware: firmware),
     general: general,
     configurations: configurations,
+    admitted_route: admitted_route,
   }
 }
 
@@ -2542,7 +2550,14 @@ fn megarac_observe_with_token(
 // was taken and the medium is not being served (a withdrawn or non-Started row, a share mismatch). Unobserved: the
 // look itself failed (session, transport, an unread member, an unread cd_error_code), which says
 // nothing about the medium. A read cd_error_code beside a Started row is recorded as an observation and
-// does not withhold, because a Started row with a bound session is what the readiness policy asks for.
+// does not withhold, because a Started row with a bound session is what the readiness policy asks for --
+// EXCEPT under the serving law: when the look re-reads a presentation admitted on the already-presented
+// route, it is admitted only on cd_error_code 0 (presented_row_serving), the same law the initial
+// admission applies, so a code that turns nonzero between the admission and the recheck withholds the
+// handoff (PresentationServingConditionUnsatisfied, merry-fox-82's review of #16339 at f5885ada). That
+// arm says the serving condition is no longer satisfied and carries the code; it does not say the medium
+// was withdrawn, because the row is still Started and bound. A freshly attached route keeps the code as
+// an observation, as at its own admission; an unread code stays Unobserved on every route.
 // And the look's own session must be released: a ready medium observed through a session the
 // controller still holds is a cleanup obligation unmet, exactly as at the initial gate. Only
 // PresentationStillReady admits a handoff; each other answer withholds and says which it was.
@@ -2553,11 +2568,12 @@ type PresentationStillServed
   // reason a held session is not (megarac_secret_file_left).
   | PresentationReadyButSecretFileLeft
   | PresentationNoLongerReady { reason: NonEmptyStr }
+  | PresentationServingConditionUnsatisfied { cd_error: CdErrorReading }
   | PresentationUnobserved { reason: NonEmptyStr }
 
 fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {
   match result.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: cd, general: _, configurations: _ } =>
+    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: cd, general: _, configurations: _, admitted_route: ar } =>
       match sh {
         ShareUnreadable { detail: _ } => PresentationUnobserved { reason: "the general settings could not be read" }
         ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
@@ -2571,9 +2587,13 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
               match cd {
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
                 CdErrorRead { code: _ } =>
-                  match result.session_release {
-                    SessionReleased => if megarac_secret_file_left(result: result) { PresentationReadyButSecretFileLeft } else { PresentationStillReady }
-                    other => PresentationReadyButSessionHeld { held: other }
+                  if look_is_held_to_the_serving_law(admitted_route: ar) && presented_row_serving(cd: cd) == false {
+                    PresentationServingConditionUnsatisfied { cd_error: cd }
+                  } else {
+                    match result.session_release {
+                      SessionReleased => if megarac_secret_file_left(result: result) { PresentationReadyButSecretFileLeft } else { PresentationStillReady }
+                      other => PresentationReadyButSessionHeld { held: other }
+                    }
                   }
               }
             ReadinessConnecting { row: _, configurations: _ } => no_longer_ready
@@ -2614,6 +2634,15 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: _, image_indices: _, detach: _ } => presentation_unobserved_before_presentation()
     MegaRacNotEnumeratedAfterRefresh { image_name: _, detach: _, standing: _ } => presentation_unobserved_before_presentation()
     MegaRacOwnSessionEnded { end: _ } => PresentationUnobserved { reason: "the end-of-attempt release is not a look at the presentation" }
+  }
+}
+
+// THE LOOK IS HELD TO THE SERVING LAW exactly when the presentation it re-reads was admitted on the
+// already-presented route; attach_route_is_already_presented is the one place that route is named.
+fn look_is_held_to_the_serving_law(admitted_route: MegaRacAttachRoute?) -> Bool {
+  match admitted_route {
+    Absent => false
+    Present { value: r } => attach_route_is_already_presented(route: r)
   }
 }
 

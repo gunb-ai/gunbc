@@ -72,6 +72,7 @@ import gunbc.machine_intake.megarac_media_attach {
   ReadinessWrongPresentation,
   RouteAlreadyPresented,
   RouteAttached,
+  MegaRacAttachRoute,
   SessionReleased,
   SessionReleaseRefused,
   WriteAccepted,
@@ -118,6 +119,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacSessionRefused,
   PresentationStillReady,
   PresentationNoLongerReady,
+  PresentationServingConditionUnsatisfied,
   presentation_still_served,
   SessionReleaseNotAttempted,
 }
@@ -793,6 +795,11 @@ test fn nothing_presented_with_a_code_outside_the_table_and_the_host_on_refuses_
 }
 
 fn observed(general: String, configurations: String) -> MegaRacAttachResult {
+  observed_under(general: general, configurations: configurations, admitted_route: none)
+}
+
+// A LOOK RE-READING A PRESENTATION ADMITTED ON admitted_route, the provenance the recheck is judged under.
+fn observed_under(general: String, configurations: String, admitted_route: MegaRacAttachRoute?) -> MegaRacAttachResult {
   MegaRacAttachResult {
     outcome: MegaRacPresentationObserved {
       share: share_binding_standing(body: general, expected: share_as_of_2026_09_27),
@@ -800,6 +807,7 @@ fn observed(general: String, configurations: String) -> MegaRacAttachResult {
       cd_error: cd_error_reading(body: general, firmware: megarac_firmware_0_32),
       general: MegaRacRawRead { answered: true, body: general, observed_at: Present { value: 5000 } },
       configurations: MegaRacRawRead { answered: true, body: configurations, observed_at: Present { value: 5001 } },
+      admitted_route: admitted_route,
     },
     session_release: SessionReleased,
     baseline: none,
@@ -882,12 +890,49 @@ test fn the_recheck_withholds_when_its_own_session_was_not_released() -> Bool {
     && (match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false })
 }
 
-// AT THE RECHECK: Started with any read code is still served; an unread look is unobserved; a stopped row with code 16 is an affirmed loss that does not name the code as a cause.
+// AT THE RECHECK: on a freshly attached route (or with no admitted route) Started with any read code is
+// still served; an unread look is unobserved; a stopped row with code 16 is an affirmed loss that does not
+// name the code as a cause. On the already-presented route the recheck applies the serving law of the
+// admission: code 0 is served, a nonzero code is the serving condition no longer satisfied.
+fn a_fresh_route() -> MegaRacAttachRoute {
+  RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }
+}
+
+fn started_census() -> String {
+  presenting_in(name: desired_census as String, status: "1", session: "0")
+}
+
 test fn a_started_look_with_code_16_is_still_served_at_the_recheck() -> Bool {
-  match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "1", session: "0"))) {
+  (match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27, configurations: started_census())) {
     PresentationStillReady => true
     _ => false
-  }
+  })
+    && (match presentation_still_served(result: observed_under(general: mtcollins1_media_general_2026_09_27, configurations: started_census(), admitted_route: Present { value: a_fresh_route() })) {
+      PresentationStillReady => true
+      _ => false
+    })
+}
+
+// merry-fox-82's review of #16339 at f5885ada: the same admitted presentation, changing only the recheck
+// code. 0 proceeds; 16 is the serving condition unsatisfied, carrying the code and never wording it as a
+// withdrawal or a loss; unread stays indeterminate.
+test fn the_recheck_holds_an_already_presented_admission_to_a_clean_code() -> Bool {
+  let admitted = Present { value: RouteAlreadyPresented }
+  let clean = presentation_still_served(result: observed_under(general: general_coded(code: "0"), configurations: started_census(), admitted_route: admitted))
+  let coded_look = observed_under(general: mtcollins1_media_general_2026_09_27, configurations: started_census(), admitted_route: admitted)
+  let unread = presentation_still_served(result: observed_under(general: general_coded(code: "\"x\""), configurations: started_census(), admitted_route: admitted))
+  let withheld = handoff_media_findings(h: MegaRacHandoffWithheldAtRecheck { before: coded_look })
+  (match clean { PresentationStillReady => true _ => false })
+    && (match presentation_still_served(result: coded_look) {
+      PresentationServingConditionUnsatisfied { cd_error: CdErrorRead { code: CdErrorNonzero { wire: w, firmware: _ } } } => w == 16
+      _ => false
+    })
+    && (match unread { PresentationUnobserved { reason: r } => (r as String) == "cd_error_code could not be read" _ => false })
+    && only_finding_contains(findings: withheld, pattern: "the serving condition is no longer satisfied")
+    && only_finding_contains(findings: withheld, pattern: "general settings now read cd_error_code 16")
+    && only_finding_contains(findings: withheld, pattern: "no boot-device or power write")
+    && !only_finding_contains(findings: withheld, pattern: "LOST")
+    && !only_finding_contains(findings: withheld, pattern: "withdrawn")
 }
 
 test fn a_started_look_with_a_code_outside_the_table_is_still_served_at_the_recheck() -> Bool {

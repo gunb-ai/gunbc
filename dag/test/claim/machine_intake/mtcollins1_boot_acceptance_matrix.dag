@@ -906,6 +906,54 @@ fn boot_11_media(clears: Bool) -> MegaRacMediaWorld {
   media_errored(code: boot_run_43040335415_general_before_handoff.cd_error_code, clears: clears, after_ready: no_error_after_ready(), cd: boot_11_row())
 }
 
+// THE RECHECK HOLDS AN ALREADY-PRESENTED ADMISSION TO cd_error_code 0 (merry-fox-82's review of #16339 at
+// f5885ada). The same presented row is admitted on code 0 in both runs; only the code the pre-handoff
+// recheck reads differs. The control boots. The coded run raises 16 at the instant the control's recheck
+// read general settings (the last GetMediaGeneral before the power write), so convergence and readiness
+// read 0 and admit the row exactly as in the control, and the recheck reads 16: no boot-device write, no
+// power write, and the cause says the serving condition is no longer satisfied, never that the medium was
+// lost. The RED is presentation_still_served ignoring the code on that route: the coded run then boots.
+fn presented_desired_row(ready_at: Second?) -> MegaRacCdRow {
+  MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: ready_at }
+}
+
+fn presented_world(ready_at: Second?, code_at: Int?) -> MegaRacMediaWorld {
+  media_errored(code: 0, clears: false, after_ready: code_at, cd: presented_desired_row(ready_at: ready_at))
+}
+
+fn recheck_general_read_at(route: List<DispatchRecord>) -> Second? {
+  let power = first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+  fold(route, init: none, f: fn(acc, r) {
+    if operation_name(r: r) == "megarac.Media.GetMediaGeneral" && power >= 0 && r.ordinal < power { Present { value: r.dispatched_at } } else { acc }
+  })
+}
+
+test fn the_recheck_withholds_an_already_presented_admission_whose_code_turns_nonzero() -> Bool {
+  match run_attempt(world: media_varied(media: presented_world(ready_at: none, code_at: none))) {
+    WitnessReturned { value: _, route: control } =>
+      count_named(route: control, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: control, name: "megarac.Media.StopMedia") == 0
+        && count_named(route: control, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") >= 1
+        && count_named(route: control, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && (match recheck_general_read_at(route: control) {
+          Absent => false
+          Present { value: at } =>
+            match run_attempt(world: media_varied(media: presented_world(ready_at: Present { value: at }, code_at: Present { value: 16 }))) {
+              WitnessReturned { value, route } =>
+                string_contains(s: outcome_reason(a: value), pattern: "pre-handoff recheck did not admit it")
+                  && string_contains(s: outcome_reason(a: value), pattern: "the serving condition is no longer satisfied")
+                  && string_contains(s: outcome_reason(a: value), pattern: "general settings now read cd_error_code 16")
+                  && !string_contains(s: outcome_reason(a: value), pattern: "LOST")
+                  && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+                  && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+                  && reached_no_power_action(route: route)
+              _ => false
+            }
+        })
+    _ => false
+  }
+}
+
 // BOOT 11'S SHAPE WITH THE HOST ON: the stop is not admitted (it would withdraw what a running host may read), the
 // stale power-off does not fire (the row names the desired image, not a stale one), so the attempt refuses with
 // the typed cause naming the row's image and the code, before any media write, override or power action.
