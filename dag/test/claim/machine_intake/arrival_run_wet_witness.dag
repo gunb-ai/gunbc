@@ -32,9 +32,8 @@ import gunbc.machine_intake.bmc_account_state_parsers {
 }
 import gunbc.machine_intake.inband_host_identity {
   InbandBoardRead,
-  InbandBoardObserved,
-  InbandBoardIdentity,
-  InbandIdentitySource,
+  decode_inband_board_capture,
+  inband_host_identity_capture_row,
 }
 import gunbc.machine_intake.mtjade1_access_observation {
   read_committed_bmc_fru_capture,
@@ -64,9 +63,22 @@ fn srv15_wet_captures() -> ArrivalRunCaptures {
   srv15_wet_captures_census(census_text: srv15_census_stand_in)
 }
 
+// The in-band second source, MINTED THE ONLY LEGAL WAY: the committed capture row
+// keyed by unit, the bytes it digests, and the public decoder. The section shapes
+// mirror the committed capture; the NIC is the fleet-bound host NIC whose MAC srv1
+// saw on the wire (srv15_host_nic_mac).
+fn srv15_inband_read() -> InbandBoardRead {
+  let content = join(["### dmidecode baseboard", "Product Name        : ASRock Rack ALTRAD8UD-1L2T", "Serial Number       : BR80S6102300049", "### nics", "enP2p4s0 mac=9c:6b:00:e7:ca:63 carrier=1", "enP2p4s0 inet 192.168.1.248 UP"], "\n")
+  match inband_host_identity_capture_row(unit: operator_host_srv15) {
+    Present { value: row } => decode_inband_board_capture(content: content, row: row, channel_content: none)
+    Absent => exit_failure(reason: "WITNESS ROW ABSENT: the committed srv15 in-band capture row is gone from the registry")
+  }
+}
+
 fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
   ArrivalRunCaptures {
     census_text: census_text,
+    channel_access_text: "Maximum User IDs     : 15\n\nUser ID              : 1\nUser Name            : root\nPrivilege Level      : ADMINISTRATOR",
     lan_print_text: "Set in Progress         : Set Complete\nAuth Type Support       : NONE MD2 MD5 PASSWORD \nIP Address Source       : Static Address\nIP Address              : 192.168.1.248\nMAC Address             : 9c:6b:00:e7:c9:e7\n802.1q VLAN ID          : Disabled\nBad Password Threshold  : Not Available\n",
     service_root_body: "{\"@odata.id\":\"/redfish/v1/\",\"@odata.type\":\"#ServiceRoot.v1_15_0.ServiceRoot\",\"Id\":\"RootService\",\"Name\":\"OpenBMC\",\"RedfishVersion\":\"1.17.0\"}",
     account_service_body: "{\"AccountLockoutThreshold\":3,\"AccountLockoutDuration\":600,\"AccountLockoutCounterResetAfter\":600,\"AccountLockoutCounterResetEnabled\":true}",
@@ -89,21 +101,10 @@ fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
     },
     census_channel: 1,
     channel_info_store_paths: ["arrival-evidence/channel-info-1" as NonEmptyStr],
-    // The srv15 in-band second source: serial from the committed host identity artifact
-    // (artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt).
-    inband: InbandBoardObserved {
-      observation: InbandBoardIdentity {
-        unit: operator_host_srv15,
-        source: InbandIdentitySource {
-          capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
-          capture_sha256: "771a9d17687594bd9c48227e90e2f2261c679a5da1eb416a58c9639152821893" as NonEmptyStr,
-          attribution_basis: "machine_intake/arrival_unit_captures committed in-band capture" as NonEmptyStr,
-        },
-        product_name: "Altrad8ud-1L2T" as NonEmptyStr,
-        serial: "BR80S6102300049" as NonEmptyStr,
-        attributed_by: "9c:6b:00:e7:c9:e7" as NonEmptyStr,
-      },
-    },
+    // The srv15 in-band second source, decoded through the PUBLIC reader over the
+    // committed capture row's own bytes (the shape of the committed
+    // artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt sections).
+    inband: srv15_inband_read(),
   }
 }
 

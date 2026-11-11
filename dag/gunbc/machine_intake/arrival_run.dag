@@ -254,6 +254,10 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
 // the kernel never sees an in-memory response that skipped the store.
 type ArrivalRunCaptures {
   census_text: String
+  // The channel-access response is an artifact of the run: committed, read back, and
+  // carried for observability. The assembler takes channel members from the fleet
+  // binding, not from these bytes, and the door does not pretend otherwise.
+  channel_access_text: String
   lan_print_text: String
   service_root_body: String
   account_service_body: String
@@ -754,6 +758,12 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
       return exit_failure(reason: "ARRIVAL WET ACCOUNTS STORE REFUSED: the accounts collection did not commit")
     }
   }
+  let getaccess_ref = match arrival_retain_response(root: evidence_root, bytes: channel_access.stdout) {
+    PrivateEvidenceBytesRetained { ref: r } => r
+    _ => {
+      return exit_failure(reason: "ARRIVAL WET CHANNEL ACCESS STORE REFUSED: the channel-getaccess response did not commit")
+    }
+  }
   let fru_ref = match arrival_retain_response(root: evidence_root, bytes: fru.stdout) {
     PrivateEvidenceBytesRetained { ref: r } => r
     _ => {
@@ -790,6 +800,12 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
       return exit_failure(reason: "ARRIVAL WET ACCOUNTS READ BACK FAILED: the committed accounts collection did not read back")
     }
   }
+  let getaccess_text = match arrival_read_back_retained(root: evidence_root, reference: getaccess_ref) {
+    Present { value: b } => b
+    Absent => {
+      return exit_failure(reason: "ARRIVAL WET CHANNEL ACCESS READ BACK FAILED: the committed channel-getaccess bytes did not read back")
+    }
+  }
   let fru_text = match arrival_read_back_retained(root: evidence_root, reference: fru_ref) {
     Present { value: b } => b
     Absent => {
@@ -812,6 +828,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   let attempt_value = concat("arrival-attempt-", run_wire as String) as NonEmptyStr
   let captures = ArrivalRunCaptures {
     census_text: census_text,
+    channel_access_text: getaccess_text,
     lan_print_text: lan_text,
     service_root_body: root_body,
     account_service_body: account_service_body,
