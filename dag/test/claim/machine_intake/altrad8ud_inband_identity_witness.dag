@@ -38,12 +38,15 @@ import gunbc.machine_intake.inband_host_identity {
   InbandCaptureDigestMismatch,
   InbandCaptureRefused,
   InbandChannelAnswersForTheFleetBoundController,
+  InbandChannelCaptureUnreadable,
   InbandChannelControllerNotFleetBound,
+  InbandChannelLanPrintAddressCount,
   InbandFieldGapped,
   InbandHostIdentityCaptureRow,
   SessionNicIsTheFleetBoundHostNic,
   InbandSessionNicNotFleetBound,
   decode_inband_board_capture,
+  inband_line_key,
   inband_section_rows,
   read_attributed_inband_capture,
   read_inband_board_identity,
@@ -223,6 +226,16 @@ test fn w_a_channel_that_answers_for_another_unit_s_controller_refuses_the_attri
 // the arm DOES establish over these bytes is claimed piece by piece: the board area is found and read, and its
 // serial is the same value the dmidecode baseboard table of the same unit carries, which is the shape of the
 // two-source agreement the arrival door asks for.
+// The companion channel capture with its IP Address line DUPLICATED IN PLACE, derived from the committed bytes
+// rather than typed out here: same section, same address, one extra line. This is the capture shape the channel
+// arm must refuse, and the refusal has to report the count it actually measured.
+fn srv14_channel_capture_with_a_second_address_line() -> String uses fs: std.resources.Filesystem {
+  Filesystem.Read(path: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt").content
+    |> split(delimiter: "\n")
+    |> map(l => if inband_line_key(line: l) == "IP Address" { join([l, l], "\n") } else { l })
+    |> join(delim: "\n")
+}
+
 fn srv14_committed_fru_print() -> String uses fs: std.resources.Filesystem {
   Filesystem.Read(path: "artifacts/bmc/altrad8ud-1l2t-6-fru-full-2026-11-11/fru_print_0.txt").content
 }
@@ -374,5 +387,41 @@ test fn w_an_fru_row_naming_a_section_the_capture_does_not_carry_refuses() -> Bo
             BmcFruCaptureObserved { observation: _ } => false
             BmcFruCaptureRefused { gap: _ } => true
           }
+  }
+}
+
+// RED, count: a channel section that reports TWO IP addresses. The refusal carries the number the scan measured
+// -- two, not zero. A refusal that reports a count it never measured is a plausible fabrication sitting inside a
+// typed error, which is what fail_closed forbids.
+test fn w_a_channel_section_reporting_two_addresses_refuses_naming_the_count_it_measured() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv14) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: row, channel_content: _ } =>
+      match decode_inband_board_capture(
+        content: text,
+        row: row,
+        channel_content: Present { value: srv14_channel_capture_with_a_second_address_line() },
+      ) {
+        InbandBoardObserved { observation: _ } => false
+        InbandBoardRefused { gap: InbandChannelLanPrintAddressCount { section: s2, count: n } } =>
+          (s2 as String) == "lan print 1" && n == 2
+        InbandBoardRefused { gap: _ } => false
+      }
+  }
+}
+
+// RED, missing companion: a row on the channel arm whose companion capture was never handed to the decode. The
+// refusal names the path the row says the read must come from, so the missing evidence is addressable -- and it
+// is not dressed up as an unreadable host capture, which was read and digest-matched moments earlier.
+test fn w_a_channel_arm_row_without_its_companion_capture_names_the_path_it_needs() -> Bool uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: operator_host_srv14) {
+    InbandCaptureRefused { gap: _ } => false
+    InbandCaptureAttributed { content: text, row: row, channel_content: _ } =>
+      match decode_inband_board_capture(content: text, row: row, channel_content: none) {
+        InbandBoardObserved { observation: _ } => false
+        InbandBoardRefused { gap: InbandChannelCaptureUnreadable { capture_path: p, error: _ } } =>
+          (p as String) == "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt"
+        InbandBoardRefused { gap: _ } => false
+      }
   }
 }

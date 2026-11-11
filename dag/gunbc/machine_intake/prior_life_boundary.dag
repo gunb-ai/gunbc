@@ -213,7 +213,11 @@ data prior_life_platform_policies: List<PriorLifePolicy> = [
   // uncleared-boundary admission is NOTAdmitted, which is the fail-closed side of the choice the other two
   // rows did not have to make: no platform-policy statement for this board is committed anywhere, and
   // admitting the append-only cursor arm would assert one. Admitting it later is a new row with its reason.
-  PriorLifePolicy { platform: asrock_altrad8ud_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryNotAdmitted },
+  // The same admission mtjade1 and mtcollins carry: the platform policy does not refuse an uncleared boundary,
+  // the MISSING CARRIERS do. A row that refused at the policy level would stop the fold before it could report
+  // what it did not find, and a unit with no committed carrier capture already stops there with a typed
+  // no-carriers cause -- which is the honest DRY handling, identical to mtjade1's.
+  PriorLifePolicy { platform: asrock_altrad8ud_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
 ]
 
 fn prior_life_policy_for(platform: DeclarationRef) -> PriorLifePolicy? {

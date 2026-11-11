@@ -315,18 +315,30 @@ fn inband_session_nic(rows: List<String>, interface_name: NonEmptyStr) -> Inband
 // print section, and it has to be the address the fleet names for this unit's controller -- a channel wired to
 // another unit's BMC answers for that unit, and attributing its host's board read here would key one board by
 // another's identity.
-fn inband_lan_print_address(content: String, section: NonEmptyStr) -> String? {
+// One controller address, settled only when EXACTLY one IP Address line is present AND carries a value. The
+// count is the measured length of the scan, never a placeholder: a section with two address lines refuses with
+// two, and a single line printed empty is its own case, because an empty "IP Address" is not "no such line".
+type InbandLanPrintAddresses
+  = InbandLanPrintSettled { address: NonEmptyStr }
+  | InbandLanPrintBlank { section: NonEmptyStr }
+  | InbandLanPrintUnsettled { section: NonEmptyStr, count: Int }
+
+fn inband_lan_print_addresses(content: String, section: NonEmptyStr) -> InbandLanPrintAddresses {
   let lines = inband_section_rows(content: content, marker: section)
     |> filter(l => inband_line_key(line: l) == "IP Address")
-    |> map(l => inband_line_value(line: l))
-    |> filter(v => v != "")
-  if length(lines) == 1 {
-    match lines.first() {
-      Present { value: v } => Present { value: v }
-      Absent => none
+  match length(lines) {
+    1 => match lines.first() {
+      Absent => InbandLanPrintUnsettled { section: section, count: 0 }
+      Present { value: line } => {
+        let value = inband_line_value(line: line)
+        if value == "" {
+          InbandLanPrintBlank { section: section }
+        } else {
+          InbandLanPrintSettled { address: value as NonEmptyStr }
+        }
+      }
     }
-  } else {
-    none
+    n => InbandLanPrintUnsettled { section: section, count: n }
   }
 }
 
@@ -360,7 +372,7 @@ fn decode_inband_board_capture(content: String, row: InbandHostIdentityCaptureRo
     InbandBoardFieldsRefused { gap: g } => InbandBoardRefused { gap: g }
     InbandBoardFieldsObserved { product_name: product, serial: serial } =>
       match inband_attribution(content: content, row: row, channel_content: channel_content) {
-        Present { value: nic_mac } =>
+        InbandAttributionSettled { attributed_by: attributed_by } =>
           InbandBoardObserved {
             observation: InbandBoardIdentity {
               unit: row.unit,
@@ -371,14 +383,10 @@ fn decode_inband_board_capture(content: String, row: InbandHostIdentityCaptureRo
               },
               product_name: product,
               serial: serial,
-              attributed_by: nic_mac,
+              attributed_by: attributed_by,
             },
           }
-        Absent =>
-          match inband_attribution_gap(content: content, row: row, channel_content: channel_content) {
-            Present { value: g } => InbandBoardRefused { gap: g }
-            Absent => InbandBoardRefused { gap: InbandCaptureUnreadable { error: "the attribution of this capture is neither settled nor refused" } }
-          }
+        InbandAttributionRefused { gap: g } => InbandBoardRefused { gap: g }
       }
   }
   }
@@ -416,46 +424,44 @@ fn inband_board_fields(content: String, row: InbandHostIdentityCaptureRow) -> In
 
 // What attributed the read, when it is attributed: the MAC of the bound host NIC, or the address of the bound
 // controller the channel answers for. Both are the fact the fleet and the capture agreed on.
-fn inband_attribution(content: String, row: InbandHostIdentityCaptureRow, channel_content: String?) -> String? {
-  match inband_attribution_gap(content: content, row: row, channel_content: channel_content) {
-    Absent =>
-      match row.attribution {
-        SessionNicIsTheFleetBoundHostNic { session_interface: _, fleet_bound_host_nic_mac: m } => Present { value: m as String }
-        InbandChannelAnswersForTheFleetBoundController { fleet_bound_bmc_address: a } => Present { value: a as String }
-      }
-    Present { value: _ } => none
-  }
-}
+//
+// ONE DECISION, ONE PLACE. The attribution and the reason it failed are the same lookup, so they are one
+// settled/refused sum rather than two functions that each re-run the scan: with two, the caller has to cover a
+// "settled and refused at once" or "neither" state, and the only honest way to name that state is to admit it
+// cannot happen -- which is worse than not writing it (gunbc.design_argument::fail_closed, "stronger than
+// catching a wrong state is making it unwritable"; gunbc.design_argument::single_authority).
+type InbandAttributionRead
+  = InbandAttributionSettled { attributed_by: NonEmptyStr }
+  | InbandAttributionRefused { gap: InbandIdentityGap }
 
-// Why an attribution fails, or absent when it holds. The two arms share the shape: exactly one witness line, a
-// live interface, and the value equal to what the fleet binds to this unit.
-fn inband_attribution_gap(content: String, row: InbandHostIdentityCaptureRow, channel_content: String?) -> InbandIdentityGap? {
+fn inband_attribution(content: String, row: InbandHostIdentityCaptureRow, channel_content: String?) -> InbandAttributionRead {
   match row.attribution {
     SessionNicIsTheFleetBoundHostNic { session_nic_section: nic_section, session_interface: iface, fleet_bound_host_nic_mac: bound } =>
       match inband_session_nic(rows: inband_section_rows(content: content, marker: nic_section), interface_name: iface) {
-        InbandSessionNicUnsettled { count: n } => Present { value: InbandSessionNicLineCount { interface_name: iface, count: n } }
+        InbandSessionNicUnsettled { count: n } => InbandAttributionRefused { gap: InbandSessionNicLineCount { interface_name: iface, count: n } }
         InbandSessionNicSettled { mac: mac, has_carrier: up, addressed: addressed } =>
           if !up {
-            Present { value: InbandSessionNicCarrierAbsent { interface_name: iface } }
+            InbandAttributionRefused { gap: InbandSessionNicCarrierAbsent { interface_name: iface } }
           } else if (mac as String) != (bound as String) {
-            Present { value: InbandSessionNicNotFleetBound { observed_mac: mac, fleet_bound_mac: bound } }
+            InbandAttributionRefused { gap: InbandSessionNicNotFleetBound { observed_mac: mac, fleet_bound_mac: bound } }
           } else if !addressed {
-            Present { value: InbandSessionNicUnaddressed { interface_name: iface } }
+            InbandAttributionRefused { gap: InbandSessionNicUnaddressed { interface_name: iface } }
           } else {
-            none
+            InbandAttributionSettled { attributed_by: bound }
           }
       }
     InbandChannelAnswersForTheFleetBoundController { channel_capture_path: channel_path, lan_print_section: section, fleet_bound_bmc_address: bound } =>
       match channel_content {
-        Absent => Present { value: InbandChannelCaptureUnreadable { capture_path: channel_path, error: "the companion channel capture was not supplied" } }
+        Absent => InbandAttributionRefused { gap: InbandChannelCaptureUnreadable { capture_path: channel_path, error: "the companion channel capture was not supplied" } }
         Present { value: text } =>
-          match inband_lan_print_address(content: text, section: section) {
-            Absent => Present { value: InbandChannelLanPrintAddressCount { section: section, count: 0 } }
-            Present { value: address } =>
+          match inband_lan_print_addresses(content: text, section: section) {
+            InbandLanPrintUnsettled { section: s2, count: n } => InbandAttributionRefused { gap: InbandChannelLanPrintAddressCount { section: s2, count: n } }
+            InbandLanPrintBlank { section: s2 } => InbandAttributionRefused { gap: InbandFieldGapped { field: "IP Address" as NonEmptyStr, cause: join(["carries it empty in the ", s2 as String, " section"], "") as NonEmptyStr } }
+            InbandLanPrintSettled { address: address } =>
               if (address as String) != (bound as String) {
-                Present { value: InbandChannelControllerNotFleetBound { observed_address: address as NonEmptyStr, fleet_bound_address: bound } }
+                InbandAttributionRefused { gap: InbandChannelControllerNotFleetBound { observed_address: address, fleet_bound_address: bound } }
               } else {
-                none
+                InbandAttributionSettled { attributed_by: bound }
               }
           }
       }
@@ -487,15 +493,15 @@ fn read_attributed_inband_capture(unit: HostIdentity) -> InbandAttributedCapture
   }
 }
 
-// The companion capture the channel arm reads, digest-checked the same way. A row on the NIC arm reads one file
-// and no companion, so the second read is taken only when the row's arm asks for it.
+// The companion capture the channel arm needs, read and digest-checked the same way as the host capture. This
+// decides only WHICH BYTES the attribution will be settled from -- a NIC-arm row reads one file and no companion,
+// so the second read is taken only when the row's arm asks for it. It does not settle the attribution itself:
+// that happens once, in `inband_attribution`, when the mint asks for it. Settling it here too would put a second
+// place that decides the same fact (gunbc.design_argument::single_authority).
 fn read_inband_channel_if_rowled(text: String, row: InbandHostIdentityCaptureRow) -> InbandAttributedCapture uses fs: std.resources.Filesystem {
   match row.attribution {
     SessionNicIsTheFleetBoundHostNic { session_nic_section: _, session_interface: _, fleet_bound_host_nic_mac: _ } =>
-      match inband_attribution_gap(content: text, row: row, channel_content: none) {
-        Present { value: g } => InbandCaptureRefused { gap: g }
-        Absent => InbandCaptureAttributed { content: text, row: row, channel_content: none }
-      }
+      InbandCaptureAttributed { content: text, row: row, channel_content: none }
     InbandChannelAnswersForTheFleetBoundController { channel_capture_path: channel_path, channel_capture_sha256: channel_sha, lan_print_section: _, fleet_bound_bmc_address: _ } => {
       let read = Filesystem.Read(path: channel_path as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -503,11 +509,7 @@ fn read_inband_channel_if_rowled(text: String, row: InbandHostIdentityCaptureRow
         FilesystemReadSucceeded { content: channel_text } =>
           match inband_digest_differs(content: channel_text, expected: channel_sha) {
             Present { value: d } => InbandCaptureRefused { gap: InbandChannelCaptureDigestMismatch { expected: d.expected, observed: d.observed } }
-            Absent =>
-              match inband_attribution_gap(content: text, row: row, channel_content: Present { value: channel_text }) {
-                Present { value: g } => InbandCaptureRefused { gap: g }
-                Absent => InbandCaptureAttributed { content: text, row: row, channel_content: Present { value: channel_text } }
-              }
+            Absent => InbandCaptureAttributed { content: text, row: row, channel_content: Present { value: channel_text } }
           }
       }
     }
