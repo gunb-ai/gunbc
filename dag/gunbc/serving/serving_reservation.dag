@@ -145,8 +145,10 @@ fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> Optional<ByteSize> {
 // closed on that host rather than charging a fabricated number (fail_closed).
 // An UNREAD ceiling is MemoryUnmeasured and an ASSUMED ceiling stays a MemoryAssumed BET -- neither is promoted
 // to MemoryMeasured (review 93488, epistemic_humility). host_memory_reserved then returns Absent for that host
-// (memory_reservation_bytes fails both closed), so the width charges nothing rather than booking a fabricated or
-// assumed number (fail_closed). Today srv3/srv4 memory_max are ServingMemoryRead, so their charge is unchanged.
+// (memory_reservation_bytes fails both closed), so the width consumers REFUSE the host rather than certifying it:
+// host_runner_memory_envelope_resolution maps that Absent to RunnerMemoryEnvelopeUnestablished, so the host admits
+// no runner until the per-engine reservation is read (fail_closed -- charging zero for an unread engine would
+// understate the host and overbook CI). Today srv3/srv4 memory_max are ServingMemoryRead, so their charge is unchanged.
 fn reservation_from_engine_ceiling(e: ServingEngineMemory) -> ReplicaMemoryReservation {
   match e.memory_max {
     ServingMemoryRead { bytes: b, provenance: p } => MemoryMeasured { bytes: b, provenance: p }

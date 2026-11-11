@@ -72,12 +72,13 @@ test fn witness_a_non_prod_serving_host_is_charged_for_memory_by_its_own_identit
   srv3_memory_charged && srv3_withholds_no_cores
 }
 
-// AN UNREAD MEMORY CEILING CHARGES NOTHING, NOT A ZERO. The width derivation asks for a reservation and gets
-// Absent, so it fails closed instead of folding a made-up 0 bytes -- an unmeasured engine neither widens nor
-// narrows CI on a number nobody read. The primitive `memory_reservation_bytes` distinguishes the two states;
-// the fold `host_memory_reserved` on butch's two unread replicas returns Absent. This is the fail-closed rule
-// (gunbc.design_argument::fail_closed): an unmeasured reservation must not be charged as zero.
-test fn witness_an_unmeasured_memory_replica_charges_nothing_rather_than_a_fabricated_zero() -> Bool {
+// AN UNREAD MEMORY CEILING REFUSES THE HOST'S WIDTH, NOT A FABRICATED ZERO. The width derivation asks for a
+// reservation and gets Absent, so host_runner_memory_envelope_resolution returns RunnerMemoryEnvelopeUnestablished:
+// the host is NOT certified for runners until the per-engine reservation is read. That is stronger than "charges
+// zero" -- a zero would silently overbook CI on a number nobody read (gunbc.design_argument::fail_closed). The
+// primitive `memory_reservation_bytes` distinguishes the states (Measured=Present, Assumed=Absent, Unmeasured=Absent);
+// the fold `host_memory_reserved` on butch's two unread replicas returns Absent (a fabricated Present(0) would be the bug).
+test fn witness_an_unmeasured_memory_replica_fails_the_host_width_closed_not_a_fabricated_zero() -> Bool {
   let read = MemoryMeasured { bytes: byte_size(count: 8), provenance: "witness synthetic replica" }
   let unread = MemoryUnmeasured { reason: "no per-engine memory figure has been read" }
   // The primitive: a read figure yields its bytes; an unread one yields nothing (not zero).
