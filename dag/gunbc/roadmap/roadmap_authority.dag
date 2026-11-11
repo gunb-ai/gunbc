@@ -5417,7 +5417,18 @@ fn closing_contract_candidates(
   let withheld_set = roadmap_node_id_set(ids: withheld)
   let index = lineage_index(nodes: nodes)
   let fuel = count(nodes) + 1
-  let parents = roadmap_parent_index(edges: edges)
+  // THE PARENT QUESTION IS ASKED OVER THE GRAPH THE PLAN SHOWS, not the declared one. A parent that is
+  // over has left the plan, and with its edge gone it stops being a parent the child must wait on
+  // (gunbc.roadmap.roadmap_spawner node_closes_dependency, and the frontier subtraction it names); the
+  // ids that say so arrive in `withheld`, which node_ids_held_off_active_frontier (roadmap_model) makes
+  // the replay's withholding UNION the log's retired nodes. The two filters above already subtract
+  // accepted and withheld from the candidates; the parent index must subtract them too, or a node whose
+  // parent the log retired carries a dependency gap that can never clear -- readiness_only_contract_missing
+  // requires the contract to be the ONLY gap -- and its closing check is never minted, while the board and
+  // the dispatcher show the same node as startable. That is the model answering "is this child unblocked"
+  // two ways, which is what the single-authority rule forbids. Accepted parents are unaffected: they were
+  // already excluded inside unmet_parents_in, so the only behaviour that moves is a parent held off.
+  let parents = roadmap_parent_index(edges: edges |> filter(e => !set_contains(accepted_set, e.parent) && !set_contains(withheld_set, e.parent)))
   nodes
     |> filter(n => !set_contains(accepted_set, n.node))
     |> filter(n => !set_contains(withheld_set, n.node))

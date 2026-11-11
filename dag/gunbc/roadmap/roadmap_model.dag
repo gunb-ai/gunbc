@@ -1005,15 +1005,20 @@ fn remains_superseded_revocations_join(
 // THE NODES OFF THE ACTIVE FRONTIER: the ones the acceptance history withholds (accepted, or revoked
 // under a remains-superseded disposition) UNION the ones the EVENT LOG has retired. A retired node
 // leaves the plan exactly like an accepted one — that is the whole point of retiring it — and the union
-// is where that becomes true for every consumer at once: the board, the belt's work list, the launch
-// refusal. It is a union with no dedup burden because the fold below removes an id before adding it.
+// is where that becomes true for every consumer THAT READS THIS SET: the board, the belt's work list,
+// the launch refusal, and the closing-contract minting rule. It is a union with no dedup burden because
+// the fold below removes an id before adding it. The condition is stated because it is load-bearing: a
+// consumer that asks its question over the DECLARED graph instead of this set must subtract it there,
+// which is why closing_contract_candidates filters its parent index by the same ids rather than trusting
+// the declared edges to have forgotten a node the plan has already let go of.
 fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>, retired: List<RoadmapNodeId>) -> List<RoadmapNodeId> {
   // The replay's own withholding first, so a node whose acceptance was revoked under
   // reopens_active_frontier is put back on the frontier even though the log still names it nowhere;
   // THEN the log's retired nodes are unioned in, each id added once. A retired node leaves the plan
-  // exactly like an accepted one — that is what retiring it MEANS — and this is the single place that
-  // makes it true for the board, the belt's work list and the launch refusal at the same time
-  // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+  // exactly like an accepted one — that is what retiring it MEANS — and this is the single place the
+  // fact enters the frontier, which is what makes it true at the same moment for the board, the belt's
+  // work list, the launch refusal and the closing-contract minting rule, the four consumers that read
+  // this set (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
   let withheld_by_replay = fold(
     history,
     init: [] as List<RoadmapNodeId>,

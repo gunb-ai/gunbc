@@ -211,3 +211,15 @@ test fn an_unmet_prerequisite_keeps_the_closing_check_task_unminted() -> Bool {
   count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: [], withheld: [])) == 0
     && count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: ["rw-ready" as NonEmptyStr as RoadmapNodeId], withheld: [])) == 1
 }
+
+// THE SAME EDGE, THE PARENT HELD OFF THE FRONTIER. A parent the log retired has left the plan, and the
+// frontier says so by putting it in withheld (roadmap_model node_ids_held_off_active_frontier unions the
+// log's retired ids); roadmap_spawner node_closes_dependency states what follows for a child: with its
+// edge gone it stops being a parent the child must wait on. So the claim above's edge, with the parent
+// withheld, MUST mint: the child's only remaining gap is its contract. Before the parent index was built
+// over the graph the plan shows, this read 0 -- the node whose parent was retired never got its closing
+// check while the board showed it as startable, which is one question answered two ways.
+test fn a_parent_held_off_the_frontier_still_mints_the_closing_check_task() -> Bool {
+  let edges = [RoadmapEdge { child: "rw-only-contract" as NonEmptyStr as RoadmapNodeId, parent: "rw-ready" as NonEmptyStr as RoadmapNodeId }]
+  count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: [], withheld: ["rw-ready" as NonEmptyStr as RoadmapNodeId])) == 1
+}
