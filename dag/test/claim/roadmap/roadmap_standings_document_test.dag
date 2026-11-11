@@ -1,0 +1,120 @@
+module test.claim.roadmap.roadmap_standings_document_test
+
+// /standings.json's document (gunbc.roadmap.roadmap_standings_document), driven with constructed
+// fold rows. Each witness pins one law the ctrl dashboard reads the document by: a declared node the
+// log never spoke of is OPEN by the log's own rule; a node the log did speak of carries the fold's
+// standing, not open (the discriminating input: a projection that defaulted every row to open would
+// pass the first witness and fail this one); a node the log speaks of that the roadmap does not
+// declare is listed, marked undeclared, after the declared rows; the log head rides the document;
+// and a refusal carries its step and reason and no standings list at all, so it can never be read
+// as an empty roadmap. The surface's kind decodes from its stored key and names its route.
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.roadmap.roadmap_model { RoadmapNode }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_event_log {
+  NodeStandingRow, NodeForked, NodeRetired, LegacyEmailPrincipal, roadmap_assignment_empty,
+}
+import gunbc.roadmap.roadmap_standings_document {
+  RoadmapStandingsDocumentRow, roadmap_standings_document_rows,
+  roadmap_standings_document_json, roadmap_standings_document_refusal_json,
+  roadmap_standings_document_schema,
+}
+import gunbc.roadmap.roadmap_served_observation {
+  served_observation_kind_of_key, served_observation_kind_key, served_observation_kind_url_path,
+  ServedObservationKindDecoded, ServedObservationKindUnknown, StandingsJson,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, JsonArray, JsonObject, JsonBool, JsonNull, JsonNumber }
+
+fn declared_pair() -> List<RoadmapNode> {
+  filter(declared_roadmap_nodes(), n => (n.node as String) == "2-scm-git-upstream-model" || (n.node as String) == "2-scm-mercurial-upstream-model")
+}
+
+fn forked_row(node: String) -> NodeStandingRow {
+  NodeStandingRow { node_id: node, standing: NodeForked { heads: [] }, assignment: roadmap_assignment_empty() }
+}
+
+fn retired_row(node: String) -> NodeStandingRow {
+  NodeStandingRow {
+    node_id: node,
+    standing: NodeRetired {
+      by: LegacyEmailPrincipal { email: "witness@example.invalid" as NonEmptyStr, authentication_unestablished: true },
+      reason: "superseded in the witness" as NonEmptyStr,
+    },
+    assignment: roadmap_assignment_empty(),
+  }
+}
+
+fn row_for(rows: List<RoadmapStandingsDocumentRow>, node: String) -> RoadmapStandingsDocumentRow? {
+  (filter(rows, r => r.node == node)).first()
+}
+
+fn member(v: JsonValue, key: String) -> JsonValue? {
+  match v {
+    JsonObject { members } => match (filter(members, m => m.key == key)).first() {
+      Present { value: m } => Present { value: m.value }
+      Absent => none
+    }
+    _ => none
+  }
+}
+
+fn string_member_is(v: JsonValue, key: String, want: String) -> Bool {
+  match member(v: v, key: key) {
+    Present { value: JsonString { value } } => value == want
+    _ => false
+  }
+}
+
+test fn witness_standings_declared_pair_resolves() -> Bool {
+  count(declared_pair()) == 2
+}
+
+test fn witness_standings_declared_node_without_events_is_open() -> Bool {
+  let rows = roadmap_standings_document_rows(declared: declared_pair(), rows: [])
+  match row_for(rows: rows, node: "2-scm-git-upstream-model") {
+    Present { value: r } => r.standing_key == "open" && r.declared
+    Absent => false
+  }
+}
+
+test fn witness_standings_event_bearing_node_carries_the_fold_not_open() -> Bool {
+  let rows = roadmap_standings_document_rows(declared: declared_pair(), rows: [forked_row(node: "2-scm-git-upstream-model"), retired_row(node: "2-scm-mercurial-upstream-model")])
+  let git = match row_for(rows: rows, node: "2-scm-git-upstream-model") { Present { value: r } => r.standing_key  Absent => "" }
+  let hg = match row_for(rows: rows, node: "2-scm-mercurial-upstream-model") { Present { value: r } => r.standing_key  Absent => "" }
+  git == "forked" && hg == "retired"
+}
+
+test fn witness_standings_undeclared_log_node_is_listed_after_declared_and_marked() -> Bool {
+  let rows = roadmap_standings_document_rows(declared: declared_pair(), rows: [retired_row(node: "a-node-the-roadmap-dropped")])
+  let dropped = filter(rows, r => r.node == "a-node-the-roadmap-dropped")
+  count(rows) == 3
+    && count(dropped) == 1
+    && all(dropped, r => !r.declared && r.standing_key == "retired")
+    && count(filter(rows, r => r.declared)) == 2
+    && (match rows.skip(n: 2).first() { Present { value: r } => r.node == "a-node-the-roadmap-dropped"  Absent => false })
+}
+
+test fn witness_standings_document_carries_schema_and_log_head() -> Bool {
+  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, declared: declared_pair(), rows: [])
+  string_member_is(v: doc, key: "schema", want: roadmap_standings_document_schema)
+    && string_member_is(v: doc, key: "log_head", want: "10bf77aa512883ad7aeb6e2f2c42dfceab502480")
+    && (match member(v: doc, key: "standings") { Present { value: JsonArray { elements } } => count(elements) == 2  _ => false })
+}
+
+test fn witness_standings_refusal_is_located_and_has_no_standings() -> Bool {
+  let doc = roadmap_standings_document_refusal_json(step: "sync/fetch", reason: "exit 128: could not read from remote")
+  (match member(v: doc, key: "standings") { Present { value: _ } => false  Absent => true })
+    && (match member(v: doc, key: "refused") {
+      Present { value: refused } => string_member_is(v: refused, key: "step", want: "sync/fetch") && string_member_is(v: refused, key: "reason", want: "exit 128: could not read from remote")
+      Absent => false
+    })
+}
+
+test fn witness_standings_surface_kind_decodes_and_names_its_route() -> Bool {
+  served_observation_kind_url_path(kind: StandingsJson) == "/standings.json"
+    && (match served_observation_kind_of_key(key: served_observation_kind_key(kind: StandingsJson)) {
+      ServedObservationKindDecoded { kind } => served_observation_kind_url_path(kind: kind) == "/standings.json"
+      ServedObservationKindUnknown { key: _ } => false
+    })
+}

@@ -553,22 +553,65 @@ fn roadmap_standings_read_private(layout: RoadmapEventCarrierLayout) -> RoadmapS
     CarrierReady =>
       match roadmap_event_carrier_sync(layout: layout) {
         CarrierEnsureRefused { step, reason } => StandingsUnobserved { reason: join(["sync/", step, ": ", reason], "") }
-        CarrierReady => {
-          let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
-          let listing = Filesystem.List(path: root)
-          if !listing.success && listing.error_kind != "not_found" { StandingsUnobserved { reason: listing.error } } else if !listing.success {
-            StandingsObserved { rows: [] }
-          } else {
-            let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
-            let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
-            match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
-              Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
-              Present { value: EventsRead { node: _, envelopes: _ } } => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
-              Absent => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
-            }
-          }
-        }
+        CarrierReady => roadmap_standings_read_synced(layout: layout)
       }
+  }
+}
+
+// The fold over every node directory of a worktree the caller already synced: one fold, read by
+// the standings above and by the standings at the log head below, so the two cannot disagree.
+fn roadmap_standings_read_synced(layout: RoadmapEventCarrierLayout) -> RoadmapStandings {
+  let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
+  let listing = Filesystem.List(path: root)
+  if !listing.success && listing.error_kind != "not_found" { StandingsUnobserved { reason: listing.error } } else if !listing.success {
+    StandingsObserved { rows: [] }
+  } else {
+    let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
+    let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
+    match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
+      Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
+      Present { value: EventsRead { node: _, envelopes: _ } } => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
+      Absent => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
+    }
+  }
+}
+
+// EVERY NODE'S STANDING, AND THE LOG COMMIT IT WAS FOLDED AT. A reader that caches the standings
+// (the ctrl session dashboard, through /standings.json) needs to know WHICH log the answer is
+// about, so the head is read inside the same synced snapshot the fold reads -- after the fetch and
+// the hard reset to the remote branch, before the fold -- and never from a second read that could
+// have moved. A head that cannot be read refuses, located; it is never reported as an empty log.
+type RoadmapStandingsAtHead
+  = StandingsAtHead { head: NonEmptyStr, rows: List<NodeStandingRow> }
+  | StandingsAtHeadUnobserved { step: String, reason: String }
+
+fn roadmap_standings_at_head_read_private(layout: RoadmapEventCarrierLayout) -> RoadmapStandingsAtHead {
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => StandingsAtHeadUnobserved { step: join(["ensure/", step], ""), reason: reason }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => StandingsAtHeadUnobserved { step: join(["sync/", step], ""), reason: reason }
+        CarrierReady =>
+          match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rev-parse", "HEAD"]) {
+            CarrierExecFailed { exit_code, stderr } => StandingsAtHeadUnobserved { step: "head", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+            CarrierExecOk { stdout } =>
+              if trim(stdout) == "" { StandingsAtHeadUnobserved { step: "head", reason: "rev-parse HEAD answered nothing" } }
+              else {
+                match roadmap_standings_read_synced(layout: layout) {
+                  StandingsUnobserved { reason } => StandingsAtHeadUnobserved { step: "fold", reason: reason }
+                  StandingsObserved { rows } => StandingsAtHead { head: trim(stdout) as NonEmptyStr, rows: rows }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn roadmap_standings_at_head_read(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapStandingsAtHead> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: StandingsAtHeadUnobserved { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      CarrierClosed { result: roadmap_standings_at_head_read_private(layout: private), close: roadmap_event_snapshot_close(layout: private) }
   }
 }
 

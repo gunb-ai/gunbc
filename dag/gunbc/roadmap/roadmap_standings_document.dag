@@ -1,0 +1,75 @@
+module gunbc.roadmap.roadmap_standings_document
+
+// THE STANDINGS DOCUMENT (GET /standings.json): every roadmap node's standing, as the event-log fold
+// answers it, and the roadmap-events commit that fold read. A projection of the item log
+// (gunbc.design_argument::plans_are_intentions: a view of the work is a projection of the plans,
+// the work items and their logs) and nothing else: it is keyed on roadmap node ids, computed from
+// the same fold the daily page reads (roadmap_event_carrier roadmap_standings_read_synced ->
+// roadmap_event_log roadmap_issue_state), and stores nothing. Its first consumer is the ctrl session
+// dashboard, which shows the standing of each work item a session owns and caches on log_head.
+//
+// ONE WHOLE-ROADMAP DOCUMENT, not a per-request selection: the fold reads the whole log anyway, the
+// document is a few hundred rows, and a ?nodes= query would be a second query surface no consumer
+// needs (bright-ibex-807, 2026-11-11). A node the roadmap declares and the log has never spoken of
+// is open, by the log's own law (roadmap_event_log standing_for_node), not by a default here. A
+// node the log speaks of that the roadmap no longer declares is listed with declared: false, so a
+// reader can tell a vanished node from an open one.
+//
+// A LOG THAT CANNOT BE READ IS A REFUSAL, LOCATED -- the step and the reason -- and never an empty
+// list (gunbc.design_argument::fail_closed).
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.roadmap.roadmap_model { RoadmapNode }
+import gunbc.roadmap.roadmap_event_log {
+  NodeStandingRow, StandingsObserved, roadmap_node_standing_key, standing_for_node, NodeOpen,
+}
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, json_bool }
+
+data roadmap_standings_document_schema: String = "roadmap-standings/v1"
+
+type RoadmapStandingsDocumentRow {
+  node: String
+  standing_key: String
+  declared: Bool
+}
+
+// Declared nodes first, in declaration order, then the log's undeclared nodes in log order.
+fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeStandingRow>) -> List<RoadmapStandingsDocumentRow> {
+  let observed = StandingsObserved { rows: rows }
+  let declared_rows = map(declared, n => RoadmapStandingsDocumentRow {
+    node: n.node as String,
+    standing_key: match standing_for_node(standings: observed, node_id: n.node as String) {
+      Present { value: s } => roadmap_node_standing_key(s: s)
+      Absent => roadmap_node_standing_key(s: NodeOpen)
+    },
+    declared: true,
+  })
+  let undeclared_rows = map(
+    filter(rows, r => !any(declared, n => (n.node as String) == r.node_id)),
+    r => RoadmapStandingsDocumentRow { node: r.node_id, standing_key: roadmap_node_standing_key(s: r.standing), declared: false })
+  concat(declared_rows, undeclared_rows)
+}
+
+fn roadmap_standings_document_json(log_head: NonEmptyStr, declared: List<RoadmapNode>, rows: List<NodeStandingRow>) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: roadmap_standings_document_schema)),
+    json_kv(key: "log_head", value: json_string(s: log_head as String)),
+    json_kv(key: "standings", value: json_array(elements: map(
+      roadmap_standings_document_rows(declared: declared, rows: rows),
+      r => json_object(members: [
+        json_kv(key: "node", value: json_string(s: r.node)),
+        json_kv(key: "standing_key", value: json_string(s: r.standing_key)),
+        json_kv(key: "declared", value: json_bool(b: r.declared)),
+      ])))),
+  ])
+}
+
+fn roadmap_standings_document_refusal_json(step: String, reason: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: roadmap_standings_document_schema)),
+    json_kv(key: "refused", value: json_object(members: [
+      json_kv(key: "step", value: json_string(s: step)),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ])),
+  ])
+}
