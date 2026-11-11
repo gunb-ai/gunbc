@@ -635,6 +635,9 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness", decl_name: "an_openbmc_bound_row_is_read_against_the_phosphor_policy"),
     decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness", decl_name: "a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation"),
     decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "variant_subject"),
+    // PXE 2b: the host-generic boot-once witness builds a second managed host's row to show the boot-once is
+    // derived from the row's binding, not a per-host branch, so it is an admitted caller of the row fixture.
+    decl_ref(module_path: "test.claim.host.managed_host_boot_once_witness", decl_name: "w_a_second_managed_host_gets_a_boot_once_from_its_rows"),
   ]
 {
   ManagedHost { host: host, access: access, secure: secure, smpro: smpro }
