@@ -63,7 +63,23 @@ import product.host_identity {
 }
 import extdeps.bmc.types {
   BootTargetPxe,
-  BootOverrideModeUefi
+  BootTargetNone,
+  BootTargetCd,
+  RedfishBootSourceOverrideTarget,
+  BootOverrideModeUefi,
+  BootOverrideModeLegacy,
+  BootOverrideOnce,
+  BootOverrideContinuous
+}
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootFlagsReading,
+  IpmiBootDevice,
+  IpmiBootPxe,
+  IpmiBootCdrom,
+  IpmiSelectorNoOverride,
+  IpmiSelectorModeled,
+  IpmiSelectorUnmodeled,
+  ipmi_boot_selector_reading
 }
 import gunbc.host.install_boot_subject {
   InstallBootSubject,
@@ -74,6 +90,9 @@ import gunbc.host.install_boot_subject {
   plan_install_boot_once
 }
 import gunbc.host.managed_host_boot_once {
+  BootOnceSetting,
+  BootOnceReadbackObserved,
+  BootOnceReadbackAbsent,
   BootOncePlan,
   BootOnceStaged,
   BootOnceRefused,
@@ -847,5 +866,106 @@ fn network_install_requests_for(host: HostIdentity) -> List<SitePxeEdgeInstallRe
   match network_install_request_for(host: host) {
     Present { value: request } => [request]
     Absent => []
+  }
+}
+
+// ───────────────────────────── THE CONTROLLER'S WORD, CARRIED TO THE SETTLE ─────────────────────────────
+//
+// ONE MAPPING, AND IT IS THE ONLY JUDGMENT CALL IN THE BOOT PATH. The boot goes over IPMI — `chassis
+// bootdev pxe options=efiboot` to set, `chassis bootparam get 5` to read back — because that is the transport
+// and session the arrival door's census reads already use for a unit in srv15's population, with the managed
+// credential supplied by `-f <file>` rather than on the command line. 2b's planner and settle are unchanged and
+// stay the single authority on whether a reset may be issued; what they consume is a `BootOnceReadback`, and the
+// controller does not speak Redfish here. So this function is where the machine's own words become that type,
+// and it is deliberately a MAPPING AND NOTHING ELSE: it decodes, it does not decide. Every case that is not
+// "the controller says it will boot this device once, in EFI, on the next boot" arrives as a reading the settle
+// will refuse — never as the reading this run wanted.
+//
+// THE DECODE ITSELF IS NOT MINE. `ipmi_boot_flags_reading_of_bootparam_get` (extdeps.bmc.ipmi_boot_selection)
+// already parses the ten hex digits ipmitool prints after "Boot parameter data: " into the four bits that
+// matter, cited to IPMI v2.0 rev 1.1's Get/Set System Boot Options, boot option parameter 5; and
+// `ipmi_boot_selector_reading` already says whether a selector names a device this model can select, keeps an
+// unmodelled selector as the number it is, and separates "no override" from every device. Re-deriving any of
+// that here would be a second model of the same byte.
+//
+// WHAT EACH CASE BECOMES, and why:
+//   flag bit clear             → BootOnceReadbackAbsent. The BMC has no boot flags set at all. Treating "the
+//                                flags are unset" as "unset is what I asked for" is how a machine that ignored
+//                                the set gets rebooted anyway.
+//   selector 0, flags valid    → target None, so the settle's own target check refuses. This is the case the
+//                                fleet has actually seen: boot run 41573858366 read `8000000000` — Boot Flag
+//                                Valid with Boot Device Selector "No override" — after `chassis bootdev none`,
+//                                which clears the selector and leaves the valid bit set. A reader that looked
+//                                only at the valid bit would call that a successful PXE set.
+//   selector names another     → that device's target (Cd for CD/DVD), refused by the same check, and refused
+//   device                     BY NAME: the receipt and the refusal say what the BMC reported rather than
+//                                saying "mismatch".
+//   selector the spec defines  → BootOnceReadbackAbsent. The controller is answering with something this model
+//   but this model             cannot name; "some device, unclear which" is not a boot target, and a reset is
+//   cannot name                never issued on "unclear".
+//   bit 6 set (persistent)     → enabled Continuous, which 2b's settle refuses, because an override that
+//                                survives the boot is a machine pinned to the installer for every boot after
+//                                this one — the repeat path again, this time inside the firmware.
+//   bit 5 clear (legacy)       → mode Legacy, refused: this fleet boots UEFI, and a reset into the wrong
+//                                firmware is worse than no reset at all.
+fn network_install_boot_once_read_back(reading: Optional<IpmiBootFlagsReading>) -> BootOnceReadback {
+  match reading {
+    Absent => BootOnceReadbackAbsent
+    Present { value: flags } =>
+      if !flags.flag_valid {
+        BootOnceReadbackAbsent
+      } else {
+        match ipmi_boot_selector_reading(selector: flags.device_selector) {
+          IpmiSelectorModeled { device: device } => BootOnceReadbackObserved {
+            setting: BootOnceSetting {
+              target: network_install_boot_target_of_device(device: device),
+              enabled: if flags.persistent { BootOverrideContinuous } else { BootOverrideOnce },
+              mode: if flags.efi { BootOverrideModeUefi } else { BootOverrideModeLegacy },
+            }
+          }
+          IpmiSelectorNoOverride => BootOnceReadbackObserved {
+            setting: BootOnceSetting {
+              target: BootTargetNone,
+              enabled: if flags.persistent { BootOverrideContinuous } else { BootOverrideOnce },
+              mode: if flags.efi { BootOverrideModeUefi } else { BootOverrideModeLegacy },
+            }
+          }
+          IpmiSelectorUnmodeled { selector: _ } => BootOnceReadbackAbsent
+        }
+      }
+  }
+}
+
+// THE SELECTOR'S OWN NAME, not the name this run hoped for. CD/DVD is the other device this model can select
+// (extdeps.bmc.ipmi_boot_selection ipmi_boot_selectable_devices), and it is the device the BMC lands on when
+// someone leaves virtual media attached — a real state on this fleet, and one that must be reported rather
+// than quietly refused as "no override".
+fn network_install_boot_target_of_device(device: IpmiBootDevice) -> RedfishBootSourceOverrideTarget {
+  match device {
+    IpmiBootPxe => BootTargetPxe
+    IpmiBootCdrom => BootTargetCd
+  }
+}
+
+// THE SAME READING, AS THE RECEIPT RECORDS IT — the bytes the controller actually answered, not the verdict
+// derived from them. When a run refuses to reset, the thing an operator needs is what the BMC said, and the
+// only honest way to have it in the receipt is to carry the reading alongside the setting rather than
+// reconstruct it from the verdict afterwards.
+fn network_install_boot_param5_receipt_line(reading: Optional<IpmiBootFlagsReading>) -> String {
+  match reading {
+    Absent => "boot_param5=no-answer"
+    Present { value: flags } => join(
+      [
+        "boot_param5=",
+        if flags.flag_valid { "valid" } else { "invalid" },
+        ",persistent=",
+        if flags.persistent { "yes" } else { "no" },
+        ",efi=",
+        if flags.efi { "yes" } else { "no" },
+        ",selector=",
+        flags.device_selector as String,
+      ],
+      ""
+    )
   }
 }

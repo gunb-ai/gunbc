@@ -24,7 +24,12 @@ import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types {
-  BootTargetPxe, BootOverrideModeUefi, BootOverrideModeLegacy, BootOverrideOnce, BootOverrideContinuous,
+  BootTargetPxe, BootTargetCd, BootOverrideModeUefi, BootOverrideModeLegacy,
+  BootOverrideOnce, BootOverrideContinuous,
+}
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootPxe, ipmi_boot_flags_reading_of_bootparam_get, ipmi_boot_flags_parameter_hex,
+  uefi_once_boot_selection,
 }
 import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessUnobserved }
 import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
@@ -32,6 +37,7 @@ import gunbc.host.managed_host { ManagedHost, managed_host_binding_for }
 import gunbc.host.bmc_control_binding { BmcControlStanding, bmc_control_binding }
 import gunbc.host.managed_host_boot_once {
   BootOnceSetting,
+  BootOnceReadback,
   BootOnceReadbackObserved,
   BootOnceReadbackAbsent,
   bound_controller_of,
@@ -68,6 +74,7 @@ import gunbc.host.network_install {
   InstallAlreadyCompleted, JournalUnreadable, network_install_dispatch_admission,
   network_install_refused_receipt, network_install_receipt_lines,
   network_install_may_reset, network_install_settle_boot_once,
+  network_install_boot_once_read_back, network_install_boot_param5_receipt_line,
 }
 
 // ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
@@ -886,4 +893,179 @@ test fn w_a_refused_run_still_writes_a_receipt_saying_nothing_was_reset() -> Boo
   )
   receipt.refused && !receipt.reset_issued && !receipt.override_read_back && !receipt.completion_recorded &&
     network_install_receipt_lines(receipt: receipt).length() == 13
+}
+
+// ─────────── THE IPMI READ-BACK MAPPING: THE ONE JUDGMENT CALL, PINNED OVER REAL RENDERINGS ───────────
+//
+// The boot goes over IPMI (the arrival door's transport and session, managed credential by -f file), and 2b's
+// settle consumes a Redfish-shaped BootOnceReadback. network_install_boot_once_read_back is where the
+// controller's `chassis bootparam get 5` answer becomes that type, so it is where a wrong reading becomes a
+// reset. Every case below is driven through the REAL decode
+// (extdeps.bmc.ipmi_boot_selection ipmi_boot_flags_reading_of_bootparam_get) over a committed observed stdout
+// from that same module, or over a parameter-data line whose bytes are spelled out — never over a
+// BootOnceReadback handed in by this file, which would test nothing but my own hope.
+
+fn param5_stdout(hex: String) -> String {
+  join(
+    [
+      "Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\nBoot parameter data: ",
+      hex,
+      "\n Boot Flags :\n",
+    ],
+    ""
+  )
+}
+
+fn read_back_of(hex: String) -> BootOnceReadback {
+  network_install_boot_once_read_back(
+    reading: ipmi_boot_flags_reading_of_bootparam_get(stdout: param5_stdout(hex: hex))
+  )
+}
+
+// THE POSITIVE CONTROL, AND IT IS A REAL INPUT: the bytes are produced by the model's own builder for the one
+// selection the fleet may set (uefi_once_boot_selection over PXE), decoded back by the model's own reader, and
+// the verdict is 2b's — staged plan, this reading, settle, reset admitted.
+test fn w_the_controller_saying_pxe_once_efi_admits_the_reset() -> Bool {
+  match ipmi_boot_flags_parameter_hex(selection: uefi_once_boot_selection(device: IpmiBootPxe)) {
+    Present { value: hex } => match mtcollins1_standing() {
+      Absent => false
+      Present { value: standing } =>
+        let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
+        let settled = network_install_settle_boot_once(
+          plan: staged, observed: read_back_of(hex: hex)
+        )
+        match read_back_of(hex: hex) {
+          BootOnceReadbackObserved { setting: setting } =>
+            setting.enabled == BootOverrideOnce && setting.mode == BootOverrideModeUefi &&
+              network_install_may_reset(plan: settled)
+          BootOnceReadbackAbsent => false
+        }
+    }
+    Absent => false
+  }
+}
+
+// RED, THE CASE THE FLEET HAS ACTUALLY SEEN. Boot run 41573858366 read '8000000000' — Boot Flag VALID with
+// Boot Device Selector "No override" — because `chassis bootdev none` clears the selector and leaves the valid
+// bit set. A mapping that looked at the valid bit alone would call this a successful PXE set and reset the
+// machine into whatever the firmware fancies. It must refuse.
+test fn w_a_valid_flag_naming_no_device_refuses_the_reset() -> Bool {
+  match read_back_of(hex: "8000000000") {
+    BootOnceReadbackObserved { setting: setting } =>
+      match mtcollins1_standing() {
+        Absent => false
+        Present { value: standing } => !network_install_may_reset(
+          plan: network_install_settle_boot_once(
+            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
+            observed: read_back_of(hex: "8000000000")
+          )
+        )
+      }
+    BootOnceReadbackAbsent => true
+  }
+}
+
+// RED: PERSISTENT, NOT ONCE. Bit 6 set is an override that survives the boot; 2b's settle refuses Continuous,
+// and this proves the mapping does not quietly translate it into Once — which would pin bobo to the installer
+// for every boot after this one.
+test fn w_a_persistent_override_refuses_the_reset() -> Bool {
+  match read_back_of(hex: "c004000000") {
+    BootOnceReadbackObserved { setting: setting } =>
+      setting.enabled == BootOverrideContinuous && match mtcollins1_standing() {
+        Absent => false
+        Present { value: standing } => !network_install_may_reset(
+          plan: network_install_settle_boot_once(
+            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
+            observed: read_back_of(hex: "c004000000")
+          )
+        )
+      }
+    BootOnceReadbackAbsent => false
+  }
+}
+
+// RED: LEGACY, NOT EFI. Bit 5 clear. This fleet boots UEFI; the workflow itself plans no Legacy boot, and a
+// controller answering Legacy must be refused rather than obeyed.
+test fn w_a_legacy_override_refuses_the_reset() -> Bool {
+  match read_back_of(hex: "8004000000") {
+    BootOnceReadbackObserved { setting: setting } =>
+      setting.mode == BootOverrideModeLegacy && match mtcollins1_standing() {
+        Absent => false
+        Present { value: standing } => !network_install_may_reset(
+          plan: network_install_settle_boot_once(
+            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
+            observed: read_back_of(hex: "8004000000")
+          )
+        )
+      }
+    BootOnceReadbackAbsent => false
+  }
+}
+
+// RED: THE WRONG DEVICE. 'a014000000' is the committed CD/DVD EFI next-boot rendering — the state a BMC lands
+// in when virtual media is left attached. The mapping must report it AS CD/DVD (so the receipt says what the
+// BMC said) and the settle must refuse it.
+test fn w_a_cdrom_override_is_reported_as_cdrom_and_refused() -> Bool {
+  match read_back_of(hex: "a014000000") {
+    BootOnceReadbackObserved { setting: setting } =>
+      setting.target == BootTargetCd && match mtcollins1_standing() {
+        Absent => false
+        Present { value: standing } => !network_install_may_reset(
+          plan: network_install_settle_boot_once(
+            plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
+            observed: read_back_of(hex: "a014000000")
+          )
+        )
+      }
+    BootOnceReadbackAbsent => false
+  }
+}
+
+// RED: THE FLAGS ARE NOT SET AT ALL. The committed no-override rendering ('0000000000', Boot Flag Invalid) is
+// not "nothing was asked for so anything goes" — it is no reading, and no reset.
+test fn w_unset_boot_flags_are_no_reading_and_reset_nothing() -> Bool {
+  match read_back_of(hex: "0000000000") {
+    BootOnceReadbackAbsent => match mtcollins1_standing() {
+      Absent => false
+      Present { value: standing } => !network_install_may_reset(
+        plan: network_install_settle_boot_once(
+          plan: plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi),
+          observed: read_back_of(hex: "0000000000")
+        )
+      )
+    }
+    BootOnceReadbackObserved { setting: _ } => false
+  }
+}
+
+// RED: AN ANSWER THAT IS NOT AN ANSWER. A truncated parameter line, or one whose digits do not decode, is no
+// reading — the same refusal as silence, and it is what keeps a partial capture (a timed-out ipmitool, a cut
+// pipe) from being read as compliance.
+test fn w_a_truncated_or_unparseable_answer_resets_nothing() -> Bool {
+  match network_install_boot_once_read_back(
+    reading: ipmi_boot_flags_reading_of_bootparam_get(stdout: "Boot parameter data: a014\n")
+  ) {
+    BootOnceReadbackAbsent => match network_install_boot_once_read_back(
+      reading: ipmi_boot_flags_reading_of_bootparam_get(stdout: "Boot parameter version: 1\n")
+    ) {
+      BootOnceReadbackAbsent => match network_install_boot_once_read_back(reading: Absent) {
+        BootOnceReadbackAbsent => true
+        BootOnceReadbackObserved { setting: _ } => false
+      }
+      BootOnceReadbackObserved { setting: _ } => false
+    }
+    BootOnceReadbackObserved { setting: _ } => false
+  }
+}
+
+// THE RECEIPT CARRIES WHAT THE CONTROLLER SAID, not the verdict derived from it: the bytes appear in the line
+// an operator reads when a run refused to reset.
+test fn w_the_receipt_records_the_controllers_own_bytes() -> Bool {
+  match ipmi_boot_flags_reading_of_bootparam_get(stdout: param5_stdout(hex: "c004000000")) {
+    Present { value: flags } =>
+      (network_install_boot_param5_receipt_line(reading: Present { value: flags }) as String) ==
+        "boot_param5=valid,persistent=yes,efi=yes,selector=1" &&
+        (network_install_boot_param5_receipt_line(reading: Absent) as String) == "boot_param5=no-answer"
+    Absent => false
+  }
 }

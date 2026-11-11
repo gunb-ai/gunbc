@@ -99,15 +99,19 @@ data boot_once_read_back_sleep: BootOnceReadBackSleepDuration = BootOnceReadBack
 }
 
 // THE DECLARED LATER CONSUMER (gunbc.design_argument::consumption). A boot-once's executing consumer is PXE
-// 2c, gunbc.host.managed_host_network_install, which boots its subject once into PXE over its bound
-// controller by calling boot_once_plan_for_managed_host and settling it against the controller's read-back
-// (owner smart-crane-730, trigger: PXE 2c lands). Until that consumer lands, the planner's ordered steps are
-// read only by test.claim.host.managed_host_boot_once_witness and the fork row gunbc.integration_concern
+// 2c, gunbc.host.NETWORK_INSTALL — not gunbc.host.managed_host_network_install, which was the plan's wording
+// and is the wrong name for a module that does not serve a managed host (2026-11-11 ruling msg_5ff19a9b, E2).
+// It consumes this module's ONE core through gunbc.host.install_boot_subject::plan_install_boot_once, which
+// admits a BMC-bound arrival unit and calls plan_boot_once_on_standing for it, and then hands the controller's
+// OWN reading to settle_boot_once_read_back; the managed-host entry, boot_once_plan_for_managed_host, is the
+// other admission of the same core and is unchanged by 2c. The consumer landed with PXE 2c (owner
+// smart-crane-730, trigger: PXE 2c lands). Until it did, the planner's ordered steps were read only by
+// test.claim.host.managed_host_boot_once_witness and the fork row gunbc.integration_concern
 // ::nbd_install_actuator_boot_once_hard_codes_srv3; the read-back-before-reset guarantee is carried in
 // BootOncePlan's DATA (a BootOnceStaged plan has no reset step; only settle_boot_once_read_back admits one),
-// not only in a witness. This row dissolves when PXE 2c's executing route consumes the planner.
+// not only in a witness — and 2c's witness re-asserts it at its own gate, because 2c must not widen it.
 data managed_host_boot_once_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when PXE 2c gunbc.host.managed_host_network_install boots its subject once into PXE over the bound controller by consuming boot_once_plan_for_managed_host + settle_boot_once_read_back on an executing route (owner smart-crane-730, trigger: PXE 2c lands). NOT satisfied by the witness or the nbd fork row, which only read the plan; the executing consumer is the PXE 2c install-boot route." as NonEmptyStr,
+  description: "dissolves when PXE 2c gunbc.host.network_install boots its subject once into PXE over the bound controller by consuming plan_install_boot_once (gunbc.host.install_boot_subject, over plan_boot_once_on_standing) + settle_boot_once_read_back on an executing route (owner smart-crane-730, trigger: PXE 2c lands). NOT satisfied by the witness or the nbd fork row, which only read the plan; the executing consumer is PXE 2c's install-boot route, and its name is gunbc.host.network_install." as NonEmptyStr,
 )
 
 // THE ADMITTED SETTING IS FIXED SAVE THE TARGET: one-shot, UEFI. A caller chooses Pxe or Cd; the one-shot
