@@ -64,15 +64,27 @@ type BootFederationNames {
   cell_description: String
 }
 
+// ONE PROVISIONED BOOT-FEDERATION PAIR: the host and the names it federates under. A row is the unit
+// of provisioning, so a second managed host comes online by ADDING A ROW here -- never by a new branch
+// in a name function. The names are the pair's provisioned values (they exist in GCP and GitHub and a
+// renamed id is a different object), not a function of any job.
+type BootFederationRow sole_constructor {
+  host: HostIdentity
+  names: BootFederationNames
+}
+
 // THE BINDING TABLE: which managed hosts have a provisioned boot federation, and under which names.
 // Mt. Collins unit 1 is the one pair provisioned in GCP and GitHub (pool created 2026-09-24). Any
 // other host is unprovisioned and the admission below refuses it; a row here is added only by
-// provisioning the pair, never to make a host bootable.
-// The pool display name is under the 32-character ceiling createWorkloadIdentityPool enforces
-// (measured on the heal pool).
-fn boot_federation_names(host: HostIdentity) -> BootFederationNames? {
-  if host_identity_eq(a: host, b: operator_host_mtcollins1) {
-    Present { value: BootFederationNames {
+// provisioning the pair, never to make a host bootable. Names are READ FROM THE ROWS (PXEB 2b: the
+// run-scoped federation is row-derived, not mtcollins1-only); the binding is no longer an
+// `== operator_host_mtcollins1` special case sitting in code, so a second host needs no code change --
+// only its provisioned row. The pool display name stays under the 32-character ceiling
+// createWorkloadIdentityPool enforces (measured on the heal pool).
+data boot_federation_rows: List<BootFederationRow> = [
+  BootFederationRow {
+    host: operator_host_mtcollins1,
+    names: BootFederationNames {
       pool_id: "github-mtcollins1-boot",
       pool_display_name: "Mt. Collins boot (one job)",
       provider_id: "github-mtcollins1-boot-oidc",
@@ -82,10 +94,21 @@ fn boot_federation_names(host: HostIdentity) -> BootFederationNames? {
       environment: "mtcollins1-boot",
       cell_title_prefix: "mtcollins1-boot",
       cell_description: "gunbc.auth.mtcollins1_boot_federation: the one version the mtcollins1 boot job reads",
-    } }
-  } else {
-    none
-  }
+    },
+  },
+]
+
+fn boot_federation_names(host: HostIdentity) -> BootFederationNames? {
+  fold(
+    boot_federation_rows,
+    init: none,
+    f: (acc, row) => match acc {
+      // First row for the host wins; a second row naming the same host is never consulted.
+      Present { value: _ } => acc
+      Absent =>
+        if host_identity_eq(a: row.host, b: host) { Present { value: row.names } } else { none }
+    },
+  )
 }
 
 // THE ADMITTED FEDERATION, and the only value a boot's effects take: the provisioner, the IAM

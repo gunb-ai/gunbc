@@ -41,7 +41,7 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
   srv1_root_mutation_mode_env,
   srv1_root_mutation_poll_cadence, srv1_root_mutation_poll_tick_budget,
-  srv1_root_mutation_expiry_overrun_ticks, srv1_root_mutation_prelude_allowance,
+  srv1_root_mutation_prelude_allowance,
   srv1_root_mutation_step_margin, srv1_root_mutation_approval_step_timeout_minutes,
   srv1_root_mutation_approval_window,
 }

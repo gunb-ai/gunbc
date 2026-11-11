@@ -1793,12 +1793,9 @@ data privileged_effect_registry: List<PrivilegedEffectSite> = [
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.srv3.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
-    effect: recurring_credential_read(subject: "srv3 BMC login password read" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: none,
-  },
+  // PXE 2b: the srv3 BMC login-password read retired with gunbc.srv3.srv3_bmc_credential_resolve; the
+  // managed-host boot-once resolves its controller from the row's bound BMC standing, materializing no
+  // password. Its census row is removed with its subject (gunbc.design_argument::replacement_migration).
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
     effect: PrivilegedEffect {
@@ -2169,7 +2166,6 @@ data follow_up_sites: List<DeclarationRef> = [
   site(module_path: "gunbc.gcp.gcp_estate_read_instrument", decl_name: "gcloud_read_argv"),
   site(module_path: "gunbc.auth.credentials", decl_name: "gcp_secret_credential"),
   site(module_path: "gunbc.bmc.bmc_fan_converge", decl_name: "bmc_fan_run"),
-  site(module_path: "gunbc.srv3.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
   site(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
   site(module_path: "gunbc.fleet.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
   site(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),
