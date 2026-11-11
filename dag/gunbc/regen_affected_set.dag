@@ -1,8 +1,9 @@
 module gunbc.regen_affected_set
 
 import std.types { String, List, Bool, Map }
-import std.algebra { empty_map, map_insert, map_lookup }
+import std.algebra { FreeMonoid, empty_map, map_insert, map_lookup, contains, for_all }
 import std.optional { Present, Absent }
+import v2.std.text { string_eq }
 
 // THE AFFECTED SET OF ONE EDIT: which committed mirrors can change when these .dag modules
 // change. This is the bound gunbc.regen_round_cost regen_affected_set_disposition scoped
@@ -153,6 +154,24 @@ data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwn
 ]
 
 data regen_generation_input_prefixes: List<String> = ["v1.compiler.", "extdeps.languages."]
+
+// WHAT THIS MODULE'S CLOSURE MUST NOT REACH. The orchestrator resolves this module in-process several
+// times a generation (gunbc.stage0_partition_rebuild_scope imports it; required_regen_host
+// rebuild_scope_decision resolves gunbc.regen_round_cost), so its closure is paid on every one of those
+// resolves. The seed-build artifact roster and what it pulls in belong to the change bound
+// (gunbc.regen_affected_change), which only the emission-scope child resolves. Measured on srv1,
+// 2026-11-11: with the roster imported here, this module took 83.6 s / 2.65 GB to resolve, and heal
+// refused at generation 1 with GenerationStateRetainedByOrchestrator. Checked against the live closure by
+// test.claim.regen_orchestrator_closure_witness.
+data regen_module_bound_forbidden_closure: List<String> = [
+  "dag/gunbc/seed_build_artifact_emit.dag",
+  "dag/gunbc/generated_artifact.dag",
+  "dag/gunbc/whole_corpus_compile_demand_projection.dag"
+]
+
+fn regen_module_bound_closure_excludes_forbidden(closure: FreeMonoid<String>) -> Bool {
+  for_all(xs: closure, predicate: fn(path) { !contains(xs: regen_module_bound_forbidden_closure, item: path, eq: string_eq) })
+}
 
 type AffectedSetBound
   = AffectedMirrors { edited: List<String>, mirrors: List<String>, bootstrap_products: List<String> }
