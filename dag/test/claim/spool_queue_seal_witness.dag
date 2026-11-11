@@ -15,6 +15,7 @@ import gunbc.spool_queue {
   ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, SpoolEntryDirectory, SpoolEntryFile, SpoolOutcomeRefused, spool_role_dir, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key_parts, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
+  SpoolPartition, Unpartitioned,
 }
 import gunbc.spool_queue {
   spool_open, spool_entry_path, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, spool_queue_observe, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
@@ -420,8 +421,8 @@ test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
 // are each refused by the same decision.
 test fn a_malformed_stage_graph_is_refused() -> ProcessExit {
   let base = spool_declaration(kind: SpoolAttemptUnit)
-  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
-  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0 }
+  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2, partition: Unpartitioned }
+  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], parked: base.parked, enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0, partition: Unpartitioned }
   if spool_declaration_wellformed(declaration: overlapping) || spool_declaration_wellformed(declaration: keyless) {
     exit_failure(reason: "a malformed stage graph was admitted")
   } else {
@@ -557,7 +558,7 @@ test fn the_parked_stage_is_declared_by_the_attempt_unit_spool_alone() -> Proces
 
 test fn a_parked_role_in_the_chain_is_refused() -> ProcessExit {
   let base = spool_declaration(kind: SpoolAttemptUnit)
-  let doubled = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: base.terminals, parked: [SpoolStage { role: RolePending, directory: "deferred" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: base.key_separator, key_part_count: base.key_part_count }
+  let doubled = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: base.terminals, parked: [SpoolStage { role: RolePending, directory: "deferred" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: base.key_separator, key_part_count: base.key_part_count, partition: Unpartitioned }
   if spool_declaration_wellformed(declaration: doubled) {
     exit_failure(reason: "a parked role standing in the chain was admitted")
   } else {
