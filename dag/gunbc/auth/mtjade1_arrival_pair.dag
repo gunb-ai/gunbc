@@ -16,6 +16,9 @@ import gunbc.auth.arrival_federation_pair {
   mtjade1_arrival_federation_pair, arrival_wif_pool_id, arrival_wif_provider_id,
   arrival_service_account_id, arrival_service_account, arrival_environment,
   arrival_pool_display_name,
+  arrival_wif_pool, arrival_wif_provider, arrival_wif_attribute_mapping,
+  arrival_provider_resource, arrival_principal_set, arrival_principal_member,
+  arrival_secret_grants,
 }
 
 // mtjade1's pair is a ROW of the general ArrivalFederationPair shape (gunbc.auth.arrival_federation_pair,
@@ -34,53 +37,30 @@ data mtjade1_arrival_service_account_id: NonEmptyStr = arrival_service_account_i
 data mtjade1_arrival_service_account: ServiceAccountEmail = arrival_service_account(pair: mtjade1_arrival_federation_pair)
 data mtjade1_arrival_environment: NonEmptyStr = arrival_environment(pair: mtjade1_arrival_federation_pair)
 
-data mtjade1_arrival_wif_pool: WifPool = WifPool {
-  name: mtjade1_arrival_pool_id
-  project: fleet_secrets_project_id as String
-  display_name: Present { value: mtjade1_arrival_pool_display_name }
-  disabled: false
-}
+data mtjade1_arrival_wif_pool: WifPool = arrival_wif_pool(pair: mtjade1_arrival_federation_pair)
 
 fn mtjade1_arrival_claim_pins() -> List<OidcClaimPin> {
   fleet_converge_job_claim_pins(environment: mtjade1_arrival_environment)
 }
 
-data mtjade1_arrival_wif_attribute_mapping: Map<String, String> = {
-  "google.subject": "assertion.sub",
-  "attribute.repository_id": "assertion.repository_id",
-  "attribute.workflow_ref": "assertion.workflow_ref"
-}
+data mtjade1_arrival_wif_attribute_mapping: Map<String, String> = arrival_wif_attribute_mapping
 
 fn mtjade1_arrival_wif_provider() -> WifProvider {
-  WifProvider {
-    name: mtjade1_arrival_provider_id
-    pool: mtjade1_arrival_pool_id
-    issuer_uri: github_wif_issuer_uri
-    attribute_mapping: Present { value: mtjade1_arrival_wif_attribute_mapping }
-    attribute_condition: Present { value: claim_pins_attribute_condition(pins: mtjade1_arrival_claim_pins()) }
-  }
+  arrival_wif_provider(pair: mtjade1_arrival_federation_pair)
 }
 
 fn mtjade1_arrival_provider_resource() -> String {
-  wif_provider_resource(project_number: fleet_secrets_project_number, provider: mtjade1_arrival_wif_provider())
+  arrival_provider_resource(pair: mtjade1_arrival_federation_pair)
 }
 
 fn mtjade1_arrival_principal_set() -> String {
-  join([
-    "principalSet://iam.googleapis.com/",
-    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: mtjade1_arrival_pool_id as String),
-    "/*"
-  ], "")
+  arrival_principal_set(pair: mtjade1_arrival_federation_pair)
 }
 
 fn mtjade1_arrival_principal_member() -> String {
-  federated_service_account_member(email: mtjade1_arrival_service_account)
+  arrival_principal_member(pair: mtjade1_arrival_federation_pair)
 }
 
 fn mtjade1_arrival_secret_grants() -> List<SecretAccessGrant> {
-  [pinned_version_accessor_grant_for(
-    title_prefix: "mtjade1-arrival",
-    description: "gunbc.auth.mtjade1_arrival_pair: the one version the arrival job may read for BmcSecure (signed off msg_f03558d1)",
-    target: mtjade1_bmc_gunbc_arrival_accessor_ref,
-  )]
+  arrival_secret_grants(pair: mtjade1_arrival_federation_pair)
 }
