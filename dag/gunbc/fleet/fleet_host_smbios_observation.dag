@@ -57,9 +57,25 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { string_contains, trim }
 import std.list { first_where }
 import std.optional { Absent, Optional, Present }
-import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, sha256_hex_of_text }
+import std.content_hash {
+  ContentHash,
+  ContentHashComparison,
+  Sha256Digest,
+  Sha256Hash,
+  compare_content_hash,
+  sha256_hex_digest,
+  sha256_hex_of_text,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { DissolutionCondition, DissolutionTrigger, BoundDissolution, DeclarationAppears }
+import std.dissolution {
+  BoundDissolution,
+  DeclarationAppears,
+  DissolutionCondition,
+  DissolutionFired,
+  DissolutionPending,
+  DissolutionStatus,
+  DissolutionTrigger,
+}
 import extdeps.bmc.endpoint { BmcEndpoint }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -69,7 +85,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.linux.dmi_id { DmiBoardName, DmiBoardSerial, dmi_id_attribute_path, dmi_id_directory }
 import product.host_identity { HostIdentity }
-import gunbc.machine_intake.subject { BoardSerialObservation, HostSmbios, UnitIdentityInputs }
+import gunbc.machine_intake.subject { BoardSerialObservation, BmcFru, HostSmbios, UnitIdentityInputs }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import gunbc.fleet.fleet_intent { srv4_baseboard }
@@ -348,29 +364,32 @@ data srv4_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = hos
 // source — as the list A2 folds. The emptiness IS the record: no bmc-srv4-admin credential was reachable from
 // the session that took the in-band read, so srv4 is admitted on the HostSmbios arm alone, and no prose here can
 // be read as the FRU arm agreeing with it. When the FRU read is taken its BoardSerialObservation goes INTO this
-// list, and three things follow mechanically rather than by editing prose: the frontier below dissolves, srv4's
+// list, and three things follow mechanically rather than by editing prose: the owedness below is discharged, srv4's
 // A2 inputs carry both arms, and subject.bind_unit_key begins checking them against each other — agreeing they
 // corroborate, disagreeing they refuse with BoardSerialContradictory and srv4's cutover stops. An obligation
 // stated as a condition that is already true tracks nothing (the guarantee ladder asks a class below its ceiling
 // to name a next-rung trigger that can actually fail), so the debt is carried by an empty list instead.
 data srv4_bmc_fru_board_serial_observations: List<BoardSerialObservation> = []
 
-// THE SAME DEBT, IN THE SHAPE THE CORPUS WRITES DISSOLUTIONS IN: a forward reference. The trigger names a
-// declaration that does NOT exist yet — the row the FRU read will add — so the condition is false at the moment
-// it is written and can only be made true by taking the read. (Its sibling trigger, DeclarationRetires, is for
-// declarations whose disappearance is the retirement; neither shape is allowed to name a live declaration as
-// something still owed, which is the mistake this row first made: it pointed at
-// gunbc.machine_intake.arrival_converge::identity_bind_provisional, a function that has been on main since the
-// intake lane landed, so it would have fired on the day it was written and tracked nothing.) The witness
-// evaluates this condition against the live declarations it once pointed at and requires it to stay Pending.
-data srv4_bmc_fru_second_source_frontier: DissolutionCondition = BoundDissolution {
-  trigger: DeclarationAppears {
-    ref: DeclarationRef {
-      module_path: "gunbc.fleet.fleet_host_smbios_observation",
-      decl_name: "srv4_bmc_fru_board_serial_observation",
-      field: WholeDeclaration,
-    },
-  },
+// WHAT IS OWED FOR THAT LIST TO STOP BEING EMPTY, named as a capability rather than as an artifact, so the
+// debt says what would restore it instead of pointing at a file someone has not named yet.
+data srv4_bmc_fru_second_source_capability: NonEmptyStr = "read srv4's base-board serial out-of-band from the BMC FRU and record it as a BoardSerialObservation whose source is BoardSerialSource#BmcFru"
+
+// THE DEBT'S STATUS IS A FUNCTION OF THE LIST AND OF NOTHING ELSE. A second carrier -- a forward reference to
+// a declaration the FRU read "will add" -- was the first shape, and it failed the single-authority rule: the
+// list could gain the FRU observation, A2 could start cross-checking both arms, and that trigger would still
+// read Pending, while the declaration could also be added with the list still empty. One authority, one answer:
+// an empty list (or one carrying only in-band items) is Pending, a list carrying a BmcFru item has discharged
+// it. The witness asserts both arms, so the claim discriminates -- and an obligation whose condition can never
+// be false tracks nothing, which is what the guarantee ladder asks of a class below its ceiling.
+fn srv4_bmc_fru_second_source_status(
+  bmc_fru_board_serials: List<BoardSerialObservation>,
+) -> DissolutionStatus {
+  if any(bmc_fru_board_serials, o => o.source == BmcFru) {
+    DissolutionFired
+  } else {
+    DissolutionPending
+  }
 }
 
 // WHAT A2 CONSUMES. gunbc.fleet.fleet_machine_unit_binding folds this into fleet_machine_unit_evidence; the
@@ -412,10 +431,24 @@ data inband_smbios_board_parse_fork_dissolution: DissolutionCondition = BoundDis
 // WHERE THE TRANSCRIPT STANDS AGAINST THE RECORD. Digest drift, an unreadable file, or a transcript printing a
 // different serial, hostname or board model than the row claims — each refuses with the pair that disagrees, so a
 // reader sees which of the two is lying instead of a check that passed.
+// Each arm carries only values that exist: the two digests being compared, the field as the reading
+// recorded it, the field as the host printed it. No arm is ever built from a placeholder -- an unreadable
+// file, a digest of a family this module does not compute, or a reading that states no value at all gets
+// its own arm rather than a made-up hex or an empty string pushed through a NonEmptyStr refinement
+// (the fabricated-citation class, gunbc.design_argument::guarantee_ladder).
 type HostSmbiosTranscriptStanding
-  = TranscriptAgrees { sha256: NonEmptyStr }
+  = TranscriptAgrees { digest: ContentHash }
   | TranscriptUnreadable { error: String }
-  | TranscriptDigestDiffers { expected: NonEmptyStr, observed: String }
+  | TranscriptDigestDiffers { recorded: ContentHash, printed: ContentHash }
+  // The recorded citation is not a sha256, so it cannot be compared with the sha256 of the bytes. The
+  // comparison authority refuses rather than answering false, and this arm says so: an unreadable
+  // verification, not a mismatch.
+  | TranscriptDigestCrossFamily { recorded: ContentHash, printed: ContentHash }
+  // The sha256 the intrinsic printed for the bytes is not a sha256 hex, so the comparison has no
+  // answer; reported as such rather than as a mismatch or a pass.
+  | TranscriptPrintedDigestUnverifiable { printed_hex: String }
+  | TranscriptRecordedBlank { machine: String }
+  | TranscriptRecordedUnreadable { detail: NonEmptyStr }
   | TranscriptSerialDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptHostnameDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptBoardNameDiffers { recorded: NonEmptyStr, printed: String }
@@ -465,24 +498,52 @@ fn verify_host_smbios_reading_transcript(reading: HostSmbiosReading) -> HostSmbi
   let read = Filesystem.Read(path: reading.transcript.label as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: e } => TranscriptUnreadable { error: e }
-    FilesystemReadSucceeded { content: text } =>
-      if !content_hash_is_sha256_of_text(hash: reading.transcript.digest, text: text) {
-        TranscriptDigestDiffers {
-          expected: sha256_hex_of_recorded_hash(hash: reading.transcript.digest),
-          observed: sha256_hex_of_text(text: text),
-        }
+    FilesystemReadSucceeded { content: text } => verify_against_transcript_text(reading: reading, text: text)
+  }
+}
+
+// THE DIGEST GATE, through the repo's one comparison authority. compare_content_hash answers
+// Equal / Different / CrossFamilyIncomparable and refuses to collapse a cross-family pair into a silent
+// false, so this module neither invents a hex for a digest it cannot name nor reports "differs" for two
+// digests that were never comparable. The sha256 the intrinsic prints is validated on the way into a
+// Sha256Digest rather than refinement-cast, so an unverifiable print is an answer of its own.
+fn verify_against_transcript_text(reading: HostSmbiosReading, text: String) -> HostSmbiosTranscriptStanding {
+  let printed_hex = sha256_hex_of_text(text: text)
+  match sha256_hex_digest(hex: printed_hex) {
+    Absent => TranscriptPrintedDigestUnverifiable { printed_hex: printed_hex }
+    Present { value: printed_digest } => {
+      let printed = Sha256Hash(printed_digest)
+      match compare_content_hash(left: reading.transcript.digest, right: printed) {
+        ContentHashDifferent => TranscriptDigestDiffers { recorded: reading.transcript.digest, printed: printed }
+        ContentHashCrossFamilyIncomparable =>
+          TranscriptDigestCrossFamily { recorded: reading.transcript.digest, printed: printed }
+        ContentHashEqual => compare_recorded_fields_against_print(
+          reading: reading,
+          lines: split(s: text, delimiter: "\n"),
+        )
+      }
+    }
+  }
+}
+
+// FIELD BY FIELD, with the reading's own state deciding the shape. A reading that states no value -- blank
+// or unreadable -- has nothing to corroborate, and says so; only a value that exists is ever compared with
+// a print, so no arm here pushes an empty string through a NonEmptyStr refinement. Every value an arm
+// carries is either the reading's own field or the host's own line.
+fn compare_recorded_fields_against_print(
+  reading: HostSmbiosReading,
+  lines: List<String>,
+) -> HostSmbiosTranscriptStanding {
+  match reading.board_serial {
+    SmbiosFieldBlank => TranscriptRecordedBlank { machine: reading.machine }
+    SmbiosFieldUnreadable { detail: d } => TranscriptRecordedUnreadable { detail: d }
+    SmbiosFieldValue { value: v } => {
+      let printed_serial = trim(s: transcript_line_value(lines: lines, key: "dmi.board_serial"))
+      if printed_serial != (v as String) {
+        TranscriptSerialDiffers { recorded: v, printed: printed_serial }
       } else {
-        let lines = split(s: text, delimiter: "\n")
-        let printed_serial = trim(s: transcript_line_value(lines: lines, key: "dmi.board_serial"))
         let printed_hostname = trim(s: transcript_line_value(lines: lines, key: "kernel_hostname"))
-        let recorded_serial = match reading.board_serial {
-          SmbiosFieldValue { value: v } => v as String
-          SmbiosFieldUnreadable { detail: d } => d as String
-          SmbiosFieldBlank => ""
-        }
-        if printed_serial != recorded_serial {
-          TranscriptSerialDiffers { recorded: recorded_serial as NonEmptyStr, printed: printed_serial }
-        } else if printed_hostname != (reading.kernel_hostname as String) {
+        if printed_hostname != (reading.kernel_hostname as String) {
           TranscriptHostnameDiffers { recorded: reading.kernel_hostname, printed: printed_hostname }
         } else if board_model_disagrees(reading: reading, lines: lines) {
           TranscriptBoardNameDiffers {
@@ -490,22 +551,10 @@ fn verify_host_smbios_reading_transcript(reading: HostSmbiosReading) -> HostSmbi
             printed: trim(s: transcript_line_value(lines: lines, key: "dmi.board_name")),
           }
         } else {
-          TranscriptAgrees { sha256: sha256_hex_of_recorded_hash(hash: reading.transcript.digest) }
+          // The digest gate already passed, so this is the record's own cited digest, not a recomputed one.
+          TranscriptAgrees { digest: reading.transcript.digest }
         }
       }
-  }
-}
-
-fn content_hash_is_sha256_of_text(hash: ContentHash, text: String) -> Bool {
-  match hash {
-    Sha256Hash(d) => (d.hex as String) == sha256_hex_of_text(text: text)
-    _ => false
-  }
-}
-
-fn sha256_hex_of_recorded_hash(hash: ContentHash) -> NonEmptyStr {
-  match hash {
-    Sha256Hash(d) => d.hex as NonEmptyStr
-    _ => "not-a-sha256" as NonEmptyStr
+    }
   }
 }

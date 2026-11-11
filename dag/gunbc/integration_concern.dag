@@ -2384,7 +2384,6 @@ data runner_connectivity_observe_admitted_by_no_controller_key_stager: Integrati
       },
       account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
     },
-  
     tail: [],
   },
   disposition: Open,
@@ -2483,7 +2482,6 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
       },
       account: "Raised by the node adhoc-0470d831-830 P3 srv4 read on 2026-11-11, and agreed with #16336's author on the grain: the shared question is the two pure reads under the section structure (the '### <marker>' section scanner, whose marker is row data rather than a literal, and the exact-once Key: value extractor refusing absent, repeated and empty inside one section), not the captures around them. Everything above those two stays in its own lane and is NOT part of this fork: the digest gate against SHA256SUMS, the fleet board-row equality, the arrival attribution by bound host NIC MAC or bound BMC address, and this lane's transport and A2 routing. The durable anchor is the transcript's sha256, not this revision: the shas in this row are the branch heads at which each side was read, and a squash-merge will not keep them reachable from main, whereas CitesArtifact's digest verifies whichever bytes the capture lives in. The agreement between the lanes was read, not assumed: the arrival lane's srv14 and srv15 captures carry the same board model, a populated baseboard serial, and an empty type-1 Serial Number.",
     },
-  
     tail: [],
   },
   disposition: Triaged {

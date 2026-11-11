@@ -19,9 +19,9 @@ module test.claim.fleet.fleet_host_smbios_observation_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
-import std.dissolution { BoundDissolution, DissolutionPending, dissolution_status, dissolution_trigger_ref }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { ContentHash, ContentHashEqual, Sha256Digest, Sha256Hash, compare_content_hash }
+import std.algebra { string_contains }
+import std.dissolution { BoundDissolution, DissolutionFired, DissolutionPending }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.linux.dmi_id { DmiBoardSerial, dmi_id_attribute_path }
 import gunbc.machine_intake.subject {
@@ -77,22 +77,26 @@ import gunbc.fleet.fleet_host_smbios_observation {
   SmbiosFieldUnreadable,
   SmbiosFieldValue,
   SmbiosReadInvocation,
-  SysfsDmiAttributePrint,
   SmbiosTableDecode,
+  SysfsDmiAttributePrint,
   TranscriptAgrees,
   TranscriptBoardNameDiffers,
+  TranscriptDigestCrossFamily,
   TranscriptDigestDiffers,
+  TranscriptPrintedDigestUnverifiable,
+  TranscriptRecordedBlank,
+  TranscriptRecordedUnreadable,
   board_serial_observations_from_both_sources,
   host_smbios_board_serial_observations,
   host_smbios_board_serial_standing,
-  smbios_read_is_an_identity_read,
   inband_smbios_board_parse_fork_dissolution,
+  smbios_read_is_an_identity_read,
   srv4_bmc_fru_board_serial_observations,
-  srv4_bmc_fru_second_source_frontier,
+  srv4_bmc_fru_second_source_capability,
+  srv4_bmc_fru_second_source_status,
   srv4_host_smbios_board_serial_standing,
   srv4_host_smbios_reading,
   srv4_host_smbios_transcript_digest,
-  sha256_hex_of_recorded_hash,
   verify_host_smbios_reading_transcript,
 }
 
@@ -173,7 +177,13 @@ test fn srv4_is_admitted_on_one_in_band_source_and_claims_no_fru_agreement() -> 
 // serial typed into the producer that disagrees with the transcript it cites fails HERE, not in a reader's eye.
 test fn the_committed_transcript_agrees_with_the_recorded_reading() -> Bool {
   match verify_host_smbios_reading_transcript(reading: srv4_host_smbios_reading) {
-    TranscriptAgrees { sha256: h } => (h as String) == (sha256_hex_of_recorded_hash(hash: srv4_host_smbios_transcript_digest) as String)
+    // The standing carries the record's own cited digest; the claim is that it is the digest of these bytes,
+    // which is the comparison the verifier made -- no hex is re-derived through a helper that could invent one.
+    TranscriptAgrees { digest: d } =>
+      match compare_content_hash(left: d, right: srv4_host_smbios_transcript_digest) {
+        ContentHashEqual => true
+        _ => false
+      }
     _ => false
   }
 }
@@ -186,8 +196,12 @@ test fn a_digest_that_no_longer_matches_the_transcript_refuses() -> Bool {
     hex: "0000000000000000000000000000000000000000000000000000000000000000",
   }))
   match verify_host_smbios_reading_transcript(reading: drifted) {
-    TranscriptDigestDiffers { expected: e, observed: _ } =>
-      (e as String) == "0000000000000000000000000000000000000000000000000000000000000000"
+    TranscriptDigestDiffers { recorded: r, printed: _ } =>
+      match r {
+        Sha256Hash(d) => (d.hex as String)
+          == "0000000000000000000000000000000000000000000000000000000000000000"
+        _ => false
+      }
     _ => false
   }
 }
@@ -468,35 +482,48 @@ test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
 // be able to tell that from two sources agreeing — otherwise a reader of srv4's row takes the difference on faith.
 // Four things are checked together, and the last is what makes this a behaviour claim rather than a reading of the
 // row's text: the out-of-band list is EMPTY (the FRU read has not happened); srv4's A2 inputs therefore carry
-// exactly one arm; the frontier is a BoundDissolution and not an UnboundDissolution whose description no mechanism
-// can read; and evaluating it with the corpus's own evaluator against the declarations that are LIVE TODAY —
-// including gunbc.machine_intake.arrival_converge::identity_bind_provisional, which this row first wrongly pointed
-// at — still says Pending. A trigger that fires the day it is written tracks nothing; this is the claim that would
-// catch that happening again.
+// exactly one arm; and the owedness reads Pending on the list as it stands while the SAME function says Fired on
+// the read that has not happened — which is what makes it a discriminating obligation rather than a constant, and
+// what an earlier shape of this row could not do: it keyed on a declaration that was either already live or never
+// the thing carrying the debt. A third arm says a second copy of the in-band read does not discharge it, because
+// what is owed is the other channel.
 test fn the_owed_fru_source_is_owed_and_not_already_discharged() -> Bool {
   let nothing_read_out_of_band = (srv4_bmc_fru_board_serial_observations |> count) == 0
   let inputs_carry_one_arm = (srv4_host_smbios_unit_identity_inputs.board_serial_observations |> count) == 1
-  let bound_and_pointing_forward = match srv4_bmc_fru_second_source_frontier {
-    BoundDissolution { trigger: t } => match dissolution_trigger_ref(trigger: t) {
-      DeclarationRef { module_path: m, decl_name: d, field: _ } =>
-        ((m as String) == "gunbc.fleet.fleet_host_smbios_observation")
-          && ((d as String) == "srv4_bmc_fru_board_serial_observation")
-    }
-    _ => false
-  }
-  let live_today = [
-    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "identity_bind_provisional"),
-    decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "bind_unit_key"),
-    decl_ref(module_path: "gunbc.fleet.fleet_machine_unit_binding", decl_name: "admit_machine_units"),
-  ]
-  let still_pending = match dissolution_status(
-    condition: srv4_bmc_fru_second_source_frontier,
-    present_decls: live_today,
+  let owed_today = match srv4_bmc_fru_second_source_status(
+    bmc_fru_board_serials: srv4_bmc_fru_board_serial_observations,
   ) {
     DissolutionPending => true
     _ => false
   }
-  nothing_read_out_of_band && inputs_carry_one_arm && bound_and_pointing_forward && still_pending
+  // The SAME function on the read that has not happened says fired, so the claim above discriminates rather
+  // than being a constant.
+  let a_fru_read_would_discharge_it = match srv4_bmc_fru_second_source_status(bmc_fru_board_serials: [
+    BoardSerialObservation { source: BmcFru, serial: "NS1NG4000900022" as NonEmptyStr },
+  ]) {
+    DissolutionFired => true
+    _ => false
+  }
+  // And a second copy of the IN-BAND read does not discharge it: what is owed is the other channel, not
+  // another witness to this one.
+  let an_in_band_copy_does_not_discharge_it = match srv4_bmc_fru_second_source_status(
+    bmc_fru_board_serials: host_smbios_board_serial_observations(
+      standing: srv4_host_smbios_board_serial_standing,
+    ),
+  ) {
+    DissolutionPending => true
+    _ => false
+  }
+  let the_debt_names_the_channel_owed = string_contains(
+    s: srv4_bmc_fru_second_source_capability as String,
+    pattern: "BoardSerialSource#BmcFru",
+  )
+  nothing_read_out_of_band
+    && inputs_carry_one_arm
+    && owed_today
+    && a_fru_read_would_discharge_it
+    && an_in_band_copy_does_not_discharge_it
+    && the_debt_names_the_channel_owed
 }
 
 // ... AND THE DISCHARGE WOULD ACTUALLY REACH A2 WHEN THE READ LANDS. The other half of an obligation: putting a
