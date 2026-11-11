@@ -58,8 +58,10 @@ fn selected_approved(s: AuthorizationPatternSelection) -> Bool {
   }
 }
 
+// THE PROJECTION IS THE POPULATION. srv15 joined it with its own row and grant, and mtjade1 is still first in
+// the order the rows are authored in -- nothing about srv15's arrival reorders or displaces mtjade1.
 test fn w_arrival_options_are_the_population_projection() -> Bool {
-  arrival_converge_subject_options() == ["mtjade1"]
+  arrival_converge_subject_options() == ["mtjade1", "srv15"]
 }
 
 test fn w_mtjade1_is_admitted_and_mtcollins1_and_outsiders_refuse_before_effect() -> Bool {

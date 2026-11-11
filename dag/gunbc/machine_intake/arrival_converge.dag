@@ -77,6 +77,12 @@ import gunbc.machine_intake.mtjade1_access_observation {
   FruObserved,
   FruReadRefused,
   RecordedFruObservation,
+  RecordedFruBoardIdentity,
+  BmcFruCaptureRead,
+  BmcFruCaptureObserved,
+  BmcFruCaptureRefused,
+  provisional_assembly_of_fru_board_area,
+  FruCaptureGap,
   SmbiosRead,
   SmbiosObserved,
   SmbiosReadRefused,
@@ -382,8 +388,50 @@ fn current_route_standing_of(access: AccessObservation) -> BmcRotationRouteStand
 // is the BMC-side pair carries none, and a unit whose evidence is a rescue-OS capture carries that instead. Its
 // presence changes what a refusal says, never what a binding accepts -- an in-band reading alone cannot mint one
 // (InbandSerialWithoutSecondSource).
+// THE FRU SLOT OF AN IDENTITY BIND, IN WHATEVER SHAPE THE UNIT'S READER COULD PRODUCE. Two readings of a BMC
+// print mean two different things and are not forced into one record: a FULL record, board area and chassis area
+// together (what mtjade1's print carries and what its inventory consumer reads), or a BOARD AREA ALONE (what a
+// complete ALTRAD8UD device-0 print carries, because that chip holds no chassis area). Forcing the second into
+// the first would either refuse an honest board or describe a chassis area nobody read. The agreement asks three
+// things of either shape -- the unit the read attributes itself to, the board serial, and the evidence kind it
+// came on -- and the accessors below are the only way to ask them, so no consumer branches on the shape it was
+// handed. A print that could not be read at all is the slot's other arm, and it carries WHY, so a refusal can
+// name the read that would discharge it.
+type IdentityFruEvidence
+  = FullFruRecordOfBmc { observation: RecordedFruObservation }
+  | CommittedFruBoardArea { observation: RecordedFruBoardIdentity }
+
+type IdentityFruSlot
+  = IdentityFruObserved { evidence: IdentityFruEvidence }
+  | IdentityFruAbsent { gap: FruCaptureGap }
+
+fn fru_evidence_subject(evidence: IdentityFruEvidence) -> NonEmptyStr {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => fru.subject
+    CommittedFruBoardArea { observation: fru } => fru.subject
+  }
+}
+
+// THE ASSEMBLY MANIFEST AN AGREEMENT CARRIES, per evidence shape. A full print describes its chassis area, and
+// mtjade1's manifest is built from it. A board-area-only print has no chassis area to describe:
+// provisional_assembly_of_fru_board_area builds the manifest from what that print did carry rather than leaving
+// the subject digest with nothing to hash or inventing a chassis part number for a chip that does not hold one.
+fn provisional_assembly_of_evidence(evidence: IdentityFruEvidence) -> AssemblyManifest {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => provisional_assembly_of_fru(fru: fru)
+    CommittedFruBoardArea { observation: fru } => provisional_assembly_of_fru_board_area(fru: fru)
+  }
+}
+
+fn fru_evidence_serial(evidence: IdentityFruEvidence) -> NonEmptyStr {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => fru.fields.board_serial
+    CommittedFruBoardArea { observation: fru } => fru.board.board_serial
+  }
+}
+
 type IdentityBindInputs sole_constructor {
-  fru: FruRead
+  fru: IdentityFruSlot
   smbios: SmbiosRead
   inband: InbandBoardRead?
   other_units: List<UnitKey>
@@ -471,7 +519,7 @@ type BoardSerialSecondReading
   | InbandHostBoardReading { observation: InbandBoardIdentity }
 
 type BoardSerialAgreement sole_constructor {
-  fru: RecordedFruObservation
+  fru: IdentityFruEvidence
   second: BoardSerialSecondReading
   serial: NonEmptyStr
 }
@@ -508,9 +556,9 @@ fn live_firmware_manifest(access: AccessDiscoverEstablished) -> FirmwareManifest
 
 fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
   match request.inputs.fru {
-    FruReadRefused { gap: g } =>
+    IdentityFruAbsent { gap: g } =>
       match request.inputs.inband {
-        Absent => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: fru_gap_text(gap: g) } } }
+        none => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: fru_gap_text(gap: g) } } }
         Present { value: InbandBoardRefused { gap: ig } } =>
           ObservationRefused {
             cause: BoardSerialsNotInAgreement {
@@ -531,38 +579,38 @@ fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> Obser
             },
           }
       }
-    FruObserved { observation: fru } =>
+    IdentityFruObserved { evidence: fru } =>
       match request.inputs.inband {
         Present { value: InbandBoardRefused { gap: ig } } =>
           ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: inband_identity_gap_text(gap: ig) } } }
         Present { value: InbandBoardObserved { observation: inband } } =>
-          if (inband.serial as String) != (fru.fields.board_serial as String) {
-            ObservationRefused { cause: BoardSerialsNotInAgreement { cause: InbandAndBmcFruSerialsDisagree { inband: inband.serial, fru: fru.fields.board_serial } } }
+          if (inband.serial as String) != (fru_evidence_serial(evidence: fru) as String) {
+            ObservationRefused { cause: BoardSerialsNotInAgreement { cause: InbandAndBmcFruSerialsDisagree { inband: inband.serial, fru: fru_evidence_serial(evidence: fru) } } }
           } else {
-            observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: InbandHostBoardReading { observation: inband }, serial: fru.fields.board_serial })
+            observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: InbandHostBoardReading { observation: inband }, serial: fru_evidence_serial(evidence: fru) })
           }
-        Absent => observe_identity_from_smbios_agreement(request: request, fru: fru)
+        none => observe_identity_from_smbios_agreement(key: key, request: request, fru: fru)
       }
   }
 }
 
 // The FRU-against-host-SMBIOS pair, the arm mtjade1 converges through: the serials, the unit each read
 // attributes itself to, and the SOL session the SMBIOS read was taken through, all classified together.
-fn observe_identity_from_smbios_agreement(key: StepInstanceKey, request: IdentityBindRequest, fru: RecordedFruObservation) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
+fn observe_identity_from_smbios_agreement(key: StepInstanceKey, request: IdentityBindRequest, fru: IdentityFruEvidence) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
   match request.inputs.smbios {
     SmbiosReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: SmbiosCaptureUnread { cause: smbios_gap_text(gap: g) } } }
     SmbiosObserved { observation: smbios } =>
       match classify_board_serial_agreement(
         unit: key.subject,
         accessed: request.access.access.endpoint,
-        fru_subject: fru.subject,
-        fru_serial: fru.fields.board_serial,
+        fru_subject: fru_evidence_subject(evidence: fru),
+        fru_serial: fru_evidence_serial(evidence: fru),
         smbios_subject: smbios.subject,
         smbios_controller: smbios_session_controller(source: smbios.source),
         smbios_serial: smbios.serial,
       ) {
         Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
-        Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: HostSmbiosReading { observation: smbios }, serial: fru.fields.board_serial })
+        Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, second: HostSmbiosReading { observation: smbios }, serial: fru_evidence_serial(evidence: fru) })
       }
   }
 }
@@ -573,7 +621,7 @@ fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: Boar
   let inputs = UnitIdentityInputs {
     bmc_endpoint: BmcEndpoint { host: request.access.access.endpoint.host, protocol: Redfish },
     board_serial_observations: [
-      BoardSerialObservation { source: BmcFru, serial: agreement.fru.fields.board_serial },
+      BoardSerialObservation { source: BmcFru, serial: fru_evidence_serial(evidence: agreement.fru) },
       match agreement.second {
         HostSmbiosReading { observation: smbios } => BoardSerialObservation { source: HostSmbios, serial: smbios.serial }
         InbandHostBoardReading { observation: inband } => BoardSerialObservation { source: InbandHostBoard, serial: inband.serial }
@@ -587,7 +635,7 @@ fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: Boar
         observed: IdentityObservation {
           unit_key: k,
           agreement: agreement,
-          assembly: provisional_assembly_of_fru(fru: agreement.fru),
+          assembly: provisional_assembly_of_evidence(evidence: agreement.fru),
           firmware: live_firmware_manifest(access: request.access),
         },
       }
@@ -1423,7 +1471,15 @@ fn witness_identity_bind_inputs(fru: FruRead, smbios: SmbiosRead, other_units: L
 }
 
 fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
-  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), inband: none, other_units: arrival_bound_unit_keys(subject: operator_host_mtjade1) }
+  IdentityBindInputs {
+    fru: match read_mtjade1_fru() {
+      FruObserved { observation: fru } => IdentityFruObserved { evidence: FullFruRecordOfBmc { observation: fru } }
+      FruReadRefused { gap: g } => IdentityFruAbsent { gap: g }
+    },
+    smbios: read_mtjade1_smbios_type2(),
+    inband: none,
+    other_units: arrival_bound_unit_keys(subject: operator_host_mtjade1),
+  }
 }
 
 // ONE PRODUCER, EVERY UNIT'S INPUTS FROM ITS ROW. The Manager capture, the platform policy and the identity
@@ -1444,7 +1500,10 @@ fn unit_identity_bind_inputs(row: ArrivalUnitCaptureRow) -> IdentityBindInputs u
 // agreement classifier does, and with one source it refuses with what is missing.
 fn altrad8ud_identity_bind_inputs(unit: HostIdentity) -> IdentityBindInputs uses fs: std.resources.Filesystem {
   IdentityBindInputs {
-    fru: read_committed_bmc_fru_capture(unit: unit),
+    fru: match read_committed_bmc_fru_capture(unit: unit) {
+      BmcFruCaptureObserved { observation: fru } => IdentityFruObserved { evidence: CommittedFruBoardArea { observation: fru } }
+      BmcFruCaptureRefused { gap: g } => IdentityFruAbsent { gap: g }
+    },
     smbios: SmbiosReadRefused { gap: SmbiosCaptureNotCommitted { unit: unit as NonEmptyStr, read_that_would_ground_it: altrad8ud_host_smbios_read_obligation } },
     inband: Present { value: read_inband_board_identity(unit: unit) },
     other_units: arrival_bound_unit_keys(subject: unit),
