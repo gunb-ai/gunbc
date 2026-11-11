@@ -3,7 +3,7 @@ module test.claim.generated_artifact_merge_driver_recipe
 import std.logic { Bool }
 import std.types { String }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
-import gunbc.ci.ci_spec { generated_artifact_author_regen_command }
+import gunbc.generated_artifact { generated_artifact_author_regen_command }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_emit_dissolution_trigger }
 import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
 import std.dissolution { dissolution_description }

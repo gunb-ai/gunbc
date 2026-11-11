@@ -493,3 +493,12 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       dissolution: unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: each payload-carrying GeneratedArtifact arm declares the key that identifies it as a declared identity on its payload type, so equality is the derived == over that declared key and the hand fold deletes with this row. Until a key is declared the fold is the only place that decision lives"),
     },
 ]
+
+// THE ONE COMMAND AN AUTHOR RUNS TO REGENERATE EVERY COMMITTED PROJECTION. It is named here, beside
+// the artifacts it regenerates (moved out of gunbc.ci.ci_spec, gunbc.plans.closure_consolidation P1),
+// rather than in each consumer because three places tell an author to run it -- the merge driver's
+// refusal recipe, its two witnesses -- and a second spelling would drift from the entry the workflow
+// uses.
+// It was `ci_heal_author_commit_regen_command` while heal's author-commit arm was its only caller;
+// that arm is gone with the push, and the command is not heal's (gunbc#10958).
+data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
