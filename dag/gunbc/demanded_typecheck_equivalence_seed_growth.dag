@@ -19,6 +19,10 @@ data demanded_typecheck_equivalence_seed_growth_justification: SeedGrowthJustifi
     DeclarationRef { module_path: "v1_compiler.cli_run.demanded_typecheck_equivalence", decl_name: "demanded_grain_realizes_service_op_surface_reached_via_lambda_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.demanded_typecheck_equivalence", decl_name: "sdo_observe_refusal_present", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.demanded_typecheck_equivalence", decl_name: "serve_entry_realizes_the_host_declared_key_row", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demanded_typecheck_equivalence", decl_name: "the_host_by_name_call_sites_equal_the_declared_key_row", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demanded_typecheck_equivalence", decl_name: "the_startup_key_set_check_precedes_the_first_fallible_consult", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demanded_typecheck_equivalence", decl_name: "scan_by_name_literals", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demanded_typecheck_equivalence", decl_name: "declared_key_row_names", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "function_exists", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "qualified_function_exists", field: WholeDeclaration }
   ],

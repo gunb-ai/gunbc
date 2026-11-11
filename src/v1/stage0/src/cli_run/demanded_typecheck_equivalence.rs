@@ -1152,27 +1152,30 @@ fn the_host_by_name_call_sites_equal_the_declared_key_row() {
     );
 }
 
-/// RUNG HONESTY for the startup fail-fast (review 93623): the check must run BEFORE any fallible
-/// consult -- including the `http_ingress_handler_identity` consult whose absence is the srv1
-/// crash-loop it was written for -- or the loud refusal is unreachable for its own case. This is
-/// executed evidence of the ORDERING claim, read from the host's source: the FAIL FAST block and
-/// its reader-fold consult must precede the first `fold_text(ctx, "http_ingress_...` consult in
-/// the file.
+/// STRUCTURAL PIN for the startup fail-fast ordering (reviews 93623, 93635): the key-set sweep
+/// must run BEFORE any fallible consult -- including the `http_ingress_handler_identity` consult
+/// whose absence is the srv1 crash-loop it was written for -- or the loud refusal is unreachable
+/// for its own case. This arm is a SOURCE-ORDER scan over code tokens (not a comment banner), so
+/// legitimate renames of the pinned shape turn it RED on purpose; it is NOT a live startup run --
+/// nothing here executes `realize_in` -- and the live coverage of the fail-fast path is the srv1
+/// serve-unit deployment that only happens AFTER this PR lands (manager rule: the serve unit is
+/// not deployed from main before then). It pins what the fix promised, at the rung a text scan
+/// can establish, and says so.
 #[test]
 fn the_startup_key_set_check_precedes_the_first_fallible_consult() {
     let host = std::fs::read_to_string("src/v1/stage0/src/cli_run/http_ingress_host.rs")
         .expect("the ingress host source must exist");
-    let fail_fast = host
-        .find("FAIL FAST ON THE DECLARED KEY SET")
-        .expect("the declared-key fail-fast block must exist");
     let reader_consult = host
         .find("fold(ctx, \"http_ingress_host_read_folds_reader\"")
         .expect("the fail-fast must read the key set through the declared reader fold");
+    let sweep = host
+        .find("v1_interpreter::function_exists(ctx, name)")
+        .expect("the fail-fast must sweep declared names with function_exists");
     let first_fallible_consult = host
         .find("let handler = fold_text(")
         .expect("the handler-identity consult must exist");
     assert!(
-        fail_fast < first_fallible_consult && reader_consult < first_fallible_consult,
-        "the fail-fast (offset {fail_fast}) and its reader consult (offset {reader_consult}) must PRECEDE the first fallible consult (offset {first_fallible_consult}) -- otherwise the crash-loop case refuses with the single opaque loaded-index miss, not the loud refusal"
+        reader_consult < sweep && sweep < first_fallible_consult,
+        "the reader consult (offset {reader_consult}) and the name sweep (offset {sweep}) must PRECEDE the first fallible consult (offset {first_fallible_consult}) -- otherwise the crash-loop case refuses with the single opaque loaded-index miss, not the loud refusal naming every missing key"
     );
 }
