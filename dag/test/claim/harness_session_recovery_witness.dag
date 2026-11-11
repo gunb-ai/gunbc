@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation, ContinuationPlan, Resume, NextAttempt, AlreadyRunning, HoldUntil, Refuse, continuation_plan,
   WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   BranchLive,
+  prior_run_host_liveness_unobservable, OperatorNotConfirmed,
 }
 import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreePresent,
@@ -79,6 +80,8 @@ fn prior_at(recovery: SessionRecovery, now: Int) -> PriorExecutionObservation {
 fn prior_clocked(recovery: SessionRecovery, now: EpochSecs?) -> PriorExecutionObservation {
   PriorExecutionObservation {
     attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
+    prior_run_host_liveness: prior_run_host_liveness_unobservable(),
+    operator_worker_gone: OperatorNotConfirmed,
     // The worktree STANDS (present): these tests drive the capture/recovery partition (a handed-in-nothing
     // whose session resumes), which the decision reads only when the tree is here -- so the capture and the
     // recovery-under-test live in the WorktreeStands arm, where they are genuinely consulted.
