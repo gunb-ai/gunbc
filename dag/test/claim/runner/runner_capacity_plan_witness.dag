@@ -52,6 +52,7 @@ import gunbc.runner.runner_capacity_plan {
   HostCapacityPlanOutcome,
   HostCapacityPlanReady,
   HostCapacityPlanRefused,
+  HostCapacityPlanRefusal,
   observed_github_slot_identities,
   ObservedGitHubSlotPopulation,
   GitHubSlotPopulationObserved,
@@ -262,7 +263,7 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
       roster: roster,
       receipt_for: _ => ReceiptAbsent,
     ) {
-      PlanReady { hosts: _, refusals: _ } => true
+      PlanReady { hosts: hs, refusals: _ } => length(hs) > 0
       PlanRefused { reason: _ } => false
     }
 }
@@ -293,14 +294,10 @@ test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() ->
   match runner_capacity_plan(roster: incident_2026_08_06_roster_fixture(), receipt_for: _ => ReceiptAbsent) {
     PlanReady { hosts: _, refusals: rs } =>
       fold(rs, init: false, f: (acc, r) =>
-        acc || match r {
-          HostCapacityPlanRefused { host: rh, reason: rr } =>
-            (rh as String) == "srv2"
-              && string_contains(s: rr, pattern: "committed width unresolved")
-              && string_contains(s: rr, pattern: "UNRESOLVED, not zero")
-              && string_contains(s: rr, pattern: srv2_reservation_policy_cause_fragment)
-          HostCapacityPlanReady { plan: _ } => false
-        }
+        acc || ((r.host as String) == "srv2"
+          && string_contains(s: r.reason, pattern: "committed width unresolved")
+          && string_contains(s: r.reason, pattern: "UNRESOLVED, not zero")
+          && string_contains(s: r.reason, pattern: srv2_reservation_policy_cause_fragment))
       )
     PlanRefused { reason: _ } => false
   }
@@ -458,9 +455,8 @@ test fn the_two_managed_hosts_widen_alike_now_that_no_carve_sits_between_them() 
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
   match runner_capacity_plan(roster: RosterReadUnavailable { reason: "503" }, receipt_for: _ => ReceiptAbsent) {
-    PlanRefused { reason: _ } => false
-    PlanReady { hosts: hs, refusals: rs } =>
-      hs.length() == 0 && rs.length() > 0
+    PlanRefused { reason: r } => string_contains(s: r, pattern: "roster read unavailable")
+    PlanReady { hosts: _, refusals: _ } => false
   }
 }
 
@@ -774,11 +770,10 @@ test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
 // typed refusal. This witness proves the structural property by checking that the plan's
 // hosts + refusals cover the full runner-executor population.
 test fn plan_covers_all_runner_executor_hosts_not_just_a_fixed_pair() -> Bool {
-  let plan = runner_capacity_plan(
+  match runner_capacity_plan(
     roster: incident_2026_08_06_managed_roster_fixture(),
     receipt_for: _ => ReceiptAbsent,
-  )
-  match plan {
+  ) {
     PlanReady { hosts: hs, refusals: rs } =>
       fold(
         runner_executor_hosts(),
@@ -787,10 +782,7 @@ test fn plan_covers_all_runner_executor_hosts_not_just_a_fixed_pair() -> Bool {
           acc && fold(
             concat(
               map(hs, p => p.host as String),
-              flat_map(rs, r => match r {
-                HostCapacityPlanRefused { host: rh, reason: _ } => [rh as String]
-                HostCapacityPlanReady { plan: _ } => []
-              }),
+              map(rs, r => r.host as String),
             ),
             init: false,
             f: (found, name) => found || name == (h as String),

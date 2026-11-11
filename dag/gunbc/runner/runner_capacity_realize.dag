@@ -4,8 +4,6 @@ import std.types { String, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.runner.runner_capacity_plan {
   RunnerCapacityPlan,
-  PlanReady,
-  PlanRefused,
   RunnerCapacityHostPlan,
   RunnerCapacityAction,
   RunnerSlotAdd,
@@ -13,9 +11,9 @@ import gunbc.runner.runner_capacity_plan {
   RunnerSlotRemove,
   RunnerIncarnationReplace,
   WidthAdmitted,
-  HostCapacityPlanOutcome,
-  HostCapacityPlanRefused,
-  HostCapacityPlanReady,
+  HostCapacityPlanRefusal,
+  PlanReady,
+  PlanRefused,
   runner_capacity_plan,
   runner_capacity_add_count,
   addition_actions,
@@ -144,12 +142,8 @@ fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
 fn count_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Int {
   match plan {
     PlanRefused { reason: _ } => 0
-    PlanReady { hosts: hs } =>
-      fold(
-        hs,
-        init: 0,
-        f: (n, h) => n + count_add_actions_in_host_plan(host_plan: h),
-      )
+    PlanReady { hosts: hs, refusals: _ } =>
+      fold(hs, init: 0, f: (n, h) => n + count_add_actions_in_host_plan(host_plan: h)),
   }
 }
 
@@ -226,17 +220,15 @@ fn runner_capacity_reapply_plans_zero_additions(
 
 fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
   match plan {
-    PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
+    PlanRefused { reason: r } =>
+      RunnerCapacityApplyRefused { reason: r }
     PlanReady { hosts: hs, refusals: rs } =>
       RunnerCapacityApplyCompleted {
         hosts: concat(
           map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
-          map(rs, r => match r {
-            HostCapacityPlanRefused { host: rh, reason: rr } =>
-              RunnerCapacityHostApplyReceipt { host: rh, outcome: HostApplyRefused { reason: rr } }
-            HostCapacityPlanReady { plan: _ } =>
-              RunnerCapacityHostApplyReceipt { host: operator_host_srv3, outcome: HostApplyRefused { reason: "internal: ready plan in refusals list" } }
-          }),
+          map(rs, r =>
+            RunnerCapacityHostApplyReceipt { host: r.host, outcome: HostApplyRefused { reason: r.reason } }
+          ),
         ),
       }
   }

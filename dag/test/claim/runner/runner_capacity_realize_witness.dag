@@ -70,13 +70,14 @@ fn managed_pair_width_beyond_the_observed_slots() -> Int {
 fn plan_added_index(plan: RunnerCapacityPlan, host: HostIdentity, want: Int) -> Bool {
   match plan {
     PlanRefused { reason: _ } => false
-    PlanReady { hosts: hs, refusals: _ } => fold(hs, init: false, f: (acc, h) => acc || (
-      (h.host as String) == (host as String)
-        && fold(h.actions, init: false, f: (a, act) => a || match act {
-          RunnerSlotAdd { to: id } => id.slot_index == want
-          _ => false
-        })
-    ))
+    PlanReady { hosts: hs, refusals: _ } =>
+      fold(hs, init: false, f: (acc, h) => acc || (
+        (h.host as String) == (host as String)
+          && fold(h.actions, init: false, f: (a, act) => a || match act {
+            RunnerSlotAdd { to: id } => id.slot_index == want
+            _ => false
+          })
+      ))
   }
 }
 
@@ -127,21 +128,17 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
     roster: incident_2026_08_06_managed_roster_fixture(),
     receipt_for: _ => ReceiptAbsent,
   )
-  match plan {
-    PlanReady { hosts: _, refusals: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) > 0
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) > 0
-        // WHICH slots, not just how many: the hole at 03 and the slot the ruling returned at 06.
-        && plan_added_index(plan: plan, host: operator_host_srv3, want: 3)
-        && plan_added_index(plan: plan, host: operator_host_srv3, want: 6)
-        && plan_added_index(plan: plan, host: operator_host_srv4, want: 3)
-        && plan_added_index(plan: plan, host: operator_host_srv4, want: 6)
-        // And 06 is an addition because the authority says it is not a fabric member any more -- the
-        // planner is not being asked to agree with a comment here.
-        && !identity_is_fabric_execution_member(identity: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 })
-        && !identity_is_fabric_execution_member(identity: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 6 })
-    PlanRefused { reason: _ } => false
-  }
+  runner_capacity_add_count(plan: plan, host: operator_host_srv3) > 0
+    && runner_capacity_add_count(plan: plan, host: operator_host_srv4) > 0
+    // WHICH slots, not just how many: the hole at 03 and the slot the ruling returned at 06.
+    && plan_added_index(plan: plan, host: operator_host_srv3, want: 3)
+    && plan_added_index(plan: plan, host: operator_host_srv3, want: 6)
+    && plan_added_index(plan: plan, host: operator_host_srv4, want: 3)
+    && plan_added_index(plan: plan, host: operator_host_srv4, want: 6)
+    // And 06 is an addition because the authority says it is not a fabric member any more -- the
+    // planner is not being asked to agree with a comment here.
+    && !identity_is_fabric_execution_member(identity: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 })
+    && !identity_is_fabric_execution_member(identity: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 6 })
 }
 
 // RETARGETED FROM srv3 TO srv4, AND THE REASON IS STRUCTURAL RATHER THAN COSMETIC. This exercises
@@ -285,34 +282,30 @@ test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
     roster: organization_runner_roster_materialized_slots_online_evidence(),
     receipt_for: _ => ReceiptAbsent,
   )
-  match plan {
-    PlanReady { hosts: _, refusals: _ } =>
-      // The fixture holds slots 01-05; the committed width is 18, so additions exist for 06+.
-      // The apply seam either succeeds (disk observable and sufficient) or refuses by disk
-      // preflight -- both are valid outcomes for a host whose disk state is not in the corpus.
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) > 0
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) > 0
-        && match runner_capacity_apply_plan(plan: plan) {
-          RunnerCapacityApplyCompleted { hosts: hs } =>
-            hs.length() >= 2
-              && match runner_capacity_host_apply_receipt(outcome: runner_capacity_apply_plan(plan: plan), host: operator_host_srv3) {
-                Present { value: r } =>
-                  match r.outcome {
-                    HostApplySucceeded { add_actions_executed: n } => n > 0
-                    HostApplyRefused { reason: reason } => string_contains(s: reason, pattern: "disk")
-                  }
-                Absent => false
+  // The fixture holds slots 01-05; the committed width is 18, so additions exist for 06+.
+  // The apply seam either succeeds (disk observable and sufficient) or refuses by disk
+  // preflight -- both are valid outcomes for a host whose disk state is not in the corpus.
+  runner_capacity_add_count(plan: plan, host: operator_host_srv3) > 0
+    && runner_capacity_add_count(plan: plan, host: operator_host_srv4) > 0
+    && match runner_capacity_apply_plan(plan: plan) {
+      RunnerCapacityApplyCompleted { hosts: hs } =>
+        hs.length() >= 2
+          && match runner_capacity_host_apply_receipt(outcome: runner_capacity_apply_plan(plan: plan), host: operator_host_srv3) {
+            Present { value: r } =>
+              match r.outcome {
+                HostApplySucceeded { add_actions_executed: n } => n > 0
+                HostApplyRefused { reason: reason } => string_contains(s: reason, pattern: "disk")
               }
-              && match runner_capacity_host_apply_receipt(outcome: runner_capacity_apply_plan(plan: plan), host: operator_host_srv4) {
-                Present { value: r } =>
-                  match r.outcome {
-                    HostApplySucceeded { add_actions_executed: n } => n > 0
-                    HostApplyRefused { reason: reason } => string_contains(s: reason, pattern: "disk")
-                  }
-                Absent => false
+            Absent => false
+          }
+          && match runner_capacity_host_apply_receipt(outcome: runner_capacity_apply_plan(plan: plan), host: operator_host_srv4) {
+            Present { value: r } =>
+              match r.outcome {
+                HostApplySucceeded { add_actions_executed: n } => n > 0
+                HostApplyRefused { reason: reason } => string_contains(s: reason, pattern: "disk")
               }
-          RunnerCapacityApplyRefused { reason: _ } => false
-        }
-    PlanRefused { reason: _ } => false
-  }
+            Absent => false
+          }
+      RunnerCapacityApplyRefused { reason: _ } => false
+    }
 }

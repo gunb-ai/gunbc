@@ -7,10 +7,9 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.apply { live_deploy_apply_prod_role_wet, approval_broker_dark_install_wet }
 import gunbc.runner.runner_capacity_plan {
   RunnerCapacityPlan,
+  HostCapacityPlanRefusal,
   PlanReady,
   PlanRefused,
-  HostCapacityPlanOutcome,
-  HostCapacityPlanRefused,
   runner_capacity_plan,
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
@@ -48,28 +47,23 @@ fn parse_apply_workflow(value: String) -> ApplyWorkflowParse {
   }
 }
 
-fn plan_refusal_reason(rs: List<HostCapacityPlanOutcome>) -> String {
+fn plan_refusal_reason(refusals: List<HostCapacityPlanRefusal>) -> String {
   fold(
-    rs,
+    refusals,
     init: "plan refused for hosts: ",
-    f: (acc, r) =>
-      match r {
-        HostCapacityPlanRefused { host: h, reason: rr } =>
-          concat(concat(concat(acc, h as String), ": "), rr)
-        HostCapacityPlanReady { plan: _ } => acc
-      },
+    f: (acc, r) => concat(concat(concat(acc, r.host as String), ": "), r.reason),
   )
 }
 
 fn runner_capacity_plan_exit(plan: RunnerCapacityPlan) -> ProcessExit {
   match plan {
+    PlanRefused { reason: r } => exit_failure(reason: r)
     PlanReady { hosts: _, refusals: rs } =>
       if length(rs) > 0 {
         exit_failure(reason: plan_refusal_reason(refusals: rs))
       } else {
         ExitSuccess
       }
-    PlanRefused { reason: r } => exit_failure(reason: r)
   }
 }
 
