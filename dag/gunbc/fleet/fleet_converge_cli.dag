@@ -90,11 +90,15 @@ import gunbc.host.host_hostname_converge {
   hostname_converge_resolve,
   hostname_converge_attempt_env_name,
   hostname_converge_confirm_env_name,
+  hostname_converge_confirm_lock_line,
+  hostname_converge_dispatch_confirms_actuation,
   hostname_converge_direction_env_name,
   hostname_converge_mode,
   hostname_converge_mode_env_name,
   hostname_converge_peer_env_name,
+  hostname_converge_readopt_dispatched,
   hostname_converge_readopt_env_name,
+  hostname_converge_readopt_lock_line,
   hostname_converge_target_env_name,
 }
 
@@ -1100,17 +1104,16 @@ fn hostname_converge_plan_exit(request: HostnameConvergeRequest) -> ProcessExit 
 
 // STEP TWO — THE WET APPLY, behind the dispatch's own confirmation. The confirmation is checked here as
 // well as in the emitted `if:`, so the entry is safe to invoke by hand; an unconfirmed dispatch that
-// reaches this code refuses without touching a machine.
+// reaches this code refuses without touching a machine. Both readings ask the same question --
+// `hostname_converge_dispatch_confirms_actuation`, over the word the operator actually picks from -- so
+// the gate in YAML and the gate in code cannot disagree about what the word is.
 fn fleet_converge_hostname_converge_apply_wet() -> ProcessExit {
-  if hostname_converge_env_value(name: hostname_converge_confirm_env_name) != "converge" {
+  if !hostname_converge_dispatch_confirms_actuation(
+    value: hostname_converge_env_value(name: hostname_converge_confirm_env_name),
+  ) {
     return hostname_converge_refusal_exit(
-      line: join(
-        [
-          "hostname_converge refused: the apply step requires the dispatch confirmation `converge` and this",
-          " dispatch did not carry it, so no hostnamectl write was attempted on any host",
-          "",
-        ],
-        "",
+      line: hostname_converge_confirm_lock_line(
+        value: hostname_converge_env_value(name: hostname_converge_confirm_env_name),
       ),
       step: "apply",
     )
@@ -1143,7 +1146,9 @@ fn hostname_converge_apply_exit(request: HostnameConvergeRequest) -> ProcessExit
 // must not go green having not. Without a confirmed apply a mismatch is the stated plan outcome (a
 // baseline the operator has not re-adopted yet), so it is reported rather than dressed up as a failure.
 fn fleet_converge_hostname_converge_read_back_wet() -> ProcessExit {
-  let actuation_confirmed = hostname_converge_env_value(name: hostname_converge_confirm_env_name) == "converge"
+  let actuation_confirmed = hostname_converge_dispatch_confirms_actuation(
+    value: hostname_converge_env_value(name: hostname_converge_confirm_env_name),
+  )
   match hostname_converge_resolution_from_env() {
     ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "read-back")
@@ -1169,7 +1174,23 @@ fn hostname_converge_read_back_exit(request: HostnameConvergeRequest, actuation_
 // IS the desired name — and what it emits is the DeployedIntentV0 the operator COMMITS; it has no path to
 // the committed row, which is what "must not silently overwrite the baseline" buys in code. A refusal is
 // red, so a run can never be read as having re-adopted when it did not.
+//
+// THE DISPATCH'S `refuse` IS CHECKED HERE AND NOT ONLY IN THE EMITTED `if:`, for the same reason the
+// apply step checks its own confirmation: this entry is reachable by hand, and the one step allowed to
+// move a stored baseline must not depend on a YAML condition to stay shut. A version of this entry
+// existed that read only the pair and never asked the question -- the `if:` was the only lock on the
+// baseline, and the comment here claimed otherwise.
 fn fleet_converge_hostname_converge_readopt_wet() -> ProcessExit {
+  if !hostname_converge_readopt_dispatched(
+    value: hostname_converge_env_value(name: hostname_converge_readopt_env_name),
+  ) {
+    return hostname_converge_refusal_exit(
+      line: hostname_converge_readopt_lock_line(
+        value: hostname_converge_env_value(name: hostname_converge_readopt_env_name),
+      ),
+      step: "re-adopt",
+    )
+  }
   match hostname_converge_resolution_from_env() {
     ResolutionRefused { cause: c } =>
       hostname_converge_refusal_exit(line: hostname_converge_refusal_line(cause: c), step: "re-adopt")

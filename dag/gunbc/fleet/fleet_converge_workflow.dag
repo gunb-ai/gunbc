@@ -282,18 +282,26 @@ import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
 import gunbc.host.host_hostname_converge {
+  Forward,
   hostname_converge_attempt_env_name,
   hostname_converge_confirm_default,
   hostname_converge_confirm_env_name,
+  hostname_converge_confirm_input_name,
   hostname_converge_confirm_options,
+  hostname_converge_confirm_value,
   hostname_converge_direction_env_name,
+  hostname_converge_direction_input_name,
   hostname_converge_direction_options,
+  hostname_converge_direction_wire,
   hostname_converge_mode,
   hostname_converge_mode_env_name,
   hostname_converge_peer_env_name,
+  hostname_converge_peer_input_name,
   hostname_converge_peer_options,
+  hostname_converge_readopt_adopt_value,
   hostname_converge_readopt_default,
   hostname_converge_readopt_env_name,
+  hostname_converge_readopt_input_name,
   hostname_converge_readopt_options,
   hostname_converge_receipt_path,
   hostname_converge_target_env_name,
@@ -5662,11 +5670,32 @@ fn fleet_converge_spark_wireless_link_converge_step() -> Step {
 // THE GCP IAM CONVERGE IS THE SAME CASE: its job federates as iam-observe through a provider pinning
 // this file at main, and redeems an approval for an iam-converge token, so the bytes that plan and
 // actuate are the event's main commit and never a dispatch input's.
-fn fleet_converge_dispatch_mode_is(mode: FleetConvergeWorkflowMode) -> Expression {
+// A DISPATCH INPUT CARRIES EXACTLY THIS WORD, as an Expression and not as text. The mode gate and the
+// two locks the hostname-converge mode adds (over a hostnamectl write, and over a stored baseline) are
+// the same shape, so they are built by one function and serialized by `extdeps.github.expressions`.
+// A condition assembled from text type-checks even when the field name or the word is wrong: the `if:`
+// simply never matches, and the step it guarded either runs ungated or never runs and says nothing.
+// Where the modeled route exists this file does not carry the string route -- see the admission step
+// above, whose scaffold was rejected once the typed emitter turned out to be the real route.
+fn fleet_converge_dispatch_input_is(input: String, value: String) -> Expression {
   Equals {
-    left: ContextAccess { context: Github, path: ["event", "inputs", fleet_converge_mode_input.name] },
-    right: StringLiteral { value: fleet_converge_workflow_mode_wire(mode: mode) },
+    left: ContextAccess { context: Github, path: ["event", "inputs", input] },
+    right: StringLiteral { value: value },
   }
+}
+
+// THE SAME FIELD READ AS A STEP ENVIRONMENT VALUE. One builder for the two ways a dispatch input is
+// consumed -- compared against a word in a gate, and handed to a step as environment -- so a step env
+// and the `if:` beside it are readings of one field name rather than two copies of it.
+fn fleet_converge_dispatch_input_interpolation(input: String) -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["event", "inputs", input] })
+}
+
+fn fleet_converge_dispatch_mode_is(mode: FleetConvergeWorkflowMode) -> Expression {
+  fleet_converge_dispatch_input_is(
+    input: fleet_converge_mode_input.name,
+    value: fleet_converge_workflow_mode_wire(mode: mode),
+  )
 }
 
 data fleet_converge_event_sha: Expression = ContextAccess { context: Github, path: ["sha"] }
@@ -7694,28 +7723,28 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   // from the hostname allocation rather than typed out, and a dispatch that names the target as its own
   // peer is refused by the entry -- the closed choice keeps a typo from becoming a free-text host.
   DispatchInput {
-    name: "hostname_converge_peer",
+    name: hostname_converge_peer_input_name as String,
     description: Present { value: "hostname_converge only: the EXECUTING PEER that runs the converge over fleet SSH. Options are gunbc.host.host_hostname_converge hostname_converge_peer_options (the allocated fleet hosts); it must not be the target, and an empty value is refused by the build job's dispatch gate rather than queued to a label no runner carries" },
     required: false,
     default: none,
     type: InputChoice { options: hostname_converge_peer_options() },
   },
   DispatchInput {
-    name: "hostname_converge_direction",
+    name: hostname_converge_direction_input_name as String,
     description: Present { value: "hostname_converge only: forward converges the target's Linux hostname to its canonical allocation name; rollback puts the committed baseline name back -- the rename window's rollback, and the only previous name this mode may write. The pair is typed, never a free-text hostname" },
     required: false,
-    default: Present { value: "forward" },
+    default: Present { value: hostname_converge_direction_wire(direction: Forward) as String },
     type: InputChoice { options: hostname_converge_direction_options },
   },
   DispatchInput {
-    name: "hostname_converge_confirm",
+    name: hostname_converge_confirm_input_name as String,
     description: Present { value: "hostname_converge only: plan (the default) folds the live name and reads it back without writing; converge unlocks the apply step that runs hostnamectl set-hostname on the target. Two locks guard the write -- this choice and the entry's own check of it" },
     required: false,
     default: Present { value: hostname_converge_confirm_default },
     type: InputChoice { options: hostname_converge_confirm_options },
   },
   DispatchInput {
-    name: "hostname_converge_readopt",
+    name: hostname_converge_readopt_input_name as String,
     description: Present { value: "hostname_converge only: adopt unlocks the typed baseline re-adopt, which admits ONLY where the live name already is the desired name, and emits the DeployedIntentV0 for the operator to commit -- it never rewrites the committed baseline itself. refuse (the default) leaves the gate closed" },
     required: false,
     default: Present { value: hostname_converge_readopt_default },
@@ -8568,19 +8597,61 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
 data fleet_converge_hostname_converge_step_if: String = fleet_converge_mode_step_if(mode: HostnameConverge)
 
 // THE APPLY IS A SECOND GATE, INSIDE THE MODE. The dry plan runs on any mode=hostname_converge
-// dispatch; the apply additionally requires the dispatched confirmation.
-data fleet_converge_hostname_converge_confirm_if: String = "github.event.inputs.hostname_converge_confirm == 'converge'"
-data fleet_converge_hostname_converge_apply_step_if: String = join([fleet_converge_hostname_converge_step_if, fleet_converge_hostname_converge_confirm_if], " && ")
+// dispatch; the apply additionally requires the dispatched confirmation. Both halves are Expressions
+// built by `fleet_converge_dispatch_input_is` from the field name and the word the subject holds
+// (`hostname_converge_confirm_input_name`, `hostname_converge_confirm_value`), so renaming the input or
+// rewording the gate moves the declaration, the step env and this condition together -- and a typo in
+// either is no longer a condition that silently never matches.
+data fleet_converge_hostname_converge_confirm_gate: Expression = fleet_converge_dispatch_input_is(
+  input: hostname_converge_confirm_input_name as String,
+  value: hostname_converge_confirm_value as String,
+)
 
-// THE BASELINE ADOPTION IS A THIRD GATE: it is the only step that may rewrite a stored baseline, so
-// it asks for its own confirmation and its CLI entry refuses without it.
-data fleet_converge_hostname_converge_readopt_if: String = "github.event.inputs.hostname_converge_readopt == 'adopt'"
-data fleet_converge_hostname_converge_readopt_step_if: String = join([fleet_converge_hostname_converge_step_if, fleet_converge_hostname_converge_readopt_if], " && ")
+data fleet_converge_hostname_converge_apply_step_if: String = serialize_expression(
+  expression: LogicalAnd {
+    left: fleet_converge_dispatch_mode_is(mode: HostnameConverge),
+    right: fleet_converge_hostname_converge_confirm_gate,
+  },
+)
 
-// THE PEER RUNNER LABEL IS CHOSEN BY THE DISPATCH, and it is the one runner expression in this
-// workflow that must not be fleet_converge_host_runner_expression_body: keying it to `host` would put
-// the rename back on the box whose label is being renamed.
-data fleet_converge_hostname_converge_peer_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.hostname_converge_peer))"
+// THE BASELINE ADOPTION IS A THIRD GATE: it is the only step that may rewrite a stored baseline, so it
+// asks for its own word, and its CLI entry refuses without it (the gate in YAML is not the lock).
+data fleet_converge_hostname_converge_readopt_gate: Expression = fleet_converge_dispatch_input_is(
+  input: hostname_converge_readopt_input_name as String,
+  value: hostname_converge_readopt_adopt_value as String,
+)
+
+data fleet_converge_hostname_converge_readopt_step_if: String = serialize_expression(
+  expression: LogicalAnd {
+    left: fleet_converge_dispatch_mode_is(mode: HostnameConverge),
+    right: fleet_converge_hostname_converge_readopt_gate,
+  },
+)
+
+// WHERE THE JOB RUNS, AS AN EXPRESSION AND NOT AS TEXT. This is the one runner expression in the
+// workflow that must NOT be `fleet_converge_host_runner_expression_body`: keying it to `host` would put
+// the rename back on the box whose label the rename retires. The peer's label comes from the dispatch
+// field `hostname_converge_peer_input_name` -- the same name the step env reads and the dispatch gate
+// refuses on -- so no copy of it can go stale and pin the job to a label nobody advertises. And it is
+// serialized by the same authority as the gates: `fromJSON(format(...))` is the spelling this file
+// already uses for a host-pinned job, and it is now produced rather than typed.
+data fleet_converge_hostname_converge_peer_runner_expression_body: String = serialize_expression(
+  expression: FunctionCall {
+    function: FromJSON,
+    args: [
+      FunctionCall {
+        function: Format,
+        args: [
+          StringLiteral { value: "[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]" },
+          ContextAccess {
+            context: Github,
+            path: ["event", "inputs", hostname_converge_peer_input_name as String],
+          },
+        ],
+      },
+    ],
+  },
+)
 data fleet_converge_hostname_converge_peer_runner_expression: String = join(["${{ ", fleet_converge_hostname_converge_peer_runner_expression_body, " }}"], "")
 
 fn fleet_converge_hostname_converge_runner_spec() -> RunnerSpec {
@@ -8597,10 +8668,10 @@ fn fleet_converge_hostname_converge_runner_spec() -> RunnerSpec {
 fn fleet_converge_hostname_converge_step_env() -> List<YamlKeyValue> {
   [
     kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: join(["${{ ", fleet_host_input_expression, " }}"], ""))),
-    kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_peer }}")),
-    kv(key: hostname_converge_direction_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_direction }}")),
-    kv(key: hostname_converge_readopt_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_readopt }}")),
-    kv(key: hostname_converge_confirm_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_confirm }}")),
+    kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_peer_input_name as String))),
+    kv(key: hostname_converge_direction_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_direction_input_name as String))),
+    kv(key: hostname_converge_readopt_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_readopt_input_name as String))),
+    kv(key: hostname_converge_confirm_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_confirm_input_name as String))),
     kv(key: hostname_converge_attempt_env_name as String, value: yaml_string(s: "${{ github.run_id }}-${{ github.run_attempt }}")),
   ]
 }
@@ -8675,7 +8746,7 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
       value: [
         kv(key: hostname_converge_mode_env_name as String, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
         kv(key: hostname_converge_target_env_name as String, value: yaml_string(s: join(["${{ ", fleet_host_input_expression, " }}"], ""))),
-        kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: "${{ github.event.inputs.hostname_converge_peer }}")),
+        kv(key: hostname_converge_peer_env_name as String, value: yaml_string(s: fleet_converge_dispatch_input_interpolation(input: hostname_converge_peer_input_name as String))),
       ]
     },
     working_directory: none,

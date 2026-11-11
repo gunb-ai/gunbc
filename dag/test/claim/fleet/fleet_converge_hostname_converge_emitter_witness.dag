@@ -17,7 +17,9 @@ module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
-import extdeps.github.actions { DispatchInputType, InputChoice, Job, RunsOnExpression, SelfHosted, Step, RunStep }
+import extdeps.github.actions {
+  DispatchInputType, InputChoice, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
+}
 import gunbc.fleet.fleet_converge_workflow {
   HostnameConverge,
   fleet_converge_dispatch_inputs,
@@ -313,4 +315,58 @@ test fn every_hostname_converge_step_carries_the_full_env_contract() -> Bool {
 test fn the_confirm_env_name_is_the_one_the_entries_read() -> Bool {
   (hostname_converge_confirm_env_name as String) == "FLEET_CONVERGE_HOSTNAME_CONFIRM"
     && any(hostname_converge_env_contract(), k => k == (hostname_converge_confirm_env_name as String))
+}
+
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// A LOCK MUST COMPARE A FIELD THE FORM DECLARES, AGAINST A WORD THE FORM OFFERS (review 93453).
+// The two locks guard a hostname write and a stored baseline, and both are conditions GitHub evaluates.
+// A condition assembled from text type-checks whatever it says: rename the dispatch field and the gate
+// simply never matches, so the step it existed to guard -- for the apply, the step that renames a machine
+// -- silently stops running, or for a lock removed by mistake, silently starts running. Neither is a
+// compile error, and neither is visible to a witness that reads step names and `if:` text on their own.
+// So the check crosses the two authorities: each lock's condition is required to compare a field that the
+// dispatch block ACTUALLY DECLARES against one of the words THAT FIELD OFFERS. A gate pointing at a field
+// the form never declared, or at a word no operator can choose, is red here rather than dormant in
+// production (gunbc.design_argument::fail_closed). The expectation is assembled in this file from the
+// declarations, not from the emitter's own builders -- a check that reuses the builder under test can only
+// ever agree with it.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+fn lock_compares_a_declared_field_against_a_declared_word(text: String) -> Bool {
+  any(
+    fleet_converge_dispatch_inputs,
+    i =>
+      any(
+        dispatch_input_options(name: i.name),
+        o => string_contains(s: text, pattern: join(["github.event.inputs.", i.name, " == '", o, "'"], "")),
+      ),
+  )
+}
+
+test fn every_lock_compares_a_declared_field_against_a_word_the_form_offers() -> Bool {
+  lock_compares_a_declared_field_against_a_declared_word(
+    text: step_if_text(step: fleet_converge_hostname_converge_apply_step()),
+  )
+    && lock_compares_a_declared_field_against_a_declared_word(
+      text: step_if_text(step: fleet_converge_hostname_converge_readopt_step()),
+    )
+}
+
+// A LOCK THAT IS ONLY THE MODE GATE IS NOT A LOCK. The plan and read-back steps run on the mode alone --
+// reading a name is not an actuation -- so exactly the two actuating steps must carry a condition the mode
+// alone does not give them. Comparing them to the mode-only condition is what turns "someone replaced the
+// lock with the mode gate" into red instead of into a rename that happens on a dry run.
+test fn the_two_locked_steps_are_not_merely_the_mode_gate() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+        Absent => false
+        Present { value: plan } =>
+          step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_apply_step())
+            && step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_readopt_step())
+            && step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
+      }
+  }
 }

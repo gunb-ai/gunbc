@@ -43,9 +43,17 @@ import gunbc.host.host_hostname_converge {
   TargetSelectorUnknown,
   hostname_converge_direction_of,
   hostname_converge_direction_wire,
+  hostname_converge_confirm_env_name,
+  hostname_converge_confirm_lock_line,
+  hostname_converge_confirm_value,
   hostname_converge_dispatch_admission,
   hostname_converge_dispatch_admission_line,
+  hostname_converge_dispatch_confirms_actuation,
   hostname_converge_mode,
+  hostname_converge_readopt_adopt_value,
+  hostname_converge_readopt_dispatched,
+  hostname_converge_readopt_env_name,
+  hostname_converge_readopt_lock_line,
   hostname_converge_pair,
   hostname_converge_peer_env_name,
   hostname_converge_plan,
@@ -463,4 +471,50 @@ test fn an_unnamed_target_or_peer_names_the_variable_it_needs() -> Bool {
            }
     _ => false
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// THE TWO LOCKS, AS QUESTIONS WITH ONE ANSWER EACH.
+// The apply refuses unless the dispatch carried the actuation word, and the re-adopt refuses unless it
+// carried the adopt word; the emitted `if:` checks the same thing upstream, and the read-back reports an
+// unchanged name as success only while actuation was never confirmed. All three readings ask these two
+// functions, so there is one answer to give and it can be tested directly rather than inferred from a
+// YAML string. What is being refused here is the state where the lock accepts something adjacent: a
+// missing value, a paraphrase, a different case. Each of those has to be false, and a leg that only ever
+// passes the accepted word cannot tell an `==` from an `!=`.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+test fn the_actuation_lock_accepts_one_word_exactly() -> Bool {
+  hostname_converge_dispatch_confirms_actuation(value: hostname_converge_confirm_value as String)
+    && !hostname_converge_dispatch_confirms_actuation(value: "")
+    && !hostname_converge_dispatch_confirms_actuation(value: "plan")
+    && !hostname_converge_dispatch_confirms_actuation(value: "converge ")
+    && !hostname_converge_dispatch_confirms_actuation(value: "Converge")
+    && !hostname_converge_dispatch_confirms_actuation(value: "no")
+}
+
+test fn the_readopt_lock_accepts_one_word_exactly() -> Bool {
+  hostname_converge_readopt_dispatched(value: hostname_converge_readopt_adopt_value as String)
+    && !hostname_converge_readopt_dispatched(value: "")
+    && !hostname_converge_readopt_dispatched(value: "plan")
+    && !hostname_converge_readopt_dispatched(value: "adopt ")
+    && !hostname_converge_readopt_dispatched(value: "ADOPT")
+    && !hostname_converge_readopt_dispatched(value: "converge")
+}
+
+// THE REFUSALS NAME WHAT IS MISSING. A red step that says only "not confirmed" sends the operator to the
+// workflow source instead of to the dispatch form, and the whole point of a typed refusal is that the
+// reason is legible from the log (gunbc.design_argument::fail_closed). Each line must carry the word it
+// wanted and the field that carries it -- and the readopt line must not be the confirm line wearing a
+// different hat.
+test fn a_lock_refusal_names_the_word_and_the_field_it_was_waiting_for() -> Bool {
+  let confirm_line = hostname_converge_confirm_lock_line(value: "plan")
+  let readopt_line = hostname_converge_readopt_lock_line(value: "")
+  string_contains(s: confirm_line, pattern: hostname_converge_confirm_value as String)
+    && string_contains(s: confirm_line, pattern: hostname_converge_confirm_env_name as String)
+    && string_contains(s: confirm_line, pattern: "plan")
+    && string_contains(s: readopt_line, pattern: hostname_converge_readopt_adopt_value as String)
+    && string_contains(s: readopt_line, pattern: hostname_converge_readopt_env_name as String)
+    && string_contains(s: readopt_line, pattern: "baseline")
+    && confirm_line != readopt_line
 }
