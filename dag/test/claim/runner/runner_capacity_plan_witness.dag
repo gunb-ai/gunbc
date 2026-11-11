@@ -26,7 +26,6 @@ import gunbc.runner.runner_slot_allocation {
 }
 import gunbc.runner.runner_capacity_plan {
   runner_capacity_plan,
-  runner_capacity_add_count,
   addition_actions,
   RunnerCapacityAction,
   RunnerSlotAdd,
@@ -52,7 +51,6 @@ import gunbc.runner.runner_capacity_plan {
   HostCapacityPlanOutcome,
   HostCapacityPlanReady,
   HostCapacityPlanRefused,
-  HostCapacityPlanRefusal,
   observed_github_slot_identities,
   ObservedGitHubSlotPopulation,
   GitHubSlotPopulationObserved,

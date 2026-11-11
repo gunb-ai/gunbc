@@ -11,7 +11,6 @@ import gunbc.runner.runner_capacity_plan {
   RunnerSlotRemove,
   RunnerIncarnationReplace,
   WidthAdmitted,
-  HostCapacityPlanRefusal,
   PlanReady,
   PlanRefused,
   runner_capacity_plan,
@@ -31,7 +30,6 @@ import gunbc.runner.runner_lifecycle {
   DiskHeadroomUnobserved,
 }
 import gunbc.host.host_disk_observation { host_disk_observation }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 
 // PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight +

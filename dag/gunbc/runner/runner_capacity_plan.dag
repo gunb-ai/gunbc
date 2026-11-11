@@ -5,7 +5,6 @@ import std.algebra { list_push }
 import std.nat { Nat, nat_range_inclusive }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet.fleet_runner_connectivity {
@@ -49,7 +48,7 @@ import gunbc.runner.runner_slot_allocation {
   SlotServesGitHubActions,
   SlotServesFabricExecution,
   gunbc_runner_committed_width,
-  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  RunnerWidthDerived, RunnerWidthUnresolved,
 }
 
 // SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width,
