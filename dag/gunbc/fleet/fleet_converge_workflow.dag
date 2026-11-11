@@ -2203,9 +2203,9 @@ fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: Stri
 }
 
 // THE HOST MUTATION GROUP FOR ONE NAMED MACHINE: the prefix every host-domain job shares, followed by the
-// machine's name read out of a dispatch field. One spelling, used both by the domain fold above and by the
-// jobs that set their own group, so a mode can never be grouped on a field other than the one its subject
-// is named in.
+// machine's name read out of a dispatch field. One expression, serialized by the shared group's clause fold
+// below and interpolated for the jobs that set their own group, so a mode can never be grouped on a field
+// other than the one its subject is named in.
 fn fleet_converge_host_mutation_group_expression(field: NonEmptyStr) -> Expression {
   FunctionCall {
     function: Format,
