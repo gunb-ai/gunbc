@@ -3,8 +3,8 @@ module gunbc.plans.demand_engine_program
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
-import gunbc.plans.demand_restatement_follow_up { demand_restatement_follow_up_commit_range, demand_restatement_retained_row_texts }
+import gunbc.markdown_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
+import gunbc.demand_engine_restatement_follow_up { demand_restatement_follow_up_commit_range, demand_restatement_retained_row_texts }
 
 fn demand_engine_program_body() -> List<MarkdownBlock> {
   [
