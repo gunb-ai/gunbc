@@ -114,6 +114,7 @@ fn cpu_reservation_excluded_cores(r: CpuReservation) -> Nat {
 // claims); a host with no such read (butch) is Unmeasured, not zero.
 type ReplicaMemoryReservation
   = MemoryMeasured { bytes: ByteSize, provenance: String }
+  | MemoryAssumed { bytes: ByteSize, read_obligation: String }
   | MemoryUnmeasured { reason: String }
 
 // THE BYTES a reservation COMMITS, as an Optional: a measured figure is Present; an unmeasured one is Absent --
@@ -121,9 +122,18 @@ type ReplicaMemoryReservation
 // price an unmeasured engine at nothing; returning Absent makes that state unwritable at the type, and the fold
 // in host_memory_reserved refuses to sum when any replica is Absent, so the width fails closed rather than
 // charging a made-up figure (fail_closed).
+//
+// An ASSUMED figure is a BET, not a measurement (epistemic_humility: "an inference is a bet: typed as a bet,
+// neither deleted nor promoted"). Its magnitude is carried WITH the read obligation so the bet is not erased, but
+// the width NEVER books it as a committed charge -- an assumed figure returns Absent here, exactly like an unread
+// one, because silently narrowing CI width on a number nobody read is the defect. It is NOT promoted to measured
+// (the sibling consumer serving_capacity_anchor's cache_standings likewise keeps assumed as an uncited bet, not a
+// cited reading -- single_authority). A future consumer that legitimately wants the bet can read MemoryAssumed's
+// bytes + read_obligation; the width deliberately refuses to.
 fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> Optional<ByteSize> {
   match m {
     MemoryMeasured { bytes: b, provenance: _ } => Present { value: b }
+    MemoryAssumed { bytes: _, read_obligation: _ } => Absent
     MemoryUnmeasured { reason: _ } => Absent
   }
 }
@@ -133,10 +143,14 @@ fn memory_reservation_bytes(m: ReplicaMemoryReservation) -> Optional<ByteSize> {
 // does NOT restate the ceiling figures (single_authority / minimize_redundancy: the ceiling has one home).
 // An unread ceiling is MemoryUnmeasured, so host_memory_reserved returns Absent and the width derivation fails
 // closed on that host rather than charging a fabricated number (fail_closed).
+// An UNREAD ceiling is MemoryUnmeasured and an ASSUMED ceiling stays a MemoryAssumed BET -- neither is promoted
+// to MemoryMeasured (review 93488, epistemic_humility). host_memory_reserved then returns Absent for that host
+// (memory_reservation_bytes fails both closed), so the width charges nothing rather than booking a fabricated or
+// assumed number (fail_closed). Today srv3/srv4 memory_max are ServingMemoryRead, so their charge is unchanged.
 fn reservation_from_engine_ceiling(e: ServingEngineMemory) -> ReplicaMemoryReservation {
   match e.memory_max {
     ServingMemoryRead { bytes: b, provenance: p } => MemoryMeasured { bytes: b, provenance: p }
-    ServingMemoryAssumed { bytes: b, reason: r } => MemoryMeasured { bytes: b, provenance: r }
+    ServingMemoryAssumed { bytes: b, reason: r } => MemoryAssumed { bytes: b, read_obligation: r }
     ServingMemoryUnread { reason: r } => MemoryUnmeasured { reason: r }
   }
 }
