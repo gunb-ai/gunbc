@@ -3616,23 +3616,46 @@ pub(crate) struct RegenRoundCostModel {
 ///
 /// ONE SPELLING PER NAME, AND ONE GUARD FOR ALL OF THEM. Each name is a const, and it is the const the
 /// call site passes AND the const this list carries, so the set cannot drift from a call site by
-/// re-typing a string. The guard cannot live in the resolve: the interpreter builds its function table
-/// by walking `module.items` (`v1_interpreter::ModuleScopeFragment::fn_entries`), so a declared
-/// function the settle did not realize is STILL CALLABLE, and calling it would evaluate a body no
-/// typecheck ever saw. So every evaluation of this authority goes through
-/// `RegenRoundCostModel::evaluate`, which refuses `UndemandedModelFunction` before it evaluates,
-/// naming the function, the entry, and the set that was owed. A name not declared in the model at all
+/// re-typing a string. The failure mode this guards is a refusal, not a silent read: the interpreter
+/// indexes the settled typed modules (`v1_compiler_infer_items::TypedModule`, walked by
+/// `v1_interpreter::ModuleScopeFragment::fn_entries`), so a function the demanded settle did not
+/// realize is not callable and the call refuses with the runtime's own index message. That message does
+/// not say what was owed, so every evaluation of this authority goes through
+/// `RegenRoundCostModel::evaluate`, which refuses `UndemandedModelFunction` naming the function, the
+/// entry and the set owed, before the runtime is asked. A name the model does not declare at all
 /// refuses in the settle's realization audit, as it always did.
 const FN_GENERATION_BOUND: &str = "regen_convergence_generation_bound";
 const FN_BOUND_EXCEEDED: &str = "regen_convergence_bound_exceeded";
 const FN_STAGE_REBUILD_WHOLE_COMPILER: &str = "stage0_stage_rebuild_is_whole_compiler";
 const FN_ACTUATION_TODAY: &str = "stage0_partition_rebuild_is_actuatable_today";
+const FN_REBUILD_PACKAGES_TODAY: &str = "stage0_partition_rebuild_packages_today";
+const FN_REBUILD_EXCLUDED_TODAY: &str = "stage0_partition_rebuild_excluded_today";
+const FN_REBUILD_DECISION_LINE_TODAY: &str = "stage0_partition_rebuild_decision_line_today";
+const FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY: &str =
+    "stage0_partition_rebuild_release_scope_empty_today";
+const FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY: &str =
+    "stage0_partition_rebuild_is_partition_generation_move_today";
+const FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY: &str =
+    "stage0_partition_rebuild_requires_whole_compiler_today";
 const FN_RENDER_RECEIPT: &str = "regen_round_cost_render";
+
+/// THE WHOLE INVENTORY, NOT A SAMPLE. A demanded name that a call site reaches is a body the settle
+/// owes; leaving one out refuses the round mid-install. `#16251` run `jt3-16251` (20:33:03Z) proved it
+/// the hard way after five of these eleven were listed: `refusal: stage0_partition_rebuild_packages_today
+/// did not evaluate: no declaration named 'stage0_partition_rebuild_packages_today' in this
+/// execution's loaded index`. Keep this list and the call sites in step; the gate below turns the next
+/// omission into a named refusal at the call instead of an index lookup deep in an install.
 const ROUND_COST_DEMANDED: &[&str] = &[
     FN_GENERATION_BOUND,
     FN_BOUND_EXCEEDED,
     FN_STAGE_REBUILD_WHOLE_COMPILER,
     FN_ACTUATION_TODAY,
+    FN_REBUILD_PACKAGES_TODAY,
+    FN_REBUILD_EXCLUDED_TODAY,
+    FN_REBUILD_DECISION_LINE_TODAY,
+    FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY,
+    FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY,
+    FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY,
     FN_RENDER_RECEIPT,
 ];
 
@@ -3656,9 +3679,10 @@ impl RegenRoundCostModel {
         })
     }
 
-    /// THE ONE WAY THIS AUTHORITY IS EVALUATED. The guard sits here, not at the call sites, because
-    /// there is more than one call site (`rebuild_scope_decision_with`, the round-cost receipt render,
-    /// the actuation probe) and the interpreter would evaluate an unrealized body without complaint.
+    /// THE ONE WAY THIS AUTHORITY IS EVALUATED. The guard sits here rather than at each call site
+    /// because there is more than one call site (`rebuild_scope_decision_with`, the round-cost receipt
+    /// render, the actuation probe with its seven probes), and it answers the question before the
+    /// runtime's index lookup does, naming the set that was owed.
     fn evaluate(
         &self,
         ctx: &crate::v1_interpreter::InterpContext,
@@ -5969,14 +5993,14 @@ fn partition_rebuild_actuation(
         }
     };
     let package_closure = model_value_to_string_list(
-        &call("stage0_partition_rebuild_packages_today")?,
+        &call(FN_REBUILD_PACKAGES_TODAY)?,
         "stage0_partition_rebuild_packages_today",
     )?;
     let excluded_packages = model_value_to_string_list(
-        &call("stage0_partition_rebuild_excluded_today")?,
+        &call(FN_REBUILD_EXCLUDED_TODAY)?,
         "stage0_partition_rebuild_excluded_today",
     )?;
-    let decision_line = match call("stage0_partition_rebuild_decision_line_today")? {
+    let decision_line = match call(FN_REBUILD_DECISION_LINE_TODAY)? {
         ModelValue::Str(ref value) => value.to_string(),
         other => {
             return Err(format!(
@@ -5985,7 +6009,7 @@ fn partition_rebuild_actuation(
         ))
         }
     };
-    let release_scope_empty = match call("stage0_partition_rebuild_release_scope_empty_today")? {
+    let release_scope_empty = match call(FN_REBUILD_RELEASE_SCOPE_EMPTY_TODAY)? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
@@ -5995,7 +6019,7 @@ fn partition_rebuild_actuation(
         }
     };
     let partition_generation_move =
-        match call("stage0_partition_rebuild_is_partition_generation_move_today")? {
+        match call(FN_REBUILD_IS_PARTITION_GENERATION_MOVE_TODAY)? {
             ModelValue::Bool(value) => value,
             other => {
                 return Err(format!(
@@ -6005,7 +6029,7 @@ fn partition_rebuild_actuation(
             }
         };
     let whole_compiler_required =
-        match call("stage0_partition_rebuild_requires_whole_compiler_today")? {
+        match call(FN_REBUILD_REQUIRES_WHOLE_COMPILER_TODAY)? {
             ModelValue::Bool(value) => value,
             other => {
                 return Err(format!(
