@@ -70,6 +70,12 @@ fn plant_release_tree(source_root: String, count: Int) -> Bool {
     "  mkdir -p \"", source_root, "/$sub/$d\"\n",
     "  printf 'entry %s\n' \"$i\" > \"", source_root, "/$sub/$d/file$i\"\n",
     "done\n",
+    // The fold's install-binary leg reads each executable at cargo_default_release_dir(source_root),
+    // so both release bins in approval_broker_release_locus_executables must exist there as real files.
+    "mkdir -p '", source_root, "/target/release'\n",
+    "printf '#!/bin/sh\necho gunbc\n' > '", source_root, "/target/release/gunbc'\n",
+    "printf '#!/bin/sh\necho adcs\n' > '", source_root, "/target/release/approval_device_crypto_serve'\n",
+    "chmod 0755 '", source_root, "/target/release/gunbc' '", source_root, "/target/release/approval_device_crypto_serve'\n",
   ], "")) == 0
 }
 
@@ -106,8 +112,8 @@ fn install_planted_tree(count: Int) -> Int {
   let workspace = join(["gunbc-install-fold-", int_to_decimal_string(value: count)], "")
   let staging_root = join(["/tmp/", workspace, "-staging"], "")
   let source_root = join(["/tmp/", workspace, "-source"], "")
-  let spine: List<String> = []
-  let locus = "locus"
+  let spine: List<String> = [staging_root]
+  let locus = join([staging_root, "/release"], "")
   let ok_plant = plant_release_tree(source_root: source_root, count: count)
   let ok_stage = sh(join(["set -euo pipefail\nrm -rf '", staging_root, "'\nmkdir -p '", staging_root, "'\n"], "")) == 0
   let realm = TreeInstallStaged { staging_root: staging_root as NonEmptyStr, archive_owner: "root" as NonEmptyStr }
@@ -171,15 +177,16 @@ test fn production_release_tree_install_converges() -> Bool {
     "mkdir -p '", source_root, "' '", staging_root, "'\n",
     "tar -C \"$root\" -cf - dag src/v2 | tar -C '", source_root, "' -xf -\n",
     "bin=$(command -v sha256sum)\n",
-    "mkdir -p '", source_root, "/src/v2/_guest/bin' '", source_root, "/_staged_bin'\n",
+    "mkdir -p '", source_root, "/src/v2/_guest/bin' '", source_root, "/target/release'\n",
     "cp \"$bin\" '", source_root, "/src/v2/_guest/bin/gunbc-guest-runtime'\n",
-    "cp \"$bin\" '", source_root, "/_staged_bin/gunbc-release'\n",
+    "cp \"$bin\" '", source_root, "/target/release/gunbc'\n",
+    "cp \"$bin\" '", source_root, "/target/release/approval_device_crypto_serve'\n",
   ], "")) == 0
   let realm = TreeInstallStaged { staging_root: staging_root as NonEmptyStr, archive_owner: "root" as NonEmptyStr }
   let verdict = tree_install_in_realm(
     realm: realm,
-    spine: [],
-    locus: "locus",
+    spine: [staging_root],
+    locus: join([staging_root, "/release"], ""),
     source_root: source_root,
     revision: RevisionBoundAtEmission { revision: "deadbeefcafebabe000000000000000000000000" as CommitSha },
     executables: approval_broker_release_locus_executables,
