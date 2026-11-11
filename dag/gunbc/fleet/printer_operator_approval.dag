@@ -21,7 +21,8 @@ import gunbc.auth.approval_gate {
   approval_instant_now, approval_expires_at, approval_file_stored_request,
   ApprovalFiled, ApprovalFilingRefused, approval_poll_ticks, PollObservedAt,
   PollClockUnreadable, PollBudgetExhausted, approval_gate_from_poll,
-  GateAdmitted, GateRefused, approval_refusal_text, approval_request_window,
+  GateAdmitted, GateRefused, approval_refusal_text, approval_request_window, approval_poll_tick_budget, approval_poll_step_timeout_minutes,
+  approval_poll_overrun_ticks, approval_poll_no_post_decision_work,
 }
 
 // HOW LONG THE OPERATOR HAS TO DECIDE THE PRINT-START BED-CLEAR CARD.
@@ -86,19 +87,21 @@ fn printer_operator_approval_window() -> Second {
 // seconds is how quickly an operator's tap turns into a print; the tick BUDGET below is derived from
 // the window and this cadence and is never counted off independently.
 data printer_operator_approval_poll_cadence: Second = second(count: 10)
-// POLLS HELD IN RESERVE BEYOND THE DEADLINE, so the wait ends on the model's own ApprovalExpired
-// verdict rather than on a runner kill -- the same reason srv1_root_mutation_approval_run keeps four
-// (its run 41972155901 was killed two minutes before its deadline, so the fold never spoke).
-data printer_approval_expiry_overrun_ticks: Int = 4
+// THE RESERVE, and the rule that spends it, are the fleet's now, not this module's:
+// gunbc.auth.approval_gate approval_poll_overrun_ticks / approval_poll_tick_budget /
+// approval_poll_step_timeout_minutes. What stays local is what is genuinely local -- the cadence an
+// operator's tap turns into a print, and the two allowances the Secret Manager read and the print itself
+// need around the wait.
 
 // TICKETS ARE DERIVED, never restated: ceiling(window / cadence) covers the whole window -- the 90 this
 // call site used to hand-write was 900 s over a 10 s cadence, a second copy of a number the window
 // already owns -- and the overrun covers the deadline read itself.
 fn printer_operator_approval_poll_tick_budget() -> Int {
-  let ticks = (nat_to_int(n: second_count(s: printer_operator_approval_window()))
-      + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence)) - 1)
-    / nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
-  ticks + printer_approval_expiry_overrun_ticks
+  approval_poll_tick_budget(
+    window: printer_operator_approval_window(),
+    cadence: printer_operator_approval_poll_cadence,
+    overrun_ticks: approval_poll_overrun_ticks
+  )
 }
 
 // WHAT THE RUNNER IS TOLD TO WAIT: prelude + window + the overrun reads + the post-decision delivery +
@@ -107,12 +110,14 @@ fn printer_operator_approval_poll_tick_budget() -> Int {
 data printer_approval_step_margin: Second = second(count: 180)
 
 fn printer_approval_step_timeout_minutes() -> Minute {
-  let secs = nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
-    + nat_to_int(n: second_count(s: printer_operator_approval_window()))
-    + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence)) * printer_approval_expiry_overrun_ticks
-    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
-    + nat_to_int(n: second_count(s: printer_approval_step_margin))
-  minute(count: (secs + 59) / 60)
+  approval_poll_step_timeout_minutes(
+    window: printer_operator_approval_window(),
+    cadence: printer_operator_approval_poll_cadence,
+    overrun_ticks: approval_poll_overrun_ticks,
+    pre_decision_allowance: printer_approval_pre_decision_allowance,
+    post_decision_allowance: printer_approval_post_decision_allowance,
+    step_margin: printer_approval_step_margin
+  )
 }
 
 // The ntfy approval adapter: it files the start request, polls for the signed grant and hands

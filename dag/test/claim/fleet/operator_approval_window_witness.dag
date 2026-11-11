@@ -30,31 +30,30 @@ import std.types { Bool }
 import std.measure { second_count, minute_count }
 import std.integer { nat_to_int }
 import extdeps.github.actions { max_job_timeout_minutes }
-import gunbc.auth.approval_gate { approval_request_window }
+import gunbc.auth.approval_gate { approval_request_window, approval_poll_overrun_ticks }
 import gunbc.auth.access_token_source { workload_identity_access_token_lifetime }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run {
   gcp_iam_converge_file_window, gcp_iam_converge_poll_cadence, gcp_iam_converge_poll_ticks,
   gcp_iam_converge_step_timeout_minutes, gcp_iam_converge_pre_decision_allowance,
-  gcp_iam_converge_step_margin, gcp_iam_converge_expiry_overrun_ticks,
+  gcp_iam_converge_step_margin,
 }
 import gunbc.auth.branch_run_grant {
   branch_run_grant_file_window, branch_run_grant_window, branch_run_grant_poll_cadence,
   branch_run_grant_poll_tick_budget, branch_run_grant_step_timeout_minutes,
   branch_run_grant_pre_decision_allowance, branch_run_grant_step_margin,
-  branch_run_grant_expiry_overrun_ticks, branch_run_grant_filing_allowance,
+  branch_run_grant_filing_allowance,
 }
 import gunbc.fleet.printer_operator_approval {
   printer_operator_approval_window, printer_operator_approval_poll_cadence,
   printer_operator_approval_poll_tick_budget, printer_approval_credential_ceiling,
   printer_approval_pre_decision_allowance, printer_approval_post_decision_allowance,
   printer_approval_step_timeout_minutes, printer_approval_step_margin,
-  printer_approval_expiry_overrun_ticks,
 }
 import gunbc.fabric.fabric_storage_state_provision { fabric_storage_state_provision_card_window }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approval_window, srv1_root_mutation_poll_cadence,
-  srv1_root_mutation_poll_tick_budget, srv1_root_mutation_expiry_overrun_ticks,
+  srv1_root_mutation_poll_tick_budget,
   srv1_root_mutation_prelude_allowance, srv1_root_mutation_step_margin,
   srv1_root_mutation_approval_step_timeout_minutes,
 }
@@ -121,9 +120,10 @@ test fn the_printers_credential_ceiling_is_the_token_minus_the_run() -> Bool {
 // one fact, and the second copy did not have to agree. The reserve is the site's OWN declared overrun row,
 // not a 4 typed into this claim: a claim that restates the thing it checks checks nothing.
 // SCOPE, said plainly: four polls wait out their card, and four are checked. The fifth,
-// gunbc.runner.runner_group_restriction_ensure_run microvm_runner_group_poll_tick_budget, deliberately
-// stops polling long before its card closes and lets a later pass redeem the grant, so its budget is NOT
-// expected to reach its deadline and it is named in its own module instead.
+// gunbc.runner.runner_group_restriction_ensure_run, deliberately stops polling long before its card
+// closes and lets a later dispatch redeem the still-live grant, so its tick budget is NOT expected to
+// reach its deadline -- it is derived there from that module's declared dispatch wait instead, and
+// dag/test/claim/runner/runner_group_restriction_ensure_run_witness.dag is what keeps it honest.
 test fn every_polls_tick_budget_reaches_its_deadline() -> Bool {
   let printer_ticks = nat_to_int(n: printer_operator_approval_poll_tick_budget())
     * nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
@@ -135,19 +135,19 @@ test fn every_polls_tick_budget_reaches_its_deadline() -> Bool {
     * nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
   printer_ticks
     >= nat_to_int(n: second_count(s: printer_operator_approval_window()))
-      + printer_approval_expiry_overrun_ticks
+      + approval_poll_overrun_ticks
         * nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
     && srv1_ticks
       >= nat_to_int(n: second_count(s: srv1_root_mutation_approval_window()))
-        + srv1_root_mutation_expiry_overrun_ticks
+        + approval_poll_overrun_ticks
           * nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
     && iam_ticks
       >= nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
-        + gcp_iam_converge_expiry_overrun_ticks
+        + approval_poll_overrun_ticks
           * nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence))
     && grant_ticks
       >= nat_to_int(n: second_count(s: branch_run_grant_file_window()))
-        + branch_run_grant_expiry_overrun_ticks
+        + approval_poll_overrun_ticks
           * nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
 }
 
@@ -160,26 +160,26 @@ test fn every_window_fits_inside_the_step_that_polls_it() -> Bool {
   let srv1_need = nat_to_int(n: second_count(s: srv1_root_mutation_prelude_allowance))
     + nat_to_int(n: second_count(s: srv1_root_mutation_approval_window()))
     + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
-      * srv1_root_mutation_expiry_overrun_ticks
+      * approval_poll_overrun_ticks
     + nat_to_int(n: second_count(s: srv1_root_mutation_step_margin))
   let iam_step = gcp_iam_converge_step_timeout_minutes() * 60
   let iam_need = nat_to_int(n: second_count(s: gcp_iam_converge_pre_decision_allowance))
     + nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
     + nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence))
-      * nat_to_int(n: gcp_iam_converge_expiry_overrun_ticks)
+      * approval_poll_overrun_ticks
     + nat_to_int(n: second_count(s: iam_converge_token_lifetime))
     + nat_to_int(n: second_count(s: gcp_iam_converge_step_margin))
   let grant_step = branch_run_grant_step_timeout_minutes() * 60
   let grant_need = nat_to_int(n: second_count(s: branch_run_grant_pre_decision_allowance))
     + nat_to_int(n: second_count(s: branch_run_grant_file_window()))
     + nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
-      * nat_to_int(n: branch_run_grant_expiry_overrun_ticks)
+      * approval_poll_overrun_ticks
     + nat_to_int(n: second_count(s: branch_run_grant_step_margin))
   let printer_step = nat_to_int(n: minute_count(m: printer_approval_step_timeout_minutes())) * 60
   let printer_need = nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
     + nat_to_int(n: second_count(s: printer_operator_approval_window()))
     + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
-      * nat_to_int(n: printer_approval_expiry_overrun_ticks)
+      * approval_poll_overrun_ticks
     + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
     + nat_to_int(n: second_count(s: printer_approval_step_margin))
   srv1_step >= srv1_need

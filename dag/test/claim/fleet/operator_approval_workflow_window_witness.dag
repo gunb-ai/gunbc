@@ -5,11 +5,12 @@ import std.types { Bool }
 import std.measure { second_count }
 import std.integer { nat_to_int }
 import extdeps.github.actions { max_job_timeout_minutes }
+import gunbc.auth.approval_gate { approval_poll_overrun_ticks }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes }
 import gunbc.auth.branch_run_grant { branch_run_grant_step_timeout_minutes }
 import gunbc.fleet.printer_operator_approval {
   printer_operator_approval_window, printer_operator_approval_poll_cadence,
-  printer_approval_expiry_overrun_ticks, printer_approval_pre_decision_allowance,
+  printer_approval_pre_decision_allowance,
   printer_approval_post_decision_allowance, printer_approval_step_margin,
 }
 import gunbc.fleet.fleet_converge_workflow {
@@ -40,7 +41,7 @@ test fn the_printer_step_covers_its_preparation_and_its_operators_whole_window()
     + nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
     + nat_to_int(n: second_count(s: printer_operator_approval_window()))
     + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
-      * nat_to_int(n: printer_approval_expiry_overrun_ticks)
+      * approval_poll_overrun_ticks
     + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
     + nat_to_int(n: second_count(s: printer_approval_step_margin))
   step >= need

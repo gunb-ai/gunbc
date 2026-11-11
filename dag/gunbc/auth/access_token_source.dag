@@ -4,6 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { Secret, NonEmptyStr, Bool, String }
 import std.measure { Second, second }
+import extdeps.cloud.gcp.iam { default_token_lifetime }
 import std.algebra { trim }
 import std.upsert_decision {
   Absent,
@@ -88,11 +89,16 @@ data workload_identity_token_env: NonEmptyStr = "WIF_ACCESS_TOKEN" as NonEmptySt
 // everything spent before and after the mint still fits inside this lifetime; otherwise mint after the
 // wait, as gunbc.auth.gcp_iam_converge_run's actuation auth step and
 // gunbc.fleet.srv1_root_mutation_approval_run's admitted-only mint both do.
-// RE-DERIVE, do not trust: this is the platform's default, not a value we requested. Where a longer
-// token is genuinely needed the minting path can ask for one -- extdeps.cloud.gcp.oauth mint_access_token
-// carries max_desired_expiry_seconds -- but that must be a deliberate widening of a short-lived cloud
-// credential, weighed against the blast radius of a leaked one, not a side effect of a longer poll.
-data workload_identity_access_token_lifetime: Second = second(count: 3600)
+// THE NUMBER IS NOT HELD HERE. It is upstream's fact, so it has upstream's home --
+// extdeps.cloud.gcp.iam default_token_lifetime.default_lifetime -- and this row only NAMES what our
+// workflow-minted, condition-bound federation tokens actually hold, which is that default because
+// nothing in the fleet requests a token_lifetime. Repeating 3600 here would be a second place to decide
+// an upstream fact (gunbc.design_argument single_authority, external_upstreams), and the two would drift.
+// Where a longer token is genuinely needed the minting path can ask for one -- extdeps.cloud.gcp.oauth
+// mint_access_token carries max_desired_expiry_seconds -- but that is a deliberate widening of a
+// short-lived cloud credential, weighed against the blast radius of a leaked one, never a side effect of
+// a longer poll.
+data workload_identity_access_token_lifetime: Second = default_token_lifetime.default_lifetime
 
 // PURE, so the arms are witnessable without an environment. An absent variable and an empty one are
 // two different operator situations -- the workflow did not run the auth step, versus the auth step

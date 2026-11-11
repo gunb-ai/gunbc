@@ -4,7 +4,7 @@ import extdeps.github.auth { github_rest }
 import gunbc.fleet.fleet_converge_run_name { mode_of_run_title }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, minute_count }
 import std.integer { nat_to_int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
@@ -47,6 +47,8 @@ import gunbc.auth.approval_gate {
   approval_refusal_text, GateAdmitted, GateRefused, approval_gate_from_poll,
   approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused, approval_request_window,
+  approval_poll_tick_budget, approval_poll_step_timeout_minutes,
+  approval_poll_overrun_ticks, approval_poll_no_post_decision_work,
 }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
@@ -264,9 +266,8 @@ fn branch_run_grant_file_window() -> Second {
 
 data branch_run_grant_poll_cadence: Second = second(count: 15)
 
-// POLLS HELD IN RESERVE BEYOND THE DEADLINE, so the wait ends on the model's own ApprovalExpired
-// verdict and not on a runner kill (see gunbc.fleet.srv1_root_mutation_approval_run run 41972155901).
-data branch_run_grant_expiry_overrun_ticks: Int = 4
+// THE RESERVE and the rule that spends it are the fleet's, in gunbc.auth.approval_gate; this module
+// supplies the window, cadence, allowance and margin.
 
 // WHAT THE STEP SPENDS BEFORE THE POLL: read the run from GitHub, read the account's policy as
 // iam-observe, and file. SIZED from the bounded calls it covers, not measured.
@@ -278,10 +279,11 @@ data branch_run_grant_step_margin: Second = second(count: 180)
 // whole number of cadences still reaches its deadline, plus the overrun reserve. The call site used to
 // divide the window by the cadence inline, which both truncated and stopped at the deadline.
 fn branch_run_grant_poll_tick_budget() -> Int {
-  let cadence = nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
-  let window = nat_to_int(n: second_count(s: branch_run_grant_file_window()))
-  let ticks = (window + cadence - 1) / cadence
-  ticks + branch_run_grant_expiry_overrun_ticks
+  approval_poll_tick_budget(
+    window: branch_run_grant_file_window(),
+    cadence: branch_run_grant_poll_cadence,
+    overrun_ticks: approval_poll_overrun_ticks
+  )
 }
 
 // THE REQUEST STEP'S CEILING, DERIVED FROM THIS MODULE'S WINDOW. It never borrows
@@ -290,10 +292,14 @@ fn branch_run_grant_poll_tick_budget() -> Int {
 // poll mid-wait. It carries no actuation allowance because this step actuates nothing -- the apply is a
 // later step, behind its own federation.
 fn branch_run_grant_step_timeout_minutes() -> Int {
-  (nat_to_int(n: second_count(s: branch_run_grant_pre_decision_allowance))
-    + nat_to_int(n: second_count(s: branch_run_grant_file_window()))
-    + nat_to_int(n: second_count(s: branch_run_grant_poll_cadence)) * branch_run_grant_expiry_overrun_ticks
-    + nat_to_int(n: second_count(s: branch_run_grant_step_margin)) + 59) / 60
+  nat_to_int(n: minute_count(m: approval_poll_step_timeout_minutes(
+    window: branch_run_grant_file_window(),
+    cadence: branch_run_grant_poll_cadence,
+    overrun_ticks: approval_poll_overrun_ticks,
+    pre_decision_allowance: branch_run_grant_pre_decision_allowance,
+    post_decision_allowance: approval_poll_no_post_decision_work,
+    step_margin: branch_run_grant_step_margin
+  )))
 }
 
 type BranchRunGrantStanding

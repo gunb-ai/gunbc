@@ -5,7 +5,7 @@ import gunbc.auth.approval_run_identity
 import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
 
 import std.types { Int, List, NonEmptyStr, String, Secret, Bool, Timestamp }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, minute_count }
 import std.integer { nat_to_int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
@@ -20,6 +20,8 @@ import gunbc.auth.approval_gate {
   approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
   approval_standing_read, StandingReadAt, StandingClockUnreadable, approval_request_window,
+  approval_poll_tick_budget, approval_poll_step_timeout_minutes,
+  approval_poll_overrun_ticks, approval_poll_no_post_decision_work,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization, ApprovalPollStanding }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
@@ -62,11 +64,10 @@ fn gcp_iam_converge_file_window() -> Second {
 
 data gcp_iam_converge_poll_cadence: Second = second(count: 15)
 
-// POLLS HELD IN RESERVE BEYOND THE DEADLINE, so the wait ends on the model's own ApprovalExpired
-// verdict rather than on a runner kill: srv1_root_mutation_approval_run's run 41972155901 was killed
-// two minutes before its deadline, so the fold never produced a typed refusal for the record. Four
-// ticks at the fifteen-second cadence is a minute of room for the deadline read.
-data gcp_iam_converge_expiry_overrun_ticks: Int = 4
+// THE RESERVE and the poll-budget arithmetic are the fleet's, in gunbc.auth.approval_gate
+// (approval_poll_overrun_ticks and friends); this module supplies the window, cadence, allowances and
+// margin. What is local here is the post-decision allowance below: the impersonated actuation token,
+// which no other site presents.
 
 // WHAT THE STEP SPENDS BEFORE THE POLL BEGINS: the plan (a roster read under iam-observe) and the
 // filing. SIZED from the bounded API calls it covers, not measured; it is a ceiling, so an under-sized
@@ -79,10 +80,11 @@ data gcp_iam_converge_step_margin: Second = second(count: 180)
 // window divided by the cadence -- ceiling, so a window that is not a whole number of cadences is
 // still covered to its deadline -- plus the overrun reserve.
 fn gcp_iam_converge_poll_ticks() -> Int {
-  let cadence = nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence))
-  let window = nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
-  let ticks = (window + cadence - 1) / cadence
-  ticks + gcp_iam_converge_expiry_overrun_ticks
+  approval_poll_tick_budget(
+    window: gcp_iam_converge_file_window(),
+    cadence: gcp_iam_converge_poll_cadence,
+    overrun_ticks: approval_poll_overrun_ticks
+  )
 }
 
 data gcp_iam_converge_submit_timeout: Second = second(count: 30)
@@ -95,11 +97,14 @@ data gcp_iam_converge_submit_timeout: Second = second(count: 30)
 // timeout allows; the lifetime is therefore the whole actuation bound, and it is spent AFTER the
 // decision by the apply step -- it never bounds the operator's time to decide.
 fn gcp_iam_converge_step_timeout_minutes() -> Int {
-  (nat_to_int(n: second_count(s: gcp_iam_converge_pre_decision_allowance))
-    + nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
-    + nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence)) * gcp_iam_converge_expiry_overrun_ticks
-    + nat_to_int(n: second_count(s: iam_converge_token_lifetime))
-    + nat_to_int(n: second_count(s: gcp_iam_converge_step_margin)) + 59) / 60
+  nat_to_int(n: minute_count(m: approval_poll_step_timeout_minutes(
+    window: gcp_iam_converge_file_window(),
+    cadence: gcp_iam_converge_poll_cadence,
+    overrun_ticks: approval_poll_overrun_ticks,
+    pre_decision_allowance: gcp_iam_converge_pre_decision_allowance,
+    post_decision_allowance: iam_converge_token_lifetime,
+    step_margin: gcp_iam_converge_step_margin
+  )))
 }
 
 // THE ACTUATION TOKEN'S VARIABLE. The workflow's impersonating auth step publishes it to the apply
