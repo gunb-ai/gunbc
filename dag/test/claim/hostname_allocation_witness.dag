@@ -1,11 +1,53 @@
 module test.claim.hostname_allocation_witness
 
+// IMPORTS ADDED 2026-11-10 (gunbc.plans.fleet_machine_authority P2). Before this the file named nothing it
+// used and resolved only through the retired flat namespace, so at main it refused at resolve and none of
+// its claims ran.
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Present }
+import std.error_primitives { Err, Ok }
+import std.algebra { fold_list }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.allocation_roster { AllocationAdmitted, AllocationPrimaryKeyRepeated, AllocationSecondaryKeyRepeated }
+import product.host_identity { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_183527,
+}
+import gunbc.hostname_allocation {
+  HostnameAllocation,
+  HumanName,
+  FirstOnly,
+  FirstLast,
+  LegacyHostname,
+  DrawnHumanName,
+  HumanNameDraw,
+  HumanNameDrawn,
+  HumanNameDrawExhausted,
+  HumanNameDrawRefused,
+  HostSelectorResolved,
+  HostSelectorAmbiguous,
+  HostSelectorUnknown,
+  HostSelectorRegistryRefused,
+  human_name_canonical_hostname,
+  draw_human_name,
+  canonical_hostname_for_fleet_slot,
+  canonical_hostname_in_roster,
+  hostname_allocation_admission,
+  resolve_host_selector,
+  resolve_host_selector_in,
+  fleet_machine_registry,
+  next_name_for_fleet_slot,
+  allocation_reserved_forms,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn allocation_fixture(slot: String, hostname: String) -> HostnameAllocation {
   HostnameAllocation {
     fleet_slot: slot as HostIdentity,
     name: LegacyHostname { label: hostname as DnsLabel },
+    next_name: Absent,
   }
 }
 
@@ -13,6 +55,33 @@ fn drawn_fixture(slot: String, name: HumanName, entropy: Int) -> HostnameAllocat
   HostnameAllocation {
     fleet_slot: slot as HostIdentity,
     name: DrawnHumanName { name: name, draw: HumanNameDraw { entropy: entropy } },
+    next_name: Absent,
+  }
+}
+
+fn pending_fixture(slot: String, hostname: String, next: String) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    name: LegacyHostname { label: hostname as DnsLabel },
+    next_name: Present { value: LegacyHostname { label: next as DnsLabel } },
+  }
+}
+
+// A PENDING DRAW REPRODUCES against every other registry row, pending names included. Re-drawing against
+// that superset is exact because hostname_allocation_admission refuses any other row claiming the name the
+// draw chose; so a recorded next_name the allocator would not yield reds here rather than standing.
+fn pending_draw_reproduces(row: HostnameAllocation, rows: List<HostnameAllocation>) -> Bool {
+  match row.next_name {
+    Absent => true
+    Present { value: next } => match next {
+      LegacyHostname { label: _ } => true
+      DrawnHumanName { name: recorded, draw: d } =>
+        match draw_human_name(draw: d, existing: filter(rows, o => (o.fleet_slot as String) != (row.fleet_slot as String))) {
+          HumanNameDrawn { name: drawn } => human_name_eq(a: drawn, b: recorded)
+          HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+          HumanNameDrawRefused { reason: _ } => false
+        }
+    }
   }
 }
 
@@ -75,7 +144,7 @@ test fn witness_identity_that_is_not_a_dns_label_can_still_have_a_hostname() -> 
 }
 
 test fn witness_production_fleet_roster_is_injective() -> Bool {
-  match hostname_allocation_admission(allocations: gunbc_fleet_hostname_allocations) {
+  match hostname_allocation_admission(allocations: fleet_machine_registry) {
     AllocationAdmitted { roster: _ } => true
     AllocationPrimaryKeyRepeated { key: _ } => false
     AllocationSecondaryKeyRepeated { key: _ } => false
@@ -133,12 +202,12 @@ test fn witness_lookup_of_unallocated_slot_is_absent_not_reconstructed() -> Bool
 // is re-drawn by the real allocator against the rows allocated before it, and must yield exactly the
 // recorded name; at least one drawn row must exist, so an empty set cannot pass vacuously.
 test fn witness_every_recorded_draw_is_what_the_allocator_yields() -> Bool {
-  let drawn = filter(gunbc_fleet_hostname_allocations, r => match r.name {
+  let drawn = filter(fleet_machine_registry, r => match r.name {
     DrawnHumanName { name: _, draw: _ } => true
     LegacyHostname { label: _ } => false
   })
   let check = fold_list(
-    xs: gunbc_fleet_hostname_allocations,
+    xs: fleet_machine_registry,
     empty: RecordedDrawCheck { prior: [], reproduced: true },
     cons: fn(acc, r) {
       RecordedDrawCheck {
@@ -194,16 +263,19 @@ test fn witness_identity_and_name_resolve_to_one_host() -> Bool {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_183527 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let by_identity = match resolve_host_selector(selector: "host-183527") {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_183527 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let legacy = match resolve_host_selector(selector: "srv3") {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_srv3 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   by_name && by_identity && legacy
 }
@@ -218,11 +290,13 @@ test fn witness_ambiguous_short_name_selects_nothing() -> Bool {
       c.length() == 2 && any(c, x => (x as String) == "ada-smith") && any(c, x => (x as String) == "ada-jones")
     HostSelectorResolved { host: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let full = match resolve_host_selector_in(allocations: roster, selector: "ada-jones") {
     HostSelectorResolved { host: h } => (h as String) == "x2"
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   short && full
 }
@@ -230,6 +304,7 @@ test fn witness_ambiguous_short_name_selects_nothing() -> Bool {
 test fn witness_unknown_selector_is_unknown() -> Bool {
   match resolve_host_selector(selector: "nobody-here") {
     HostSelectorUnknown { selector: s } => s == "nobody-here"
+    HostSelectorRegistryRefused { key: _ } => false
     HostSelectorResolved { host: _ } => false
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
@@ -240,11 +315,13 @@ test fn witness_butch_and_its_identity_resolve_to_srv14() -> Bool {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_srv14 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   let by_identity = match resolve_host_selector(selector: "srv14") {
     HostSelectorResolved { host: h } => (h as String) == (operator_host_srv14 as String)
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
     HostSelectorUnknown { selector: _ } => false
+    HostSelectorRegistryRefused { key: _ } => false
   }
   by_name && by_identity
 }
@@ -254,13 +331,102 @@ test fn witness_butch_and_its_identity_resolve_to_srv14() -> Bool {
 test fn witness_owen_and_host_94c81d_name_no_host() -> Bool {
   let by_name = match resolve_host_selector(selector: "owen") {
     HostSelectorUnknown { selector: s } => s == "owen"
+    HostSelectorRegistryRefused { key: _ } => false
     HostSelectorResolved { host: _ } => false
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
   let by_identity = match resolve_host_selector(selector: "host-94c81d") {
     HostSelectorUnknown { selector: s } => s == "host-94c81d"
+    HostSelectorRegistryRefused { key: _ } => false
     HostSelectorResolved { host: _ } => false
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
   by_name && by_identity
+}
+
+// THE ACCEPTED NEXT NAMES (operator, D3 of gunbc.plans.fleet_machine_authority, 2026-11-10) ARE THE
+// ALLOCATOR'S: each re-draws to its recorded name, at least five are pending, and srv4's is fox.
+test fn witness_every_pending_draw_is_what_the_allocator_yields() -> Bool {
+  let pending = filter(fleet_machine_registry, r => match r.next_name {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let fox = match next_name_for_fleet_slot(fleet_slot: operator_host_srv4) {
+    Present { value: n } => match n {
+      DrawnHumanName { name: h, draw: _ } => (human_name_canonical_hostname(name: h) as String) == "fox"
+      LegacyHostname { label: _ } => false
+    }
+    Absent => false
+  }
+  pending.length() >= 5 && all(pending, r => pending_draw_reproduces(row: r, rows: fleet_machine_registry)) && fox
+}
+
+// A PENDING NAME IS RESERVED, NOT ANSWERED TO: srv4 does not resolve as fox until its rename applies, and
+// no other draw can take fox meanwhile.
+test fn witness_pending_name_is_reserved_but_does_not_resolve() -> Bool {
+  let unresolved = match resolve_host_selector(selector: "fox") {
+    HostSelectorUnknown { selector: s } => s == "fox"
+    HostSelectorRegistryRefused { key: _ } => false
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+  }
+  let reserved = any(allocation_reserved_forms(allocation: pending_fixture(slot: "a", hostname: "a1", next: "fox")), f => f == "fox")
+  unresolved && reserved
+}
+
+// THE PENDING AXIS IS ADMITTED AT THE ONE PRODUCTION INGRESS (witness_production_fleet_roster_is_injective
+// covers the production registry). Its reds: a next_name another machine already answers to, one next_name
+// awaited by two machines, and a next_name equal to its own current name -- each refused naming the spelling,
+// and the colliding registry then serves no hostname even for a machine not in the collision.
+fn refuses_naming(roster: List<HostnameAllocation>, spelling: String) -> Bool {
+  match hostname_allocation_admission(allocations: roster) {
+    AllocationSecondaryKeyRepeated { key: k } => k == spelling
+    AllocationPrimaryKeyRepeated { key: _ } => false
+    AllocationAdmitted { roster: _ } => false
+  }
+}
+
+test fn witness_pending_name_colliding_with_a_current_name_refuses() -> Bool {
+  let roster = [allocation_fixture(slot: "a", hostname: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox"), allocation_fixture(slot: "c", hostname: "c1")]
+  refuses_naming(roster: roster, spelling: "fox")
+    && (match canonical_hostname_in_roster(allocations: roster, fleet_slot: "c" as HostIdentity) {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+test fn witness_one_pending_name_for_two_machines_refuses() -> Bool {
+  refuses_naming(roster: [pending_fixture(slot: "a", hostname: "a1", next: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox")], spelling: "fox")
+}
+
+test fn witness_a_pending_name_equal_to_the_current_one_refuses() -> Bool {
+  refuses_naming(roster: [pending_fixture(slot: "a", hostname: "a1", next: "a1")], spelling: "a1")
+}
+
+// POSITIVE CONTROL: distinct pending names beside distinct current names admit, and the pending name is
+// readable while the current one still serves.
+test fn witness_distinct_pending_names_admit() -> Bool {
+  let roster = [pending_fixture(slot: "a", hostname: "a1", next: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "owl")]
+  let admitted = match hostname_allocation_admission(allocations: roster) {
+    AllocationAdmitted { roster: _ } => true
+    AllocationPrimaryKeyRepeated { key: _ } => false
+    AllocationSecondaryKeyRepeated { key: _ } => false
+  }
+  let serves = match canonical_hostname_in_roster(allocations: roster, fleet_slot: "a" as HostIdentity) {
+    Present { value: h } => (h as String) == "a1"
+    Absent => false
+  }
+  admitted && serves
+}
+
+// A COLLIDING REGISTRY RESOLVES NO SELECTOR, not even one naming a machine outside the collision, and the
+// refusal names the colliding key.
+test fn witness_a_colliding_registry_resolves_no_selector() -> Bool {
+  let roster = [allocation_fixture(slot: "a", hostname: "fox"), pending_fixture(slot: "b", hostname: "b1", next: "fox"), allocation_fixture(slot: "c", hostname: "c1")]
+  match resolve_host_selector_in(allocations: roster, selector: "c1") {
+    HostSelectorRegistryRefused { key: k } => k == "fox"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
 }

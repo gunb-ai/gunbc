@@ -5,7 +5,7 @@ import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog, altra_q8030_catalog }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
-import gunbc.fleet.fleet_asset_identity { cooler_srv3 }
+import gunbc.fleet.fleet_asset_identity { cooler_01 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import std.measure { Watt, watt }
 import std.types { Bool, Int }
@@ -36,7 +36,7 @@ fn realization_with(
 ) -> InstalledCoolingRealization {
   InstalledCoolingRealization {
     host: operator_host_srv3,
-    cooler_asset: cooler_srv3,
+    cooler_asset: cooler_01,
     cooler: CpuCoolerCatalogRow {
       model: dynatron_w1_catalog.model,
       manufacturer: dynatron_w1_catalog.manufacturer,

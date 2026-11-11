@@ -15,8 +15,8 @@ import gunbc.fleet.fleet_host_assembly {
   removals_are_reflected,
   psu_srv1,
   psu_srv1_b,
-  chassis_srv1,
-  chassis_srv2,
+  chassis_01,
+  chassis_02,
   srv_assembly_components,
   srv_assembly_containments,
   board_srv1,
@@ -30,7 +30,7 @@ import gunbc.fleet.fleet_host_assembly {
   assembly_containments_join,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.fleet_asset_identity { cooler_srv3 }
+import gunbc.fleet.fleet_asset_identity { cooler_01 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -68,7 +68,7 @@ test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
 // identical; the refusal can only be about that edge.
 fn containment_is_srv1_chassis_edge(c: PhysicalContainment) -> Bool {
   match c {
-    ChassisContainsHost { chassis: ch, host: h } => physical_asset_identity_eq(a: ch, b: chassis_srv1)
+    ChassisContainsHost { chassis: ch, host: h } => physical_asset_identity_eq(a: ch, b: chassis_01)
     SiteContainsRoom { site: s, room: r } => false
     RoomContainsRack { room: r, rack: k } => false
     RackContainsPlacement { rack: k, asset: a } => false
@@ -76,7 +76,7 @@ fn containment_is_srv1_chassis_edge(c: PhysicalContainment) -> Bool {
   }
 }
 
-data srv_containments_with_srv1_chassis_mishosted: List<PhysicalContainment> = srv_assembly_containments.filter(c => !containment_is_srv1_chassis_edge(c: c)).append(ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv2 })
+data srv_containments_with_srv1_chassis_mishosted: List<PhysicalContainment> = srv_assembly_containments.filter(c => !containment_is_srv1_chassis_edge(c: c)).append(ChassisContainsHost { chassis: chassis_01, host: operator_host_srv2 })
 
 test fn w_a_chassis_edge_to_the_wrong_host_does_not_discharge() -> Bool {
   assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
@@ -114,7 +114,7 @@ test fn w_boards_and_processors_are_present() -> Bool {
 // edit - which is the difference between this and deleting the edges wholesale.
 test fn w_cooler_host_must_match_installed_containment() -> Bool {
   let moved = map(srv_assembly_components, row =>
-    if physical_asset_identity_eq(a: row.component, b: cooler_srv3) {
+    if physical_asset_identity_eq(a: row.component, b: cooler_01) {
       AssembledComponent {
         host: operator_host_srv1,
         component: row.component,
@@ -131,7 +131,7 @@ test fn w_cooler_host_must_match_installed_containment() -> Bool {
 // this passed vacuously, because a cooler needed no edge to discharge.
 test fn w_missing_installed_cooler_edge_refuses() -> Bool {
   let missing = srv_assembly_containments.filter(c => match c {
-    HostContainsComponent { host: _, component: comp } => !physical_asset_identity_eq(a: comp, b: cooler_srv3)
+    HostContainsComponent { host: _, component: comp } => !physical_asset_identity_eq(a: comp, b: cooler_01)
     ChassisContainsHost { chassis: _, host: _ } => true
     SiteContainsRoom { site: _, room: _ } => true
     RoomContainsRack { room: _, rack: _ } => true

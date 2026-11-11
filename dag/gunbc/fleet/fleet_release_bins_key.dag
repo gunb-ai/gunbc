@@ -47,9 +47,10 @@ import v2.compiler.self_host.generation {
 }
 import extdeps.git { TreeObj }
 import extdeps.git.object_store { git_object_type_wire_name }
-import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins, ci_emitted_release_bins }
+import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins, ci_emitted_release_bins, ci_release_bins_archive_name }
 import gunbc.repo.repo_self_build { repo_self_build_command }
-import gunbc.ci.ci_spec { ci_release_pack_build_line, ci_release_bins_archive_name, gunbc_ci_auth_header_file_write_statement, gunbc_ci_auth_header_file_args }
+import gunbc.ci.ci_release_build { ci_release_pack_build_line }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_statement, gunbc_ci_auth_header_file_args }
 import gunbc.ci.ci_failure_class { floor_attempt_command_log_filename, wrap_command_with_floor_attempt_receipt }
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
 import gunbc.claim_executor_cli { claim_executor_relative_path }
@@ -1072,7 +1073,7 @@ fn lookup_ref_statements(r: ReleaseBinsLookupRef) -> List<Node> {
 // The write and the `@`-read are not spelled here: they are `gunbc_ci_auth_header_file_write_
 // statement` and `gunbc_ci_auth_header_file_args`, the Node form of the one bearer-header-file rule
 // (its string form, `gunbc_ci_auth_header_file_write_command`, and its format row,
-// `gunbc_ci_auth_header_format`, sit beside it in gunbc.ci.ci_spec, and test.claim.
+// `gunbc_ci_auth_header_format`, sit beside it in gunbc.auth.bearer_header_file, and test.claim.
 // credential_argv_exposure_witness pins what the preludes built from those must emit). What IS local
 // is the removal, because only this fetch knows both of its own outcomes: the file is removed on the
 // line after its only consumer on BOTH outcomes, so a failed fetch does not leave the bearer on disk

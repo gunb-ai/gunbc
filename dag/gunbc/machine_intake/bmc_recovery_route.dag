@@ -9,7 +9,7 @@ import std.interval { closed_interval, interval_high, interval_low, IntervalRefu
 import std.optional { Present, Absent, optional_present, optional_absent, optional_prefer_first_present }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash {
-  Sha256Digest, content_hash_of_value,
+  Sha256Digest, Sha256Hash, content_hash_of_value,
 }
 import extdeps.bmc.endpoint {
   BmcControllerEndpoint, OpenBmc,
