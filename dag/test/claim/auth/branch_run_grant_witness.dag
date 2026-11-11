@@ -37,7 +37,6 @@ import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisione
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_enrollment {
-  HostRunScopedFederation,
   NoRunScopedFederation,
   RunScopedFederationNames,
   host_run_scoped_federation,
