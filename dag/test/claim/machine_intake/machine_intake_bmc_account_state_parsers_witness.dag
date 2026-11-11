@@ -14,8 +14,12 @@ import gunbc.machine_intake.bmc_account_state_parsers {
   AccountEntryUnreadable,
   AccountsCollectionRead,
   AccountsCollectionUnreadable,
+  IpmiCensusAccepted,
+  IpmiCensusAuthenticationRefused,
+  IpmiCensusUnreadable,
   IpmiUserAccessRowsMalformed,
   IpmiUserAccessRowsRead,
+  ipmi_authenticated_census_read,
   ipmi_lan_threshold_from_print,
   ipmi_user_access_rows,
   redfish_account_entry_from_body,
@@ -151,6 +155,59 @@ test fn a_flag_column_of_garbage_refuses_though_the_carrier_drops_the_flags() ->
   match ipmi_user_access_rows(text: bad, channel: 1) {
     IpmiUserAccessRowsMalformed { detail: detail } => detail == bad
     IpmiUserAccessRowsRead { rows: _ } => false
+  }
+}
+
+// ==================== THE AUTHENTICATED CENSUS READ (managed acceptance, review 93420) ====================
+
+// THE ACCEPTED ARM. A well-formed user-access table -- the authenticated managed read serving the census --
+// reads as Accepted WITH its rows: that success is the evidence the controller accepts the managed
+// credential. (The assembler maps this arm to managed_accepted: true.)
+test fn an_authenticated_census_table_reads_as_accepted_with_its_rows() -> Bool {
+  let table = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   root             false   false      true       ADMINISTRATOR\n"
+  match ipmi_authenticated_census_read(text: table, channel: 1) {
+    IpmiCensusAccepted { rows: rows } => rows.length() == 1 && (match list_at_optional(xs: rows, index: 0) {
+      Present { value: r } => r.user == 1 && r.channel == 1 && r.privilege == IpmiPrivilegeAdministrator
+      Absent => false
+    })
+    _ => false
+  }
+}
+
+// THE REFUSED ARM (never malformed). An authenticated census read the controller refused -- the RMCP+
+// session never came up (also the RAKP-2-HMAC wrong-password line) -- is AuthenticationRefused with the
+// vendor line carried, NOT Malformed and NOT Accepted. This is the case the assembler turns into
+// managed_accepted: false; a permissive classifier that read it as an empty/malformed table would be a red.
+test fn a_refused_authenticated_census_is_read_as_refused_never_malformed() -> Bool {
+  let session = match ipmi_authenticated_census_read(text: "Error: Unable to establish IPMI v2 / RMCP+ session", channel: 8) {
+    IpmiCensusAuthenticationRefused { detail: d } => d == "Unable to establish IPMI v2 / RMCP+ session"
+    _ => false
+  }
+  let rakp = match ipmi_authenticated_census_read(text: "Error (0): RAKP 2 HMAC is invalid", channel: 8) {
+    IpmiCensusAuthenticationRefused { detail: d } => d == "RAKP 2 HMAC is invalid"
+    _ => false
+  }
+  session && rakp
+}
+
+// EMPTY IS NEVER A REFUSAL. An absent read (empty body) is Unreadable, not AuthenticationRefused: a read that
+// did not happen is not a controller that refused the credential (fail_closed -- a reading that cannot look is
+// never reported as a refusal, just as it is never a reading). The assembler refuses on this arm rather than
+// minting managed_accepted:false on nothing.
+test fn an_empty_census_is_unreadable_never_a_refused_reading() -> Bool {
+  match ipmi_authenticated_census_read(text: "", channel: 8) {
+    IpmiCensusUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+// GARBAGE IS NEVER A DEFAULTED ACCEPTANCE. A body that is neither a table nor a recognized refusal is
+// Unreadable -- the assembler refuses rather than defaulting managed_accepted to anything. No plausible
+// acceptance is fabricated from bytes that say nothing.
+test fn a_garbage_census_is_unreadable_never_a_defaulted_acceptance() -> Bool {
+  match ipmi_authenticated_census_read(text: "check-password: ok token invoked lookup successful", channel: 8) {
+    IpmiCensusUnreadable { detail: _ } => true
+    _ => false
   }
 }
 
