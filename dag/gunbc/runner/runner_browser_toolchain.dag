@@ -60,7 +60,7 @@ import gunbc.host.host_effect_realize {
   Srv3HostPredicate, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateUnobserved,
   srv3_ensure_apt, AptPresenceSubject, AptBinaryOnPath, AptPackageInstalled,
 }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.runner.runner_registration_labels { gunbc_user_session_label, runner_declared_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }
@@ -402,7 +402,7 @@ fn pool_member_identity(hosts: List<RunnerHostDeploy>, wanted: HostIdentity) -> 
     Cons { head: d, tail: rest } =>
       match observed_host_identity(observed: d.host_label as String) {
         ObservedHostIdentityResolved { host: declared } =>
-          if (declared as String) == (wanted as String) {
+          if host_identity_eq(a: declared, b: wanted) {
             Present { value: d }
           } else { pool_member_identity(hosts: rest, wanted: wanted) }
         ObservedHostIdentityRefused { refusal: _ } => pool_member_identity(hosts: rest, wanted: wanted)
