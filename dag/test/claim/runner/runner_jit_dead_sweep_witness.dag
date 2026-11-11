@@ -300,6 +300,36 @@ test fn a_broad_retired_prefix_never_sweeps_a_sibling_host() -> Bool {
     && !is_selected(sweep, "srv1-02-1600000001-501")
 }
 
+// THE NORMALISED PREFIX SWEEPS THE OLD HOST AND NOT THE srv40 SIBLING. The operator supplies the old name "srv4"
+// (which the dispatch normalises to the proper prefix "srv4-"). A genuine retired registration under the old name is
+// swept; a DEAD registration of the SIBLING host srv40, which shares the bare prefix, is NOT -- the normalised prefix
+// "srv4-" does not match "srv40-*", so srv40 is never collateral. Exercises jit_retired_prefix_of end-to-end through
+// the real selection entry.
+test fn the_normalised_retired_prefix_sweeps_the_old_host_not_the_srv40_sibling() -> Bool {
+  let fox: HostIdentity = "fox"
+  let fox_slots: List<RunnerSlotIdentity> = [
+    RunnerSlotIdentity { host: fox, slot_index: 1 },
+    RunnerSlotIdentity { host: fox, slot_index: 2 },
+    RunnerSlotIdentity { host: fox, slot_index: 3 },
+  ]
+  let roster: OrganizationRunnerRosterEvidence = RosterObserved {
+    observed_on: "2026-11-10T00:00:00Z" as NonEmptyStr,
+    registrations: [
+      reg(800, "srv4-01-1600000000-600", false),  // genuine retired row under the old name "srv4" -> SELECTED
+      reg(801, "srv40-01-1600000001-601", false), // sibling host srv40, dead -- must NOT be swept by fox's sweep
+    ],
+  }
+  let sweep = jit_dead_registration_sweep(
+    host: fox,
+    slots: fox_slots,
+    current: [],
+    retired_prefixes: [jit_retired_prefix_of(old_name: "srv4") as NonEmptyStr],
+    evidence: roster,
+  )
+  is_selected(sweep, "srv4-01-1600000000-600")
+    && !is_selected(sweep, "srv40-01-1600000001-601")
+}
+
 // THE DISPATCH-LAYER PREFIX NORMALISER IS TESTED, not just the pure selection: the production dispatch parses the
 // operator's "host:old_name" input and must spell the retired prefix through the same authority as the current host
 // (a trailing dash, never doubled), so the retired arm matches exactly the name the renamed-away runners registered
