@@ -124,7 +124,7 @@ test fn asking_for_an_admitted_host_cannot_return_another_hosts_refusal() -> Boo
   }
 }
 
-────────────────────────────────────────────────────────────────────────────
+// ── 2. APPLY MODE ─────────────────────────────────────────────────────────
 // The absorbed arm said srv3 stands up fresh and EVERY OTHER host reloads quiescently.
 
 fn stands_up_fresh(e: HostEnrollmentIntent) -> Bool {
