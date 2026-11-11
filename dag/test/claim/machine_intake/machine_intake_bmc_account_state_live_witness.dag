@@ -10,7 +10,8 @@ module test.claim.machine_intake.machine_intake_bmc_account_state_live_witness
 // refuses THROUGH the entry (never a published probe -- the OpenBMC 3.22.00 lockout-budget floor), and an
 // undecodable capture refuses with the ASSEMBLER's own typed cause, not a laundered missing-policy
 // diagnosis (review 93258). The commit primitive commit_captured_response is exercised on the way, so the
-// production evidence digest -- not just the witness's local one -- is what carries the captures.
+// digest the 1d-b arrival-door dispatch is required to use (its production consumer, trigger '1d-b lands')
+// is what carries the captures -- until that dispatch lands this primitive runs only on the witness route.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
@@ -72,7 +73,7 @@ fn root_ref() -> ManagedCredentialReference {
 fn policy_row() -> BmcCredentialPolicyKey? { Present { value: asrock_altrad8ud_openbmc_3_22_00_key() } }
 data served_surfaces: List<CredentialSurface> = [RedfishBasicOrSession]
 
-// ── faithful committed captures (grounded bytes; the production commit primitive builds them) ──────
+// ── faithful committed captures (grounded bytes; commit_captured_response builds them -- the digest the 1d-b arrival-door dispatch will reuse, trigger '1d-b lands') ──────
 fn members() -> List<IpmiChannelCensusMember> {
   [ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 248))]
 }

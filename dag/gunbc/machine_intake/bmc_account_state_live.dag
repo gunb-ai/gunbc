@@ -71,11 +71,18 @@ type BmcAccountStateLiveReadOutcome
   | LiveReadRefused { cause: BmcSuppliedReadRefusal }
   | LiveReadMinted { observation: BmcAccountStateObservation }
 
-// COMMIT ONE CAPTURED RESPONSE. The wet layer writes each operation's bytes to the content-addressed
-// evidence store and reads back its ref; this is the pure digest of the same bytes -- the label is the read
-// name, the digest is content_hash_of_value of the response -- so a capture assembled by the wet layer and
-// one built here agree. The assembler recomputes this digest and refuses a mismatch, so a byte string that
-// was never written cannot pass itself off as committed.
+// COMMIT ONE CAPTURED RESPONSE. The pure content-addressed commit of one captured response: the label is
+// the read name, the digest is content_hash_of_value of the response. The assembler recomputes this digest
+// and refuses a mismatch, so a byte string that was never committed cannot pass itself off as committed.
+//
+// CONSUMER (gunbc.design_argument::consumption). TODAY the only callers are the witnesses, which build the
+// faithful committed captures over grounded bytes. Its PRODUCTION consumer is the SAME arrival-door wet
+// dispatch named in this module's header -- fleet-converge arrival_converge on srv1 (PXE 1d-b, dispatched by
+// the manager) -- which MUST call THIS function for each op response it writes to the content-addressed
+// evidence store, so the dispatch's digests and the assembler's recomputation agree by construction. That
+// dispatch is the DECLARED LATER CHANGE, trigger '1d-b lands'; until it lands this function is exercised
+// only on the witness route. It is NOT yet the production digest -- the executed srv15 run of that dispatch
+// is exactly what makes it so, and that run is the REMAINING named by the live-read frontiers.
 fn commit_captured_response(read: NonEmptyStr, response: NonEmptyStr) -> BmcSuppliedResponse {
   BmcSuppliedResponse {
     read: read,
