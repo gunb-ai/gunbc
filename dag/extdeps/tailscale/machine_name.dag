@@ -104,7 +104,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // start. The page also records that a name once generated is sticky in at least one way -- a device that
 // was de-duplicated to `<hostname>-1` "will still maintain the <hostname>-1 machine name" after the
 // conflict moves. What a SPECIFIC device will do is therefore not knowable from the documentation at all;
-// only `tailscale status --json` on that device says (gunbc.design_argument::epistemic_humming: the absence
+// only `tailscale status --json` on that device says (@ref(gunbc.design_argument::epistemic_humility): the absence
 // is recorded at the edge that would act on it, rather than closed with a guess that then reads as a
 // finding). The procedure that follows is forced, not chosen: read the device's reported name, decide
 // against the derivation, write only if they disagree, then read again.

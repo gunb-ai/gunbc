@@ -33,7 +33,7 @@ module gunbc.tailscale_machine_name_converge
 // default, updates land "the next time Tailscale is started up", and "to avoid these automatic name
 // changes, uncheck this box"), and that a de-duplicated name sticks. No reading of the documentation
 // says what THIS device is doing. So the mode does not assume: it reads, and the write happens only if
-// the read disagrees. That is gunbc.design_argument::epistemic_humming -- the unknown is recorded at the
+// the read disagrees. That is @ref(gunbc.design_argument::epistemic_humility) -- the unknown is recorded at the
 // edge that would have acted on it.
 //
 // THE REVERSE DIRECTION IS NOT A SECOND MODE. A rename window's rollback is this same mode pointed at
@@ -230,9 +230,73 @@ type TailscaleMachineNameDeviceNames
   = BothNamesReported { machine_name: NonEmptyStr, dns_name: Optional<String>, os_name: String }
   | NamesUnreadable { cause: TailscaleMachineNamePlanRefusal }
 
+// ONE QUESTION, ONE PLACE THAT ANSWERS IT: "do BOTH of this device's names answer the target name?" The plan
+// asks it before a write and the read-back asks it after one, and both get the same verdict from the same
+// function -- a second place that decides convergence is a fork, and the fork here would be visible as a run
+// that reports a device converged in exactly the state a later start un-converges
+// (@ref(gunbc.design_argument::single_authority), @ref(gunbc.design_argument::fail_closed)).
+//
+// The order of the two checks IS the window's ordering, and it is forced by upstream: the tailnet name is
+// re-derived from the OS hostname the next time Tailscale starts, so the OS half is the half this mode cannot
+// write and the half that has to be at the target first. A device whose OS half is not at the target is not
+// convergable by this mode at all -- writing its tailnet name would produce a device that reads correct until
+// the next start -- so that state gets its own verdict instead of a write or a "current".
+type TailscaleMachineNameNameVerdict
+  = BothNamesAnswerTarget { machine_name: NonEmptyStr, os_name: String }
+  | TailnetHalfLagsTarget { machine_name: NonEmptyStr, os_name: String }
+  | OsHalfNotTarget { machine_name: NonEmptyStr, os_name: String, requested: DnsLabel }
+  | NameReadUnusable { cause: TailscaleMachineNamePlanRefusal }
+
+fn tailscale_machine_name_names_against_target(
+  requested: DnsLabel,
+  names: TailscaleMachineNameDeviceNames,
+) -> TailscaleMachineNameNameVerdict {
+  match names {
+    NamesUnreadable { cause: cause } => NameReadUnusable { cause: cause }
+    BothNamesReported { machine_name: machine_name, dns_name: _, os_name: os_name } =>
+      if os_name != (requested as String) {
+        OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested }
+      } else if (machine_name as String) == (requested as String) {
+        BothNamesAnswerTarget { machine_name: machine_name, os_name: os_name }
+      } else {
+        TailnetHalfLagsTarget { machine_name: machine_name, os_name: os_name }
+      }
+  }
+}
+
+// THE VERDICT, IN RECEIPT WORDS. The two "not converged" verdicts send an operator to different repairs -- one
+// to this mode's write, one to the half of the window step that sets the operating system's hostname -- so the
+// words keep them apart.
+fn tailscale_machine_name_name_verdict_wire(verdict: TailscaleMachineNameNameVerdict) -> String {
+  match verdict {
+    BothNamesAnswerTarget { machine_name: machine_name, os_name: os_name } =>
+      join(["tailnet name `", machine_name, "` and OS hostname `", os_name, "` both answer the target"], "")
+    TailnetHalfLagsTarget { machine_name: machine_name, os_name: os_name } =>
+      join(
+        [
+          "the OS hostname already reads the target while the tailnet name still reads `", machine_name,
+          "`; the write this mode owes closes that half",
+        ],
+        ""
+      )
+    OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
+      join(
+        [
+          "the OS hostname reads `", os_name, "` and the tailnet name reads `", machine_name,
+          "`; the target is `", requested as String,
+          "` and this mode writes only the tailnet half, so the pair is not convergable from here: a window step",
+          " that lands the operating-system half first is what makes the tailnet write stick past the next start",
+        ],
+        ""
+      )
+    NameReadUnusable { cause: cause } => tailscale_machine_name_plan_refusal_wire(cause: cause)
+  }
+}
+
 type TailscaleMachineNamePlan
   = DeviceNameAlreadyCurrent { machine_name: NonEmptyStr, os_name: String }
   | DeviceNameChangeOwed { from_name: NonEmptyStr, to_name: DnsLabel, os_name: String }
+  | DeviceNameHalvesDiverged { machine_name: NonEmptyStr, os_name: String, to_name: DnsLabel }
   | PlanRefused { cause: TailscaleMachineNamePlanRefusal }
 
 fn tailscale_machine_name_plan_refusal_wire(cause: TailscaleMachineNamePlanRefusal) -> String {
@@ -331,20 +395,22 @@ fn tailscale_machine_name_plan(
       DesiredNameNotDerivable { host: subject, cause: cause } =>
         PlanRefused { cause: NameNotDerivable { host: subject, cause: cause } }
       AllocatedName { name: desired } =>
-        match names {
-          NamesUnreadable { cause: cause } => PlanRefused { cause: cause }
-          BothNamesReported { machine_name: reported, dns_name: _, os_name: os_name } =>
-            if (reported as String) == (desired as String) {
-              DeviceNameAlreadyCurrent { machine_name: reported, os_name: os_name }
-            } else {
-              DeviceNameChangeOwed { from_name: reported, to_name: desired, os_name: os_name }
-            }
+        match tailscale_machine_name_names_against_target(requested: desired, names: names) {
+          NameReadUnusable { cause: cause } => PlanRefused { cause: cause }
+          BothNamesAnswerTarget { machine_name: machine_name, os_name: os_name } =>
+            DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name }
+          TailnetHalfLagsTarget { machine_name: machine_name, os_name: os_name } =>
+            DeviceNameChangeOwed { from_name: machine_name, to_name: desired, os_name: os_name }
+          OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
+            DeviceNameHalvesDiverged { machine_name: machine_name, os_name: os_name, to_name: requested }
         }
     }
   }
 }
 
-// THE READ-BACK RULE, ALSO PURE, AND WHY IT IS ITS OWN FUNCTION: the set's own exit code is not evidence
+// THE READ-BACK ASKS THE SAME QUESTION THE PLAN ASKS, AFTER THE WRITE. It is its own function only because the
+// verdicts have different names on the two sides of a write; the rule is the one function above. And the reason
+// it exists at all: the set's own exit code is not evidence
 // about the tailnet's answer (see the header), so the only verdict a run may report after a write is what
 // an independent read says. A read-back that cannot be read is a refusal, not a pending success -- the
 // write already happened, and an operator has to be told the state is unknown. And a read-back where the
@@ -361,19 +427,17 @@ fn tailscale_machine_name_read_back(
   requested: DnsLabel,
   names: TailscaleMachineNameDeviceNames,
 ) -> TailscaleMachineNameReadBack {
-  match names {
-    NamesUnreadable { cause: cause } => ReadBackRefused { cause: cause }
-    BothNamesReported { machine_name: machine_name, dns_name: _, os_name: os_name } =>
-      if (machine_name as String) != (requested as String) {
-        ReadBackMachineNameContradicts {
-          requested: requested, reported: machine_name, os_name: os_name
-        }
-      } else if os_name != (requested as String) {
-        ReadBackNamesDiverge {
-          requested: requested, machine_name: machine_name, os_name: os_name
-        }
-      } else {
-        ReadBackConfirmsRequested { machine_name: machine_name, os_name: os_name }
+  match tailscale_machine_name_names_against_target(requested: requested, names: names) {
+    NameReadUnusable { cause: cause } => ReadBackRefused { cause: cause }
+    BothNamesAnswerTarget { machine_name: machine_name, os_name: os_name } =>
+      ReadBackConfirmsRequested { machine_name: machine_name, os_name: os_name }
+    TailnetHalfLagsTarget { machine_name: machine_name, os_name: os_name } =>
+      ReadBackMachineNameContradicts {
+        requested: requested, reported: machine_name, os_name: os_name
+      }
+    OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
+      ReadBackNamesDiverge {
+        requested: requested, machine_name: machine_name, os_name: os_name
       }
   }
 }
@@ -481,6 +545,7 @@ type TailscaleMachineNameRunRefusal
       set_stderr: String,
     }
   | ReadBackUnreadable { cause: TailscaleMachineNamePlanRefusal }
+  | OsHalfNotAtTarget { machine_name: NonEmptyStr, os_name: String, to_name: DnsLabel }
 
 type TailscaleMachineNameOutcome
   = NameAlreadyCurrent { host: HostIdentity, machine_name: NonEmptyStr, os_name: String }
@@ -496,6 +561,12 @@ type TailscaleMachineNameOutcome
       to_name: DnsLabel,
       machine_name: NonEmptyStr,
       os_name: String,
+    }
+  | NameHalvesDiverged {
+      host: HostIdentity,
+      machine_name: NonEmptyStr,
+      os_name: String,
+      to_name: DnsLabel,
     }
   | RunRefused { host: HostIdentity, cause: TailscaleMachineNameRunRefusal }
 
@@ -546,6 +617,18 @@ fn tailscale_machine_name_run_refusal_wire(cause: TailscaleMachineNameRunRefusal
         ],
         ""
       )
+    OsHalfNotAtTarget { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+      join(
+        [
+          "refused without writing: ",
+          tailscale_machine_name_name_verdict_wire(
+            verdict: OsHalfNotTarget {
+              machine_name: machine_name, os_name: os_name, requested: to_name
+            }
+          ),
+        ],
+        ""
+      )
   }
 }
 
@@ -583,6 +666,16 @@ fn tailscale_machine_name_outcome_wire(outcome: TailscaleMachineNameOutcome) -> 
         ],
         ""
       )
+    NameHalvesDiverged { host: host, machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+      join(
+        [
+          host as String, ": ",
+          tailscale_machine_name_name_verdict_wire(
+            verdict: OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: to_name }
+          ),
+        ],
+        ""
+      )
     RunRefused { host: host, cause: cause } =>
       join([host as String, ": ", tailscale_machine_name_run_refusal_wire(cause: cause)], "")
   }
@@ -599,6 +692,7 @@ fn tailscale_machine_name_outcome_settled(outcome: TailscaleMachineNameOutcome) 
       machine_name: machine_name,
       os_name: os_name,
     } => true
+    NameHalvesDiverged { host: host, machine_name: machine_name, os_name: os_name, to_name: to_name } => true
     RunRefused { host: host, cause: cause } => false
   }
 }
@@ -622,6 +716,20 @@ fn converge_tailscale_machine_name(
       RunRefused { host: host, cause: RunPlanRefused { cause: cause } }
     DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
       NameAlreadyCurrent { host: host, machine_name: machine_name, os_name: os_name }
+    DeviceNameHalvesDiverged { machine_name: machine_name, os_name: os_name, to_name: to_name } =>
+      if mode == ObserveOnly {
+        NameHalvesDiverged {
+          host: host,
+          machine_name: machine_name,
+          os_name: os_name,
+          to_name: to_name,
+        }
+      } else {
+        RunRefused {
+          host: host,
+          cause: OsHalfNotAtTarget { machine_name: machine_name, os_name: os_name, to_name: to_name }
+        }
+      }
     DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
       if mode == ObserveOnly {
         NameChangeReported {
