@@ -66,6 +66,7 @@ import gunbc.fleet.fleet_host_smbios_observation {
   BoardSerialBlank,
   BoardSerialNotAttributedToARead,
   BoardSerialObserved,
+  BoardSerialPathsDisagree,
   BoardSerialReadRefused,
   BoardSerialUnreadable,
   HostAnsweredAsAnotherHost,
@@ -239,6 +240,7 @@ fn reading_citing(digest: ContentHash) -> HostSmbiosReading {
     board_vendor: srv4_host_smbios_reading.board_vendor,
     board_name: srv4_host_smbios_reading.board_name,
     board_serial: srv4_host_smbios_reading.board_serial,
+    board_serial_from_smbios_table: srv4_host_smbios_reading.board_serial_from_smbios_table,
   }
 }
 
@@ -262,6 +264,7 @@ fn planted_reading(
     board_vendor: srv4_host_smbios_reading.board_vendor,
     board_name: board_name,
     board_serial: board_serial,
+    board_serial_from_smbios_table: srv4_host_smbios_reading.board_serial_from_smbios_table,
   }
 }
 
@@ -577,5 +580,68 @@ test fn a_board_model_the_transcript_does_not_print_refuses() -> Bool {
     TranscriptBoardNameDiffers { recorded: r, printed: p } =>
       ((r as String) == "X11DPi-NST") && ((p as String) == "ALTRAD8UD-1L2T")
     _ => false
+  }
+}
+
+// A SECOND ROUTE TO THE SAME FIRMWARE FIELD, AND THE REFUSAL WHEN THE TWO DISAGREE. srv4's unit key comes from
+// the kernel's own /sys/class/dmi/id/board_serial; dmidecode's base-board (type-2) table reaches the same
+// firmware field by a different route, so their agreement corroborates the TRANSPORT — the session, the shell,
+// the capture, the digest — and is not a second opinion about the board. What it buys is that the agreement this
+// row has always claimed in prose beside the capture is now folded: a reading whose type-2 section prints another
+// serial is refused with BoardSerialPathsDisagree and its cutover stops. Two things this deliberately does not
+// do: a table that printed nothing is not a vote (a host without dmidecode stands on the one admitted reading,
+// which is all A2 asks for), and the parse is section-scoped rather than a grep, because this board's SYSTEM
+// (type-1) table prints its own Serial Number empty and a whole-output search for it would mint a unit key from
+// the wrong table — the failure swift-ram-509's capture in the arrival lane warned about.
+test fn the_two_in_band_read_paths_must_agree_or_the_cutover_stops() -> Bool {
+  let both_agree = host_smbios_board_serial_standing(
+    reading: srv4_host_smbios_reading,
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  let agreeing_binds = match both_agree {
+    BoardSerialObserved {
+      machine: _,
+      observation: o,
+      observed_at_utc: _,
+      evidence: _,
+    } => (o.serial as String) == "NS1NG4000900022"
+    _ => false
+  }
+  let diverged = host_smbios_board_serial_standing(
+    reading: reading_with_second_path(table: SmbiosFieldValue { value: "NS1NG4000900023" }),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  let divergence_is_named = match diverged {
+    BoardSerialReadRefused { cause: BoardSerialPathsDisagree { sysfs: a, table: b } } =>
+      (a as String) == "NS1NG4000900022" && (b as String) == "NS1NG4000900023"
+    _ => false
+  }
+  let silent_table_is_not_a_vote = host_smbios_board_serial_standing(
+    reading: reading_with_second_path(table: SmbiosFieldBlank),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  let one_path_still_admits = match silent_table_is_not_a_vote {
+    BoardSerialObserved { machine: _, observation: _, observed_at_utc: _, evidence: _ } => true
+    _ => false
+  }
+  agreeing_binds && divergence_is_named && cutover_stops_for(standing: diverged) && one_path_still_admits
+}
+
+// srv4's reading with only its second route changed — the shape of a capture whose two paths disagree, or
+// whose dmidecode said nothing, without touching anything else about it.
+fn reading_with_second_path(table: SmbiosFieldReading) -> HostSmbiosReading {
+  HostSmbiosReading {
+    machine: srv4_host_smbios_reading.machine,
+    observed_at_utc: srv4_host_smbios_reading.observed_at_utc,
+    principal: srv4_host_smbios_reading.principal,
+    transport: srv4_host_smbios_reading.transport,
+    invocations: srv4_host_smbios_reading.invocations,
+    transcript: srv4_host_smbios_reading.transcript,
+    kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+    kernel_release_machine: srv4_host_smbios_reading.kernel_release_machine,
+    board_vendor: srv4_host_smbios_reading.board_vendor,
+    board_name: srv4_host_smbios_reading.board_name,
+    board_serial: srv4_host_smbios_reading.board_serial,
+    board_serial_from_smbios_table: table,
   }
 }

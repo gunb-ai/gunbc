@@ -41,7 +41,10 @@ WHAT WAS READ, AND WHAT IT SAID
   are product_serial, chassis_serial and chassis_asset_tag. A reader that greps a whole dmidecode dump for
   "Serial Number" would therefore take the empty type-1 line as the machine's identity — which is why this
   producer reads only the named table (type 2) or its sysfs attribute, and refuses a field present but empty
-  (SmbiosFieldBlank -> BoardSerialBlank) instead of binding a fleet to "".
+  (SmbiosFieldBlank -> BoardSerialBlank) instead of binding a fleet to "". The two routes are checked against
+  each other rather than merely reported side by side: host_smbios_board_serial_standing refuses a reading whose
+  sysfs attribute and type-2 section disagree (BoardSerialPathsDisagree), and a type-2 section that printed
+  nothing is not a vote -- a host without dmidecode stands on the one admitted reading, which is all A2 asks for.
 
 WHO TOOK IT, FROM WHERE, HOW
   gunbc session gentle-moth-338 (P3, hardware observation producers), from the srv1 session host, as

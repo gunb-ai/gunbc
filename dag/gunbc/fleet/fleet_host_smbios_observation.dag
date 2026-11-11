@@ -126,6 +126,15 @@ type HostSmbiosReading {
   board_vendor: SmbiosFieldReading
   board_name: SmbiosFieldReading
   board_serial: SmbiosFieldReading
+  // THE SAME SERIAL, SECOND READ PATH. The kernel's own copy at /sys/class/dmi/id/board_serial and the
+  // base-board (type-2) table that dmidecode decodes come from one firmware source by two routes, so their
+  // agreement is corroboration of the TRANSPORT -- of the SSH session, the shell, and the digest -- and not a
+  // second opinion about the board. It is recorded as a field so that the claim is folded rather than
+  // asserted beside the capture. Section-scoped by construction: the value is read out of the `smbios.type2`
+  // line this capture prints, never by grepping the transcript for "Serial Number", because the system (type-1)
+  // table prints its own Serial Number -- blank on every ALTRAD8UD board read so far, on srv4, srv14 and srv15
+  // alike -- and a whole-output grep would mint a unit key from the wrong table.
+  board_serial_from_smbios_table: SmbiosFieldReading
 }
 
 // WHY AN IN-BAND READING DOES NOT ADMIT. Each arm is a refusal this shape can actually reach, carrying the
@@ -135,6 +144,9 @@ type HostSmbiosReading {
 // that is the state of a machine nobody has read yet.
 type HostSmbiosReadRefusal
   = BoardSerialUnreadable { detail: NonEmptyStr }
+  // Both in-band paths spoke and gave different answers, which is a transport fault or a tampered capture --
+  // never a tie to be broken. Nothing is observed and the cutover stops.
+  | BoardSerialPathsDisagree { sysfs: NonEmptyStr, table: NonEmptyStr }
   | BoardSerialBlank
   | BoardSerialNotAttributedToARead
   | HostAnsweredAsAnotherHost { asked: NonEmptyStr, answered_as: NonEmptyStr }
@@ -229,13 +241,36 @@ fn host_smbios_board_serial_standing(
             SmbiosFieldUnreadable { detail: d } =>
               BoardSerialReadRefused { machine: reading.machine, cause: BoardSerialUnreadable { detail: d } }
             SmbiosFieldBlank => BoardSerialReadRefused { machine: reading.machine, cause: BoardSerialBlank }
-            SmbiosFieldValue { value: serial } =>
-              BoardSerialObserved {
-                machine: reading.machine,
-                observation: BoardSerialObservation { source: HostSmbios, serial: serial },
-                observed_at_utc: reading.observed_at_utc,
-                evidence: reading.transcript,
+            SmbiosFieldValue { value: serial } => {
+              // Corroborated WHEN BOTH PATHES SPEAK, the same shape board_model_must_be_corroborated uses: two
+              // values that exist and disagree is a refusal, and a path that printed nothing is not a vote. A
+              // machine whose dmidecode is missing is therefore still admitted on the kernel's own attribute --
+              // one admitted reading is what A2 asks for -- but it cannot claim the second path, and the record
+              // says which of the two it has.
+              match reading.board_serial_from_smbios_table {
+                SmbiosFieldValue { value: table_serial } =>
+                  if table_serial != (serial as String) {
+                    BoardSerialReadRefused {
+                      machine: reading.machine,
+                      cause: BoardSerialPathsDisagree { sysfs: serial, table: table_serial },
+                    }
+                  } else {
+                    BoardSerialObserved {
+                      machine: reading.machine,
+                      observation: BoardSerialObservation { source: HostSmbios, serial: serial },
+                      observed_at_utc: reading.observed_at_utc,
+                      evidence: reading.transcript,
+                    }
+                  }
+                _ =>
+                  BoardSerialObserved {
+                    machine: reading.machine,
+                    observation: BoardSerialObservation { source: HostSmbios, serial: serial },
+                    observed_at_utc: reading.observed_at_utc,
+                    evidence: reading.transcript,
+                  }
               }
+            }
           }
         }
     }
@@ -353,6 +388,10 @@ data srv4_host_smbios_reading: HostSmbiosReading = HostSmbiosReading {
   // the ABI, so an unprivileged in-band read cannot see the serial at all and a producer that did not know
   // that would record the denial as the machine's identity.
   board_serial: SmbiosFieldValue { value: "NS1NG4000900022" },
+  // The same string, from the other route: srv4's own `smbios.type2` line carries
+  // "Serial Number: NS1NG4000900022" inside the Base Board Information section, while its type-1 line carries
+  // an empty one. host_smbios_board_serial_standing refuses if these two ever disagree.
+  board_serial_from_smbios_table: SmbiosFieldValue { value: "NS1NG4000900022" },
 }
 
 data srv4_host_smbios_board_serial_standing: HostSmbiosBoardSerialStanding = host_smbios_board_serial_standing(
