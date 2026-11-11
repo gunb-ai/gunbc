@@ -427,11 +427,6 @@ fn jit_dead_sweep_report_lines(host: HostIdentity, sweep: JitDeadSweep) -> List<
           map(selected, r => join(["  would-delete id=", to_string(r.runner_id), " name=", r.name as String, "\n"], "")),
           concat(
             map(counts, c => join(["  count-by-host host=", c.host as String, " selected=", to_string(c.selected), "\n"], "")),
-            // THE UNOBSERVED-DEAD DISCLOSURE: a zero selected-count is NOT a clean result while offline JIT rows of
-            // this host are preserved because their slot unit's MainPID was never observed. Those rows are exactly
-            // what the dead-incarnation arm retires; until the dispatch supplies observed MainPIDs (the named trigger:
-            // the host unit-MainPID read, taken over the host transport in the rename window), the arm reads them as
-            // unobserved -- never as zero. (gunbc.recurring_failure_mode: an observation you did not take.)
             jit_dead_sweep_unobserved_line(unobserved: jit_sweep_unobserved_dead_population(preserved: preserved)),
           ),
         ),
