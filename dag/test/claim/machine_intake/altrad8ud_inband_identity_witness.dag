@@ -19,7 +19,6 @@ module test.claim.machine_intake.altrad8ud_inband_identity_witness
 // each unit, and the other reader of the same board.
 
 import std.logic { Bool }
-import std.algebra { ends_with }
 import std.optional { Absent, Present }
 import std.types { NonEmptyStr, String }
 import product.host_identity { host_identity_eq }
@@ -27,11 +26,13 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv1
 import gunbc.fleet.fleet_intent_network { srv14_bmc_endpoint }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
+import gunbc.ipmitool_fru_text { FruCaptureNotCommitted }
 import gunbc.machine_intake.inband_host_identity {
   InbandBoardObserved,
   InbandBoardRefused,
   InbandCaptureAttributed,
   InbandCaptureDigestMismatch,
+  InbandCaptureRefused,
   InbandChannelAnswersForTheFleetBoundController,
   InbandChannelControllerNotFleetBound,
   InbandFieldGapped,
@@ -44,7 +45,6 @@ import gunbc.machine_intake.inband_host_identity {
 }
 import gunbc.machine_intake.mtjade1_access_observation {
   BmcFruCaptureRow,
-  FruCaptureNotCommitted,
   FruFromSessionBoundCapture,
   FruObserved,
   FruReadIssuedToBoundController,

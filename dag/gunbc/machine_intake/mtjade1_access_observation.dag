@@ -755,8 +755,9 @@ fn read_committed_bmc_fru_capture(unit: HostIdentity) -> FruRead uses fs: std.re
             InbandCaptureRefused { gap: g } => FruReadRefused { gap: FruCaptureUnreadable { error: inband_identity_gap_text(gap: g) } }
             InbandCaptureAttributed { content: text, row: _, channel_content: _ } => mint_committed_bmc_fru_capture(text: text, row: row)
           }
-        FruReadIssuedToBoundController { fleet_bound_bmc_address: _ } =>
-          match filesystem_read_outcome(content: Filesystem.Read(path: row.capture_path as String).content, success: Filesystem.Read(path: row.capture_path as String).success, error: Filesystem.Read(path: row.capture_path as String).error) {
+        FruReadIssuedToBoundController { fleet_bound_bmc_address: _ } => {
+          let read = Filesystem.Read(path: row.capture_path as String)
+          match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
             FilesystemReadRefused { error: e } => FruReadRefused { gap: FruCaptureUnreadable { error: e } }
             FilesystemReadSucceeded { content: text } =>
               match fru_capture_digest_check(content: text, expected_sha256: row.capture_sha256) {
@@ -764,6 +765,7 @@ fn read_committed_bmc_fru_capture(unit: HostIdentity) -> FruRead uses fs: std.re
                 FruCaptureDigestAgrees => mint_committed_bmc_fru_capture(text: text, row: row)
               }
           }
+        }
       }
   }
 }

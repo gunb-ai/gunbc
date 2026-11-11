@@ -10,16 +10,12 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv1
 import gunbc.fleet.fleet_intent_network { srv14_bmc_endpoint }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import gunbc.ipmitool_fru_text {
-  FruCaptureDigestAgrees,
-  FruCaptureDigestDiffers,
-  FruCaptureDigestMismatch,
   FruFieldAbsent,
   FruFieldEmpty,
   FruFieldGap,
   FruFieldRead,
   FruFieldRepeated,
   FruFieldValue,
-  fru_capture_digest_check,
 }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 
@@ -334,6 +330,23 @@ fn inband_lan_print_address(content: String, section: NonEmptyStr) -> String? {
   }
 }
 
+// THE ONE DIGEST GATE for these captures: the row's digest is the authority for which bytes are this
+// capture, so the bytes are hashed and compared before anything inside them is read, and a mismatch names
+// both halves instead of quietly decoding someone else's unit. std.content_hash's hash is the same authority
+// gunbc.ipmitool_fru_text::fru_capture_digest_check asks; that one returns the whole union of ways a FRU
+// capture can fail, and a comparison of these bytes to that digest can only produce this one, so the
+// comparison is asked directly here.
+type InbandDigestDiffers sole_constructor { expected: NonEmptyStr, observed: String }
+
+fn inband_digest_differs(content: String, expected: NonEmptyStr) -> InbandDigestDiffers? {
+  let observed = sha256_hex_of_text(text: content)
+  if observed == (expected as String) {
+    none
+  } else {
+    Present { value: InbandDigestDiffers { expected: expected, observed: observed } }
+  }
+}
+
 // THE PURE HALF, bytes to verdict: digest, attribution, decode, in that order. The digest gate is first
 // because the digest is what makes the bytes THIS capture; attribution comes before the serial is handed on,
 // because a serial from an unattributed capture is a serial attached to nothing. The callers that read from a
@@ -341,9 +354,9 @@ fn inband_lan_print_address(content: String, section: NonEmptyStr) -> String? {
 // twice rather than a second authority written -- so a witness can drive every arm off real capture bytes with
 // one row field changed and no file touched.
 fn decode_inband_board_capture(content: String, row: InbandHostIdentityCaptureRow, channel_content: String?) -> InbandBoardRead {
-  match fru_capture_digest_check(content: content, expected_sha256: row.capture_sha256) {
-    FruCaptureDigestDiffers { gap: FruCaptureDigestMismatch { expected: x, observed: o } } => InbandBoardRefused { gap: InbandCaptureDigestMismatch { expected: x, observed: o } }
-    FruCaptureDigestAgrees => match inband_board_fields(content: content, row: row) {
+  match inband_digest_differs(content: content, expected: row.capture_sha256) {
+    Present { value: d } => InbandBoardRefused { gap: InbandCaptureDigestMismatch { expected: d.expected, observed: d.observed } }
+    Absent => match inband_board_fields(content: content, row: row) {
     InbandBoardFieldsRefused { gap: g } => InbandBoardRefused { gap: g }
     InbandBoardFieldsObserved { product_name: product, serial: serial } =>
       match inband_attribution(content: content, row: row, channel_content: channel_content) {
@@ -465,9 +478,9 @@ fn read_attributed_inband_capture(unit: HostIdentity) -> InbandAttributedCapture
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
         FilesystemReadRefused { error: e } => InbandCaptureRefused { gap: InbandCaptureUnreadable { error: e } }
         FilesystemReadSucceeded { content: text } =>
-          match fru_capture_digest_check(content: text, expected_sha256: row.capture_sha256) {
-            FruCaptureDigestDiffers { gap: FruCaptureDigestMismatch { expected: x, observed: o } } => InbandCaptureRefused { gap: InbandCaptureDigestMismatch { expected: x, observed: o } }
-            FruCaptureDigestAgrees => read_inband_channel_if_rowled(text: text, row: row)
+          match inband_digest_differs(content: text, expected: row.capture_sha256) {
+            Present { value: d } => InbandCaptureRefused { gap: InbandCaptureDigestMismatch { expected: d.expected, observed: d.observed } }
+            Absent => read_inband_channel_if_rowled(text: text, row: row)
           }
       }
     }
@@ -488,9 +501,9 @@ fn read_inband_channel_if_rowled(text: String, row: InbandHostIdentityCaptureRow
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
         FilesystemReadRefused { error: e } => InbandCaptureRefused { gap: InbandChannelCaptureUnreadable { capture_path: channel_path, error: e } }
         FilesystemReadSucceeded { content: channel_text } =>
-          match fru_capture_digest_check(content: channel_text, expected_sha256: channel_sha) {
-            FruCaptureDigestDiffers { gap: FruCaptureDigestMismatch { expected: x, observed: o } } => InbandCaptureRefused { gap: InbandChannelCaptureDigestMismatch { expected: x, observed: o } }
-            FruCaptureDigestAgrees =>
+          match inband_digest_differs(content: channel_text, expected: channel_sha) {
+            Present { value: d } => InbandCaptureRefused { gap: InbandChannelCaptureDigestMismatch { expected: d.expected, observed: d.observed } }
+            Absent =>
               match inband_attribution_gap(content: text, row: row, channel_content: Present { value: channel_text }) {
                 Present { value: g } => InbandCaptureRefused { gap: g }
                 Absent => InbandCaptureAttributed { content: text, row: row, channel_content: Present { value: channel_text } }
