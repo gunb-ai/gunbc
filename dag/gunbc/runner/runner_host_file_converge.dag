@@ -4652,6 +4652,23 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && runner_host_cap_phase_settled(phase: run.cap_phase)
         && all(run.superseded, r => superseded_dropin_settled(r: r))
         && all(run.deploy_readings, r => deploy_slot_host_walls_hold(r: r))
+        // THE SPEC PAIR OWNS ITS OWN OUTCOME (manager ruling on the deleted realize path, carried
+        // here): an apply run whose spec-named account is still missing -- absent and uncreated,
+        // unreadable (which is never absence), or absent with the administrator refused -- REFUSES.
+        // The run must never report success for an account creation that did not run. Observe mode
+        // reports standings and gates nothing, exactly as the deploy-slot account does.
+        && all(run.spec_accounts, a => runner_spec_account_settled(a: a))
+  }
+}
+
+// A spec account has SETTLED when the host carries it: read present, or created and read back.
+// Missing is never settled -- it covers absent-with-cause and unreadable alike, and neither is a
+// host that carries the account the spec names.
+fn runner_spec_account_settled(a: RunnerSpecAccountStanding) -> Bool {
+  match a {
+    RunnerSpecAccountPresent { login: _, uid: _ } => true
+    RunnerSpecAccountCreated { login: _, uid: _ } => true
+    RunnerSpecAccountMissing { login: _, cause: _ } => false
   }
 }
 

@@ -216,7 +216,10 @@ import gunbc.runner.runner_host_file_converge {
   ManagerReloadRefused,
   ManagerReloadOwedNotAttempted,
   runner_host_file_run_succeeded,
-  fleet_host_file_write_admission,
+  runner_spec_account_settled,
+  RunnerSpecAccountCreated,
+  RunnerSpecAccountMissing,
+  RunnerSpecAccountPresent,
   runner_slot_expectation_with_roles,
   runner_host_role_environments,
   dropins_that_could_override,
@@ -1012,6 +1015,7 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
               FleetHostFilesApply => runner_host_cap_phase_not_owed
             },
             deploy_account: HostHasNoDeploySlot,
+            spec_accounts: [],
             slot_trees: [],
             superseded: [],
             deploy_readings: [],
@@ -1618,6 +1622,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [],
         slot_trees: [],
         superseded: [],
         deploy_readings: [],
@@ -1800,6 +1805,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [],
         slot_trees: [],
         superseded: [],
         deploy_readings: [],
@@ -1818,10 +1824,67 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [],
         slot_trees: [],
         superseded: [],
         deploy_readings: [],
       })
+  }
+}
+
+// THE SPEC PAIR REFUSES THE APPLY RUN THROUGH ITS OWN FIELD (B3b): the accounts the host's
+// RunnerHostSpec names (unit_user, job_user) are created by this route, and a run whose spec
+// account is Missing -- absent and uncreated, or unreadable, which is never absence -- must not
+// report success. POSITIVE CONTROLS: the pair read present, and the pair created and read back.
+// This is the property the deleted realize path pinned (review 38602 thread on gunbc#16313), now
+// carried by the one executing route.
+test fn a_missing_spec_account_refuses_apply_through_its_own_field() -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      !runner_host_file_run_succeeded(run: RunnerHostFileRun {
+        subject: s,
+        mode: FleetHostFilesApply,
+        privilege: AdministratorPrivilegeAvailable,
+        results: [],
+        withheld: [],
+        pre_actuation_reload: ManagerReloaded,
+        actuation_admission: ActuationAdmitted,
+        actuations: [],
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [RunnerSpecAccountMissing { login: "gunbc-runner", cause: "absent; the getent leg read it as missing" }],
+        slot_trees: [],
+        superseded: [],
+        deploy_readings: [],
+      })
+      && runner_host_file_run_succeeded(run: RunnerHostFileRun {
+        subject: s,
+        mode: FleetHostFilesApply,
+        privilege: AdministratorPrivilegeAvailable,
+        results: [],
+        withheld: [],
+        pre_actuation_reload: ManagerReloaded,
+        actuation_admission: ActuationAdmitted,
+        actuations: [],
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        spec_accounts: [
+          RunnerSpecAccountPresent { login: "gunbc-runner", uid: 998 },
+          RunnerSpecAccountCreated { login: "ghrunner", uid: 999 },
+        ],
+        slot_trees: [],
+        superseded: [],
+        deploy_readings: [],
+      })
+      && !runner_spec_account_settled(a: RunnerSpecAccountMissing { login: "ghrunner", cause: "unreadable" })
+      && runner_spec_account_settled(a: RunnerSpecAccountCreated { login: "ghrunner", uid: 999 })
   }
 }
 
