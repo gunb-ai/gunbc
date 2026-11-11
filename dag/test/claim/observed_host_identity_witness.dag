@@ -88,6 +88,7 @@ test fn witness_an_unknown_spelling_refuses_naming_it() -> Bool {
             && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "totch")
         ObservedHostUnnamed { observed: _ } => false
         ObservedHostAmbiguous { observed: _, candidates: _ } => false
+        ObservedHostRegistryRefused { key: _ } => false
       }
     ObservedHostIdentityResolved { host: _ } => false
   }
@@ -104,6 +105,7 @@ test fn witness_an_empty_answer_refuses_as_unnamed() -> Bool {
           string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "named nothing")
         ObservedHostUnknown { observed: _ } => false
         ObservedHostAmbiguous { observed: _, candidates: _ } => false
+        ObservedHostRegistryRefused { key: _ } => false
       }
     ObservedHostIdentityResolved { host: _ } => false
   }
@@ -126,6 +128,7 @@ test fn witness_a_short_name_two_hosts_answer_to_refuses() -> Bool {
             && string_contains(s: observed_host_identity_refusal_text(refusal: r), pattern: "damien")
         ObservedHostUnknown { observed: _ } => false
         ObservedHostUnnamed { observed: _ } => false
+        ObservedHostRegistryRefused { key: _ } => false
       }
     ObservedHostIdentityResolved { host: _ } => false
   }
