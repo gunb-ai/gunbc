@@ -1055,8 +1055,7 @@ fn network_install_run(
   ) {
     Present { value: cause } => NetworkInstallRunRefused {
       receipt: network_install_cause_refused_receipt(
-        host: host, serial: expected_serial, decided_at: decided_at,
-        refusal: network_install_refusal_text(cause: cause)
+        host: host, serial: expected_serial, decided_at: decided_at, cause: cause
       ),
     }
     Absent => match ports.acquire_hold(request: NetworkInstallHoldRequest { host: host, owner: dispatch_owner }) {
