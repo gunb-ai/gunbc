@@ -206,8 +206,10 @@ fn the_named_carrier_rest_consumer_fixture_resolves_under_the_run_demand_grain()
 }
 
 /// The un-named arm: wire rows + the two carrier ARMS imported, the carrier identity itself
-/// spelled nowhere -- the victim's import shape at
-/// gunbc/fleet/organization_runner_roster_read.dag:20 and :27. Refuses
+/// spelled nowhere -- the victim's import shape in
+/// `gunbc.fleet.organization_runner_roster_read` (wire rows from
+/// `extdeps.github.actions_self_hosted_runners`, `RestAnswered`/`RestRefused` from
+/// `extdeps.transports.rest`, carrier unmentioned). Refuses
 /// `MethodExistenceUndecided` naming `Primitive(fleetroster.RosterCarrierRest)` on a main that
 /// carries #16156 without the carrier seed; must be GREEN at the head that lands it. Together
 /// with the control above this isolates the failure to the synthesized carrier read and nothing
