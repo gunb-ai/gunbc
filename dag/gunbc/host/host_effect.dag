@@ -77,7 +77,7 @@ type HostEffect =
       intent: CodexAppServerStdioSessionIntent,
       lease_key: NonEmptyStr,
     }
-  | Srv3BootOnceReadBackSleep
+  | BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
   | HostIdentityShortHostnameRead
   | LiveDeployApply { warrant: AdmittedLiveDeployApply }
