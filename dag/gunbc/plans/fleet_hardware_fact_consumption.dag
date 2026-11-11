@@ -199,7 +199,7 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   ConsumerMigrationRow {
     consumer: "owned-hardware population and dispositions",
     readings: ReadingsNotOwed,
-    owner: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_hosts"),
+    owner: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "operator_hosts"),
     inputs: "physical units, assemblies, ownership and lifecycle (installed, pending qualification, spare, retired or disposed, provider-managed)",
     superseded: "the identity roster read as a count of machines (srv13 and srv15 name one board; provider guests are rows)",
     waits_on: ["operator: addresses or access for srv3, srv13..srv16, mtcollins1, mtjade1, the host-* machines and the Sparks"],

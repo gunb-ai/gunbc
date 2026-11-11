@@ -1,12 +1,12 @@
 module gunbc.instruments.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.ci.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
-import gunbc.ci.ci_spec {
-  gunbc_ci_gates, CiSpec,
+import gunbc.ci.ci_gate {
+  Gate, EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate
 }
+import gunbc.commit_workflow { gunbc_ci_gates }
 import gunbc.instruments.emit_host_gate { run_emit_host_ci_gate }
 import gunbc.instruments.cheap_claim_pool_gate { run_cheap_claim_pool_ci_gate }
 import gunbc.instruments.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
@@ -34,10 +34,6 @@ fn run_gate_list(gates: List<Gate>) -> ProcessExit {
       ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
     }
   })
-}
-
-fn run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
-  run_gate_list(gates: spec.gates)
 }
 
 fn main() -> ProcessExit {
