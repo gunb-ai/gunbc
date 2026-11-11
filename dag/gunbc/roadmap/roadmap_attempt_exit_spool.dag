@@ -10,7 +10,6 @@ import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryon
 import gunbc.spool_queue {
   SpoolAttemptExit, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
   SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_directory_listing, spool_role_path, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
-  SpoolStore,
 }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
@@ -334,20 +333,16 @@ fn compute_attempt_exit_entry_parts(done_dir: String, identity: String) -> List<
 // record, so a hook whose variables were never substituted would leave a directory literally named
 // "...+${INVOCATION_ID}+..." -- which attempt_exit_record_put_mkdir_name refuses to write and
 // attempt_exit_entry_decode refuses to read, at the two ends of the only routes that touch it.
-fn compute_attempt_exit_hook(store: SpoolStore, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
-  match spool_role_path(store: store, role: RoleDone) {
-    Absent => AttemptExitHookRefused { reason: "the sealed store declares no done directory" }
-    Present { value: done_dir } =>
-      match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
-        ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
-        // THE RECORD IS CREATED OWNED BY THE PROVIDER THAT READS IT BACK -- the same owner the deploy route
-        // gave the spool root -- and the reader only ever reads its own uid's directory, so ownership and
-        // partition are one fact: no foreign uid can plant a record here, and no chown can drift.
-        ExecWordRendered { word } =>
-          match exec_command_line_full_privileges(command: install_directory_owned_argv_command(mode: declared_directory_mode(m: attempt_exit_record_mode), owner: record_owner.user, group: record_owner.group, path: word as String)) {
-            ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
-            ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
-          }
+fn compute_attempt_exit_hook(done_dir: String, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
+  match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
+    ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
+    // THE RECORD IS CREATED OWNED BY THE PROVIDER THAT READS IT BACK -- the same owner the deploy route
+    // gave the spool root -- and the reader only ever reads its own uid's directory, so ownership and
+    // partition are one fact: no foreign uid can plant a record here, and no chown can drift.
+    ExecWordRendered { word } =>
+      match exec_command_line_full_privileges(command: install_directory_owned_argv_command(mode: declared_directory_mode(m: attempt_exit_record_mode), owner: record_owner.user, group: record_owner.group, path: word as String)) {
+        ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
+        ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
       }
   }
 }
@@ -355,11 +350,8 @@ fn compute_attempt_exit_hook(store: SpoolStore, identity: String, record_owner: 
 // WHAT THE SEAT'S DOOR CAN SEE: its own uid's done directory, listed once. An unreadable spool is
 // UNREADABLE, never empty -- "there is no record" is a claim about the seat's end that a failed listing
 // cannot support, and the door keeps the seat on it.
-fn compute_attempt_exit_record_listing(store: SpoolStore) -> SpoolListing {
-  match spool_role_path(store: store, role: RoleDone) {
-    Absent => SpoolListingUnreadable { reason: "the sealed store declares no done directory" }
-    Present { value: done_dir } => spool_directory_listing(directory: done_dir)
-  }
+fn compute_attempt_exit_record_listing(done_dir: String) -> SpoolListing {
+  spool_directory_listing(directory: done_dir)
 }
 
 // ONE DECODED RECORD. The process END is a closed pair: an exit with a status, or a signal. They are

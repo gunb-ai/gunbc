@@ -54,16 +54,6 @@ type SpoolKind
   = SpoolAttemptUnit
   | SpoolAttemptExit
   | SpoolPublication
-  | SpoolComputeExit
-
-// THE TYPED PARTITION, declared by the kind. An Unpartitioned spool lives at
-// `<instance_root>/<root_name>/<role_dir>`. A ByPrincipalUid spool is partitioned per uid:
-// `<instance_root>/<root_name>/<uid>/<role_dir>`. The partition is part of the kind's identity;
-// a partitioned kind's mint requires the principal uid as part of its business key together with
-// the instance root, and an Unpartitioned kind's mint has no uid parameter at all.
-type SpoolPartition
-  = Unpartitioned
-  | ByPrincipalUid
 
 // The closed set of places an entry can stand (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed,
 // done = RoleDone, refused = RoleRefused for the exit spool). HostSpoolStage, the exit spool's former private enum, is deleted.
@@ -125,7 +115,6 @@ type SpoolDeclaration {
   claimant: SpoolPrincipal
   key_separator: String
   key_part_count: Int
-  partition: SpoolPartition
 }
 
 // THE DECLARATION IS DATA: adding a spool is a variant and a row here, never a stage list at a call site.
@@ -141,7 +130,6 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "+",
       key_part_count: 2,
-      partition: Unpartitioned,
     }
     SpoolAttemptExit => SpoolDeclaration {
       exclusion: ExclusiveByRename,
@@ -153,7 +141,6 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "+",
       key_part_count: 7,
-      partition: Unpartitioned,
     }
     SpoolPublication => SpoolDeclaration {
       exclusion: ExclusiveByAgreement { consumer: PublicationServiceUnit { drainers_allowed: 1 } },
@@ -165,19 +152,6 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       claimant: PrincipalDrainer,
       key_separator: "-",
       key_part_count: 1,
-      partition: Unpartitioned,
-    }
-    SpoolComputeExit => SpoolDeclaration {
-      exclusion: ExclusiveByAgreement { consumer: PublicationServiceUnit { drainers_allowed: 1 } },
-      entry_kind: SpoolEntryDirectory,
-      chain: [SpoolStage { role: RoleDone, directory: "done" }],
-      terminals: [],
-      parked: [],
-      enqueuer: PrincipalExternalHook,
-      claimant: PrincipalDrainer,
-      key_separator: "+",
-      key_part_count: 4,
-      partition: ByPrincipalUid,
     }
   }
 }
@@ -629,30 +603,10 @@ fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirector
 type SpoolStore {
   kind: SpoolKind
   instance_root: String
-  partition_uid: Optional<Int>
 }
 
 fn spool_open(kind: SpoolKind, instance_root: String) -> SpoolStore {
-  SpoolStore { kind: kind, instance_root: instance_root, partition_uid: Absent }
-}
-
-// THE PARTITIONED MINT. For a ByPrincipalUid kind the uid is part of the mint's business key together
-// with the instance root; the mint refuses Unready without a positive uid. An Unpartitioned kind's mint
-// has no uid parameter at all: callers use `spool_open`.
-type SpoolStoreMint
-  = StoreReady { store: SpoolStore }
-  | StoreUnready { reason: String }
-
-fn spool_open_partitioned(kind: SpoolKind, instance_root: String, uid: Int) -> SpoolStoreMint {
-  if spool_declaration(kind: kind).partition != ByPrincipalUid {
-    StoreUnready { reason: "spool_open_partitioned called on an Unpartitioned kind" }
-  } else if uid <= 0 {
-    StoreUnready { reason: "a partitioned spool requires a positive principal uid" }
-  } else if !path_segment_is_safe(raw: to_string(value: uid)) {
-    StoreUnready { reason: "the rendered uid is not a safe path segment" }
-  } else {
-    StoreReady { store: SpoolStore { kind: kind, instance_root: instance_root, partition_uid: Present { value: uid } } }
-  }
+  SpoolStore { kind: kind, instance_root: instance_root }
 }
 
 fn spool_root_name(kind: SpoolKind) -> String {
@@ -660,34 +614,11 @@ fn spool_root_name(kind: SpoolKind) -> String {
     SpoolAttemptUnit => "attempt-unit-spool"
     SpoolAttemptExit => "attempt-exit-spool"
     SpoolPublication => "publication-spool"
-    SpoolComputeExit => "attempt-exit-spool"
   }
 }
 
-// THE ONE DERIVATION: `<instance_root>/<root_name>[/<uid>]/<role_dir>`. For an Unpartitioned kind the uid
-// segment is absent; for a ByPrincipalUid kind it sits between the root name and the role directory.
-// Provisioning (the owned root target, and the per-uid directory the hook stands up) reads this same function.
 fn spool_root_dir(store: SpoolStore) -> String {
-  match store.partition_uid {
-    Present { value: uid } => join([store.instance_root, "/", spool_root_name(kind: store.kind), "/", to_string(value: uid)], "")
-    Absent => join([store.instance_root, "/", spool_root_name(kind: store.kind)], "")
-  }
-}
-
-// PROVISIONING PATH: THE OWNED ROOT TARGET. The path of the root the deploy route stands up as the owned directory
-// target; a partitioned kind's root is below the uid partition directory, so provisioning also needs the uid directory.
-fn spool_partition_root_target_path(kind: SpoolKind, instance_root: String) -> String {
-  join([instance_root, "/", spool_root_name(kind: kind)], "")
-}
-
-// PROVISIONING PATH: THE PER-UID DIRECTORY. The uid partition the hook stands up at instance start; derived from the
-// same root name, no second join.
-fn spool_partition_uid_dir(kind: SpoolKind, instance_root: String, uid: Int) -> Optional<String> {
-  if uid <= 0 || !path_segment_is_safe(raw: to_string(value: uid)) {
-    Absent
-  } else {
-    Present { value: join([spool_partition_root_target_path(kind: kind, instance_root: instance_root), "/", to_string(value: uid)], "") }
-  }
+  join([store.instance_root, "/", spool_root_name(kind: store.kind)], "")
 }
 
 // The directory a role stands in, absent for a role the spool has no directory for.
@@ -786,7 +717,6 @@ fn spool_watched_roles(kind: SpoolKind) -> List<SpoolRole> {
     SpoolAttemptExit => [RolePending, RoleHandedOff]
     SpoolAttemptUnit => [RolePending]
     SpoolPublication => [RolePending]
-    SpoolComputeExit => []
   }
 }
 
