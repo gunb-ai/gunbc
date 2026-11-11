@@ -378,13 +378,28 @@ service diagnostic.ipmi.Tool {
     }
   }
 
-  // The managed account's IPMI user test: `ipmitool user test <user_id>`. THE ONLY user-test operation --
-  // it is for the MANAGED account; the driver must pass the managed username/password_file and the managed
-  // user id, never the published credential. Its exit status is the acceptance signal the wet driver folds
-  // into the committed body.
+  // `ipmitool user test <user_id> <16|20> <password>` — a RAW transport primitive that models what the
+  // command actually takes (external_upstreams: "model what the API actually returns"). The command's real
+  // syntax is grounded in artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt:
+  //     user test 2 20 <new>   ->  Success
+  //     user test 2 20 admin   ->  Failure: password incorrect
+  // The `<16|20>` password length and the `<password>` value under test are POSITIONAL and the length is
+  // REQUIRED (omitting them makes ipmitool print a usage error or hang at an interactive prompt until
+  // `timeout` kills it, exit 124, and it never yields the acceptance signal). The `-U/-f` pair is the
+  // SESSION credential that authenticates the raw command; the positional `<password>` is the value being
+  // tested for `user_id`. SUCCESS IS READ FROM THE STDOUT WORD (`Success` / `Failure: ...`) by
+  // gunbc.machine_intake.bmc_account_state_parsers ipmi_user_test_verdict_from_output, NOT from the exit
+  // code (a tested-but-wrong password still exits 0 and prints `Failure`).
+  // LOCKOUT SAFETY (review 93410#2, stated honestly): this operation is raw transport — it takes whatever
+  // username/password the caller hands it and does NOT itself know managed from published. The managed-only
+  // discipline is the CALLER's obligation, enforced at the gunbc boundary: gunbc.machine_intake.
+  // bmc_account_state_live bmc_account_state_live_read has no published-credential parameter and DERIVES the
+  // published account's standing under the credential-policy row rather than probing it, so on the only
+  // route that reaches this operation in production a published-credential login is not constructible. It is
+  // NOT enforced by this operation's name.
   operation UserTestManaged {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, user_id: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, user_id: NonEmptyStr, password_len: NonEmptyStr, password: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -392,7 +407,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "user", "test", "{user_id}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "user", "test", "{user_id}", "{password_len}", "{password}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool user test failed"

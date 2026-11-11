@@ -24,10 +24,14 @@ module gunbc.machine_intake.bmc_account_state_live
 // That is the CONTRACT this entry is written against, not a description of running code: the operations named
 // above have no executing consumer until the dispatch is wired, so they -- and this entry -- are the frontier's
 // REMAINING, trigger = the arrival-door BmcSecure binding plus one executed srv15 run whose receipt is
-// committed. Enforcing the two safety properties therefore does not need code here: (a) the published
-// credential has NO parameter on
-// this path -- the reader only ever takes ManagedCredentialReference / the goal's break-glass reference and
-// derives the published retirement, so a published login cannot be requested; (b) an instant cannot be a
+// committed. Enforcing the two safety properties therefore does not need code HERE (in the pure reader): (a)
+// the published credential has NO parameter on this path -- the reader only ever takes ManagedCredentialReference
+// / the goal's break-glass reference and derives the published retirement, so a published login cannot be
+// requested THROUGH THIS ENTRY. This is a property of the READER, not of the raw extdeps operations: the wet
+// operations it feeds (UserTestManaged and friends) take any username/password/positional password and enforce
+// nothing themselves -- their managed-only discipline is the DISPATCH's obligation, and it is secure only
+// because this entry, the sole production caller, exposes no published-credential parameter, never because an
+// operation is named "Managed" (review 93410#2); (b) an instant cannot be a
 // controller clock -- supplied_transport_read_bmc_account_state turns read_at_millis into a sealed observer
 // instant via gunbc.clock_read. A witness hands the same captures a wet transport would, and gets the same
 // observation the dry reader mints for that world.
