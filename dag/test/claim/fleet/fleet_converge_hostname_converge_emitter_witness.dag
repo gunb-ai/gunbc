@@ -19,14 +19,21 @@ import std.algebra { string_contains }
 import std.optional { Absent, Present }
 import extdeps.languages.yaml.types { YamlString }
 import extdeps.github.actions {
-  DispatchInput, DispatchInputType, InputChoice, InputString, Job, RunsOnExpression, SelfHosted, HostedRunner,
-  Step, RunStep, workflow_dispatch_max_inputs,
+  ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax, ConcurrencyScalar, DispatchInput, DispatchInputType,
+  InputChoice, InputString, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
+  workflow_dispatch_max_inputs,
 }
 import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeYamlGenerated,
   FleetConvergeYamlGenerationRefused,
   HostnameConverge,
+  SubjectHostDomain,
+  fleet_converge_arm_domain_clause,
+  fleet_converge_host_mutation_group_for,
   fleet_converge_host_runner_expression,
+  fleet_converge_mode_mutation_domain,
+  fleet_converge_subject_host_input_name,
+  fleet_host_mutation_group_prefix,
   fleet_converge_dispatch_inputs,
   fleet_converge_jobs,
   fleet_converge_hostname_converge_apply_step,
@@ -98,6 +105,15 @@ fn runs_on_text(job: Job) -> String {
     RunsOnExpression { expression: e } => e
     SelfHosted { labels: ls } => join(ls, ",")
     HostedRunner { label: _ } => "hosted"
+  }
+}
+
+fn concurrency_group_text(job: Job) -> String {
+  match job.concurrency {
+    Absent => ""
+    Present { value: ConcurrencyScalar { group: g } } => g
+    Present { value: ConcurrencyMappingQueueMax { group: g, cancel_in_progress: _ } } => g
+    Present { value: ConcurrencyMappingQueueNotMax { group: g, cancel_in_progress: _, explicit_single: _ } } => g
   }
 }
 
@@ -207,6 +223,41 @@ test fn the_plan_and_read_back_steps_run_with_the_mode_and_the_apply_does_not() 
             && !string_contains(s: step_if_text(step: plan), pattern: "converge ==")
       }
   }
+}
+
+// ONE MUTATION DOMAIN PER HOST -- AND THIS MODE'S HOST IS NOT ITS EXECUTOR. The host-domain authority keys
+// on `github.event.inputs.host`, which for every other mode is both the executor and the machine acted upon.
+// Here the executor is the peer, so a job grouped on it would let a hostname converge of srv2 and some other
+// mode's mutation of srv2 run AT THE SAME TIME -- two jobs changing one machine's identity concurrently, the
+// one race the group exists to stop. The group must therefore carry the machine being RENAMED, under the same
+// prefix every host mutation uses so the strings actually collide.
+test fn the_job_is_grouped_against_mutations_of_the_host_it_renames() -> Bool {
+  match job_with_id(id: hostname_converge_job_id) {
+    Absent => false
+    Present { value: job } =>
+      let group = concurrency_group_text(job: job)
+      string_contains(s: group, pattern: fleet_host_mutation_group_prefix)
+        && string_contains(s: group, pattern: "github.event.inputs.subject_host")
+        && !string_contains(s: group, pattern: "github.event.inputs.host")
+        && group == fleet_converge_host_mutation_group_for(field: hostname_converge_target_input_name)
+  }
+}
+
+// THE DOMAIN FOLD SAYS SO TOO, and names the same field the job groups on. A mode whose job sets its own
+// group while the fold still calls it ExecutorDomain is a mode whose classification has gone stale, and the
+// next job added for it would inherit the wrong serialization. The field name is held by two authorities --
+// the roster's row here and the subject that reads it -- so they are pinned to each other rather than
+// assumed equal.
+test fn the_mode_declares_a_subject_domain_that_names_the_host_it_renames() -> Bool {
+  (match fleet_converge_mode_mutation_domain(mode: HostnameConverge) {
+    SubjectHostDomain => true
+    _ => false
+  })
+    && (hostname_converge_target_input_name as String) == (fleet_converge_subject_host_input_name as String)
+    && string_contains(
+      s: fleet_converge_arm_domain_clause(mode: HostnameConverge),
+      pattern: "github.event.inputs.subject_host",
+    )
 }
 
 // THE APPLY IS DOUBLY GATED: the mode, AND an actuating word on the one shared act field. A mode selection
