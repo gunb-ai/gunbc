@@ -94,22 +94,15 @@ test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
   )
 }
 
-fn superseded_child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_HSDEAR3FG68K530CRD70" as RoadmapNodeIdentity,
-    node: child_id,
-    line: PlainLine { content: "**PR-checkbox status**" },
-    carriers: [],
-    dispatch: NotDispatchable,
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    parent: none,
-    centering: none,
-  }
-}
-
-test fn witness_superseded_checked_struck_no_acceptance_suffix() -> Bool {
-  let out = emit_nodes(nodes: [parent_node(), superseded_child_node()], merged: [])
-  string_contains(s: out, pattern: "[x] ~~**PR-checkbox status**~~ **superseded →** successor-lane")
-    && !string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
-}
+// witness_superseded_checked_struck_no_acceptance_suffix is DELETED with the carrier it tested. Its
+// subject was the document rendering of the authored superseded LINE (SupersededLine and
+// item_superseded_by, both gone): only that line could render struck-through with a
+// "superseded →" successor, and only it could hold the box without the awaiting-receipt suffix — the
+// fixture here is a PlainLine, which item_superseded_by answered "" for even at base, so this claim was
+// red there too. There is no replacement claim for the rendering, because the rendering has no input any
+// more: retirement is the roadmap event log's to decide, and a log-retired node leaves the emitted
+// document whole, exactly as an accepted one does. That is the fact now claimed, and it is claimed once:
+// gunbc.test.claim.roadmap.roadmap_event_log_witness
+// a_retired_node_leaves_the_plan_the_way_an_accepted_one_does. What the emitter still owes a row is the
+// evidence reading, claimed here by witness_child_merged_unaccepted_awaiting_acceptance (the row with a
+// merged PR is unchecked, carries the awaiting-receipt suffix, and is asserted NOT to be "[x]").

@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_event_admitted_after, roadmap_results_for_attempt,
   RoadmapResultBinding, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, EarnedByPullRequest, NodeRetired, Retired,
-  roadmap_standing_is_accepted, roadmap_standing_is_retired, roadmap_standing_is_terminal,
+  roadmap_standing_is_retired, roadmap_standing_is_terminal,
   roadmap_revocation_names_live_acceptance, roadmap_retired_node_ids_of,
   RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
   roadmap_acceptance_event_rows, RoadmapAcceptanceEventRow, roadmap_event_causal_chain,
@@ -627,11 +627,14 @@ fn retired_event(at: String) -> RoadmapEventEnvelope {
 test fn an_acceptance_event_folds_the_node_to_accepted_and_terminal() -> Bool {
   let envs = [acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")]
   match roadmap_node_standing(envs: envs) {
+    // MATCHING the hand is the assertion (review 93664 on gunb-ai/gunbc#16189): this arm is reached for the
+    // acceptance hand and for nothing else, so it does not also ask a helper whether this is the acceptance
+    // hand. That the hand is terminal is the next claim's subject, where a later event is what must not move
+    // it; that it is not the retired hand is claimed by
+    // a_retired_node_leaves_the_plan_the_way_an_accepted_one_does, which asks the retired question of a
+    // retired lane and of an accepted one.
     NodeAccepted { by: _, receipt } =>
-      roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: envs))
-        && roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: envs))
-        && !roadmap_standing_is_retired(standing: roadmap_node_standing(envs: envs))
-        && (receipt.node as String) == (node() as String)
+      (receipt.node as String) == (node() as String)
         && !roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt_for("another-node" as RoadmapNodeId))
         && roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt_fixture())
     _ => false
@@ -647,8 +650,10 @@ test fn a_terminal_standing_absorbs_later_work_events() -> Bool {
     kind: Progress { note: "still working on it" as NonEmptyStr },
     parent: Present { value: accepted.id }, author: legacy("agent@example.com"), at: "2026-11-09T01:00:00Z")
   let envs = [accepted, later]
-  roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: envs))
-    && count(roadmap_issue_history_newest_first(envs: envs)) == 2
+  match roadmap_node_standing(envs: envs) {
+    NodeAccepted { by: _, receipt: _ } => count(roadmap_issue_history_newest_first(envs: envs)) == 2
+    _ => false
+  }
 }
 
 // DISCRIMINATING: a revocation is admitted ONLY when it names the receipt the node's live acceptance
@@ -691,17 +696,17 @@ test fn a_revocations_disposition_decides_whether_the_node_returns() -> Bool {
   // The Progress event is ABSORBED on both arms and re-decides nothing: on the reopened arm it leaves the
   // standing identical to the lane without it, and identical does not mean accepted — a node the log
   // returned to the frontier is open work, and only an acceptance event can make it accepted again. (The
-  // first draft of this claim asserted `roadmap_standing_is_accepted` here and was red, which is what
-  // proved the arm was stating the wrong law.)
+  // first draft of this claim asserted the acceptance hand directly and was red, which is what
+  // proved the arm was stating the wrong law. The acceptance hand is asked for as the pair the log owns —
+  // terminal, and not the retired hand — because roadmap_standing_is_terminal is the one match over the sum
+  // and those are its only two true arms (review 93664 on gunb-ai/gunbc#16189).)
   roadmap_standing_is_terminal(standing: accepted_standing)
-    && roadmap_standing_is_accepted(standing: accepted_standing)
+    && !roadmap_standing_is_retired(standing: accepted_standing)
     && roadmap_standing_is_terminal(standing: stays_standing)
-    && roadmap_standing_is_accepted(standing: stays_standing)
+    && !roadmap_standing_is_retired(standing: stays_standing)
     && !roadmap_standing_is_terminal(standing: reopened_standing)
-    && !roadmap_standing_is_accepted(standing: reopened_standing)
     && roadmap_node_standing(envs: [accepted, reopened, open_lane]) == reopened_standing
     && !roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted, reopened, open_lane]))
-    && !roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted, reopened, open_lane]))
 }
 
 // THE SEED'S OWN HISTORY, END TO END (review finding 2): acceptance, then the revocation that took it
@@ -719,8 +724,10 @@ test fn the_recorded_history_of_one_node_folds_to_a_retirement_through_its_accep
   let absorbed = ev(kind: Progress { note: "a note nobody should have to read" as NonEmptyStr },
     parent: Present { value: retired.id }, author: human_principal(), at: "2026-11-12T00:00:00Z")
   let lane = [accepted, stays, retired]
-  roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted]))
-    && roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [accepted, stays]))
+  roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted]))
+    && !roadmap_standing_is_retired(standing: roadmap_node_standing(envs: [accepted]))
+    && roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted, stays]))
+    && !roadmap_standing_is_retired(standing: roadmap_node_standing(envs: [accepted, stays]))
     && roadmap_standing_is_retired(standing: roadmap_node_standing(envs: lane))
     && roadmap_node_standing(envs: concat(lane, [absorbed])) == roadmap_node_standing(envs: lane)
     && match roadmap_retired_node_ids_of(envs: lane) {
@@ -742,7 +749,7 @@ test fn a_retired_node_leaves_the_plan_the_way_an_accepted_one_does() -> Bool {
         && any(ids, i => (i as String) == (node() as String))
         && roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [retired]))
         && roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted]))
-        && !roadmap_standing_is_accepted(standing: roadmap_node_standing(envs: [retired]))
+        && roadmap_standing_is_retired(standing: roadmap_node_standing(envs: [retired]))
     RetiredNodeIdsRefused { detail: _ } => false
   }
 }

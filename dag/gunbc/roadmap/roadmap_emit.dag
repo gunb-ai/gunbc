@@ -16,15 +16,6 @@ import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, 
 
 fn roadmap_max_depth() -> Int { 12 }
 
-// A node DEFINITION carries no acceptance and no retirement: the event log's standing removes an
-// accepted node and a retired node from the emitted document before a row is ever rendered here
-// (gunbc.roadmap.roadmap_authority frontier_sets_projection), so the emitter asks a row nothing about
-// how it ends. What it may ask is whether the row's implementation evidence has landed, which is a
-// review state and not an acceptance.
-fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
-  false
-}
-
 fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
   item_is_done(item: rn.line, merged: merged)
 }
@@ -158,7 +149,13 @@ fn task_item_for(rn: RoadmapNode, graph: MarkdownTreeGraph, merged: List<Int>, f
   } else {
     [para]
   }
-  task_item_with(done: node_is_done(rn: rn, merged: merged), blocks: blocks)
+  // No row decides its own box. At base the only thing that checked it was supersession — the second
+  // home this change deletes — and an accepted node never reaches this line at all, because the event
+  // log's standing removes it from the emitted document first (gunbc.roadmap.roadmap_authority
+  // frontier_sets_projection, witness: gunbc.test.claim.roadmap.roadmap_event_log_witness
+  // a_retired_node_leaves_the_plan_the_way_an_accepted_one_does). What a row may still say is whether
+  // its implementation evidence has landed, and that shows as the awaiting-receipt suffix below.
+  task_item_with(done: false, blocks: blocks)
 }
 
 fn flush_run(acc: { blocks: List<MarkdownBlock>, mode: Int, tbuf: List<MarkdownTaskItem>, pbuf: List<MarkdownListItem> }) -> List<MarkdownBlock> {

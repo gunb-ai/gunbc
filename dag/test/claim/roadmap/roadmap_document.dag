@@ -99,13 +99,13 @@ test fn witness_both_sections() -> Bool {
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
 
-test fn witness_authored_evidence_awaiting_acceptance() -> Bool {
-  let out = emit_roadmap(merged: [5491])
-  string_contains(s: out, pattern: "[ ] **fail-open audit**")
-    && string_contains(s: out, pattern: "[plan](docs/plans/scaffold-admission-doctrine.md)")
-    && string_contains(s: out, pattern: "⏳ awaiting an acceptance receipt")
-}
-
+// witness_authored_evidence_awaiting_acceptance is DELETED with the field it needed. Its subject was an
+// AUTHORED row awaiting an acceptance receipt — at base that reading came from AuthoredLine.done, a flag
+// the plan wrote for itself to say its work had ended, which is the fact this change leaves to the roadmap
+// event log alone (gunbc.design_argument::planning_has_one_home). It is not retargeted: an authored row
+// carries no implementation evidence, so there is nothing for it to await a receipt on. The two claims
+// that remain say what the document does render, and the exact-bytes claim above is the one that pins an
+// authored row to having NO suffix — a stale second home can now only fail that claim, not pass this one.
 test fn witness_derived_merged_awaiting_acceptance() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
@@ -119,6 +119,14 @@ test fn witness_derived_unchecked_when_unmerged() -> Bool {
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
+// The pinned bytes of the emitted document. They moved with this change, in ONE place, and the reason is
+// the second home: the "fail-open audit" row is an AuthoredLine, and at base it carried `done: true`,
+// which is what put " — ⏳ awaiting an acceptance receipt" on its row. An authored done-flag is the plan
+// asserting that a node's work has ended, which is the fact this change gives to the roadmap event log
+// alone (gunbc.design_argument::planning_has_one_home), so the field is gone (with its witness,
+// witness_authored_done_is_authored in gunbc.test.claim.roadmap.roadmap_status) and an authored row now
+// carries no evidence claim of its own: only a DerivableLine whose PRs have all merged can await a
+// receipt. That is why "#5491" keeps its suffix and this row does not.
 fn expected_roadmap() -> String {
   join([
     "# ROADMAP\n",
@@ -127,7 +135,7 @@ fn expected_roadmap() -> String {
     "\n",
     "## 0. Fail-closed lock-down\n",
     "\n",
-    "- [ ] **fail-open audit** [plan](docs/plans/scaffold-admission-doctrine.md) — ⏳ awaiting an acceptance receipt\n",
+    "- [ ] **fail-open audit** [plan](docs/plans/scaffold-admission-doctrine.md)\n",
     "\n",
     "## 6. Expansion\n",
     "\n",

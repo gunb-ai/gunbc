@@ -1058,7 +1058,11 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
   // A RETIREMENT is final for both of them: nothing un-retires a node from a fold, and the guard for
   // the retired case stays the plain one — including for an out-of-order acceptance read after it.
   if roadmap_standing_is_retired(standing: acc.standing) { acc }
-  else if roadmap_standing_is_accepted(standing: acc.standing) {
+  // The retired hand has already returned, so the only terminal hand this guard can admit is the
+  // operator's acceptance: one question of the sum, asked once, in the fold that owns the law — instead of
+  // a helper whose whole job was to answer "is this the acceptance variant" (review 93664 on
+  // gunb-ai/gunbc#16189; roadmap_standing_is_terminal below is now the single match over the sum).
+  else if roadmap_standing_is_terminal(standing: acc.standing) {
     match e.kind {
       Retired { reason } => RoadmapStandingAcc { standing: NodeRetired { by: e.author, reason: reason }, assignment: acc.assignment }
       AcceptanceRevokedEvent { receipt: _, disposition, revoked_by: _, revoked_on: _, reason: _ } =>
@@ -1129,11 +1133,19 @@ fn roadmap_standing_is_retired(standing: RoadmapNodeStanding) -> Bool {
   }
 }
 
-// Is this standing the operator's acceptance? The same question, asked of the other terminal hand.
-fn roadmap_standing_is_accepted(standing: RoadmapNodeStanding) -> Bool {
+// NO LATER EVENT MOVES IT ON — and this ONE match over the sum is where that is decided. The fold's guard
+// (roadmap_issue_state), the belt's launch refusal, and the append route's terminality refusal all ask this
+// one question, so retirement and acceptance are terminal in the same way and no surface can forget one of
+// the two hands. It is a match over the coproduct rather than a pair of variant-test helpers (review 93664
+// on gunb-ai/gunbc#16189): a new hand added to RoadmapNodeStanding lands here as a false arm it must name,
+// not as a silent default. Where the ACCEPTANCE hand itself is named, it is named by matching — the fold
+// above (which reaches this question only after the retired hand has returned) and the fold's own
+// NodeAccepted arm, which carries the receipt and the operator out of the standing; the claims do the same
+// (dag/test/claim/roadmap/roadmap_event_log_witness.dag, an_acceptance_event_folds_the_node_to_accepted_and_terminal).
+fn roadmap_standing_is_terminal(standing: RoadmapNodeStanding) -> Bool {
   match standing {
     NodeAccepted { by: _, receipt: _ } => true
-    NodeRetired { by: _, reason: _ } => false
+    NodeRetired { by: _, reason: _ } => true
     NodeOpen => false
     NodeClaimed { by: _, since: _ } => false
     NodeInProgress { by: _, last_note: _ } => false
@@ -1143,13 +1155,6 @@ fn roadmap_standing_is_accepted(standing: RoadmapNodeStanding) -> Bool {
     NodeForked { heads: _ } => false
     NodeHistoryIncomplete { missing_parents: _ } => false
   }
-}
-
-// NO LATER EVENT MOVES IT ON. The fold's guard, the belt's launch refusal, and the append route's
-// terminality refusal all ask this one question, so retirement and acceptance are terminal in the
-// same way and no surface can forget one of the two hands.
-fn roadmap_standing_is_terminal(standing: RoadmapNodeStanding) -> Bool {
-  roadmap_standing_is_retired(standing: standing) || roadmap_standing_is_accepted(standing: standing)
 }
 
 fn roadmap_issue_state(envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
