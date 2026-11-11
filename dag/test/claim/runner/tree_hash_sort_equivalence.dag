@@ -10,7 +10,8 @@ module test.claim.runner.tree_hash_sort_equivalence
 
 import std.algebra { list_sort_by_key, list_map, FreeMonoid, TotalOrder, Ordering, Less, Greater, Equal }
 import std.content_hash { sha256_hex_of_text }
-import gunbc.host.host_effect_realize { tree_path_total_order, tree_path_compare }
+import std.optional { Present, Absent }
+import gunbc.host.host_effect_realize { tree_path_total_order, tree_path_compare, tree_metadata_merge_disagreement }
 
 data entry: FreeMonoid<Entry> = [
   Entry { hex: "01", path: "a/b" },
@@ -65,3 +66,46 @@ test fn order_matches_imported_comparator() -> Bool {
 }
 // RED: a differing order is detected -- the reversed order is NOT equal to the native order.
 test fn red_differing_order_detected() -> Bool { to_lines(native_sorted()) != to_lines(reversed_sorted()) }
+
+// ---- tree_metadata_merge_disagreement: pins the rewrite's observable contract (DESIGN §6b) ----
+// tree_metadata_merge_disagreement (the metadata readback's agreement walk) was rewritten from a
+// SELF-recursive list walk -- whose depth grew with the number of metadata entries -- to a native
+// left-fold carrying the observed tail. That rewrite must report the SAME first disagreement, in path
+// order, with the SAME message text. This fixture feeds inputs with MORE THAN ONE divergence and pins
+// (i) which one is reported (the first, in path order), (ii) its exact message, and (iii) that no
+// later divergence is reported. It calls the fold's OWN function, IMPORTED not reimplemented. Lines
+// are the `path|kind|mode|user|group` shape tree_metadata_entry_line produces; both lists are passed
+// already in path order because the fold sorts before calling this. Run identically against the
+// pre-fix recursive fold and the fixed native fold: both must return the same value.
+fn merge_msg(expected: List<String>, observed: List<String>) -> String {
+  match tree_metadata_merge_disagreement(expected: expected, observed: observed) {
+    Present { value: m } => m
+    Absent => ""
+  }
+}
+// Two content mismatches (b and c): only the FIRST, b, is reported, with its exact message.
+test fn merge_reports_first_mismatch_exact_message() -> Bool {
+  merge_msg(["a|f|0644|root|root", "b|f|0644|root|root", "c|f|0644|root|root"],
+            ["a|f|0644|root|root", "b|f|0600|root|root", "c|f|0666|root|root"])
+    == "missing entry b|f|0644|root|root (the installed line at this path is b|f|0600|root|root)"
+}
+// A missing trailing entry reports "missing entry <e>".
+test fn merge_reports_missing_entry() -> Bool {
+  merge_msg(["a|f|0644|root|root", "b|f|0644|root|root"], ["a|f|0644|root|root"])
+    == "missing entry b|f|0644|root|root"
+}
+// An unexpected trailing entry reports "unexpected installed entry <o>".
+test fn merge_reports_unexpected_entry() -> Bool {
+  merge_msg(["a|f|0644|root|root"], ["a|f|0644|root|root", "z|f|0644|root|root"])
+    == "unexpected installed entry z|f|0644|root|root"
+}
+// Agreement yields no disagreement (Absent -> "").
+test fn merge_agreement_no_message() -> Bool {
+  merge_msg(["a|f|0644|root|root", "b|f|0644|root|root"], ["a|f|0644|root|root", "b|f|0644|root|root"]) == ""
+}
+// RED: the second divergence (c) must NOT be what is reported -- pins short-circuit on the first.
+test fn merge_red_does_not_report_second_mismatch() -> Bool {
+  merge_msg(["a|f|0644|root|root", "b|f|0644|root|root", "c|f|0644|root|root"],
+            ["a|f|0644|root|root", "b|f|0600|root|root", "c|f|0666|root|root"])
+    != "missing entry c|f|0644|root|root (the installed line at this path is c|f|0666|root|root)"
+}
