@@ -44,10 +44,16 @@ module gunbc.serving.serving_reservation
 // Each is honest to DEFER: a typed fact with no named consumer over an executing route is dangling (DESIGN
 // consumption), and staging it here would let it drift from the deploy that must own it.
 //
-// NOTHING HERE DEPLOYS. This is the model the runner width derivation consumes; the production consumer is the
-// runner's served-deployment claim (gunbc.runner.runner_slot_allocation, and gunbc.live_deploy.served_slice_charge
-// owned by PR 16058), which today charges only the prod-role host and is the consumer B4a generalises to EVERY
-// serving host.
+// NOTHING HERE DEPLOYS. This is the model the runner width derivation consumes. Its production consumers
+// read the reservation PER HOST and are two separate terms: the width envelope
+// (gunbc.runner.runner_slot_allocation envelope_final) and the conservation tree
+// (gunbc.fleet.fleet_host_budget host_allocation_tree serving_pool). THIS RESIDENT IS NOT
+// gunbc.live_deploy.served_slice_charge and does not generalise it: served_slice_charge accounts the
+// PRODUCTION DEPLOYMENT's systemd slices (roadmap, broker, repo-convergence) on the host prod is placed
+// on, a different resident with a different producer and a different unit. A Strata engine's MemoryMax is a
+// second resident on the same host, so when one host carries both it is charged for BOTH -- they are
+// additive named terms (as fleet_host_budget already treats fabric_control_plane_pool and
+// served_deployment_pool), never one authority folding the other.
 
 import std.types { List, String }
 import std.nat { Nat }

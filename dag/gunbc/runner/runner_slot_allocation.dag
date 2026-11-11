@@ -457,13 +457,10 @@ type RunnerMemoryEnvelope
 // the width FAILS CLOSED rather than charge a fabricated figure (fail_closed) -- charging zero for an
 // unmeasured engine would silently overbook CI. The _with_serving sibling lets the witness flip a charge on
 // and off to prove it is CONSUMED, not orphaned.
+// The HostIdentity entry point delegates to runner_memory_envelope_of (review 93550, minimize_redundancy):
+// building the facts and folding through the SAME match is the one place the unmeasured-reservation refusal lives.
 fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnvelope {
-  match host_memory_reserved(host: host) {
-    Present { value: serving } => host_runner_memory_envelope_resolution_with_serving(host: host, serving: serving)
-    Absent => RunnerMemoryEnvelopeUnestablished {
-      cause: "a serving replica on this host carries an unmeasured memory reservation: the runner width cannot be certified until the per-engine reservation is measured (gunbc.serving.serving_reservation MemoryUnmeasured); charging it a fabricated figure -- or nothing -- would understate the host and overbook CI"
-    }
-  }
+  runner_memory_envelope_of(f: host_width_facts(host: host))
 }
 
 fn host_runner_memory_envelope_resolution_with_serving(host: HostIdentity, serving: ByteSize) -> RunnerMemoryEnvelope {
