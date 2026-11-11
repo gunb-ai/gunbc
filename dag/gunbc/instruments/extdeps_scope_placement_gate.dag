@@ -25,7 +25,7 @@ import gunbc.extdeps_scope_frontier {
 // required floor's gate witnesses (`.github/workflows/witnesses.yml`), as the
 // `extdeps_scope_placement_gate_passes` witness of `gunbc.instruments.floor_effect_gate_witness` — enrolled on
 // the GithubActionsCiJob surface by the `ExtdepsScopePlacementGate` row of `commit_gate_roster`
-// (dag/gunbc/commit_workflow.dag), projected into `gunbc_ci_floor_gates` by `gunbc.ci.ci_spec`, and
+// (dag/gunbc/commit_workflow.dag), projected into `gunbc_ci_gates` in `gunbc.commit_workflow`, and
 // dispatched by `gunbc.instruments.ci_gates` `run_spec_gate`. Its reds were loud on that route before the
 // 2026-08-24 loudness repair (ten consecutive `extdeps_scope_placement_gate_passes` reds are
 // recorded at cli_run::entry_resolve's failure-receipt companion note), and the required floor

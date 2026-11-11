@@ -1975,6 +1975,11 @@ fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   )
 }
 
+// THE CI GATE ROSTER: commit_gate_roster's CI-floor projection, computed once here beside the roster
+// and the projection it applies (moved out of gunbc.ci.ci_spec, gunbc.plans.closure_consolidation P1;
+// its consumer is gunbc.instruments.ci_gates).
+data gunbc_ci_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
+
 // THE MEASURED FLIPS (D3b, first application of the gate lane above). Basis is the per-run gate
 // warm-cost receipt the floor already writes (floor-gate-warm-cost-receipt.tsv, published in the
 // floor-receipts artifact; its [gate-warm-cost] stderr mirror was retired when the receipts gained
