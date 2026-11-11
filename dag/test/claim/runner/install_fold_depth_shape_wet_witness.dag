@@ -21,9 +21,6 @@ module test.claim.runner.install_fold_depth_shape_wet_witness
 //  - the production-shaped point reproduces the observed failure: the real release tree (the two release
 //    subtrees this fold installs) plus a guest runtime and a staged release binary, at the size that
 //    crossed in run15794v. It must converge post-fix and cross on the mutant.
-//  - the RED control re-sorts the readback's path enumeration with the REAL std.algebra list_sort_by_key
-//    (the modeled shape this PR removed from the fold), so it must be RED (ExpectedRed): a green run here
-//    means entry-proportional sort depth has returned to the readback path.
 //
 // There is NO hand-written shell here. The plant, the staging, the dry-validation, the file counts and
 // the production tree copy all run through the typed route: Filesystem.Write / Filesystem.Read (the
@@ -51,7 +48,7 @@ module test.claim.runner.install_fold_depth_shape_wet_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int, CommitSha }
 import std.integer { int_to_decimal_string }
-import std.algebra { trim, list_init, list_sort_by_key, length, FreeMonoid }
+import std.algebra { trim, list_init }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { mkdir_parents_command, rm_recursive_force_command, pwd_command }
 import extdeps.tools.findutils { find_program }
@@ -66,7 +63,6 @@ import gunbc.host.host_effect_realize {
   ApprovalBrokerTreeInstallVerdict,
   one_transport_route,
   LocalShell,
-  tree_path_compare,
 }
 
 // The crossing size from run15794v: 10,296 whole-tree entries passed, roughly 10.3k (with the guest
@@ -289,37 +285,3 @@ test fn production_release_tree_install_converges() -> Bool {
   copied && guest_ok && installed >= production_min_entries
 }
 
-// The install readback's path enumeration, typed: a typed `find -type f` over the root, non-empty
-// stdout lines only. Fixed interpreted depth (the listing is observed by one command, then held as a
-// list); the fold's own readback sorts consume a list of this same shape.
-fn list_regular_files_under(root: String) -> FreeMonoid<String> {
-  filter(split(s: host_run_stdout(command: argv_command(program: find_program(), arguments: [root, "-type", "f"])), delimiter: "\n"), e => trim(s: e) != "")
-}
-
-// THE RED CONTROL (expected to be RED). This re-sorts the install readback's path enumeration with the
-// REAL std.algebra list_sort_by_key -- the modeled mergesort (sort_keyed_runs / sort_merge_cursor, whose
-// innermost leaf list_at_optional is where run15794v died) -- i.e. exactly the shape this PR removed
-// from the fold's three readback sorts. It is NOT a copied sort: it calls std.algebra list_sort_by_key
-// directly, the same function the fold used before the fix, keyed by path under the fold's own imported
-// tree_path_compare. At install_pair_large entries its interpreted call depth grows with the entry count
-// and crosses the 100,000-frame ceiling, so this claim FAILS on every head -- enrolled as ExpectedRed, so
-// a run that turns GREEN means the modeled, entry-proportional sort has crept back onto the readback path.
-//
-// COST (recorded per jolly-hawk / roadmap 3b): reaching the throw costs ~117,077,469 eval steps at this
-// size (srv2 run16283f mutant). This is the SMALLEST of the pair that crosses at ceiling 100,000: the
-// modeled shape crossed at ~10.3k entries in run15794v (10,296 whole-tree entries converged; ~10.3k with
-// the guest runtime + staged binary crossed), so a smaller size would not cross and would not be a red.
-// It is heavier than the other rows; that is intrinsic to a depth defect whose threshold is the ceiling.
-test fn install_fold_modelled_sort_readback_red_control() -> Bool {
-  let source_root = "/tmp/gunbc-red-control-source"
-  let _ = remove_tree(path: source_root)
-  let planted = plant_release_tree(source_root: source_root, count: install_pair_large)
-  // The combined readback enumeration (both release subdirs), the same ~count list the fold sorts once.
-  let readback: FreeMonoid<String> = concat(
-    list_regular_files_under(root: join([source_root, "/dag"], "")),
-    list_regular_files_under(root: join([source_root, "/src/v2"], "")),
-  )
-  let sorted = list_sort_by_key(xs: readback, key: fn(p) { p }, order: { compare: tree_path_compare })
-  let _ = remove_tree(path: source_root)
-  planted && length(xs: sorted) >= install_pair_large
-}

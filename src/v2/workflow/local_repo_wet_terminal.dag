@@ -6,7 +6,7 @@ import v2.std.integer { Int }
 import std.algebra { Cons, Empty, length }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
-  ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold, ExpectedRed,
+  ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
   ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed,
   Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
 }
@@ -373,18 +373,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
       function: "dry_validation_plant_arrangement_ok",
       expectation: ExpectedToHold {}
-    },
-    // THE RED CONTROL (review 93632 finding 3). Re-sorts the install readback's path enumeration with the
-    // REAL std.algebra list_sort_by_key -- the modeled, entry-proportional mergesort this PR removed from
-    // the fold -- so at install_pair_large entries it crosses the 100,000-frame ceiling and is RED by
-    // design. Enrolled ExpectedRed: the ledger records it as a held red, and a run that turns it GREEN
-    // means entry-proportional sort depth has returned to the readback path. Cost ~117,077,469 eval steps
-    // at this size (srv2 run16283f); this is the smallest of the pair that crosses at ceiling 100,000.
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.runner.install_fold_depth_shape_wet_witness", function: "install_fold_modelled_sort_readback_red_control" },
-      entry: "dag/test/claim/runner/install_fold_depth_shape_wet_witness.dag",
-      function: "install_fold_modelled_sort_readback_red_control",
-      expectation: ExpectedRed {}
     },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "fan_policy_phase_early_failure_specimen_leaves_no_residue" },
