@@ -3,6 +3,7 @@ module gunbc.tier_o_artifact_emit
 import std.types { List, String }
 import extdeps.github.actions { workflow_file_size_max, workflow_file_within, workflow_file_octets }
 import std.measure { ByteSize, byte_size_count }
+import extdeps.github.ci { github_actions_workflows_dir }
 import gunbc.generated_artifact {
   GeneratedArtifact, artifact_path, artifact_directory,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact,
@@ -152,7 +153,7 @@ fn tier_o_artifact_body(a: GeneratedArtifact) -> TierOArtifactBody {
 // The limit's scope is its citation's: "each workflow file in the .github/workflows directory". An artifact
 // with a provenance header outside that directory (a script a workflow runs) is not a workflow file.
 fn tier_o_workflow_admitted(a: GeneratedArtifact, committed: String, max: ByteSize) -> TierOArtifactBody {
-  if artifact_directory(a: a) != github_workflows_directory || workflow_file_within(content: committed, max: max) {
+  if artifact_directory(a: a) != github_actions_workflows_dir || workflow_file_within(content: committed, max: max) {
     TierOArtifactProduced { content: committed }
   } else {
     TierOArtifactRefused { reason: join([
@@ -162,5 +163,3 @@ fn tier_o_workflow_admitted(a: GeneratedArtifact, committed: String, max: ByteSi
     ], "") }
   }
 }
-
-data github_workflows_directory: String = ".github/workflows"
