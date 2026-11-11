@@ -941,9 +941,6 @@ fn fx_hier_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEd
   }
 }
 
-fn fx_hier_nodes() -> List<RoadmapNode> {
-  [
-    fx_sized(id: "hier-project", content: "project headline — project brief"),
 // What closes a task is not a shape a node definition can state: acceptance and retirement are facts
 // of the event log, and a node the log has taken off the plan leaves it entirely
 // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08). So both closed tasks here
@@ -951,8 +948,11 @@ fn fx_hier_nodes() -> List<RoadmapNode> {
 // on the WorkRowView, by fx_hier_view, for the ids in fx_fixture_log_retired_labels(). The id strings
 // are this fixture's own labels and name no model state. The open task and the review task (a merged
 // PR with no acceptance) are the two that are not closed, which is what the counts are about.
-    fx_sized(identity: "rnfx-hier-task-done", id: "hier-task-done", intricacy: "med", volume: "large"),
-    fx_sized(identity: "rnfx-hier-task-superseded", id: "hier-task-superseded", intricacy: "small", volume: "small"),
+fn fx_hier_nodes() -> List<RoadmapNode> {
+  [
+    fx_sized(id: "hier-project", content: "project headline — project brief"),
+    fx_sized(id: "hier-task-done", content: "done task"),
+    fx_sized(id: "hier-task-superseded", content: "old shape"),
     fx_derivable_wi(
       identity: "rnfx-hier-task-review", id: "hier-task-review",
       prs: [7301], title: "review task", description: "",
@@ -1258,7 +1258,7 @@ test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
     fx_sized(id: "hier-cc-g", content: "gate analogue"),
     fx_sized(id: "hier-cc-e", content: "effectplan analogue"),
     fx_sized(id: "hier-cc-arc", content: "arc analogue"),
-    fx_sized(identity: "rnfx-hier-cc-t1", id: "hier-cc-t1", intricacy: "med", volume: "small"),
+    fx_sized(id: "hier-cc-t1", content: "done task"),
     fx_sized(id: "hier-cc-t2", content: "open task"),
   ]
   let edges = [
