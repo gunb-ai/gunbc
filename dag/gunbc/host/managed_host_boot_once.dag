@@ -61,8 +61,15 @@ type BootOnceRefusalCause
   | BootOnceTargetNotAllowed { target: RedfishBootSourceOverrideTarget }
   | BootOnceReadbackMismatch { expected: BootOnceSetting, observed: BootOnceReadback }
 
+// A plan has three dispositions. Planned: the override was set, read back, and the read-back matched, so the
+// reset issues. HaltedBeforeReset: the controller is bound and the target admitted, the override was SET and
+// READ BACK, but the read-back did not match — the reset is refused, so nothing boots into a half-set override.
+// Refused: nothing reaches the controller at all (not a member, Legacy, bad target, unbound). The read-back is
+// observed AFTER the set, never as a precondition for the set; a controller that does not already carry the
+// override is the normal pre-boot-once state and must not be refused for it.
 type BootOncePlan
   = BootOncePlanned { account: NonEmptyStr, steps: List<BootOnceStep> }
+  | BootOnceHaltedBeforeReset { account: NonEmptyStr, steps: List<BootOnceStep>, cause: BootOnceRefusalCause }
   | BootOnceRefused { cause: BootOnceRefusalCause }
 
 // THE READ-BACK DELAY, WITH ONE TYPED HOME. A boot-once that PATCHes the override and immediately reads it
@@ -141,6 +148,8 @@ fn plan_boot_once_on_standing(
       BoundControllerAbsent => BootOnceRefused { cause: BootOnceHostUnbound }
       BoundControllerFound { endpoint: e, account: acct } => {
         let intended = boot_once_intended_setting(target: target)
+        // The override is always SET and READ BACK first; the read-back is what the controller reports once
+        // asked, not a state that had to be present beforehand. Only when it matches does the RESET issue.
         match readback {
           BootOnceReadbackObserved { setting: r } =>
             if boot_once_setting_matches(expected: intended, observed: r) {
@@ -153,10 +162,24 @@ fn plan_boot_once_on_standing(
                 ],
               }
             } else {
-              BootOnceRefused { cause: BootOnceReadbackMismatch { expected: intended, observed: readback } }
+              BootOnceHaltedBeforeReset {
+                account: acct,
+                steps: [
+                  BootOnceSet { controller: e, setting: intended },
+                  BootOnceReadBack { controller: e, expected: intended },
+                ],
+                cause: BootOnceReadbackMismatch { expected: intended, observed: readback },
+              }
             }
           BootOnceReadbackAbsent =>
-            BootOnceRefused { cause: BootOnceReadbackMismatch { expected: intended, observed: readback } }
+            BootOnceHaltedBeforeReset {
+              account: acct,
+              steps: [
+                BootOnceSet { controller: e, setting: intended },
+                BootOnceReadBack { controller: e, expected: intended },
+              ],
+              cause: BootOnceReadbackMismatch { expected: intended, observed: readback },
+            }
         }
       }
     }
@@ -214,15 +237,47 @@ fn boot_once_read_back_precedes_reset(plan: BootOncePlan) -> Bool {
             }
         },
       )
+    BootOnceHaltedBeforeReset { account: _, steps: steps, cause: _ } =>
+      fold(
+        steps,
+        init: BootOnceOrderState { has_read_back: false, has_reset: false, reset_before_read_back: false },
+        f: (st, s) => match s {
+          BootOnceSet { controller: _, setting: _ } => st
+          BootOnceReadBack { controller: _, expected: _ } =>
+            BootOnceOrderState {
+              has_read_back: true,
+              has_reset: st.has_reset,
+              reset_before_read_back: st.reset_before_read_back,
+            }
+          BootOnceReset { controller: _ } =>
+            BootOnceOrderState {
+              has_read_back: st.has_read_back,
+              has_reset: true,
+              reset_before_read_back: st.reset_before_read_back || !st.has_read_back,
+            }
+        },
+      )
   }
-  walked.has_read_back && walked.has_reset && !walked.reset_before_read_back
+  // Whenever a reset appears, a read-back precedes it. Vacuously true when the plan resets nothing.
+  !walked.reset_before_read_back
 }
 
-// WHETHER THE PLAN RESETS AT ALL. A refused plan resets nothing; this is the discriminating fact behind
-// "a mismatched read-back refuses with no reset."
+// WHETHER THE PLAN RESETS AT ALL. A refused plan resets nothing and a halted plan resets nothing; only a
+// Planned plan carries a reset. This is the discriminating fact behind "a mismatched read-back refuses with
+// no reset": the halted plan still issued a Set and a ReadBack, but has_reset is false for it.
 fn boot_once_has_reset(plan: BootOncePlan) -> Bool {
   match plan {
     BootOnceRefused { cause: _ } => false
+    BootOnceHaltedBeforeReset { account: _, steps: steps, cause: _ } =>
+      fold(
+        steps,
+        init: false,
+        f: (acc, s) => match s {
+          BootOnceReset { controller: _ } => true
+          BootOnceSet { controller: _, setting: _ } => acc
+          BootOnceReadBack { controller: _, expected: _ } => acc
+        },
+      )
     BootOncePlanned { account: _, steps: steps } =>
       fold(
         steps,
@@ -230,6 +285,34 @@ fn boot_once_has_reset(plan: BootOncePlan) -> Bool {
         f: (acc, s) => match s {
           BootOnceReset { controller: _ } => true
           BootOnceSet { controller: _, setting: _ } => acc
+          BootOnceReadBack { controller: _, expected: _ } => acc
+        },
+      )
+  }
+}
+
+// WHETHER THE PLAN REACHED THE CONTROLLER AT ALL: a Set step was issued. A Refused plan has none; a Halted
+// or Planned plan does. This separates "the read-back vetoed the boot" from "the controller was never touched."
+fn boot_once_issued_set(plan: BootOncePlan) -> Bool {
+  match plan {
+    BootOnceRefused { cause: _ } => false
+    BootOnceHaltedBeforeReset { account: _, steps: steps, cause: _ } =>
+      fold(
+        steps,
+        init: false,
+        f: (acc, s) => match s {
+          BootOnceSet { controller: _, setting: _ } => true
+          BootOnceReset { controller: _ } => acc
+          BootOnceReadBack { controller: _, expected: _ } => acc
+        },
+      )
+    BootOncePlanned { account: _, steps: steps } =>
+      fold(
+        steps,
+        init: false,
+        f: (acc, s) => match s {
+          BootOnceSet { controller: _, setting: _ } => true
+          BootOnceReset { controller: _ } => acc
           BootOnceReadBack { controller: _, expected: _ } => acc
         },
       )
