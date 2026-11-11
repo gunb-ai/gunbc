@@ -7,7 +7,7 @@ import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
 import extdeps.bmc.megarac {
-  megarac_firmware_0_32, megarac_firmware_0_45_reported, megarac_no_redirection_session_index,
+  megarac_firmware_0_32, megarac_firmware_0_45_reported, megarac_no_redirection_session_index, megarac_redirection_status_of_row,
   megarac_csrf_header_content, megarac_csrf_header_file_name,
 }
 import gunbc.auth.private_secret_file {

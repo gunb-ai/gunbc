@@ -33,7 +33,7 @@ import product.network_topology {
 }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_mtcollins1,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv14, operator_host_mtcollins1,
 }
 
 
@@ -125,6 +125,32 @@ data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   subject: EndpointHost { host: operator_host_srv4 },
   address: "192.168.1.196",
   role: HostOperatingSystem,
+  locality: Lan,
+}
+
+// srv14/butch's LAN endpoints, read on butch 2026-11-10 (ip -br addr / dmidecode, over the
+// fleet-automation key). HOST NIC enP2p4s0, MAC 9c:6b:00:e7:ca:9c, at 192.168.1.205/24 -- currently a
+// DHCP-assigned address, NOT yet reserved on the router: a router DHCP reservation for this MAC is an
+// OPERATOR-GATED step (named in the PR; gunbc.plans.new_server_bringup tracks it). The address is modeled
+// as observed today, and host_lan_address(operator_host_srv14) reads this row, so downstream consumers
+// (probe, the derived RunnerHostSpec ssh_target) dial 192.168.1.205 WITHOUT relying on `srv14` resolving
+// in DNS -- srv14 does not resolve (butch.mynetworksettings.com does), which is why the address comes from
+// this topology row and not from the bare host identity.
+data srv14_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv14-host-lan",
+  subject: EndpointHost { host: operator_host_srv14 },
+  address: "192.168.1.205",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+// butch's BMC (out-of-band), read 2026-11-10: 192.168.1.250, MAC 9c:6b:00:e7:c9:fa (a router reservation,
+// bmc-altrad8ud family). Its BMC currently runs srv4's swampd fan program and was reset to factory
+// 2026-11-10 02:38 (cause unknown) -- the BMC fan converge for srv14 is a separate lane item, not this row.
+data srv14_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv14-bmc",
+  subject: EndpointHost { host: operator_host_srv14 },
+  address: "192.168.1.250",
+  role: BmcOutOfBand,
   locality: Lan,
 }
 
@@ -277,10 +303,12 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv2_host_lan_endpoint,
     srv3_host_lan_endpoint,
     srv4_host_lan_endpoint,
+    srv14_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,
     srv4_bmc_endpoint,
+    srv14_bmc_endpoint,
     srv1_tailscale_endpoint,
     srv2_tailscale_endpoint,
     printer_01_lan_endpoint,

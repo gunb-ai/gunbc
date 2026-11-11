@@ -114,6 +114,13 @@ data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling 
   provenance: "Operator, relayed by keen-otter-392 from calm-moth-166 and proud-raven to calm-crab-645 on 2026-10-30, correcting gunbc.plans.gpu_card_host_program N0e and N6d (first authored in gunbc#15207): the plan must not blanket-refuse adjacent passive cards. Slot spacing differs between chassis (Butch's is not the H11's), so the authority is per-slot geometry and airflow plus the measured thermal behaviour of the installed position. The H11 incident (96 to 99 C, minimum clocks, a GPU off the bus) stays as evidence for that configuration, not for adjacency itself.",
 }
 
+data t6_fabric_storage_excluded_from_live_deploy_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "t6_fabric_storage_excluded_from_live_deploy_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator, relayed by bright-ibex-807 on 2026-11-10 while the T6 runbook (gunb-ai/gunbc#16189, step 2b) was under review, verbatim: \"option B. A small, separate PR first removes the fabric-storage unit from the live deployment's membership (gunbc.live_deploy.spec and whatever emits and applies it), so the modeled deploy (gunbc converge --mode deploy) moves only the five roadmap units and leaves gunbc-roadmap-fabric-storage's fragment and process alone. Keep it in-model: no hand-written unit text, and fabric-storage keeps its existing unit on srv1 untouched.\" ENDS the deployment's ownership of that unit: before this ruling the deployment composed `gunbc-roadmap-fabric-storage.service` (spec.dag deployment_fabric_storage_steps emitted ComposeOwned FabricStorageServeUnit), applied it (apply_legs.dag staged the serialized unit and restarted it), retracted it (retract_legs.dag tore the unit down), and required it as a desired member of the role-singleton realization (role_singleton_convergence.dag missing_members). Two homes then decided one fragment -- the model's emitted ExecStart and the operator's unit on srv1 -- which is the fork gunbc.design_argument::single_authority refuses, and the ruling names the model the home that ends. What the deployment KEEPS, because it is not the unit: the tailscale route to the fabric DB's door socket (ComposeOwned FabricStorageServeMapping), and the store's ownership marker (FabricStorageOwnershipMarker) that pins the fabric DB placement. What it gives up is coverage, recorded here so it is not discovered later: no deploy stages, restarts, retracts or observes that unit any more, so a unit removed or edited by hand on srv1 is no longer a convergence refusal -- it surfaces as a fabric DB request failing at the door socket. The serve mapping still routes to a live service, so the trigger for adding an observation back is a fabric DB endpoint that can be routed to and not answered. The `FabricStorageServeUnit` composition kind stays declared and is REFUSED at both apply and retract (the FleetConvergeTimerUnit precedent in this module), so a spec from an older release that still names the member fails loudly instead of being ignored or torn down.",
+}
+
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
@@ -196,6 +203,13 @@ data root_generalization_closes_breadth: DesignRuling = DesignRuling {
   decided: "2026-10-16",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "root_generalization"),
   provenance: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.",
+}
+
+data planning_is_one_source_for_every_repo: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_is_one_source_for_every_repo"),
+  decided: "2026-11-08",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "planning_has_one_home"),
+  provenance: "Operator, 2026-11-08, on the planning rework: \"there needs to be a single source for all planning and all repos\"; the daily workspace and the repository \"should be the same plan ... the daily workspace should be downstream of the repo\"; \"we have to support quick merges to main that are planning only ... instant planning changes that don't need to wait 90 minutes\"; regeneration should \"skip if the PR doesn't touch any regenerable stuff ... correctly and not just like as a hack\"; and plans \"have no real deletion triggers right now -- so it endlessly accumulates -- we should basically ruthlessly delete until only things that are relevant are left\". Confirmed 2026-11-10 when the operator asked that the policy be stated in DESIGN.md and that everyone be on the same page.",
 }
 
 data continuous_generalization_is_two_sided: DesignRuling = DesignRuling {
@@ -834,7 +848,9 @@ data run_realizes_only_demanded_declarations: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    planning_is_one_source_for_every_repo,
     gunbc_run_checks_only_what_its_entry_reaches,
+    t6_fabric_storage_excluded_from_live_deploy_2026_11_10,
     thermal_runner_cap_lifted_2026_11_08,
     dispatch_is_continue_or_start_fresh,
     printer_start_gate_is_the_approval_not_the_ref,

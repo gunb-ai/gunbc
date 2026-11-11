@@ -8,12 +8,21 @@ module test.claim.fleet.gpu_interconnect_observation_witness
 // over a relayed-only collective, must answer no.
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
 import std.algebra { string_contains }
-import std.measure { Bandwidth, Microsecond, bandwidth, bandwidth_count, microsecond, microsecond_count }
+import std.measure { Bandwidth, ByteSize, Microsecond, Second, bandwidth, bandwidth_count, byte_size, byte_size_count, microsecond, microsecond_count, second_count }
 import std.optional { Absent, Present }
+import std.content_hash { lower_hex_64 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pci.identity { PciAddress }
 import extdeps.storage.types { PcieLink, Gen4, Gen5, pcie_generation_wire }
+import extdeps.units.iso8601_calendar {
+  Iso8601UtcInstant,
+  iso8601_utc_epoch_seconds,
+  iso8601_utc_instant,
+  iso8601_utc_instant_seconds_between,
+  iso8601_utc_instant_text,
+}
 import product.host_identity { HostIdentity }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -28,7 +37,11 @@ import gunbc.fleet.gpu_interconnect_observation {
   srv1_acs_redirects_at_both_root_ports, srv1_iommu_translates_both_gpu_groups,
   srv1_interconnect_explanations, interconnect_explanations_on,
   srv1_gpu_pair_topology_readings, srv1_gpu_peer_access_readings, srv1_collective_transport_readings, CollectiveTransportReading,
-  srv1_collective_read_obligation,
+  srv1_collective_transport_readings_unloaded_2026_11_09,
+  srv1_nccl_arm_default, srv1_nccl_arm_p2p_disabled,
+  srv1_collective_read_obligation, srv1_collective_read_executed_2026_11_09,
+  srv1_collective_read_follow_ups_2026_11_09,
+  srv1_collective_read_window_duration, srv1_collective_read_measurement_duration,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -125,10 +138,60 @@ fn arm_rows(arm: NonEmptyStr) -> List<CollectiveTransportReading> {
   srv1_collective_transport_readings.filter(c => (c.env_arm as String) == (arm as String))
 }
 
+// WHEN a collective row was read, in the row's own words. The loaded sweep and the unloaded re-run are two
+// different runs of the same instrument, and the claims about them are opposite; a consumer that cannot say
+// which run a row belongs to cannot tell the two stories apart, so the run is part of what the row states.
+fn read_on_of(w: Srv1ReadingWarrant) -> String {
+  match w {
+    ReadByThisSession { read_on: r, instrument: _ } => r as String
+    Relayed { asked_of: _, answered_on: _, said: s, read_obligation: _ } => s as String
+    Unread { read_obligation: o } => o as String
+  }
+}
+
+fn arm_rows_in(list: List<CollectiveTransportReading>, arm: NonEmptyStr) -> List<CollectiveTransportReading> {
+  list.filter(c => (c.env_arm as String) == (arm as String))
+}
+
+// The two arms at ONE size, within tolerance: each arm must be at least `numerator/denominator` of the other.
+// The ratio pair is written that way on purpose -- `a*D >= B*N` and `B*D >= A*N` bounds the RATIO, so passing
+// N=8,D=10 means neither arm is below four-fifths of the other. (The first cut of this helper passed N=5,D=4,
+// which asks a >= 1.25b AND b >= 1.25a: unsatisfiable, so the control read false on correct data and the
+// failure was in the test, not the machine -- the kind of mistake a tolerance written as one inequality hides.)
+// Pinning both rows to the same message size is what makes this the pair at that size and not any two rows
+// that happen to be close: the 16 KiB pair is uninteresting and would pass any tolerance, which is exactly how
+// a vacuous control is born.
+fn arms_within(list: List<CollectiveTransportReading>, at_bytes: ByteSize, numerator: Nat, denominator: Nat) -> Bool {
+  list.any(a => list.any(b =>
+    (a.env_arm as String) == (srv1_nccl_arm_default as String)
+      && (b.env_arm as String) == (srv1_nccl_arm_p2p_disabled as String)
+      && message_bytes_count(a) == byte_size_count(at_bytes)
+      && message_bytes_count(b) == byte_size_count(at_bytes)
+      && bandwidth_count(b: bus_bw_of(c: a)) * denominator >= bandwidth_count(b: bus_bw_of(c: b)) * numerator
+      && bandwidth_count(b: bus_bw_of(c: b)) * denominator >= bandwidth_count(b: bus_bw_of(c: a)) * numerator))
+}
+
 fn elapsed_of(c: CollectiveTransportReading) -> Microsecond {
   match c.elapsed {
     Present { value: e } => e
     Absent => microsecond(count: 0)
+  }
+}
+
+// The optional measurement cells are optional, so a consumer says what absent means instead of letting an
+// absent cell compare equal to a zero-filled one. Both helpers are only used where the row is a READ row,
+// and the sizes they pin are nonzero, so `Absent => 0` can never satisfy a comparison here by accident.
+fn message_bytes_count(c: CollectiveTransportReading) -> Nat {
+  match c.message_bytes {
+    Present { value: v } => byte_size_count(v)
+    Absent => 0
+  }
+}
+
+fn transport_of(c: CollectiveTransportReading) -> String {
+  match c.transport {
+    Present { value: t } => t as String
+    Absent => ""
   }
 }
 
@@ -140,8 +203,8 @@ fn bus_bw_of(c: CollectiveTransportReading) -> Bandwidth {
 }
 
 test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
-  let default_arm = arm_rows(arm: "default" as NonEmptyStr)
-  let disabled_arm = arm_rows(arm: "NCCL_P2P_DISABLE=1" as NonEmptyStr)
+  let default_arm = arm_rows(arm: srv1_nccl_arm_default)
+  let disabled_arm = arm_rows(arm: srv1_nccl_arm_p2p_disabled)
   gpu_pair_interconnect_readings_complete(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_01)
     && !gpu_pair_interconnect_readings_complete(host: operator_host_srv1, left_board: gpu_board_04, right_board: gpu_board_05)
     && srv1_collective_transport_readings.length() == 8
@@ -156,8 +219,280 @@ test fn the_collective_sweep_is_first_hand_and_the_two_arms_differ() -> Bool {
     && disabled_arm.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
     && default_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
     && !disabled_arm.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
-    && string_contains(s: srv1_collective_read_obligation as String, pattern: "lil-flash-next")
-    && string_contains(s: srv1_collective_read_obligation as String, pattern: "re-run")
+    && any(srv1_collective_read_executed_2026_11_09.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
+    // THE RECORD AND THE ROWS IT PRODUCED NAME THE SAME INSTRUMENT, BY DIGEST. That link -- not a sentence
+    // saying "these rows came from that run" -- is what makes the two agree: a row re-measured with a different
+    // instrument, or a record pasted over someone else's sweep, stops matching.
+    && srv1_collective_transport_readings_unloaded_2026_11_09.all(r =>
+      r.instrument_sha256 == srv1_collective_read_executed_2026_11_09.instrument_sha256 && r.host == operator_host_srv1)
+    && srv1_collective_transport_readings_unloaded_2026_11_09.length() == 8
+}
+
+// THE TWO RUNS NAME THEIR ARMS WITH THE SAME VALUES. This is the control that caught a real defect in the rows
+// I added: the 2026-11-08 pair names the disabled arm "NCCL_P2P_DISABLE=1" and my unloaded rows wrote
+// "p2pdisabled", so arm_rows_in over the NEW rows returned an EMPTY list and the "no penalty" assertions were
+// about nothing -- a negative control that selects nothing is the same mistake as a self-confirming oracle, and
+// it survived my own reading of the test because one conjunct counted rows and only that one went red. The
+// labels are two values in the module now; this claim refuses any other spelling in either run, so a third run
+// cannot drift out of the comparison, and it pins four rows per arm per run.
+test fn the_two_runs_name_their_arms_with_the_same_labels() -> Bool {
+  let loaded = srv1_collective_transport_readings
+  let unloaded = srv1_collective_transport_readings_unloaded_2026_11_09
+  loaded.length() == 8
+    && unloaded.length() == 8
+    && all(loaded, c => (c.env_arm as String) == (srv1_nccl_arm_default as String)
+      || (c.env_arm as String) == (srv1_nccl_arm_p2p_disabled as String))
+    && all(unloaded, c => (c.env_arm as String) == (srv1_nccl_arm_default as String)
+      || (c.env_arm as String) == (srv1_nccl_arm_p2p_disabled as String))
+    && all(loaded, c => any(unloaded, d => (d.env_arm as String) == (c.env_arm as String)))
+    && all(unloaded, c => any(loaded, d => (d.env_arm as String) == (c.env_arm as String)))
+    && length(arm_rows_in(list: unloaded, arm: srv1_nccl_arm_p2p_disabled)) == 4
+    && length(arm_rows_in(list: unloaded, arm: srv1_nccl_arm_default)) == 4
+    && length(arm_rows(arm: srv1_nccl_arm_p2p_disabled)) == 4
+}
+
+// THE CONTROL THE 2026-11-08 PAIR COULD NOT RUN, RUN AT LAST. Same instrument (sha 702a2bce..), same four
+// sizes, same arm order, and NOTHING serving on the host: both lil-replica units stopped and their containers
+// removed for the interval. The test is not that the numbers are close to the loaded ones -- they are not
+// supposed to be -- it is that the SIGN OF THE DIFFERENCE IS NOT A PROPERTY OF THE FLAG: loaded, the disabled
+// arm had no row at 10 GB/s and a row over 10 ms; unloaded, the disabled arm clears 10 GB/s and no unloaded row
+// takes 10 ms, and at 4 MiB and 64 MiB the two arms sit inside 25% of each other. So the 2x cannot be cited as
+// the price of NCCL_P2P_DISABLE=1, and the explanation row keeps it a Hypothesis for that reason. The loaded
+// assertions above stay exactly as they were: they describe the loaded run, and they remain first-hand.
+test fn the_unloaded_re_run_does_not_reproduce_the_switch_penalty() -> Bool {
+  let unloaded = srv1_collective_transport_readings_unloaded_2026_11_09
+  let unloaded_default = arm_rows_in(list: unloaded, arm: srv1_nccl_arm_default)
+  let unloaded_disabled = arm_rows_in(list: unloaded, arm: srv1_nccl_arm_p2p_disabled)
+  unloaded.length() == 8
+    && unloaded_default.length() == 4
+    && unloaded_disabled.length() == 4
+    // run identity on every row: the window, and what had to be stopped to take the read
+    && unloaded.all(c => srv1_reading_is_read(w: c.warrant)
+      && string_contains(s: read_on_of(w: c.warrant), pattern: "2026-11-09T22:40:35Z")
+      && string_contains(s: read_on_of(w: c.warrant), pattern: "replicas stopped")
+      && string_contains(s: c.instrument_sha256 as String, pattern: "702a2bce")
+      && transport_of(c: c) == "SHM/direct")
+    // the two runs of the same instrument state DIFFERENT windows; no row of one can be read as the other
+    && !unloaded.any(c => string_contains(s: read_on_of(w: c.warrant), pattern: "2026-11-08T22:22"))
+    // the loaded discriminators invert here: the disabled arm reaches the 10 GB/s class, and no row is slow
+    && unloaded_disabled.any(c => bandwidth_count(b: bus_bw_of(c: c)) >= 10000000000)
+    && !unloaded_disabled.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
+    && !unloaded_default.any(c => microsecond_count(m: elapsed_of(c: c)) >= 10000)
+    // and at the two sizes where the loaded pair was ~2x apart, unloaded neither arm falls below
+    // four-fifths of the other
+    && arms_within(list: unloaded, at_bytes: byte_size(4 * 1024 * 1024), numerator: 8, denominator: 10)
+    && arms_within(list: unloaded, at_bytes: byte_size(64 * 1024 * 1024), numerator: 8, denominator: 10)
+    // THE DISCRIMINATING HALF, said as arithmetic: the same band FAILS on the loaded pair at those two sizes,
+    // which is what "the penalty did not survive an unloaded host" means. A reader who wants the figures reads
+    // the reading rows; a hypothesis string is not allowed to be where the comparison lives.
+    && !arms_within(list: srv1_collective_transport_readings, at_bytes: byte_size(4 * 1024 * 1024), numerator: 8, denominator: 10)
+    && !arms_within(list: srv1_collective_transport_readings, at_bytes: byte_size(64 * 1024 * 1024), numerator: 8, denominator: 10)
+    // the obligation now names the run it was executed in, the confounder that had to be removed, and the
+    // fact that it was the re-run the earlier pair asked for
+    && any(srv1_collective_read_executed_2026_11_09.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
+    && string_contains(s: srv1_collective_read_executed_2026_11_09.results_log_path as String, pattern: "jh_nccl_results")
+}
+
+// A NEGATIVE FOR THE NEGATIVE: if the unloaded rows were filled from the loaded ones, or if either arm had
+// been copied from the other, the size-pinned comparison would still pass while the arms went identical. This
+// says the unloaded arms are NOT the loaded rows under a new date, and that both arms differ from each other
+// at the small sizes, which is what a real sweep looks like at 16 KiB and 256 KiB.
+test fn the_unloaded_rows_are_not_the_loaded_rows_relabelled() -> Bool {
+  let unloaded = srv1_collective_transport_readings_unloaded_2026_11_09
+  let loaded = srv1_collective_transport_readings
+  unloaded.all(c => !loaded.any(d =>
+    (d.env_arm as String) == (c.env_arm as String)
+      && message_bytes_count(d) == message_bytes_count(c)
+      && microsecond_count(m: elapsed_of(c: d)) == microsecond_count(m: elapsed_of(c: c))))
+    && unloaded.any(c => unloaded.any(d =>
+      (c.env_arm as String) != (d.env_arm as String)
+      && message_bytes_count(c) == message_bytes_count(d)
+      && microsecond_count(m: elapsed_of(c: c)) * 4 >= microsecond_count(m: elapsed_of(c: d))))
+}
+
+// AN OPEN TASK AND ITS COMPLETION RECORD DO NOT SHARE A ROW. The unloaded re-run discharged one obligation, and
+// the tempting edit was to overwrite the obligation string with the record of the run: same name, opposite
+// meaning, no type change. Anything reading the row by its name would get a closed task where an open one was
+// promised -- the meaning fork DESIGN's single-authority rule forbids ("holding a name constant may not silently
+// change obligations", review 92817). The record got its own row and the obligation keeps only what is STILL
+// owed. This claim is what makes the split stick: the pointer row carries no status and no count at all, the
+// row list is the only place open/closed is decided, and the record carries the run's instants and digests.
+test fn an_open_task_and_its_completion_record_do_not_share_a_row() -> Bool {
+  let obligation = srv1_collective_read_obligation as String
+  let follow_ups = srv1_collective_read_follow_ups_2026_11_09
+  let record = srv1_collective_read_executed_2026_11_09
+  !string_contains(s: obligation, pattern: "EXECUTED")
+    && !string_contains(s: obligation, pattern: "DONE")
+    && !string_contains(s: obligation, pattern: "COMPLETED")
+    // THE ROW LIST DECIDES OPEN/CLOSED, AND NOTHING ELSE DOES. Four controls are tracked: three open, one
+    // closed. The counts are asserted because a control folded silently into another row would still read as one
+    // open item while losing one of them, and because a control DELETED rather than closed would leave the lane's
+    // history short by one -- which is what happened while the closed item lived in a sentence beside the list.
+    && follow_ups.length() == 4
+    && filter(follow_ups, f => f.open).length() == 3
+    && filter(follow_ups, f => !f.open).length() == 1
+    && follow_ups.all(f => f.control as String != "" && f.what_it_settles as String != "" && f.how_to_run as String != "" && f.cost as String != "")
+    && any(follow_ups, f => string_contains(s: f.control as String, pattern: "topolog"))
+    && any(follow_ups, f => string_contains(s: f.control as String, pattern: "REVERSE"))
+    && any(follow_ups, f => string_contains(s: f.how_to_run as String, pattern: "TRANSPORT"))
+    && any(follow_ups, f => !f.open && string_contains(s: f.control as String, pattern: "NEITHER serving replica"))
+    // RED controls: the pointer row carries a NAME only. A count ("three"), a status word ("OPEN", "CLOSED",
+    // "remain") or a figure in it makes a second source for a fact the rows already decide -- the fork the split
+    // was meant to remove. Flipping any row's `open` flag leaves every line here true; rewriting the pointer
+    // sentence to restate the state is what turns them red.
+    && string_contains(s: obligation, pattern: "srv1_collective_read_follow_ups_2026_11_09")
+    && !string_contains(s: obligation, pattern: "OPEN")
+    && !string_contains(s: obligation, pattern: "CLOSED")
+    && !string_contains(s: obligation, pattern: "three")
+    && !string_contains(s: obligation, pattern: "remain")
+    && !any(follow_ups, f => string_contains(s: f.control as String, pattern: "256 KiB"))
+    // The record's instants are the calendar's parts, and they render back to exactly the text the host printed:
+    // a part typed one second out is caught here, not when a consumer asks for a span.
+    // The record holds the constructor's Optional, so the host text is compared by casing it: an absent instant
+    // fails the comparison instead of stringifying into something date-shaped.
+    && host_text_matches(instant: record.measurement_start, host_text: "2026-11-09T22:40:35Z")
+    && host_text_matches(instant: record.window_start, host_text: "2026-11-09T22:39:48Z")
+    && host_text_matches(instant: record.window_end, host_text: "2026-11-09T22:47:37Z")
+    // the record points at its evidence by digest and path, not by naming a list of rows in prose
+    && record.instrument_sha256 as String == "702a2bce83cb6c76ca51699457822fb06e840c37ba377bb0b5247a8b2653b1cc"
+    && string_contains(s: record.results_log_path as String, pattern: "jh_nccl_results_20261109T224035Z")
+    && lower_hex_64(value: record.results_log_sha256) && record.results_log_sha256 != record.instrument_sha256
+    // the record names the things that had to be stopped, and the instrument by digest, so a later
+    // reader can tell this run from the loaded pair without parsing prose
+    && length(record.units_stopped) == 2
+    && any(record.containers_removed, c => string_contains(s: c as String, pattern: "lil-flash-next"))
+    && lower_hex_64(value: record.instrument_sha256)
+    && lower_hex_64(value: record.results_log_sha256)
+}
+
+// The record holds the calendar's checked constructor, so a comparison against a host read has to case on the
+// Optional rather than assume one.
+fn host_text_matches(instant: Iso8601UtcInstant?, host_text: String) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: v } => iso8601_utc_instant_text(i: v) == host_text
+  }
+}
+
+fn is_instant_present(instant: Iso8601UtcInstant?) -> Bool {
+  match instant {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// THE RECORD'S SPANS ARE COMPUTED, NOT REPEATED, and its instants arrive through a CHECKED CONSTRUCTOR. The
+// window and the measurement inside it are differences of the record's own instants, read through the shared ISO
+// 8601 calendar (extdeps.units.iso8601_calendar) -- the same route srv1_serving_replica_layout's router-window row
+// reads them through, so 469 s and 16 s exist in exactly one place. The green control re-measures the same pair the
+// record names; the red controls are what a reader used to total parsing would have had to catch downstream:
+//   * a pair in the wrong order refuses, instead of yielding a negative or an absolute count;
+//   * an instant a few seconds off -- the 7 s slip this lane actually made on another record -- produces a
+//     DIFFERENT number, so the recorded span stops agreeing with a mistyped instant;
+//   * each out-of-range clock face (`hour: 99`, `month: 13`, `day: 32`, `minute: 60`) is refused BY THE
+//     CONSTRUCTOR, which is where the range lives -- the record field is the constructor's Optional, so no
+//     consumer (span, epoch count, rendered text) is ever handed a bad instant to be clever about.
+test fn the_record_spans_are_computed_from_its_instants() -> Bool {
+  let run = srv1_collective_read_executed_2026_11_09
+  match srv1_collective_read_window_duration(run: run) {
+    Absent => false
+    Present { value: w } => second_count(w) == 469
+  }
+    && match srv1_collective_read_measurement_duration(run: run) {
+      Absent => false
+      Present { value: m } => second_count(m) == 16
+    }
+    // and the smaller span is still inside the larger one, which only holds while BOTH come from the same pair
+    && match srv1_collective_read_window_duration(run: run) {
+      Absent => false
+      Present { value: w } =>
+        match srv1_collective_read_measurement_duration(run: run) {
+          Absent => false
+          Present { value: m } => second_count(m) < second_count(w)
+        }
+    }
+    // RED control: the same pair the other way round refuses, instead of yielding a negative or an absolute count.
+    && match iso8601_utc_instant_seconds_between(earlier: run.window_end, later: run.window_start) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // RED control: a window end typed 7 s late -- the drift this lane actually hit once on another record. It
+    // reads as 476 s, so the claim over 469 goes red. A span stored beside the instants would have agreed with
+    // whichever of the two someone transcribed, which is how the 7 s survived a review round.
+    && match iso8601_utc_instant_seconds_between(
+      earlier: run.window_start,
+      later: iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 47, second: 44),
+    ) {
+      Absent => false
+      Present { value: w } => second_count(w) == 476
+    }
+    // an instant against itself is zero seconds, not an absent answer
+    && match iso8601_utc_instant_seconds_between(earlier: run.window_start, later: run.window_start) {
+      Absent => false
+      Present { value: w } => second_count(w) == 0
+    }
+    // RED controls: the range lives at construction. Each part outside what its name claims answers Absent from
+    // the constructor itself -- a reader that only ever received the constructor's output cannot be handed one.
+    // Calendar-impossible days are in that set: `day: 31` in February is not a loose bound, it is a date that the
+    // normalized day arithmetic would silently move to March, so it must be refused where the instant is made.
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 99, minute: 39, second: 48) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 13, day: 9, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 32, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 60, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    // and the in-range side of the same constructor builds the instant the host printed, which is what ties the
+    // parts back to the reading instead of leaving them free-floating numbers.
+    // February by the leap rule, from the module's one day-in-month rule (iso8601_gregorian_days_in_month), the
+    // same one iso8601_utc_epoch_seconds refuses with: 2026 is not a leap year, 2024 is, 1900 is not (century),
+    // 2000 is. And the text door refuses the identical date, which is what makes it one rule and not two.
+    && match iso8601_utc_instant(year: 2026, month: 2, day: 31, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 2, day: 29, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 1900, month: 2, day: 29, hour: 0, minute: 0, second: 0) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 4, day: 31, hour: 22, minute: 47, second: 37) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2024, month: 2, day: 29, hour: 12, minute: 0, second: 0) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2024-02-29T12:00:00Z"
+    }
+    && match iso8601_utc_instant(year: 2000, month: 2, day: 29, hour: 12, minute: 0, second: 0) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2000-02-29T12:00:00Z"
+    }
+    && match iso8601_utc_epoch_seconds(text: "2026-02-31T22:47:37Z") {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match iso8601_utc_instant(year: 2026, month: 11, day: 9, hour: 22, minute: 40, second: 51) {
+      Absent => false
+      Present { value: v } => iso8601_utc_instant_text(i: v) == "2026-11-09T22:40:51Z"
+    }
+    // the four recorded instants are the Present side, which is what the green spans above rest on
+    && is_instant_present(instant: run.window_start)
+    && is_instant_present(instant: run.window_end)
+    && is_instant_present(instant: run.measurement_start)
+    && is_instant_present(instant: run.measurement_end)
 }
 
 // AN EXPLANATION IS NEVER A PREMISE. Both srv1 rows -- the one about what missing peer access accounts for,
