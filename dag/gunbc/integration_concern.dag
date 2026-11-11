@@ -2268,18 +2268,20 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
       },
       account: "git grep origin/main finds no workflow that runs gunbc.apply apply_wet. fleet-converge.yml invokes fleet_converge_apply_wet, gcp_iam_*_apply_wet and branch_run_grant_apply_wet, never gunbc.apply. So runner_capacity_realize's apply has no executing route, while runner_host_file_converge_ci_wet is the route that actually converges slots. Two places answer 'realize runner slot adds' and only one runs.",
     },
-    tail: [],
-  },
-  disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet") },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit"),
-        control: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds"),
-        statement: "the capacity realize seam plans and preflights per-host additions, producing typed receipts; whether it executes or defers to the converge path is B3b's decision",
+    tail: [
+      ConcernSighting {
+        revision: "9bc7a3ebcadd",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_host_plan") },
+          tail: [CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds") }],
+        },
+        account: "B3b (tidy-swift-586) read the realize apply seam end to end: runner_capacity_apply_host_plan's add arm refuses EVERY host plan that carries slot adds with a typed reason naming runner_host_file_converge_ci_wet ('this seam preflights and receipts, it does not actuate'), and runner_capacity_apply_wet_exit exits failure whenever any host refused. Realize never reports success for an action that did not run, so it does not realize a slot add: the converge is the only route that does. Keep realize as the refusing preflight/receipt seam; keep the witness that pins the refusal; close as Distinct.",
       },
     ],
-    next: climbs_when(capability: "B3b decides whether runner_capacity_realize is deleted or wired to an executing route"),
+  },
+  disposition: Distinct {
+    reason: "B3b's decision: the converge is the only authority that realizes runner slot adds. realize preflights and receipts and REFUSES every add with a typed reason naming runner_host_file_converge_ci_wet, so the two answer different questions (preflight/receipt vs execution) and realize never actuates: there is no second path to the same mutation. The never-report-false-success property stays pinned by test.claim.runner.runner_capacity_realize_witness converged_roster_plans_zero_additions_and_apply_succeeds, which remains live in the tree",
+    scope_examined: "the realize apply seam end to end (runner_capacity_apply_host_plan's add arm, runner_capacity_apply_plan, runner_capacity_apply_any_host_refused, runner_capacity_apply_wet_exit), its plan-mode consumer in gunbc.apply, and the realize witness: no arm actuates, and apply exits failure whenever any host refused",
   },
 }
 
