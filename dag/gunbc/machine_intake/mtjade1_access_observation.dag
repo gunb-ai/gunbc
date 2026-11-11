@@ -713,11 +713,11 @@ type BmcFruCaptureRow {
 data bmc_fru_capture_rows: List<BmcFruCaptureRow> = [
   BmcFruCaptureRow {
     unit: operator_host_srv14,
-    capture_path: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt",
-    capture_sha256: "1d24eff4979ecafd8540c0758bd5e0996c045a3765ccc14f40037f5286a2f99b",
-    capture_section: Present { value: "ipmitool fru 0 (board/product area)" },
+    capture_path: "artifacts/bmc/altrad8ud-1l2t-6-fru-full-2026-11-11/fru_print_0.txt",
+    capture_sha256: "9bdfd1b7246b52743de0be54991b37972e67a5a04e2236eef04ee265082cabb1",
+    capture_section: none,
     attribution: FruReadTakenOnTheUnitItself,
-    attribution_basis: "00_README.txt of the same capture directory: every ipmitool call of that run used /dev/ipmi0, with no -I lanplus and no credential on the command line -- the passwordless in-band system interface of this unit's own BMC",
+    attribution_basis: "00_README.txt of that capture directory: `sudo ipmitool fru print 0` run on butch (srv14) itself, over /dev/ipmi0, with no BMC credential and no -U or -I lanplus -- the passwordless in-band system interface of this unit's own BMC. The whole file is the print of device 0, so no section is cut.",
   },
 ]
 
@@ -730,14 +730,11 @@ fn bmc_fru_capture_row(unit: HostIdentity) -> BmcFruCaptureRow? {
   first_where(bmc_fru_capture_rows, e => host_identity_eq(a: e.unit, b: unit))
 }
 
-// THE PURE HALF, arm-dispatched. The FRU text has already been proven by its file's digest and cut to its
-// section; what is left is the attribution the row claims. Both arms read the same board-area and chassis-area
-// fields, because those are IPMI FRU fields and not one board's invention.
+// THE PURE HALF. The FRU text has already been proven by its file's digest and cut to its section; the fields
+// it carries are IPMI FRU fields, not one board's invention, so the same decode reads them whichever arm the
+// row claims -- the attribution is carried on the observation, where a consumer can see which arm it came on.
 fn decode_committed_bmc_fru_capture(fru_text: String, row: BmcFruCaptureRow) -> FruDecode {
-  match row.attribution {
-    FruReadIssuedToBoundController { fleet_bound_bmc_address: _ } => decode_fru_fields(content: fru_text)
-    FruReadTakenOnTheUnitItself => decode_fru_fields(content: fru_text)
-  }
+  decode_fru_fields(content: fru_text)
 }
 
 // READ A UNIT'S COMMITTED FRU CAPTURE FROM ITS ROW, fail closed: no row, no read -- and the refusal carries the
