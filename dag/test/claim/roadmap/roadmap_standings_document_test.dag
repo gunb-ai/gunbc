@@ -95,15 +95,16 @@ test fn witness_standings_undeclared_log_node_is_listed_after_declared_and_marke
     && (match rows.skip(n: 2).first() { Present { value: r } => r.node == "a-node-the-roadmap-dropped"  Absent => false })
 }
 
-test fn witness_standings_document_carries_schema_and_log_head() -> Bool {
-  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, declared: declared_pair(), rows: [])
+test fn witness_standings_document_carries_schema_log_head_and_observed_at() -> Bool {
+  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [])
   string_member_is(v: doc, key: "schema", want: roadmap_standings_document_schema)
+    && string_member_is(v: doc, key: "observed_at", want: "2026-11-11T23:00:00Z")
     && string_member_is(v: doc, key: "log_head", want: "10bf77aa512883ad7aeb6e2f2c42dfceab502480")
     && (match member(v: doc, key: "standings") { Present { value: JsonArray { elements } } => count(elements) == 2  _ => false })
 }
 
 test fn witness_standings_refusal_is_located_and_has_no_standings() -> Bool {
-  let doc = roadmap_standings_document_refusal_json(step: "sync/fetch", reason: "exit 128: could not read from remote")
+  let doc = roadmap_standings_document_refusal_json(observed_at: "2026-11-11T23:00:00Z", step: "sync/fetch", reason: "exit 128: could not read from remote")
   (match member(v: doc, key: "standings") { Present { value: _ } => false  Absent => true })
     && (match member(v: doc, key: "refused") {
       Present { value: refused } => string_member_is(v: refused, key: "step", want: "sync/fetch") && string_member_is(v: refused, key: "reason", want: "exit 128: could not read from remote")

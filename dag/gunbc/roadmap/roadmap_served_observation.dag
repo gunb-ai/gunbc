@@ -338,18 +338,21 @@ fn served_observation_workflow_surface_for_instance(instance: HostDashboardInsta
 // /standings.json: every declared node's standing and the log head the fold read
 // (gunbc.roadmap.roadmap_standings_document). Rendered at the tick like every other surface, so a
 // request reads finished bytes; a log that cannot be read is a 503 carrying the located refusal.
+// ITS FRESHNESS IS THE TICK'S: the document exists and moves only while the belt tick
+// (roadmap_belt_tick_cli's served-observation pass) runs. A tick that has stopped is answered 409
+// stale or 503 unread by the freshness law, never served as current.
 // The snapshot's close standing has no surface here, as for the page's own standings read
 // (served_standings_after_snapshot_close); a leaked snapshot is listed by the instance's census.
-fn served_observation_standings_surface_for_instance(instance: HostDashboardInstance) -> ServedObservationSurface {
+fn served_observation_standings_surface_for_instance(instance: HostDashboardInstance, observed_at: String) -> ServedObservationSurface {
   let read = roadmap_standings_at_head_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   match read.result {
     StandingsAtHead { head, rows } => ServedObservationSurface {
       kind: StandingsJson, status: 200,
-      body: serialize_json(v: roadmap_standings_document_json(log_head: head, declared: declared_roadmap_nodes(), rows: rows)),
+      body: serialize_json(v: roadmap_standings_document_json(log_head: head, observed_at: observed_at, declared: declared_roadmap_nodes(), rows: rows)),
     }
     StandingsAtHeadUnobserved { step, reason } => ServedObservationSurface {
       kind: StandingsJson, status: 503,
-      body: serialize_json(v: roadmap_standings_document_refusal_json(step: step, reason: reason)),
+      body: serialize_json(v: roadmap_standings_document_refusal_json(observed_at: observed_at, step: step, reason: reason)),
     }
   }
 }
@@ -374,7 +377,7 @@ fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, pla
       served_observation_attempts_surface_for_instance(instance: instance),
       served_observation_workflow_surface_for_instance(instance: instance, observed: observed, launch: launch),
       served_observation_sessions_surface_for_instance(instance: instance),
-      served_observation_standings_surface_for_instance(instance: instance),
+      served_observation_standings_surface_for_instance(instance: instance, observed_at: observed_at),
     ],
   }
 }

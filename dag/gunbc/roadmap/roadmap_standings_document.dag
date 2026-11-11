@@ -50,10 +50,16 @@ fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeS
   concat(declared_rows, undeclared_rows)
 }
 
-fn roadmap_standings_document_json(log_head: NonEmptyStr, declared: List<RoadmapNode>, rows: List<NodeStandingRow>) -> JsonValue {
+// observed_at is the tick that rendered the document. The route answers 409 when the stored
+// observation is older than the newest event and 503 when freshness cannot be read
+// (roadmap_served_observation served_observation_apply_freshness), so a reader treats any status
+// but 200 as "not known now" -- never as the current standing -- and reads observed_at to say how
+// old a 200 is.
+fn roadmap_standings_document_json(log_head: NonEmptyStr, observed_at: String, declared: List<RoadmapNode>, rows: List<NodeStandingRow>) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: roadmap_standings_document_schema)),
     json_kv(key: "log_head", value: json_string(s: log_head as String)),
+    json_kv(key: "observed_at", value: json_string(s: observed_at)),
     json_kv(key: "standings", value: json_array(elements: map(
       roadmap_standings_document_rows(declared: declared, rows: rows),
       r => json_object(members: [
@@ -64,9 +70,10 @@ fn roadmap_standings_document_json(log_head: NonEmptyStr, declared: List<Roadmap
   ])
 }
 
-fn roadmap_standings_document_refusal_json(step: String, reason: String) -> JsonValue {
+fn roadmap_standings_document_refusal_json(observed_at: String, step: String, reason: String) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: roadmap_standings_document_schema)),
+    json_kv(key: "observed_at", value: json_string(s: observed_at)),
     json_kv(key: "refused", value: json_object(members: [
       json_kv(key: "step", value: json_string(s: step)),
       json_kv(key: "reason", value: json_string(s: reason)),
