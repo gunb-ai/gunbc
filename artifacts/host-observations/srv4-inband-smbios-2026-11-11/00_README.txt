@@ -45,6 +45,11 @@ WHAT WAS READ, AND WHAT IT SAID
   each other rather than merely reported side by side: host_smbios_board_serial_standing refuses a reading whose
   sysfs attribute and type-2 section disagree (BoardSerialPathsDisagree), and a type-2 section that printed
   nothing is not a vote -- a host without dmidecode stands on the one admitted reading, which is all A2 asks for.
+  The type-2 half is READ OUT OF THIS FILE, not typed beside it: type2_base_board_serial takes the serial from
+  the single "Serial Number:" row inside the smbios.type2 line, and the verifier refuses a record that claims a
+  serial this section does not print, or that claims the section said nothing when it said something
+  (TranscriptTablePathDiffers, both sides named). Before that the second route was a literal, and a cross-check
+  of one literal against another goes green no matter what the host answered.
 
 WHO TOOK IT, FROM WHERE, HOW
   gunbc session gentle-moth-338 (P3, hardware observation producers), from the srv1 session host, as

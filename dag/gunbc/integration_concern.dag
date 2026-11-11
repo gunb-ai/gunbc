@@ -2454,26 +2454,31 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
   kind: SuspectedFork {
     authorities: DistinctAuthorities {
       first: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
-      second: decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_field"),
-      rest: [decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_rows")],
+      // The other authority has to be a parser that EXISTS, or the row names a fork that cannot be found from
+      // either side. main already decodes this firmware field: mtjade1's UEFI `smbiosview -t 2` transcript, read
+      // inside the Base Board Information structure exactly once, refusing absent, repeated and empty. Same
+      // question, different transport and token.
+      second: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
+      rest: [],
     },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),
     tail: [
       decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "verify_host_smbios_reading_transcript"),
-      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_rows"),
-      decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_field"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial"),
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block"),
     ],
   },
-  question: "What board serial and product name does this machine's SMBIOS base-board table report? Two lanes answer it from the host's own printed output and each wrote its own parse: gunbc.fleet.fleet_host_smbios_observation takes the fleet seat (a running OS, SSH, feeding A2 -- gunbc.fleet.fleet_machine_unit_binding -- through the HostSmbios arm of gunbc.machine_intake.subject's BoardSerialSource) and gunbc.machine_intake.inband_host_identity takes the arrival seat (a rescue OS over a committed capture, feeding gunbc.machine_intake.arrival_converge's identity_bind_provisional). Only the transport and the consumer differ; the question, the fields and the failure modes are one thing. Two parsers of one firmware question is how a fleet gets two answers to it, and the answers are compared nowhere.",
+  question: "What board serial does this machine's SMBIOS base-board table report? THREE parses answer it from the host's own printed output. Two are on main today and answer it differently: gunbc.fleet.fleet_host_smbios_observation (the fleet seat -- a running OS over SSH, reading dmidecode's `Serial Number:` line inside the type-2 section, feeding A2 -- gunbc.fleet.fleet_machine_unit_binding -- through the HostSmbios arm of gunbc.machine_intake.subject's BoardSerialSource) and gunbc.machine_intake.mtjade1_access_observation::decode_smbios_base_board_block (the arrival seat -- a UEFI `smbiosview -t 2` SOL transcript, reading `SerialNumber:` inside the Base Board Information structure exactly once). A third pair, gunbc.machine_intake.inband_host_identity::inband_section_rows / ::inband_section_field (#16336, not yet landed), is the dmidecode-under-a-rescue-OS version of the same question and the generalization both should fold into: the transports differ only in the token and in which section marker delimits the block, and a marker is row data under that scanner. Two lanes answer it from the host's own printed output and each wrote its own parse: gunbc.fleet.fleet_host_smbios_observation takes the fleet seat (a running OS, SSH, feeding A2 -- gunbc.fleet.fleet_machine_unit_binding -- through the HostSmbios arm of gunbc.machine_intake.subject's BoardSerialSource) and gunbc.machine_intake.inband_host_identity takes the arrival seat (a rescue OS over a committed capture, feeding gunbc.machine_intake.arrival_converge's identity_bind_provisional). Only the transport and the consumer differ; the question, the fields and the failure modes are one thing. Two parsers of one firmware question is how a fleet gets two answers to it, and the answers are compared nowhere.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "eae44945e776011871ceaef389051dda0e434710",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value") },
         tail: [
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_field") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "type2_base_board_serial") },
           CitesArtifact {
             label: "artifacts/host-observations/srv4-inband-smbios-2026-11-11/srv4_inband_smbios_observation.txt -- srv4's own output: board_name ALTRAD8UD-1L2T, board_serial NS1NG4000900022 from both the privileged sysfs attribute and the type-2 decode, with the type-1 Serial Number and product_serial, chassis_serial and chassis_asset_tag all blank",
             sha256: Sha256Digest { hex: "060f5af16d891ec7f9bf3e95bb792462967042c21f8a02c441500650af054ac8" as Sha256DigestHex },
@@ -2485,7 +2490,10 @@ data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = Int
     tail: [],
   },
   disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.machine_intake.inband_host_identity", decl_name: "inband_section_field") },
+    // The home is the parser already on main that answers this question under one section, refusing absent,
+    // repeated and empty; the arrival lane's inband_section_rows / inband_section_field pair (#16336) is the
+    // generalization to fold both into, and is what the module's dissolution trigger waits on.
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "decode_smbios_base_board_block") },
     preserve: [
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "host_smbios_board_serial_standing"),

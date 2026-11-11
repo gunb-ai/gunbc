@@ -494,6 +494,11 @@ type HostSmbiosTranscriptStanding
   | TranscriptSerialDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptHostnameDiffers { recorded: NonEmptyStr, printed: String }
   | TranscriptBoardNameDiffers { recorded: NonEmptyStr, printed: String }
+  // The reading's recorded base-board serial for the SECOND route (dmidecode's type-2 table) against what the
+  // type-2 section of the transcript it cites actually prints. Without this arm the second path would be a
+  // value typed beside the capture, and host_smbios_board_serial_standing's cross-check would be comparing one
+  // typed literal with another -- green no matter what the host said.
+  | TranscriptTablePathDiffers { recorded: String, printed: String }
 
 // THE VALUE OF ONE `key=value` LINE IN THE TRANSCRIPT, or "" where the transcript has no such line.
 fn transcript_line_value(lines: List<String>, key: NonEmptyStr) -> String {
@@ -501,6 +506,73 @@ fn transcript_line_value(lines: List<String>, key: NonEmptyStr) -> String {
   match first_where(xs: lines, keep: l => starts_with(s: l, prefix: prefix)) {
     Present { value: line } => substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
     Absent => ""
+  }
+}
+
+// THE BASE-BOARD SERIAL, READ OUT OF THE TYPE-2 SECTION AND NOWHERE ELSE. The capture prints its
+// `dmidecode --type 2` output as one `smbios.type2=` line whose rows are `|`-separated, so the section boundary
+// is structural rather than guessed: the answer is the single `Serial Number:` inside that section. That scoping
+// is the whole point -- this board's SYSTEM (type-1) table prints its own `Serial Number`, empty, and a parse
+// that grepped the whole transcript for the key would mint a unit key out of the wrong table. The three ways to
+// have no answer stay three (absent-or-repeated, and present-but-empty), the same grain as
+// gunbc.ipmitool_fru_text's FruFieldAbsent / FruFieldEmpty / FruFieldRepeated and as
+// gunbc.machine_intake.mtjade1_access_observation::decode_smbios_base_board_block, which decodes the same
+// firmware field from a UEFI `smbiosview -t 2` transcript; only the token differs ("Serial Number:" against
+// "SerialNumber:"), which is row data under the shared scanner this row's dissolution waits on.
+fn type2_base_board_serial(lines: List<String>) -> SmbiosFieldReading {
+  let section = transcript_line_value(lines: lines, key: "smbios.type2")
+  let rows = map(split(s: section, delimiter: "|"), l => trim(l))
+  let serials = rows |> filter(l => starts_with(l, "Serial Number:"))
+  if length(serials) != 1 {
+    SmbiosFieldUnreadable {
+      detail: join([
+        "the transcript's type-2 section carries ", to_string(length(serials)), " 'Serial Number' lines, not one",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match serials.first() {
+      Absent => SmbiosFieldUnreadable { detail: "the transcript carries no type-2 section to read" }
+      Present { value: line } => {
+        let serial = trim(join(split(s: line, delimiter: "Serial Number:").skip(n: 1), "Serial Number:"))
+        if serial == "" {
+          SmbiosFieldBlank
+        } else {
+          SmbiosFieldValue { value: serial as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+// A reading's field as text, for an arm that has to say what the two routes each said. Every branch renders a
+// value the field itself carries; nothing here invents a placeholder to fill a comparison.
+fn smbios_field_text(field: SmbiosFieldReading) -> String {
+  match field {
+    SmbiosFieldValue { value: v } => v as String
+    SmbiosFieldBlank => ""
+    SmbiosFieldUnreadable { detail: d } => d as String
+  }
+}
+
+// THE SECOND ROUTE IS CHECKED AGAINST THE BYTES IT CITES. The standing refuses when the two recorded routes
+// disagree; that refusal is only worth having if the route being compared came from the transcript, so the
+// comparison is made here, where the file has been read and digest-checked. A record that claims a serial the
+// section does not print disagrees, and a record that claims the section said nothing when it said something
+// disagrees the same way.
+fn table_path_disagrees(reading: HostSmbiosReading, lines: List<String>) -> Bool {
+  let printed = type2_base_board_serial(lines: lines)
+  match reading.board_serial_from_smbios_table {
+    SmbiosFieldValue { value: v } =>
+      match printed {
+        SmbiosFieldValue { value: p } => p != (v as String)
+        _ => true
+      }
+    SmbiosFieldBlank => match printed { SmbiosFieldBlank => false, _ => true }
+    SmbiosFieldUnreadable { detail: _ } =>
+      match printed {
+        SmbiosFieldValue { value: _ } => true
+        _ => false
+      }
   }
 }
 
@@ -591,6 +663,11 @@ fn compare_recorded_fields_against_print(
           TranscriptBoardNameDiffers {
             recorded: board_model_recorded(reading: reading),
             printed: trim(s: transcript_line_value(lines: lines, key: "dmi.board_name")),
+          }
+        } else if table_path_disagrees(reading: reading, lines: lines) {
+          TranscriptTablePathDiffers {
+            recorded: smbios_field_text(field: reading.board_serial_from_smbios_table),
+            printed: smbios_field_text(field: type2_base_board_serial(lines: lines)),
           }
         } else {
           // The digest gate already passed, so this is the record's own cited digest, not a recomputed one.

@@ -645,3 +645,34 @@ fn reading_with_second_path(table: SmbiosFieldReading) -> HostSmbiosReading {
     board_serial_from_smbios_table: table,
   }
 }
+
+// A RECORDED SECOND ROUTE THAT THE TRANSCRIPT DOES NOT PRINT IS A REFUSAL. The type-2 half of the reading used
+// to be a value typed beside the capture, which made the standing's two-route cross-check a comparison of two
+// literals: it could only go red if one of them was mistyped. type2_base_board_serial now reads the serial out
+// of the type-2 section of the very file the reading cites, so the check has a subject. Three shapes here: the
+// honest reading agrees, a reading that claims a serial the section never printed is refused with both sides
+// named, and a reading that claims the section said NOTHING when it said something is refused too -- the second
+// is the shape a copy-pasted reading takes, and it is the one a literal could never catch.
+test fn the_recorded_table_path_is_checked_against_the_section_it_cites() -> Bool {
+  let honest = verify_host_smbios_reading_transcript(reading: srv4_host_smbios_reading)
+  let honest_agrees = match honest {
+    TranscriptAgrees { digest: _ } => true
+    _ => false
+  }
+  let invented = verify_host_smbios_reading_transcript(
+    reading: reading_with_second_path(table: SmbiosFieldValue { value: "NS1NG4000900023" as NonEmptyStr }),
+  )
+  let invention_is_refused = match invented {
+    TranscriptTablePathDiffers { recorded: rec, printed: prn } =>
+      rec == "NS1NG4000900023" && prn == "NS1NG4000900022"
+    _ => false
+  }
+  let silent_about_a_loud_section = verify_host_smbios_reading_transcript(
+    reading: reading_with_second_path(table: SmbiosFieldBlank),
+  )
+  let silence_is_refused = match silent_about_a_loud_section {
+    TranscriptTablePathDiffers { recorded: rec, printed: prn } => rec == "" && prn == "NS1NG4000900022"
+    _ => false
+  }
+  honest_agrees && invention_is_refused && silence_is_refused
+}
