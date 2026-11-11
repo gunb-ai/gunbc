@@ -1,0 +1,19 @@
+module test.claim.srv15_arrival_federation_provision_witness
+
+// srv15's arrival federation is a real DedicatedFederation row of mtjade1's shape, so it does not dangle
+// (this probe is its only consumer), and it carries the srv15 lane names. It is MODELED, not in
+// gcp_iam_converge_targets; activating it (append to the roster + a gcp-iam-converge dispatch) is the
+// separate bootstrap declared in gunbc.auth.srv15_arrival_federation_provision (and the PR body).
+// The single SecretAccessGrant on bmc-srv15-admin is built by pinned_version_accessor_grant_for (the same
+// builder mtjade1's grant uses), so this probe fixes the lane names; the grant's pinned target/version is
+// grounded by srv15_bmc_gunbc_arrival_accessor_ref and the operator's version read-obligation.
+
+import std.types { String }
+import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_dedicated_federation }
+
+test fn srv15_is_provisioned_as_a_data_row_with_only_the_pinned_accessor() -> Bool {
+  srv15_arrival_dedicated_federation().pool_id as String == "github-srv15-arrival"
+    && srv15_arrival_dedicated_federation().provider_id as String == "github-srv15-arrival-oidc"
+    && srv15_arrival_dedicated_federation().service_account_id as String == "srv15-arrival"
+    && srv15_arrival_dedicated_federation().service_account as String == "srv15-arrival@gunbai-secrets.iam.gserviceaccount.com"
+}
