@@ -602,8 +602,7 @@ fn tailscale_machine_name_device_names_leg(
             } else {
               tailscale_machine_name_device_names_reading(
                 status_document: status_result.stdout,
-                os_name_capture:
-                  hostname_short_value_from_stdout(success: os_result.success, stdout: os_result.stdout)
+                os_name_capture: hostname_short_value_from_stdout(success: os_result.success, stdout: os_result.stdout)
               )
             }
         }

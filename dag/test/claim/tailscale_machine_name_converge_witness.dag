@@ -147,8 +147,7 @@ fn witness_os_capture(stdout: String) -> HostnameShortCapture {
 
 // THE ARM THE FIXTURES USED TO BE ABLE TO MISS: the read itself failed. A parser of one's own that only trims and
 // checks for empty stdout has no such state; the authority's capture does, and this mode must not plan over it.
-data witness_os_capture_failed_read: HostnameShortCapture =
-  hostname_short_value_from_stdout(success: false, stdout: "damien\n")
+data witness_os_read_failed: HostnameShortCapture = hostname_short_value_from_stdout(success: false, stdout: "damien\n")
 
 // A device whose tailnet name and FQDN point at different names: the name compared is `Self.HostName`, and a run
 // that reached for the FQDN instead would plan a different change from the same bytes.
@@ -474,7 +473,7 @@ test fn an_os_hostname_read_that_failed_to_exit_cleanly_refuses_before_any_plan(
     mode: ObserveOnly,
     names: tailscale_machine_name_device_names_reading(
       status_document: witness_slot_spelling_document,
-      os_name_capture: witness_os_capture_failed_read
+      os_name_capture: witness_os_read_failed
     )
   ) {
     PlanRefused { cause: reason } =>
