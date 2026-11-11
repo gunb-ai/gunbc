@@ -5181,6 +5181,11 @@ pub fn equality_route_declarations() -> Rc<Vec<Rc<EqualityRouteDeclaration>>> {
         declared_name: "NodeOccurrence".to_string(),
         function: crate::std_decl_ref::decl_ref("v2.std.node".to_string(), "node_occurrence_eq".to_string()),
         admitted_at_root: true,
+    }), Rc::new(EqualityRouteDeclaration {
+        decl_file: "src/v2/std/diagnostic.dag".to_string(),
+        declared_name: "Locus".to_string(),
+        function: crate::std_decl_ref::decl_ref("v2.std.diagnostic".to_string(), "locus_eq".to_string()),
+        admitted_at_root: true,
     })])
             };
         }
@@ -29428,13 +29433,23 @@ pub fn realization_row_edges(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RuntimeKeyReader {
-    WireContractShape { name: String },
-    RestCarrier { name: String },
+    WireContractShape {
+        name: String,
+    },
+    DeclaredKeyRow {
+        name: String,
+        reader_module: String,
+        row_name: String,
+    },
+    RestCarrier {
+        name: String,
+    },
 }
 impl RuntimeKeyReader {
     pub fn name(&self) -> String {
         match self {
             RuntimeKeyReader::WireContractShape { name: __val, .. } => __val.clone(),
+            RuntimeKeyReader::DeclaredKeyRow { name: __val, .. } => __val.clone(),
             RuntimeKeyReader::RestCarrier { name: __val, .. } => __val.clone(),
         }
     }
@@ -29445,12 +29460,83 @@ pub fn runtime_key_readers() -> Rc<Vec<Rc<RuntimeKeyReader>>> {
             static CACHED: Rc<Vec<Rc<RuntimeKeyReader>>> = {
                 Rc::new(vec![Rc::new(RuntimeKeyReader::WireContractShape {
         name: "wire_contract_index".to_string(),
+    }), Rc::new(RuntimeKeyReader::DeclaredKeyRow {
+        name: "loaded_index_keyed_call".to_string(),
+        reader_module: "gunbc.http_ingress".to_string(),
+        row_name: "http_ingress_host_read_folds".to_string(),
     }), Rc::new(RuntimeKeyReader::RestCarrier {
         name: "rest_result_carrier".to_string(),
     })])
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<RuntimeKeyReader>>>| c.clone())
+}
+
+pub fn runtime_key_module_by_name(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for m in modules.iter().cloned() {
+            if (crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone())
+                == module_name.clone())
+            {
+                __result.push(m);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        std::option::Option::None => std::option::Option::None,
+        Some(m) => Some(m.module.clone()),
+    }
+}
+
+pub fn runtime_key_declared_row(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    reader_module: String,
+    row_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match runtime_key_module_by_name(modules, reader_module, source_indices) {
+        std::option::Option::None => std::option::Option::None,
+        Some(m) => match Rc::new({
+            let mut __result = Vec::new();
+            for i in crate::v1_std_core::module_items(m.clone()).iter().cloned() {
+                if ((i.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
+                    && (i.name.clone() == row_name.clone()))
+                {
+                    __result.push(i);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(row) => Some(row.clone()),
+            std::option::Option::None => std::option::Option::None,
+        },
+    }
+}
+
+pub fn runtime_key_declared_row_keys(row: Rc<Node>) -> Rc<Vec<String>> {
+    match row.body.clone() {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(body) => body.children.clone().iter().cloned().fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                match crate::v1_std_core::expr_literal_string_optional(child.clone()) {
+                    std::option::Option::None => acc.clone(),
+                    Some(key) => v1_rt::rc_list_push(acc.clone(), key.clone()),
+                }
+            },
+        ),
+    }
 }
 
 pub fn service_is_rest_declared(
@@ -29515,6 +29601,31 @@ pub fn runtime_key_reader_seed_names(
                 acc.clone(),
                 realization_wire_contract_read_names(modules.clone(), source_indices.clone()),
             ),
+            RuntimeKeyReader::DeclaredKeyRow {
+                reader_module,
+                row_name,
+                ..
+            } => match runtime_key_declared_row(
+                modules.clone(),
+                reader_module.clone(),
+                row_name.clone(),
+                source_indices.clone(),
+            ) {
+                std::option::Option::None => acc.clone(),
+                Some(row) => v1_rt::concat(
+                    acc.clone(),
+                    v1_rt::concat(
+                        v1_rt::rc_list_push(
+                            Rc::new(vec![]),
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                row.clone(),
+                            ),
+                        ),
+                        runtime_key_declared_row_keys(row.clone()),
+                    ),
+                ),
+            },
             RuntimeKeyReader::RestCarrier { name: _, .. } => {
                 if graph_has_rest_service(modules.clone(), source_indices.clone()) {
                     v1_rt::concat(
@@ -29540,6 +29651,30 @@ pub fn runtime_key_reader_row_edges(
                 acc.clone(),
                 realization_wire_contract_row_edges(item.clone(), source_indices.clone()),
             ),
+            RuntimeKeyReader::DeclaredKeyRow { name, row_name, .. } => {
+                if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
+                    && (item.name.clone() == row_name.clone()))
+                {
+                    runtime_key_declared_row_keys(item.clone())
+                        .iter()
+                        .cloned()
+                        .fold(
+                            acc.clone(),
+                            |a: Rc<Vec<Rc<RealizationEdge>>>, key: String| {
+                                v1_rt::rc_list_push(
+                                    a,
+                                    Rc::new(RealizationEdge {
+                                        reader: name.clone(),
+                                        name: key.clone(),
+                                        span: item.span.clone(),
+                                    }),
+                                )
+                            },
+                        )
+                } else {
+                    acc.clone()
+                }
+            }
             RuntimeKeyReader::RestCarrier { name: name, .. } => {
                 if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemService)
                     && service_is_rest_declared(item.clone(), source_indices.clone()))

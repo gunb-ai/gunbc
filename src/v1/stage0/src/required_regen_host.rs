@@ -1080,10 +1080,15 @@ fn compile_stage0_admitted(
             })
         })
         .collect();
+    // THE POPULATION THIS ROUND IS CONVERGING, from the same read that gates the emitted edges
+    // above. The emitted crate roots and the mirrors of this one emission must agree about which
+    // crate owns a module; the rows compiled into this binary are the predecessor's and are missing,
+    // by construction, any module the change adds to a partition crate.
     let result = compile_sources_selected(
         Rc::new(source_files.into()),
         RenderTarget::Rust,
         selection.clone(),
+        packages.rows.clone(),
     );
     if let Some(message) =
         stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
@@ -3135,6 +3140,9 @@ mod tests {
                     Rc::new(sources.into()),
                     RenderTarget::Rust,
                     Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                    // A refusing fixture has no partition in flight; the assertion is about the
+                    // emit's all-or-nothing file rule, which no population can change.
+                    crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
                 );
                 (
                     result
@@ -7641,8 +7649,21 @@ fn convergence_surface_roles(
     )?
     .into_iter()
     .collect::<BTreeSet<_>>();
-    let partition_rows =
-        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
+    // THE PARTITION AS THIS RUN DECLARES IT, never as this binary happens to have been compiled.
+    // The rows compiled into THIS binary are the predecessor's, and for the change this transaction
+    // exists to converge -- a PR that adds a seed module to a partition crate -- the predecessor's
+    // copy is missing that module BY CONSTRUCTION: the row is what the PR authors. Reading the
+    // compiled copy here therefore classified the new module's own mirror as neither an aggregate
+    // product with a declared row nor a seed-embedded member, and `regen_first_unresolved` refused
+    // the whole stage whose job was to install it
+    // (gunbc.recurring_failure_mode::adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs,
+    // defect 1). `emitted_tree_packages` is the route this file already uses to read the declared
+    // rows off the corpus for exactly this reason -- "the rows compiled into THIS binary are the
+    // predecessor's" (#12171's bootstrap deadlock, broken on #12185 by hand-seeding the mirror) --
+    // and the emitted crate-root render is threaded to the same read. Classification now asks that
+    // one authority rather than keeping a copy of its own; an unreadable or ill-shaped row set
+    // refuses with it, and there is no fallback to the compiled rows.
+    let partition_rows = emitted_tree_packages(workspace)?.rows.clone();
     let seed_modules = assembled_seed_modules(seed_binary_modules, partition_rows.as_ref());
     let seed_embedded_basenames = seed_modules
         .into_iter()
@@ -11777,6 +11798,10 @@ mod regen_convergence_host_instrument_tests {
 
 const REGEN_AFFECTED_SET_PRODUCER: &str = "claim_executor --regen-affected-set";
 const REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_set.dag";
+/// The bound over a whole change (`gunbc.regen_affected_change`). A separate entry from the module
+/// bound above because its closure carries the seed-build artifact roster, which the orchestrator's
+/// in-process decisions must not resolve (see that module's header).
+const REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_change.dag";
 
 pub struct RegenAffectedSetOutcome {
     /// Provenance, the edited population, the bound line, and one `member` line per mirror.
@@ -12118,15 +12143,23 @@ pub fn regen_generation_role_population(
 }
 
 fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT)
+}
+
+fn affected_change_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT)
+}
+
+fn affected_entry(source_roots: &[String], under_root: &str) -> Result<String, String> {
     source_roots
         .iter()
-        .map(|root| Path::new(root).join(REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT))
+        .map(|root| Path::new(root).join(under_root))
         .find(|candidate| candidate.is_file())
         .map(|found| found.to_string_lossy().into_owned())
         .ok_or_else(|| {
             format!(
-                "refusal: {REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT} is not under any declared source \
-                 root {source_roots:?}, so the bound has no authority to answer from"
+                "refusal: {under_root} is not under any declared source root {source_roots:?}, so \
+                 the bound has no authority to answer from"
             )
         })
 }
@@ -12207,7 +12240,7 @@ pub fn render_affected_set_bound(
     compared: &[(String, String)],
 ) -> Result<AffectedSetBound, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = affected_set_entry(source_roots)?;
+    let entry = affected_change_entry(source_roots)?;
     let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
@@ -12349,7 +12382,7 @@ pub fn render_affected_set_bound(
 /// The bound over a whole change. `non_dag_paths` are the change's other paths: an edited committed
 /// MIRROR is heal's own product, so it is translated to its module and re-adjudicated (its own mirror is
 /// selected); every remaining path goes to the model, which decides whether it is a seed source that
-/// makes the answer the whole population (`gunbc.regen_affected_set` `regen_affected_set_over_change`).
+/// makes the answer the whole population (`gunbc.regen_affected_change` `regen_affected_set_over_change`).
 pub fn affected_set_bound_for(
     workspace: &Path,
     source_roots: &[String],

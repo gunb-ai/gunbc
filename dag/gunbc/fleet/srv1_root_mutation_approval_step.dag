@@ -1,0 +1,74 @@
+module gunbc.fleet.srv1_root_mutation_approval_step
+
+import std.types { List, String }
+import std.measure { second_count }
+import v2.std.node { Node }
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_command_with_words,
+  bash_build_or_else,
+  bash_build_with_redir,
+  bash_build_with_redir_to_file,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
+}
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command }
+import gunbc.auth.approval_keyring_pins { approval_submission_mac_access_url, approval_submission_mac_key_path_env }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format }
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunbc_ci_sm_decode_payload_program, gunbc_ci_sm_max_time }
+import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+
+// The srv1 root-mutation approval step: its target, its submission-key prelude and its invocation.
+// Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1) with the pure bash_build
+// aliases spelled as the constructors they named.
+
+data gunbc_ci_srv1_root_mutation_approval_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/srv1_root_mutation_approval_run.dag",
+  function: "srv1_root_mutation_approval_wet",
+}
+
+// THE srv1 ROOT-MUTATION APPROVAL (gunbc.fleet.srv1_root_mutation_approval_run): the approval
+// submission MAC key and nothing else, fetched over the job's WIF token into a 0600 file under
+// RUNNER_TEMP with a trap armed before it touches disk. The job holds no org-admin token and no fleet
+// SSH key at this step; it only files and polls on srv1's loopback. Built as v2.extdeps.languages.bash_build
+// nodes and rendered by v2.workflow.bash_emit, as the boot step's prelude is; no line is hand-spelled.
+fn gunbc_ci_srv1_root_mutation_approval_trap_body() -> String {
+  gunbc_ci_bash_rendered(stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "SUB_FILE")])], set_e: false)
+}
+
+fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
+  [
+    bash_build_command_from_lits(lits: ["set", "-uo", "pipefail"]),
+    bash_build_command_from_lits(lits: ["umask", "077"]),
+    bash_build_assign(name: "HDR_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/srv1-root-mutation-auth-header")])),
+    bash_build_assign(name: "RESP_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/srv1-root-mutation-sm.json")])),
+    bash_build_assign(name: "SUB_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/approval-submission-mac-key")])),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: gunbc_ci_srv1_root_mutation_approval_trap_body()), bash_build_word_lit(text: "EXIT")]),
+    bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE")),
+    bash_build_and_then(
+      left: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "curl"), bash_build_word_lit(text: "-sSf"), bash_build_word_lit(text: "--connect-timeout"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
+        bash_build_word_lit(text: "--max-time"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "RESP_FILE"),
+        bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: approval_submission_mac_access_url()),
+      ]),
+      right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")]), path: bash_build_word_var(name: "SUB_FILE")),
+    ),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "chmod"), bash_build_word_lit(text: "600"), bash_build_word_var(name: "SUB_FILE")]),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE")]),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(approval_submission_mac_key_path_env as String, "=")), bash_build_word_var(name: "SUB_FILE")])]),
+    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["pwd"])))),
+  ]
+}
+
+fn gunbc_ci_srv1_root_mutation_approval_invoke() -> String {
+  join([
+    gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_srv1_root_mutation_approval_target.entry, function: gunbc_ci_srv1_root_mutation_approval_target.function, claim_run: false), "\n",
+  ], "")
+}

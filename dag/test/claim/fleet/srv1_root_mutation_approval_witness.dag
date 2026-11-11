@@ -7,6 +7,7 @@ module test.claim.fleet.srv1_root_mutation_approval_witness
 // the part that is cheap and load-bearing: the gate fold, the request, the inheritance, the window row and
 // the timing -- all read from the run module, at one interface each (gunbc.design_argument::witness_one_interface).
 
+import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
@@ -45,7 +46,6 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
 import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
 import std.decl_ref { declaration_ref_display_key }
-import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 
 // THE srv1 ROOT-MUTATION GATE (gunbc.fleet.srv1_root_mutation_approval_run), witnessed at the gate
 // fold with SUPPLIED poll standings (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface), and
