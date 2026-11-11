@@ -148,6 +148,7 @@ fn bmc_health_reader_converge(plan: BmcOnboardingPlan) -> ProcessExit
           CustodyCredentialHeld { password: admin_password } =>
             return bmc_health_reader_converge_as_admin(plan: plan, token: t, admin_password: admin_password as Secret)
         }
+      }
     }
   }
 }
