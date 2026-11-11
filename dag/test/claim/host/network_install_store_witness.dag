@@ -9,14 +9,13 @@
 module test.claim.host.network_install_store_witness
 
 import std.logic { Bool }
-import std.types { List, NonEmptyStr, String }
+import std.types { FilePath, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { FreeSemigroup }
 import std.durable_compare_and_set { CasUnreadableMalformed }
 import product.host_identity { HostIdentity }
 import extdeps.network.mac { Eui48Address, MacParseFailed, MacParsed, mac_address, render_mac_address }
 import gunbc.file_access { FileTreeScope }
-import extdeps.owned_file_system.path { FilePath, authorized_key_roots_file_path }
 import std.durable_exclusive_hold {
   DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldObservationUnavailable,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable,
@@ -58,14 +57,14 @@ data other_mac: Eui48Address = mac_address(
   octet6: 3,
 )
 
-fn user_data_path() -> FilePath {
-  authorized_key_roots_file_path(path: "/srv/gunbc-site-pxe-edge/http/grub/seed/9c-6b-00-e7-ca-63/user-data")
-}
+// THE PATH THE EDGE REPORTS for srv15's seed user-data, as a refined string: the file result carries the
+// path the edge wrote, and the standing must report that same path rather than one this module recomputed.
+data user_data_path: FilePath = "/srv/gunbc-site-pxe-edge/http/grub/seed/9c-6b-00-e7-ca-63/user-data"
 
 fn edge_file(subject: NonEmptyStr) -> SitePxeEdgeFile {
   SitePxeEdgeFile {
     subject: subject,
-    path: user_data_path(),
+    path: user_data_path,
     content: "#cloud-config\n",
     scope: FileTreeScope { root_path: "/srv/gunbc-site-pxe-edge" },
   }

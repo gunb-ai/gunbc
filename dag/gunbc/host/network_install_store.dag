@@ -32,6 +32,8 @@
 // A PORT THAT CANNOT ESTABLISH ITS EFFECT REFUSES. Nothing here returns true, or a settled reading, on
 // an arm it did not positively observe.
 
+module gunbc.host.network_install_store
+
 import std.durable_compare_and_set {
   CasCommitted, CasObservedReadable, CasObservedUnreadable, CasOutcome, CasPreconditionFailed,
   CasReadableAbsent, CasReadablePresent, CasStoreRefused, ExpectSlotAbsent, cas_unreadable_slot_detail,
@@ -233,7 +235,7 @@ fn network_install_edge_file_standing(
   files: List<SitePxeEdgeFileResult>,
   subject: NonEmptyStr,
 ) -> NetworkInstallEdgeFileStanding {
-  fold(files, init: EdgeFileNotAmongTheRun { subject: subject }, f: (acc: NetworkInstallEdgeFileStanding, r: SitePxeEdgeFileResult) => match acc {
+  fold(files, init: EdgeFileNotAmongTheRun { subject: subject }, f: (acc, r) => match acc {
     EdgeFileSettled { path: _ } => acc
     EdgeFileUnsettled { path: _, reason: _ } => acc
     EdgeFileNotAmongTheRun { subject: wanted } =>
@@ -262,7 +264,7 @@ fn network_install_edge_install_admitted(
   installs: List<SitePxeEdgeInstallStanding>,
   mac: Eui48Address,
 ) -> Bool {
-  fold(installs, init: false, f: (acc: Bool, s: SitePxeEdgeInstallStanding) => match s {
+  fold(installs, init: false, f: (acc, s) => match s {
     InstallAdmitted { mac: found } => acc || ((render_mac_address(addr: found) as String) == (render_mac_address(addr: mac) as String))
     InstallWithheld { mac: _, refusals: _ } => acc
   })

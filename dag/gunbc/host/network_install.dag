@@ -999,6 +999,12 @@ type NetworkInstallRunPorts {
   // THE COMPLETION, through the store's compare-and-set against the Absent this run read.
   commit_completion: fn(NetworkInstallCompletion) -> Bool
 }
+  // THE RELEASE. The store re-reads the slot and releases only when the owner it reads NOW is the owner this
+  // run carries, so a hold that passed to another lane is never released by us, and a run that never took the
+  // hold has nothing to release. `network_install_run_and_release` is its only caller, and it is the only way
+  // to run a dispatch — a hold taken and never left is how a crashed run locks a unit out of its own window.
+  release_hold: fn(HostIdentity, NonEmptyStr) -> Bool
+}
 
 type NetworkInstallRunOutcome
   // A gate refused before the unit was touched. Nothing at the edge, no controller write, nothing journaled.
@@ -1514,5 +1520,84 @@ fn network_install_fold_evidence(fold: NetworkInstallReceipt) -> String {
       Absent => concat("installed-to-disk root-created-at=", created as String)
     }
     InstallNotEstablished { subject: _, gaps: gaps } => "install-not-established"
+  }
+}
+
+// ── The bracket: every run that took the unit's hold leaves it ──────────
+
+// THE OUTCOME OF A WHOLE DISPATCH, including what became of the exclusive hold. Three arms, because the two
+// ways there is nothing to release are different facts worth printing: nobody holds the slot (this run never
+// got past the gates, or another lane holds it and we refused before touching anything), versus the release
+// being asked for and the store not confirming it — which the operator has to see, because the unit stays
+// locked and the receipt names the owner sitting in the slot.
+type NetworkInstallRunRelease
+  = RunHoldNotHeld { outcome: NetworkInstallRunOutcome }
+  | RunHoldReleased { outcome: NetworkInstallRunOutcome }
+  | RunHoldReleaseRefused { outcome: NetworkInstallRunOutcome }
+
+// THE ONLY WAY TO RUN A DISPATCH that may have taken the hold. The hold's owner is minted from this run's
+// dispatch id, so "the slot says it is held by MY owner" is exactly the condition for releasing it: the
+// release is asked of the store only when the read says this run holds the unit, and whatever the store
+// answers is what the arm reports. A run that never acquired reports that rather than pretending to have
+// unlocked a door it never locked — and a run whose release the store did not confirm says so, because the
+// next dispatch will refuse on that hold and its operator deserves the truth in this receipt.
+fn network_install_run_and_release(
+  ports: NetworkInstallRunPorts,
+  host: HostIdentity,
+  install_subject: NetworkInstallSubject,
+  expected_serial: NonEmptyStr,
+  dispatch_owner: NonEmptyStr,
+  password_file_raw: String,
+  request: SitePxeEdgeInstallRequest?,
+  population: List<ArrivalConvergePopulationRow>,
+  managed: List<HostIdentity>,
+  intended_controller: BmcControllerEndpoint,
+  observed: BmcAccessObservationStanding,
+  secured: BmcSecureStanding,
+  board: BoardAuthorityRef?,
+  route: BmcWriteRoute,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  qualification: RunnerThroughputAssessment<HostIdentity>?,
+  reading: TargetDiskReading,
+  decided_at: EpochMs,
+  window: Milliseconds,
+  contents_report: DiskContentsReport,
+  os_observation: NetworkInstallOsObservation
+) -> NetworkInstallRunRelease {
+  let outcome = network_install_run(
+    ports: ports,
+    host: host,
+    install_subject: install_subject,
+    expected_serial: expected_serial,
+    dispatch_owner: dispatch_owner,
+    password_file_raw: password_file_raw,
+    request: request,
+    population: population,
+    managed: managed,
+    intended_controller: intended_controller,
+    observed: observed,
+    secured: secured,
+    board: board,
+    route: route,
+    capability_row: capability_row,
+    qualification: qualification,
+    reading: reading,
+    decided_at: decided_at,
+    window: window,
+    contents_report: contents_report,
+    os_observation: os_observation,
+  )
+  match ports.read_hold(host: host) {
+    HoldHeldBy { owner: owner } =>
+      if (owner as String) == (dispatch_owner as String) {
+        match ports.release_hold(host: host, owner: dispatch_owner) {
+          true => RunHoldReleased { outcome: outcome }
+          false => RunHoldReleaseRefused { outcome: outcome }
+        }
+      } else {
+        RunHoldNotHeld { outcome: outcome }
+      }
+    HoldFree => RunHoldNotHeld { outcome: outcome }
+    HoldUnreadable { detail: _ } => RunHoldReleaseRefused { outcome: outcome }
   }
 }

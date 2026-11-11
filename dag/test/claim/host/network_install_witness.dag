@@ -440,7 +440,7 @@ test fn w_the_slot_key_carries_the_unit_and_the_disk() -> Bool {
   (a as String) != (b as String) &&
     // THE KEY IS THE IDENTITY, spelled out: the separator between the unit and the disk is what keeps two
     // pairings from naming one slot, so the expected spelling is written here rather than recomputed.
-    (a as String) == "network-install-completion/network-install-fixture-unit/25466Q801557" &&
+    (a as String) == "network-install-completion/srv15/25466Q801557" &&
     match network_install_journal_reading(payload: Present { value: "0" }) {
       // "0" is not a generation, so a slot claiming it is malformed rather than "installed at the epoch".
       JournalSlotMalformed { payload: _ } => true
