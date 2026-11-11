@@ -22,8 +22,9 @@ import gunbc.fleet.board_function_admission {
   board_functions, board_function_listed, board_function_removal, fleet_board_function_plans, machine_board_function_plans,
 }
 import gunbc.fleet.machine_board { MachineBoardRow, MachineBoardCatalogued, machine_board_rows }
+import gunbc.hostname_allocation { operator_hosts }
 import gunbc.fleet.fleet_host_identity {
-  operator_hosts, operator_host_srv1, operator_host_srv4, operator_host_6ce85c, operator_host_mtjade1, operator_host_183527,
+  operator_host_srv1, operator_host_srv4, operator_host_6ce85c, operator_host_mtjade1, operator_host_183527,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

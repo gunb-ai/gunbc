@@ -14,15 +14,16 @@ import gunbc.machine_intake.subject {
   compare_qualification_subject,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
+import gunbc.hostname_allocation { HostnameAllocation, fleet_machine_registry }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_current_access_standing }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
-  mtcollins1_bmc_secure_standing, mtcollins1_intake_subject, mtcollins1_unit_key_standing,
+  mtcollins1_bmc_secure_standing, mtcollins1_intake_subject,
 }
+import gunbc.fleet.fleet_machine_unit_binding { machine_unit_standing }
 import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted, physical_machine_admission,
 }
@@ -406,13 +407,19 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
           match access_controller_host(access: mtcollins1_current_access_standing) {
             Absent => none
             Present { value: access_host } =>
+              // Axis 1's unit standing is the FLEET's admission of this machine's board
+              // (gunbc.fleet.fleet_machine_unit_binding), so a serial another machine holds refuses here
+              // too. No reading means no record.
+              match machine_unit_standing(machine: operator_host_mtcollins1) {
+                Absent => none
+                Present { value: unit_standing } =>
               // The record's effect subject is SEALED by the three-axis admission, not assembled by
               // hand: axis 1 the unit key + this intake subject; axis 2 ABSENT (mtcollins1 is
               // unenrolled -- a valid subject with an absent host, RED3's positive path); axis 3 the
               // control binding keyed by endpoint+unit. A Refused seal means NO record exists.
               match physical_machine_admission(
                 host: operator_host_mtcollins1,
-                unit_standing: mtcollins1_unit_key_standing,
+                unit_standing: unit_standing,
                 current_subject: Present { value: subject },
                 fleet: Absent,
                 control: Present { value: bmc_control_binding(observed: mtcollins1_current_access_standing, secured: secure) },
@@ -436,6 +443,7 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
                   }
                 gunbc.host.physical_machine_binding.PhysicalMachineRefused { cause: _ } => none
 
+              }
               }
           }
       }
@@ -482,7 +490,7 @@ fn managed_hosts_projected(
 fn managed_host_memberships() -> List<ManagedHostMembership> {
   managed_host_memberships_projected(
     records: authored_managed_host_admissions(),
-    allocations: gunbc_fleet_hostname_allocations,
+    allocations: fleet_machine_registry,
   )
 }
 

@@ -25,7 +25,7 @@ module test.fixture.machine_intake.bmc_lockout
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.content_hash { content_hash_of_value }
-import gunbc.clock_read { ObserverClockInstant }
+import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import extdeps.bmc.redfish {
   RedfishAccountServiceLockoutServed,

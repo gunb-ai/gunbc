@@ -49,8 +49,8 @@ type StandingGrantEffect
   = StandingD0ReleaseToFleet
   | StandingArmLaunch
   | StandingHostEffectRecover
-  | StandingJadeArrivalArchive
-  | StandingJadeFirmwareQualification
+  | StandingArrivalArchive
+  | StandingArrivalFirmwareQualification
   | StandingBmcSecureAccountWrite
 
 fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
@@ -58,8 +58,8 @@ fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
     StandingD0ReleaseToFleet => "d0-release-to-fleet" as NonEmptyStr
     StandingArmLaunch => "arm-launch" as NonEmptyStr
     StandingHostEffectRecover => "host-effect-recover" as NonEmptyStr
-    StandingJadeArrivalArchive => "jade-arrival-archive" as NonEmptyStr
-    StandingJadeFirmwareQualification => "jade-firmware-qualification" as NonEmptyStr
+    StandingArrivalArchive => "arrival-archive" as NonEmptyStr
+    StandingArrivalFirmwareQualification => "arrival-firmware-qualification" as NonEmptyStr
     StandingBmcSecureAccountWrite => "bmc-secure-account-write" as NonEmptyStr
   }
 }
@@ -109,7 +109,7 @@ fn standing_grant_scope_matches(g: StandingOperatorGrant, scope: StandingGrantSc
 // needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead." Quote unchanged.
 // Grant grain stays InterlockPending (no blanket hold; unnamed classes such as J6 boot still refuse
 // to discharge). Landed arms are InterlockedBy named holds via standing_grant_arm_interlock.
-// StandingJadeFirmwareQualification stays InterlockPending until a held writer lands.
+// StandingArrivalFirmwareQualification stays InterlockPending until a held writer lands.
 // StandingBmcSecureAccountWrite's overlay hold is #13517's admit_rotation_apply. Mode, pool, SA and
 // secret names: operator sign-off msg_f03558d1.
 // THE BMCSECURE ARM PROMOTES ONLY THIS GRAIN. A supplied InterlockPending with any other
@@ -128,7 +128,7 @@ data mtjade1_live_standing_grant: StandingOperatorGrant = StandingOperatorGrant 
     interlock: InterlockPending { obligation: mtjade1_grant_grain_pending_obligation },
   },
   scope: StandingGrantHost { host: operator_host_mtjade1 },
-  effects: [StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite],
+  effects: [StandingArrivalArchive, StandingArrivalFirmwareQualification, StandingBmcSecureAccountWrite],
 }
 
 fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect) -> StandingRulingInterlock {
@@ -136,10 +136,10 @@ fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect
     StandingD0ReleaseToFleet => g.ruling.interlock
     StandingArmLaunch => g.ruling.interlock
     StandingHostEffectRecover => g.ruling.interlock
-    StandingJadeArrivalArchive => InterlockedBy {
+    StandingArrivalArchive => InterlockedBy {
       hold: decl_ref(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     }
-    StandingJadeFirmwareQualification => InterlockPending {
+    StandingArrivalFirmwareQualification => InterlockPending {
       obligation: "firmware qualification writer is not in converge_mtjade1_arrival_prefix; discharge only when that writer runs under ArrivalArchiveSlotHeld from arrival_archive_slot_acquire" as NonEmptyStr,
     }
     StandingBmcSecureAccountWrite =>

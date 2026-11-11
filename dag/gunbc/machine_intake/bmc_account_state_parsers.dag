@@ -1,0 +1,512 @@
+module gunbc.machine_intake.bmc_account_state_parsers
+
+// PURE PARSE-CARRIERS FOR THE LIVE BMC ACCOUNT-STATE READ (PXE 1c, sharp-crane-14).
+//
+// WHAT THIS MODULE IS. The wet account-state read (its driver is a sibling PR) runs a handful of
+// controller probes and hands their raw responses to gunbc.machine_intake.bmc_secure
+// supplied_transport_read_bmc_account_state. Between the raw bytes and that assembler sit these parsers: pure, effect-free
+// functions that turn ONE captured response -- the text an `ipmitool` command printed, or the JSON body a
+// Redfish GET returned -- into the typed carrier the assembler's BmcSuppliedAccountStateTransport holds. They
+// have NO effects: they do not run a command, open a socket, read a secret, or commit evidence; the wet
+// driver owns every one of those. Keeping them pure is what lets the witnesses over committed captures (the
+// artifacts/bmc tree) prove the read decodes a REAL controller's bytes, not a transcription the test wrote.
+//
+// THE PARSE CONTRACT: a well-formed capture decodes to the served carrier; a capture that does not carry
+// the parameter at all decodes to the carrier's Not-Available shape (never to a zero, never to a forged
+// reading -- the same rule every extdeps reader holds to); a capture that is malformed -- a field present but
+// not what its type can hold -- decodes to the carrier's Read/Malformed failure shape carrying the detail,
+// and NEVER to a silently-defaulted value. A parser here can only ever mint what the vendor module's
+// published sole-constructor lets it mint.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Optional, Present }
+import std.algebra { list_at_optional, list_push, trim }
+import extdeps.languages.json.parse {
+  JsonArray,
+  JsonBool,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberFound,
+  JsonNumber,
+  JsonObject,
+  JsonParsed,
+  JsonParseFail,
+  JsonString,
+  JsonValue,
+  json_object_unique_member,
+  parse_json_value_at,
+}
+import extdeps.bmc.redfish {
+  RedfishAccountServiceLockoutPropertiesRead,
+  RedfishAccountServiceLockoutPropertiesUnreadable,
+  RedfishAccountServiceLockoutVerdict,
+  redfish_account_service_lockout_served,
+}
+import gunbc.machine_intake.bmc_secure { BmcRedfishAccountCensusEntry }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelNumber,
+  IpmiChannelPrivilegeLimit,
+  IpmiLanBadPasswordThresholdNotAvailable,
+  IpmiLanBadPasswordThresholdRead,
+  IpmiLanBadPasswordThresholdReadFailed,
+  IpmiLanBadPasswordThresholdVerdict,
+  IpmiPrivilegeAdministrator,
+  IpmiPrivilegeCallback,
+  IpmiPrivilegeNoAccess,
+  IpmiPrivilegeOem,
+  IpmiPrivilegeOperator,
+  IpmiPrivilegeUser,
+  IpmiUserChannelAccess,
+  ipmi_lan_bad_password_threshold_served,
+  ipmi_user_channel_access,
+}
+
+// =============================== SHARED LINE/VALUE HELPERS (pure) ===============================
+
+// THE TEXT AFTER THE FIRST COLON OF A LINE, trimmed. ipmitool's human readers print `Key   : value`; the key
+// never contains a colon, so the value is everything after the first one. Built only from the confirmed
+// prelude helpers so it cannot drift into a hand-rolled char walker.
+fn after_first_colon(line: String) -> String? {
+  let t = trim(s: line)
+  match first(split(s: t, delimiter: ":")) {
+    Absent => none
+    Present { value: head } =>
+      let before_colon = string_length(s: head)
+      if before_colon >= string_length(s: t) {
+        none
+      } else {
+        Present { value: trim(s: substring(s: t, start: before_colon + 1, end: string_length(s: t))) }
+      }
+  }
+}
+
+// THE VALUE ON THE LINE THE KEY STARTS, if such a line exists. The ipmitool human readers print one
+// `Key : value` per line and the caller passes the exact key prefix (no trailing spaces).
+fn ipmi_field(text: String, key: String) -> String? {
+  match first(filter(split(s: text, delimiter: "\n"), l => starts_with(s: trim(s: l), prefix: key))) {
+    Absent => none
+    Present { value: line } => after_first_colon(line: line)
+  }
+}
+
+// ============================ IPMI USER-ACCESS TABLE (getaccess / user list) ============================
+//
+// `ipmitool channel getaccess <channel>` and `ipmitool user list <channel>` print the SAME table --
+// "ID Name Callin Link Auth IPMI Msg Channel Priv Limit" -- one row per user id, columns separated by
+// runs of spaces and/or tabs, the name column blank for an unnamed slot, and the privilege printed as
+// a word ("ADMINISTRATOR", ...) or as the two words "NO ACCESS". This is ipmitool's rendering of the
+// Get User Access command responses the channel census is made of (extdeps.bmc.ipmi_channel).
+//
+// THE CONTRACT: the census carries what ipmi_channel.dag models -- id and privilege -- so those are
+// what this decodes. The Callin / Link Auth / IPMI Msg columns are validated as shape (each must be a
+// boolean word) and then DROPPED, because the cited carrier does not model them: an extra column of
+// garbage refuses, it is never ignored. Any other malformation refuses with the offending line as the
+// detail -- never a defaulted row.
+
+// THE CARRIER OF ONE DECODED TABLE. Read rows carry one entry per user row; Malformed carries the
+// offending line so a wet driver can refuse with the controller's own bytes in hand.
+type IpmiUserAccessRowsVerdict
+  = IpmiUserAccessRowsRead { rows: List<IpmiUserChannelAccess> }
+  | IpmiUserAccessRowsMalformed { detail: NonEmptyStr }
+
+// ONE DECODED ROW, or the line that refused.
+type IpmiUserAccessRowVerdict
+  = RowParsed { row: IpmiUserChannelAccess }
+  | RowMalformed { detail: NonEmptyStr }
+
+// WHITESPACE TOKENS OF ONE LINE, in order. Split on runs of spaces and tabs (the captures mix both).
+fn ws_tokens(rest: String, current: String, acc: List<String>) -> List<String> {
+  if string_length(s: rest) == 0 {
+    if string_length(s: current) == 0 { acc } else { list_push(xs: acc, item: current) }
+  } else {
+    let ch = substring(s: rest, start: 0, end: 1)
+    if ch == " " || ch == "\t" || ch == "\r" {
+      if string_length(s: current) == 0 {
+        ws_tokens(rest: substring(s: rest, start: 1, end: string_length(s: rest)), current: "", acc: acc)
+      } else {
+        ws_tokens(rest: substring(s: rest, start: 1, end: string_length(s: rest)), current: "", acc: list_push(xs: acc, item: current))
+      }
+    } else {
+      ws_tokens(rest: substring(s: rest, start: 1, end: string_length(s: rest)), current: join([current, ch], ""), acc: acc)
+    }
+  }
+}
+
+// ONE PRIVILEGE WORD -> the cited carrier's arm, case-insensitively. ipmitool builds print the
+// privilege table with different casings (OpenBMC's ipmitool prints ADMINISTRATOR, others print
+// Administrator), so every arm accepts the documented spellings in any case. The two-word
+// "NO ACCESS" is handled by the row parser (it consumes two tokens) and reaches here as "NO".
+fn word_equals_any(word: String, forms: List<String>) -> Bool {
+  any(forms, f => f == word)
+}
+
+fn ipmi_privilege_word(word: String) -> IpmiChannelPrivilegeLimit? {
+  if word_equals_any(word: word, forms: ["CALLBACK", "Callback", "callback"]) { Present { value: IpmiPrivilegeCallback } }
+  else if word_equals_any(word: word, forms: ["USER", "User", "user"]) { Present { value: IpmiPrivilegeUser } }
+  else if word_equals_any(word: word, forms: ["OPERATOR", "Operator", "operator"]) { Present { value: IpmiPrivilegeOperator } }
+  else if word_equals_any(word: word, forms: ["ADMINISTRATOR", "Administrator", "administrator"]) { Present { value: IpmiPrivilegeAdministrator } }
+  else if word_equals_any(word: word, forms: ["OEM", "Oem", "oem"]) { Present { value: IpmiPrivilegeOem } }
+  else if word_equals_any(word: word, forms: ["NO", "No", "no"]) { Present { value: IpmiPrivilegeNoAccess } }
+  else { none }
+}
+
+// A Callin / Link Auth / IPMI Msg cell: a boolean word, case-insensitively. The carrier does not model
+// the flags, but their SHAPE is validated so a shifted or garbage row cannot pass as a row at all.
+fn is_ipmi_bool_word(word: String) -> Bool {
+  word_equals_any(word: word, forms: ["TRUE", "True", "true", "FALSE", "False", "false", "YES", "Yes", "yes", "NO", "No", "no"])
+}
+
+// THE TOKEN AT AN INDEX, or "" when the index is out of range (callers treat "" as absent).
+fn token_at(toks: List<String>, i: Int) -> String {
+  match list_at_optional(xs: toks, index: i) {
+    Present { value: t } => t
+    Absent => ""
+  }
+}
+
+// ONE ROW -> (channel, id, privilege), or the refusal detail. Row grammar:
+// <id> [name] <bool> <bool> <bool> <privilege-word> [<second privilege word "ACCESS"]
+fn ipmi_user_access_row(line: String, channel: IpmiChannelNumber) -> IpmiUserAccessRowVerdict {
+  let toks = ws_tokens(rest: line, current: "", acc: [])
+  let n = toks.length()
+  // The privilege tail: "ACCESS" after "NO" is one privilege printed as two words.
+  let tail_access = n >= 2 && word_equals_any(word: token_at(toks: toks, i: n - 1), forms: ["ACCESS", "Access", "access"])
+  let priv_word = if tail_access { token_at(toks: toks, i: n - 2) } else { token_at(toks: toks, i: n - 1) }
+  let consumed = if tail_access { 2 } else { 1 }
+  match parse_int(s: token_at(toks: toks, i: 0)) {
+    none => RowMalformed { detail: line }
+    Present { value: id } =>
+      if n < 1 + 3 + consumed {
+        RowMalformed { detail: line }
+      } else {
+        match ipmi_privilege_word(word: priv_word) {
+          none => RowMalformed { detail: line }
+          Present { value: privilege } =>
+            // If "NO ACCESS" was consumed but the word before ACCESS was not NO, the grammar is wrong.
+            if tail_access && !word_equals_any(word: token_at(toks: toks, i: n - 2), forms: ["NO", "No", "no"]) {
+              RowMalformed { detail: line }
+            } else {
+              // The three flag cells sit immediately before the privilege tail.
+              let flag_start = n - consumed - 3
+              let f1 = token_at(toks: toks, i: flag_start)
+              let f2 = token_at(toks: toks, i: flag_start + 1)
+              let f3 = token_at(toks: toks, i: flag_start + 2)
+              let name_cells = flag_start - 1
+              if !is_ipmi_bool_word(word: f1) || !is_ipmi_bool_word(word: f2) || !is_ipmi_bool_word(word: f3) {
+                RowMalformed { detail: line }
+              } else if id < 1 || id > 63 {
+                RowMalformed { detail: line }
+              } else if name_cells > 1 {
+                // A name with whitespace is not what ipmitool's own user-name grammar accepts.
+                RowMalformed { detail: line }
+              } else {
+                RowParsed { row: ipmi_user_channel_access(channel: channel, user: id, privilege: privilege) }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE WHOLE TABLE, folded row by row: the first malformed line refuses with the controller's own
+// bytes; a table with NO user rows is malformed (the getaccess response always enumerates the slots).
+fn ipmi_user_access_rows_from_lines(lines: List<String>, channel: IpmiChannelNumber, acc: List<IpmiUserChannelAccess>) -> IpmiUserAccessRowsVerdict {
+  match first(lines) {
+    none =>
+      if acc.length() == 0 {
+        IpmiUserAccessRowsMalformed { detail: "the table carries no user row" as NonEmptyStr }
+      } else {
+        IpmiUserAccessRowsRead { rows: acc }
+      }
+    Present { value: line } =>
+      match ipmi_user_access_row(line: line, channel: channel) {
+        RowMalformed { detail: bad } => IpmiUserAccessRowsMalformed { detail: bad }
+        RowParsed { row: row } => ipmi_user_access_rows_from_lines(lines: lines.skip(n: 1), channel: channel, acc: list_push(xs: acc, item: row))
+      }
+  }
+}
+
+// THE TABLE. Blank lines skip; the header line (first cell "ID") and transcript markers ("###") skip.
+fn ipmi_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAccessRowsVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_getaccess_table_decodes_every_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_malformed_privilege_word_refuses_never_a_defaulted_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_flag_column_of_garbage_refuses_though_the_carrier_drops_the_flags"),
+  ]
+{
+  let lines = filter(split(s: text, delimiter: "\n"), l => {
+    let t = trim(s: l)
+    string_length(s: t) > 0 && !(starts_with(s: t, prefix: "ID") || starts_with(s: t, prefix: "###"))
+  })
+  ipmi_user_access_rows_from_lines(lines: lines, channel: channel, acc: [])
+}
+
+
+// A DECIMAL FIELD THAT MUST PARSE AND SIT IN RANGE, or nothing. A field that is present but not a number, or
+// a number outside [low, high], is a malformed capture -- the caller maps none to its ReadFailed shape.
+fn ipmi_field_int_in_range(text: String, key: String, low: Int, high: Int) -> Int? {
+  match ipmi_field(text: text, key: key) {
+    Absent => none
+    Present { value: raw } =>
+      match parse_int(s: raw) {
+        Absent => none
+        Present { value: n } => if n < low || n > high { none } else { Present { value: n } }
+      }
+  }
+}
+
+fn ipmi_field_yes_no(text: String, key: String) -> Bool? {
+  match ipmi_field(text: text, key: key) {
+    Absent => none
+    Present { value: "yes" } => Present { value: true }
+    Present { value: "no" } => Present { value: false }
+    Present { value: _ } => none
+  }
+}
+
+// =============================== Get LAN Configuration Parameters (lan print) ===============================
+
+// PARSE `ipmitool lan print <channel>` stdout INTO THE BAD-PASSWORD-THRESHOLD VERDICT. The four lockout
+// parameters the budget gate reads are printed one per line (ipmitool's LAN Print Section): Bad Password
+// Threshold, Invalid password disable, Attempt Count Reset Int., User Lockout Interval. Absent Bad Password
+// Threshold is Not-Available (the parameter is not served -- never a threshold of zero); any field the type
+// cannot hold is ReadFailed carrying which field was unreadable, so a malformed capture is never defaulted.
+fn ipmi_lan_threshold_from_print(text: String, channel: IpmiChannelNumber) -> IpmiLanBadPasswordThresholdVerdict {
+  match ipmi_field(text: text, key: "Bad Password Threshold") {
+    Absent => IpmiLanBadPasswordThresholdNotAvailable { channel: channel }
+    Present { value: threshold_raw } =>
+      match ipmi_field_int_in_range(text: text, key: "Bad Password Threshold", low: 0, high: 255) {
+        Absent =>
+          IpmiLanBadPasswordThresholdReadFailed {
+            channel: channel,
+            detail: "Bad Password Threshold is present but not a byte-sized count" as NonEmptyStr,
+          }
+        Present { value: threshold } =>
+          match ipmi_field_yes_no(text: text, key: "Invalid password disable") {
+            Absent =>
+              IpmiLanBadPasswordThresholdReadFailed {
+                channel: channel,
+                detail: "Invalid password disable is missing or not yes/no" as NonEmptyStr,
+              }
+            Present { value: disable } =>
+              match ipmi_field_int_in_range(text: text, key: "Attempt Count Reset Int.", low: 0, high: 655350) {
+                Absent =>
+                  IpmiLanBadPasswordThresholdReadFailed {
+                    channel: channel,
+                    detail: "Attempt Count Reset Int. is missing or not a 16-bit 10-second count" as NonEmptyStr,
+                  }
+                Present { value: reset_secs } =>
+                  match ipmi_field_int_in_range(text: text, key: "User Lockout Interval", low: 0, high: 655350) {
+                    Absent =>
+                      IpmiLanBadPasswordThresholdReadFailed {
+                        channel: channel,
+                        detail: "User Lockout Interval is missing or not a 16-bit 10-second count" as NonEmptyStr,
+                      }
+                    Present { value: lockout_secs } =>
+                      IpmiLanBadPasswordThresholdRead {
+                        channel: channel,
+                        served: ipmi_lan_bad_password_threshold_served(
+                          invalid_password_disable: disable,
+                          bad_password_threshold: threshold,
+                          attempt_count_reset_secs: reset_secs,
+                          user_lockout_interval_secs: lockout_secs,
+                        ),
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ============================ REDFISH BODIES (pure JSON parses) ============================
+//
+// The Redfish half of the same read: the Accounts collection, one ManagerAccount resource, and the
+// AccountService lockout document. All three go through the ONE json parser of the tree
+// (extdeps.languages.json.parse, RFC 8259) -- no second grammar -- and every carrier is built only
+// through its cited module's sole way to hold it (extdeps.bmc.redfish's
+// redfish_account_service_lockout_served; gunbc.machine_intake.bmc_secure's census entry record).
+// An absent OPTIONAL property stays Absent (the schema's own defaults are quoted at their boundary
+// in extdeps.bmc.redfish, never invented here); a REQUIRED property that is missing, duplicated,
+// wrongly typed or out of range REFUSES with a located detail.
+
+// THE UNIQUE STRING MEMBER, as an Option: absent, duplicated or non-string all read as none.
+fn json_member_string(v: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    _ => none
+  }
+}
+
+// THE UNIQUE INTEGER MEMBER, as an Option. A fractional or otherwise unparseable lexeme is none --
+// the callers treat none on a required property as Unreadable, never as zero.
+fn json_member_int(v: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonNumber { lexeme: lex } } => parse_int(s: lex)
+    _ => none
+  }
+}
+
+// THE UNIQUE BOOLEAN MEMBER, as an Option.
+fn json_member_bool(v: JsonValue, key: String) -> Bool? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonBool { value: b } } => Present { value: b }
+    _ => none
+  }
+}
+
+// THE LAST '/'-SEPARATED SEGMENT of an @odata.id: /redfish/v1/AccountService/Accounts/root -> root.
+// An id with no '/' after the host is the account NAME itself; an id ending in '/' yields "" and the
+// caller refuses it (an unnamed account grounds nothing).
+fn odata_last_segment(path: String) -> String {
+  match last_path_slash(path: path, i: 0, found: none) {
+    none => path
+    Present { value: i } => substring(s: path, start: i + 1, end: string_length(s: path))
+  }
+}
+
+fn last_path_slash(path: String, i: Int, found: Int?) -> Int? {
+  if i >= string_length(s: path) {
+    found
+  } else {
+    if substring(s: path, start: i, end: i + 1) == "/" {
+      last_path_slash(path: path, i: i + 1, found: Present { value: i })
+    } else {
+      last_path_slash(path: path, i: i + 1, found: found)
+    }
+  }
+}
+
+// THE PARSED ROOT OBJECT of a response body, or the refusal detail with the parse offset located.
+fn json_root_object(body: String) -> JsonValue? {
+  match parse_json_value_at(s: body, i: 0) {
+    JsonParsed { value: v, next: _ } =>
+      match v {
+        JsonObject { members: _ } => Present { value: v }
+        _ => none
+      }
+    JsonParseFail { at: a } => none
+  }
+}
+
+// THE ACCOUNTS COLLECTION (GET /redfish/v1/AccountService/Accounts). Each Member object contributes
+// the last segment of its @odata.id -- the account name bmcweb names the ManagerAccount by. The
+// collection publishes NO Enabled bit (that is the member resource's own document), so this decodes
+// NAMES; the wet driver joins them with redfish_account_entry_from_body below. Members@odata.count,
+// when the controller publishes it, MUST agree with the array it counts -- a controller that
+// contradicts itself is Unreadable, not trusted-half.
+type RedfishAccountsCollectionVerdict
+  = AccountsCollectionRead { names: List<String> }
+  | AccountsCollectionUnreadable { detail: NonEmptyStr }
+
+fn redfish_account_names_from_collection(body: String) -> RedfishAccountsCollectionVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_srv13_accounts_collection_decodes_its_members"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_collection_whose_count_contradicts_its_members_is_unreadable"),
+  ]
+{
+  match json_root_object(body: body) {
+    none => AccountsCollectionUnreadable { detail: "the Accounts collection body is not a JSON object" as NonEmptyStr }
+    Present { value: root } =>
+      match json_object_unique_member(v: root, key: "Members") {
+        JsonMemberFound { value: JsonArray { elements: ms } } =>
+          match redfish_member_names(elements: ms, acc: []) {
+            Present { value: names } =>
+              match json_member_int(v: root, key: "Members@odata.count") {
+                none => AccountsCollectionRead { names: names }
+                Present { value: claimed } =>
+                  if claimed == names.length() {
+                    AccountsCollectionRead { names: names }
+                  } else {
+                    AccountsCollectionUnreadable { detail: "Members@odata.count contradicts the Members array" as NonEmptyStr }
+                  }
+              }
+            none => AccountsCollectionUnreadable { detail: "a Members entry is not an account @odata.id" as NonEmptyStr }
+          }
+        JsonMemberAbsent => AccountsCollectionUnreadable { detail: "the collection publishes no Members array" as NonEmptyStr }
+        JsonMemberDuplicated { count: c } => AccountsCollectionUnreadable { detail: "Members duplicated in the collection body" as NonEmptyStr }
+        _ => AccountsCollectionUnreadable { detail: "Members is not an array" as NonEmptyStr }
+      }
+  }
+}
+
+// One pass over the Members array; any entry without a usable @odata.id refuses the WHOLE census
+// (a half-read census is worse than no census: the fold counts accounts to decide managed-ness).
+fn redfish_member_names(elements: List<JsonValue>, acc: List<String>) -> List<String>? {
+  match first(elements) {
+    none => Present { value: acc }
+    Present { value: e } =>
+      match json_object_unique_member(v: e, key: "@odata.id") {
+        JsonMemberFound { value: JsonString { value: id } } =>
+          let name = odata_last_segment(path: id)
+          if string_length(s: name) == 0 { none } else { redfish_member_names(elements: elements.skip(n: 1), acc: list_push(xs: acc, item: name)) }
+        _ => none
+      }
+  }
+}
+
+// ONE MANAGERACCOUNT RESOURCE (GET /redfish/v1/AccountService/Accounts/<name>). UserName and Enabled
+// are REQUIRED here: the census entry models exactly those two published facts, and a controller that
+// omits either has not answered -- the caller refuses rather than defaulting Enabled to true or
+// naming the account from the URL it was fetched at (the NAME comes from the body, always).
+type RedfishAccountEntryVerdict
+  = AccountEntryRead { entry: BmcRedfishAccountCensusEntry }
+  | AccountEntryUnreadable { detail: NonEmptyStr }
+
+fn redfish_account_entry_from_body(body: String, managed_name: String) -> RedfishAccountEntryVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_manager_account_body_decodes_name_enabled_and_identity"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_manager_account_without_enabled_is_unreadable_never_defaulted"),
+  ]
+{
+  match json_root_object(body: body) {
+    none => AccountEntryUnreadable { detail: "the ManagerAccount body is not a JSON object" as NonEmptyStr }
+    Present { value: root } =>
+      match json_member_string(v: root, key: "UserName") {
+        none => AccountEntryUnreadable { detail: "the ManagerAccount publishes no UserName string" as NonEmptyStr }
+        Present { value: name } =>
+          if string_length(s: name) == 0 {
+            AccountEntryUnreadable { detail: "the ManagerAccount publishes an empty UserName" as NonEmptyStr }
+          } else {
+            match json_member_bool(v: root, key: "Enabled") {
+              none => AccountEntryUnreadable { detail: "the ManagerAccount publishes no Enabled boolean" as NonEmptyStr }
+              Present { value: enabled } =>
+                AccountEntryRead { entry: BmcRedfishAccountCensusEntry { name: name, enabled: enabled, is_managed_account: name == managed_name } }
+            }
+          }
+      }
+  }
+}
+
+// THE ACCOUNTSERVICE LOCKOUT DOCUMENT (GET /redfish/v1/AccountService). AccountLockoutThreshold is
+// REQUIRED (bmcweb serves it; without it the budget gate has no answer -- Unreadable, never zero,
+// per extdeps.bmc.redfish's own comment on absent thresholds). The three reset-window properties
+// stay Optional: absent passes through as Absent so the budget refuses rather than assuming the
+// schema default. The record is built ONLY through redfish_account_service_lockout_served.
+fn redfish_account_service_lockout_from_body(body: String) -> RedfishAccountServiceLockoutVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_openbmc_account_service_body_decodes_the_lockout_props"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_account_service_without_a_threshold_is_unreadable_never_zero"),
+  ]
+{
+  match json_root_object(body: body) {
+    none => RedfishAccountServiceLockoutPropertiesUnreadable { detail: "the AccountService body is not a JSON object" as NonEmptyStr }
+    Present { value: root } =>
+      match json_member_int(v: root, key: "AccountLockoutThreshold") {
+        none => RedfishAccountServiceLockoutPropertiesUnreadable { detail: "AccountService publishes no AccountLockoutThreshold integer" as NonEmptyStr }
+        Present { value: threshold } =>
+          if threshold < 0 {
+            RedfishAccountServiceLockoutPropertiesUnreadable { detail: "AccountLockoutThreshold is negative" as NonEmptyStr }
+          } else {
+            RedfishAccountServiceLockoutPropertiesRead {
+              served: redfish_account_service_lockout_served(
+                account_lockout_threshold: threshold,
+                account_lockout_duration: json_member_int(v: root, key: "AccountLockoutDuration"),
+                account_lockout_counter_reset_after: json_member_int(v: root, key: "AccountLockoutCounterResetAfter"),
+                account_lockout_counter_reset_enabled: json_member_bool(v: root, key: "AccountLockoutCounterResetEnabled"),
+              )
+            }
+          }
+      }
+  }
+}

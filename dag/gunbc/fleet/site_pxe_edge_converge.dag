@@ -1,6 +1,6 @@
 module gunbc.fleet.site_pxe_edge_converge
 
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
 import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
@@ -14,6 +14,23 @@ import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, Ub
 import std.os.types { NobleNumbat2404Lts }
 import gunbc.os_install { srv_fleet_key_only_install_account }
 import gunbc.os_install_emit { autoinstall_user_data_document }
+import gunbc.provisioning.install_target_disk {
+  DiskIdentitySource,
+  TargetDiskReading,
+  InstallTargetDisk,
+  InstallTargetDiskWithheldCause,
+  admit_install_target_disk,
+  install_target_disk_direct_layout_target,
+  LsblkBlockReport,
+  RedfishStorageDrive,
+  InstallTargetDiskAdmitted,
+  InstallTargetDiskWithheld,
+}
+import gunbc.fleet.machine_target_disk_observations {
+  target_disk_reading_for,
+  site_pxe_edge_disk_identity_admission_window,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import gunbc.fleet.srv4_segment_name_resolution_observation { srv4_segment_resolver_answer, srv4_segment_resolver_observed_at }
 import std.decl_ref { decl_ref, DeclarationRef }
@@ -53,7 +70,7 @@ import extdeps.package_managers.apt { package_dnsmasq_base, apt_exact_non_removi
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import extdeps.exec.command { argv_words }
 import product.host_identity { HostIdentity }
-import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word, observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
@@ -472,41 +489,85 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 ]
 
 // THE INSTALLS REQUESTED OF THIS EDGE, and the observation that srv4's name resolves from the segment. A request
-// names its client by a MAC parse and its user-data as a document; the run admits each through the public seed
-// authority, so a list of already-admitted seeds (which could only be authored by dropping refusals) never exists.
+// names its client by a MAC parse, carries the disk reading that host's seed is to be pinned to, the window that
+// reading must have been read inside of, and the instant the install is authorized at; the run admits each
+// through the public seed authority, so a list of already-admitted seeds (which could only be authored by
+// dropping refusals) never exists — and no request carries a user-data document, because a document is RENDERED
+// from the admitted disk and an author may not hand one to a request.
 //
 // AN INSTALL REQUEST IS WITHDRAWN ONCE ITS HOST IS INSTALLED, because the binding wipes the disk of any boot that
 // reaches it. srv14 (butch) was installed on 2026-10-30 from the arm64 live-server ISO over its BMC's USB
 // virtual-media gadget, not from this edge (its /var/log/installer reads ds=nocloud;s=/cdrom/nocloud/ and its
 // install-time block device is the "Linux File-Stor_Gadget"; read on butch 2026-11-10). Its request is withdrawn;
 // its NIC stays on the known-client roster, so a network boot of butch now finds no install and returns to disk.
+//
+// The disk reading a request carries is that host's ROW in gunbc.fleet.machine_target_disk_observations, keyed by
+// machine — not a second copy of what each disk is. A host whose row says no serial was ever read has its install
+// withheld by name for that reason: this edge is where that is decided, and the reading file has no say.
 data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
   SitePxeEdgeInstallRequest {
     client: srv15_install_client,
-    user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall),
+    target_disk: target_disk_reading_for(host: operator_host_srv15),
+    disk_admission_window: site_pxe_edge_disk_identity_admission_window,
     architecture: Aarch64,
   },
 ]
+
+// THE INSTANT AN INSTALL IS AUTHORIZED AT IS AN INPUT, NOT A ROW. A request is what a machine's provisioning
+// record says; WHEN the edge decides is a property of the deciding run, so the instant arrives at the boundary
+// that uses it — site_pxe_edge_request_admission / site_pxe_edge_seed_rendering / run_site_pxe_edge all take
+// `decided_at`, and no data in this file carries one.
+//
+// This was not so until the 2026-11-10 review of gunbc#16275 (review 93312), which caught the frozen form of
+// this field: a `data site_pxe_edge_install_decision_at = 1794268800000` passed onto the production request row
+// meant the staleness gate was compared against a stopped clock, so srv15's reading would have stayed admitted
+// past its own window with nobody able to make it refuse — a check that passes forever passes nothing
+// (gunbc.design_argument::fail_closed: "no plausible output is fabricated"; guarantee_ladder: "a type name ...
+// establishes nothing"). Moving the instant to the boundary is what makes the gate real: at any instant past
+// read_at + window the same production row refuses with TargetDiskReadingStale, and the fleet witness says so
+// with both halves of that boundary.
+//
+// WHO SUPPLIES IT, and from which clock: the run. site_pxe_edge_ci_wet reads it from this repository's own
+// observer clock (gunbc.clock_read observer_clock_read) and REFUSES to actuate when the clock is unreadable —
+// an install cannot be authorized against a time nobody can state. PXE 2c keeps that discipline in the run that
+// boots the client. A witness passes the instant its claim is made at, and says so in the claim.
+//
+// The clock caveat the reader deserves: gunbc.clock_read keeps observer instants typed by source
+// (ObserverInstantSource) because millis from two clocks are numbers on one scale and facts on another. The
+// reading being admitted was transcribed from a committed artifact (the capture instant in
+// gunbc.fleet.machine_target_disk_observations), and the deciding instant comes from the observer clock; the
+// window is days wide, so the comparison is a freshness bound rather than an ordering of two events, and it is
+// not the instant-ordering authority gunbc.clock_read order_observer_instants is for.
 
 data srv14_install_client: MacParseResult = parse_mac_address(text: srv14_host_nic_mac as String)
 
 data srv15_install_client: MacParseResult = parse_mac_address(text: srv15_host_nic_mac as String)
 
-// THE ONE INSTALL THIS EDGE SERVES: the fleet's key-only account, no identity section, and the direct layout over
-// the installer's chosen disk, which replaces whatever OS the NVMe carried before. Nothing in it names a host (the
-// seed's instance-id comes from the request's MAC), so every request shares it rather than copying it per host.
-// The seed travels over NoCloud-net from this edge's seed root; the per-client directory under it is the edge's to
-// name from the admitted binding.
-data site_pxe_edge_key_only_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
-  autoinstall_version: 1,
-  delivery: NoCloudNet { seed_url: site_pxe_edge_seed_root_uri },
-  fully_automated: true,
-  target_distribution: NobleNumbat2404Lts,
-  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
-  locale: "en_US.UTF-8",
-  keyboard_layout: "us",
-  ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
-  storage_policy: StoragePolicyDirectLayout,
+// THE ONE INSTALL THIS EDGE SERVES: the fleet's key-only account, no identity section, and the direct layout
+// bound to THE DISK THIS HOST'S READING REPORTS — read before the boot, admitted below, never typed here.
+// Nothing in it names a host (the seed's instance-id comes from the request's MAC, and the disk comes from the
+// reading keyed by the machine), so every request shares this one authoring point rather than copying it per
+// host. The seed travels over NoCloud-net from this edge's seed root; the per-client directory under it is the
+// edge's to name from the admitted binding.
+//
+// THERE IS NO PAYLOAD WITHOUT THE DISK. The parameter's type has one constructor and is minted only by
+// admit_install_target_disk, so an author cannot spell this payload with the installer free to pick a disk:
+// `AutoinstallDirectLayoutTarget.InstallerChoosesDisk` is unreachable from here. That is the gap the operator's
+// 2026-11-10 review blocked — the payload used to sit in a shared `data` with the storage policy naming no disk
+// at all, which the reference spells as installing "to the largest disk in a system", and an unattended run
+// erased whatever that turned out to be.
+fn site_pxe_edge_key_only_autoinstall(disk: InstallTargetDisk) -> UbuntuAutoinstallPayload {
+  UbuntuAutoinstallPayload {
+    autoinstall_version: 1,
+    delivery: NoCloudNet { seed_url: site_pxe_edge_seed_root_uri },
+    fully_automated: true,
+    target_distribution: NobleNumbat2404Lts,
+    identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
+    locale: "en_US.UTF-8",
+    keyboard_layout: "us",
+    ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
+    storage_policy: StoragePolicyDirectLayout { target: install_target_disk_direct_layout_target(disk: disk) },
+  }
 }
 
 // THE CLIENTS THE EDGE KNOWS, each parsed from a measured observation of the client's NIC, never retyped.
@@ -999,28 +1060,71 @@ type SitePxeEdgeInstallBinding {
   architecture: Architecture
 }
 
-// ONE INSTALL AS REQUESTED, before admission: the client's MAC as parsed from its observation, the seed renderer's
-// user-data document, and the architecture. Admission is the only route from a request to a binding.
+// ONE INSTALL AS REQUESTED, before admission: the client's MAC as parsed from its observation, the architecture,
+// and THE HOST'S OWN DISK READING with the window it must have been read inside of. The reading is a per-machine
+// row (gunbc.fleet.machine_target_disk_observations), so the request is where the shared seed becomes per-host: two
+// requests over one payload render two different documents because the disks they name are different facts.
+//
+// IT CARRIES NO DECISION INSTANT, on purpose. A request is a machine's provisioning record and outlives any
+// particular decision; the instant the edge authorizes at belongs to the run, and arrives as an input at
+// site_pxe_edge_request_admission / site_pxe_edge_seed_rendering / run_site_pxe_edge. A `decided_at` field here
+// would have to be filled from data, and data does not advance — which is precisely how a staleness gate gets
+// frozen (review 93312 on gunbc#16275; see the note above site_pxe_edge_install_requests). The window IS a
+// request field because how fresh an identity must be is policy the request declares; the NOW it is measured
+// against is not.
+//
+// Admission is the only route from a request to a binding, and a request carries no document to admit — see
+// site_pxe_edge_seed_rendering.
 type SitePxeEdgeInstallRequest {
   client: MacParseResult
-  user_data: YamlValue
+  target_disk: TargetDiskReading
+  disk_admission_window: Milliseconds
   architecture: Architecture
+}
+
+// WHAT RENDERING ONE REQUEST'S SEED DID (PXE 2a). The seed's user-data is not an input to a request, it is the
+// OUTPUT of authorizing that request against the disk reading it carries: admitted, the document is rendered with
+// the reading's serial as the layout's match; withheld, the cause is named by type — never read, not reported by
+// that reader, an identity no tool could have produced, a reading whose keys name no single disk, a reading from
+// after the decision, or a reading older than the window. A host whose install is withheld renders no seed and no menu entry, and its PXE client falls
+// through to its next boot device.
+type SitePxeEdgeSeedRendering
+  = SeedRendered { user_data: YamlValue }
+  | SeedTargetDiskWithheld { host: HostIdentity, cause: InstallTargetDiskWithheldCause }
+
+fn site_pxe_edge_seed_rendering(request: SitePxeEdgeInstallRequest, decided_at: EpochMs) -> SitePxeEdgeSeedRendering {
+  match admit_install_target_disk(
+    reading: request.target_disk,
+    decided_at: decided_at,
+    window: request.disk_admission_window,
+  ) {
+    InstallTargetDiskWithheld { host: h, cause: c } => SeedTargetDiskWithheld { host: h, cause: c }
+    InstallTargetDiskAdmitted { target: disk } =>
+      SeedRendered { user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall(disk: disk)) }
+  }
 }
 
 // WHAT ADMISSION MADE OF ONE REQUEST. A refused seed withholds that host's install by name and leaves the edge
 // serving everyone else; an unparseable client MAC names no host to withhold, so it closes the gate instead.
+// A disk reading that fails to admit withholds exactly like a refused seed does, with its own typed cause: the
+// edge keeps serving the hosts whose disks are accounted for.
 type SitePxeEdgeRequestAdmission
   = RequestBound { binding: SitePxeEdgeInstallBinding }
   | RequestWithheld { standing: SitePxeEdgeInstallStanding }
   | RequestClientUnparseable { error: MacParseError }
 
-fn site_pxe_edge_request_admission(request: SitePxeEdgeInstallRequest) -> SitePxeEdgeRequestAdmission {
+fn site_pxe_edge_request_admission(request: SitePxeEdgeInstallRequest, decided_at: EpochMs) -> SitePxeEdgeRequestAdmission {
   match request.client {
     MacParseFailed { error: e } => RequestClientUnparseable { error: e }
     MacParsed { address: mac } =>
-      match admit_public_nocloud_seed(client_mac: mac, user_data: request.user_data) {
-        PublicSeedAdmitted { seed: sd } => RequestBound { binding: SitePxeEdgeInstallBinding { seed: sd, architecture: request.architecture } }
-        PublicSeedRefused { findings: fs } => RequestWithheld { standing: InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallSeedRefused { findings: fs }, tail: [] } } }
+      match site_pxe_edge_seed_rendering(request: request, decided_at: decided_at) {
+        SeedTargetDiskWithheld { host: h, cause: c } =>
+          RequestWithheld { standing: InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallDiskIdentityWithheld { host: h, cause: c }, tail: [] } } }
+        SeedRendered { user_data: user_data } =>
+          match admit_public_nocloud_seed(client_mac: mac, user_data: user_data) {
+            PublicSeedAdmitted { seed: sd } => RequestBound { binding: SitePxeEdgeInstallBinding { seed: sd, architecture: request.architecture } }
+            PublicSeedRefused { findings: fs } => RequestWithheld { standing: InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallSeedRefused { findings: fs }, tail: [] } } }
+          }
       }
   }
 }
@@ -1125,6 +1229,22 @@ type SitePxeEdgeInstallRefusal
   | SeedOriginNameUnresolved { name: NonEmptyStr, probe: BootNetworkProbe }
   | InstallChainNotServable
   | InstallSeedRefused { findings: FreeSemigroup<PublicSeedFinding> }
+  // PXE 2a: the host's disk reading did not admit, so its seed was never rendered and it is withheld by name.
+  // `cause` says which state the reading was in — never read, not reported by that reader, an identity no tool
+  // could have produced, a reading whose reported fields can only name a class of disks, a reading from after the
+  // decision, or older than the window — which is what lets an operator go re-read the disk (or read the field
+  // that was missing) instead of guessing at a silent omission.
+  | InstallDiskIdentityWithheld { host: HostIdentity, cause: InstallTargetDiskWithheldCause }
+
+// WHAT THE DISK RULE HAD TO SAY, when the disk rule is what withheld the install. A reader holding a withheld
+// standing wants the one fact that tells them what to do — which state the reading was in — and this answers it
+// without handing them the standing's shape. Absent means a different rule withheld this install.
+fn site_pxe_edge_refusal_target_disk_cause(refusal: SitePxeEdgeInstallRefusal) -> Optional<InstallTargetDiskWithheldCause> {
+  match refusal {
+    InstallDiskIdentityWithheld { host: _, cause: c } => Present { value: c }
+    _ => Absent
+  }
+}
 
 fn site_pxe_edge_install_refusals(binding: SitePxeEdgeInstallBinding, roster: SiteEdgeRoster, install: SitePxeEdgeInstallChain?, image: SitePxeEdgeImageStanding, name_resolution: BootNetworkProbe) -> List<SitePxeEdgeInstallRefusal> {
   (if roster.known_client_macs |> any(m => m == site_pxe_edge_binding_mac(binding: binding)) { [] } else { [InstallClientNotOnRoster { mac: site_pxe_edge_binding_mac(binding: binding) }] })
@@ -2342,7 +2462,16 @@ fn site_pxe_edge_file_results(
 // ORDER: privilege, dnsmasq binary, every placed member's digest (the per-chain standings and the gate), then every desired file, then activation only when the gate is open
 // and every file settled, then the unit's active state read back. A closed gate still observes the files,
 // so an observe dispatch says what WOULD be written. Every effect is sequenced by a let.
-fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode) -> SitePxeEdgeRun
+fn run_site_pxe_edge(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  mode: SitePxeEdgeMode,
+  // THE INSTANT THIS RUN AUTHORIZES INSTALLS AT, read from the observer clock by the caller that started the run
+  // (see the note above site_pxe_edge_install_requests). It is an input rather than a reading taken in here so a
+  // caller that cannot state the time cannot start an actuation, and so every part of the run — including the
+  // receipt — can be shown the one instant the decisions were made at.
+  decided_at: EpochMs,
+) -> SitePxeEdgeRun
 {
   let pins = site_pxe_edge_chain_pins
   let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
@@ -2359,7 +2488,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   }
   let standings = map(pins, p => site_pxe_edge_chain_standing(pin: p, observations: observations))
   let servable = site_pxe_edge_servable_chains(standings: standings)
-  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: decided_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   let inputs = site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: bindings, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   let collisions = match inputs {
@@ -2626,10 +2755,19 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
         SitePxeEdgeSubjectAdmitted { target: target } =>
           match prepare_fleet_ssh_agent_context(attempt_raw: site_pxe_edge_converge_attempt_raw) {
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
-            FleetSshContextReady { context: context, receipt: context_receipt } => {
-              let run = run_site_pxe_edge(target: target, context: context, mode: mode)
-              let body = join([
-                "site_pxe_edge_converge host=", raw_host, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+            FleetSshContextReady { context: context, receipt: context_receipt } => match observer_clock_read() {
+              // NO CLOCK, NO ACTUATION. Every install this run serves is authorized by comparing the instant its
+              // disk was read against THIS run's instant; with no instant to compare against, every freshness
+              // decision would be a guess dressed as a check, so the run refuses before it touches the edge
+              // (gunbc.design_argument::fail_closed: fail with a typed, located diagnostic rather than fabricate a
+              // plausible one). A clock that cannot be read is an operator-actionable fact, not a default.
+              ObserverClockUnreadable { detail: d } =>
+                exit_failure(reason: join(["site_pxe_edge_converge: the observer clock is unreadable (", d, "); installs cannot be authorized against a time nobody can state"], ""))
+              ObserverClockObserved { instant: instant } => {
+                let decided_at = observer_instant_millis(instant: instant)
+                let run = run_site_pxe_edge(target: target, context: context, mode: mode, decided_at: decided_at)
+                let body = join([
+                "site_pxe_edge_converge host=", raw_host, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, " install_decided_at=", decided_at as String, "\n",
                 context_receipt,
                 site_pxe_edge_run_text(run: run),
               ], "")
@@ -2638,8 +2776,9 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
                 exit_failure(reason: join(["site_pxe_edge_converge: receipt write failed: ", w.error, "\n", body], ""))
               } else if site_pxe_edge_run_succeeded(run: run) == false {
                 exit_failure(reason: body)
-              } else {
-                ExitSuccess
+                } else {
+                  ExitSuccess
+                }
               }
             }
           }

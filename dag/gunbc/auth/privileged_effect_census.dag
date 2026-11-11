@@ -876,7 +876,7 @@ data arrival_archive_prefix_unobserved_world: DivergenceReason = DivergenceReaso
 
 data firmware_qualification_writer_unlanded: DivergenceReason = DivergenceReason {
   statement: "the arrival wet door acquires the archive slot then refuses unobserved PriorLifeBoundary; firmware qualification has no writer under ArrivalArchiveSlotHeld, so RealizedFederatedGrant would claim a write this job does not perform" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CONSUMER: arrival_converge_under_archive_interlock. TRIGGER: a successor of converge_mtjade1_arrival_prefix performs the MegaRAC per-build qualification write while holding ArrivalArchiveSlotHeld from arrival_archive_slot_acquire, then arrival_archive_slot_release. SUFFICIENT FOR retiring this reason and overlaying StandingJadeFirmwareQualification as InterlockedBy arrival_archive_slot_acquire" as NonEmptyStr),
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: arrival_converge_under_archive_interlock. TRIGGER: a successor of converge_mtjade1_arrival_prefix performs the MegaRAC per-build qualification write while holding ArrivalArchiveSlotHeld from arrival_archive_slot_acquire, then arrival_archive_slot_release. SUFFICIENT FOR retiring this reason and overlaying StandingArrivalFirmwareQualification as InterlockedBy arrival_archive_slot_acquire" as NonEmptyStr),
 }
 
 data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {

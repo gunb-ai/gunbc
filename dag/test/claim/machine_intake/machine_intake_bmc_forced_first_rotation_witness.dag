@@ -29,7 +29,7 @@ import gunbc.machine_intake.prior_life_boundary {
   PriorLifeArchive, ForcedFirstRotationWriteTransition,
   forced_first_rotation_write_leg, forced_first_rotation_write_applied, forced_first_rotation_write_transition,
 }
-import gunbc.fleet.fleet_intent { srv13_baseboard, srv4_baseboard }
+import gunbc.fleet.fleet_intent { srv4_baseboard }
 import gunbc.machine_intake.bmc_credential_policy {
   PublishedCredentialChangeForced, ForcedChangeAdmitted, ForcedChangeRefused, ForcedChangeBuildUnreadable,
   admit_published_credential_change_forced, asrock_altrad8ud_openbmc_3_22_00_key,
@@ -47,7 +47,7 @@ import gunbc.machine_intake.bmc_rotation_route {
 import gunbc.machine_intake.receipt { EvidenceRef }
 import std.content_hash { content_hash_of_value }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, approved_bmc_convergence, denied_bmc_write }
-import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body, srv13_capture, controller_reading }
+import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body, srv13_capture, controller_reading, first_contact_capture_controller }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import test.fixture.machine_intake.bmc_lockout { lockout_both_served }
 import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness {
@@ -71,8 +71,9 @@ data response_receipt: EvidenceRef = EvidenceRef {
   digest: content_hash_of_value(value: "srv13 3.22.00 factory-login 403" as NonEmptyStr),
 }
 
+// The controller as it was when the 2026-10-07 captures were read (192.168.1.247), not srv15's current row.
 fn srv13() -> BmcControllerEndpoint {
-  bmc_controller_of_endpoint(endpoint: srv13_baseboard.bmc)
+  first_contact_capture_controller()
 }
 
 fn another_controller() -> BmcControllerEndpoint {

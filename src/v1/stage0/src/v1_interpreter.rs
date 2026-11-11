@@ -21293,7 +21293,7 @@ fn decide_rest_exchange(
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
-                let cause = rest_body_not_json_cause(&error.to_string());
+                let cause = rest_body_not_json_cause(&error.to_string(), body.as_bytes().len());
                 return refused(rest_body_undecodable_value(ctx, status, cause));
             }
         };
@@ -21995,12 +21995,45 @@ fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> 
         .unwrap_or_default()
 }
 
+/// WHICH NAMES THESE ARE: the members of a response that were left uninhabited, and whether every one
+/// of them is a field the operation's declared output actually names. The distinction decides what the
+/// refusal may say, so it is carried with the names rather than re-derived at the renderer.
+///
+/// Names out of the declaration tree may be published on a credential path -- they are facts about this
+/// repository, the same class of fact `rest_response_declared_cause` already publishes as its located
+/// field. Names the RESPONSE presented may not, and `map_response_to_value_json` / `map_response_to_value`
+/// fall through to `json_to_value` when the output type resolves to no children at all, which puts the
+/// body's own keys into the record. Hence `declared`, computed once from the declaration here.
+pub struct RestNullMembers {
+    pub paths: Vec<String>,
+    pub declared: bool,
+}
+
+fn rest_output_declared_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
+    op_node
+        .inferred
+        .as_deref()
+        .and_then(|inferred| match inferred {
+            InferredNode::Resolved { node } => Some(node),
+            _ => None,
+        })
+        .map(|return_type| {
+            return_type
+                .children
+                .iter()
+                .map(|child| authored_name_at(ctx.si(), child.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn rest_payload_null_fields(
     mapped: &Value,
     op_node: &Rc<Node>,
     ctx: &InterpContext,
-) -> Option<String> {
+) -> Option<RestNullMembers> {
     let optional = rest_optional_output_field_names(op_node, ctx);
+    let declared = rest_output_declared_field_names(op_node, ctx);
     match mapped {
         Value::Record { fields, .. } => {
             let missing: Vec<String> = fields
@@ -22014,10 +22047,19 @@ fn rest_payload_null_fields(
             if missing.is_empty() {
                 None
             } else {
-                Some(missing.join(","))
+                // Every name must be a declaration, not just most of them: one body-shaped record in a
+                // mixed set would put a presented key on the credential path beside the declared names.
+                Some(RestNullMembers {
+                    declared: missing.iter().all(|name| declared.contains(name)),
+                    paths: missing,
+                })
             }
         }
-        Value::Null => Some("<mapped-null>".to_string()),
+        // No record at all: there is no name to vouch for, only the fact that one was expected.
+        Value::Null => Some(RestNullMembers {
+            paths: vec!["<mapped-null>".to_string()],
+            declared: false,
+        }),
         _ => None,
     }
 }
@@ -22169,13 +22211,16 @@ pub enum RestResponseDecodeCause {
 /// each renderer below takes the host- or body-derived text it refuses to publish, and the accompanying
 /// test plants a marker in that exact value. Dropping the text costs diagnosis, so the loss is stated
 /// rather than hidden: a body-read failure keeps only the status (the transport's own io text echoed
-/// request material into a token-bearing path), a non-JSON body keeps only that it was not JSON (a
-/// `serde_json` message carries offsets and sometimes the offending token), and uninhabited declared
-/// members keep only how many there were. `rest_payload_null_fields` reports its names out of the mapped
-/// record, and that record is NOT reliably declared-side: `decode_json_by_declared_field` falls through to
-/// `json_to_value` for a field whose type never resolved, which puts the keys the body PRESENTED into the
-/// record it returns. So the names are withheld and the count published -- unlike `field_path` above,
-/// every segment of which is an authored name out of the declaration tree.
+/// request material into a token-bearing path), a non-JSON body keeps that it was not JSON plus how many
+/// bytes arrived (a `serde_json` message carries offsets into the body and sometimes the offending token,
+/// while the byte count is a number out of the transport's own buffer), and uninhabited members keep how
+/// many there were plus their names WHEN THOSE NAMES ARE DECLARATIONS. The distinction is carried by
+/// `RestNullMembers`: `rest_payload_null_fields` reports its names out of the mapped record, and that
+/// record is NOT reliably declared-side -- `map_response_to_value_json` falls through to `json_to_value`
+/// when the output type resolves to no children, which puts the keys the body PRESENTED into the record --
+/// so a record whose members are all fields the declared output names publishes them, as every segment of
+/// `field_path` above is an authored name out of the declaration tree, and any other record publishes only
+/// the count.
 fn rest_body_read_refused_cause(io_error: &str) -> String {
     // The parameter is the text being dropped; it stays visible so the test can plant a marker in the
     // exact value this renderer refuses to publish.
@@ -22183,18 +22228,73 @@ fn rest_body_read_refused_cause(io_error: &str) -> String {
     "the response body could not be read from the host".to_string()
 }
 
-fn rest_body_not_json_cause(parse_error: &str) -> String {
+fn rest_body_not_json_cause(parse_error: &str, received_bytes: usize) -> String {
+    // The parse message is still dropped -- a `serde_json` message carries offsets into the body and
+    // sometimes the offending token -- but the SIZE of what arrived is kept, because it is a count out of
+    // the transport's own buffer and not a byte of the body. It is what separates a truncated or partial
+    // 200 (the likeliest transient, and the one a replay of the same bytes cannot reproduce) from a
+    // complete body that simply does not fit the declaration; before it those two printed the same line.
     let _ = parse_error;
-    "the body is not JSON, as the operation's declared response format requires".to_string()
-}
-
-fn rest_body_null_members_cause(missing: &str) -> String {
     format!(
-        "body did not inhabit the declared output: {} declared members were left uninhabited, their names withheld on a credential path",
-        missing.split(',').filter(|name| !name.is_empty()).count()
+        "the body is not JSON, as the operation's declared response format requires, after {received_bytes} bytes received"
     )
 }
 
+fn rest_body_null_members_cause(members: &RestNullMembers) -> String {
+    let count = members.paths.len();
+    let noun = if count == 1 { "member" } else { "members" };
+    if members.declared {
+        // The names are the operation's own declared members, so publishing them is the same class of
+        // fact as the located field the decode arm prints. "3 members were left uninhabited" is the
+        // sentence that made the 2026-11-10 outage need a human: it does not say which.
+        format!(
+            "body did not inhabit the declared output: {count} declared {noun} left uninhabited: {}",
+            members.paths.join(", ")
+        )
+    } else {
+        // The record is body-shaped (its output type resolved to no children, or there was no record at
+        // all), so these names may be keys the response presented and they stay withheld.
+        format!(
+            "body did not inhabit the declared output: {count} {noun} left uninhabited, their names withheld on a credential path"
+        )
+    }
+}
+
+/// THE ONE PLACE the two renamed-member sentences are worded, shared by the published declared-side cause
+/// below and by `Display`, so the two renderers of one cause cannot drift apart. Both sentences name
+/// DECLARATIONS, never body material: at the renamed-member loop of `decode_record_by_declared_type` the
+/// `authored` name is `authored_name_at(ctx.si(), f)` and the `wire` key is `extract_from_key(f, ctx)`,
+/// each read off the declared child `f`. The response decides only WHICH of the two causes fires, by which
+/// keys it presents, so it cannot put a string into either name -- which is what licenses publishing them
+/// on a credential path, by the same test `rest_body_null_members_cause` applies to member names.
+fn rest_authored_name_sentence(authored: &str, wire: &str) -> String {
+    format!(
+        "member `{}` is the authored name of a field whose declared wire key is `{}`",
+        authored, wire
+    )
+}
+
+/// The ambiguous-spelling companion of [`rest_authored_name_sentence`]: the body presented both spellings
+/// ONE declaration owns. Both names are declared, for the reason given there.
+fn rest_ambiguous_spelling_sentence(authored: &str, wire: &str) -> String {
+    format!(
+        "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
+        wire, authored
+    )
+}
+
+/// THE TYPE-DIRECTED DECODE'S CAUSE, published by `rest_refusal_text` (gunbc.heal_publication) on a
+/// credential path. What is withheld is decided PAYLOAD BY PAYLOAD, not by which renderer a cause reaches:
+/// dropped are `UnknownSpelling`'s `spelling` and `NotAnExactDecimal`'s `json_text`, both copied from the
+/// body's own key and text, and `ModuleWireContractUnresolved`'s `cause`, an upstream message a body can
+/// influence -- `undecodable_cause_is_declared_side_only` plants a sentinel in exactly those payloads.
+/// Published are the coproduct, the located field path (every segment an authored name out of the
+/// declaration tree), the declared members in `rest_body_null_members_cause` when they are declarations,
+/// and the renamed-member pair below, whose two names are read off the declaration. A new arm must be
+/// classified the same way, on the same evidence: where does its payload come from.
+///
+/// `AmbiguousWireContract` counts the rows rather than listing them because a `CoproductWireContract` row
+/// is repository content, not response content, and printing one would report a row an operator can read.
 fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
     let declared = match &refusal.cause {
         RestResponseDecodeCause::DeclarationUnresolved => "the coproduct's declaration identity is unresolved".to_string(),
@@ -22205,8 +22305,17 @@ fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
         RestResponseDecodeCause::UnsupportedNaming { naming } => format!("the contract's naming policy {} has no realization here", naming),
         RestResponseDecodeCause::NotAString { json_kind } => format!("the member is a {} where a string was declared", json_kind),
         RestResponseDecodeCause::UnknownSpelling { .. } => "the presented string names no arm of the declared coproduct".to_string(),
-        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { .. } => "a renamed member is spelled by its authored name, which is not its declared wire key".to_string(),
-        RestResponseDecodeCause::AmbiguousWireSpelling { .. } => "both the declared wire key and the authored name of one renamed member are present".to_string(),
+        // DECLARED, not presented -- so the pair is published, through the one sentence each shares with
+        // `Display`. Withholding it was the defect this closes: the operator of the heal publisher was told
+        // "a renamed member is spelled by its authored name" with no spelling named, which the person who
+        // owns the workload identity pool provider cannot act on. Measured by the claims at
+        // dag/test/claim/heal_publisher_provision_witness.dag.
+        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => {
+            rest_authored_name_sentence(authored, wire)
+        }
+        RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => {
+            rest_ambiguous_spelling_sentence(authored, wire)
+        }
         RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
     };
     format!(
@@ -22243,16 +22352,16 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::NotAString { json_kind } => {
                 write!(f, "expected a JSON string, found {}", json_kind)
             }
-            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => write!(
-                f,
-                "member `{}` is the authored name of a field whose declared wire key is `{}`",
-                authored, wire
-            ),
-            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => write!(
-                f,
-                "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
-                wire, authored
-            ),
+            // Delegates rather than re-wording: one owner per sentence, shared with the published
+            // declared-side cause. Two renderers wording the same cause differently is what let the
+            // published line and the claims in dag/test/claim/heal_publisher_provision_witness.dag fall out
+            // of step without any model changing.
+            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => {
+                write!(f, "{}", rest_authored_name_sentence(authored, wire))
+            }
+            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => {
+                write!(f, "{}", rest_ambiguous_spelling_sentence(authored, wire))
+            }
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
@@ -31638,9 +31747,13 @@ mod t9_host_recursion_probes {
     /// coproduct, the located field and the declared encoding/naming/count are kept -- the path is an
     /// authored name out of the declaration tree, never a key out of the body -- and the strings the body
     /// presented are dropped. Every variant of `RestResponseDecodeCause` that
-    /// carries a response-supplied payload is planted here -- `UnknownSpelling`, `NotAnExactDecimal`,
-    /// `ModuleWireContractUnresolved`, `AuthoredNameIsNotTheWireKey` and `AmbiguousWireSpelling` -- so an
-    /// arm edited later to interpolate its payload turns red instead of publishing it.
+    /// carries a RESPONSE-supplied payload is planted here -- `UnknownSpelling`, `NotAnExactDecimal` and
+    /// `ModuleWireContractUnresolved` -- so an arm edited later to interpolate its payload turns red
+    /// instead of publishing it. The two renamed-member causes are NOT among them and are asserted the
+    /// other way, below: their payloads are read off the declaration (`authored_name_at(ctx.si(), f)` and
+    /// `extract_from_key(f, ctx)` on the declared child), so the response cannot put a string into them and
+    /// the operator is owed the pair. Classify a new arm by where its payload comes from, not by which
+    /// renderer it reaches.
     #[test]
     fn undecodable_cause_is_declared_side_only() {
         let located = |cause: crate::v1_interpreter::RestResponseDecodeCause| {
@@ -31689,25 +31802,32 @@ mod t9_host_recursion_probes {
             !module_contract.contains("FAKE-SECRET-MARKER"),
             "cause echoed the module's own unresolved text: {module_contract}"
         );
+        // The renamed-member pair is declared-side, so the published cause must NAME it -- worded by the
+        // sentence `Display` shares, which is what keeps the published line, this test and the DAG claims
+        // from drifting apart. That a body VALUE never reaches the line is checked end to end by
+        // `the_provider_refusal_names_the_declared_pair_and_echoes_no_body_value` in
+        // dag/test/claim/heal_publisher_provision_witness.dag, which decodes a body whose value is
+        // "https://attacker.invalid" and requires that value to be absent.
         let authored_key = crate::v1_interpreter::rest_response_declared_cause(&located(
             crate::v1_interpreter::RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
-                authored: "FAKE-SECRET-MARKER".to_string(),
-                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+                authored: "issuer_uri".to_string(),
+                wire: "issuerUri".to_string(),
             },
         ));
         assert!(
-            !authored_key.contains("FAKE-SECRET-MARKER"),
-            "cause echoed an authored or wire spelling: {authored_key}"
+            authored_key.contains("member `issuer_uri` is the authored name of a field whose declared wire key is `issuerUri`")
+                && authored_key.contains("pulls.head.sha"),
+            "the declared spelling pair was withheld from the published cause: {authored_key}"
         );
         let both_spellings = crate::v1_interpreter::rest_response_declared_cause(&located(
             crate::v1_interpreter::RestResponseDecodeCause::AmbiguousWireSpelling {
-                authored: "FAKE-SECRET-MARKER".to_string(),
-                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+                authored: "issuer_uri".to_string(),
+                wire: "issuerUri".to_string(),
             },
         ));
         assert!(
-            !both_spellings.contains("FAKE-SECRET-MARKER"),
-            "cause echoed both spellings of one member: {both_spellings}"
+            both_spellings.contains("both `issuerUri` and its authored name `issuer_uri` are present; the field's spelling is ambiguous"),
+            "the ambiguous-spelling sentence was not the one its shared owner words: {both_spellings}"
         );
         let read_refused = crate::v1_interpreter::rest_body_read_refused_cause(
             "io error: FAKE-SECRET-MARKER while reading a body sent with FAKE-SECRET-MARKER",
@@ -31718,16 +31838,41 @@ mod t9_host_recursion_probes {
         );
         let not_json = crate::v1_interpreter::rest_body_not_json_cause(
             "expected value at line 1 column 1: FAKE-SECRET-MARKER",
+            4096,
         );
         assert!(
             !not_json.contains("FAKE-SECRET-MARKER"),
             "a non-JSON cause echoed the parse error: {not_json}"
         );
-        let null_members =
-            crate::v1_interpreter::rest_body_null_members_cause("FAKE-SECRET-MARKER,head");
         assert!(
-            !null_members.contains("FAKE-SECRET-MARKER") && null_members.contains("2"),
-            "an uninhabited-member cause echoed a member name, or lost the count: {null_members}"
+            not_json.contains("4096 bytes"),
+            "a non-JSON cause lost how many bytes arrived, which is what tells a truncated 200 from a \
+             complete body that does not fit: {not_json}"
+        );
+        // Declared members: the names are the operation's own, so they are published -- this is the
+        // sentence a run needs, and the one the 2026-11-10 outage never printed.
+        let declared_members = crate::v1_interpreter::rest_body_null_members_cause(
+            &crate::v1_interpreter::RestNullMembers {
+                paths: vec!["pulls.head.sha".to_string(), "pulls.user".to_string()],
+                declared: true,
+            },
+        );
+        assert!(
+            declared_members.contains("pulls.head.sha")
+                && declared_members.contains("pulls.user")
+                && declared_members.contains("2"),
+            "an uninhabited-member cause lost the declared names or the count: {declared_members}"
+        );
+        // Body-shaped record: those names may be keys the response presented, so they stay withheld.
+        let presented_members = crate::v1_interpreter::rest_body_null_members_cause(
+            &crate::v1_interpreter::RestNullMembers {
+                paths: vec!["FAKE-SECRET-MARKER".to_string(), "head".to_string()],
+                declared: false,
+            },
+        );
+        assert!(
+            !presented_members.contains("FAKE-SECRET-MARKER") && presented_members.contains("2"),
+            "an uninhabited-member cause echoed a name the body presented: {presented_members}"
         );
     }
 }

@@ -59,6 +59,17 @@ data nvidia_a2_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   dense_tensor_throughput: [],
 }
 
+// TWO DIFFERENT POWER QUANTITIES, kept apart on purpose. This `board_power` is NVIDIA's product-page
+// TDP ENVELOPE ("Max thermal design power (TDP) 40–60W (configurable)"): a thermal-design claim with no
+// default, cited to a2_product_page_authority. It is NOT the range of power limits the driver lets you set.
+// The SETTABLE power-limit range is per-device and per-driver: on srv14/butch the 595.91.07 driver reports
+// min 35 / default 60 / max 60 W (nvidia-smi -q -d POWER, 2026-11-10) -- the 35 W floor is BELOW this
+// catalog's 40 W TDP minimum because those are different measurements, so they do not contradict once
+// distinguished. The cap-admission check (gunbc.serving.gpu_power_state_policy admit_gpu_cap_against) reads
+// the DEVICE observation (gunbc.fleet.gpu_device_observation power_min/max/default/current_limit_watts), so a
+// 35 W cap is admitted by the observation, not by this envelope; the envelope only sizes cooling. Earlier
+// prose in this file and in product.printed_chassis.group_duct conflated the two ("lowest settable cap is
+// 40 W") and is corrected to say so.
 data nvidia_a2_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "A2",
@@ -99,7 +110,11 @@ data nvidia_a2_board_catalogs: List<GpuBoardAdmission> = [nvidia_a2_board_catalo
 //     limit ... a passively cooled card ... that requires system airflow".
 //   Table 1: total board power 60 W default, 60 W maximum, 40 W minimum; thermal solution Passive;
 //     mechanical form factor HHHL-SS; physical x8 PCIe lanes. Full-height and half-height brackets are
-//     both listed by weight.
+//     both listed by weight. (NVIDIA's 40 W "minimum" is a total-board-power / TDP floor, the same
+//     envelope as the product page's 40-60 W; it is NOT the driver's lowest SETTABLE power limit, which
+//     the 595.91.07 driver on srv14/butch reports as 35 W (nvidia-smi -q -d POWER, 2026-11-10) -- a lower
+//     settable limit than NVIDIA's quoted TDP floor, and the fact the cap-admission path reads. Do not
+//     read this 40 W as a settable floor; see the reconciling note above nvidia_a2_board_facts.)
 //   Airflow Direction Support: a bidirectional heat sink, left-to-right or right-to-left. No CFM.
 //   Figure 3 (full-height bracket) and Figure 4 (low-profile bracket): height 68.90; length (167.64),
 //     a reference dimension, from the bracket's inner mounting face; "nominal dimensions are shown".

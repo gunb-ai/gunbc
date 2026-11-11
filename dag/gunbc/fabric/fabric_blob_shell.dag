@@ -25,7 +25,8 @@ import gunbc.cloudflare.r2_origin {
 }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_object_bound }
 import std.measure { measure_count, second_count }
-import gunbc.ci.ci_spec { gunbc_ci_sm_max_time, gunbc_ci_auth_header_file_write_statement, gunbc_ci_auth_header_file_args }
+import gunbc.ci.ci_spec { gunbc_ci_sm_max_time }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_statement, gunbc_ci_auth_header_file_args }
 
 // THE FABRIC BLOB PLANE FOR A RUN THAT HAS NOT BUILT gunbc YET. std.fabric_blob's two operations --
 // an exact-key GET into a directory this script minted, and a create-only PUT -- rendered as workflow
