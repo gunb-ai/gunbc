@@ -1,0 +1,488 @@
+module test.claim.fleet.fleet_host_smbios_observation_witness
+
+// P3 of gunbc.plans.fleet_machine_authority: the fleet lane's in-band SMBIOS producer, witnessed at the
+// interface that matters — the standing a reading gets, the source vocabulary it reuses, the evidence it cites,
+// and what A2 (gunbc.fleet.fleet_machine_unit_binding) and its real consumer (gunbc.fleet.fleet_host_backing's
+// HostBacking.unit, as gunbc.fleet.fleet_enrollment builds it for srv4) do with it.
+//
+// THE ACCEPTANCE, CLAIM BY CLAIM. srv4's reading is recorded and A2 still admits it — bound at the admission,
+// and Resolved at the allocation standing a flip actually reads. Then the other half of the same sentence: a
+// refusal stops that machine's cutover. Each refusal case is PLANTED — a reading this producer cannot produce
+// from a real host, built here to exercise the shape — and each ends the same way: no observation, so the
+// machine never joins A2 and its backing row stays HostUnitUnobserved. The contradiction case plants the BMC FRU
+// arm of the SAME observation list A2 folds, which is what reusing gunbc.machine_intake.subject's
+// BoardSerialSource buys: an in-band serial that disagrees with the out-of-band one is refused by the binding
+// authority, not reconciled here.
+//
+// Nothing here touches a host. The live read was already taken, read-only, and committed under
+// artifacts/host-observations/srv4-inband-smbios-2026-11-11/; the transcript claims below re-read that file.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.dissolution { BoundDissolution, DeclarationAppears }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.linux.dmi_id { DmiBoardSerial, dmi_id_attribute_path }
+import gunbc.machine_intake.subject {
+  BmcFru,
+  BoardSerialContradictory,
+  BoardSerialObservation,
+  HostSmbios,
+  PlatformExpectation,
+  UnitIdentityInputs,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  UnitKeyStanding,
+}
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import gunbc.fleet.fleet_intent { srv4_baseboard }
+import gunbc.fleet.fleet_enrollment { enrollment_for_host }
+import gunbc.fleet.fleet_host_backing {
+  Bmc,
+  HostBacking,
+  HostUnitNotOwned,
+  HostUnitRefused,
+  HostUnitResolved,
+  HostUnitUnobserved,
+  InstalledViaVirtualMedia,
+  OwnedMachine,
+  OwnedProvisioning,
+  resolve_host_unit,
+}
+import gunbc.fleet.fleet_machine_unit_binding {
+  MachineUnitEvidence,
+  admit_machine_units,
+  fleet_machine_unit_admission,
+  machine_unit_admission_refusals,
+  machine_unit_standing,
+  machine_unit_standing_in,
+}
+import gunbc.fleet.fleet_host_smbios_observation {
+  BoardModelNotTheFleetRow,
+  BoardModelUnreadable,
+  BoardSerialBlank,
+  BoardSerialNotAttributedToARead,
+  BoardSerialObserved,
+  BoardSerialReadRefused,
+  BoardSerialUnreadable,
+  HostAnsweredAsAnotherHost,
+  HostSmbiosBoardSerialStanding,
+  HostSmbiosReading,
+  KernelFactPrint,
+  SmbiosFieldBlank,
+  SmbiosFieldReading,
+  SmbiosFieldUnreadable,
+  SmbiosFieldValue,
+  SmbiosReadInvocation,
+  SysfsDmiAttributePrint,
+  SmbiosTableDecode,
+  TranscriptAgrees,
+  TranscriptDigestDiffers,
+  host_smbios_board_serial_observations,
+  host_smbios_board_serial_standing,
+  smbios_read_is_an_identity_read,
+  inband_smbios_board_parse_fork_dissolution,
+  srv4_bmc_fru_second_source_frontier,
+  srv4_host_smbios_board_serial_standing,
+  srv4_host_smbios_reading,
+  srv4_host_smbios_transcript_digest,
+  sha256_hex_of_recorded_hash,
+  verify_host_smbios_reading_transcript,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// srv4's firmware's own answer, named here rather than taken from the row under test, so the two can disagree
+// and be seen to. Recorded 2026-11-11T20:56:51Z from the host's own output.
+data srv4_observed_serial: NonEmptyStr = "NS1NG4000900022"
+
+// The board model the fleet carries for srv4, as the witness sees it — the same string the standing checks
+// against, reached through the fleet row rather than a literal, so a drift in the row is what fails.
+fn srv4_fleet_board_row() -> NonEmptyStr { srv4_baseboard.catalog.model_label }
+
+// srv4's backing row, shaped as gunbc.fleet.fleet_enrollment shapes it, so a refusal is asserted where a flip
+// reads it (the allocation standing) and not only at the admission the plan names.
+fn srv4_backing_with(unit: UnitKeyStanding?) -> HostBacking {
+  OwnedMachine {
+    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    unit: unit,
+  }
+}
+
+// ── the acceptance, positive half ────────────────────────────────────────────────────────────────────────
+
+// SRV4'S READING IS RECORDED AND A2 STILL ADMITS IT: the standing stands, on the reused source, carrying the
+// serial the host printed; and the production admission binds srv4 to that serial.
+test fn srv4_reading_is_recorded_and_a2_admits_it() -> Bool {
+  let standing_says_board = match srv4_host_smbios_board_serial_standing {
+    BoardSerialObserved { machine: m, observation: o, observed_at_utc: at, evidence: _ } =>
+      (m == operator_host_srv4) && (o.source == HostSmbios) && (o.serial == srv4_observed_serial) && (at == srv4_host_smbios_reading.observed_at_utc)
+    BoardSerialReadRefused { machine: _, cause: _ } => false
+  }
+  let admission_says_bound = match machine_unit_standing(machine: operator_host_srv4) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    _ => false
+  }
+  standing_says_board && admission_says_bound
+}
+
+// NOTHING ELSE WAS DISTURBED BY THE ARRIVAL. srv4's reading entered the one admission list that carries every
+// owned machine; if it collided with another unit — duplicating a serial, contradicting a FRU read — some
+// machine would now be refusing, and not necessarily srv4.
+test fn adding_the_srv4_reading_leaves_no_machine_refused() -> Bool {
+  machine_unit_admission_refusals(standings: fleet_machine_unit_admission.standings).length() == 0
+}
+
+// THE SAME FACT THROUGH THE CONSUMER THAT PROJECTS IT. fleet_enrollment builds srv4's HostBacking.unit from
+// machine_unit_standing, and fleet_host_backing's resolve_host_unit turns that into the standing a flip reads.
+// Witnessing only the admission would test a value nobody consumes.
+test fn srv4_backing_row_resolves_the_unit_it_was_read_to() -> Bool {
+  match enrollment_for_host(host: operator_host_srv4) {
+    Present { value: intent } => match resolve_host_unit(backing: intent.backing) {
+      HostUnitResolved { unit: u } => (u as String) == (srv4_observed_serial as String)
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// THE SOURCE VOCABULARY IS THE INTAKE ONE, AND ONLY THE IN-BAND ARM IS CLAIMED. One observation, on the
+// HostSmbios arm, and no BMC FRU arm claimed for srv4: the difference between "read once" and "two sources
+// agree", which the corpus must not be able to blur. A2 admits on a single admitted reading, so what a row
+// claims about its sources is a fact worth pinning.
+test fn srv4_is_admitted_on_one_in_band_source_and_claims_no_fru_agreement() -> Bool {
+  let observations = host_smbios_board_serial_observations(standing: srv4_host_smbios_board_serial_standing)
+  let one_in_band = (observations |> count) == 1
+    && (observations |> any(o => (o.source == HostSmbios) && (o.serial == srv4_observed_serial)))
+  let no_fru_arm = !(observations |> any(o => match o.source {
+    BmcFru => true
+    HostSmbios => false
+    PlatformExpectation => false
+  }))
+  one_in_band && no_fru_arm
+}
+
+// THE EVIDENCE DOES WORK, CHECKED RATHER THAN CITED. The transcript is committed at a sha256; this re-reads the
+// file, recomputes the digest, and re-parses the serial and the hostname out of the host's own printed lines. A
+// serial typed into the producer that disagrees with the transcript it cites fails HERE, not in a reader's eye.
+test fn the_committed_transcript_agrees_with_the_recorded_reading() -> Bool {
+  match verify_host_smbios_reading_transcript(reading: srv4_host_smbios_reading) {
+    TranscriptAgrees { sha256: h } => (h as String) == (sha256_hex_of_recorded_hash(hash: srv4_host_smbios_transcript_digest) as String)
+    _ => false
+  }
+}
+
+// ... and the check is a comparison, not a constant: the same reading citing a digest that is not the file's
+// refuses, naming the pair that disagrees. Evidence whose bytes changed since it was recorded is not the
+// evidence the row cites.
+test fn a_digest_that_no_longer_matches_the_transcript_refuses() -> Bool {
+  let drifted = reading_citing(digest: Sha256Hash(Sha256Digest {
+    hex: "0000000000000000000000000000000000000000000000000000000000000000",
+  }))
+  match verify_host_smbios_reading_transcript(reading: drifted) {
+    TranscriptDigestDiffers { expected: e, observed: _ } =>
+      (e as String) == "0000000000000000000000000000000000000000000000000000000000000000"
+    _ => false
+  }
+}
+
+// WHAT WAS RECORDED IS AN IDENTITY READ AND NOTHING ELSE. The coproduct rules out a write; this says the
+// recorded invocations are also inside the identity allowlist — DMI identity tree, the two identity tables, the
+// named kernel facts. An OEM-string dump (--type 11) or a path outside the identity tree fails here.
+test fn every_recorded_invocation_is_an_identity_read() -> Bool {
+  srv4_host_smbios_reading.invocations |> all(i => smbios_read_is_an_identity_read(invocation: i))
+}
+
+// THE SERIAL IS ATTRIBUTED TO THE ABI, NOT TO A LUCKY STRING. The read that carries srv4's serial is the read
+// of the one attribute the kernel exposes for it, at its documented path — the extdeps ABI row, not a literal.
+test fn the_serial_is_attributed_to_the_dmi_board_serial_attribute() -> Bool {
+  srv4_host_smbios_reading.invocations |> any(i => match i {
+    SysfsDmiAttributePrint { path: p, privileged: _ } => (p as String) == dmi_id_attribute_path(attribute: DmiBoardSerial)
+    SmbiosTableDecode { table: t } => t == 2
+    KernelFactPrint { fact: _ } => false
+  })
+}
+
+// ── the acceptance, refusal half: each refusal stops THIS machine's cutover ──────────────────────────────
+
+// THE SAME READING, CITING ANOTHER DIGEST — so the digest check can be exercised without inventing a file.
+fn reading_citing(digest: ContentHash) -> HostSmbiosReading {
+  HostSmbiosReading {
+    machine: srv4_host_smbios_reading.machine,
+    observed_at_utc: srv4_host_smbios_reading.observed_at_utc,
+    principal: srv4_host_smbios_reading.principal,
+    transport: srv4_host_smbios_reading.transport,
+    invocations: srv4_host_smbios_reading.invocations,
+    transcript: EvidenceRef { label: srv4_host_smbios_reading.transcript.label, digest: digest },
+    kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+    kernel_release_machine: srv4_host_smbios_reading.kernel_release_machine,
+    board_vendor: srv4_host_smbios_reading.board_vendor,
+    board_name: srv4_host_smbios_reading.board_name,
+    board_serial: srv4_host_smbios_reading.board_serial,
+  }
+}
+
+// A PLANTED READING, shaped like srv4's with the field under test replaced. Planted values are claims about what
+// the standing does with an untrustworthy reading, never claims about srv4.
+fn planted_reading(
+  board_serial: SmbiosFieldReading,
+  kernel_hostname: NonEmptyStr,
+  board_name: SmbiosFieldReading,
+  invocations: List<SmbiosReadInvocation>,
+) -> HostSmbiosReading {
+  HostSmbiosReading {
+    machine: operator_host_srv4,
+    observed_at_utc: srv4_host_smbios_reading.observed_at_utc,
+    principal: srv4_host_smbios_reading.principal,
+    transport: srv4_host_smbios_reading.transport,
+    invocations: invocations,
+    transcript: srv4_host_smbios_reading.transcript,
+    kernel_hostname: kernel_hostname,
+    kernel_release_machine: srv4_host_smbios_reading.kernel_release_machine,
+    board_vendor: srv4_host_smbios_reading.board_vendor,
+    board_name: board_name,
+    board_serial: board_serial,
+  }
+}
+
+fn srv4_reads() -> List<SmbiosReadInvocation> { srv4_host_smbios_reading.invocations }
+
+fn board_model_read() -> SmbiosFieldReading { SmbiosFieldValue { value: "ALTRAD8UD-1L2T" } }
+
+// THE CUTOVER QUESTION, ASKED WHERE A FLIP ASKS IT. A refused reading contributes NO observation, so srv4's row
+// reaches bind_unit_key with an empty list and comes back refused with BoardSerialAbsent — and a refused row is
+// not a resolved row: resolve_host_unit gives HostUnitRefused, which no flip reads as licence to proceed. Note
+// the state it is NOT: HostUnitUnobserved belongs to a machine that has never been read at all (srv1-srv3 today,
+// below), which owes a read; srv4 here HAS been read, and the read is what refused. Only HostUnitResolved moves
+// a machine, so both of those stop the cutover and neither of them is this one.
+fn cutover_stops_for(standing: HostSmbiosBoardSerialStanding) -> Bool {
+  let observations = host_smbios_board_serial_observations(standing: standing)
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+      bmc_endpoint: srv4_baseboard.bmc,
+      board_serial_observations: observations,
+    } },
+  ])
+  let unit = machine_unit_standing_in(admission: admission, machine: operator_host_srv4)
+  match resolve_host_unit(backing: srv4_backing_with(unit: unit)) {
+    HostUnitRefused { cause: _ } => (observations |> count) == 0
+    HostUnitResolved { unit: _ } => false
+    HostUnitUnobserved { trigger: _ } => false
+    HostUnitNotOwned => false
+  }
+}
+
+// A MACHINE THAT HAS NEVER BEEN READ IS IN A DIFFERENT STATE, and the difference is worth its own claim: srv4
+// with no evidence row at all is Absent at the admission and HostUnitUnobserved below it — the row owes the read
+// (that trigger text is the obligation travelling with the row). This is srv1, srv2 and srv3 today, and it is
+// what srv4 was before 2026-11-11T21:29:45Z. Refused and unobserved both stop a cutover; only one of them says
+// "the read happened and could not be believed".
+test fn a_machine_that_has_never_been_read_is_unobserved_not_refused() -> Bool {
+  match resolve_host_unit(backing: srv4_backing_with(unit: Absent)) {
+    HostUnitUnobserved { trigger: t } => string_contains(s: t.capability, pattern: "board serial")
+    _ => false
+  }
+}
+
+// A serial the kernel would not print without privilege is not a serial: `<unreadable-without-privilege>` is
+// what the read printed where the ABI's 0400 mode met the absence of privilege. Admitting it would bind a
+// machine to a sentence about a file it could not read.
+test fn an_unreadable_board_serial_refuses_and_stops_the_cutover() -> Bool {
+  let standing = host_smbios_board_serial_standing(
+    reading: planted_reading(
+      board_serial: SmbiosFieldUnreadable { detail: "<unreadable-without-privilege>" },
+      kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+      board_name: board_model_read(),
+      invocations: srv4_reads(),
+    ),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  (match standing {
+    BoardSerialReadRefused { machine: m, cause: BoardSerialUnreadable { detail: _ } } => m == operator_host_srv4
+    _ => false
+  }) && cutover_stops_for(standing: standing)
+}
+
+// A BLANK SERIAL is what srv4's own type-1 Serial Number, product_version and chassis_asset_tag are: firmware
+// fields nobody ever wrote. A blank must refuse rather than bind a fleet to the empty string.
+test fn a_blank_board_serial_refuses_and_stops_the_cutover() -> Bool {
+  let standing = host_smbios_board_serial_standing(
+    reading: planted_reading(
+      board_serial: SmbiosFieldBlank,
+      kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+      board_name: board_model_read(),
+      invocations: srv4_reads(),
+    ),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  (match standing {
+    BoardSerialReadRefused { machine: _, cause: BoardSerialBlank } => true
+    _ => false
+  }) && cutover_stops_for(standing: standing)
+}
+
+// A SERIAL WITH NO ADMITTED READ BEHIND IT IS AN ASSERTION. Same value, no read of the board field anywhere in
+// the invocation list: refused. This is what makes `invocations` load-bearing rather than decorative.
+test fn a_serial_not_attributed_to_a_read_refuses_and_stops_the_cutover() -> Bool {
+  let standing = host_smbios_board_serial_standing(
+    reading: planted_reading(
+      board_serial: SmbiosFieldValue { value: srv4_observed_serial },
+      kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+      board_name: board_model_read(),
+      invocations: [ KernelFactPrint { fact: "hostname" } ],
+    ),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  (match standing {
+    BoardSerialReadRefused { machine: _, cause: BoardSerialNotAttributedToARead } => true
+    _ => false
+  }) && cutover_stops_for(standing: standing)
+}
+
+// W3'S RED, CAUGHT AT THE PRODUCER: the machine that answered printed a different name. The plan's failure is
+// two hosts and one board with one of them wrong, and only an in-band read sees the wrong-HOST half of it — a
+// BMC FRU read of the right board cannot tell you the OS came from somewhere else.
+test fn a_host_answering_as_another_machine_refuses_and_stops_the_cutover() -> Bool {
+  let standing = host_smbios_board_serial_standing(
+    reading: planted_reading(
+      board_serial: SmbiosFieldValue { value: srv4_observed_serial },
+      kernel_hostname: "srv9",
+      board_name: board_model_read(),
+      invocations: srv4_reads(),
+    ),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  (match standing {
+    BoardSerialReadRefused { machine: _, cause: HostAnsweredAsAnotherHost { asked: a, answered_as: b } } =>
+      (a == srv4_host_smbios_reading.kernel_hostname) && (b == "srv9")
+    _ => false
+  }) && cutover_stops_for(standing: standing)
+}
+
+// THE BOARD READ IS NOT THE BOARD THE FLEET CARRIES FOR THAT MACHINE: a machine moved into another chassis, or a
+// name pointing somewhere else whose board happens to carry the same serial. The board model is fleet data, so
+// the cross-check is against the row and not against a guess.
+test fn a_board_that_is_not_the_fleets_row_for_that_machine_refuses_and_stops_the_cutover() -> Bool {
+  let standing = host_smbios_board_serial_standing(
+    reading: planted_reading(
+      board_serial: SmbiosFieldValue { value: srv4_observed_serial },
+      kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+      board_name: SmbiosFieldValue { value: "X11DPi-NST" },
+      invocations: srv4_reads(),
+    ),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  (match standing {
+    BoardSerialReadRefused { machine: _, cause: BoardModelNotTheFleetRow { asked: _, board_read: b, fleet_row: _ } } =>
+      (b as String) == "X11DPi-NST"
+    _ => false
+  }) && cutover_stops_for(standing: standing)
+}
+
+// AND A BOARD MODEL THE HOST CANNOT TELL US refuses too: an unreadable model cannot be cross-checked, and a
+// cross-check that cannot run is not a guard. Refusing here is the same decision the serial's unreadable arm
+// makes — a field that did not come back is not a field that came back empty.
+test fn an_unreadable_board_model_refuses_and_stops_the_cutover() -> Bool {
+  let standing = host_smbios_board_serial_standing(
+    reading: planted_reading(
+      board_serial: SmbiosFieldValue { value: srv4_observed_serial },
+      kernel_hostname: srv4_host_smbios_reading.kernel_hostname,
+      board_name: SmbiosFieldUnreadable { detail: "<unreadable-without-privilege>" },
+      invocations: srv4_reads(),
+    ),
+    fleet_board_row: srv4_fleet_board_row(),
+  )
+  (match standing {
+    BoardSerialReadRefused { machine: _, cause: BoardModelUnreadable { detail: _ } } => true
+    _ => false
+  }) && cutover_stops_for(standing: standing)
+}
+
+// THE SECOND SOURCE, WHEN IT LANDS, IS CHECKED AND NOT ASSUMED. Plant the out-of-band arm of the SAME
+// observation list with a serial that disagrees with the in-band one: the binding authority refuses with its own
+// BoardSerialContradictory and binds nothing. One source vocabulary is what makes this check exist at all — a
+// fleet-side enum would have kept the two readings in separate ledgers, which is how the corpus grew two unit
+// key spaces in the first place (gunbc.product.assembly).
+test fn a_contradictory_fru_reading_refuses_at_a2_and_binds_nothing() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+      bmc_endpoint: srv4_baseboard.bmc,
+      board_serial_observations: [
+        BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
+        BoardSerialObservation { source: BmcFru, serial: "SOME-OTHER-BOARD-SERIAL" },
+      ],
+    } },
+  ])
+  match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
+    Present { value: UnitKeyRefused { cause: BoardSerialContradictory } } => true
+    _ => false
+  }
+}
+
+// ... and when the two sources AGREE, the same fold binds: the shape admits corroboration rather than merely
+// forbidding disagreement. This is the standing srv4 will hold once the BMC FRU read lands.
+test fn agreeing_fru_and_smbios_readings_bind_the_one_unit() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+      bmc_endpoint: srv4_baseboard.bmc,
+      board_serial_observations: [
+        BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
+        BoardSerialObservation { source: BmcFru, serial: srv4_observed_serial },
+      ],
+    } },
+  ])
+  match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    _ => false
+  }
+}
+
+// A THIRD SOURCE THAT IS NOT A READ: the seller's claim is an arm of the vocabulary too, and it agrees here —
+// which is the point of keeping it in the same list. A PlatformExpectation that disagreed with both reads would
+// be refused by the same fold, and this row is where that becomes checkable rather than rhetorical.
+test fn the_seller_row_agrees_with_the_hardware_read() -> Bool {
+  let admission = admit_machine_units(evidence: [
+    MachineUnitEvidence { machine: operator_host_srv4, inputs: UnitIdentityInputs {
+      bmc_endpoint: srv4_baseboard.bmc,
+      board_serial_observations: [
+        BoardSerialObservation { source: HostSmbios, serial: srv4_observed_serial },
+        BoardSerialObservation { source: PlatformExpectation, serial: srv4_observed_serial },
+      ],
+    } },
+  ])
+  match machine_unit_standing_in(admission: admission, machine: operator_host_srv4) {
+    Present { value: UnitKeyBound { key: k } } => (k as String) == (srv4_observed_serial as String)
+    _ => false
+  }
+}
+
+// ── the two obligations, pointed at what would discharge them ──────────────────────────────────────────
+
+// THE OWED FRU SOURCE POINTS AT THE FOLD THAT ACTUALLY MAKES AN OUT-OF-BAND READING. srv4 is admitted on one
+// source, and the second is recorded as owed rather than assumed — but an obligation is only as good as the
+// declaration that discharges it. If gunbc.machine_intake.arrival_converge's provisional bind is renamed or
+// replaced, this frontier stops describing anything reachable and this claim is where that shows: a frontier
+// naming nothing is how an owed read becomes an unowed one.
+test fn the_owed_fru_source_names_the_fold_that_discharges_it() -> Bool {
+  match srv4_bmc_fru_second_source_frontier {
+    BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
+      ((r.module_path as String) == "gunbc.machine_intake.arrival_converge")
+        && ((r.decl_name as String) == "identity_bind_provisional")
+    _ => false
+  }
+}
+
+// THE RECORDED FORK POINTS AT THE PARSE IT WOULD RETIRE INTO, not at the captures around it. The register row
+// says the shared question is the section scanner and the exact-once field extractor; this is the same statement
+// from this module's side, and it fails if either name drifts — which is the difference between a fork with a
+// dissolution and a fork with a comment.
+test fn the_recorded_fork_names_the_parse_it_retires_into() -> Bool {
+  match inband_smbios_board_parse_fork_dissolution {
+    BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
+      ((r.module_path as String) == "gunbc.machine_intake.inband_host_identity")
+        && ((r.decl_name as String) == "inband_section_field")
+    _ => false
+  }
+}
