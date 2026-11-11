@@ -1,0 +1,283 @@
+module gunbc.witness.roadmap_cutover
+
+import std.types { String, Int, Bool, List }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+// THE MODEL BEHIND THE CUTOVER RUNBOOK AND ITS TWO SHELL WITNESSES.
+//
+// WHY THIS EXISTS. docs/runbooks/roadmap-event-log-cutover.md is operator-facing text and
+// tools/roadmap_cutover_runbook_witness.sh / tools/roadmap_cutover_dispatch_witness.sh are hand-written shell.
+// gunbc.design_argument::how_to_work presumes exactly those shapes are scaffold — "a hand-authored workflow,
+// deployment or migration script (out-of-band actuation)" and "raw shell implementing semantics expressible in
+// .dag" — so the semantics live HERE, and the shell realizes rows declared in this module. Nothing in the shell
+// decides anything on its own: which steps the cutover has, what each one is allowed to invoke, which predicate
+// admits the next state change, which cases the witnesses run and what disposition each must earn. The witnesses
+// load even the helpers they exercise out of the runbook at run time (see load_from_runbook), so a drift is a
+// refusal rather than a silent re-test of a paraphrase.
+//
+// WHY THE ORDER IS WHAT IT IS. gunbc.design_argument::replacement_migration — "the old authority ends in one
+// motion at its root" — is why activation follows verification rather than preceding the migration, and
+// gunbc.design_argument::fail_closed — "every path succeeds fully or fails with a typed, located diagnostic" — is
+// why every step here carries an admission predicate instead of a note. The single-home rule this cutover exists to
+// establish is gunbc.design_argument::single_authority.
+//
+// The scaffold markers the two shell carriers must carry are declared below as dispositions with bound
+// dissolution conditions; the text of each marker is what those two files' first comment block says, so the model
+// is the authority for the promise and the carriers are checked against it by review, not by folklore.
+
+// THE SEQUENCE, AS DATA. One row per step of the runbook, in order. `actuation` is the MODELLED route the step is
+// allowed to invoke — or "read-only" for a step that only observes — and `admission` is the predicate that must
+// hold before any further state change. A step with no route and no predicate is not a step; it is a paragraph,
+// and paragraphs do not stop a migration.
+type CutoverStep {
+  ordinal: Int
+  id: String
+  actuation: String
+  admission: String
+  changes_state: Bool
+}
+
+data cutover_step_rows: List<CutoverStep> = [
+  CutoverStep {
+    ordinal: 1
+    id: "export"
+    actuation: "read-only: git clone --branch roadmap-events of origin's tip, systemctl cat, ls -l, sha256sums"
+    admission: "the export directory is an absolute path and the remote URL is non-empty; the checksums verify"
+    changes_state: false
+  },
+  CutoverStep {
+    ordinal: 2
+    id: "stop"
+    actuation: "systemctl stop of the five gunbc-roadmap* units, with their observers"
+    admission: "each is active or inactive-tolerant BEFORE the stop, and the event log's remote tip is recorded"
+    changes_state: true
+  },
+  CutoverStep {
+    ordinal: 3
+    id: "migrate-retired"
+    actuation: "gunbc.roadmap.roadmap_event_cli append (Retired events for the two retired nodes)"
+    admission: "each node id is named by the operator's ruling and is absent from the plan after the append"
+    changes_state: true
+  },
+  CutoverStep {
+    ordinal: 4
+    id: "migrate-accepted"
+    actuation: "gunbc.roadmap.issue_command_apply (the eighteen seeded receipts and the fabric operator tail)"
+    admission: "every replayed receipt's digest matches the exported digest, and the count is eighteen"
+    changes_state: true
+  },
+  CutoverStep {
+    ordinal: 5
+    id: "verify"
+    actuation: "gunbc.roadmap.roadmap_event_cli::roadmap_event_log_read_back_cli (verifier + retired read + history reader + standings, written to the export)"
+    admission: "the entry exits 0, having written the document; a refusal here blocks every step below it"
+    changes_state: false
+  },
+  CutoverStep {
+    ordinal: 6
+    id: "activate"
+    actuation: "fleet-converge.yml dashboard_deploy, dispatched against a tag resolving to $SHA, behind the step-5 gate"
+    admission: "verification passed, the tag resolves to $SHA, and each stage's run is positively identified at $SHA with the mode it was dispatched for"
+    changes_state: true
+  },
+  CutoverStep {
+    ordinal: 7
+    id: "observe"
+    actuation: "roadmap_event_log_retired_report_cli, roadmap_event_log_acceptance_report_cli, roadmap_event_log_read_back_cli"
+    admission: "each door exits 0; an unreachable log or an unwritable document is a refusal, not an empty verdict"
+    changes_state: false
+  },
+  CutoverStep {
+    ordinal: 8
+    id: "rollback"
+    actuation: "systemctl start of the exported units, only under disposition 7A; 7B rolls forward onto the staged build"
+    admission: "every predicate in the same script holds — tip unchanged for 7A, unit definitions matching the export, expected release identity, and all five readers inactive before any start"
+    changes_state: true
+  }
+]
+
+// A step that neither invokes a modelled route nor claims to be read-only has lost its authority to act.
+fn cutover_steps_without_a_route(rows: List<CutoverStep>) -> List<String> {
+  match rows.first() {
+    Absent => []
+    Present { value: hd } =>
+      if (hd.actuation == "") || (hd.admission == "") {
+        concat([hd.id], cutover_steps_without_a_route(rows.skip(n: 1)))
+      } else {
+        cutover_steps_without_a_route(rows.skip(n: 1))
+      }
+  }
+}
+
+fn cutover_step_count(rows: List<CutoverStep>) -> Int {
+  match rows.first() {
+    Absent => 0
+    Present { _ } => 1 + cutover_step_count(rows.skip(n: 1))
+  }
+}
+
+// THE WITNESS CASES, AS DATA. Each row is one case the shell witnesses run: what it feeds, and the disposition it
+// must earn. `refusal_text` is the located diagnostic the case must see when the answer is refusal — a case that
+// must refuse without naming the text it expects is a case that can pass on any nonzero exit, which is not a
+// witness. Names are stable identifiers, not prose: the scaffold markers below point at them.
+type CutoverWitnessCase {
+  name: String
+  carrier: String
+  feeds: String
+  must: String
+  refusal_text: String
+}
+
+data runbook_witness_carrier: String = "tools/roadmap_cutover_runbook_witness.sh"
+data dispatch_witness_carrier: String = "tools/roadmap_cutover_dispatch_witness.sh"
+
+data cutover_witness_case_rows: List<CutoverWitnessCase> = [
+  CutoverWitnessCase {
+    name: "guard_admits_an_absolute_export_directory"
+    carrier: runbook_witness_carrier
+    feeds: "the runbook's step-1 guard block through 'sudo systemd-run … bash -s -- \"$@\"' with one data argument"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "guard_refuses_a_shifted_delivery"
+    carrier: runbook_witness_carrier
+    feeds: "the same block through the helper with a filler word after '--', so $1 would arrive as the literal string runbook"
+    must: "refuse"
+    refusal_text: "argument delivery shifted"
+  },
+  CutoverWitnessCase {
+    name: "guard_admits_two_intact_arguments"
+    carrier: runbook_witness_carrier
+    feeds: "the runbook's step-7 guard block with the export directory then the 40-hex revision"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "guard_refuses_a_shifted_two_argument_delivery"
+    carrier: runbook_witness_carrier
+    feeds: "the same step-7 block through the shifted helper"
+    must: "refuse"
+    refusal_text: "argument delivery shifted"
+  },
+  CutoverWitnessCase {
+    name: "guard_refuses_a_revision_that_is_not_forty_hex"
+    carrier: runbook_witness_carrier
+    feeds: "the step-7 guard block with 'not-a-sha' where the revision belongs"
+    must: "refuse"
+    refusal_text: "not 40 hex"
+  },
+  CutoverWitnessCase {
+    name: "drop_in_round_trip_with_pre_existing_and_deploy_added"
+    carrier: runbook_witness_carrier
+    feeds: "export_drop_ins over a fixture with a pre-existing drop-in on one unit and another on a second unit, then a deploy-added drop-in under the first, then restore_drop_ins"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "dispatch_admits_the_run_it_created"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage against a stub gh whose post-dispatch query returns one new run at $SHA declaring the dispatched mode"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_declaring_another_mode"
+    carrier: dispatch_witness_carrier
+    feeds: "the same, with that run declaring a different mode"
+    must: "refuse"
+    refusal_text: "NO DEPLOY"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_at_another_revision"
+    carrier: dispatch_witness_carrier
+    feeds: "the same, with that run resolving to a different revision"
+    must: "refuse"
+    refusal_text: "NO DEPLOY"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_when_no_run_appeared"
+    carrier: dispatch_witness_carrier
+    feeds: "the same, with the post-dispatch query returning nothing new"
+    must: "refuse"
+    refusal_text: "NO DEPLOY"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_pre_existing_run_impersonating_the_dispatch"
+    carrier: dispatch_witness_carrier
+    feeds: "the same, where every visible run already existed before the dispatch"
+    must: "refuse"
+    refusal_text: "NO DEPLOY"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_that_did_not_conclude_success"
+    carrier: dispatch_witness_carrier
+    feeds: "the same, with the run concluding failure"
+    must: "refuse"
+    refusal_text: "NO DEPLOY"
+  }
+]
+
+// A case that must refuse but does not name the diagnostic it expects is not a witness: any nonzero exit would
+// satisfy it, including the one it was never about.
+fn cutover_refuse_cases_missing_refusal_text(rows: List<CutoverWitnessCase>) -> List<CutoverWitnessCase> {
+  match rows.first() {
+    Absent => []
+    Present { value: hd } =>
+      if (hd.must == "refuse") && (hd.refusal_text == "") {
+        concat([hd], cutover_refuse_cases_missing_refusal_text(rows.skip(n: 1)))
+      } else {
+        cutover_refuse_cases_missing_refusal_text(rows.skip(n: 1))
+      }
+  }
+}
+
+// A case name the model does not declare cannot be a scaffold's discriminator: the marker would promise a witness
+// that does not exist.
+fn cutover_case_is_declared(name: String) -> Bool {
+  cutover_case_is_declared_step(cutover_witness_case_rows, name)
+}
+
+fn cutover_case_is_declared_step(rows: List<CutoverWitnessCase>, name: String) -> Bool {
+  match rows.first() {
+    Absent => false
+    Present { value: hd } => if hd.name == name { true } else { cutover_case_is_declared_step(rows.skip(n: 1), name) }
+  }
+}
+
+// THE SCAFFOLD PROMISE FOR EACH SHELL CARRIER. Bound to the rows this module declares, because the shell's whole
+// job is to realize them; when the rows run as modelled test rows the carriers are DELETED, not emitted.
+data runbook_witness_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.witness.roadmap_cutover",
+    decl_name: "cutover_witness_case_rows",
+    field: WholeDeclaration
+  }
+}
+
+data dispatch_witness_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.witness.roadmap_cutover",
+    decl_name: "cutover_witness_case_rows",
+    field: WholeDeclaration
+  }
+}
+
+data runbook_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: TWO capabilities, because they retire DIFFERENT halves of tools/roadmap_cutover_runbook_witness.sh. (1) orch-emitted, for the residual shell (the sudo/systemd-run/systemctl stubs and the case assertions): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a function definition carrying a case statement over globs, a here-doc that writes a stub script, an array assignment read back as \"${arr[@]}\", or command substitution inside a test predicate — a missing target-language capability (class (b) of the hand-shell gate), not an unauthored migration. (2) modelled, for the witness process: its cases are the rows above (cutover_witness_case_rows) and its helpers are loaded from docs/runbooks/roadmap-event-log-cutover.md, never copied. When those rows run as a gunbc test row in gunbc.instrument_targets through the modelled filesystem and host-effect routes, this file is DELETED rather than emitted.")
+
+data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the same two capabilities as its sibling, with the second half specific to this carrier. (1) orch-emitted, for the residual shell (the gh stub, the case driver, and the run-id set difference): the bash target grammar named above has no production for a case statement over glob patterns, an indexed array with slice arithmetic (\"${args[@]:1}\"), a here-doc that materialises a stub executable, or command substitution inside an assignment used as a predicate. (2) modelled: the six dispatch cases are rows above (cutover_witness_case_rows) and dispatch_stage itself is loaded from docs/runbooks/roadmap-event-log-cutover.md; when fleet-converge's own admission (gunbc.fleet.fleet_converge_plan_revision) is exercised through modelled test rows, this file is DELETED rather than emitted.")
+
+// THE SIZE OF THE DEBT, NOT A CELEBRATION OF IT: net new hand-written shell this PR adds, per carrier. Counted
+// interim scaffold, not a census shrink; the review that asked for these rows named the count as the thing to
+// watch, so it lives where a claim can read it rather than in prose.
+data runbook_witness_loc_delta_net: Int = 200
+data dispatch_witness_loc_delta_net: Int = 88
+
+// Each carrier names the case that distinguishes it — the one that would pass on any nonzero exit if the witness
+// were weak, which is why it is the discriminator and not the admitting case.
+data runbook_witness_test_discriminator: String = "guard_refuses_a_shifted_delivery"
+data dispatch_witness_test_discriminator: String = "dispatch_refuses_a_pre_existing_run_impersonating_the_dispatch"

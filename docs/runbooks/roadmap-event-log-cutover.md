@@ -26,6 +26,15 @@ retired-set reader and the acceptance-history reader exactly as production's rea
 its own document cannot be written. A `gunbc run` CLI entry that returns data instead of a refusal is refused by
 the runner, so these read-backs are `ProcessExit` doors, not bare loads.
 
+**The order is modelled, and this file realizes it.** `gunbc.witness.roadmap_cutover::cutover_step_rows` declares
+one row per step below — what it may invoke and which predicate admits the next state change — and
+`::cutover_witness_case_rows` declares the cases the witnesses run, including the refusal text each must produce.
+The two `tools/roadmap_cutover_*.sh` witnesses load their helpers from THIS file at run time and are marked
+scaffold against those rows (`::runbook_witness_dissolve_trigger`, `::dispatch_witness_dissolve_trigger`): when the
+rows can run as modelled test rows, the shell is deleted rather than emitted. A step whose predicate is dropped
+here, or a witness case that would accept any nonzero exit, is a claim failure
+(`test.claim.roadmap.roadmap_cutover_witness`), not a typo.
+
 **Conventions.** `$REPO=/opt/gunbc/gunbc`, `$BIN=/opt/gunbc/bin/gunbc`, `$E=gunbc.roadmap.roadmap_event_cli`,
 `$D=/opt/gunbc/exports/roadmap-event-log-cutover-<UTC timestamp>` (kept, never deleted), `$SHA` = the exact
 revision being deployed. Every heavy command runs under `sudo systemd-run --wait --collect --pipe --uid=briansrls
@@ -878,6 +887,22 @@ OK   no new run appeared after the dispatch — refused (rc=1): NO DEPLOY: no ru
 OK   a pre-existing run cannot impersonate the dispatch — refused (rc=1): NO DEPLOY: no run appeared for mode=plan within 15 minutes
 OK   the dispatched run did not conclude success — refused (rc=1): NO DEPLOY: the plan run (21) did not complete successfully
 ALL DISPATCH-IDENTIFICATION CASES HOLD
+
+### The model behind this file
+
+`gunbc.witness.roadmap_cutover` holds the sequence as data (`cutover_step_rows`: ordinal, id, the modelled route it
+invokes, the predicate that admits the next change) and the witness cases as data
+(`cutover_witness_case_rows`: what each feeds, whether it must admit or refuse, and the located diagnostic a
+refusing case must print). Its claims, run on the runner:
+
+```text
+every_cutover_step_names_a_modelled_route_and_an_admission
+a_step_missing_its_admission_is_caught_by_the_same_check
+every_refusing_witness_case_names_the_diagnostic_it_expects
+a_refusing_case_with_no_refusal_text_is_reported
+the_scaffold_promises_name_the_emitter_that_would_retire_them
+a_scaffold_discriminator_naming_an_undeclared_case_is_rejected
+```
 
 ### Also checked, at this revision
 

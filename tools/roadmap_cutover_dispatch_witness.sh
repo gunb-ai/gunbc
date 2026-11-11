@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: the model is gunbc.witness.roadmap_cutover, and the promise is written there
+# (dispatch_witness_dissolve_trigger), not here. Two capabilities retire DIFFERENT halves of this file.
+#   (1) orch-emitted, for the RESIDUAL SHELL (the gh stub, the case driver, the run-id set difference): the bash
+#       target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by
+#       v2.workflow.bash_emit) has no production for a case statement over glob patterns, an indexed array read
+#       back with slice arithmetic ("${args[@]:1}"), a here-doc that materialises a stub executable, or command
+#       substitution inside an assignment used as a predicate. That is a missing target-language capability
+#       (class (b) of the hand-shell gate), not an unauthored migration.
+#   (2) modelled, for the WITNESS PROCESS: the six cases below are rows of
+#       gunbc.witness.roadmap_cutover::cutover_witness_case_rows, and dispatch_stage itself is loaded from the
+#       runbook rather than copied. When fleet-converge's own admission
+#       (gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs) is exercised through
+#       modelled test rows in gunbc.instrument_targets, this file is DELETED rather than emitted.
+#
 # Witness for the cutover runbook's CI-dispatch step (docs/runbooks/roadmap-event-log-cutover.md, step 5b).
 #
 # It drives the runbook's OWN `dispatch_stage` function — extracted from the runbook file at run time, never copied —

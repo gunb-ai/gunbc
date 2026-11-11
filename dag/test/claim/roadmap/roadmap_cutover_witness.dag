@@ -1,0 +1,80 @@
+module test.claim.roadmap.roadmap_cutover_witness
+
+// DISCRIMINATING CLAIMS FOR THE CUTOVER MODEL (gunbc.witness.roadmap_cutover). The runbook and the two shell
+// witnesses exist because an operator has to run this migration; these claims are what stops the shell from
+// quietly becoming the authority. Each one fails on a specific edit a later author could make: dropping a step's
+// predicate, adding a case that "refuses" without naming the refusal, or pointing a scaffold marker at a case
+// nobody declared.
+
+import std.types { Bool }
+import std.algebra { string_contains }
+import std.dissolution { dissolution_description }
+import gunbc.witness.roadmap_cutover {
+  CutoverStep, CutoverWitnessCase,
+  cutover_step_rows, cutover_steps_without_a_route, cutover_step_count,
+  cutover_witness_case_rows, cutover_refuse_cases_missing_refusal_text, cutover_case_is_declared,
+  runbook_witness_test_discriminator, dispatch_witness_test_discriminator,
+  runbook_witness_dissolve_trigger, dispatch_witness_dissolve_trigger,
+}
+
+// EVERY STEP IS ALLOWED TO ACT, OR IT DOES NOT ACT. A step with no modelled route and no admission predicate is a
+// paragraph, and paragraphs do not stop a migration. Discriminating in both directions: a row emptied of its
+// predicate must show up in the refusal list, and the shipped sequence must show nothing.
+test fn every_cutover_step_names_a_modelled_route_and_an_admission() -> Bool {
+  match cutover_steps_without_a_route(cutover_step_rows) {
+    Absent => cutover_step_count(cutover_step_rows) == 8
+    Present { value: _ } => false
+  }
+}
+
+test fn a_step_missing_its_admission_is_caught_by_the_same_check() -> Bool {
+  let hole = [CutoverStep {
+    ordinal: 99
+    id: "step-without-an-admission"
+    actuation: "read-only"
+    admission: ""
+    changes_state: false
+  }]
+  match cutover_steps_without_a_route(hole) {
+    Absent => false
+    Present { value: hd } => hd == "step-without-an-admission"
+  }
+}
+
+// A CASE THAT MUST REFUSE HAS TO NAME THE DIAGNOSTIC, or any nonzero exit satisfies it — including the one the
+// case was never about. Shipped rows are clean; an injected row without a refusal text must be reported.
+test fn every_refusing_witness_case_names_the_diagnostic_it_expects() -> Bool {
+  match cutover_refuse_cases_missing_refusal_text(cutover_witness_case_rows) {
+    Absent => cutover_case_is_declared(runbook_witness_test_discriminator)
+      && cutover_case_is_declared(dispatch_witness_test_discriminator)
+    Present { value: _ } => false
+  }
+}
+
+test fn a_refusing_case_with_no_refusal_text_is_reported() -> Bool {
+  let weak = [CutoverWitnessCase {
+    name: "a_case_that_accepts_any_nonzero_exit"
+    carrier: "tools/roadmap_cutover_runbook_witness.sh"
+    feeds: "anything"
+    must: "refuse"
+    refusal_text: ""
+  }]
+  match cutover_refuse_cases_missing_refusal_text(weak) {
+    Absent => false
+    Present { value: hd } => hd.name == "a_case_that_accepts_any_nonzero_exit"
+  }
+}
+
+// THE SCAFFOLD PROMISE POINTS AT THE CAPABILITY THAT WOULD RETIRE IT — the orchestration-to-shell bash-emit
+// target — and at a discriminator that actually exists in the model. A marker that names a case nobody declared
+// is a promise to dissolve into nothing.
+test fn the_scaffold_promises_name_the_emitter_that_would_retire_them() -> Bool {
+  string_contains(s: dissolution_description(condition: runbook_witness_dissolve_trigger), pattern: "bash_emit")
+    && string_contains(s: dissolution_description(condition: dispatch_witness_dissolve_trigger), pattern: "bash_emit")
+    && string_contains(s: dissolution_description(condition: runbook_witness_dissolve_trigger), pattern: "gunbc.instrument_targets")
+    && string_contains(s: dissolution_description(condition: dispatch_witness_dissolve_trigger), pattern: "fleet_converge_plan_revision")
+}
+
+test fn a_scaffold_discriminator_naming_an_undeclared_case_is_rejected() -> Bool {
+  !cutover_case_is_declared("no_such_case_anywhere")
+}
