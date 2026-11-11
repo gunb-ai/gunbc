@@ -1,4 +1,4 @@
-module gunbc.plans.demand_restatement_follow_up
+module gunbc.demand_engine_restatement_follow_up
 
 import std.types { NonEmptyStr, List, String }
 
