@@ -22,22 +22,26 @@
 //! supplies its own roster: none of them ever resolved a real entry, so no witness executed the
 //! route the production dry run executes (`gunbc.design_argument::witness_one_interface`:
 //! supplying inputs may never remove the last execution of the real path). These witnesses ARE
-//! that last execution: they drive the SAME call production `gunbc run --entry <file> --function
-//! <fn>` makes (`cli_run::resolve_entry_graph_demand_acquired_scoped`, main.rs's run path) and
+//! that last execution: they drive the SAME call production `gunbc run --source-root dag
+//! --source-root src/v2 --entry <file> --function
+//! <fn>` makes (`cli_run::resolve_entry_graph_demand_acquired_scoped` with the fleet-converge
+//! steps' exact source-root argv, main.rs's run path) and
 //! stop at resolve -- no eval, no network, no fleet effect.
 //!
 //! SIBLING INSTANCES (root_generalization, gunbc.design_argument::root_generalization). The class
 //! is `github.<Service>.<Op>(` service-qualified calls whose declaring module is imported for
-//! wire rows only; the corpus carries ~70 such call sites (the roster travels with the PR). Already
-//! recorded instances of the same #16156 fallout: wire-contract rows (fixed on main by 4aab999ddc3
-//! #16241), rest carrier `RestResult` (fix in review, #16279 `pr1/service-root-scope`),
+//! wire rows only; the corpus carries 80 such occurrences, 52 of them production lines across 28
+//! modules -- the census is recorded in the SIBLING INSTANCES paragraph of the ledger row
+//! gunbc.recurring_failure_mode::rest_service_carrier_row_unrealized_by_the_run_demand_grain_refuses_a_misattributed_no_method_surface.
+//! Already recorded instances of the same #16156 fallout: wire-contract rows (fixed on main by
+//! 4aab999ddc3 #16241), rest carrier `RestResult` (seed LANDED: 356cec0a347, gunbc#16279),
 //! `main_wet_one` `NoSuchVariable github.Pulls` (equivalence-harness main-wet arm), and
 //! `PullRequestPage/Observe` `MethodExistenceUndecided` (harness note at fd021fee54f, attributed
 //! to a service-reachability rule that was unowned as of this writing). This witness is route
 //! coverage for the rest-route entry family (P8d dry run, lost-boot sweep dry/wet, connectivity
 //! observe) plus the green gh-route canary; it refuses to fix the resolver, so its rest-route
-//! arms are RED on a main that carries #16156 without the seed fix, and must be GREEN at the
-//! head that lands the seed.
+//! arms were RED on the unseeded demanded-grain main and must be GREEN on seeded main
+//! (356cec0a347), the srv1 receipts appending to the ledger row above.
 //!
 //! HAND-WRITTEN-RUST RECEIPT: this file is hand-written witness Rust beside the generated stage0
 //! mirror, deferred to the landing lane named by the tracking row
@@ -54,6 +58,17 @@ fn repo_root() -> std::path::PathBuf {
     root
 }
 
+/// The EXACT `--source-root` argv the production fleet-converge dry-run steps pass to
+/// `gunbc run` for the witnessed entries (.github/workflows/fleet-converge.yml:
+/// `gunbc run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry
+/// dag/gunbc/runner/runner_jit_dead_sweep_run.dag --function jit_dead_sweep_dry_run_wet`, and the
+/// lost-boot step likewise). The tests run at the repo root, so the relative spellings name the
+/// same directories the workflow passes absolutely. One definition, used by BOTH the resolve
+/// witness and the inhabitance controls: a witness may not see a wider closure than production.
+fn run_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
 /// The production run interface, up to the point of the observed failure: the exact scoped
 /// demand-acquired resolve `gunbc run --entry <entry_file> --function <function>` performs
 /// (main.rs's run arm). Ok(()) means resolve settled with no blocking diagnostic; Err carries the
@@ -62,7 +77,7 @@ fn production_run_resolve(entry_file: &str, function: &str) -> Result<(), String
     repo_root();
     let requested = vec![function.to_string()];
     crate::cli_run::resolve_entry_graph_demand_acquired_scoped(
-        &["dag".to_string()],
+        &run_source_roots(),
         entry_file,
         &requested,
     )
@@ -88,7 +103,7 @@ fn assert_run_resolves(entry_file: &str, function: &str) {
 /// per root_generalization: this file adds no second grain implementation.
 fn assert_route_realized_from(entry_file: &str, seeds: &[&str], expected: &[&str]) {
     let (_sources, _intern, si, modules, _graph) =
-        super::demanded_typecheck_equivalence::graph_from(entry_file);
+        super::demanded_typecheck_equivalence::graph_from_scoped(entry_file, &run_source_roots());
     let demand = super::demanded_typecheck_equivalence::grain_demand(&modules, seeds, &si);
     let realization = match &*demand {
         crate::v1_compiler_infer::DeclarationDemand::OnlyDeclarations { realization, .. } => {

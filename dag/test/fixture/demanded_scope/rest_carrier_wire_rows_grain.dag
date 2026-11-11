@@ -11,12 +11,16 @@ module test.fixture.demanded_scope.rest_carrier_wire_rows_grain
 // receiver -- the production shape is the github.ActionsSelfHostedRunners.ListOrganizationRunnersPage
 // call inside gunbc.fleet.organization_runner_roster_read::rest_roster_page.
 
+import std.types { String, NonEmptyStr, Int, List }
+import std.resources { Network }
+
 type RosterCarrierRunnerWire {
   id: Int
   name: String
 }
 
 type RosterCarrierPageWire {
+  total: Int
   runners: List<RosterCarrierRunnerWire>
 }
 

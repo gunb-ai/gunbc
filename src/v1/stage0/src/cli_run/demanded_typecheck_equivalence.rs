@@ -10,6 +10,16 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 fn closure_of(entry: &str) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
+    closure_of_scoped(entry, &["dag".to_string()])
+}
+
+// The closure over an EXPLICIT source-root set. fleet_roster_entry_resolve_witness passes the
+// exact `gunbc run --source-root` argv of the production fleet-converge entries (dag + src/v2);
+// the sibling witnesses keep the dag-only default through closure_of.
+pub(super) fn closure_of_scoped(
+    entry: &str,
+    source_roots: &[String],
+) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
     let root = std::env::current_dir()
         .unwrap()
         .ancestors()
@@ -22,8 +32,7 @@ fn closure_of(entry: &str) -> Vec<Rc<crate::v1_compiler_compile::SourceFile>> {
         content: std::fs::read_to_string(root.join(entry)).unwrap(),
     });
     let mut v =
-        super::entry_resolve::resolve_seeded_compile_closure(vec![seed], &["dag".to_string()])
-            .unwrap();
+        super::entry_resolve::resolve_seeded_compile_closure(vec![seed], source_roots).unwrap();
     v.sort_by(|a, b| a.path.cmp(&b.path));
     v
 }
@@ -188,7 +197,23 @@ pub(super) fn graph_from(
     Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
     Rc<crate::v1_compiler_resolve::ModuleGraph>,
 ) {
-    let sources = closure_of(entry);
+    graph_from_scoped(entry, &["dag".to_string()])
+}
+
+// graph_from over an EXPLICIT source-root set -- the one pipeline, scoped (root_generalization:
+// fleet_roster_entry_resolve_witness passes the production `gunbc run` argv roots through here
+// rather than rebuilding the pipeline).
+pub(super) fn graph_from_scoped(
+    entry: &str,
+    source_roots: &[String],
+) -> (
+    Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
+    Rc<crate::v1_std_core::InternTable>,
+    Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    Rc<im::Vector<Rc<crate::v1_compiler_resolve::ResolvedModule>>>,
+    Rc<crate::v1_compiler_resolve::ModuleGraph>,
+) {
+    let sources = closure_of_scoped(entry, source_roots);
     let mut intern = empty_intern_table();
     let mut parsed = Vec::new();
     let mut si = crate::v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>();

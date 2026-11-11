@@ -6,6 +6,7 @@ module test.fixture.demanded_scope.rest_carrier_wire_rows_grain_consumer_named
 // and the call must resolve on every head. If this arm goes red the pair's shape broke and no
 // resolver conclusion may be drawn from the unnamed arm.
 
+import std.types { NonEmptyStr, Int, String }
 import test.fixture.demanded_scope.rest_carrier_wire_rows_grain { RosterCarrierPageWire }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestResult }
 
@@ -17,7 +18,7 @@ fn roster_carrier_page_count_named(org: NonEmptyStr) -> Int uses net: Network {
     RestRefused { refusal: _ } => 0
   }
   match fleetroster.RosterCarrierRest.GetCarrierPage(org: org, per_page: 100) {
-    RestAnswered { answer } => answer.result.runners |> count
+    RestAnswered { answer } => answer.result.total
     RestRefused { refusal: _ } => arm_named
   }
 }

@@ -6,18 +6,22 @@ module test.fixture.demanded_scope.rest_carrier_wire_rows_grain_consumer
 // gunbc.fleet.organization_runner_roster_read, whose imports name only the
 // OrganizationRunnerRosterEntryWire/OrganizationRunnerRosterPageWire wire rows from
 // extdeps.github.actions_self_hosted_runners and RestAnswered/RestRefused from
-// extdeps.transports.rest. The service
-// is service-qualified in a function BODY, never imported by name. This is the entry whose
-// demanded-grain resolve is witnessed in src/v1/stage0/src/cli_run/
-// fleet_roster_entry_resolve_witness.rs: red on main at 7e57510 (the refusal named in the node),
-// green once the demanded grain realizes the synthesized carrier read.
+// extdeps.transports.rest. The service is service-qualified in a function BODY, never imported by
+// name -- and `uses net: Network` is left un-imported for the same reason: production's
+// organization_runner_roster_read declares `uses net: Network` without importing std.resources
+// either (the resource row reaches the graph through the declaring module's own
+// `import std.resources { Network }`), so importing it HERE would drift from the witnessed shape.
+// This is the entry whose demanded-grain resolve is witnessed in
+// src/v1/stage0/src/cli_run/fleet_roster_entry_resolve_witness.rs: red without the carrier seed
+// (the MethodExistenceUndecided refusal named in the node), green with it.
 
+import std.types { NonEmptyStr, Int }
 import test.fixture.demanded_scope.rest_carrier_wire_rows_grain { RosterCarrierPageWire }
 import extdeps.transports.rest { RestAnswered, RestRefused }
 
 fn roster_carrier_page_count(org: NonEmptyStr) -> Int uses net: Network {
   match fleetroster.RosterCarrierRest.GetCarrierPage(org: org, per_page: 100) {
-    RestAnswered { answer } => answer.result.runners |> count
+    RestAnswered { answer } => answer.result.total
     RestRefused { refusal: _ } => 0
   }
 }
