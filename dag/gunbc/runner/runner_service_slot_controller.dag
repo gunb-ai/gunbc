@@ -27,6 +27,7 @@ import gunbc.fleet.host_credential_custody_converge {
 import extdeps.github.actions_jit_runner { EncodedJitConfig }
 import product.host_identity { HostIdentity }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+import gunbc.hostname_allocation { observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused, observed_host_identity_refusal_text }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
@@ -604,25 +605,34 @@ fn service_slot_unit_standing() -> ServiceSlotUnitStanding
     Present { value: unit } =>
       match hostname_short_read(transport: LocalShell) {
         HostnameShortCaptureRefused { reason: r } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": hostname unread: ", r], "") }
-        HostnameShortCaptured { value: v } => {
-          let identity = trim(s: v) as HostIdentity
-          match service_slot_host_control(identity: identity) {
-            Absent => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": host ", trim(s: v), " is not a managed host"], "") }
-            Present { value: control } =>
-              match service_slot_boot_read() {
-                ServiceSlotBootUnread { cause: c } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": ", c as String], "") }
-                ServiceSlotBootObserved { boot: boot } =>
-                  match service_slot_admit_current(host: control, identity: identity, current_boot: boot, unit: unit, receipt: runner_user_session_receipt_observed(host: identity)) {
-                    ServiceSlotAdmissionRefused { cause: c } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": ", c], "") }
-                    ServiceSlotAdmitted { admission: admission } =>
-                      match service_slot_key_custody() {
-                        ServiceSlotKeyNotHeld { causes: cs } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": the App key is not held: ", join(cs, "; ")], "") }
-                        ServiceSlotKeyHeldStanding { held: key } => ServiceSlotUnitReady { unit: unit, identity: identity, admission: admission, key: key }
+        HostnameShortCaptured { value: v } =>
+          // THE KERNEL ANSWERS WITH A NAME, AND THIS UNIT'S HOST IS AN IDENTITY: the spelling resolves
+          // through the allocation's selector (gunbc.hostname_allocation::observed_host_identity) and the
+          // standing is built under the RESOLVED identity, so the controller runs on the host that
+          // answers "butch" as srv14 (gunbc.plans.fleet_machine_authority section 4.4 (b*)). A name the
+          // roster does not resolve refuses by that name; it is never cast into an identity.
+          match observed_host_identity(observed: v) {
+            ObservedHostIdentityRefused { refusal: r } =>
+              ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": the kernel hostname does not resolve to a host: ",
+                                                     observed_host_identity_refusal_text(refusal: r)], "") }
+            ObservedHostIdentityResolved { host: identity } =>
+              match service_slot_host_control(identity: identity) {
+                Absent => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": host ", identity as String, " is not a managed host"], "") }
+                Present { value: control } =>
+                  match service_slot_boot_read() {
+                    ServiceSlotBootUnread { cause: c } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": ", c as String], "") }
+                    ServiceSlotBootObserved { boot: boot } =>
+                      match service_slot_admit_current(host: control, identity: identity, current_boot: boot, unit: unit, receipt: runner_user_session_receipt_observed(host: identity)) {
+                        ServiceSlotAdmissionRefused { cause: c } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": ", c], "") }
+                        ServiceSlotAdmitted { admission: admission } =>
+                          match service_slot_key_custody() {
+                            ServiceSlotKeyNotHeld { causes: cs } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": the App key is not held: ", join(cs, "; ")], "") }
+                            ServiceSlotKeyHeldStanding { held: key } => ServiceSlotUnitReady { unit: unit, identity: identity, admission: admission, key: key }
+                          }
                       }
                   }
               }
           }
-        }
       }
   }
 }

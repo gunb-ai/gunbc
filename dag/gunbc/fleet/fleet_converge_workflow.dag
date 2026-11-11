@@ -170,6 +170,7 @@ import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval
 import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, ApprovalNtfyRetire }
 import gunbc.runner.runner_service_slot_start { service_slot_start_artifact_glob }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
+import gunbc.runner.runner_jit_dead_sweep_run { jit_dead_sweep_artifact_glob, jit_dead_sweep_host_env_name }
 import gunbc.ci.ci_spec {
   site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
@@ -220,6 +221,8 @@ import gunbc.ci.ci_spec {
   gunbc_ci_srv1_root_mutation_approval_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
+  gunbc_ci_jit_dead_sweep_invoke,
+  gunbc_ci_jit_dead_sweep_dry_run_invoke,
   gunbc_ci_service_slot_start_invoke,
   gunbc_ci_qualification_attempt_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
@@ -430,6 +433,8 @@ type FleetConvergeWorkflowMode
   | MicrovmRunnerGroupEnsure
   | ServiceRunnerLostBootSweep
   | ServiceRunnerLostBootSweepDryRun
+  | JitDeadRegistrationSweep
+  | JitDeadRegistrationSweepDryRun
   | ServiceSlotStart
   | OrgRunnerRosterObserve
   | GcpIamConverge
@@ -524,6 +529,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MicrovmRunnerGroupEnsure => "microvm_runner_group_ensure"
     ServiceRunnerLostBootSweep => "service_runner_lost_boot_sweep"
     ServiceRunnerLostBootSweepDryRun => "service_runner_lost_boot_sweep_dry_run"
+    JitDeadRegistrationSweep => "jit_dead_registration_sweep"
+    JitDeadRegistrationSweepDryRun => "jit_dead_registration_sweep_dry_run"
     ServiceSlotStart => "service_slot_start"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
@@ -550,7 +557,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -641,6 +648,8 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmRunnerGroupEnsure => SixteenBinaryPack
     ServiceRunnerLostBootSweep => SixteenBinaryPack
     ServiceRunnerLostBootSweepDryRun => SixteenBinaryPack
+    JitDeadRegistrationSweep => SixteenBinaryPack
+    JitDeadRegistrationSweepDryRun => SixteenBinaryPack
     ServiceSlotStart => SixteenBinaryPack
     GcpIamConverge => SixteenBinaryPack
     NamecheapObserve => SixteenBinaryPack
@@ -771,6 +780,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MicrovmRunnerGroupEnsure => none
     ServiceRunnerLostBootSweep => none
     ServiceRunnerLostBootSweepDryRun => none
+    JitDeadRegistrationSweep => none
+    JitDeadRegistrationSweepDryRun => none
     ServiceSlotStart => none
     OrgRunnerRosterObserve => none
   }
@@ -969,6 +980,8 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
     ServiceRunnerLostBootSweep => FleetSshKeyNotConsumed
     ServiceRunnerLostBootSweepDryRun => FleetSshKeyConsumed
+    JitDeadRegistrationSweep => FleetSshKeyNotConsumed
+    JitDeadRegistrationSweepDryRun => FleetSshKeyNotConsumed
     ServiceSlotStart => FleetSshKeyConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
     NamecheapObserve => FleetSshKeyNotConsumed
@@ -2132,6 +2145,8 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmRunnerGroupEnsure => ExecutorDomain
     ServiceRunnerLostBootSweep => ExecutorDomain
     ServiceRunnerLostBootSweepDryRun => OwnRunConfined
+    JitDeadRegistrationSweep => ExecutorDomain
+    JitDeadRegistrationSweepDryRun => OwnRunConfined
     ServiceSlotStart => ExecutorDomain
     OrgRunnerRosterObserve => ExecutorDomain
     GcpIamConverge => ExecutorDomain
@@ -4231,6 +4246,10 @@ data fleet_converge_service_slot_start_step_if: String = fleet_converge_mode_ste
 
 data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge_mode_step_if(mode: MicrovmRunnerGroupEnsure)
 
+data fleet_converge_jit_dead_sweep_step_if: String = fleet_converge_mode_step_if(mode: JitDeadRegistrationSweep)
+
+data fleet_converge_jit_dead_sweep_dry_run_step_if: String = fleet_converge_mode_step_if(mode: JitDeadRegistrationSweepDryRun)
+
 // THE MICROVM RUNNER GROUP ENSURE (gunbc.runner.runner_group_restriction_ensure_run). It reaches GitHub over
 // gh under the in-run org-admin token and the approval broker over srv1 loopback, and opens no host
 // session, so it holds no fleet SSH key; it is srv1-pinned because the broker is loopback there.
@@ -4415,6 +4434,93 @@ fn fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step() -> Step {
     ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_service_runner_lost_boot_sweep_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE JIT DEAD-REGISTRATION SWEEP (gunbc.runner.runner_jit_dead_sweep_run; fleet_machine_authority P8d, mode placement
+// per fleet_converge_modes_are_outside_the_job_roster). Over ONE complete organization roster it retires a host's dead
+// JIT registrations -- offline, parsing under the host's slot grammar, and not the slot's current incarnation (the unit's
+// MainPID against the pid token) -- plus every registration under a RETIRED name prefix the dispatch supplies, so a
+// rename's old name (srv4 -> fox) is an input, never a literal; a name outside the grammar stays Foreign and is never
+// touched, and a partial roster read REFUSES rather than reporting a clean sweep. It holds NO fleet SSH key: the GitHub
+// workflow is only the WIF transport and the run signs from the gunbai-ci App key it stages itself. It opens no host
+// session and reads no boot id -- a slot whose MainPID the dispatch did not observe is PRESERVED (fail closed). The host
+// (reusing sweep_host) and its retired prefix are dispatch inputs, never defaulted. Deleting goes through the one
+// organization runner API route the corpus already uses (ensure_jit_runner_deregistered). The deleting arm is GATED
+// until the operator's go (its first real use is srv4's rename window, P9); until then only the read-only dry run runs.
+fn fleet_converge_jit_dead_sweep_step() -> Step {
+  RunStep {
+    name: Present { value: "JIT dead-registration sweep (GATED until the operator's go): retire a host's dead JIT registrations and its retired-name-prefix rows, reading each back absent" },
+    id: Present { value: "jit_dead_registration_sweep" },
+    run: gunbc_ci_jit_dead_sweep_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      // sweep_host carries the host and, after a ':', the retired name prefix (the rename's old name), so the mode
+      // adds no workflow_dispatch input -- the committed workflow is at GitHub's 25-input ceiling.
+      kv(key: jit_dead_sweep_host_env_name, value: yaml_string(s: "${{ github.event.inputs.sweep_host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_jit_dead_sweep_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_jit_dead_sweep_dry_run_step() -> Step {
+  RunStep {
+    name: Present { value: "JIT dead-registration dry run: list exactly what would be deleted, with counts by host; delete nothing" },
+    id: Present { value: "jit_dead_registration_sweep_dry_run" },
+    run: gunbc_ci_jit_dead_sweep_dry_run_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      // sweep_host carries the host and, after a ':', the retired name prefix (the rename's old name), so the mode
+      // adds no workflow_dispatch input -- the committed workflow is at GitHub's 25-input ceiling.
+      kv(key: jit_dead_sweep_host_env_name, value: yaml_string(s: "${{ github.event.inputs.sweep_host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_jit_dead_sweep_dry_run_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_jit_dead_sweep_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the JIT dead-registration sweep receipt" },
+    id: Present { value: "jit_dead_registration_sweep_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "jit-dead-registration-sweep-receipts",
+      path: jit_dead_sweep_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_jit_dead_sweep_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_jit_dead_sweep_dry_run_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the JIT dead-registration dry-run receipt" },
+    id: Present { value: "jit_dead_registration_sweep_dry_run_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "jit-dead-registration-sweep-dry-run-receipts",
+      path: jit_dead_sweep_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_jit_dead_sweep_dry_run_step_if], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -6120,6 +6226,10 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step(),
         fleet_converge_service_runner_lost_boot_sweep_dry_run_step(),
         fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step(),
+        fleet_converge_jit_dead_sweep_step(),
+        fleet_converge_jit_dead_sweep_receipt_upload_step(),
+        fleet_converge_jit_dead_sweep_dry_run_step(),
+        fleet_converge_jit_dead_sweep_dry_run_receipt_upload_step(),
         fleet_converge_service_slot_start_step(),
         fleet_converge_service_slot_start_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),
@@ -6423,6 +6533,8 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MicrovmRunnerGroupEnsure => fleet_converge_shared_job_id
     ServiceRunnerLostBootSweep => fleet_converge_shared_job_id
     ServiceRunnerLostBootSweepDryRun => fleet_converge_shared_job_id
+    JitDeadRegistrationSweep => fleet_converge_shared_job_id
+    JitDeadRegistrationSweepDryRun => fleet_converge_shared_job_id
     ServiceSlotStart => fleet_converge_shared_job_id
     GcpIamConverge => "gcp-iam-converge" as NonEmptyStr
     NamecheapObserve => "namecheap-observe" as NonEmptyStr
@@ -7600,7 +7712,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "sweep_host",
-    description: Present { value: "service_runner_lost_boot_sweep and service_runner_lost_boot_sweep_dry_run only: the managed_host whose runner registrations are swept or planned (its gunbc.host.managed_host row; not the executor host)" },
+    description: Present { value: "service_runner_lost_boot_sweep(_dry_run): the managed_host whose runner registrations are swept or planned (its gunbc.host.managed_host row; not the executor host). jit_dead_registration_sweep(_dry_run) too: name the host, and after a ':' the RETIRED name prefix whose rows are retired with it (a rename's old name, e.g. 'fox:fox-old-'); a colon is illegal in a hostname so it is a safe separator, and reusing this input keeps the workflow at GitHub's 25-input ceiling" },
     required: false,
     default: none,
     type: InputString,
