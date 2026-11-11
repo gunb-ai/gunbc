@@ -1605,7 +1605,27 @@ data gcp_token_lifetime_condition_and_expiry_unconsumed: IntegrationConcern = In
       },
       account: "Found while writing the DESIGN worked example: default_token_lifetime has no consumer; optional_impersonation restates the 3600 s limit as a retired where-refinement and drops expire_time; bootstrap_authority_may_grant restates 3600 as a bare literal.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        // The revision PR #16150 carried when this sighting was written; the sighting commit sits on
+        // top of it and changes no fact recorded here.
+        revision: "28769a9bf75ec6cdf465ad1154900194919b5af8",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "default_token_lifetime") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "admit_token_lifetime") },
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "token_lifetime_wire") },
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "AccessTokenLifetime") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.optional_impersonation", decl_name: "optional_impersonation") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.heal_publication", decl_name: "heal_publisher_lifetime_ruling") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.tailscale_acl_phase2_design_witness", decl_name: "the_admitted_lifetime_has_one_constructor") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap_authority", decl_name: "bootstrap_authority_may_grant") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.gcp_operation_wait", decl_name: "gcp_operation_budget_fits_actuation_allowance") },
+          ],
+        },
+        account: "Sighted again on PR #16150, where part of it closed and the rest got sharper -- so the row stays Open rather than being closed on the merged half. CLOSED by that change, in the order the requirement names them: the upstream model now owes all four facts (default_token_lifetime carries default_lifetime, ordinary_maximum, extended_maximum and the extended_maximum_condition naming constraints/iam.allowServiceAccountCredentialLifetimeExtension, so nothing may conclude a lifetime is grantable from extended_maximum); the protobuf Duration spelling has one owner in the API model (token_lifetime_wire, which encodes and deliberately does not rule); the ordinary maximum is asked for through one checked constructor returning Optional (admit_token_lifetime), whose admitted value is a sole_constructor type no foreign module can build, measured by an executing claim rather than asserted; and optional_impersonation returns the mint's expireTime instead of dropping it, Absent on the arm where no mint ran. The 'no inspected production request path consumes it' half also closed: heal_publisher_lifetime_ruling is an inspected path that consumes the ruling, and the publisher-side mint runs it. STILL OPEN, which is why this is a sighting and not an Integrated disposition: bootstrap_authority_may_grant still compares against a bare 3600 instead of reading ordinary_maximum, and gcp_operation_budget_fits_actuation_allowance still compares two configured durations (gcp_operation_poll_budget against iam_converge_token_lifetime) rather than consuming an observed expireTime, so the credential-validity obligation the requirement ends on is unmet. Closing the row here would be the record DESIGN refuses (gunbc.design_argument::continuous_generalization: a completed work item, a merged abstraction or a shorter ledger is not evidence of integration).",
+      },
+    ],
   },
   disposition: Open,
 }

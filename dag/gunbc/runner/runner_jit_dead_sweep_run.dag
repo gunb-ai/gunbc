@@ -1,0 +1,441 @@
+module gunbc.runner.runner_jit_dead_sweep_run
+
+import std.types { Bool, Int, NonEmptyStr, String, List, Secret }
+import std.optional { Absent, Present }
+import std.decl_ref { decl_ref }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.host_identity { HostIdentity }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
+import gunbc.auth.github_credential { GitHubCredentialAuthority }
+import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
+import gunbc.fleet.fleet_runner_connectivity {
+  github_organization_ref, RunnerSlotIdentity, fleet_committed_slot_identities,
+}
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_report_via_rest }
+import extdeps.github.pagination { github_max_page_size }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_jit_runner { JitRunnerName }
+import gunbc.github_effect_perform {
+  ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token,
+  ControllerInstallationToken,
+  ControllerKeyStaged, ControllerKeyNotStaged, stage_controller_app_key, remove_staged_controller_key,
+}
+import gunbc.runner.runner_lost_boot_sweep_plan { sweep_authority }
+import gunbc.runner.runner_jit_deregistration {
+  JitDeregistration, JitDeregistrationSubject, JitRunnerDeregistered, JitDeregistrationRefused,
+  RecoveredReservedRegistration, RecoveredReservedServiceRegistration,
+  ensure_jit_runner_deregistered, SlotSweptDeadRegistration, jit_dead_sweep_recovered_subject,
+}
+import gunbc.runner.runner_jit_dead_sweep {
+  JitCurrentIncarnation, JitDeadRow, JitDeadSweep, JitDeadSweepSelected,
+  JitDeadSweepRefused, JitDeadSweepRefusal, jit_dead_registration_sweep,
+  jit_sweep_unobserved_dead_population, jit_retired_prefix_of,
+  jit_dead_sweep_parse_dispatch_input, JitDispatchInputParse, Parsed, Malformed,
+}
+
+// THE JIT DEAD-REGISTRATION SWEEP RUN (fleet-converge modes jit_dead_registration_sweep and its dry run): the
+// production consumer of gunbc.runner.runner_jit_dead_sweep jit_dead_registration_sweep. It reads ONE complete
+// organization roster and, for one host named in the dispatch (NEVER a literal -- the host, its retired name prefix,
+// and the slots' observed MainPIDs are all inputs), lists or retires the dead JIT registrations.
+//
+// It reads the roster through the one organization runner API route the corpus already uses (this module adds no
+// client); deletion goes through ensure_jit_runner_deregistered via the staged controller token. It touches no host
+// transport itself. It has TWO selection arms with two different observation needs:
+//
+//  - THE RETIRED-NAME ARM (the rename's headline behaviour, and the one this mode ships live): every registration
+//    under a retired name prefix the dispatch supplies, so the name srv4 was renamed away from is an INPUT, not a
+//    literal. It needs no host-side fact -- a row under a retired prefix is dead by definition once the host
+//    registers under its new name -- but it is still gated on offline + a genuine JIT parse under the retired host's
+//    slot instances, so a mistyped broad prefix can never sweep a sibling host's runners.
+//
+//  - THE DEAD-INCARNATION ARM: offline JIT rows of the CURRENT host that are not the running incarnation, decided
+//    against each slot unit's observed MainPID. That observation is the arm's NAMED TRIGGER: the dispatch supplies
+//    `current` from a host unit-MainPID read (systemd `MainPID`) taken over the host transport in srv4's rename
+//    window (plan P9). Until that read is wired, the arm reads every offline JIT row as MainPidUnreadable ->
+//    PRESERVED (fail closed) and the report surfaces the population as UNOBSERVED -- never as a clean zero.
+//
+// Authority: the fleet-converge run's own federated identity (operator ruling 2026-10-03, mirrored by the lost-boot
+// sweep); the wet arm is GATED on the operator's explicit go and its first real use is srv4's rename window (plan P9),
+// scheduled by the program owner.
+
+// THE CREDENTIAL IS THE RUN'S OWN: the gunbai-ci App key is staged from Secret Manager under the run's federated
+// identity (the WIF access token in the environment), signs the installation-token mint and the control-plane
+// observation, and is removed on every arm.
+data jit_dead_sweep_wif_access_token_env_name: String = "WIF_ACCESS_TOKEN"
+data jit_dead_sweep_key_file_name: String = "gunbai-ci-jit-sweep.pem"
+
+// THE DISPATCH-LOCAL INPUTS, read from the mode's env (never baked literals): the host to sweep and its retired name
+// prefix (the name it was renamed away from, normalised to the proper prefix in read_dispatch). There is deliberately
+// NO current-MainPID env: the dead-incarnation arm's per-slot unit-MainPID observation is its P9 named trigger (see
+// jit_dead_sweep_no_current_observed), and an input no executing route reads is dangling
+// (gunbc.design_argument::consumption), so it is not declared here -- it returns with the P9 MainPID read.
+data jit_dead_sweep_host_env_name: String = "GUNBC_JIT_DEAD_SWEEP_HOST"
+
+data jit_dead_sweep_dry_run_receipt_path: String = "artifacts/jit-dead-registration-sweep-dry-run-receipt.txt"
+data jit_dead_sweep_wet_receipt_path: String = "artifacts/jit-dead-registration-sweep-receipt.txt"
+// The upload step's glob covers both the dry-run and the wet receipt (workflow_artifact_upload_with).
+data jit_dead_sweep_artifact_glob: String = "artifacts/jit-dead-registration-sweep-*"
+
+// THE WET ARM IS GATED. While gated, the deleting mode refuses; only the operator's go admits it. The dry run is
+// read-only and does not consult this standing.
+type JitDeadSweepApplyStanding
+  = JitDeadSweepApplyGated { reason: String }
+  | JitDeadSweepApplyAdmitted
+
+data jit_dead_sweep_apply_standing: JitDeadSweepApplyStanding =
+  JitDeadSweepApplyGated { reason: "the JIT dead-registration sweep's wet deletion is gated on the operator's explicit go; its first real use is srv4's rename window (fleet_machine_authority P9), scheduled by the program owner -- until then the deleting mode refuses and only the dry run runs" }
+
+// THE HOST'S COMMITTED SLOTS, derived from the committed population -- host-generic, never per-host literals. An
+// empty result (host unknown, or its width unresolved) yields the sweep's HostSlotsUnresolved refusal, never zero.
+fn jit_dead_sweep_slots_for_host(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  let population = fleet_committed_slot_identities()
+  filter(population.members, s => s.host == host)
+}
+
+// THE OBSERVED PER-SLOT MainPIDs, supplied as an INPUT to the pure plan/report/apply entry points. The dead-
+// incarnation arm compares each offline JIT row's pid token against its slot unit's live MainPID, so an arm that
+// FIRES must be handed those observations. THE DISPATCH SUPPLIES NONE TODAY: jit_dead_sweep_read_dispatch passes this
+// empty list, so on the executing route every offline JIT row reads MainPidUnreadable and is PRESERVED (fail closed)
+// -- the run module currently retires only RETIRED-NAME rows and never deregisters a runner whose live pid it has not
+// confirmed is gone. The dead-incarnation arm's live observation (systemd `MainPID` per slot, read over the host
+// transport) is its NAMED TRIGGER: unbuilt here, scheduled for srv4's rename window (plan P9), because wiring it
+// reclassifies the read-only dry run to FleetSshKeyConsumed -- an effect-model change the program owner declined for
+// P8d. Until that read is wired, the report counts the unobserved offline-JIT population so a zero is never presented
+// as a clean sweep (gunbc.recurring_failure_mode: an observation not taken is unobserved, never empty). The dead-
+// incarnation SELECTION LOGIC, including the current-incarnation guard, IS exercised through the real
+// jit_dead_registration_sweep entry by the claim witness -- that is the executed evidence for this rung, not the
+// production dispatch (gunbc.design_argument::guarantee_ladder: the reported rung equals the rung executed evidence
+// establishes).
+fn jit_dead_sweep_no_current_observed() -> List<JitCurrentIncarnation> {
+  []
+}
+
+fn jit_dead_sweep_refusal_text(refusal: JitDeadSweepRefusal) -> String {
+  match refusal {
+    SweepRosterIncomplete { observed_count: observed, authority_total: total } =>
+      concat("partial roster read: observed ", to_string(observed), " of ", to_string(total), " -- refusing, a partial roster is never a clean sweep")
+    SweepRosterUnavailable { reason: reason } => concat("roster read unavailable: ", reason)
+    SweepHostSlotsUnresolved { host: host } => concat("no committed slots resolved for host ", host as String, " -- refusing rather than reporting a clean roster it never enumerated")
+  }
+}
+
+// THE UNOBSERVED-DEAD DISCLOSURE. A zero selected-count is NOT a clean result while offline JIT rows of this host are
+// preserved because their slot unit's MainPID was never observed. Those rows are exactly what the dead-incarnation
+// arm retires; until the dispatch supplies observed MainPIDs (the named trigger: the host unit-MainPID read, taken
+// over the host transport in srv4's rename window), the arm reads them as UNOBSERVED -- never as zero. Surfacing the
+// count here is what stops the dry run from reporting a false clean for the population it was built to sweep
+// (gunbc.recurring_failure_mode: an observation you did not take is unobserved, never empty).
+fn jit_dead_sweep_unobserved_line(unobserved: Int) -> List<String> {
+  if unobserved > 0 {
+    ["  DEAD-ARM UNOBSERVED: \{to_string(unobserved)} offline JIT row(s) of this host whose slot-unit MainPID was not observed are PRESERVED, not confirmed live -- this is NOT a clean zero; the dead-incarnation arm fires only when the dispatch supplies observed MainPIDs (named trigger: the host unit-MainPID read)\n"]
+  } else {
+    []
+  }
+}
+
+// THE DRY-RUN REPORT LINES: exactly the rows that would be deleted, one line each, then the counts by host. The wet
+// arm deletes exactly these rows, so what the dry run records is what the wet run would remove -- one list, two
+// readings.
+fn jit_dead_sweep_report_lines(host: HostIdentity, sweep: JitDeadSweep) -> List<String> {
+  match sweep {
+    JitDeadSweepSelected { host: h, selected: selected, preserved: preserved, counts: counts } =>
+      concat(
+        ["jit-dead-sweep host=\{h} selected=\{to_string(length(selected))} preserved=\{to_string(length(preserved))}\n"],
+        concat(
+          map(selected, r => concat("  would-delete id=\{to_string(r.runner_id)} name=\{r.name as String}\n")),
+          concat(
+            map(counts, c => concat("  count-by-host host=\{c.host as String} selected=\{to_string(c.selected)}\n")),
+            // THE UNOBSERVED-DEAD DISCLOSURE: a zero selected-count is NOT a clean result while offline JIT rows of
+            // this host are preserved because their slot unit's MainPID was never observed. Those rows are exactly
+            // what the dead-incarnation arm retires; until the dispatch supplies observed MainPIDs (the named trigger:
+            // the host unit-MainPID read, taken over the host transport in the rename window), the arm reads them as
+            // unobserved -- never as zero. (gunbc.recurring_failure_mode: an observation you did not take.)
+            jit_dead_sweep_unobserved_line(unobserved: jit_sweep_unobserved_dead_population(preserved: preserved)),
+          ),
+        ),
+      )
+    JitDeadSweepRefused { refusal: refusal } => [concat("jit-dead-sweep host=\{host} REFUSED: ", jit_dead_sweep_refusal_text(refusal: refusal), "\n")]
+  }
+}
+
+fn jit_dead_sweep_all_deregistered(outcomes: List<JitDeregistration>) -> Bool {
+  fold(outcomes, init: true, f: (acc, o) => acc && jit_dead_sweep_deregistered(outcome: o))
+}
+
+fn jit_dead_sweep_deregistered(outcome: JitDeregistration) -> Bool {
+  match outcome {
+    JitRunnerDeregistered { receipt: _ } => true
+    JitDeregistrationRefused { subject: _, exit: _, refusal: _ } => false
+  }
+}
+
+// MINT ONE SEALED RECOVERED SUBJECT PER SELECTED ROW, through gunbc.runner.runner_jit_deregistration's sole
+// recovered-subject mint (admitted only here). If the credential lacks an installation for even one row the whole
+// set reads none -- the wet run then fails closed rather than deleting a subset.
+fn jit_dead_sweep_subjects(
+  organization: GitHubOrganizationRef,
+  selected: List<JitDeadRow>,
+  authority: GitHubCredentialAuthority,
+) -> List<JitDeregistrationSubject>? {
+  fold(selected, init: Present { value: [] } as List<JitDeregistrationSubject>?, f: (acc, row) =>
+    match acc {
+      Absent => none
+      Present { value: subjects } =>
+        match jit_dead_sweep_recovered_subject(organization: organization, name: JitRunnerName { value: row.name }, authority: authority) {
+          Absent => none
+          Present { value: recovered } =>
+            Present { value: concat(subjects, [RecoveredReservedServiceRegistration { recovered: recovered }]) }
+        }
+    }
+  )
+}
+
+// DELETE THROUGH THE ONE EXISTING ROUTE, then the route's own readback re-reads. ensure_jit_runner_deregistered
+// lists by name, deletes the matching ids, and re-lists -- the re-read is inside the route, not a second client here.
+fn jit_dead_sweep_deregister(
+  subjects: List<JitDeregistrationSubject>,
+  host: HostIdentity,
+  token: ControllerInstallationToken,
+  control_plane: GitHubAppControlPlaneState,
+) -> List<JitDeregistration> uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_apply"),
+] {
+  map(subjects, subject => ensure_jit_runner_deregistered(
+    token: token,
+    authority: sweep_authority(),
+    control_plane: control_plane,
+    subject: subject,
+    exit: SlotSweptDeadRegistration { host: host, reason: "retired by the JIT dead-registration sweep" as NonEmptyStr },
+  ))
+}
+
+// THE PLAN OVER THE COMPLETE ROSTER. One read, host-generic inputs, the sweep's own completeness refusal.
+fn jit_dead_sweep_plan(
+  host: HostIdentity,
+  current: List<JitCurrentIncarnation>,
+  retired_prefixes: List<NonEmptyStr>,
+  token: ControllerInstallationToken,
+) -> JitDeadSweep {
+  let organization = github_organization_ref()
+  let evidence = organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token).evidence
+  jit_dead_registration_sweep(
+    host: host,
+    slots: jit_dead_sweep_slots_for_host(host: host),
+    current: current,
+    retired_prefixes: retired_prefixes,
+    evidence: evidence,
+  )
+}
+
+// THE DRY RUN: read the complete roster, plan, write the receipt listing exactly what would be deleted with counts
+// by host. Requests no deletion. A refused plan fails the run (it is never reported as a clean sweep).
+fn jit_dead_sweep_dry_run_write(
+  host: HostIdentity,
+  current: List<JitCurrentIncarnation>,
+  retired_prefixes: List<NonEmptyStr>,
+  token: ControllerInstallationToken,
+) -> ProcessExit uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_dry_run_under_staged_key"),
+] {
+  let sweep = jit_dead_sweep_plan(host: host, current: current, retired_prefixes: retired_prefixes, token: token)
+  let content = join(jit_dead_sweep_report_lines(host: host, sweep: sweep), "")
+  let wrote = Filesystem.Write(path: jit_dead_sweep_dry_run_receipt_path, content: content)
+  match sweep {
+    JitDeadSweepRefused { refusal: _ } =>
+      if wrote.success { exit_failure(reason: jit_dead_sweep_refusal_of(sweep: sweep)) } else { exit_failure(reason: concat("jit-dead-sweep dry run: receipt write refused: ", wrote.error)) }
+    JitDeadSweepSelected { host: _, selected: _, preserved: _, counts: _ } =>
+      if wrote.success { ExitSuccess } else { exit_failure(reason: concat("jit-dead-sweep dry run: receipt write refused: ", wrote.error)) }
+  }
+}
+
+fn jit_dead_sweep_refusal_of(sweep: JitDeadSweep) -> String {
+  match sweep {
+    JitDeadSweepRefused { refusal: refusal } => jit_dead_sweep_refusal_text(refusal: refusal)
+    JitDeadSweepSelected { host: _, selected: _, preserved: _, counts: _ } => "not refused"
+  }
+}
+
+// THE WET RUN: same plan, then delete every selected row through the route and re-read. Gated (the caller refuses
+// while gated). A mint that cannot produce every subject, or any undeleted row, fails the run.
+fn jit_dead_sweep_apply(
+  host: HostIdentity,
+  current: List<JitCurrentIncarnation>,
+  retired_prefixes: List<NonEmptyStr>,
+  token: ControllerInstallationToken,
+  control_plane: GitHubAppControlPlaneState,
+) -> ProcessExit uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_wet_under_staged_key"),
+] {
+  let organization = github_organization_ref()
+  let sweep = jit_dead_sweep_plan(host: host, current: current, retired_prefixes: retired_prefixes, token: token)
+  match sweep {
+    JitDeadSweepRefused { refusal: refusal } => exit_failure(reason: jit_dead_sweep_refusal_text(refusal: refusal))
+    JitDeadSweepSelected { host: _, selected: selected, preserved: _, counts: _ } =>
+      match jit_dead_sweep_subjects(organization: organization, selected: selected, authority: sweep_authority()) {
+        none => exit_failure(reason: "jit-dead-sweep: the controller installation credential could not be held for every selected registration; nothing deleted")
+        Present { value: subjects } => {
+          let outcomes = jit_dead_sweep_deregister(subjects: subjects, host: host, token: token, control_plane: control_plane)
+          let content = join(jit_dead_sweep_report_lines(host: host, sweep: sweep), "")
+          let wrote = Filesystem.Write(path: jit_dead_sweep_wet_receipt_path, content: content)
+          if !wrote.success {
+            exit_failure(reason: concat("jit-dead-sweep: receipt write refused: ", wrote.error))
+          } else if jit_dead_sweep_all_deregistered(outcomes: outcomes) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: "jit-dead-sweep: at least one selected registration was not deregistered; see the receipt")
+          }
+        }
+      }
+  }
+}
+
+// THE SHARED STAGED-KEY ARM: stage the gunbai-ci App key from the run's WIF, mint the installation token, do the
+// work, and remove the key on every arm (a key that stayed fails the run).
+fn jit_dead_sweep_dry_run_under_staged_key(
+  host: HostIdentity,
+  current: List<JitCurrentIncarnation>,
+  retired_prefixes: List<NonEmptyStr>,
+  wif: Secret,
+  key_path: NonEmptyStr,
+) -> ProcessExit uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_dry_run_wet"),
+] {
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause: cause } => exit_failure(reason: cause)
+    ControllerKeyStaged { key: key } => {
+      let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "jit-dead-sweep dry run: the gunbai-ci installation token was not minted")
+        ControllerTokenMinted { token: token } =>
+          jit_dead_sweep_dry_run_write(host: host, current: current, retired_prefixes: retired_prefixes, token: token)
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => exit_failure(reason: cause)
+        Absent => exit
+      }
+    }
+  }
+}
+
+fn jit_dead_sweep_wet_under_staged_key(
+  host: HostIdentity,
+  current: List<JitCurrentIncarnation>,
+  retired_prefixes: List<NonEmptyStr>,
+  wif: Secret,
+  key_path: NonEmptyStr,
+) -> ProcessExit uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_wet"),
+] {
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause: cause } => exit_failure(reason: cause)
+    ControllerKeyStaged { key: key } => {
+      let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "jit-dead-sweep: the gunbai-ci installation token was not minted")
+        ControllerTokenMinted { token: token } => {
+          let control_plane = observe_github_app_control_plane(
+            app: gunbai_ci_declared,
+            key: key,
+            installation: gunbai_ci_declared_installation_id,
+            required: gunbai_ci_registration_goal.required_permissions,
+            reason: "the JIT dead-registration sweep observes the gunbai-ci App control plane before deregistering dead JIT registrations" as NonEmptyStr,
+          )
+          jit_dead_sweep_apply(host: host, current: current, retired_prefixes: retired_prefixes, token: token, control_plane: control_plane)
+        }
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => exit_failure(reason: cause)
+        Absent => exit
+      }
+    }
+  }
+}
+
+// THE DISPATCH INPUTS, read once. The host and the retired prefix are the plan's inputs (the rename's old name is an
+// input, never a literal); a host that cannot be named is a refusal. `current` (the observed per-slot MainPIDs) is a
+// field so the pure plan/report/apply entry points can take it directly, but the DISPATCH SUPPLIES NONE -- see
+// jit_dead_sweep_no_current_observed: the dead-incarnation arm's live observation is its P9 named trigger, unbuilt in
+// P8d. Only a future caller that wires that host read fills this field; the executing dispatch route always leaves it
+// empty, so every offline non-current row reads MainPidUnreadable and is preserved as UNOBSERVED (never a clean zero).
+type JitDeadSweepDispatch {
+  host: HostIdentity
+  current: List<JitCurrentIncarnation>
+  retired_prefixes: List<NonEmptyStr>
+  temp: String
+}
+
+// The dispatch read result: a malformed input REFUSES (a located reason, exit non-zero), it is never reduced to a
+// narrower sweep that could report a misleadingly clean result. The format itself is decoded by the pure
+// jit_dead_sweep_parse_dispatch_input (in gunbc.runner.runner_jit_dead_sweep), tested there.
+type JitDeadSweepReadResult
+  = Refused { reason: NonEmptyStr }
+  | Provided { dispatch: JitDeadSweepDispatch }
+
+fn jit_dead_sweep_read_dispatch() -> JitDeadSweepReadResult {
+  let raw = actions_variable_trimmed(name: jit_dead_sweep_host_env_name as NonEmptyStr)
+  let parsed = jit_dead_sweep_parse_dispatch_input(raw: raw)
+  // The retired prefix has EXACTLY ONE source: the token packed into the single dispatch input ("host:retired"),
+  // decoded once by jit_dead_sweep_parse_dispatch_input. An earlier separate-env override (GUNBC_JIT_DEAD_SWEEP_
+  // RETIRED_PREFIX) was removed: a second place that independently decided the retired prefix is a single_authority
+  // fork, and being settable by any stray runner env it could silently replace the operator's typed prefix in a
+  // DELETING sweep -- and no executing route ever set it (consumption). All lets are at body level: a statement in a
+  // match arm silently drops its continuation (recurring_failure_mode: match_arm_statement_body_lowers_to_its_first_expression).
+  let temp = actions_variable_trimmed(name: "RUNNER_TEMP" as NonEmptyStr)
+  let retired_prefix = match parsed {
+    Parsed { host: _, retired_token: t } => t
+    Malformed { reason: _ } => ""
+  }
+  match parsed {
+    Malformed { reason: reason } => Refused { reason: reason }
+    Parsed { host: host, retired_token: _ } => Provided {
+      dispatch: JitDeadSweepDispatch {
+        host: host as HostIdentity,
+        // THE DEAD ARM'S NAMED TRIGGER. The dispatch carries no observed MainPIDs: the dead-incarnation arm reads
+        // every offline JIT row as MainPidUnreadable -> PRESERVED (fail closed) and the report surfaces the population
+        // as UNOBSERVED, never as a clean zero. The arm fires only when a real caller (the wet path in srv4's rename
+        // window, P9) supplies `current` from the host unit-MainPID read -- see the module header.
+        current: jit_dead_sweep_no_current_observed(),
+        // Normalised through the slot-instance authority so it matches exactly the name the renamed-away runners
+        // registered under and can never be accidentally broad (a bare "srv4" would match the sibling "srv40-*").
+        retired_prefixes: if retired_prefix == "" { [] } else { [jit_retired_prefix_of(old_name: retired_prefix) as NonEmptyStr] },
+        temp: temp,
+      }
+    }
+  }
+}
+
+// THE DRY RUN MODE ENTRY (read-only).
+fn jit_dead_sweep_dry_run_wet() -> ProcessExit uses net: Network {
+  match jit_dead_sweep_read_dispatch() {
+    Refused { reason: reason } => exit_failure(reason: concat("jit-dead-sweep dry run refused a malformed dispatch input: ", reason as String))
+    Provided { dispatch: dispatch } =>
+      jit_dead_sweep_dry_run_under_staged_key(
+        host: dispatch.host,
+        current: dispatch.current,
+        retired_prefixes: dispatch.retired_prefixes,
+        wif: actions_variable_trimmed(name: jit_dead_sweep_wif_access_token_env_name as NonEmptyStr) as Secret,
+        key_path: concat(dispatch.temp, "/", jit_dead_sweep_key_file_name) as NonEmptyStr,
+      )
+  }
+}
+
+// THE DELETING MODE ENTRY. Gated: while the wet arm is gated it refuses without reading or deleting; only the
+// operator's go admits it (its first real use is srv4's rename window, P9, scheduled by the program owner).
+fn jit_dead_sweep_wet() -> ProcessExit uses net: Network {
+  match jit_dead_sweep_apply_standing {
+    JitDeadSweepApplyGated { reason: reason } => exit_failure(reason: reason)
+    JitDeadSweepApplyAdmitted => match jit_dead_sweep_read_dispatch() {
+      Refused { reason: reason } => exit_failure(reason: concat("jit-dead-sweep refused a malformed dispatch input: ", reason as String))
+      Provided { dispatch: dispatch } =>
+        jit_dead_sweep_wet_under_staged_key(
+          host: dispatch.host,
+          current: dispatch.current,
+          retired_prefixes: dispatch.retired_prefixes,
+          wif: actions_variable_trimmed(name: jit_dead_sweep_wif_access_token_env_name as NonEmptyStr) as Secret,
+          key_path: concat(dispatch.temp, "/", jit_dead_sweep_key_file_name) as NonEmptyStr,
+        )
+    }
+  }
+}
