@@ -12,7 +12,7 @@ fn planning_consolidation_row(id: String, location: String, answers: String, io:
 fn planning_consolidation_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [
-      p(text: "**Goal:** decide, from first principles, which planning concerns exist and give each exactly one home, so that a plan, a unit of work, its state, its decisions and its debt cannot be stated twice or drift apart. The claim that a plan has one home, `gunbc.design_argument::planning_has_one_home`, is proposed in #16285 and pending; until it lands this plan rests on `gunbc.design_argument::single_authority` and `gunbc.design_argument::atomic_concern`. Either way, this plan finds out what \"a plan\" decomposes into before that claim is applied further."),
+      p(text: "**Goal:** decide, from first principles, which planning concerns exist and give each exactly one home, so that a plan, a unit of work, its state, its decisions and its debt cannot be stated twice or drift apart. The claim that a plan has one home, `gunbc.design_argument::planning_has_one_home`, landed in #16285 (commit 0cc20e4); this plan rests on it alongside `gunbc.design_argument::single_authority` and `gunbc.design_argument::atomic_concern`. Either way, this plan finds out what \"a plan\" decomposes into before that claim is applied further."),
       p(text: "**Operator direction (2026-11-10, session bright-ibex-807):** the plans and the roadmap must be consolidated, from first principles; first write up the inventory and a proposed decomposition for the operator to rule on. The operator ruled D1 to D3 on 2026-11-10 (section 5), and section 3 states the ruled homes; D4 to D6 are open."),
     ]),
     h2(text: "1. Why this was missed"),
