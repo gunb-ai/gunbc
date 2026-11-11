@@ -468,8 +468,15 @@ fn host_runner_memory_envelope_resolution_with_serving(host: HostIdentity, servi
 }
 
 fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
-  match host_memory_reserved(host: f.host) {
-    Present { value: serving } => runner_memory_envelope_of_with_serving(f: f, serving: serving)
+  runner_memory_envelope_of_optional(f: f, serving: host_memory_reserved(host: f.host))
+}
+
+// The Absent (unmeasured-reservation) refusal, factored out so a WITNESS can drive it with an EXPLICIT Absent and
+// prove the fail_closed arm directly -- without needing a real host to carry an unmeasured roster row (butch's
+// production row is B4b's). A Present charge flows to the same deriving path the roster-fed call uses.
+fn runner_memory_envelope_of_optional(f: HostWidthFacts, serving: Optional<ByteSize>) -> RunnerMemoryEnvelope {
+  match serving {
+    Present { value: s } => runner_memory_envelope_of_with_serving(f: f, serving: s)
     Absent => RunnerMemoryEnvelopeUnestablished {
       cause: "a serving replica on this host carries an unmeasured memory reservation: the runner width cannot be certified until the per-engine reservation is measured (gunbc.serving.serving_reservation ServingMemoryUnread); charging it a fabricated figure -- or nothing -- would understate the host and overbook CI"
     }

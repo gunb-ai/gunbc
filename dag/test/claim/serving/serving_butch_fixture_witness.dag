@@ -1,47 +1,57 @@
 module test.claim.serving.serving_butch_fixture_witness
 
-// THE FIRST REAL SERVING ROW, EXECUTED: butch (srv14), the operator's hand-deployed two-engine host (2026-11-10).
-// srv3 and srv4 run one engine each; butch runs TWO, so it is the first row that proves the N-replica model --
-// one host, priced once per replica, no per-host fork. This witness drives gunbc.serving.serving_reservation and
-// says the one thing the kept reservation model can be asked about butch, discriminating:
+// THE BUTCH-SHAPE FIXTURE, EXECUTED ON A SYNTHETIC REPLICA SET. butch (srv14) -- the operator's hand-deployed
+// two-engine host (2026-11-10, operator facts msg_cc2ab16d) -- is the shape that first proves the N-replica model:
+// one host, priced ONCE PER REPLICA, no per-host fork. srv14's PRODUCTION reservation row is B4b's (it is also a
+// committed runner host via #16313, and its per-engine memory is unmeasured -- see the roster note in
+// gunbc.serving.serving_reservation). So this witness does NOT read srv14 from the roster; it builds the OPERATOR'S
+// STATED butch shape as a synthetic replica set and drives the PURE folds over it, discriminating the one thing the
+// reservation model can be asked about that shape:
 //
-//   TWO REPLICAS, EACH PRICED PER REPLICA. butch's two cpusets (0-39, 40-79) are AFFINITY -- disjoint, bookable,
-//   so the runner keeps every core (host_cores_withheld is zero, the affinity price), and because its per-engine
-//   MEMORY was never measured the width FAILS CLOSED on it (host_memory_reserved returns Absent, not a fabricated
-//   zero). A model that summed slots per host, priced an affinity pin as exclusive, or invented a memory figure
-//   fails here.
+//   TWO REPLICAS, EACH PRICED PER REPLICA. The two cpusets (0-39, 40-79) are AFFINITY -- disjoint, bookable -- so
+//   the fold withholds NO cores (the affinity price), and because the per-engine MEMORY was never measured the fold
+//   returns Absent (the width would fail CLOSED, not charge a fabricated zero). A model that summed slots per host,
+//   priced an affinity pin as exclusive, or invented a memory figure fails here.
 //
-// The card/power-cap, API-key and Strata-release facts B4a once modelled for butch are NOT here: nothing in
-// production consumes them yet, so they are B4b's, re-added WITH the deploy that reads them. (The operator's
-// facts -- four A2 cards, 35 W, ports 18081/18082, the shared ~/strata-pool/api_key -- are recorded for B4b's
-// fixtures; modelling them with no consumer would be a guess.)
+// The card/power-cap, API-key and Strata-release facts (four A2 cards, 35 W, ports 18081/18082, ~/strata-pool/api_key)
+// are recorded for B4b's fixtures; nothing in production consumes them yet, so modelling them here would dangle.
 //
 // Run (the whole floor is CI's job; this file runs alone):
-//   claim_batch --hermetic --source-root dag --source-root src/v2 \
+//   claim_batch --hermetic --source-root dag --source-root src \
 //     --entry dag/test/claim/serving/serving_butch_fixture_witness.dag \
-//     --functions witness_butch_runs_two_priced_replicas_whose_affinity_pins_are_disjoint
-import std.types { Bool, List }
+//     --functions witness_butch_shape_runs_two_priced_replicas_whose_affinity_pins_are_disjoint
+import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.measure { hardware_thread_count_value }
-import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.serving_reservation {
-  host_reservations_for, host_memory_reserved, host_cores_withheld_from_runner,
+  cores_withheld_from_replicas, memory_reserved_by_replicas,
   ReplicaReservation, CpuRange, CpuAffinity, CpuRanges,
 }
 
-fn butch_replicas() -> List<ReplicaReservation> {
-  match host_reservations_for(operator_host_srv14) {
-    Present { value: r } => r.replicas
-    Absent => []
-  }
+// THE OPERATOR'S butch SHAPE (msg_cc2ab16d), SYNTHETIC -- not read from srv14's roster (which is B4b's). Two engines,
+// cpuset 0-39 and 40-79 as AFFINITY pins, per-engine memory UNMEASURED (B4b reads it from the running box).
+fn butch_shape() -> List<ReplicaReservation> {
+  [
+    ReplicaReservation {
+      // cpuset 0-39 is an operator-stated AFFINITY pin (butch-a CPUs 0-39).
+      cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: 40 } ] } } },
+      memory: ServingMemoryUnread { reason: "synthetic butch-shape fixture: operator stated cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
+    },
+    ReplicaReservation {
+      // cpuset 40-79 is an operator-stated AFFINITY pin (butch-b CPUs 40-79).
+      cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: 40 } ] } } },
+      memory: ServingMemoryUnread { reason: "synthetic butch-shape fixture: operator stated cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
+    },
+  ]
 }
 
-// TWO REPLICAS, EACH PRICED; AFFINITY PINS DISJOINT AND THE RUNNER KEEPS EVERY CORE.
-test fn witness_butch_runs_two_priced_replicas_whose_affinity_pins_are_disjoint() -> Bool {
-  let reps = butch_replicas()
+// TWO REPLICAS, EACH PRICED; AFFINITY PINS DISJOINT AND THE RUNNER KEEPS EVERY CORE; UNREAD MEMORY FAILS CLOSED.
+test fn witness_butch_shape_runs_two_priced_replicas_whose_affinity_pins_are_disjoint() -> Bool {
+  let reps = butch_shape()
   let two = count(reps) == 2
   // butch-a is pinned 0-39 and butch-b 40-79, each an AFFINITY arm (a CpuExclusive would not match these arms,
-  // and would price cores away -- contradicted by cores_whole below). The operator's two-engine shape, one row.
+  // and would price cores away -- contradicted by cores_whole below). The operator's two-engine shape, one fold.
   let butch_a_pin = any(reps, r => match r.cpu {
     Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => any(rs, rg => rg.first == 0 && rg.width == 40)
     _ => false
@@ -51,15 +61,16 @@ test fn witness_butch_runs_two_priced_replicas_whose_affinity_pins_are_disjoint(
     _ => false
   })
   // DISJOINT: the lower pin ends at 39 and the upper starts at 40, and no single replica spans the seam -- no
-  // replica's range has first <= 39 and last >= 40. (A collapsed/host-pinned model could not keep both pins.)
+  // replica's range has first <= 39 and first+width >= 41. (A collapsed/host-pinned model could not keep both pins.)
   let seam_open = all(reps, r => match r.cpu {
     Present { value: CpuAffinity { set: CpuRanges { ranges: rs } } } => all(rs, rg => !(rg.first <= 39 && rg.first + rg.width >= 41))
     _ => true
   })
-  // AFFINITY leaves the runner whole: butch withholds no cores. Its memory is UNMEASURED, so host_memory_reserved
-  // returns Absent -- the width fails CLOSED rather than charge butch a fabricated figure.
-  let cores_whole = hardware_thread_count_value(t: host_cores_withheld_from_runner(operator_host_srv14)) == 0
-  let memory_fail_closed = match host_memory_reserved(operator_host_srv14) {
+  // AFFINITY leaves the runner whole: the fold withholds no cores. The memory is UNMEASURED, so the fold returns
+  // Absent -- the width would fail CLOSED rather than charge a fabricated figure. Both are the pure folds, so this
+  // witnesses the mechanism without a real host occupying the production roster.
+  let cores_whole = hardware_thread_count_value(t: cores_withheld_from_replicas(replicas: reps)) == 0
+  let memory_fail_closed = match memory_reserved_by_replicas(replicas: reps) {
     Absent => true
     Present { value: _ } => false
   }

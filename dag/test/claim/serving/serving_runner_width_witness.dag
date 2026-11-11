@@ -25,10 +25,11 @@ module test.claim.serving.serving_runner_width_witness
 import std.types { Bool }
 import std.measure { byte_size, byte_size_count, hardware_thread_count, hardware_thread_count_value }
 import std.optional { Present, Absent }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv14 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.runner.runner_slot_allocation {
   RunnerMemoryEnvelopeDerived, RunnerMemoryEnvelopeUnestablished,
   host_runner_memory_envelope_resolution, host_runner_memory_envelope_resolution_with_serving,
+  runner_memory_envelope_of_optional, host_width_facts,
   cpu_width_of_threads_withheld, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted,
 }
 import gunbc.serving.serving_reservation { host_memory_reserved, host_cores_withheld_from_runner }
@@ -71,8 +72,11 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
     RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
     RunnerMemoryEnvelopeUnestablished { cause: _ } => 0 - 1
   }
-  // (d) BUTCH FAILS CLOSED: an unmeasured per-engine reservation makes its width Unestablished, not a zero charge.
-  let butch_closed = match host_runner_memory_envelope_resolution(host: operator_host_srv14) {
+  // (d) AN UNMEASURED SERVING RESERVATION FAILS THE WIDTH CLOSED -- it is NOT booked as zero; the width refuses.
+  //     Driven with an EXPLICIT Absent charge so it is witnessed generically without a real host carrying an
+  //     unmeasured roster row (butch's production row is B4b's). srv3 is only the carrier for host facts; the charge
+  //     is SUPPLIED (not a roster lookup) -- turning Absent into a zero charge would flip this arm to Derived & fail.
+  let unread_closed = match runner_memory_envelope_of_optional(f: host_width_facts(host: operator_host_srv3), serving: Absent) {
     RunnerMemoryEnvelopeUnestablished { cause: _ } => true
     RunnerMemoryEnvelopeDerived { bytes: _ } => false
   }
@@ -83,7 +87,7 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
     && srv3_real == base_bytes - srv3_charge
     && prod_charge_is_zero
     && prod_bytes > 0
-    && butch_closed
+    && unread_closed
 }
 
 // CPU: AFFINITY LEAVES THE WIDTH WHOLE, EXCLUSIVE PAYS ITS CORES, OVER-COMMIT REFUSES. The axis is fed by the

@@ -60,7 +60,7 @@ import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
@@ -228,32 +228,13 @@ data serving_host_reservations: List<ServingHostReservation> = [
       },
     ],
   },
-  // BUTCH (srv14) -- THE FIRST REAL ROW, AND THE FIRST HOST THAT RUNS TWO REPLICAS. This is the operator's
-  // hand-deployed serving host (2026-11-10, operator facts msg_cc2ab16d): strata-pool@a (butch-a) and
-  // strata-pool@b (butch-b), one engine each. Its cpusets are AFFINITY (the operator's word, a read this model
-  // cites rather than invents): 0-39 pins butch-a and 40-79 pins butch-b, and because they are AFFINITY they
-  // leave the cores bookable, so butch gives the runner back no cores -- the N-per-host price the per-host code
-  // could not express. Its per-engine MEMORY is HONESTLY UNMEASURED: the operator gave cpusets and cards but NOT
-  // a per-engine memory figure, so B4a refuses to invent one -- the row says ServingMemoryUnread and the width
-  // derivation FAILS CLOSED on butch until B4b reads the reservation from the box (correct: an unmeasured
-  // reservation must not be charged as zero). Its GPU cards + 35 W cap, ports, router cap (2) and sticky count
-  // (4) are NOT reservations this derivation folds -- the GPU/power facts re-enter with B4b's GPU-width consumer
-  // and the port/router facts with the router's own rows (RouterDevReplicaNaming / RouterDevUpstream).
-  ServingHostReservation {
-    host: operator_host_srv14,
-    replicas: [
-      ReplicaReservation {
-        // cpuset 0-39 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-a CPUs 0-39), cited not invented.
-        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 0, width: 40 } ] } } },
-        memory: ServingMemoryUnread { reason: "operator stated butch-a cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
-      },
-      ReplicaReservation {
-        // cpuset 40-79 is an operator-stated AFFINITY pin (msg_cc2ab16d: butch-b CPUs 40-79), cited not invented.
-        cpu: Present { value: CpuAffinity { set: CpuRanges { ranges: [ CpuRange { first: 40, width: 40 } ] } } },
-        memory: ServingMemoryUnread { reason: "operator stated butch-b cpusets/cards (msg_cc2ab16d), not a per-engine memory figure; B4b reads it from the running box" as NonEmptyStr },
-      },
-    ],
-  },
+  // BUTCH (srv14) -- ITS PRODUCTION SERVING ROW IS B4b's, NOT B4a's (brief: "butch's own rows and live deploy
+  // are B4b (cool-lark-40); you provide the generic model"). srv14 is now ALSO a committed runner host (main
+  // #16313), and butch's per-engine memory is honestly UNMEASURED, so a production row here would make the width
+  // derivation fail closed on srv14 and break the runner-width conservation wall for a host #16313 booked as a
+  // plain runner. B4b lands butch's row once its per-engine memory is read from the box AND srv14's runner/serving
+  // split is reconciled. The N-replica / affinity-vs-exclusive / unread-fail-closed MECHANISM srv14 would witness
+  // is witnessed generically on a synthetic replica fixture (serving_butch_fixture_witness), not on a real host.
 ]
 
 fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
@@ -261,6 +242,16 @@ fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation>
     Present { value: r } => Present { value: r }
     Absent => Absent
   }
+}
+
+// THE PURE FOLD OVER A REPLICA SET (no roster lookup): the cores the set withholds from the runner. The host-keyed
+// wrapper below reads the roster and calls this; a WITNESS calls it directly with a synthetic replica fixture, so the
+// affinity-vs-exclusive distinction is witnessed without a real host occupying the production roster.
+fn cores_withheld_from_replicas(replicas: List<ReplicaReservation>) -> HardwareThreadCount {
+  hardware_thread_count(count: fold(replicas, init: 0, f: (acc, c) => acc + match c.cpu {
+    Present { value: cpu } => cpu_reservation_excluded_cores(cpu)
+    Absent => 0
+  }))
 }
 
 // HOW MANY CORES A SERVING HOST WITHHOLDS FROM THE RUNNER: the fold of every replica's exclusive cores only, in the
@@ -271,14 +262,28 @@ fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation>
 // thread count is lifted into the carrier. An affinity-pinned host, or a host whose engine cpuset is unread (no CPU
 // reservation), withholds zero cores -- which is the witness, stated.
 fn host_cores_withheld_from_runner(host: HostIdentity) -> HardwareThreadCount {
-  let cores = match host_reservations_for(host) {
-    Present { value: r } => fold(r.replicas, init: 0, f: (acc, c) => acc + match c.cpu {
-      Present { value: cpu } => cpu_reservation_excluded_cores(cpu)
-      Absent => 0
-    })
-    Absent => 0
+  match host_reservations_for(host) {
+    Present { value: r } => cores_withheld_from_replicas(replicas: r.replicas)
+    Absent => hardware_thread_count(count: 0)
   }
-  hardware_thread_count(count: cores)
+}
+
+// THE PURE FOLD OVER A REPLICA SET (no roster lookup): the memory the set commits. The running total turns Absent as
+// soon as ANY replica is unmeasured and stays Absent -- the unmeasured state propagates through the fold rather than
+// being caught by a separate predicate afterwards. The host-keyed wrapper reads the roster; a WITNESS calls this
+// directly with a synthetic fixture, so the unread-fails-closed behaviour is witnessed without a real host in the roster.
+fn memory_reserved_by_replicas(replicas: List<ReplicaReservation>) -> Optional<ByteSize> {
+  fold(
+    map(replicas, c => memory_reservation_bytes(c.memory)),
+    init: Present { value: byte_size(count: 0) },
+    f: (acc, charge) => match acc {
+      Absent => Absent
+      Present { value: a } => match charge {
+        Absent => Absent
+        Present { value: b } => Present { value: measure_add(a, b) }
+      }
+    }
+  )
 }
 
 // HOW MUCH MEMORY A SERVING HOST COMMITS TO ITS SERVING REPLICAS, for EVERY serving host -- not the prod-role
@@ -291,19 +296,6 @@ fn host_cores_withheld_from_runner(host: HostIdentity) -> HardwareThreadCount {
 fn host_memory_reserved(host: HostIdentity) -> Optional<ByteSize> {
   match host_reservations_for(host) {
     Absent => Present { value: byte_size(count: 0) }
-    // Fold the per-replica Optional charges with an accumulating Optional: the running total turns Absent as
-    // soon as ANY replica is unmeasured and stays Absent -- the unmeasured state propagates through the fold
-    // rather than being caught by a separate predicate afterwards.
-    Present { value: r } => fold(
-      map(r.replicas, c => memory_reservation_bytes(c.memory)),
-      init: Present { value: byte_size(count: 0) },
-      f: (acc, charge) => match acc {
-        Absent => Absent
-        Present { value: a } => match charge {
-          Absent => Absent
-          Present { value: b } => Present { value: measure_add(a, b) }
-        }
-      }
-    )
+    Present { value: r } => memory_reserved_by_replicas(replicas: r.replicas)
   }
 }
