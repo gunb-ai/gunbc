@@ -220,9 +220,9 @@ fn graph_from(
 }
 
 // PRODUCTION-ROUTE EQUIVALENCE. `gunbc run` types an entry through v1.compiler.infer
-// `typecheck_scoped` (src/v1/04_infer.dag @22042) with `DeclarationScope::ReachableFrom { requested }`;
+// `typecheck_scoped` (src/v1/04_infer.dag, `fn typecheck_scoped`) with `DeclarationScope::ReachableFrom { requested }`;
 // the demanded realization AND the service census both come from the graph the pass is handed
-// (@22047, build_symbol_index_census over graph.modules -- the same reason a hand-assembled
+// (`build_symbol_index_census` over graph.modules -- the same reason a hand-assembled
 // empty-symbol-index pass could see a registry the production pass does not). Handing BOTH scopes the
 // SAME graph isolates the scope itself: any diagnostic the demanded pass adds that the
 // EveryDeclaration pass does not is a read the realization wave dropped, not a graph difference.
@@ -555,21 +555,21 @@ fn service_op_surface_spelled_only_in_a_lambda_subject_is_realized() {
             };
             let service_realized = realization.realized.contains_key("test.RestReplay");
             // CENSUS-MEMBERSHIP DISCRIMINATOR. The corpus census (build_symbol_index_census over
-            // graph.modules, @04_infer:18815) is what feeds scope.service_registry via
-            // service_census_registry (@19891). A `gunbc run` uses --source-root dag, so dag/test IS
+            // graph.modules) is what feeds scope.service_registry via
+            // service_census_registry. A `gunbc run` uses --source-root dag, so dag/test IS
             // scanned and the probe's declaring module IS in graph.modules -- so if the census CONTAINS
             // the service yet the demanded run still refuses the op, the drop is NOT census-membership
             // (directory exclusion) but the demand-driven assembly of the registry: the op entries stop
             // reaching scope.service_registry once #16156 narrowed realization. That is the fix target.
             let census = infer::build_symbol_index_census(modules.clone(), si.clone());
             let census_has_service = census.services.contains_key("test.RestReplay");
-            // DECISIVE LEVER INSTRUMENT. `declaration_demanded` (@04_infer:17120) gates a non-function
+            // DECISIVE LEVER INSTRUMENT. `declaration_demanded` gates a non-function
             // item on `map_has(realization.realized, authored_name_at(item))`, and
-            // `realized_declaration_items` (@04_infer:21234) filters the module CONTEXT on it. If the
+            // `realized_declaration_items` filters the module CONTEXT on it. If the
             // service item's authored key is not in `realized` while the qualified spelling is, the item
-            // is filtered out of the probe module's context, `merge_scope_from_imports` (@04_infer:545)
+            // is filtered out of the probe module's context, `merge_scope_from_imports`
             // silently skips the parent entry it no longer lists, `scope.service_registry` loses the
-            // OpEntry list, and the call falls to the Primitive method-pipe (@04_infer:8542). This
+            // OpEntry list, and the call falls to the Primitive method-pipe (method_pipe_map_keys_values_fallback). This
             // instrument prints the exact item-level verdict, so the fix targets the measured link.
             let svc_probe = modules
                 .iter()
@@ -767,7 +767,7 @@ fn service_op_surface_in_the_pull_request_decode_witness_entry_is_realized() {
             let realized_bare = realization.realized.contains_key("RestReplay");
             let realized_dotted = realization.realized.contains_key("test.RestReplay");
             // CENSUS SHAPE at the witness graph: the census is computed identically in both scopes
-            // (@21984, from graph.modules) -- so if it carries the service under the dotted key WITH
+            // (from graph.modules) -- so if it carries the service under the dotted key WITH
             // the operation children, the demanded-scope refusal is the projection never consulting
             // it; if the entry or its children are absent, the census is the broken link.
             let census = infer::build_symbol_index_census(graph.modules.clone(), si.clone());
