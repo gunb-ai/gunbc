@@ -204,23 +204,49 @@ data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadA
 // closed with a located reason rather than quietly succeeding with a borrowed one — the enrollment
 // wall's own shape, applied to the budget's inputs instead of its installer.
 
+// A host whose memory numbers come from its boot capture (a census host) rather than a standing
+// measurement. Keyed by handle so the census POPULATION is explicit and a host joins by joining the
+// rows; the capture itself is read only for a host in this population, never speculatively.
+type CensusEnvelopeHostRow {
+  host: HostIdentity
+}
+
+fn census_envelope_host_rows() -> List<CensusEnvelopeHostRow> {
+  [ CensusEnvelopeHostRow { host: operator_host_mtcollins1 } ]
+}
+
+// The CI runner fixed-overhead concern keyed by the host's stable handle (R3,
+// gunbc.plans.fleet_machine_authority): one row per measured executor host carrying its own observed
+// overhead, folded by lookup, instead of an arm per machine. srv1/srv2 share the legacy-class overhead
+// and srv3/srv4 the managed-class overhead as individually justified facts about those machines. A host
+// that is neither measured nor in the census population fails closed with a typed unmeasured -- never
+// another machine's overhead. The census capture is read only when the host is in the census population.
+type MeasuredFixedOverheadRow {
+  host: HostIdentity
+  overhead: HostFixedOverhead
+}
+
+fn measured_fixed_overhead_rows() -> List<MeasuredFixedOverheadRow> {
+  [
+    MeasuredFixedOverheadRow { host: operator_host_srv1, overhead: gunbc_ci_legacy_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv2, overhead: gunbc_ci_legacy_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv3, overhead: gunbc_ci_managed_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv4, overhead: gunbc_ci_managed_host_fixed_overhead },
+    MeasuredFixedOverheadRow { host: operator_host_srv14, overhead: gunbc_ci_srv14_host_fixed_overhead },
+  ]
+}
+
 fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
-  if (host as String) == (operator_host_srv1 as String) {
-    gunbc_ci_legacy_host_fixed_overhead
-  } else if (host as String) == (operator_host_srv2 as String) {
-    gunbc_ci_legacy_host_fixed_overhead
-  } else if (host as String) == (operator_host_srv3 as String) {
-    gunbc_ci_managed_host_fixed_overhead
-  } else if (host as String) == (operator_host_srv4 as String) {
-    gunbc_ci_managed_host_fixed_overhead
-  } else if (host as String) == (operator_host_srv14 as String) {
-    gunbc_ci_srv14_host_fixed_overhead
-  } else if (host as String) == (operator_host_mtcollins1 as String) {
-    host_fixed_overhead_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
-  } else {
-    HostFixedOverheadUnmeasured {
-      reason: "host is not classified in gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
-    }
+  match filter(measured_fixed_overhead_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => r.overhead
+    Absent =>
+      match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
+        Present { value: _ } =>
+          host_fixed_overhead_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
+        Absent => HostFixedOverheadUnmeasured {
+          reason: "host is not classified in gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
+        }
+      }
   }
 }
 
@@ -349,23 +375,32 @@ data gunbc_ci_srv14_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
 // no row gets HostUsableRamUnmeasured, never another machine's figure. That is the whole rationale
 // -- lending one host's MemTotal to a second is what the retired fleet-wide bound did, and
 // gunbc_ci_conservative_lower_bound_retired_note records why it was deleted rather than loosened.
+type MeasuredUsableRamRow {
+  host: HostIdentity
+  usable_ram: HostUsableRam
+}
+
+fn measured_usable_ram_rows() -> List<MeasuredUsableRamRow> {
+  [
+    MeasuredUsableRamRow { host: operator_host_srv1, usable_ram: gunbc_ci_srv1_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv2, usable_ram: gunbc_ci_srv2_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv3, usable_ram: gunbc_ci_srv3_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv4, usable_ram: gunbc_ci_srv4_memtotal_measured },
+    MeasuredUsableRamRow { host: operator_host_srv14, usable_ram: gunbc_ci_srv14_memtotal_measured },
+  ]
+}
+
 fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
-  if (host as String) == (operator_host_srv1 as String) {
-    gunbc_ci_srv1_memtotal_measured
-  } else if (host as String) == (operator_host_srv2 as String) {
-    gunbc_ci_srv2_memtotal_measured
-  } else if (host as String) == (operator_host_srv3 as String) {
-    gunbc_ci_srv3_memtotal_measured
-  } else if (host as String) == (operator_host_srv4 as String) {
-    gunbc_ci_srv4_memtotal_measured
-  } else if (host as String) == (operator_host_srv14 as String) {
-    gunbc_ci_srv14_memtotal_measured
-  } else if (host as String) == (operator_host_mtcollins1 as String) {
-    host_usable_ram_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
-  } else {
-    HostUsableRamUnmeasured {
-      reason: "host is not classified in gunbc_ci_host_usable_ram_for" as NonEmptyStr,
-    }
+  match filter(measured_usable_ram_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => r.usable_ram
+    Absent =>
+      match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
+        Present { value: _ } =>
+          host_usable_ram_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
+        Absent => HostUsableRamUnmeasured {
+          reason: "host is not classified in gunbc_ci_host_usable_ram_for" as NonEmptyStr,
+        }
+      }
   }
 }
 
@@ -633,14 +668,15 @@ type HostMemoryObservation {
 }
 
 fn gunbc_ci_host_memory_observation_for(host: HostIdentity) -> HostMemoryObservation {
-  if (host as String) == (operator_host_mtcollins1 as String) {
-    let attempt = mtcollins1_census_envelope_attempt()
-    HostMemoryObservation {
-      usable_ram: host_usable_ram_from_census_envelope_attempt(attempt: attempt),
-      fixed_overhead: host_fixed_overhead_from_census_envelope_attempt(attempt: attempt),
+  match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: _ } => {
+      let attempt = mtcollins1_census_envelope_attempt()
+      HostMemoryObservation {
+        usable_ram: host_usable_ram_from_census_envelope_attempt(attempt: attempt),
+        fixed_overhead: host_fixed_overhead_from_census_envelope_attempt(attempt: attempt),
+      }
     }
-  } else {
-    HostMemoryObservation {
+    Absent => HostMemoryObservation {
       usable_ram: gunbc_ci_host_usable_ram_for(host: host),
       fixed_overhead: gunbc_ci_host_fixed_overhead_for(host: host),
     }

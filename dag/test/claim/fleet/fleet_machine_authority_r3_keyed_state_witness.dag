@@ -1,0 +1,57 @@
+module test.claim.fleet.fleet_machine_authority_r3_keyed_state_witness
+
+// R3 acceptance (gunbc.plans.fleet_machine_authority): per-concern keyed state folds over the
+// applicable population by the host's stable handle. A measured executor host answers from its own
+// row, and a host outside the population gets a typed not-classified / zero outcome -- never another
+// machine's figure. srv9 is an enrolled identity in neither the measured nor the census population, so
+// asking it for a memory figure must yield a typed unmeasured AND must not read another machine's
+// census capture (the census arm is only taken for a host in the census population).
+
+import std.logic { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv3,
+  operator_host_srv9,
+  operator_host_srv14,
+}
+import gunbc.host.host_memory_carrier {
+  HostUsableRamMeasured,
+  HostFixedOverheadMeasured,
+}
+import gunbc.host.host_memory_observation {
+  gunbc_ci_host_usable_ram_for,
+  gunbc_ci_host_fixed_overhead_for,
+}
+import gunbc.fleet.fleet_runner_connectivity {
+  materialized_width_for_host,
+  incident_committed_width_at_outage_for,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn measured_hosts_answer_from_their_own_rows() -> Bool {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv14) {
+    HostUsableRamMeasured { bytes: _, provenance: _ } => true
+    _ => false
+  }
+    && match gunbc_ci_host_fixed_overhead_for(host: operator_host_srv3) {
+      HostFixedOverheadMeasured { bytes: _, provenance: _ } => true
+      _ => false
+    }
+    && materialized_width_for_host(host: operator_host_srv1) == 5
+    && incident_committed_width_at_outage_for(host: operator_host_srv3) == 7
+}
+
+test fn a_host_outside_every_population_gets_a_typed_answer_never_a_borrow() -> Bool {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv9) {
+    HostUsableRamMeasured { bytes: _, provenance: _ } => false
+    _ => true
+  }
+    && match gunbc_ci_host_fixed_overhead_for(host: operator_host_srv9) {
+      HostFixedOverheadMeasured { bytes: _, provenance: _ } => false
+      _ => true
+    }
+    && materialized_width_for_host(host: operator_host_srv9) == 0
+    && incident_committed_width_at_outage_for(host: operator_host_srv9) == 0
+}
