@@ -247,9 +247,12 @@ fn next_spawnable(
 ) -> List<RoadmapNode> {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
+  // One definition of Ready in this module: node_is_spawnable alone. `merged` stays because the
+  // callers that hold a merge roster pass one (base's signature too); the dependency closure itself
+  // is answered by node_dep_done over the planned edges, with the log's sets subtracted.
   nodes |> filter(n => node_is_spawnable(
     n: n, nodes: nodes, edges: edges, accepted: accepted, withheld: withheld,
-  ) && node_prerequisites_met(n: n, merged: merged))
+  ))
 }
 
 // Renamed from node_is_sized with the fact it actually reads. It never consulted a size: it asked
@@ -266,7 +269,6 @@ fn node_is_upcoming(
   n: RoadmapNode,
   nodes: List<RoadmapNode>,
   edges: List<RoadmapEdge>,
-  merged: List<Int>,
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> Bool {
@@ -293,13 +295,12 @@ fn spawn_frontier(
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   SpawnFrontier {
-    ready: nodes |> filter(n => node_is_spawnable(
-      n: n, nodes: nodes, edges: edges, accepted: accepted, withheld: withheld,
-    ) && node_prerequisites_met(n: n, merged: merged)),
+    // Ready is ONE predicate in this module, asked one way -- the same call `next_spawnable` answers
+    // for the belt, so the two can never drift into disagreeing about what Ready means.
+    ready: next_spawnable(doc: doc, merged: merged, accepted: accepted, withheld: withheld),
     upcoming: nodes |> filter(n => node_is_upcoming(
-      n: n, nodes: nodes, edges: edges, merged: merged, accepted: accepted, withheld: withheld,
+      n: n, nodes: nodes, edges: edges, accepted: accepted, withheld: withheld,
     )),
-    done: nodes |> filter(n => node_is_done(n: n, merged: merged)),
   }
 }
 
