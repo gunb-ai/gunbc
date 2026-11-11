@@ -4181,46 +4181,82 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
   let staged_tree = named != "" && revision != "" && key != ""
     && wet_stage_locus_by_hand(instance: inst, locus_key: key, image: named)
 
-  let verdict = planted
-    && staged_tree
-    && wet_path_exists(path: inst.instance_root as String)
-    // NO SEAL: the receipt the hand stage wrote is the right shape and is still refused.
-    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
-    // LOOKS LIKE A FOLD RECEIPT, UNSEALED, and the file really is there -- so the refusal above was the
-    // seal, not a missing path.
-    && wet_write_unsealed_receipt(instance: inst, locus_key: key, lines: 64)
-    && wet_path_exists(path: witness_locus_receipt_path(instance: inst, locus_key: key))
-    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
-    // AND THE GATE REFUSES IT BY NAME. Asking only for `== false` would accept ANY refusal: on a host
-    // without elevation the gate used to answer "this host has no sudo" for this very state, because it
-    // ran the install fold before it asked the receipt -- a green earned from a refusal that had nothing
-    // to do with the seal. The id below is the seal refusal's id, and restoring that order (mutant M8)
-    // turns this arm red on both kinds of host.
-    && wet_locus_refusal_reason(instance: inst)
-      == (witness_locus_reason_receipt_seal_mismatch as String)
-    // THE SAME BYTES, SEALED: the reader is not stuck, and the gate has no refusal to name.
-    && witness_seal_locus_receipt(instance: inst, locus_key: key)
-    && wet_locus_reads_as_installed(instance: inst, locus_key: key)
-    && wet_locus_refusal_reason(instance: inst) == ""
-    // ONE PATH ALTERED, LINE COUNT UNCHANGED: blind to a count, blind to a shape.
-    && wet_rewrite_receipt_line(instance: inst, locus_key: key, replacement: "0000000000000000000000000000000000000000000000000000000000000000  dag/tampered.dag")
-    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
-    && wet_locus_refusal_reason(instance: inst)
-      == (witness_locus_reason_receipt_seal_mismatch as String)
-    // RESTORED, THE VERDICT RETURNS.
-    && witness_seal_locus_receipt(instance: inst, locus_key: key)
-    && wet_locus_reads_as_installed(instance: inst, locus_key: key)
-    // TRUNCATED BY ONE LINE from the accepted state: a strict prefix of a receipt the reader had just
-    // accepted, every remaining line still well-formed -- the fold dying mid-write is exactly this.
-    && wet_truncate_receipt(instance: inst, locus_key: key)
-    && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
-    && wet_locus_refusal_reason(instance: inst)
-      == (witness_locus_reason_receipt_seal_mismatch as String)
-    // RESTORED A SECOND TIME: three refusals and three acceptances, alternating, so neither a reader stuck
-    // true nor one stuck false can print this claim green.
-    && witness_seal_locus_receipt(instance: inst, locus_key: key)
-    && wet_locus_reads_as_installed(instance: inst, locus_key: key)
-    && wet_locus_refusal_reason(instance: inst) == ""
+  // ONE STAGE PER HALF, for the same reason the fold-spine claim below stages its conjuncts: this claim
+  // alternates refusal and acceptance over the SAME receipt, so a bare `false` says nothing about which
+  // transition broke, and the two halves fail for different reasons on different hosts (a sudo-less host
+  // fails the named-refusal arms, a host whose fold cannot write the locus fails the acceptance arms).
+  // The stages are separate bindings, so every half reports even when an earlier one is already false --
+  // the verdict is still their conjunction, and the gate memoizes one fold per claim, so staging does not
+  // multiply the cost.
+  let s_premise = wet_stage(
+    stage: "locus-seal-premise-image-key-revision-and-tree-staged-by-hand",
+    ok: planted && staged_tree && wet_path_exists(path: inst.instance_root as String),
+  )
+  // NO SEAL: the receipt the hand stage wrote is the right shape and is still refused.
+  let s_no_seal_refused = wet_stage(
+    stage: "locus-seal-hand-staged-receipt-is-refused",
+    ok: wet_locus_reads_as_installed(instance: inst, locus_key: key) == false,
+  )
+  // LOOKS LIKE A FOLD RECEIPT, UNSEALED, and the file really is there -- so the refusal above was the
+  // seal, not a missing path.
+  let s_unsealed_receipt_landed = wet_stage(
+    stage: "locus-seal-unsealed-fold-shaped-receipt-exists-and-is-refused",
+    ok: wet_write_unsealed_receipt(instance: inst, locus_key: key, lines: 64)
+      && wet_path_exists(path: witness_locus_receipt_path(instance: inst, locus_key: key))
+      && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false,
+  )
+  // AND THE GATE REFUSES IT BY NAME. Asking only for `== false` would accept ANY refusal: on a host
+  // without elevation the gate used to answer "this host has no sudo" for this very state, because it
+  // ran the install fold before it asked the receipt -- a green earned from a refusal that had nothing
+  // to do with the seal. The id below is the seal refusal's id, and restoring that order (mutant M8)
+  // turns this arm red on both kinds of host.
+  let s_refusal_is_named_by_the_seal = wet_stage(
+    stage: "locus-seal-refusal-carries-the-seal-mismatch-id",
+    ok: wet_locus_refusal_reason(instance: inst)
+      == (witness_locus_reason_receipt_seal_mismatch as String),
+  )
+  // THE SAME BYTES, SEALED: the reader is not stuck, and the gate has no refusal to name.
+  let s_sealed_is_accepted = wet_stage(
+    stage: "locus-seal-the-same-bytes-sealed-read-as-installed",
+    ok: witness_seal_locus_receipt(instance: inst, locus_key: key)
+      && wet_locus_reads_as_installed(instance: inst, locus_key: key)
+      && wet_locus_refusal_reason(instance: inst) == "",
+  )
+  // ONE PATH ALTERED, LINE COUNT UNCHANGED: blind to a count, blind to a shape.
+  let s_altered_path_is_refused = wet_stage(
+    stage: "locus-seal-one-path-altered-is-refused-by-name",
+    ok: wet_rewrite_receipt_line(instance: inst, locus_key: key, replacement: "0000000000000000000000000000000000000000000000000000000000000000  dag/tampered.dag")
+      && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
+      && wet_locus_refusal_reason(instance: inst)
+        == (witness_locus_reason_receipt_seal_mismatch as String),
+  )
+  // RESTORED, THE VERDICT RETURNS.
+  let s_resealed_returns = wet_stage(
+    stage: "locus-seal-resealing-restores-the-verdict",
+    ok: witness_seal_locus_receipt(instance: inst, locus_key: key)
+      && wet_locus_reads_as_installed(instance: inst, locus_key: key),
+  )
+  // TRUNCATED BY ONE LINE from the accepted state: a strict prefix of a receipt the reader had just
+  // accepted, every remaining line still well-formed -- the fold dying mid-write is exactly this.
+  let s_truncated_is_refused = wet_stage(
+    stage: "locus-seal-truncated-by-one-line-is-refused-by-name",
+    ok: wet_truncate_receipt(instance: inst, locus_key: key)
+      && wet_locus_reads_as_installed(instance: inst, locus_key: key) == false
+      && wet_locus_refusal_reason(instance: inst)
+        == (witness_locus_reason_receipt_seal_mismatch as String),
+  )
+  // RESTORED A SECOND TIME: three refusals and three acceptances, alternating, so neither a reader stuck
+  // true nor one stuck false can print this claim green.
+  let s_restored_a_second_time = wet_stage(
+    stage: "locus-seal-restored-a-second-time",
+    ok: witness_seal_locus_receipt(instance: inst, locus_key: key)
+      && wet_locus_reads_as_installed(instance: inst, locus_key: key)
+      && wet_locus_refusal_reason(instance: inst) == "",
+  )
+
+  let verdict = s_premise && s_no_seal_refused && s_unsealed_receipt_landed
+    && s_refusal_is_named_by_the_seal && s_sealed_is_accepted && s_altered_path_is_refused
+    && s_resealed_returns && s_truncated_is_refused && s_restored_a_second_time
 
   wet_claim_verdicts_with_root_readbacks(verdict: verdict, roots: [root as NonEmptyStr])
 }
