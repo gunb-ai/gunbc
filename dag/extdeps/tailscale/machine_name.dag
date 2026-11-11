@@ -14,6 +14,7 @@ import extdeps.uri { Https, Uri }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tailscale.serve { tailscale_program }
+import extdeps.dns.domain_name { DnsLabel }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse {
   json_document_gap_text,
@@ -168,11 +169,16 @@ fn tailscale_status_json_command() -> ArgvCommand {
 // the argument (`--hostname=<name>`), so the name is one word with the flag, not a flag plus a loose
 // argument: that is the spelling both pages print, and it is the spelling a sudoers line naming this step
 // would have to match.
-fn tailscale_set_hostname_argv(name: NonEmptyStr) -> List<String> {
-  ["set", join(["--hostname=", name], "")]
+// ONE DNS LABEL, NOT A STRING THE CALLER COULD DOTTIFY. The operand of `--hostname` is the device's
+// machine name, and this corpus models a machine name as a single DNS label -- the same bound
+// extdeps.tools.hostname puts on `hostnamectl set-hostname`'s operand -- which is what keeps a dotted
+// tailnet ADDRESS out of a flag that takes a NAME (the address is `Self.DNSName`, a different value, read
+// above). The bound is this repository's modelling choice, not an upstream quotation.
+fn tailscale_set_hostname_argv(name: DnsLabel) -> List<String> {
+  ["set", join(["--hostname=", name as String], "")]
 }
 
-fn tailscale_set_hostname_command(name: NonEmptyStr) -> ArgvCommand {
+fn tailscale_set_hostname_command(name: DnsLabel) -> ArgvCommand {
   argv_command(program: tailscale_program(), arguments: tailscale_set_hostname_argv(name: name))
 }
 

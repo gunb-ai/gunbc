@@ -7,14 +7,18 @@ module gunbc.tailscale_machine_name_converge
 // Tailscale machine name. This module is the Tailscale projection of that step. It is ONE host-generic
 // mode with four legs in a fixed order, and the order is the argument:
 //
-//   OBSERVE  `tailscale status --json` on the device, and read `Self.HostName` (and `Self.DNSName`, which
-//            upstream documents as moving with it).
-//   PLAN     the name the device SHOULD carry, from the one name derivation this corpus has, against the
-//            name the device reports. Equal -> nothing is owed. Different -> a set is owed, in whichever
-//            direction the registry says.
+//   OBSERVE  BOTH NAMES THE DEVICE ANSWERS TO, in one observation: `tailscale status --json` for the
+//            tailnet machine name (`Self.HostName`, with `Self.DNSName` the tailnet address that moves with
+//            it), and `hostname -s` for the OS hostname. Two upstream surfaces, two extdeps rows.
+//   PLAN     the name the device SHOULD carry -- the canonical hostname allocated to its fleet slot, from
+//            gunbc.hostname_allocation, never a name read off the handle's spelling -- against the names the
+//            device reports. Equal -> nothing is owed. Different -> a set is owed, in whichever direction
+//            the allocation says.
 //   APPLY    `tailscale set --hostname=<name>`, elevated, through the same SSH route as the read.
-//   READ BACK the status document AGAIN, independently, and require it to name the desired name. Anything
-//            else refuses, with the requested and reported names in the cause.
+//   READ BACK both names AGAIN, independently, and require BOTH to read the requested name. The tailnet
+//            half landing while the OS half did not is the unstable state this window exists to close
+//            (upstream re-derives the tailnet name from the OS hostname on the next start), so it refuses
+//            with both names in the cause rather than reporting convergence.
 //
 // WHY THE READ-BACK IS A SEPARATE LEG AND NOT THE SET'S OWN EXIT CODE. extdeps.tailscale.machine_name
 // records that the value handed to `set --hostname` is a REQUEST: upstream sanitizes machine names ("OS
@@ -33,9 +37,9 @@ module gunbc.tailscale_machine_name_converge
 // edge that would have acted on it.
 //
 // THE REVERSE DIRECTION IS NOT A SECOND MODE. A rename window's rollback is this same mode pointed at
-// the old name: the plan's `desired` comes from the registry's one derivation, so moving the registry row
-// back and running the mode again is the undo, and it passes through the same read/plan/apply/read-back
-// order. There is no undo verb here because upstream documents no additive alias to remove -- a device
+// the old name: the plan's `desired` is whatever gunbc.hostname_allocation currently allocates for the
+// slot, so moving that row back and running the mode again is the undo, and it passes through the same
+// read/plan/apply/read-back order. There is no undo verb here because upstream documents no additive alias to remove -- a device
 // has one machine name and `set --hostname` moves it (extdeps.tailscale.machine_name).
 //
 // HOW THIS MODE IS HELD TO THE RENAME WINDOW (S3), AND WHERE THAT HOLD IS NOT. The mode takes the stage
@@ -90,8 +94,10 @@ import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextRefused,
   prepare_fleet_ssh_agent_context,
 }
-import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_host_from }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.host_identity { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.tools.hostname { hostname_short_read_command }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
@@ -99,7 +105,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.algebra { string_contains }
+import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { Bool, Int, NonEmptyStr, String, string_non_empty }
@@ -163,72 +169,40 @@ fn tailscale_machine_name_window_wire(window: TailscaleMachineNameWindow) -> Str
   }
 }
 
-// ── THE NAME THE DEVICE SHOULD CARRY: THE ONE DERIVATION THIS CORPUS HAS ────────────────────────
+// ── THE NAME THE DEVICE SHOULD CARRY: THE ALLOCATION, NOT THE HANDLE'S SPELLING ────────────────
 //
-// TEMPORARY(fleet-machine-authority-P4)
-// gunbc.plans.fleet_machine_authority P4 puts a mutable human name on every host and re-types
-// tailnet_host_from to take THAT name. It has not landed. Until it does, the only name derivation in
-// this corpus is tailnet_host_from's FQDN one -- host label joined to the declared tailnet domain -- so
-// the machine name the device should carry is the label that same derivation places before the domain.
-// It is taken from the derivation and not from a host literal, which is what keeps this mode inside
-// gunbc.design_argument::single_authority and out of the per-host-literal tell the plan bans. When P4
-// lands, this function reads the host's name; the mode, its types and its legs do not change.
+// A fleet slot's name is a modeled fact in exactly one place: gunbc.hostname_allocation. The plan rules the
+// handle opaque (D1) and requires every projected name to come from the modeled name rather than be
+// re-spelled where it is used (D12), so this mode asks the allocation roster what the slot's canonical
+// hostname is, and never reads a name off the handle's spelling. A slot the roster does not carry has no
+// name to converge: that is a typed refusal naming the slot, not a fallback to the handle -- inventing a
+// name where the roster is silent is exactly the failure the plan bans.
+//
+// AND NOT A TEMPORARY SEAM. P2 adds `next_name_for_fleet_slot` to the same authority; when it lands, a
+// rename window's TARGET becomes that question and its rollback target stays this one -- a different call
+// beside this one, not a change of shape inside it. Nothing downstream (plan, set leg, read-back) knows
+// which question was asked, so P2 and P4 have nothing to move here.
 type TailscaleMachineNameDesired
-  = DerivedName { name: NonEmptyStr }
+  = AllocatedName { name: DnsLabel }
   | DesiredNameNotDerivable { host: HostIdentity, cause: String }
 
-// THE FIRST LABEL OF A DERIVED FQDN, AND WHY ITS REFUSALS ARE TYPED. A machine name is one label: an
-// empty label means the derivation produced something that begins with a dot, and a name with no dot at
-// all means no domain was joined -- both are derivation bugs, and neither may be handed to `set` as if it
-// were a name. Upstream's uniqueness and sanitisation rules are covered by the read-back, not guessed at
-// here.
-type TailscaleMachineNameLabelReading
-  = LabelRead { label: NonEmptyStr }
-  | LabelUnusable { fqdn: String, cause: String }
-
-fn tailscale_machine_name_label(fqdn: String) -> TailscaleMachineNameLabelReading {
-  if !string_contains(s: fqdn, pattern: ".") {
-    LabelUnusable {
-      fqdn: fqdn,
-      cause: join(["the derived tailnet name `", fqdn, "` has no `.` at all: no tailnet domain was joined to it"], ""),
-    }
-  } else {
-    match first(split(s: fqdn, delimiter: ".")) {
-      Present { value: label } =>
-        if string_non_empty(value: label) {
-          LabelRead { label: label as NonEmptyStr }
-        } else {
-          LabelUnusable {
-            fqdn: fqdn,
-            cause: join(["the derived tailnet name `", fqdn, "` puts nothing before its first `.`"], ""),
-          }
-        }
-      Absent =>
-        LabelUnusable {
-          fqdn: fqdn,
-          cause: join(["the derived tailnet name `", fqdn, "` splits into no label"], ""),
-        }
-    }
-  }
-}
-
 fn tailscale_machine_name_desired(host: HostIdentity) -> TailscaleMachineNameDesired {
-  match fleet_tailnet_domain {
+  match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+    Present { value: label } => AllocatedName { name: label }
     Absent =>
       DesiredNameNotDerivable {
         host: host,
-        cause: "fleet_tailnet_domain is undeclared, so no tailnet name can be derived for this host",
-      }
-    Present { value: domain } =>
-      match tailscale_machine_name_label(
-        fqdn: tailnet_host_from(host: host as NonEmptyStr, domain: Present { value: domain }) as String
-      ) {
-        LabelRead { label: label } => DerivedName { name: label }
-        LabelUnusable { cause: cause } =>
-          DesiredNameNotDerivable { host: host, cause: cause }
+        cause: join(
+          [
+            "gunbc.hostname_allocation carries no canonical hostname for fleet slot `", host as String,
+            "`: a name is a modeled fact, and an unregistered slot has none to converge",
+          ],
+          ""
+        ),
       }
   }
 }
+
 
 // ── THE PLAN: OBSERVATION AGAINST DERIVATION, WITH THE WINDOW GUARD AHEAD OF IT ─────────────────
 //
@@ -243,14 +217,22 @@ type TailscaleMachineNamePlanRefusal
   | StatusLegRefused { detail: String }
   | StatusLegFailed { exit_code: Int, detail: String }
   | StatusDocumentRefused { cause: TailscaleMachineNameRefusal }
+  | OsNameLegRefused { detail: String }
+  | OsNameLegFailed { exit_code: Int, detail: String }
+  | OsNameUnusable { detail: String }
 
-type TailscaleMachineNameObservation
-  = DeviceNameReported { name: NonEmptyStr, dns_name: Optional<String> }
-  | ObservationRefused { cause: TailscaleMachineNamePlanRefusal }
+// ONE OBSERVATION, TWO NAMES. The device answers its name in two places, and a rename window moves them
+// together: `Self.HostName` is what the tailnet calls it, `hostname -s` is what the operating system calls
+// it, and upstream re-derives the first from the second the next time Tailscale starts (see the header and
+// extdeps.tailscale.machine_name). So an observation carries BOTH, read through their own extdeps rows, and
+// a device whose two names disagree is reported as the unstable state it is rather than converged halfway.
+type TailscaleMachineNameDeviceNames
+  = BothNamesReported { machine_name: NonEmptyStr, dns_name: Optional<String>, os_name: String }
+  | NamesUnreadable { cause: TailscaleMachineNamePlanRefusal }
 
 type TailscaleMachineNamePlan
-  = DeviceNameAlreadyCurrent { name: NonEmptyStr }
-  | DeviceNameChangeOwed { from_name: NonEmptyStr, to_name: NonEmptyStr }
+  = DeviceNameAlreadyCurrent { machine_name: NonEmptyStr, os_name: String }
+  | DeviceNameChangeOwed { from_name: NonEmptyStr, to_name: DnsLabel, os_name: String }
   | PlanRefused { cause: TailscaleMachineNamePlanRefusal }
 
 fn tailscale_machine_name_plan_refusal_wire(cause: TailscaleMachineNamePlanRefusal) -> String {
@@ -262,18 +244,24 @@ fn tailscale_machine_name_plan_refusal_wire(cause: TailscaleMachineNamePlanRefus
           tailscale_machine_name_mode_wire(mode: mode),
           " requires the rename-window stage; this run claimed ",
           tailscale_machine_name_window_wire(window: window),
-          " -- the Tailscale machine name is only moved inside a host's rename window (gunbc.plans.fleet_machine_authority S3), never in the additive prepare stage",
+          " -- the Tailscale machine name is only moved inside a host's rename window (gunbc.plans.fleet_machine_authority S3)",
         ],
         ""
       )
     NameNotDerivable { host: host, cause: cause } =>
-      join(["refused: no name derivable for ", host as String, ": ", cause], "")
+      join(["refused: no allocated name for ", host as String, ": ", cause], "")
     StatusLegRefused { detail: detail } =>
       join(["refused: the status read leg was not attempted: ", detail], "")
     StatusLegFailed { exit_code: exit_code, detail: detail } =>
       join(["refused: `tailscale status --json` exited ", to_string(exit_code), ": ", detail], "")
     StatusDocumentRefused { cause: cause } =>
       join(["refused: the status document is unreadable: ", tailscale_machine_name_refusal_wire(cause: cause)], "")
+    OsNameLegRefused { detail: detail } =>
+      join(["refused: the OS hostname read leg was not attempted: ", detail], "")
+    OsNameLegFailed { exit_code: exit_code, detail: detail } =>
+      join(["refused: `hostname -s` exited ", to_string(exit_code), ": ", detail], "")
+    OsNameUnusable { detail: detail } =>
+      join(["refused: the device gave no usable OS hostname: ", detail], "")
   }
 }
 
@@ -284,15 +272,55 @@ fn tailscale_machine_name_mode_wire(mode: TailscaleMachineNameMode) -> String {
   }
 }
 
-// THE PLAN ITSELF, PURE. The window guard is evaluated FIRST, before anything is read or derived: a run
+// THE TWO READINGS, AS PURE FUNCTIONS, BEFORE ANY LEG RUNS THEM. The status document goes through the
+// extdeps parser, so an absent `Self`, a duplicated member and a non-string `HostName` each keep their own
+// cause all the way to the receipt. `hostname -s` prints the configured short name and a newline: the
+// newline is not part of the name, and an empty answer is not a name either -- which matters because the
+// read-back compares this value against the name the window asked for, and an empty name would match
+// nothing while looking like an answer.
+type TailscaleMachineNameOsNameReading
+  = OsNameRead { name: String }
+  | OsNameUnusableInReading { detail: String }
+
+fn tailscale_machine_name_os_name_reading(stdout: String) -> TailscaleMachineNameOsNameReading {
+  let name = trim(s: stdout)
+  if string_non_empty(value: name) {
+    OsNameRead { name: name }
+  } else {
+    OsNameUnusableInReading { detail: join(["`hostname -s` printed `", stdout, "`: no hostname to compare"], "") }
+  }
+}
+
+fn tailscale_machine_name_device_names_reading(
+  status_document: String,
+  os_name_stdout: String,
+) -> TailscaleMachineNameDeviceNames {
+  match tailscale_status_self_name(status_json: status_document) {
+    ReadingRefused { cause: cause } =>
+      NamesUnreadable { cause: StatusDocumentRefused { cause: cause } }
+    SelfNameRead { self_name: self_name } =>
+      match tailscale_machine_name_os_name_reading(stdout: os_name_stdout) {
+        OsNameUnusableInReading { detail: detail } =>
+          NamesUnreadable { cause: OsNameUnusable { detail: detail } }
+        OsNameRead { name: os_name } =>
+          BothNamesReported {
+            machine_name: self_name.host_name,
+            dns_name: self_name.dns_name,
+            os_name: os_name,
+          }
+      }
+  }
+}
+
+// THE PLAN ITSELF, PURE. The window guard is evaluated FIRST, before anything is read or derived, so a run
 // that is not licensed to write does not get to produce a plan that looks actionable. Everything after it
-// is derivation, then the report, then the comparison -- in that order, so a refusal always names the
-// first thing that was actually wrong.
+// is derivation, then the report, then the comparison -- in that order, so a refusal always names the first
+// thing that was actually wrong.
 fn tailscale_machine_name_plan(
   host: HostIdentity,
   window: TailscaleMachineNameWindow,
   mode: TailscaleMachineNameMode,
-  observation: TailscaleMachineNameObservation,
+  names: TailscaleMachineNameDeviceNames,
 ) -> TailscaleMachineNamePlan {
   if mode == ApplyInsideWindow && !tailscale_machine_name_window_is_rename_window(window: window) {
     PlanRefused {
@@ -302,14 +330,14 @@ fn tailscale_machine_name_plan(
     match tailscale_machine_name_desired(host: host) {
       DesiredNameNotDerivable { host: subject, cause: cause } =>
         PlanRefused { cause: NameNotDerivable { host: subject, cause: cause } }
-      DerivedName { name: desired } =>
-        match observation {
-          ObservationRefused { cause: cause } => PlanRefused { cause: cause }
-          DeviceNameReported { name: reported, dns_name: dns_name } =>
-            if reported == desired {
-              DeviceNameAlreadyCurrent { name: desired }
+      AllocatedName { name: desired } =>
+        match names {
+          NamesUnreadable { cause: cause } => PlanRefused { cause: cause }
+          BothNamesReported { machine_name: reported, dns_name: _, os_name: os_name } =>
+            if (reported as String) == (desired as String) {
+              DeviceNameAlreadyCurrent { machine_name: reported, os_name: os_name }
             } else {
-              DeviceNameChangeOwed { from_name: reported, to_name: desired }
+              DeviceNameChangeOwed { from_name: reported, to_name: desired, os_name: os_name }
             }
         }
     }
@@ -318,27 +346,38 @@ fn tailscale_machine_name_plan(
 
 // THE READ-BACK RULE, ALSO PURE, AND WHY IT IS ITS OWN FUNCTION: the set's own exit code is not evidence
 // about the tailnet's answer (see the header), so the only verdict a run may report after a write is what
-// an independent status read says. A read-back that cannot be read is a refusal, not a pending success --
-// the write already happened, and an operator has to be told the state is unknown.
+// an independent read says. A read-back that cannot be read is a refusal, not a pending success -- the
+// write already happened, and an operator has to be told the state is unknown. And a read-back where the
+// tailnet half took the name while the OS half did not is refused too: that pair is the unstable state the
+// window exists to close, since a later start re-derives the tailnet name from the OS hostname, so reporting
+// it as converged would hand the next change a host that reverts on its own.
 type TailscaleMachineNameReadBack
-  = ReadBackConfirmsRequested { name: NonEmptyStr }
-  | ReadBackContradictsRequest { requested: NonEmptyStr, reported: NonEmptyStr }
+  = ReadBackConfirmsRequested { machine_name: NonEmptyStr, os_name: String }
+  | ReadBackMachineNameContradicts { requested: DnsLabel, reported: NonEmptyStr, os_name: String }
+  | ReadBackNamesDiverge { requested: DnsLabel, machine_name: NonEmptyStr, os_name: String }
   | ReadBackRefused { cause: TailscaleMachineNamePlanRefusal }
 
 fn tailscale_machine_name_read_back(
-  requested: NonEmptyStr,
-  observation: TailscaleMachineNameObservation,
+  requested: DnsLabel,
+  names: TailscaleMachineNameDeviceNames,
 ) -> TailscaleMachineNameReadBack {
-  match observation {
-    ObservationRefused { cause: cause } => ReadBackRefused { cause: cause }
-    DeviceNameReported { name: reported, dns_name: dns_name } =>
-      if reported == requested {
-        ReadBackConfirmsRequested { name: requested }
+  match names {
+    NamesUnreadable { cause: cause } => ReadBackRefused { cause: cause }
+    BothNamesReported { machine_name: machine_name, dns_name: _, os_name: os_name } =>
+      if (machine_name as String) != (requested as String) {
+        ReadBackMachineNameContradicts {
+          requested: requested, reported: machine_name, os_name: os_name
+        }
+      } else if os_name != (requested as String) {
+        ReadBackNamesDiverge {
+          requested: requested, machine_name: machine_name, os_name: os_name
+        }
       } else {
-        ReadBackContradictsRequest { requested: requested, reported: reported }
+        ReadBackConfirmsRequested { machine_name: machine_name, os_name: os_name }
       }
   }
 }
+
 
 // ── THE LEGS: THE SSH ROUTE COMES FROM THE FLEET REACH MODEL ────────────────────────────────────
 //
@@ -346,38 +385,50 @@ fn tailscale_machine_name_read_back(
 // subject host, which is the fleet reach endpoint of gunbc.fleet.fleet_reach_endpoint joined to the
 // bootstrap principal -- the same route every other host-generic mode takes. Nothing in this module
 // spells a host, an address, a port or a user.
-fn tailscale_machine_name_status_leg(
+// TWO READS, ONE OBSERVATION, SAME ROUTE. The status read and the OS hostname read go over the same
+// already-prepared agent context and the same target, and each failure keeps the cause that names which leg
+// broke -- "the status leg was refused" and "the OS hostname leg was refused" send an operator to different
+// repairs, and one "the read failed" would send them to neither.
+fn tailscale_machine_name_device_names_leg(
   target: SshTarget,
   context: FleetSshExecutionContext,
-) -> TailscaleMachineNameObservation {
+) -> TailscaleMachineNameDeviceNames {
   match typed_argv_exec_over_fleet_ssh(
     target: target,
     context: context,
     argv: argv_words(command: tailscale_status_json_command())
   ) {
     TypedArgvExecRefused { reason: reason } =>
-      ObservationRefused { cause: StatusLegRefused { detail: reason } }
-    TypedArgvExecConverged { result: result } =>
-      if !result.success {
-        ObservationRefused {
-          cause: StatusLegFailed { exit_code: result.exit_code, detail: result.stderr },
+      NamesUnreadable { cause: StatusLegRefused { detail: reason } }
+    TypedArgvExecConverged { result: status_result } =>
+      if !status_result.success {
+        NamesUnreadable {
+          cause: StatusLegFailed { exit_code: status_result.exit_code, detail: status_result.stderr },
         }
       } else {
-        tailscale_machine_name_document(document: result.stdout)
+        match typed_argv_exec_over_fleet_ssh(
+          target: target,
+          context: context,
+          argv: argv_words(command: hostname_short_read_command())
+        ) {
+          TypedArgvExecRefused { reason: reason } =>
+            NamesUnreadable { cause: OsNameLegRefused { detail: reason } }
+          TypedArgvExecConverged { result: os_result } =>
+            if !os_result.success {
+              NamesUnreadable {
+                cause: OsNameLegFailed { exit_code: os_result.exit_code, detail: os_result.stderr },
+              }
+            } else {
+              tailscale_machine_name_device_names_reading(
+                status_document: status_result.stdout,
+                os_name_stdout: os_result.stdout
+              )
+            }
+        }
       }
   }
 }
 
-// A DOCUMENT, NOT A NAME: the reading is the extdeps parser's, so an absent `Self`, a duplicated member
-// and a non-string `HostName` each keep their own cause all the way to the receipt.
-fn tailscale_machine_name_document(document: String) -> TailscaleMachineNameObservation {
-  match tailscale_status_self_name(status_json: document) {
-    SelfNameRead { self_name: self_name } =>
-      DeviceNameReported { name: self_name.host_name, dns_name: self_name.dns_name }
-    ReadingRefused { cause: cause } =>
-      ObservationRefused { cause: StatusDocumentRefused { cause: cause } }
-  }
-}
 
 // THE WRITE, ELEVATED. `tailscale set` changes a device's configuration, which the client CLI does as
 // root; the elevation words are extdeps.sudo.elevation's, never a spelling of `-n` here, and the payload
@@ -391,7 +442,7 @@ type TailscaleMachineNameSetReading
 fn tailscale_machine_name_set_leg(
   target: SshTarget,
   context: FleetSshExecutionContext,
-  name: NonEmptyStr,
+  name: DnsLabel,
 ) -> TailscaleMachineNameSetReading {
   match typed_argv_exec_over_fleet_ssh(
     target: target,
@@ -410,20 +461,42 @@ fn tailscale_machine_name_set_leg(
 
 // ── THE RUN ─────────────────────────────────────────────────────────────────────────────────────
 //
-// One fold, both directions, one mode type. ObserveOnly never opens a set leg; ApplyInsideWindow owes a
-// set leg only when the plan says a change is owed, and then owes a fresh status read afterwards. The
-// outcome carries what the legs said, never a re-derived summary of them.
+// One fold, both directions, one mode type. ObserveOnly never opens a set leg; ApplyInsideWindow opens a
+// set leg only when the plan says a change is owed, and then owes a fresh read of BOTH names afterwards.
+// The outcome carries what the legs said, never a re-derived summary of them.
 type TailscaleMachineNameRunRefusal
   = RunPlanRefused { cause: TailscaleMachineNamePlanRefusal }
   | SetRefused { detail: String }
   | SetFailed { exit_code: Int, detail: String }
-  | ReadBackContradicts { requested: NonEmptyStr, reported: NonEmptyStr, set_stderr: String }
+  | ReadBackContradicts {
+      requested: DnsLabel,
+      reported: NonEmptyStr,
+      os_name: String,
+      set_stderr: String,
+    }
+  | ReadBackNamesDiverged {
+      requested: DnsLabel,
+      machine_name: NonEmptyStr,
+      os_name: String,
+      set_stderr: String,
+    }
   | ReadBackUnreadable { cause: TailscaleMachineNamePlanRefusal }
 
 type TailscaleMachineNameOutcome
-  = NameAlreadyCurrent { host: HostIdentity, name: NonEmptyStr }
-  | NameChangeReported { host: HostIdentity, from_name: NonEmptyStr, to_name: NonEmptyStr }
-  | NameChangedAndReadBack { host: HostIdentity, from_name: NonEmptyStr, to_name: NonEmptyStr }
+  = NameAlreadyCurrent { host: HostIdentity, machine_name: NonEmptyStr, os_name: String }
+  | NameChangeReported {
+      host: HostIdentity,
+      from_name: NonEmptyStr,
+      to_name: DnsLabel,
+      os_name: String,
+    }
+  | NameChangedAndReadBack {
+      host: HostIdentity,
+      from_name: NonEmptyStr,
+      to_name: DnsLabel,
+      machine_name: NonEmptyStr,
+      os_name: String,
+    }
   | RunRefused { host: HostIdentity, cause: TailscaleMachineNameRunRefusal }
 
 fn tailscale_machine_name_run_refusal_wire(cause: TailscaleMachineNameRunRefusal) -> String {
@@ -434,37 +507,80 @@ fn tailscale_machine_name_run_refusal_wire(cause: TailscaleMachineNameRunRefusal
       join(["refused: the set leg was not attempted: ", detail], "")
     SetFailed { exit_code: exit_code, detail: detail } =>
       join(["refused: `tailscale set --hostname` exited ", to_string(exit_code), ": ", detail], "")
-    ReadBackContradicts { requested: requested, reported: reported, set_stderr: set_stderr } =>
+    ReadBackContradicts {
+      requested: requested,
+      reported: reported,
+      os_name: os_name,
+      set_stderr: set_stderr,
+    } =>
       join(
         [
-          "refused: after the set, the device reports `", reported, "` and not the requested `", requested,
-          "`; the tailnet did not take the name as asked (set stderr: ", set_stderr, ")",
+          "refused: after the set, the device answers its tailnet name as `", reported,
+          "` and not the requested `", requested as String,
+          "`; the tailnet did not take the name as asked, and the OS hostname reads `", os_name,
+          "` (set stderr: ", set_stderr, ")",
+        ],
+        ""
+      )
+    ReadBackNamesDiverged {
+      requested: requested,
+      machine_name: machine_name,
+      os_name: os_name,
+      set_stderr: set_stderr,
+    } =>
+      join(
+        [
+          "refused: after the set, the tailnet calls this device `", machine_name,
+          "` but the operating system calls it `", os_name,
+          "`; a rename window moves both names as one change, and one half landing is not a stable state",
+          " (set stderr: ", set_stderr, ")",
         ],
         ""
       )
     ReadBackUnreadable { cause: cause } =>
-      join(["refused after the write: the read-back status read is unusable: ",
-        tailscale_machine_name_plan_refusal_wire(cause: cause),
-        " -- the name WAS requested, and its state on the tailnet is now unknown to this run"], "")
+      join(
+        [
+          "refused after the write: the read-back name read is unusable: ",
+          tailscale_machine_name_plan_refusal_wire(cause: cause),
+          " -- the name WAS requested, and its state on the tailnet is now unknown to this run",
+        ],
+        ""
+      )
   }
 }
 
 fn tailscale_machine_name_outcome_wire(outcome: TailscaleMachineNameOutcome) -> String {
   match outcome {
-    NameAlreadyCurrent { host: host, name: name } =>
-      join([host as String, ": tailnet machine name already `", name, "`; no set attempted"], "")
-    NameChangeReported { host: host, from_name: from_name, to_name: to_name } =>
+    NameAlreadyCurrent { host: host, machine_name: machine_name, os_name: os_name } =>
       join(
         [
-          host as String, ": tailnet machine name is `", from_name, "` and would be set to `", to_name,
+          host as String, ": tailnet machine name `", machine_name, "` and OS hostname `", os_name,
+          "` both read the allocated name; no set attempted",
+        ],
+        ""
+      )
+    NameChangeReported { host: host, from_name: from_name, to_name: to_name, os_name: os_name } =>
+      join(
+        [
+          host as String, ": tailnet machine name is `", from_name, "` (OS hostname `", os_name,
+          "`) and the allocation allocates `", to_name as String,
           "`; nothing written (observe-only run)",
         ],
         ""
       )
-    NameChangedAndReadBack { host: host, from_name: from_name, to_name: to_name } =>
+    NameChangedAndReadBack {
+      host: host,
+      from_name: from_name,
+      to_name: to_name,
+      machine_name: machine_name,
+      os_name: os_name,
+    } =>
       join(
-        [host as String, ": tailnet machine name set from `", from_name, "` to `", to_name,
-          "` and read back as `", to_name, "`"],
+        [
+          host as String, ": tailnet machine name set from `", from_name, "` to `", to_name as String,
+          "`; read back as `", machine_name, "` on the tailnet and `", os_name,
+          "` in the operating system",
+        ],
         ""
       )
     RunRefused { host: host, cause: cause } =>
@@ -474,15 +590,21 @@ fn tailscale_machine_name_outcome_wire(outcome: TailscaleMachineNameOutcome) -> 
 
 fn tailscale_machine_name_outcome_settled(outcome: TailscaleMachineNameOutcome) -> Bool {
   match outcome {
-    NameAlreadyCurrent { host: host, name: name } => true
-    NameChangeReported { host: host, from_name: from_name, to_name: to_name } => true
-    NameChangedAndReadBack { host: host, from_name: from_name, to_name: to_name } => true
+    NameAlreadyCurrent { host: host, machine_name: machine_name, os_name: os_name } => true
+    NameChangeReported { host: host, from_name: from_name, to_name: to_name, os_name: os_name } => true
+    NameChangedAndReadBack {
+      host: host,
+      from_name: from_name,
+      to_name: to_name,
+      machine_name: machine_name,
+      os_name: os_name,
+    } => true
     RunRefused { host: host, cause: cause } => false
   }
 }
 
-// THE RUN, in the order the header argues for. A plan that refuses produces no set leg; a set that is not
-// confirmed by an independent read produces a refusal, not a success.
+// THE RUN, in the order the header argues for. A plan that refuses produces no set leg; a set that an
+// independent read does not confirm produces a refusal, not a success.
 fn converge_tailscale_machine_name(
   host: HostIdentity,
   target: SshTarget,
@@ -494,15 +616,20 @@ fn converge_tailscale_machine_name(
     host: host,
     window: window,
     mode: mode,
-    observation: tailscale_machine_name_status_leg(target: target, context: context)
+    names: tailscale_machine_name_device_names_leg(target: target, context: context)
   ) {
     PlanRefused { cause: cause } =>
       RunRefused { host: host, cause: RunPlanRefused { cause: cause } }
-    DeviceNameAlreadyCurrent { name: name } =>
-      NameAlreadyCurrent { host: host, name: name }
-    DeviceNameChangeOwed { from_name: from_name, to_name: to_name } =>
+    DeviceNameAlreadyCurrent { machine_name: machine_name, os_name: os_name } =>
+      NameAlreadyCurrent { host: host, machine_name: machine_name, os_name: os_name }
+    DeviceNameChangeOwed { from_name: from_name, to_name: to_name, os_name: os_name } =>
       if mode == ObserveOnly {
-        NameChangeReported { host: host, from_name: from_name, to_name: to_name }
+        NameChangeReported {
+          host: host,
+          from_name: from_name,
+          to_name: to_name,
+          os_name: os_name,
+        }
       } else {
         match tailscale_machine_name_set_leg(target: target, context: context, name: to_name) {
           SetLegRefused { detail: detail } =>
@@ -510,18 +637,46 @@ fn converge_tailscale_machine_name(
           SetLegFailed { exit_code: exit_code, detail: detail } =>
             RunRefused { host: host, cause: SetFailed { exit_code: exit_code, detail: detail } }
           SetAccepted { stderr: stderr } =>
-            match tailscale_machine_name_read_back(
-              requested: to_name,
-              observation: tailscale_machine_name_status_leg(target: target, context: context)
-            ) {
-              ReadBackConfirmsRequested { name: name } =>
-                NameChangedAndReadBack { host: host, from_name: from_name, to_name: name }
-              ReadBackContradictsRequest { requested: requested, reported: reported } =>
+            let read_back_names = tailscale_machine_name_device_names_leg(
+              target: target,
+              context: context
+            )
+            match tailscale_machine_name_read_back(requested: to_name, names: read_back_names) {
+              ReadBackConfirmsRequested { machine_name: machine_name, os_name: os_name } =>
+                NameChangedAndReadBack {
+                  host: host,
+                  from_name: from_name,
+                  to_name: to_name,
+                  machine_name: machine_name,
+                  os_name: os_name,
+                }
+              ReadBackMachineNameContradicts {
+                requested: requested,
+                reported: reported,
+                os_name: os_name,
+              } =>
                 RunRefused {
                   host: host,
                   cause: ReadBackContradicts {
-                    requested: requested, reported: reported, set_stderr: stderr
-                  },
+                    requested: requested,
+                    reported: reported,
+                    os_name: os_name,
+                    set_stderr: stderr,
+                  }
+                }
+              ReadBackNamesDiverged {
+                requested: requested,
+                machine_name: machine_name,
+                os_name: os_name,
+              } =>
+                RunRefused {
+                  host: host,
+                  cause: ReadBackNamesDiverged {
+                    requested: requested,
+                    machine_name: machine_name,
+                    os_name: os_name,
+                    set_stderr: stderr,
+                  }
                 }
               ReadBackRefused { cause: cause } =>
                 RunRefused { host: host, cause: ReadBackUnreadable { cause: cause } }
