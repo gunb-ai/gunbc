@@ -4,8 +4,6 @@ import std.types { String, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.runner.runner_capacity_plan {
   RunnerCapacityPlan,
-  PlanReady,
-  PlanRefused,
   RunnerCapacityHostPlan,
   RunnerCapacityAction,
   RunnerSlotAdd,
@@ -13,6 +11,8 @@ import gunbc.runner.runner_capacity_plan {
   RunnerSlotRemove,
   RunnerIncarnationReplace,
   WidthAdmitted,
+  PlanReady,
+  PlanRefused,
   runner_capacity_plan,
   runner_capacity_add_count,
   addition_actions,
@@ -30,7 +30,6 @@ import gunbc.runner.runner_lifecycle {
   DiskHeadroomUnobserved,
 }
 import gunbc.host.host_disk_observation { host_disk_observation }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 
 // PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight +
@@ -141,12 +140,8 @@ fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
 fn count_runner_slot_add_actions(plan: RunnerCapacityPlan) -> Int {
   match plan {
     PlanRefused { reason: _ } => 0
-    PlanReady { hosts: hs } =>
-      fold(
-        hs,
-        init: 0,
-        f: (n, h) => n + count_add_actions_in_host_plan(host_plan: h),
-      )
+    PlanReady { hosts: hs, refusals: _ } =>
+      fold(hs, init: 0, f: (n, h) => n + count_add_actions_in_host_plan(host_plan: h)),
   }
 }
 
@@ -172,10 +167,10 @@ fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerC
               outcome: HostApplyRefused {
                 reason: concat(
                   concat(
-                    concat(concat("RunnerCapacityApplyScaffold: ", to_string(adds)), " RunnerSlotAdd actions planned on "),
-                    host_plan.host as String,
+                    concat("preconditions met (disk sufficient) but ", to_string(adds)),
+                    " RunnerSlotAdd actions: the executing transport is runner_host_file_converge_ci_wet (see integration concern runner_capacity_realize_apply_has_no_executing_route)",
                   ),
-                  "; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on",
+                  "; this seam preflights and receipts, it does not actuate",
                 ),
               },
             }
@@ -210,21 +205,29 @@ fn reapply_additions_are_zero(host: HostIdentity, requested_width: Int, observed
 }
 
 fn runner_capacity_reapply_plans_zero_additions(
-  srv3_width: Int,
-  srv4_width: Int,
-  observed_srv3: List<RunnerSlotIdentity>,
-  observed_srv4: List<RunnerSlotIdentity>,
+  hosts: List<HostIdentity>,
+  width: Int,
+  observed_for: fn(HostIdentity) -> List<RunnerSlotIdentity>,
 ) -> Bool {
-  reapply_additions_are_zero(host: operator_host_srv3, requested_width: srv3_width, observed: observed_srv3)
-    && reapply_additions_are_zero(host: operator_host_srv4, requested_width: srv4_width, observed: observed_srv4)
+  fold(
+    hosts,
+    init: true,
+    f: (acc, h) => acc && reapply_additions_are_zero(host: h, requested_width: width, observed: observed_for(h)),
+  )
 }
 
 fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
   match plan {
-    PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
-    PlanReady { hosts: hs } =>
+    PlanRefused { reason: r } =>
+      RunnerCapacityApplyRefused { reason: r }
+    PlanReady { hosts: hs, refusals: rs } =>
       RunnerCapacityApplyCompleted {
-        hosts: map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
+        hosts: concat(
+          map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
+          map(rs, r =>
+            RunnerCapacityHostApplyReceipt { host: r.host, outcome: HostApplyRefused { reason: r.reason } }
+          ),
+        ),
       }
   }
 }
@@ -282,13 +285,10 @@ fn runner_capacity_host_apply_receipt(
   }
 }
 
-fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> ProcessExit {
+fn runner_capacity_apply_wet_exit() -> ProcessExit {
   let plan = runner_capacity_plan(
-    srv3_width: srv3_width,
-    srv4_width: srv4_width,
     roster: organization_runner_roster_live_read(),
-    srv3_receipt: runner_user_session_receipt_observed(host: operator_host_srv3),
-    srv4_receipt: runner_user_session_receipt_observed(host: operator_host_srv4),
+    receipt_for: h => runner_user_session_receipt_observed(host: h),
   )
   let outcome = runner_capacity_apply_plan(plan: plan)
   if runner_capacity_apply_any_host_refused(outcome: outcome) {

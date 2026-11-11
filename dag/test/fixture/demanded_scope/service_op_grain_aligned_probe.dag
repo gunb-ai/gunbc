@@ -1,0 +1,36 @@
+module test.fixture.demanded_scope.service_op_grain_aligned_probe
+
+// THE ALIGNED SERVICE OF THE #16156 SERVICE-OP METHOD-SURFACE PAIR.
+//
+// WHY THIS MODULE EXISTS. The measured failing arm spells a service whose AUTHORED NAMESPACE differs from
+// the last segment of the module that declares it: `service test.RestReplay` lives in module
+// `test.fixture.rest_exchange_replay_probe`, and the entry reaches it through a BRACELESS whole-module
+// `import test.fixture.rest_exchange_replay_probe`. Production braceless service-op calls that stay green on
+// main have the OPPOSITE shape: the service's authored first segment EQUALS the declaring module's last
+// segment (`service shell.Env` in module `extdeps.shell`, reached by `import extdeps.shell`, called as
+// `shell.Env.Get(...)`) -- so the call spine's first segment is exactly the imported module's local name.
+//
+// This module is the ALIGNED SHAPE CONTROL for the entry-body arm: a self-contained service authored under
+// its own module's namespace (`service_op_grain_aligned_probe.SvcAligned` in module
+// `test.fixture.demanded_scope.service_op_grain_aligned_probe`), with the SAME minimal `Observe` operation
+// shape as the failing probe, imported the SAME braceless way and spelled DIRECTLY in an entry body. It is
+// referenced nowhere else, so it is not realized "for free" through some other demanding entry. Its role is
+// to guard the PRODUCTION-ALIGNED shape (`import extdeps.shell` / `shell.Env.Get(...)`) against a future cut
+// that breaks the namespace-aligned spelling while the other arms still pass. The namespace-alignment
+// hypothesis it was built to test is no longer the open question: the measured failing and green arms share
+// the one dropped link the fix restores -- the rest service's `RestResult` carrier row in the run-grain
+// demand seeds via the `runtime_key_readers` registry. Consumed by
+// `service_op_surface_spelled_in_an_aligned_namespace_entry_body_is_realized` in
+// src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs.
+
+service service_op_grain_aligned_probe.SvcAligned {
+  config { endpoint: "https://rest-replay.invalid" }
+
+  operation Observe {
+    output {
+      message: String from "message"
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+  }
+}
