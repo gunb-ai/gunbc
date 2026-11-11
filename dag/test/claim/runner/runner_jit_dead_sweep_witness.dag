@@ -15,7 +15,7 @@ import gunbc.runner.runner_jit_dead_sweep {
   JitDeadRow, JitDeadSweep, JitDeadSweepSelected, JitDeadSweepRefused,
   SweepRosterIncomplete, SweepRosterUnavailable, SweepHostSlotsUnresolved,
   jit_dead_registration_sweep, jit_row_is_dead, jit_row_is_retired_selection,
-  jit_sweep_selected_names, jit_sweep_host_count,
+  jit_sweep_selected_names, jit_sweep_host_count, jit_retired_prefix_of,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -87,6 +87,12 @@ fn target_stranger_non_jit() -> GitHubSelfHostedRunnerRegistration {
 fn target_retired() -> GitHubSelfHostedRunnerRegistration {
   reg(206, "oldhost-02-1600000000-333", false) // under the retired prefix "oldhost-" -> DEAD BY DEFINITION (selected)
 }
+fn target_live_retired() -> GitHubSelfHostedRunnerRegistration {
+  reg(207, "oldhost-01-1600000000-700", true)   // under the retired prefix BUT ONLINE -> live, never deleted whatever prefix it sits under
+}
+fn target_retired_non_jit() -> GitHubSelfHostedRunnerRegistration {
+  reg(208, "oldhost-notjit", false)             // under the retired prefix but not a JIT registration -> Foreign, never collateral
+}
 
 // THE COMPLETE ROSTER: filler first (past 100 rows), then the seven planted targets.
 fn complete_roster() -> OrganizationRunnerRosterEvidence {
@@ -97,6 +103,7 @@ fn complete_roster() -> OrganizationRunnerRosterEvidence {
       [
         target_dead(), target_current_incarnation(), target_live(),
         target_unreadable(), target_stranger(), target_stranger_non_jit(), target_retired(),
+        target_live_retired(), target_retired_non_jit(),
       ],
     ),
   }
@@ -155,6 +162,10 @@ test fn only_dead_and_retired_are_selected_and_the_rest_are_never() -> Bool {
     && list_does_not_have(selected_names_of(sweep), "fox-03-1600000000-777")
     && list_does_not_have(selected_names_of(sweep), "srv9-05-1600000000-888")
     && list_does_not_have(selected_names_of(sweep), "gunbc-service-fox-02")
+    // the retired prefix sweeps NOTHING that is live, and NOTHING that is not a genuine JIT registration under the
+    // retired host: a live row under the retired prefix and a non-JIT row under it are both spared.
+    && list_does_not_have(selected_names_of(sweep), "oldhost-01-1600000000-700")
+    && list_does_not_have(selected_names_of(sweep), "oldhost-notjit")
     // none of the 105 foreign filler rows -- all present in the roster -- was ever selected
     && list_does_not_have(selected_names_of(sweep), "filler")
 }
@@ -253,4 +264,50 @@ test fn the_current_incarnation_guard_is_load_bearing() -> Bool {
     evidence: complete_roster(),
   )
   is_selected(sweep, "fox-02-1699999000-9999") && is_selected(sweep, "fox-02-1700000000-1234")
+}
+
+// THE BROAD-PREFIX GUARD IS LOAD-BEARING. If the operator supplies an over-broad retired prefix (the old host name
+// mistyped without its trailing digit, e.g. "srv" for a host that was "srv4"), the sweep must retire NOTHING of a
+// SIBLING host -- neither srv1's live runners nor srv1's dead ones -- because a row is retired only if it is offline
+// AND parses as a genuine JIT registration under THIS host's retired slot instances. A sibling's name does neither.
+test fn a_broad_retired_prefix_never_sweeps_a_sibling_host() -> Bool {
+  let srv4: HostIdentity = "srv4"
+  let broad: NonEmptyStr = "srv"
+  let srv4_slots: List<RunnerSlotIdentity> = [
+    RunnerSlotIdentity { host: srv4, slot_index: 1 },
+    RunnerSlotIdentity { host: srv4, slot_index: 2 },
+    RunnerSlotIdentity { host: srv4, slot_index: 3 },
+  ]
+  let sibling_roster: OrganizationRunnerRosterEvidence = RosterObserved {
+    observed_on: "2026-11-10T00:00:00Z" as NonEmptyStr,
+    registrations: [
+      reg(900, "srv1-01-1600000000-500", true),   // srv1 (a sibling) LIVE
+      reg(901, "srv1-02-1600000001-501", false),  // srv1 (a sibling) DEAD -- still must not be swept by srv4's sweep
+    ],
+  }
+  let sweep = jit_dead_registration_sweep(
+    host: srv4,
+    slots: srv4_slots,
+    current: [],
+    retired_prefixes: [broad],
+    evidence: sibling_roster,
+  )
+  (match sweep {
+    JitDeadSweepSelected { host: _, selected: selected, preserved: _, counts: _ } => length(selected) == 0
+    JitDeadSweepRefused { refusal: _ } => false
+  })
+    && !is_selected(sweep, "srv1-01-1600000000-500")
+    && !is_selected(sweep, "srv1-02-1600000001-501")
+}
+
+// THE DISPATCH-LAYER PREFIX NORMALISER IS TESTED, not just the pure selection: the production dispatch parses the
+// operator's "host:old_name" input and must spell the retired prefix through the same authority as the current host
+// (a trailing dash, never doubled), so the retired arm matches exactly the name the renamed-away runners registered
+// under and a bare host name can never match the sibling "srv40-*". (witness_one_interface: exercise the real route.)
+test fn the_retired_prefix_is_normalised_to_a_host_scoped_prefix() -> Bool {
+  jit_retired_prefix_of(old_name: "srv4") == "srv4-"
+    && jit_retired_prefix_of(old_name: "srv4-") == "srv4-"
+    && jit_retired_prefix_of(old_name: "fox") == "fox-"
+    // a normalised prefix cannot match the sibling host that shares the bare prefix
+    && !starts_with(s: "srv40-01-1600000000-500", prefix: jit_retired_prefix_of(old_name: "srv4"))
 }

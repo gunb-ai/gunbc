@@ -33,6 +33,7 @@ import gunbc.runner.runner_jit_deregistration {
 import gunbc.runner.runner_jit_dead_sweep {
   JitCurrentIncarnation, JitDeadRow, JitDeadSweep, JitDeadSweepSelected,
   JitDeadSweepRefused, JitDeadSweepRefusal, jit_dead_registration_sweep,
+  jit_sweep_unobserved_dead_population, jit_retired_prefix_of,
 }
 
 // THE JIT DEAD-REGISTRATION SWEEP RUN (fleet-converge modes jit_dead_registration_sweep and its dry run): the
@@ -40,10 +41,21 @@ import gunbc.runner.runner_jit_dead_sweep {
 // organization roster and, for one host named in the dispatch (NEVER a literal -- the host, its retired name prefix,
 // and the slots' observed MainPIDs are all inputs), lists or retires the dead JIT registrations.
 //
-// It needs NO host transport and NO boot id (unlike the lost-boot sweep): the sweep's only host-side fact is each
-// slot unit's observed MainPID, which the dispatch supplies as an input so a slot whose MainPID was not observed is
-// PRESERVED (fail closed) rather than swept. The deletion goes through the one organization runner API route the
-// corpus already uses (ensure_jit_runner_deregistered via the staged controller token); this module adds no client.
+// It reads the roster through the one organization runner API route the corpus already uses (this module adds no
+// client); deletion goes through ensure_jit_runner_deregistered via the staged controller token. It touches no host
+// transport itself. It has TWO selection arms with two different observation needs:
+//
+//  - THE RETIRED-NAME ARM (the rename's headline behaviour, and the one this mode ships live): every registration
+//    under a retired name prefix the dispatch supplies, so the name srv4 was renamed away from is an INPUT, not a
+//    literal. It needs no host-side fact -- a row under a retired prefix is dead by definition once the host
+//    registers under its new name -- but it is still gated on offline + a genuine JIT parse under the retired host's
+//    slot instances, so a mistyped broad prefix can never sweep a sibling host's runners.
+//
+//  - THE DEAD-INCARNATION ARM: offline JIT rows of the CURRENT host that are not the running incarnation, decided
+//    against each slot unit's observed MainPID. That observation is the arm's NAMED TRIGGER: the dispatch supplies
+//    `current` from a host unit-MainPID read (systemd `MainPID`) taken over the host transport in srv4's rename
+//    window (plan P9). Until that read is wired, the arm reads every offline JIT row as MainPidUnreadable ->
+//    PRESERVED (fail closed) and the report surfaces the population as UNOBSERVED -- never as a clean zero.
 //
 // Authority: the fleet-converge run's own federated identity (operator ruling 2026-10-03, mirrored by the lost-boot
 // sweep); the wet arm is GATED on the operator's explicit go and its first real use is srv4's rename window (plan P9),
@@ -101,6 +113,20 @@ fn jit_dead_sweep_refusal_text(refusal: JitDeadSweepRefusal) -> String {
   }
 }
 
+// THE UNOBSERVED-DEAD DISCLOSURE. A zero selected-count is NOT a clean result while offline JIT rows of this host are
+// preserved because their slot unit's MainPID was never observed. Those rows are exactly what the dead-incarnation
+// arm retires; until the dispatch supplies observed MainPIDs (the named trigger: the host unit-MainPID read, taken
+// over the host transport in srv4's rename window), the arm reads them as UNOBSERVED -- never as zero. Surfacing the
+// count here is what stops the dry run from reporting a false clean for the population it was built to sweep
+// (gunbc.recurring_failure_mode: an observation you did not take is unobserved, never empty).
+fn jit_dead_sweep_unobserved_line(unobserved: Int) -> List<String> {
+  if unobserved > 0 {
+    ["  DEAD-ARM UNOBSERVED: \{to_string(unobserved)} offline JIT row(s) of this host whose slot-unit MainPID was not observed are PRESERVED, not confirmed live -- this is NOT a clean zero; the dead-incarnation arm fires only when the dispatch supplies observed MainPIDs (named trigger: the host unit-MainPID read)\n"]
+  } else {
+    []
+  }
+}
+
 // THE DRY-RUN REPORT LINES: exactly the rows that would be deleted, one line each, then the counts by host. The wet
 // arm deletes exactly these rows, so what the dry run records is what the wet run would remove -- one list, two
 // readings.
@@ -111,7 +137,15 @@ fn jit_dead_sweep_report_lines(host: HostIdentity, sweep: JitDeadSweep) -> List<
         ["jit-dead-sweep host=\{h} selected=\{to_string(length(selected))} preserved=\{to_string(length(preserved))}\n"],
         concat(
           map(selected, r => concat("  would-delete id=\{to_string(r.runner_id)} name=\{r.name as String}\n")),
-          map(counts, c => concat("  count-by-host host=\{c.host as String} selected=\{to_string(c.selected)}\n")),
+          concat(
+            map(counts, c => concat("  count-by-host host=\{c.host as String} selected=\{to_string(c.selected)}\n")),
+            // THE UNOBSERVED-DEAD DISCLOSURE: a zero selected-count is NOT a clean result while offline JIT rows of
+            // this host are preserved because their slot unit's MainPID was never observed. Those rows are exactly
+            // what the dead-incarnation arm retires; until the dispatch supplies observed MainPIDs (the named trigger:
+            // the host unit-MainPID read, taken over the host transport in the rename window), the arm reads them as
+            // unobserved -- never as zero. (gunbc.recurring_failure_mode: an observation you did not take.)
+            jit_dead_sweep_unobserved_line(unobserved: jit_sweep_unobserved_dead_population(preserved: preserved)),
+          ),
         ),
       )
     JitDeadSweepRefused { refusal: refusal } => [concat("jit-dead-sweep host=\{host} REFUSED: ", jit_dead_sweep_refusal_text(refusal: refusal), "\n")]
@@ -351,8 +385,15 @@ fn jit_dead_sweep_read_dispatch() -> JitDeadSweepDispatch? {
     Present {
       value: JitDeadSweepDispatch {
         host: host as HostIdentity,
+        // THE DEAD ARM'S NAMED TRIGGER. The dispatch carries no observed MainPIDs: the dead-incarnation arm reads
+        // every offline JIT row as MainPidUnreadable -> PRESERVED (fail closed) and the report surfaces the population
+        // as UNOBSERVED, never as a clean zero. The arm fires only when a real caller (the wet path in srv4's rename
+        // window, P9) supplies `current` from the host unit-MainPID read -- see the module header's two arms.
         current: jit_dead_sweep_no_current_observed(),
-        retired_prefixes: if retired_prefix == "" { [] } else { [retired_prefix as NonEmptyStr] },
+        // The retired prefix is normalised through the slot-instance authority so it matches exactly the name the
+        // renamed-away runners registered under and can never be accidentally broad (a bare "srv4" would match the
+        // sibling "srv40-*"; the authority spells the proper "srv4-").
+        retired_prefixes: if retired_prefix == "" { [] } else { [jit_retired_prefix_of(old_name: retired_prefix) as NonEmptyStr] },
         temp: temp,
       }
     }

@@ -8,7 +8,7 @@ import gunbc.fleet.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable,
 }
 import gunbc.runner.runner_incarnation { JitRegistrationName, parse_jit_registration_name }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix }
 import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
 
 // THE JIT DEAD-REGISTRATION SWEEP -- the selection arm the RFM
@@ -130,6 +130,41 @@ fn jit_row_is_retired(name: String, current_prefix: String, retired_prefixes: Li
   )
 }
 
+// The retired host's slot instances: the host's committed slot instances re-spelled under a retired prefix. A
+// committed slot instance is `runner_slot_instance_name_prefix(<current>) ++ runner_slot_index_suffix(index)`; the
+// retired spelling replaces the host prefix with the retired prefix and keeps the index tail identical. The retired
+// host is THIS host before the rename -- the same slots, a different human name -- so the committed slot indices are
+// the retired host's slot indices, spelled by the same authority so the retired row matches on exactly the name the
+// runner registered under.
+fn jit_retired_slot_instances(retired_prefix: String, slots: List<RunnerSlotIdentity>) -> List<String> {
+  map(slots, slot => concat(retired_prefix, runner_slot_index_suffix(index: slot.slot_index)))
+}
+
+// NORMALISE the plan-supplied retired host NAME into a slot-instance prefix spelled by the SAME authority that spells
+// the current host's prefix, so (a) a retired row is matched on exactly the name its runner registered under and (b)
+// the prefix can never be accidentally broad: a bare host name "srv4" would match the sibling "srv40-*", but the
+// proper prefix "srv4-" does not. A trailing dash already on the input is tolerated and never doubled.
+fn jit_retired_prefix_of(old_name: String) -> String {
+  let len = string_length(s: old_name)
+  let ends_in_dash = len > 0 && substring(s: old_name, start: len - 1, end: len) == "-"
+  let base = if ends_in_dash { substring(s: old_name, start: 0, end: len - 1) } else { old_name }
+  runner_slot_instance_name_prefix(host: base as HostIdentity)
+}
+
+// A row under a retired prefix is a GENUINE retired JIT registration ONLY if it parses as `<retired_slot>-<epoch>-<pid>`
+// against one of the retired host's slot instances. This is what stops a broad retired prefix from sweeping a
+// sibling host's runners or a non-JIT row: their names do not parse against any retired slot instance of THIS host.
+fn jit_row_retired_standing(name: String, retired_prefixes: List<NonEmptyStr>, slots: List<RunnerSlotIdentity>) -> Bool {
+  any(retired_prefixes, prefix =>
+    any(jit_retired_slot_instances(retired_prefix: prefix as String, slots: slots), instance =>
+      match parse_jit_registration_name(name: name, slot_instance: instance) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    )
+  )
+}
+
 // The JIT standing of one registration under the host's slot grammar: which of the host's slots it parses against,
 // if any, with its parsed epoch/pid tokens. Returns the matched slot_index and the parsed tokens together, so
 // attribution and the pid-token comparison are one fact -- never re-derived apart (gunbc.design_argument::
@@ -178,11 +213,23 @@ fn jit_sweep_one_row(
   retired_prefixes: List<NonEmptyStr>,
 ) -> JitSweepFold {
   let name = reg.name as String
+  let is_online = github_runner_registration_is_online(reg: reg)
   match jit_row_is_retired(name: name, current_prefix: current_prefix, retired_prefixes: retired_prefixes) {
-    Present { value: prefix } => JitSweepFold {
-      selected: concat(acc.selected, [JitDeadRow { runner_id: reg.id, name: reg.name, reason: RetiredName { prefix: prefix } }]),
-      preserved: acc.preserved,
-    }
+    // A row under a retired prefix is selected ONLY if it is offline (a live runner is never deleted, whatever
+    // prefix it sits under) AND parses as a genuine JIT registration under the retired host's slot instances (a
+    // broad prefix can never sweep a sibling host's runners or a non-JIT row). An online row under a retired prefix
+    // is preserved as live; a row that is not a well-formed retired JIT registration is Foreign, never collateral.
+    Present { value: prefix } =>
+      if is_online {
+        JitSweepFold { selected: acc.selected, preserved: concat(acc.preserved, [LiveRegistration { name: reg.name }]) }
+      } else if jit_row_retired_standing(name: name, retired_prefixes: retired_prefixes, slots: slots) {
+        JitSweepFold {
+          selected: concat(acc.selected, [JitDeadRow { runner_id: reg.id, name: reg.name, reason: RetiredName { prefix: prefix } }]),
+          preserved: acc.preserved,
+        }
+      } else {
+        JitSweepFold { selected: acc.selected, preserved: concat(acc.preserved, [ForeignName { name: reg.name }]) }
+      }
     Absent =>
       match jit_row_slot_standing(name: name, slots: slots) {
         Absent => JitSweepFold { selected: acc.selected, preserved: concat(acc.preserved, [ForeignName { name: reg.name }]) }
@@ -237,7 +284,7 @@ fn jit_dead_registration_sweep(
         roster_incomplete_refusal(observed_count: observed, authority_total: total)
       RosterReadUnavailable { reason: reason } => roster_unreadable_refusal(reason: reason)
       RosterObserved { observed_on: _, registrations: registrations } => {
-        let current_prefix = concat(host as String, "-")
+        let current_prefix = runner_slot_instance_name_prefix(host: host)
         let swept = fold(registrations, init: JitSweepFold { selected: [], preserved: [] }, f: (acc, reg) =>
           jit_sweep_one_row(
             acc: acc,
@@ -288,4 +335,18 @@ fn jit_sweep_host_count(counts: List<JitDeadHostCount>, host: HostIdentity) -> I
   fold(counts, init: 0, f: (acc, row) =>
     if row.host == host { acc + row.selected } else { acc }
   )
+}
+
+// THE UNOBSERVED DEAD POPULATION: offline JIT rows of this host that parsed under the slot grammar but whose slot
+// unit's MainPID was unreadable, so the sweep could not tell "dead" from "live-but-lagging" and preserved them. This
+// is exactly the population the dead-incarnation arm exists to retire. When it is non-zero and nothing was selected,
+// that is UNOBSERVED, NOT a clean zero (gunbc.recurring_failure_mode: a read you did not take never reports as an
+// empty result) -- the report surfaces this count so the dry run can never present an unmade observation as clean.
+fn jit_sweep_unobserved_dead_population(preserved: List<JitPreservedReason>) -> Int {
+  fold(preserved, init: 0, f: (acc, p) => match p {
+    UnreadableIncarnation { name: _, slot_index: _ } => acc + 1
+    LiveRegistration { name: _ } => acc
+    CurrentIncarnation { name: _ } => acc
+    ForeignName { name: _ } => acc
+  })
 }
