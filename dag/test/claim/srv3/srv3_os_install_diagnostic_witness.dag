@@ -1,5 +1,19 @@
 module test.claim.srv3.srv3_os_install_diagnostic_witness
 
+import extdeps.bmc.redfish_boot_override { BootTargetNone }
+import extdeps.bmc.types { BootOverrideDisabled, BootOverrideOnce, BootTargetCd }
+import extdeps.bmc.types { RedfishBootSourceOverrideEnabled }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
+import extdeps.standards.nic_attachment { On }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture, srv3_pre_install_lease_table }
+import gunbc.srv3.srv3_os_install_diagnostic { IsoServeReadinessObservation, NbdServePortObservation, NbdServeProcessObservation, AutoinstallRunning, BmcVirtualMediaObservation, BootAttemptInProgress, BootOverrideConsumedNoInstall, BootProgressNone, BootProgressOsRunning, InstallerHungVerdict, IsoPresent, KvmFirmwareMenu, KvmObservation, KvmUnknown, NbdkitAbsent, OsInstallActuationObservations, OsInstallAttemptIntent, OsInstalledVerdict, ReadyToBootVerdict, RedfishSystemBootObservation, ServePortAbsent, ServePortListening, ServeProcessesPresent, SolConsoleContentObservation, TokenPresent, VirtualMediaServeDown, bmc_install_debug_checklist_surface_count_is_seven, classify_nbd_serve_readiness, classify_router_lease_table, diagnose_os_install_actuation, diagnose_srv3_install, install_diagnostic_verdict_is_boot_override_consumed_failure, install_diagnostic_verdict_is_os_installed, install_diagnostic_verdict_is_ready_to_boot, srv3_install_hang_no_installer_progress_ms, srv3_install_hang_no_router_lease_ms, srv3_os_install_attempt_intent_for, srv3_os_install_diagnostic_runbook_is_declared, srv3_remote_bmc_probe_observation }
+import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_input_for }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { byte_size }
+import std.types { Milliseconds, NonEmptyStr }
+
 import AutoinstallRunning { UNKNOWN }
 import BmcVirtualMediaObservation { gunbc.srv3.srv3_os_install_diagnostic }
 import BootAttemptInProgress { UNKNOWN }
