@@ -1,0 +1,110 @@
+module test.claim.machine_intake.arrival_subject_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity }
+import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization, InterlockPending }
+import gunbc.auth.standing_operator_grant {
+  StandingOperatorGrant, StandingGrantEffect, StandingGrantHost,
+  StandingArrivalArchive, StandingArrivalFirmwareQualification, StandingBmcSecureAccountWrite,
+}
+import gunbc.machine_intake.arrival_subject {
+  ArrivalConvergePopulationRow, admit_arrival_subject_in, admit_arrival_subject,
+  ArrivalSubjectInPopulation, ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+
+// THE ADMIT FOLD IS GENERIC OVER ITS ROWS. Every per-unit fact is a row field, so a unit the production
+// population does not carry is admitted, refused or confused by exactly the rules mtjade1 is, with no
+// edit to the fold. The fixture units below are not fleet hosts; they exist only as supplied rows.
+
+data unit_a: HostIdentity = "arrival-fixture-a"
+data unit_b: HostIdentity = "arrival-fixture-b"
+
+fn fixture_grant(host: HostIdentity, effects: List<StandingGrantEffect>) -> StandingOperatorGrant {
+  StandingOperatorGrant {
+    identity: "arrival-fixture-grant" as NonEmptyStr,
+    principal: "operator" as NonEmptyStr,
+    ruled_at: "2026-11-10T00:00:00Z",
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: "fixture ruling for the arrival admit fold" as NonEmptyStr,
+      effect_subject: "fixture arrival unit" as NonEmptyStr,
+      interlock: InterlockPending { obligation: "fixture" as NonEmptyStr },
+    },
+    scope: StandingGrantHost { host: host },
+    effects: effects,
+  }
+}
+
+fn door_effects() -> List<StandingGrantEffect> {
+  [StandingArrivalArchive, StandingArrivalFirmwareQualification]
+}
+
+fn row(host: HostIdentity, grant: StandingOperatorGrant) -> ArrivalConvergePopulationRow {
+  ArrivalConvergePopulationRow {
+    host: host,
+    producer: decl_ref(module_path: "test.claim.machine_intake.arrival_subject_witness", decl_name: "fixture_producer"),
+    grant: grant,
+  }
+}
+
+fn fixture_producer() -> Bool {
+  true
+}
+
+fn verdict(population: List<ArrivalConvergePopulationRow>, managed: List<HostIdentity>, wire: String) -> String {
+  match admit_arrival_subject_in(population: population, managed: managed, wire: wire) {
+    ArrivalSubjectInPopulation { subject: s } => concat("admitted:", s.host as String)
+    ArrivalSubjectUnknown { wire: _ } => "unknown"
+    ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => "managed"
+    ArrivalSubjectOutsideGrant { wire: _ } => "outside-grant"
+  }
+}
+
+// A SECOND ROW ADMITS AGAINST ITS OWN GRANT, beside the first, with no edit to the fold.
+test fn a_second_row_admits_against_its_own_grant() -> Bool {
+  let population = [
+    row(host: unit_a, grant: fixture_grant(host: unit_a, effects: door_effects())),
+    row(host: unit_b, grant: fixture_grant(host: unit_b, effects: door_effects())),
+  ]
+  verdict(population: population, managed: [], wire: "arrival-fixture-a") == "admitted:arrival-fixture-a"
+    && verdict(population: population, managed: [], wire: "arrival-fixture-b") == "admitted:arrival-fixture-b"
+    && verdict(population: population, managed: [], wire: "arrival-fixture-c") == "unknown"
+}
+
+// A ROW WHOSE GRANT NAMES ANOTHER HOST IS OUTSIDE THE GRANT: a grant covers its own host only.
+test fn a_grant_for_another_host_does_not_admit_the_row() -> Bool {
+  let population = [row(host: unit_b, grant: fixture_grant(host: unit_a, effects: door_effects()))]
+  verdict(population: population, managed: [], wire: "arrival-fixture-b") == "outside-grant"
+}
+
+// A GRANT MISSING ONE DOOR EFFECT IS OUTSIDE THE GRANT: every effect the door performs must be covered.
+test fn a_grant_missing_a_door_effect_does_not_admit() -> Bool {
+  let archive_only = [row(host: unit_a, grant: fixture_grant(host: unit_a, effects: [StandingArrivalArchive, StandingBmcSecureAccountWrite]))]
+  let firmware_only = [row(host: unit_a, grant: fixture_grant(host: unit_a, effects: [StandingArrivalFirmwareQualification]))]
+  verdict(population: archive_only, managed: [], wire: "arrival-fixture-a") == "outside-grant"
+    && verdict(population: firmware_only, managed: [], wire: "arrival-fixture-a") == "outside-grant"
+}
+
+// A MANAGED HOST IS NOT AN ARRIVAL, read from membership: the same granted row is confusion once its host is
+// a member, and a member with no row is confusion too rather than unknown.
+test fn membership_not_a_name_makes_the_executor_confusion() -> Bool {
+  let population = [row(host: unit_a, grant: fixture_grant(host: unit_a, effects: door_effects()))]
+  verdict(population: population, managed: [unit_a], wire: "arrival-fixture-a") == "managed"
+    && verdict(population: population, managed: [unit_b], wire: "arrival-fixture-a") == "admitted:arrival-fixture-a"
+    && verdict(population: population, managed: [unit_b], wire: "arrival-fixture-b") == "managed"
+}
+
+// THE PRODUCTION FOLD, over the committed population and today's members: mtjade1 admits under its own grant,
+// and mtcollins1 is refused because it is a managed member (the real membership, not a supplied list).
+test fn the_production_fold_admits_mtjade1_and_refuses_the_member_mtcollins1() -> Bool {
+  match admit_arrival_subject(wire: operator_host_mtjade1 as String) {
+    ArrivalSubjectInPopulation { subject: s } => (s.host as String) == (operator_host_mtjade1 as String)
+    _ => false
+  }
+    && match admit_arrival_subject(wire: operator_host_mtcollins1 as String) {
+      ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => true
+      _ => false
+    }
+}

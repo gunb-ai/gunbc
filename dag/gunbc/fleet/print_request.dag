@@ -12,11 +12,35 @@ import gunbc.fleet.printer_job_monitor { observe_job, JobObservation, JobRunning
 // request ids; a replacement for a bad part is a new request. The request names what to print and
 // where, never a path, a digest, a credential version or a bed-clear flag: preparation supplies the
 // artifact, the printer registry the credential, and the human acknowledgement is bound to the attempt.
+// THE PLATE IS PART OF WHAT TO PRINT. A root has one or more committed plate plans
+// (artifacts/printing/<root>/<plate>.json), and the request names which one, so two printers can each
+// hold a different plate of one root at the same time. The plate is a name, not a path: plate_plan_file
+// is the one place it becomes one.
 type PrintRequest {
   request_id: NonEmptyStr
   root: NonEmptyStr
+  plate: NonEmptyStr
   recipe: NonEmptyStr
   printer: PhysicalAssetIdentity
+}
+
+fn plate_name_char(ch: String) -> Bool {
+  string_length(s: ch) == 1 && ((ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch == "-")
+}
+fn plate_name_from(s: String, i: Int) -> Bool {
+  if i >= string_length(s: s) { true } else { plate_name_char(ch: char_at(s: s, pos: i)) && plate_name_from(s: s, i: i + 1) }
+}
+
+// A plate name is lowercase letters, digits and hyphens, beginning with a letter or digit, so it can
+// only ever name a file inside its root's directory: no separator, no dot, no leading option dash.
+fn plate_name_admitted(plate: String) -> Bool {
+  string_length(s: plate) > 0 && char_at(s: plate, pos: 0) != "-" && plate_name_from(s: plate, i: 0)
+}
+
+fn plate_plan_file(request: PrintRequest) -> String? {
+  if plate_name_admitted(plate: request.plate as String) {
+    Present { value: join(["artifacts/printing/", request.root as String, "/", request.plate as String, ".json"], "") }
+  } else { none }
 }
 
 // THE REQUEST RECORD BINDS A REQUEST TO ITS ARTIFACT, once. It is written create-new after the first
@@ -47,10 +71,11 @@ fn print_attempt_id(request: PrintRequest, artifact_sha256: Sha256Digest) -> Non
 
 fn request_record_name(request_id: NonEmptyStr) -> String { concat(text_sha256(s: request_id as String), ".request.json") }
 
-// A recorded request reused with a different root, recipe or printer is a different request under a
-// reused id, and refuses.
+// A recorded request reused with a different root, plate, recipe or printer is a different request
+// under a reused id, and refuses.
 fn record_matches(record: PrintRequestRecord, request: PrintRequest) -> Bool {
   record.request.request_id == request.request_id && record.request.root == request.root &&
+  record.request.plate == request.plate &&
   record.request.recipe == request.recipe && record.request.printer == request.printer
 }
 

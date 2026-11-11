@@ -65,7 +65,7 @@ import extdeps.libxcrypt.crypt_scheme {
   SharedReservedCharacterScan,
   SchemeFormatRules,
 }
-import extdeps.os.ubuntu_autoinstall { StoragePolicyDirectLayout, UbuntuAutoinstallPayload }
+import extdeps.os.ubuntu_autoinstall { StoragePolicyDirectLayout, InstallerChoosesDisk, UbuntuAutoinstallPayload }
 import gunbc.os_install_emit {
   AutoinstallUserDataRefused,
   AutoinstallUserDataRendered,
@@ -3059,7 +3059,7 @@ test fn the_storage_projection_carries_the_selected_device() -> Bool {
       match evidence {
         BoundDisk { serial: named, matched: m, observed: o } =>
           match policy {
-            StoragePolicyDirectLayout =>
+            StoragePolicyDirectLayout { target: _ } =>
               named == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
                 && m == 1
                 && o == 3

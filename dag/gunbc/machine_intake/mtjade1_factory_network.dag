@@ -164,9 +164,11 @@ data mtjade1_bmc_reconfigured_network: ObservedBmcNetwork = BmcNetworkObservedDh
   basis: "operator-directed ipmitool lan set 1 ipsrc dhcp on 2026-10-03; lease observed by tcpdump and read back by lan print 1 at 192.168.1.246",
 }
 
-// srv13's controller network, as first contact recorded it (artifacts/bmc/srv13-first-contact-2026-10-07
-// FINDINGS.txt line 4: "BMC 192.168.1.247, MAC 9c:6b:00:e7:c9:83 (router reservation
-// bmc-altrad8ud-1l2t-5)"), and as gunbc.fleet.fleet_intent srv13_baseboard carries the address. The
+// The controller network of srv15's board (BR80S6102300049) as srv13's first contact recorded it on 2026-10-07
+// (artifacts/bmc/srv13-first-contact-2026-10-07 FINDINGS.txt line 4: "BMC 192.168.1.247, MAC 9c:6b:00:e7:c9:83
+// (router reservation bmc-altrad8ud-1l2t-5)"). It is the endpoint those captures replay at, through
+// gunbc.machine_intake.bmc_rotation_route_evidence observed_bmc_network_endpoint; the board now answers at
+// srv15's controller, and srv13 is retired. The
 // PREFIX and GATEWAY are the segment's, not this controller's own report: the same LAN's mtjade1 lease
 // above is 192.168.1.246/24, and 192.168.1.1 answers as the segment gateway (gunbc.host.host_primary_network_observed;
 // mtcollins1_netboot_client_observation records the same DHCP server). srv13 has never been read over IPMI,

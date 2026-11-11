@@ -5,7 +5,8 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { PhysicalContainment, HostContainsComponent, PhysicalAsset }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_hosts }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
+import gunbc.hostname_allocation { operator_hosts }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
 import gunbc.fleet.fleet_physical_inventory { gpu_board_assets, installed_gpu_board_containments }
 import extdeps.gpu.types { GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused }

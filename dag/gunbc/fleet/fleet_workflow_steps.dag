@@ -59,11 +59,8 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_cache_step_id, release_bins_outcome_step_id, release_bins_preimage_name,
   release_bins_manifest_name, release_bins_staging_dir, release_bins_download_path_expression,
 }
-import gunbc.ci.ci_spec {
-  ci_release_bins_archive_name,
-  gunbc_ci_fleet_key_agent_script,
-  gunbc_ci_fleet_key_agent_cleanup_script,
-}
+import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
+import gunbc.fleet.fleet_key_agent { gunbc_ci_fleet_key_agent_script, gunbc_ci_fleet_key_agent_cleanup_script }
 import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_ssh_multiplex_directory_name, fleet_ssh_multiplex_runner_temp_env }
 import extdeps.ssh.client_options { shape_openssh_control_command_argv, SshControlExit }

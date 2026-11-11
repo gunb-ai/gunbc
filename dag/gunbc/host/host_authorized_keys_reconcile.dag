@@ -6,7 +6,10 @@ import gunbc.fleet.fleet_ssh_access {
   fleet_authorized_keys,
   operator_macbook_ssh_key,
   fleet_automation_ssh_key,
+  node_orch_ssh_key,
+  authorized_keys_for_account,
 }
+import gunbc.fleet.fleet_posix_accounts { FleetAccountHostAdministrator }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -96,7 +99,11 @@ fn host_authorized_keys_reconcile_with_ownership(
 ) -> MembershipPlan<SshPublicKey, HostAuthorizedKeysMemberAt> {
   membership_plan_admitting_outcome(
     outcome: membership_reconcile(
-      desired: fleet_authorized_keys,
+      // The host's authorized_keys here is the HOST-ADMINISTRATOR account's file (the ubuntu account the
+      // install provisions). Its desired set is that account's projection -- exactly the keys of the
+      // principals granted to it (operator, node-orch, fleet-automation) -- not a flat fleet list. A key on
+      // this account that no principal is granted to is therefore not desired, and (being unowned) refused.
+      desired: authorized_keys_for_account(account: FleetAccountHostAdministrator),
       observed: observed,
       key_of: authorized_key_identity,
       key_eq: authorized_key_identity_eq,
@@ -113,11 +120,7 @@ fn host_authorized_keys_reconcile_with_ownership(
 // declared operator key. This is a fixture standing in for the staged live observation provider,
 // marked so it is never mistaken for a desired/intent row.
 
-data srv3_observed_node_orch_srv2_key: SshPublicKey = SshPublicKey {
-  algorithm: Ed25519,
-  material: "AAAAC3NzaC1lZDI1NTE5AAAAIIQp4ylHo8mQNGwvSg7ftW1LSXNFEPuwVjsDKvdqJnkj",
-  comment: "node-orch@srv2",
-}
+data srv3_observed_node_orch_srv2_key: SshPublicKey = node_orch_ssh_key
 
 data srv3_observed_briansrls_srv1_key: SshPublicKey = SshPublicKey {
   algorithm: Ed25519,

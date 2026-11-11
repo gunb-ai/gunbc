@@ -28,7 +28,10 @@ import std.algebra { trim }
 import extdeps.boards.types { FirmwareSetupSwitch, JumperSwitch, SwitchNotStated, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.fleet.fleet_host_identity { operator_hosts }
+import gunbc.hostname_allocation {
+  OperatorHostLookup, OperatorHostFound, OperatorHostNotRegistered, OperatorHostRegistryRefused,
+  operator_host_lookup, operator_host_lookup_refusal,
+}
 import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute }
 import gunbc.fleet.board_function_admission_marker { board_function_converge_admission_marker }
 import gunbc.fleet.board_function_admission {
@@ -617,14 +620,19 @@ fn remove_admission_marker() -> String? {
   }
 }
 
-// THE ENTRY. `host` names the machine in gunbc.fleet.fleet_host_identity operator_hosts; the deployment
+// THE ENTRY. `host` names a machine of the ADMITTED registry (gunbc.hostname_allocation operator_host_lookup); the deployment
 // that installs the unit passes its own target host. Exit 0 means every host-side removal the plans license
 // is in place and read back, and the admission latch is written; any refusal removes the latch and exits
 // non-zero with every plan's line printed.
 fn board_function_converge_cli(host: NonEmptyStr) -> CliWireResponse {
-  match filter(operator_hosts, h => (h as String) == (host as String)).first() {
-    Absent => board_function_converge_refused(reason: concat("board-function converge: no operator host is named ", host as String))
-    Present { value: identity } =>
+  board_function_converge_cli_over(lookup: operator_host_lookup(label: host as String))
+}
+
+// The entry over an already-taken registry lookup, so a witness can hand it a refused registry and see the
+// effect refuse before anything is read or written.
+fn board_function_converge_cli_over(lookup: OperatorHostLookup) -> CliWireResponse {
+  match lookup {
+    OperatorHostFound { host: identity } =>
       if !running_as_root() { board_function_converge_refused(reason: "board-function converge removes PCI functions and writes PCIe configuration space, so it runs as root") }
       else {
         let lines = converge_plans_over(plans: host_board_function_plans(host: identity), converge: fn(r) { converge_pcie_detach(route: r) })
@@ -642,5 +650,14 @@ fn board_function_converge_cli(host: NonEmptyStr) -> CliWireResponse {
             }
         }
       }
+    OperatorHostNotRegistered { label: _ } => board_function_converge_cli_host_refused(lookup: lookup)
+    OperatorHostRegistryRefused { key: _ } => board_function_converge_cli_host_refused(lookup: lookup)
+  }
+}
+
+fn board_function_converge_cli_host_refused(lookup: OperatorHostLookup) -> CliWireResponse {
+  match operator_host_lookup_refusal(lookup: lookup) {
+    Present { value: r } => board_function_converge_refused(reason: concat("board-function converge: ", r))
+    Absent => board_function_converge_refused(reason: "board-function converge: the registry lookup admitted no machine")
   }
 }

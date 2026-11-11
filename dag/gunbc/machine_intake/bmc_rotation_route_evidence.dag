@@ -124,7 +124,11 @@ fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
 // from the current Manager GET at the controller's current endpoint (J1, 2026-10-06), joined to this unit by its observed
 // BMC link. A capture that does not decode, does not bind to this unit's observed link, or does not
 // discriminate a family yields no observation rather than a stand-in.
-fn mtjade1_observed_endpoint(network: ObservedBmcNetwork) -> BmcControllerEndpoint? {
+//
+// The controller a network observation names, for any unit: the observed address, or none where the
+// network was not observed. It is the endpoint AT THE OBSERVATION's time, which is how a historical
+// capture is replayed against the controller it was read at rather than against a unit's current row.
+fn observed_bmc_network_endpoint(network: ObservedBmcNetwork) -> BmcControllerEndpoint? {
   match network {
     BmcNetworkObservedStatic { address: a, prefix: _, gateway: _, link: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
     BmcNetworkObservedDhcpLease { address: a, prefix: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
@@ -149,7 +153,7 @@ fn historical_route_observation_from_manager_read(read: RecordedManagerIdentityO
           if length(o.firmware_version) == 0 {
             none
           } else {
-            match mtjade1_observed_endpoint(network: read.endpoint) {
+            match observed_bmc_network_endpoint(network: read.endpoint) {
               Absent => none
               Present { value: endpoint } =>
                 match manager_read_receipt(read: read) {
