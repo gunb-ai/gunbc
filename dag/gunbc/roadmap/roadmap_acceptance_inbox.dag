@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
-import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds }
+import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused }
 import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes,
   declared_roadmap_edges,
@@ -35,6 +35,13 @@ import gunbc.roadmap.roadmap_authority {
 //
 // THE ROW CARRIES THE NODE, NOT ITS TEXT. red_control, handback and the rest of the ticket are read
 // from the RoadmapNode (line_ticket) by whoever renders; copying them would be a second spelling.
+//
+// A RETIRED NODE LEAVES THE INBOX THE WAY AN ACCEPTED ONE DOES (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+// Retirement ends a node's story, so nothing can be awaited on it, and the row filter excludes the log's
+// retired set exactly as it excludes the accepted set. Without that exclusion a retired node stays in the
+// inbox asking the operator for the one receipt the model refuses (frontier_sets_projection admits no
+// retired node with a live receipt), so the surface would invite an action its own authority then denies.
+// Both sets arrive from the ONE event-log read and neither is restated here.
 // CONSUMERS (gunbc.design_argument::consumption). Consumed in this change: test.claim.roadmap.roadmap_acceptance_inbox_witness
 // (supplied histories, with red controls) and test.claim.roadmap.roadmap_acceptance_inbox_live_witness
 // (the real route, roadmap_acceptance_inbox_on_authority on the live corpus). DECLARED FRONTIER, the
@@ -119,26 +126,36 @@ fn roadmap_acceptance_inbox(
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       AcceptanceInboxProjectionRefused { detail: detail }
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match frontier_sets_projection(history: history, retired: retired) {
-        FrontierSetsProjectionRefused { detail: detail } =>
+      // A REFUSED RETIRED READ IS A REFUSAL, NOT AN UNFILTERED INBOX. Showing every ticketed node as
+      // awaiting acceptance is the assertion that nothing has been retired; when the log cannot say, that
+      // assertion is unestablished, so it refuses with the log's own detail (the arm above does the same
+      // for the history). The frontier projection refuses this read too, so no consumer loses a refusal.
+      match retired {
+        RetiredNodeIdsRefused { detail: detail } =>
           AcceptanceInboxProjectionRefused { detail: detail }
-        FrontierSetsProjected { accepted: accepted, withheld: withheld } => {
-          let accepted_set = roadmap_node_id_set(ids: accepted)
-          let withheld_set = roadmap_node_id_set(ids: withheld)
-          let edges = declared_roadmap_edges()
-          AcceptanceInboxProjected {
-            rows: declared_roadmap_nodes()
-              |> filter(n => node_has_ticket(rn: n) && !set_contains(accepted_set, n.node))
-              |> map(n => AcceptanceInboxRow {
-                node: n,
-                status: if set_contains(withheld_set, n.node) { InboxWithheld } else { InboxAwaiting },
-                parents: edges
-                  |> filter(e => e.child == n.node)
-                  |> map(e => inbox_parent_state(parent: e.parent, accepted: accepted_set, withheld: withheld_set)),
-                prior: inbox_prior_reading(events: events, node: n.node),
-              }),
+        RetiredNodeIdsLoaded { ids: retired_ids } =>
+          match frontier_sets_projection(history: history, retired: retired) {
+            FrontierSetsProjectionRefused { detail: detail } =>
+              AcceptanceInboxProjectionRefused { detail: detail }
+            FrontierSetsProjected { accepted: accepted, withheld: withheld } => {
+              let accepted_set = roadmap_node_id_set(ids: accepted)
+              let withheld_set = roadmap_node_id_set(ids: withheld)
+              let retired_set = roadmap_node_id_set(ids: retired_ids)
+              let edges = declared_roadmap_edges()
+              AcceptanceInboxProjected {
+                rows: declared_roadmap_nodes()
+                  |> filter(n => node_has_ticket(rn: n) && !set_contains(accepted_set, n.node) && !set_contains(retired_set, n.node))
+                  |> map(n => AcceptanceInboxRow {
+                    node: n,
+                    status: if set_contains(withheld_set, n.node) { InboxWithheld } else { InboxAwaiting },
+                    parents: edges
+                      |> filter(e => e.child == n.node)
+                      |> map(e => inbox_parent_state(parent: e.parent, accepted: accepted_set, withheld: withheld_set)),
+                    prior: inbox_prior_reading(events: events, node: n.node),
+                  }),
+              }
+            }
           }
-        }
       }
   }
 }
