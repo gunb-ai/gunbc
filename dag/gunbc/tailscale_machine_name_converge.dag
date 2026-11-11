@@ -482,10 +482,15 @@ fn tailscale_machine_name_plan(
 // tailnet half took the name while the OS half did not is refused too: that pair is the unstable state the
 // window exists to close, since a later start re-derives the tailnet name from the OS hostname, so reporting
 // it as converged would hand the next change a host that reverts on its own.
+//
+// THE VERDICT AND THE RUN-LEVEL CAUSE CARRY DIFFERENT NAMES ON PURPOSE. `ReadBackOsHalfNotAtRequest` is what the
+// read says about the pair; `ReadBackNamesDiverged` (in TailscaleMachineNameRunRefusalCause) is what the RUN
+// refuses with, and it additionally carries the set's stderr. They were near-identical spellings before, which is
+// how one got written where the other belonged -- an unresolved arm, caught only by the compiler.
 type TailscaleMachineNameReadBack
   = ReadBackConfirmsRequested { machine_name: NonEmptyStr, os_name: String }
   | ReadBackMachineNameContradicts { requested: DnsLabel, reported: NonEmptyStr, os_name: String }
-  | ReadBackNamesDiverge { requested: DnsLabel, machine_name: NonEmptyStr, os_name: String }
+  | ReadBackOsHalfNotAtRequest { requested: DnsLabel, machine_name: NonEmptyStr, os_name: String }
   | ReadBackRefused { cause: TailscaleMachineNamePlanRefusal }
 
 fn tailscale_machine_name_read_back(
@@ -501,7 +506,7 @@ fn tailscale_machine_name_read_back(
         requested: requested, reported: machine_name, os_name: os_name
       }
     OsHalfNotTarget { machine_name: machine_name, os_name: os_name, requested: requested } =>
-      ReadBackNamesDiverge {
+      ReadBackOsHalfNotAtRequest {
         requested: requested, machine_name: machine_name, os_name: os_name
       }
   }
@@ -837,7 +842,7 @@ fn converge_tailscale_machine_name(
                     set_stderr: stderr,
                   }
                 }
-              ReadBackNamesDiverged {
+              ReadBackOsHalfNotAtRequest {
                 requested: requested,
                 machine_name: machine_name,
                 os_name: os_name,

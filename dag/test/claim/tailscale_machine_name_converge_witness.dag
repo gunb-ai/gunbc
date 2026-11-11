@@ -66,7 +66,7 @@ import gunbc.tailscale_machine_name_converge {
   PrepareWindow,
   ReadBackConfirmsRequested,
   ReadBackMachineNameContradicts,
-  ReadBackNamesDiverge,
+  ReadBackOsHalfNotAtRequest,
   ReadBackRefused,
   RenameFlipNotLanded,
   RenameWindow,
@@ -104,7 +104,6 @@ import extdeps.tailscale.machine_name {
 }
 import product.host_identity { HostIdentity }
 import std.algebra { string_contains }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.process { ExitFailure, ProcessExit }
 import std.types { Bool, List, String }
@@ -134,19 +133,23 @@ data witness_os_name_damien: String = "damien\n"
 // that reached for the FQDN instead would plan a different change from the same bytes.
 data witness_dns_name_document: String = "{\"Self\": {\"HostName\": \"srv4\", \"DNSName\": \"srv1.tailecbe08.ts.net.\"}}"
 
-data witness_fox_status_document: String = "{\"Self\": {\"HostName\": \"fox\", \"DNSName\": \"fox.tailecbe08.ts.net.\"}}"
-
-data witness_os_name_fox: String = "fox\n"
-
 // A slot the fleet machine registry has no row for. It is spelled here as a fixture, not declared in
 // gunbc.fleet.fleet_host_identity, so no fleet subject of this repository can ever carry it: the case is about
 // what the mode does when the name authority has nothing to say, and the answer must not be a name invented from
 // the slot's spelling.
 data witness_unallocated_slot: HostIdentity = "srv-slot-without-an-allocation-row" as HostIdentity
 
-data witness_rename_window: TailscaleMachineNameWindow = tailscale_machine_name_stage_rename_window_claim
+// THE WINDOW IS THE PARSED CLAIM, NOT THE CLAIM TEXT. `tailscale_machine_name_stage_*_claim` are the String words a
+// run carries as its stage claim; the mode's window question is what those words PARSE to, and the entry reads them
+// through `tailscale_machine_name_window_read`. Fixtures that bound the raw words to the window type would test a
+// run that never parses its own stage.
+data witness_rename_window: TailscaleMachineNameWindow = tailscale_machine_name_window_parse(
+  claim: tailscale_machine_name_stage_rename_window_claim
+)
 
-data witness_prepare_window: TailscaleMachineNameWindow = tailscale_machine_name_stage_prepare_window_claim
+data witness_prepare_window: TailscaleMachineNameWindow = tailscale_machine_name_window_parse(
+  claim: tailscale_machine_name_stage_prepare_window_claim
+)
 
 data witness_undeclared_window: TailscaleMachineNameWindow = tailscale_machine_name_window_parse(claim: "undeclared-stage-claim")
 
@@ -331,7 +334,7 @@ test fn the_pair_the_plan_will_not_write_is_the_pair_the_read_back_will_not_conf
           os_name_stdout: witness_os_name_slot_spelling
         )
       ) {
-        ReadBackNamesDiverge { requested: requested, machine_name: machine_name, os_name: os_name } =>
+        ReadBackOsHalfNotAtRequest { requested: requested, machine_name: machine_name, os_name: os_name } =>
           (requested as String) == (plan_to as String) && machine_name == plan_machine && os_name == plan_os
         _ => false
       }
@@ -671,8 +674,6 @@ test fn the_leg_words_are_host_free_and_the_route_comes_from_the_reach_model() -
 // admits no machine -- not even a machine outside the collision -- and a label the registry does not carry admits
 // none either. Both refusals happen in the entry, over a lookup the witness hands it, so no leg, no read and no
 // write is reached: the alternative is an SSH connection to a machine no registry names.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
 fn registry_row(slot: String, hostname: String, next: String) -> HostnameAllocation {
   HostnameAllocation {
     fleet_slot: slot as HostIdentity,
