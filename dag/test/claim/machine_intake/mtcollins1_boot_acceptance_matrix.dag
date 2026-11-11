@@ -923,13 +923,15 @@ fn presented_world(ready_at: Second?, code_at: Int?) -> MegaRacMediaWorld {
 
 fn recheck_general_read_at(route: List<DispatchRecord>) -> Second? {
   let power = first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
-  fold(route, init: none, f: fn(acc, r) {
+  let unread: Second? = none
+  fold(route, init: unread, f: fn(acc, r) {
     if operation_name(r: r) == "megarac.Media.GetMediaGeneral" && power >= 0 && r.ordinal < power { Present { value: r.dispatched_at } } else { acc }
   })
 }
 
 test fn the_recheck_withholds_an_already_presented_admission_whose_code_turns_nonzero() -> Bool {
-  match run_attempt(world: media_varied(media: presented_world(ready_at: none, code_at: none))) {
+  let never: Second? = none
+  match run_attempt(world: media_varied(media: presented_world(ready_at: never, code_at: no_error_after_ready()))) {
     WitnessReturned { value: _, route: control } =>
       count_named(route: control, name: "megarac.Media.StartMedia") == 0
         && count_named(route: control, name: "megarac.Media.StopMedia") == 0
