@@ -2314,7 +2314,7 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
   question: "Which authority realizes runner slot adds: runner_capacity_realize's apply path or runner_host_file_converge_ci_wet? Only the latter has an executing route in CI (fleet-converge.yml); gunbc.apply::apply_wet is never invoked by any workflow.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
-      revision: "855daebfec53",
+      revision: "855daebfec531280f54bcbc22fe4327c10cf6108",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet") }],
@@ -2323,7 +2323,7 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
     },
     tail: [
       ConcernSighting {
-        revision: "9bc7a3ebcadd",
+        revision: "9bc7a3ebcadd8d4f9e0348ec8d386ffdf9937031",
         evidence: FreeSemigroup {
           head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_host_plan") },
           tail: [CitesDeclaration { declaration: decl_ref(module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds") }],
@@ -2331,7 +2331,7 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
         account: "B3b (tidy-swift-586) read the realize apply seam end to end: runner_capacity_apply_host_plan's add arm refuses EVERY host plan that carries slot adds with a typed reason naming runner_host_file_converge_ci_wet ('this seam preflights and receipts, it does not actuate'), and runner_capacity_apply_wet_exit exits failure whenever any host refused. Realize never reports success for an action that did not run, so it does not realize a slot add: the converge is the only route that does. An intermediate reading kept realize as a refusing seam; the manager's review set the correct test -- a kept path needs a production caller, and none exists (below).",
       },
       ConcernSighting {
-        revision: "41ce84841aa3",
+        revision: "41ce84841aa3b584b38ee801c23c889df8f46fa2",
         evidence: FreeSemigroup {
           head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit") },
           tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.apply", decl_name: "apply_wet") }],
@@ -2342,11 +2342,11 @@ data runner_capacity_realize_apply_has_no_executing_route: IntegrationConcern = 
   },
   disposition: Integrated {
     evidence: IntegrationEvidence {
-      integrated_at: "41ce84841aa3",
+      integrated_at: "41ce84841aa3b584b38ee801c23c889df8f46fa2",
       superseded: [
-        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", name: "runner_capacity_apply_wet_exit", revision: "26ba18c76e4a" },
-        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", name: "runner_capacity_apply_plan", revision: "26ba18c76e4a" },
-        HistoricalDeclaration { module_path: "test.claim.runner.runner_capacity_realize_witness", name: "converged_roster_plans_zero_additions_and_apply_succeeds", revision: "26ba18c76e4a" },
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_wet_exit", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+        HistoricalDeclaration { module_path: "gunbc.runner.runner_capacity_realize", decl_name: "runner_capacity_apply_plan", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
+        HistoricalDeclaration { module_path: "test.claim.runner.runner_capacity_realize_witness", decl_name: "converged_roster_plans_zero_additions_and_apply_succeeds", at: "26ba18c76e4ac56e67fb19be215fa506b3d774bd" as CommitSha },
       ],
       replacement: FreeSemigroup {
         head: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
