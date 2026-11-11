@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import std.measure { Second, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, ipmi_retry_bound_argv }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
 import gunbc.host.managed_host_unit_hold { UnitHoldProof }
@@ -93,7 +93,7 @@ fn megarac_boot_media_chassis_power(host: AdmittedMegaRacHost, account: NonEmpty
     password_file: password_file,
     deadline: coreutils_duration_operand(d: bound.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: bound.kill_after) as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: bmc_control_route_ipmi_cipher_suite(route: host.route)),
+    retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: bmc_control_route_ipmi_cipher_suite(route: host.route)),
   )
   chassis_observation(success: r.success, stdout: r.stdout)
 }
@@ -358,7 +358,7 @@ fn megarac_stale_power_off(
         action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
         deadline: coreutils_duration_operand(d: bound.deadline) as NonEmptyStr,
         kill_after: coreutils_duration_operand(d: bound.kill_after) as NonEmptyStr,
-        cipher_suite_argv: ipmi_cipher_suite_argv(suite: bmc_control_route_ipmi_cipher_suite(route: host.route)),
+        retry_bound_argv: ipmi_retry_bound_argv(), cipher_suite_argv: ipmi_cipher_suite_argv(suite: bmc_control_route_ipmi_cipher_suite(route: host.route)),
       )
       if control.success == false {
         StalePowerOffRan { off: MegaRacStalePowerOffCommandRefused { stale_image: stale, before: before } }
