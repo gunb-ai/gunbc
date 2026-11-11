@@ -1,0 +1,125 @@
+module gunbc.machine_intake.bmc_account_state_live
+
+// THE LIVE BMC ACCOUNT-STATE READ -- the bound observation the arrival door (PXE 1b/1d) binds for the
+// BmcSecure step, and the realization both live-read frontiers (bmc_secure_state_live_read_frontier,
+// bmc_served_lockout_live_read_frontier) name. It is the composition of two already-witnessed parts:
+//   * assemble_account_state_transport (gunbc.machine_intake.bmc_account_state_capture, #16295) decodes
+//     every decision-relevant field FROM the committed capture bytes through the single decoders in
+//     bmc_account_state_parsers (#16274);
+//   * supplied_transport_read_bmc_account_state (bmc_secure, #16263) mints BmcAccountStateObservation,
+//     stamps every instant from the observer's clock (never the controller's), and DERIVES the published
+//     retirement under the credential-policy row (it never probes the published credential).
+//
+// WHY THIS IS THE REAL-EFFECTS BOUNDARY AND NOTHING PAST IT. This module runs no subprocess, opens no
+// socket, reads no clock, and fetches no secret. The WET layer -- the arrival-door dispatch that the
+// operator-approved run-scoped service account drives on srv1 (fleet-converge arrival_converge) -- is what
+// executes the ipmitool / Redfish operations (the extdeps.bmc.ipmi / extdeps.bmc.http operation rows the
+// controller inputs select), materializes the managed secret through
+// gunbc.auth.secret_ref_credential.fetch_secret_ref_credential, reads the wall clock through
+// gunbc.clock_read.observer_clock_read, and WRITES each response to the content-addressed evidence store,
+// reading its EvidenceRef back. Those raw committed captures are THIS module's input. Enforcing the two
+// safety properties therefore does not need code here: (a) the published credential has NO parameter on
+// this path -- the reader only ever takes ManagedCredentialReference / the goal's break-glass reference and
+// derives the published retirement, so a published login cannot be requested; (b) an instant cannot be a
+// controller clock -- supplied_transport_read_bmc_account_state turns read_at_millis into a sealed observer
+// instant via gunbc.clock_read. A witness hands the same captures a wet transport would, and gets the same
+// observation the dry reader mints for that world.
+//
+// NOTHING NEW IS ENROLLED. This module's only consumer is the arrival-door run (the dispatch above); per
+// gunbc.design_ruling job_roster_closed_to_growth / ci_job_budgets_closed_to_growth it adds no CI lane and
+// no wet-terminal scheduled claim -- the frontier is discharged by the executed srv15 run, not a CI job.
+
+import std.types { Bool, List, NonEmptyStr, EpochMs }
+import std.decl_ref { decl_ref }
+import std.content_hash { content_hash_of_value }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.ipmi_channel { IpmiUserId }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import gunbc.machine_intake.subject { MachineIntakeSubject }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.bmc_credential_policy { BmcCredentialPolicyKey, CredentialSurface }
+import gunbc.machine_intake.bmc_secure {
+  BmcAccountStateObservation, BmcSuppliedAccountStateTransport, BmcSuppliedResponse,
+  BmcSuppliedAccountStateReadOutcome, SuppliedTransportMinted, SuppliedTransportRefused,
+  BmcSuppliedReadRefusal, ManagedCredentialReference, PublishedAccountKind,
+  supplied_transport_read_bmc_account_state,
+}
+import gunbc.machine_intake.bmc_account_state_capture {
+  BmcAccountStateCaptures, BmcAccountStateCaptureOutcome, CapturedTransportAssembled,
+  CapturedTransportUndecodable, BmcAccountStateCaptureRefusal, assemble_account_state_transport,
+}
+
+// THE OUTCOME OF THE LIVE READ. It names BOTH halves: an undecodable capture is a CapturesUndecodable (the
+// assembler's typed cause, kept -- not laundered into the reader's missing-policy diagnosis), a reader
+// refusal is LiveReadRefused, and success is a minted BmcAccountStateObservation.
+type BmcAccountStateLiveReadOutcome
+  = CapturesUndecodable { cause: BmcAccountStateCaptureRefusal }
+  | LiveReadRefused { cause: BmcSuppliedReadRefusal }
+  | LiveReadMinted { observation: BmcAccountStateObservation }
+
+// COMMIT ONE CAPTURED RESPONSE. The wet layer writes each operation's bytes to the content-addressed
+// evidence store and reads back its ref; this is the pure digest of the same bytes -- the label is the read
+// name, the digest is content_hash_of_value of the response -- so a capture assembled by the wet layer and
+// one built here agree. The assembler recomputes this digest and refuses a mismatch, so a byte string that
+// was never written cannot pass itself off as committed.
+fn commit_captured_response(read: NonEmptyStr, response: NonEmptyStr) -> BmcSuppliedResponse {
+  BmcSuppliedResponse {
+    read: read,
+    response: response,
+    evidence: EvidenceRef { label: read, digest: content_hash_of_value(value: response) },
+  }
+}
+
+// THE BOUND OBSERVATION. Raw committed captures + the controller/board/firmware/managed reference/user the
+// caller supplies as DATA (no per-host literal is consulted here -- the caller passes srv15's row, the next
+// host passes its own), assembled to a transport and read. It threads straight through to the two witnessed
+// parts; the outcome distinguishes an undecodable capture from a reader refusal from a mint.
+fn bmc_account_state_live_read(
+  captures: BmcAccountStateCaptures,
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
+  firmware: BmcFirmwareReleaseIdentity,
+  managed: ManagedCredentialReference,
+  // THE GOAL'S BREAK-GLASS GENERATION (BmcSecureGoal.published_break_glass). Required, taken from the goal
+  // by the caller, never chosen here. On a shared-account board (root is both) the caller passes the managed
+  // generation; elsewhere the goal's predeclared secret. There is NO published-credential parameter anywhere
+  // on this path -- the published retirement is DERIVED, so no published login can be requested.
+  break_glass: ManagedCredentialReference,
+  managed_user: IpmiUserId,
+  published_user: IpmiUserId,
+  published_account: NonEmptyStr,
+  published_account_kind: PublishedAccountKind,
+  // The credential-policy row grounding the DERIVED published retirement. None refuses -- never probed.
+  policy: BmcCredentialPolicyKey?,
+  published_generation_is_password: Bool,
+  served_surfaces: List<CredentialSurface>,
+  attempt: AttemptIdentity,
+  read_at_millis: EpochMs,
+) -> BmcAccountStateLiveReadOutcome
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_live_witness", decl_name: "the_live_read_mints_the_same_observation_the_composed_parts_produce"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_live_witness", decl_name: "an_ungrounded_policy_refuses_through_the_live_read_never_a_published_probe"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_live_witness", decl_name: "an_undecodable_capture_refuses_with_the_assembler_cause_not_a_laundered_diagnosis"),
+  ]
+{
+  match assemble_account_state_transport(captures: captures) {
+    // The assembler's typed cause is carried out UNCHANGED -- an undecodable capture is not relabelled as
+    // the reader's missing-policy refusal (fail_closed: no plausible output is fabricated, review 93258).
+    CapturedTransportUndecodable { cause: c } => CapturesUndecodable { cause: c }
+    CapturedTransportAssembled { transport: t } =>
+      match supplied_transport_read_bmc_account_state(
+        transport: t, subject: subject, endpoint: endpoint, board: board, firmware: firmware,
+        managed: managed, break_glass: break_glass, managed_user: managed_user,
+        published_user: published_user, published_account: published_account,
+        published_account_kind: published_account_kind, policy: policy,
+        published_generation_is_password: published_generation_is_password,
+        served_surfaces: served_surfaces, attempt: attempt, read_at_millis: read_at_millis,
+      ) {
+        SuppliedTransportRefused { cause: r } => LiveReadRefused { cause: r }
+        SuppliedTransportMinted { observation: o } => LiveReadMinted { observation: o }
+      }
+  }
+}

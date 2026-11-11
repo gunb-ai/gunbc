@@ -1,0 +1,156 @@
+module test.claim.machine_intake.machine_intake_bmc_account_state_live_witness
+
+// THE LIVE ACCOUNT-STATE READ, WITNESSED (PXE 1c PR B real-wet half, sharp-crane-14).
+// gunbc.machine_intake.bmc_account_state_live bmc_account_state_live_read is the bound observation the
+// arrival door binds for the BmcSecure step: it commits nothing itself and runs nothing -- it composes
+// assemble_account_state_transport (decode-from-bytes, #16295) and supplied_transport_read_bmc_account_state
+// (mint + observer instants + DERIVED published retirement, #16263). Each half is witnessed on its own;
+// THESE witnesses hold the ENTRY point: over a faithful committed capture set with the goal's break-glass
+// reference and a grounded policy row it mints (the composition reaches the reader), an ungrounded policy
+// refuses THROUGH the entry (never a published probe -- the OpenBMC 3.22.00 lockout-budget floor), and an
+// undecodable capture refuses with the ASSEMBLER's own typed cause, not a laundered missing-policy
+// diagnosis (review 93258). The commit primitive commit_captured_response is exercised on the way, so the
+// production evidence digest -- not just the witness's local one -- is what carries the captures.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.bmc.endpoint { OpenBmc, BmcControllerEndpoint }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.ipmi_channel { IpmiChannelCensusMember, IpmiMedium8023Lan, IpmiUserId, ipmi_lan_channel_member }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import extdeps.board_authority { BoardAuthorityRef }
+import gunbc.machine_intake.subject {
+  AssemblyManifest, ComponentIdentity, DimmComponent, FirmwareEntry, FirmwareManifest, IntakeAttemptId,
+  MachineIntakeSubject, UnitKey, qualification_subject_of,
+}
+import gunbc.machine_intake.bmc_credential_policy { CredentialSurface, RedfishBasicOrSession, BmcCredentialPolicyKey, asrock_altrad8ud_openbmc_3_22_00_key }
+import gunbc.machine_intake.bmc_secure {
+  BmcSuppliedResponse, BmcRedfishAccountCensusReading, BmcRedfishCensusServed, BmcRedfishAccountCensusEntry,
+  ManagedCredentialReference, PublishedAccountKind, PublishedAccountRetired,
+}
+import gunbc.machine_intake.bmc_account_state_live {
+  BmcAccountStateLiveReadOutcome, CapturesUndecodable, LiveReadRefused, LiveReadMinted,
+  bmc_account_state_live_read, commit_captured_response,
+}
+import gunbc.machine_intake.bmc_account_state_capture {
+  BmcAccountStateCaptures, RedfishSurfaceUndecodable,
+}
+
+// ── lab context (the srv15 row, as DATA -- no per-host literal inside the reader) ──────────────────
+data lab_unit: UnitKey = "LAB-ROOT-0001" as UnitKey
+data lab_assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-LAB-ROOT",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "dimm0", identity: "SPD-LAB-ROOT-0" }],
+}
+data lab_firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "3.22.00" }],
+  configuration_digests: [],
+}
+fn lab_subject() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: lab_unit, assembly: lab_assembly, firmware: lab_firmware_manifest),
+    attempt_id: "intake-20261029-bobo" as IntakeAttemptId,
+  }
+}
+data lab_endpoint: BmcControllerEndpoint = BmcControllerEndpoint { host: "192.168.1.248" }
+fn lab_firmware() -> BmcFirmwareReleaseIdentity {
+  bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: "3.22.00" as NonEmptyStr)
+}
+fn lab_board() -> BoardAuthorityRef? { Present { value: asrock_altrad8ud_openbmc_3_22_00_key().board } }
+data root_user: IpmiUserId = 1
+fn root_ref() -> ManagedCredentialReference {
+  ManagedCredentialReference {
+    account: "root",
+    role: AccountRoleAdministrator,
+    secret: SecretRef { project: "gunbai-secrets", secret: "bmc-srv15-admin", version: "1", hash_state: HashPending },
+    credential_epoch: 1,
+  }
+}
+fn policy_row() -> BmcCredentialPolicyKey? { Present { value: asrock_altrad8ud_openbmc_3_22_00_key() } }
+data served_surfaces: List<CredentialSurface> = [RedfishBasicOrSession]
+
+// ── faithful committed captures (grounded bytes; the production commit primitive builds them) ──────
+fn members() -> List<IpmiChannelCensusMember> {
+  [ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 248))]
+}
+data getaccess_capture: String = "ID  Name\t             Callin  Link Auth\tIPMI Msg\tChannel Priv Limit\n1   admin            false   false      true       ADMINISTRATOR\n2   operator           false   false      true       ADMINISTRATOR\n3                  true    false      false      NO ACCESS\n4   OEM                false   false      true       OEM\n5                  false   false      false      NO ACCESS\n6                  false   false      false      NO ACCESS\n7                  false   false      false      NO ACCESS\n8                  false   false      false      NO ACCESS\n9                  false   false      false      NO ACCESS\n10                 false   false      false      NO ACCESS\n11                 false   false      false      NO ACCESS\n12                 false   false      false      NO ACCESS\n13                 false   false      false      NO ACCESS\n14                 false   false      false      NO ACCESS\n15                 false   false      false      NO ACCESS\n"
+data accounts_capture: String = "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts\",\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":1}"
+data account_service_capture: String = "{\"AccountLockoutThreshold\":3,\"AccountLockoutDuration\":600,\"AccountLockoutCounterResetAfter\":600,\"AccountLockoutCounterResetEnabled\":true}"
+data lan_config_capture: String = "Set in Progress         : Set Complete\nAuth Type Support       : NONE MD2 MD5 PASSWORD \nIP Address Source       : DHCP Address\nIP Address              : 192.168.1.252\nMAC Address             : ac:1f:6b:e3:f5:7b\n802.1q VLAN ID          : Disabled\nBad Password Threshold  : 3\nInvalid password disable: yes\nAttempt Count Reset Int.: 300\nUser Lockout Interval   : 300\n"
+data surface_capture: String = "{\"@odata.id\":\"/redfish/v1/\",\"@odata.type\":\"#ServiceRoot.v1_15_0.ServiceRoot\",\"Id\":\"RootService\",\"Name\":\"OpenBMC\",\"RedfishVersion\":\"1.17.0\",\"Links\":{\"Sessions\":{\"@odata.id\":\"/redfish/v1/SessionService/Sessions\"}}}"
+
+fn root_census() -> BmcRedfishAccountCensusReading {
+  BmcRedfishCensusServed { accounts: [BmcRedfishAccountCensusEntry { name: "root", enabled: true, is_managed_account: true }] }
+}
+
+// A faithful capture set whose every byte is committed by the PRODUCTION commit_captured_response, with the
+// service-root body parameterized so the undecodable-surface red can hand a plaintext one.
+fn live_captures(surface_body: String) -> BmcAccountStateCaptures {
+  BmcAccountStateCaptures {
+    channel: 1,
+    channel_members: members(),
+    redfish_census: root_census(),
+    managed_answer: commit_captured_response(read: "ipmi-user-test-managed", response: "Success"),
+    census_answer: commit_captured_response(read: "ipmi-get-user-access", response: getaccess_capture),
+    redfish_accounts_answer: commit_captured_response(read: "redfish-accounts", response: accounts_capture),
+    redfish_surface_answer: commit_captured_response(read: "redfish-surface", response: surface_body),
+    account_service_answer: commit_captured_response(read: "redfish-account-service", response: account_service_capture),
+    lan_config_answer: commit_captured_response(read: "ipmi-get-lan-config", response: lan_config_capture),
+    break_glass_answer: Present { value: commit_captured_response(read: "ipmi-user-test-break-glass", response: "Success") },
+  }
+}
+
+// GREEN (composition reaches the reader and mints). Over the faithful committed captures, the goal's
+// break-glass reference (root is both on this shared-account board) and a grounded policy row, the entry
+// returns a minted observation -- and that observation carries the SURFACE FACT the assembler decoded from
+// the ServiceRoot body, proving the commit->decode->mint chain is wired through the entry, not short-circuited.
+test fn the_live_read_mints_the_same_observation_the_composed_parts_produce() -> Bool {
+  match bmc_account_state_live_read(
+    captures: live_captures(surface_body: surface_capture), subject: lab_subject(), endpoint: lab_endpoint,
+    board: lab_board(), firmware: lab_firmware(), managed: root_ref(), break_glass: root_ref(),
+    managed_user: root_user, published_user: root_user, published_account: "root",
+    published_account_kind: PublishedAccountRetired, policy: policy_row(),
+    published_generation_is_password: false, served_surfaces: served_surfaces,
+    attempt: "attempt-1" as AttemptIdentity, read_at_millis: 1730000000000,
+  ) {
+    LiveReadMinted { observation: obs } => obs.redfish_surface_served
+    _ => false
+  }
+}
+
+// RED (lockout-budget floor). An ungrounded credential-policy row makes the entry REFUSE -- the published
+// credential is never probed to find out. This is the OpenBMC 3.22.00 / ALTRAD8UD-1L2T budget guard seen
+// THROUGH the arrival-door entry: the refusal surfaces as a reader refusal, not a mint.
+test fn an_ungrounded_policy_refuses_through_the_live_read_never_a_published_probe() -> Bool {
+  match bmc_account_state_live_read(
+    captures: live_captures(surface_body: surface_capture), subject: lab_subject(), endpoint: lab_endpoint,
+    board: lab_board(), firmware: lab_firmware(), managed: root_ref(), break_glass: root_ref(),
+    managed_user: root_user, published_user: root_user, published_account: "root",
+    published_account_kind: PublishedAccountRetired, policy: none,
+    published_generation_is_password: false, served_surfaces: served_surfaces,
+    attempt: "attempt-1" as AttemptIdentity, read_at_millis: 1730000000000,
+  ) {
+    LiveReadRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// RED (fail_closed / review 93258). An undecodable capture -- a plaintext service-root body -- refuses at the
+// ASSEMBLE step, and the entry surfaces the assembler's OWN typed cause (RedfishSurfaceUndecodable), never a
+// laundered missing-policy diagnosis. Proves the entry keeps the two refusal sources distinct.
+test fn an_undecodable_capture_refuses_with_the_assembler_cause_not_a_laundered_diagnosis() -> Bool {
+  match bmc_account_state_live_read(
+    captures: live_captures(surface_body: "<!DOCTYPE html><html><body>404 Not Found</body></html>"),
+    subject: lab_subject(), endpoint: lab_endpoint, board: lab_board(), firmware: lab_firmware(),
+    managed: root_ref(), break_glass: root_ref(), managed_user: root_user, published_user: root_user,
+    published_account: "root", published_account_kind: PublishedAccountRetired, policy: policy_row(),
+    published_generation_is_password: false, served_surfaces: served_surfaces,
+    attempt: "attempt-1" as AttemptIdentity, read_at_millis: 1730000000000,
+  ) {
+    CapturesUndecodable { cause: RedfishSurfaceUndecodable { detail: _ } } => true
+    _ => false
+  }
+}
