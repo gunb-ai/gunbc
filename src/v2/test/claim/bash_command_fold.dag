@@ -90,7 +90,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ci_cargo_eagain_retry_core_golden pattern).
 
 data bash_fold_and_then_golden: String = "'true' && 'false'"
-data bash_fold_and_or_negation_grouped_golden: String = "('true' || 'true') && (! ('false' || 'false'))"
+// THE LEFT OPERAND CARRIES NO GROUPING, THE RIGHT ONE DOES. bash gives `&&` and `||` the same
+// precedence and evaluates an and_or list left to right, so `a || b && c` already means
+// `(a || b) && c`: parens around a LEFT operand restate the parse without changing it, and the
+// renderer that has to emit the installed launcher's bytes (a TLS guard `[ -s k ] && [ -s c ] ||
+// openssl ...`) would be writing shell the host file does not contain. Grouping is load-bearing
+// only on the RIGHT, where `a && b || c` is not `a && (b || c)` — which is what the operand's own
+// rule still adds (see the negation term, whose `||` inner keeps its parens, and
+// bash_fold_serialize_andor_operand). Verified against bash, not reasoned about.
+data bash_fold_and_or_negation_grouped_golden: String = "'true' || 'true' && (! ('false' || 'false'))"
 data bash_fold_assign_foo_golden: String = "FOO='bar'"
 data bash_fold_assign_home_golden: String = "X=\"$HOME\""
 data bash_fold_assign_quote_golden: String = "VAR='a'\\''b'"
