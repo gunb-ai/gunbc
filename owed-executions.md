@@ -143,3 +143,7 @@ Maintained by silent-bee-845, the daily integration manager. CI's required job (
 - UNOWNED (on concern row branch_match_arm_closure_declared_return_not_admitted): (1) production Rust match token wiring (flips the closure_emission match pins); (2) function-type realization SELECTION at an item return with capturing arms (boxed vs impl; E0308); (3) a branch/match inside a returned closure BODY refuses upstream.
 - UNOWNED, small: rust_emit_small_conditional_target lacks a ^rust_token_kw_else lexeme, so production_rust_conditional_declares_a_close can never pass; emit/conditional_delimiting also refuses to load at main (dag/std/determinism.dag:6 unresolved DeclarationRef).
 - ENV: ctrl worktrees are dangling (.git -> /home/briansrls/ctrl/.git/worktrees/<id>, which does not exist). Seen by tidy-otter, fierce-lark and valiant-carp.
+
+## 2026-11-11
+- #16273 (v1-compiler-tests compiles again after #16069's Rc signatures). The suite's first run in a while: 79 tests, 68 ok, 5 FAILED (pre-existing, not Rc-related; listed in the PR body), 2 time out at >35 min solo, 4 unrun (BuildBuddy outage). The suite hangs under default threads (shared-state contention). UNOWNED: the 5 failures, the hang, and NO CI job builds v1-compiler-tests (a gate needs the operator).
+- #16143 CLOSED as superseded by #16122 (caeac322). Residuals: the 54/54 reading at main (bold-pike-241, pending BuildBuddy); concern row qualified_corpus_reference_minted_as_kernel (#16290, awaiting a load check).
