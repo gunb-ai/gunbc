@@ -161,10 +161,9 @@ fn jit_retired_prefix_of(old_name: String) -> String {
 // fabricates a plausible output). Kept pure so the decode is exercised by the claim witness.
 data jit_dead_sweep_input_separator: String = ":"
 
-type JitDispatchInputParse {
-  Parsed { host: String, retired_token: String }
-  Malformed { reason: NonEmptyStr }
-}
+type JitDispatchInputParse
+  = Parsed { host: String, retired_token: String }
+  | Malformed { reason: NonEmptyStr }
 
 fn jit_dead_sweep_parse_dispatch_input(raw: String) -> JitDispatchInputParse {
   let parts = split(s: raw, delimiter: jit_dead_sweep_input_separator)

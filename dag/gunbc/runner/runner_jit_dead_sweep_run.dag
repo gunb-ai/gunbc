@@ -357,10 +357,9 @@ type JitDeadSweepDispatch {
 // The dispatch read result: a malformed input REFUSES (a located reason, exit non-zero), it is never reduced to a
 // narrower sweep that could report a misleadingly clean result. The format itself is decoded by the pure
 // jit_dead_sweep_parse_dispatch_input (in gunbc.runner.runner_jit_dead_sweep), tested there.
-type JitDeadSweepReadResult {
-  Refused { reason: NonEmptyStr }
-  Provided { dispatch: JitDeadSweepDispatch }
-}
+type JitDeadSweepReadResult
+  = Refused { reason: NonEmptyStr }
+  | Provided { dispatch: JitDeadSweepDispatch }
 
 fn jit_dead_sweep_read_dispatch() -> JitDeadSweepReadResult {
   let raw = actions_variable_trimmed(name: jit_dead_sweep_host_env_name as NonEmptyStr)
