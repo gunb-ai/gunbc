@@ -35,6 +35,7 @@ import gunbc.roadmap.roadmap_event_log {
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
   ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
   attempt_result_outcome_word, attempt_result_outcome_text, roadmap_claim_return_to, RoadmapEventId,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_acceptance_revocation_disposition_word,
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
@@ -1870,6 +1871,15 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     CommentDeleted { comment: _ } => "comment deleted"
     ResultReturned { attempt, claim, outcome } =>
       join(["result of attempt ", attempt as String, " for claim ", claim as String, ": ", attempt_result_outcome_text(o: outcome)], "")
+    // The two acceptance kinds, captioned in the same voice as the rest of the ledger. The day is the receipt's
+    // own (a calendar day by construction — see roadmap_acceptance_day), and the revocation names the
+    // disposition through the word the log itself uses, so the page never invents a second spelling for a
+    // fact the log already words.
+    AcceptanceRecordedEvent { receipt, evidence: _ } =>
+      join(["accepted the closing check on ", receipt.accepted_on as String], "")
+    AcceptanceRevokedEvent { receipt: _, disposition, revoked_by: _, revoked_on, reason } =>
+      join(["revoked the acceptance on ", revoked_on as String, " (",
+        roadmap_acceptance_revocation_disposition_word(d: disposition), "): ", reason as String], "")
   }
 }
 
@@ -2102,6 +2112,13 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
     Claimed { assignee: _, return_to: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     Released =>
+      el_class("div", "issue-comment-body", [ txt("") ])
+    // An acceptance or a revocation is not a publication, so it gets the same empty body every other
+    // non-result kind gets: the durable event stays on the log and in the ledger, and this row does not
+    // pretend a receipt is a returned result.
+    AcceptanceRecordedEvent { receipt: _, evidence: _ } =>
+      el_class("div", "issue-comment-body", [ txt("") ])
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     Progress { note: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
