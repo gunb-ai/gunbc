@@ -12,7 +12,7 @@ import std.allocation_roster {
   build_allocation_roster,
 }
 import std.disposition { Disposition, Terminal }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1,
@@ -604,12 +604,14 @@ fn observed_host_identity_in(allocations: List<HostnameAllocation>, observed: St
 
 // WHAT EACH REFUSAL TELLS AN OPERATOR, ONCE. A site prefixes its own context to this; none of them
 // writes its own sentence about what an unknown spelling means, because thirteen sentences is
-// thirteen chances to say something the selector does not mean.
+// thirteen chances to say something the selector does not mean. The sentences name the SPELLING and
+// the roster, never who supplied it, so the same words serve the one-side rule and either side of a
+// join; the join adds which side it was (see `observed_host_join_refusal_text`).
 fn observed_host_identity_refusal_text(refusal: ObservedHostIdentityRefusal) -> String {
   match refusal {
     ObservedHostUnnamed { observed: o } =>
-      join(["the kernel named nothing (the raw answer was ", quote_spelling(s: o),
-            "); a failed observation is not a host name"], "")
+      join(["named nothing (the raw answer was ", quote_spelling(s: o),
+            "); a name that is empty is not a host and selects no host"], "")
     ObservedHostAmbiguous { observed: o, candidates: c } =>
       join([quote_spelling(s: o), " answers to more than one host (",
             join(map(c, d => d as String), ", "),
@@ -617,7 +619,7 @@ fn observed_host_identity_refusal_text(refusal: ObservedHostIdentityRefusal) -> 
     ObservedHostUnknown { observed: o } =>
       join([quote_spelling(s: o),
             " is no host's identity, allocated hostname, or shorter form of its drawn name;",
-            " the kernel's answer is a name and is never a HostIdentity"], "")
+            " a spelling is a name and is never a HostIdentity"], "")
   }
 }
 
@@ -633,20 +635,23 @@ type ObservedHostSelectorJoin
   = ObservedHostSelectorAgreed { host: HostIdentity }
   | ObservedHostSelectorJoinRefused { cause: ObservedHostJoinRefusal }
 
+// WHY ONE SIDE'S SPELLING IS NOT A HOST, AND WHICH SIDE IT WAS. The why is the SAME
+// `ObservedHostIdentityRefusal` the one-side rule already produces: a join failure is that
+// refusal carrying a side, never a second copy of its arms. A site that cares about the side
+// -- an operator sent to the dispatch or to the machine -- matches on `side` alone; nothing
+// re-enumerates unnamed/ambiguous/unknown per side.
+type ObservedHostJoinSide
+  = JoinSideObserved {}
+  | JoinSideExpected {}
+
 type ObservedHostJoinRefusal
-  = JoinObservedUnnamed { observed: String }
-  | JoinObservedAmbiguous { observed: String, candidates: List<DnsLabel> }
-  | JoinObservedUnknown { observed: String }
-  | JoinExpectedUnnamed { expected: String }
-  | JoinExpectedAmbiguous { expected: String, candidates: List<DnsLabel> }
-  | JoinExpectedUnknown { expected: String }
+  = JoinSideRefused { side: ObservedHostJoinSide, refusal: ObservedHostIdentityRefusal }
   | JoinHostsDisagree { expected: HostIdentity, observed: HostIdentity }
 
-fn join_refusal_of_observed(r: ObservedHostIdentityRefusal) -> ObservedHostJoinRefusal {
-  match r {
-    ObservedHostUnnamed { observed: o } => JoinObservedUnnamed { observed: o }
-    ObservedHostAmbiguous { observed: o, candidates: c } => JoinObservedAmbiguous { observed: o, candidates: c }
-    ObservedHostUnknown { observed: o } => JoinObservedUnknown { observed: o }
+fn join_side_is_observed(side: ObservedHostJoinSide) -> Bool {
+  match side {
+    JoinSideObserved {} => true
+    JoinSideExpected {} => false
   }
 }
 
@@ -660,17 +665,13 @@ fn observed_host_selector_join_in(
 ) -> ObservedHostSelectorJoin {
   match observed_host_identity_in(allocations: allocations, observed: expected) {
     ObservedHostIdentityRefused { refusal: r } =>
-      match r {
-        ObservedHostUnnamed { observed: e } => ObservedHostSelectorJoinRefused { cause: JoinExpectedUnnamed { expected: e } }
-        ObservedHostAmbiguous { observed: e, candidates: c } => ObservedHostSelectorJoinRefused { cause: JoinExpectedAmbiguous { expected: e, candidates: c } }
-        ObservedHostUnknown { observed: e } => ObservedHostSelectorJoinRefused { cause: JoinExpectedUnknown { expected: e } }
-      }
+      ObservedHostSelectorJoinRefused { cause: JoinSideRefused { side: JoinSideExpected {}, refusal: r } }
     ObservedHostIdentityResolved { host: wanted } =>
       match observed_host_identity_in(allocations: allocations, observed: observed) {
         ObservedHostIdentityRefused { refusal: r } =>
-          ObservedHostSelectorJoinRefused { cause: join_refusal_of_observed(r: r) }
+          ObservedHostSelectorJoinRefused { cause: JoinSideRefused { side: JoinSideObserved {}, refusal: r } }
         ObservedHostIdentityResolved { host: answered } =>
-          if (wanted as String) == (answered as String) {
+          if host_identity_eq(a: wanted, b: answered) {
             ObservedHostSelectorAgreed { host: answered }
           } else {
             ObservedHostSelectorJoinRefused { cause: JoinHostsDisagree { expected: wanted, observed: answered } }
@@ -681,26 +682,21 @@ fn observed_host_selector_join_in(
 
 fn observed_host_join_refusal_text(cause: ObservedHostJoinRefusal) -> String {
   match cause {
-    JoinObservedUnnamed { observed: o } =>
-      observed_host_identity_refusal_text(refusal: ObservedHostUnnamed { observed: o })
-    JoinObservedAmbiguous { observed: o, candidates: c } =>
-      observed_host_identity_refusal_text(refusal: ObservedHostAmbiguous { observed: o, candidates: c })
-    JoinObservedUnknown { observed: o } =>
-      observed_host_identity_refusal_text(refusal: ObservedHostUnknown { observed: o })
-    JoinExpectedUnnamed { expected: e } =>
-      join(["the dispatch named nothing (the raw selection was ", quote_spelling(s: e),
-            "); a dispatch that selects no host runs nothing"], "")
-    JoinExpectedAmbiguous { expected: e, candidates: c } =>
-      join([quote_spelling(s: e), " answers to more than one host (",
-            join(map(c, d => d as String), ", "),
-            "); the dispatch must select one"], "")
-    JoinExpectedUnknown { expected: e } =>
-      join([quote_spelling(s: e),
-            " is no host's identity, allocated hostname, or shorter form of its drawn name;",
-            " the dispatch selected a host the roster does not have"], "")
+    // One sentence: which side, then the shared why. No per-side restatement of what an unknown
+    // or ambiguous spelling means -- that belongs to the one-side rule and is said there.
+    JoinSideRefused { side: s, refusal: r } =>
+      join([join_side_label(side: s), " is refused: ",
+            observed_host_identity_refusal_text(refusal: r)], "")
     JoinHostsDisagree { expected: e, observed: o } =>
       join(["the dispatch selected ", e as String, " and this machine answers ", quote_spelling(s: o as String),
             "; NOTHING has been fetched, installed or written. A run that continued here would mutate ",
             o as String, " and certify it under ", e as String, "'s name"], "")
+  }
+}
+
+fn join_side_label(side: ObservedHostJoinSide) -> String {
+  match side {
+    JoinSideObserved {} => "this machine's own answer"
+    JoinSideExpected {} => "the name the caller selected"
   }
 }

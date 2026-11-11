@@ -21,8 +21,7 @@ import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.hostname_allocation {
   observed_host_selector_join, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
-  ObservedHostJoinRefusal, JoinObservedUnnamed, JoinObservedAmbiguous, JoinObservedUnknown,
-  JoinExpectedUnnamed, JoinExpectedAmbiguous, JoinExpectedUnknown, JoinHostsDisagree,
+  ObservedHostJoinRefusal, JoinSideRefused, JoinSideObserved, JoinSideExpected, JoinHostsDisagree,
   observed_host_join_refusal_text,
 }
 import gunbc.host.host_effect { LocalShell }
@@ -116,10 +115,11 @@ type ApprovalOriginStanding
 // (gunbc.design_argument::root_generalization). The old form compared the two strings, so an approval
 // request raised on the host that answers "butch" was refused as "not the origin host" forever -- and a
 // rename moved the refusal to whichever host inherited the name. The join's refusals are mapped onto this
-// file's standings by WHICH SIDE failed: the dispatch's word about the origin host (JoinExpected*) is an
-// origin the roster cannot name, and the kernel's answer (JoinObserved*) is an executor nobody observed;
-// the dispatch is judged first, as it is at every other site, because a dispatch that names no host has
-// no business asking whether this machine is it.
+// file's standings by WHICH SIDE failed: the caller's word about the origin host (JoinSideRefused with
+// the expected side) is an origin the roster cannot name, and the kernel's answer (the observed side) is
+// an executor nobody observed; the caller's side is judged first, as it is at every other site, because a
+// dispatch that names no host has no business asking whether this machine is it. WHY either side failed is
+// the one-side rule's refusal and is matched nowhere in this file.
 fn classify_approval_origin(origin: ApprovalLoopbackOrigin, executor: HostnameShortCapture) -> ApprovalOriginStanding {
   match origin {
     ApprovalLoopbackOriginRefused { cause } => ApprovalOriginUnresolved { cause: cause }
@@ -137,15 +137,14 @@ fn classify_approval_origin(origin: ApprovalLoopbackOrigin, executor: HostnameSh
 
 // WHICH SIDE OF THE JOIN FAILED decides which standing an operator is told about: the two refusals send
 // them to different places -- the dispatch that named no such host, or the machine whose answer no roster
-// can place.
+// can place. WHY that side's spelling failed is the one-side rule's own answer and is never re-enumerated
+// here; only the side is asked about.
 fn approval_origin_refusal_of_join(host: NonEmptyStr, cause: ObservedHostJoinRefusal) -> ApprovalOriginStanding {
   match cause {
-    JoinObservedUnnamed { observed: _ } => ApprovalExecutorHostUnobserved { reason: observed_host_join_refusal_text(cause: cause) }
-    JoinObservedAmbiguous { observed: _, candidates: _ } => ApprovalExecutorHostUnobserved { reason: observed_host_join_refusal_text(cause: cause) }
-    JoinObservedUnknown { observed: _ } => ApprovalExecutorHostUnobserved { reason: observed_host_join_refusal_text(cause: cause) }
-    JoinExpectedUnnamed { expected: _ } => ApprovalOriginHostUnresolved { origin_host: host, reason: observed_host_join_refusal_text(cause: cause) }
-    JoinExpectedAmbiguous { expected: _, candidates: _ } => ApprovalOriginHostUnresolved { origin_host: host, reason: observed_host_join_refusal_text(cause: cause) }
-    JoinExpectedUnknown { expected: _ } => ApprovalOriginHostUnresolved { origin_host: host, reason: observed_host_join_refusal_text(cause: cause) }
+    JoinSideRefused { side: JoinSideObserved {}, refusal: _ } =>
+      ApprovalExecutorHostUnobserved { reason: observed_host_join_refusal_text(cause: cause) }
+    JoinSideRefused { side: JoinSideExpected {}, refusal: _ } =>
+      ApprovalOriginHostUnresolved { origin_host: host, reason: observed_host_join_refusal_text(cause: cause) }
     JoinHostsDisagree { expected: _, observed: answered } =>
       ApprovalExecutorNotTheOriginHost { origin_host: host, executor_host: answered as String }
   }

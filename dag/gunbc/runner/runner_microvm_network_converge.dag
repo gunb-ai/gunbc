@@ -27,7 +27,8 @@ import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
 import gunbc.hostname_allocation {
   observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed,
-  ObservedHostSelectorJoinRefused, ObservedHostJoinRefusal, JoinExpectedUnnamed, JoinObservedUnnamed,
+  ObservedHostSelectorJoinRefused, ObservedHostJoinRefusal, JoinSideRefused,
+  ObservedHostUnnamed, join_side_is_observed,
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, runner_slot_identities_of }
 import extdeps.network.ipv4 { render_ipv4_address, render_ipv4_prefix }
@@ -834,9 +835,22 @@ fn bind_requested_host(expected: String, observed: String) -> HostBinding {
     ObservedHostSelectorAgreed { host: identity } => HostBindingHeld { host: identity }
     ObservedHostSelectorJoinRefused { cause: c } =>
       match c {
-        JoinExpectedUnnamed { expected: _ } => HostBindingUnnamed { detail: "the dispatch named no expected host" }
-        JoinObservedUnnamed { observed: _ } => HostBindingUnnamed { detail: "the machine did not name itself" }
-        _ => HostBindingRefused { cause: c }
+        // A side that named nothing is a distinct standing -- the dispatch selected no host, or the
+        // machine running it named nothing -- and every other why is the same typed refusal, carrying
+        // the roster's own sentence. Only the side and the emptiness are asked about here.
+        JoinSideRefused { side: s, refusal: r } =>
+          match r {
+            ObservedHostUnnamed { observed: _ } =>
+              HostBindingUnnamed {
+                detail: if join_side_is_observed(side: s) {
+                  "the machine did not name itself"
+                } else {
+                  "the dispatch named no expected host"
+                }
+              }
+            _ => HostBindingRefused { cause: c }
+          }
+        JoinHostsDisagree { expected: _, observed: _ } => HostBindingRefused { cause: c }
       }
   }
 }

@@ -9,19 +9,18 @@ module test.claim.observed_host_identity_witness
 // have today (two hosts answering one short name); the srv14/butch and srv15/bobo rows are the
 // fleet's own, so the shape witnessed is the shape in production
 // (gunbc.design_argument::witness_one_interface).
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.hostname_allocation {
-  HostnameAllocation, LegacyHostname, DrawnHumanName, HumanNameDraw, HumanName, FirstOnly,
+  HostnameAllocation, LegacyHostname, DrawnHumanName, HumanNameDraw, FirstOnly,
   gunbc_fleet_hostname_allocations,
-  ObservedHostIdentity, ObservedHostIdentityResolved, ObservedHostIdentityRefused,
-  ObservedHostIdentityRefusal, ObservedHostUnnamed, ObservedHostAmbiguous, ObservedHostUnknown,
+  ObservedHostIdentityResolved, ObservedHostIdentityRefused,
+  ObservedHostUnnamed, ObservedHostAmbiguous, ObservedHostUnknown,
   observed_host_identity, observed_host_identity_in, observed_host_identity_refusal_text,
-  ObservedHostSelectorJoin, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
-  ObservedHostJoinRefusal, JoinObservedUnnamed, JoinObservedAmbiguous, JoinObservedUnknown,
-  JoinExpectedUnnamed, JoinExpectedAmbiguous, JoinExpectedUnknown, JoinHostsDisagree,
+  ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused,
+  JoinSideRefused, JoinHostsDisagree, join_side_is_observed,
   observed_host_selector_join, observed_host_selector_join_in, observed_host_join_refusal_text,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
@@ -163,9 +162,16 @@ test fn witness_the_join_refuses_an_unknown_selection() -> Bool {
   match observed_host_selector_join(expected: "srv99", observed: "butch") {
     ObservedHostSelectorJoinRefused { cause: c } =>
       match c {
-        JoinExpectedUnknown { expected: e } =>
-          e == "srv99" && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "srv99")
-        _ => false
+        // SIDE and WHY are both asked of one refusal: the failure is on the selection's side and it is
+        // the roster's own unknown-spelling refusal, not a second name for the same fact.
+        JoinSideRefused { side: s, refusal: r } =>
+          match r {
+            ObservedHostUnknown { observed: e } =>
+              !join_side_is_observed(side: s) && e == "srv99"
+                && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "srv99")
+            _ => false
+          }
+        JoinHostsDisagree { expected: _, observed: _ } => false
       }
     ObservedHostSelectorAgreed { host: _ } => false
   }
@@ -178,9 +184,14 @@ test fn witness_the_join_refuses_an_unknown_answer() -> Bool {
   match observed_host_selector_join_in(allocations: roster, expected: "host-alone", observed: "lanterns") {
     ObservedHostSelectorJoinRefused { cause: c } =>
       match c {
-        JoinObservedUnknown { observed: o } =>
-          o == "lanterns" && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "lanterns")
-        _ => false
+        JoinSideRefused { side: s, refusal: r } =>
+          match r {
+            ObservedHostUnknown { observed: o } =>
+              join_side_is_observed(side: s) && o == "lanterns"
+                && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "lanterns")
+            _ => false
+          }
+        JoinHostsDisagree { expected: _, observed: _ } => false
       }
     ObservedHostSelectorAgreed { host: _ } => false
   }
@@ -193,8 +204,16 @@ test fn witness_an_empty_selection_refuses_before_the_kernel_is_judged() -> Bool
   match observed_host_selector_join(expected: "", observed: "") {
     ObservedHostSelectorJoinRefused { cause: c } =>
       match c {
-        JoinExpectedUnnamed { expected: _ } => true
-        _ => false
+        // The side is the whole discrimination here: both sides are empty, and the join must blame
+        // the selection it was handed, never the kernel it has not asked yet.
+        JoinSideRefused { side: s, refusal: r } =>
+          match r {
+            ObservedHostUnnamed { observed: _ } =>
+              !join_side_is_observed(side: s)
+                && string_contains(s: observed_host_join_refusal_text(cause: c), pattern: "caller selected")
+            _ => false
+          }
+        JoinHostsDisagree { expected: _, observed: _ } => false
       }
     ObservedHostSelectorAgreed { host: _ } => false
   }
