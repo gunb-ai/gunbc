@@ -1,5 +1,18 @@
 module gunbc.deployed_intent_v0
 
+import std.types { Bool, String }
+import std.optional { Absent, Present }
+import std.disposition { Disposition }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, srv2_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.host.host_identity_observation {
+  HostIdentityObservation,
+  HostIdentityObservationRow,
+  gunbc_srv1_host_identity_observation_fixture_row,
+  gunbc_srv2_host_identity_observation_fixture_row,
+  host_identity_observation_typed,
+}
 
 type DeployedIntentV0 {
   fleet_slot: HostIdentity
@@ -28,7 +41,7 @@ fn deployed_intent_observed_short_hostname(d: DeployedIntentV0) -> String {
 }
 
 fn deployed_intent_observed_differs_from_fleet_slot(d: DeployedIntentV0) -> Bool {
-  deployed_intent_observed_short_hostname(d: d) != d.fleet_slot
+  deployed_intent_observed_short_hostname(d: d) != (d.fleet_slot as String)
 }
 
 fn deployed_intent_v0_from_observation_row(
