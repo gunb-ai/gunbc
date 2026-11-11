@@ -10,7 +10,7 @@ fn declaration_acquisition_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "**What.** The named consumers (the required gate's entry `gunbc.witness.compiler_gate_workflow`, heal's `gunbc.heal_candidate_stage0`, regen's `gunbc.instruments.generated_artifact_gate`) compile through the v2 native route instead of the v1 seed, every name in them binds to its authorized declaration or receiver operation, and v2 loads only the declarations they demand. **Why.** Moving the tree toward v2: each consumer that leaves v1 shrinks the seed's load-bearing surface, and v1 refusing what v2 refuses lets the one required job block new seed-only names. **How not.** No census mode, no corpus-wide audit, no second loader, no investment in v1's `gunbc run` path (an oracle only), no CI job or budget change."),
-      p(text: "This carrier states the outcomes, their obligations and their done-when. The PR sequence that realizes them is downstream and replaceable: it lives in work items, and section 6 lists only first candidates.")
+      p(text: "This carrier states the outcomes, their obligations and their done-when. How they are realized is downstream and replaceable (`gunbc.design_ruling::plans_are_intentions_and_realization_is_downstream`): the work items carry it, and section 6 lists only first candidates.")
     ]),
     h2(text: "1. Boundaries with existing programs"),
     ul(items: [
