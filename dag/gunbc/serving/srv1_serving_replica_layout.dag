@@ -1,17 +1,35 @@
 module gunbc.serving.srv1_serving_replica_layout
 import v2.extdeps.languages.bash_build {
-  bash_build_command_from_word_nodes, bash_build_word_lit,
-  bash_build_and_then, bash_build_or_else,
-  bash_build_seq_from_stmts, bash_build_function_def, bash_build_exit, bash_build_test_bracket,
-  bash_build_brace_group_from_stmts, bash_build_with_redir_stdout_append_file,
-  bash_build_with_redir_stdout_to_stderr, bash_build_with_redir_stderr_to_stdout,
-  bash_build_with_redir_from_file, bash_build_with_redir_stdout_and_stderr_null,
-  bash_build_case, bash_build_case_clause_block, bash_build_case_clause_inline, bash_build_for,
-  bash_build_comment, bash_build_test_comparison, bash_build_word_param_error,
-  bash_build_word_bare, bash_build_word_var_bare, bash_build_word_concat_from_nodes,
+  bash_build_command_from_word_nodes,
+  bash_build_word_lit,
+  bash_build_and_then,
+  bash_build_or_else,
+  bash_build_seq_from_stmts,
+  bash_build_function_def,
+  bash_build_exit,
+  bash_build_brace_group_from_stmts,
+  bash_build_with_redir_stdout_append_file,
+  bash_build_with_redir_stdout_to_stderr,
+  bash_build_with_redir_stderr_to_stdout,
+  bash_build_with_redir_from_file,
+  bash_build_with_redir_stdout_and_stderr_null,
+  bash_build_case,
+  bash_build_case_clause_block,
+  bash_build_case_clause_inline,
+  bash_build_for,
+  bash_build_comment,
+  bash_build_word_param_error,
+  bash_build_word_bare,
+  bash_build_word_var_bare,
+  bash_build_word_concat_from_nodes,
   bash_build_assign,
-  bash_build_word_double_quoted, bash_build_word_cmdsubst, bash_build_quoted_text,
-  bash_build_word_positional_all, bash_build_word_array_expansion, bash_build_word_kinded
+  bash_build_word_double_quoted,
+  bash_build_word_cmdsubst,
+  bash_build_quoted_text,
+  bash_build_word_positional_all,
+  bash_build_word_array_expansion,
+  bash_build_test_bracket_bare,
+  bash_build_test_comparison_bare
 }
 import v2.workflow.bash_emit { bash_emit_stmt }
 
@@ -1289,8 +1307,8 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
   ])
   let tls_guard = bash_build_or_else(
     left: bash_build_and_then(
-      left: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.key_path)]),
-      right: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.cert_path)])
+      left: bash_build_test_bracket_bare(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.key_path)]),
+      right: bash_build_test_bracket_bare(words: [srv1_bash_bare(text: "-s"), srv1_bash_d_under(path: config.tls_material.cert_path)])
     ),
     right: bash_build_with_redir_stderr_to_stdout(
       inner: bash_build_with_redir_stdout_append_file(
@@ -1316,7 +1334,7 @@ fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config:
   ])
   let args_path = shape.engine_args_container_path as String
   let argv_guard = bash_build_or_else(
-    left: bash_build_test_bracket(words: [srv1_bash_bare(text: "-s"), srv1_bash_bare(text: args_path)]),
+    left: bash_build_test_bracket_bare(words: [srv1_bash_bare(text: "-s"), srv1_bash_bare(text: args_path)]),
     right: bash_build_brace_group_from_stmts(stmts: [
       bash_build_command_from_word_nodes(words: [
         srv1_bash_bare(text: "ev"),
@@ -1550,7 +1568,7 @@ fn srv1_launcher_tls_copy_guard(serve_dir: String, source_dir: String, file_name
   let from = concat(concat(source_dir, "/"), file_name)
   srv1_bash_unwrap(
     built: bash_build_and_then(
-      left: bash_build_test_comparison(
+      left: bash_build_test_comparison_bare(
         left: srv1_bash_quoted(parts: [srv1_bash_inert(text: own)]),
         op: "!=",
         right: srv1_bash_quoted(parts: [srv1_bash_inert(text: from)])
@@ -1560,7 +1578,7 @@ fn srv1_launcher_tls_copy_guard(serve_dir: String, source_dir: String, file_name
           stmts: [
             srv1_bash_unwrap(
               built: bash_build_or_else(
-                left: bash_build_test_bracket(
+                left: bash_build_test_bracket_bare(
                   words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_inert(text: own)])]
                 ),
                 right: bash_build_command_from_word_nodes(
@@ -1814,7 +1832,7 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
     ),
     srv1_bash_line(
       stmt: srv1_launcher_input_guard(
-        test: bash_build_test_bracket(
+        test: bash_build_test_bracket_bare(
           words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_var(name: "ARGS")])]
         ),
         message_parts: [
@@ -1827,7 +1845,7 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
     ),
     srv1_bash_line(
       stmt: srv1_launcher_input_guard(
-        test: bash_build_test_bracket(
+        test: bash_build_test_bracket_bare(
           words: [srv1_bash_bare(text: "-s"), srv1_bash_quoted(parts: [srv1_bash_var(name: "ENV_FILE")])]
         ),
         message_parts: [
@@ -1843,7 +1861,7 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
     // would be reading a file any local user could have written.
     srv1_bash_line(
       stmt: srv1_launcher_input_guard(
-        test: bash_build_test_comparison(
+        test: bash_build_test_comparison_bare(
           left: srv1_bash_quoted(
             parts: [
               srv1_bash_unwrap(

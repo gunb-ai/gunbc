@@ -52,7 +52,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
   bash_build_assign_lit, bash_build_assign_var, bash_build_or_else,
   bash_build_command_from_lits, bash_build_command_with_words,
-  bash_build_test_bracket, bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
+  bash_build_test_bracket, bash_build_word_exit_status,
+  bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
   bash_build_with_redir, bash_build_word_cmdsubst, bash_build_pipe, bash_build_and_then, bash_build_assign,
   bash_build_exit, bash_build_if_from_stmts, bash_build_subshell_from_stmts,
 }
@@ -633,7 +634,7 @@ fn instrument_dispatch_statements() -> List<Node> {
           redir: ^bash_production_fold_redir_stdout_to_stderr,
         ),
       ),
-      right: bash_build_assign_var(name: "status", var_name: "?"),
+      right: bash_build_assign(name: "status", value: bash_build_word_exit_status()),
     ),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stdout.txt")]),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "exit="), bash_build_word_var(name: "status")], file: "exit.txt"),
