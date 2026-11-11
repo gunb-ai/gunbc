@@ -4,7 +4,7 @@ import v2.std.integer { Int }
 
 // THE SHADOWING SYMBOL, AUTHORED HERE RATHER THAN BORROWED. The defect reproduces on any
 // module-level free function whose name a local binding reuses, and the first fixtures for it
-// borrowed live corpus symbols (std.layout render, gunbc.plans.md_helpers p). Borrowing makes the
+// borrowed live corpus symbols (std.layout render, gunbc.markdown_helpers p). Borrowing makes the
 // fixture hostage to an unrelated module's shape: rename or delete that symbol and the probe goes
 // green while the defect is untouched, which is the decoration gunbc.design_argument::guarantee_ladder warns is worse than
 // absent. This one is owned by the fixture.

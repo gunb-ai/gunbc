@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
-import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
+import gunbc.markdown_helpers { h2, p, li, ul, cell, row }
 // The two modules that carry srv1's interconnect and boot-time power-cap readings, imported because the table
 // below COMPUTES its evidence column from their joins. Review 92338 was right that naming a module inside a
 // text string is not consumption: nothing outside the tests executed these joins, so a whole-table retyping of

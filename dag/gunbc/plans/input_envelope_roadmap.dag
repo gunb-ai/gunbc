@@ -3,7 +3,7 @@ module gunbc.plans.input_envelope_roadmap
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { p }
+import gunbc.markdown_helpers { p }
 
 fn input_envelope_roadmap_body() -> List<MarkdownBlock> {
   [
