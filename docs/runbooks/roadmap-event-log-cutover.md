@@ -1013,7 +1013,8 @@ revision, verbatim:
     ROLLBACK REFUSED: the revision arrived as [not-a-sha], which is not 40 hex
     FAIL A2: the SHIFTED helper was NOT refused — a shifted delivery would export into a relative directory named 'runbook'
     FAIL A2: the refusal did not name the defect (expected the runbook's own 'argument delivery shifted')
-    A6 OK: a neutralised guard makes the witness itself exit 2
+    FAIL PART I: a hand-shell LOC row no longer describes its carrier — re-measure it and say so
+    A6 OK: a neutralised guard makes the witness itself exit 3
 ```
 
 
@@ -1170,6 +1171,9 @@ loaded from the runbook: RUNE
     MIGRATION REFUSED: the seed must carry exactly one revocation, found 2; nothing is appended
   [step 4 with step 3's admission file missing] rc=1
     RETIREMENT REFUSED: $TMP/migrate-export/migrate.acceptance.lines is missing or empty — step 3 did not admit its input
+
+================ PART I: the hand-shell LOC rows agree with the carriers they describe ================
+  [the three LOC rows agree with their carriers] OK
 
 ================ PART H: the cases this file declares are the model's rows, joined both ways ================
 model rows for this carrier: 33   declared here: 33

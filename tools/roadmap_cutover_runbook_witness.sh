@@ -759,12 +759,42 @@ EOF
 fi
 echo
 
+echo "================ PART I: the hand-shell LOC rows agree with the carriers they describe ================"
+# The LOC rows are the scaffold's own account of how much temporary shell it introduces — F5's admission is about
+# exactly these numbers, so a row that has quietly gone stale is worse than no row: an operator approves a figure
+# that is no longer the file. The counting rule is the model's (`wc -l` of each carrier, every line of which this
+# PR adds, all three new); this checks the promised figure against the file it describes. A PASS prints one fixed
+# line, with no numbers in it, so the transcript embedded in the runbook cannot make the runbook grow and invalidate
+# the very figure it records.
+SELF_I=${BASH_SOURCE[0]:-$0}   # this file witnesses its own length too, so it needs its own path here
+loc_of() { wc -l < "$1" | tr -d ' '; }
+model_loc() { # the Int behind `data <field>: Int = N`
+  awk -v f="data $1: Int = " 'index($0, f) == 1 { print substr($0, length(f) + 1) }' "$MODEL"
+}
+LOC_BAD=0
+for pair in "runbook_loc_delta_net:$RB" \
+            "runbook_witness_loc_delta_net:$SELF_I" \
+            "dispatch_witness_loc_delta_net:$(cd "$(dirname "$RB")/../.." && pwd)/tools/roadmap_cutover_dispatch_witness.sh"; do
+  field=${pair%%:*}; file=${pair#*:}
+  [ -f "$file" ] || { echo "    LOC row [$field] describes no file at [$file]"; LOC_BAD=1; continue; }
+  promised=$(model_loc "$field"); measured=$(loc_of "$file")
+  if [ "$promised" != "$measured" ]; then
+    echo "    LOC row [$field] says $promised for $file, the file measures $measured lines"
+    LOC_BAD=1
+  fi
+done
+[ "$LOC_BAD" -eq 0 ] || fail "PART I: a hand-shell LOC row no longer describes its carrier — re-measure it and say so"
+[ "$LOC_BAD" -eq 0 ] && echo "  [the three LOC rows agree with their carriers] OK"
+true
+echo
+
 echo "================ PART H: the cases this file declares are the model's rows, joined both ways ================"
 # The model lists what has to be witnessed; this file runs it. Until now nothing connected the two lists, so a
 # model row could promise a case no script runs, and a case could run that the model never authorised. The row
 # names are the join key and they are READ from the model, never retyped here; and a refusing row is satisfied
 # only if its promised diagnostic actually appears in this file or in the runbook — a promise has to be kept in
 # text that executes, not only written down above.
+SELF_I=${BASH_SOURCE[0]:-$0}
 SELF_H=${BASH_SOURCE[0]:-$0}
 model_case_rows() { # name|must|refusal_text for every gunbc.witness.roadmap_cutover case row of carrier runbook_witness_carrier
   awk -v car="runbook_witness_carrier" '
