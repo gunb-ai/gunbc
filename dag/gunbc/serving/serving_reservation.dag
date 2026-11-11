@@ -393,21 +393,6 @@ fn host_gpus_withheld_from_runner(host: HostIdentity) -> Nat {
   }
 }
 
-// THE WIDTH THE RUNNER MAY SPEND ON A SERVING HOST: its total runner cores less the cores its serving
-// replicas reserve EXCLUSIVELY. Affinity reservations do not appear here -- a pinned-but-shared cpuset
-// leaves the runner whole -- so an engine pinned to cores 0-39 affinitively costs the runner zero of its
-// width, while an engine that takes cores 0-39 exclusively costs the runner forty. Fail closed on the
-// natural subtraction: if a host's exclusive reservations would exceed its cores, the claim asks a host to
-// give back more than it has, which the caller must treat as a refusal rather than a zero.
-fn runner_cores_available_on(host: HostIdentity, total_runner_cores: Nat) -> Optional<Nat> {
-  let withheld = host_cores_withheld_from_runner(host)
-  if withheld <= total_runner_cores {
-    Present { value: total_runner_cores - withheld }
-  } else {
-    Absent
-  }
-}
-
 // THE DERIVATION'S DECISION, STATED FOR THE WITNESS: a reservation reduces a host's CI width exactly when
 // it withholds cores from the runner -- i.e. only when it is exclusive. An affinity-only set does not
 // reduce width; an exclusive one does.
