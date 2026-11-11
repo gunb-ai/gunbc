@@ -2,12 +2,14 @@ module gunbc.ci.ci_bash_step
 
 import std.types { Bool, List, String }
 import v2.std.node { Node }
+import v2.extdeps.languages.bash_build { bash_build_assign, bash_build_command_from_lits, bash_build_or_else, bash_build_with_redir, bash_build_word_cmdsubst }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_step_orch_refused_poison }
 
 // The rendering of a runner authored as bash_build nodes into a step's script text, moved out of
-// gunbc.ci.ci_spec unchanged (gunbc.plans.closure_consolidation P1).
+// gunbc.ci.ci_spec unchanged (gunbc.plans.closure_consolidation P1), and the repository-root
+// assignment every node-authored runner opens with.
 
 // ONE RENDERING OF bash_build STATEMENTS INTO A STEP'S SCRIPT TEXT, for every runner authored as nodes;
 // a rejected emission renders the refusal poison, never partial text.
@@ -16,4 +18,10 @@ fn gunbc_ci_bash_rendered(stmts: List<Node>, set_e: Bool) -> String {
     Accepted { value: text, diagnostics: _ } => text
     Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
   }
+}
+
+// THE REPOSITORY ROOT, read once at the top of a node-authored runner: the checkout's top level, or
+// the working directory when the step runs outside a git tree.
+fn gunbc_ci_repo_root_statement() -> Node {
+  bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["pwd"]))))
 }

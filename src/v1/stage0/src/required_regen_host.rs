@@ -11578,6 +11578,10 @@ mod regen_convergence_host_instrument_tests {
 
 const REGEN_AFFECTED_SET_PRODUCER: &str = "claim_executor --regen-affected-set";
 const REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_set.dag";
+/// The bound over a whole change (`gunbc.regen_affected_change`). A separate entry from the module
+/// bound above because its closure carries the seed-build artifact roster, which the orchestrator's
+/// in-process decisions must not resolve (see that module's header).
+const REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_change.dag";
 
 pub struct RegenAffectedSetOutcome {
     /// Provenance, the edited population, the bound line, and one `member` line per mirror.
@@ -11919,15 +11923,23 @@ pub fn regen_generation_role_population(
 }
 
 fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT)
+}
+
+fn affected_change_entry(source_roots: &[String]) -> Result<String, String> {
+    affected_entry(source_roots, REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT)
+}
+
+fn affected_entry(source_roots: &[String], under_root: &str) -> Result<String, String> {
     source_roots
         .iter()
-        .map(|root| Path::new(root).join(REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT))
+        .map(|root| Path::new(root).join(under_root))
         .find(|candidate| candidate.is_file())
         .map(|found| found.to_string_lossy().into_owned())
         .ok_or_else(|| {
             format!(
-                "refusal: {REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT} is not under any declared source \
-                 root {source_roots:?}, so the bound has no authority to answer from"
+                "refusal: {under_root} is not under any declared source root {source_roots:?}, so \
+                 the bound has no authority to answer from"
             )
         })
 }
@@ -12008,7 +12020,7 @@ pub fn render_affected_set_bound(
     compared: &[(String, String)],
 ) -> Result<AffectedSetBound, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = affected_set_entry(source_roots)?;
+    let entry = affected_change_entry(source_roots)?;
     let index = super::process_shared_index_or_refuse(source_roots);
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
@@ -12150,7 +12162,7 @@ pub fn render_affected_set_bound(
 /// The bound over a whole change. `non_dag_paths` are the change's other paths: an edited committed
 /// MIRROR is heal's own product, so it is translated to its module and re-adjudicated (its own mirror is
 /// selected); every remaining path goes to the model, which decides whether it is a seed source that
-/// makes the answer the whole population (`gunbc.regen_affected_set` `regen_affected_set_over_change`).
+/// makes the answer the whole population (`gunbc.regen_affected_change` `regen_affected_set_over_change`).
 pub fn affected_set_bound_for(
     workspace: &Path,
     source_roots: &[String],

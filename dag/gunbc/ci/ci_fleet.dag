@@ -203,7 +203,25 @@ data mtcollins1_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer, mtcollins1_offer]
+// BUTCH'S OFFER IS THE MTCOLLINS1 SHAPE, NOT A HAND-CAPPED ONE: max_slots is none because butch's
+// width is DERIVED — the B3a fold through gunbc.runner.runner_slot_allocation gunbc_runner_committed_width
+// spends butch's own memory rows (usable RAM from its MemTotal read, fixed overhead excluding its two
+// Strata engines, whose ceiling the B4a serving reservation charges separately) and the CPU axis from
+// srv14_host.cpu. B1's srv14_host.runner_slots carries 8 as inventory context only; nothing on the
+// width path reads it (the fold reads the offer's max_slots, which is none).
+data srv14_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv14",
+  supply: ComputeSupplyFacts {
+    physical: srv14_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer, mtcollins1_offer, srv14_offer]
 
 data fleet_intent_offers: List<ComputeOffer> = filter(
   fleet_owned_compute_offer_catalog,
