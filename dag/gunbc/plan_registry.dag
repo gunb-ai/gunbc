@@ -26,7 +26,7 @@ import gunbc.plans.planning_consolidation { planning_consolidation_plan }
 // program; v2_complexity_capability_parity is a live roadmap carrier; read_set_convergence is the
 // active T11 / affected-set consolidation program (2026-11-09); fleet_machine_authority is the machine-registry and host-name de-fork program
 // (2026-11-10; D1-D13 answered); closure_consolidation is the ci_spec dissolution and selective-generation program
-// (2026-11-10); planning_consolidation is the DAG from why we plan to what executes, deforked (rulings of 2026-11-10 and 2026-11-11; D4, D7, D8 open).
+// (2026-11-10); planning_consolidation: plans are intentions; realization, execution and projection are downstream (rulings of 2026-11-10 and 2026-11-11; D4 and D12 open).
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
