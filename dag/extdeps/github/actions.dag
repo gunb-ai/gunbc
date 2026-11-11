@@ -15,7 +15,9 @@ import extdeps.github.log_annotations {
 }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit, String, List }
-import std.measure { Second, second, seconds_per_day }
+import std.measure { Second, second, seconds_per_day, ByteSize, byte_size, byte_size_count }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.algebra { length }
 import std.os.types { KernelFamily }
 import extdeps.toolchain.types { Architecture }
 import extdeps.external_authority { ExternalAuthority }
@@ -484,3 +486,20 @@ data github_actions_app_integration_id: Int = 15368
 // https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs
 // GitHub increased the top-level workflow_dispatch input limit from 10 to 25 on 2025-12-04.
 data workflow_dispatch_max_inputs: Int = 25
+
+// https://docs.github.com/en/actions/reference/limits#workflow-file-size, read 2026-11-11: "Each workflow
+// file in the .github/workflows directory must be 500 KB or smaller to trigger a run", and the limits
+// table: "A workflow file larger than 500 KB will not start runs." The page does not say whether a KB is
+// 1,000 or 1,024 bytes. The decimal reading, 500,000 bytes, is the smaller of the two, so it is the
+// ceiling a producer can rely on; a file between the two readings is outside what the citation admits.
+data workflow_file_size_max: ByteSize = byte_size(count: 500000)
+
+// Whether `content`, committed as one workflow file, is within `max`. The measure is UTF-8 octets, not
+// characters: GitHub counts the file's bytes, and a generated workflow carries multi-byte characters.
+fn workflow_file_within(content: String, max: ByteSize) -> Bool {
+  length(xs: bytes_octets(b: utf8_encode_bytes(s: content))) <= byte_size_count(max)
+}
+
+fn workflow_file_octets(content: String) -> Int {
+  length(xs: bytes_octets(b: utf8_encode_bytes(s: content)))
+}

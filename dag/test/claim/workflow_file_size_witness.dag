@@ -1,0 +1,59 @@
+module test.claim.workflow_file_size_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import std.measure { byte_size, byte_size_count }
+import std.algebra { string_contains }
+import extdeps.github.actions { workflow_file_size_max, workflow_file_within, workflow_file_octets }
+import gunbc.generated_artifact { FleetConvergeYamlArtifact, GitignoreArtifact }
+import gunbc.tier_o_artifact_emit {
+  tier_o_artifact_body, tier_o_workflow_admitted, TierOArtifactBody, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The ceiling is the cited figure read as decimal bytes (extdeps.github.actions workflow_file_size_max).
+test fn the_ceiling_is_the_documented_500_kb_read_as_decimal_bytes() -> Bool {
+  byte_size_count(workflow_file_size_max) == 500000
+}
+
+// GitHub measures the file in bytes. "🟡" is one character and four UTF-8 octets, so a count of characters
+// would admit it under a three-byte ceiling.
+test fn the_measure_is_utf8_octets_not_characters() -> Bool {
+  workflow_file_octets(content: "🟡") == 4
+    && !workflow_file_within(content: "🟡", max: byte_size(count: 3))
+    && workflow_file_within(content: "🟡", max: byte_size(count: 4))
+    && workflow_file_within(content: "abcde", max: byte_size(count: 5))
+    && !workflow_file_within(content: "abcdef", max: byte_size(count: 5))
+}
+
+// THE COMPOSITION REFUSES A WORKFLOW OVER ITS CEILING, at the ceiling exactly it admits the bytes
+// unchanged, and the refusal names the file and its size so the author sees which workflow and by how much.
+test fn an_oversize_workflow_is_refused_with_its_path_and_size() -> Bool {
+  let over = match tier_o_workflow_admitted(a: FleetConvergeYamlArtifact, committed: "name: x\n", max: byte_size(count: 7)) {
+    TierOArtifactRefused { reason } =>
+      string_contains(s: reason, pattern: ".github/workflows/fleet-converge.yml is 8 bytes")
+        && string_contains(s: reason, pattern: "limit of 7")
+    _ => false
+  }
+  let at = match tier_o_workflow_admitted(a: FleetConvergeYamlArtifact, committed: "name: x\n", max: byte_size(count: 8)) {
+    TierOArtifactProduced { content } => content == "name: x\n"
+    _ => false
+  }
+  over && at
+}
+
+// THE REAL ROUTE (gunbc.design_argument::witness_one_interface pairing claim): the committed fleet-converge
+// workflow, the one nearest the ceiling, is produced through tier_o_artifact_body and admitted, and a
+// non-workflow artifact is not measured against a workflow limit.
+test fn the_real_fleet_converge_workflow_is_admitted_under_the_ceiling() -> Bool {
+  let fleet = match tier_o_artifact_body(a: FleetConvergeYamlArtifact) {
+    TierOArtifactProduced { content } => workflow_file_within(content: content, max: workflow_file_size_max)
+    _ => false
+  }
+  let ignore = match tier_o_artifact_body(a: GitignoreArtifact) {
+    TierOArtifactProduced { content: _ } => true
+    _ => false
+  }
+  fleet && ignore
+}
