@@ -2998,6 +2998,17 @@ pub fn emittable_graph_from_graph(typed: Rc<ResolvedGraph>) -> Rc<EmittableGraph
 pub fn emit_from_artifact_plan(
     emittable: Rc<EmittableGraph>,
     artifact_plan: Rc<ArtifactPlan>,
+) -> Rc<EmitResult> {
+    emit_from_artifact_plan_with_partition_rows(
+        emittable,
+        artifact_plan,
+        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
+    )
+}
+
+pub fn emit_from_artifact_plan_with_partition_rows(
+    emittable: Rc<EmittableGraph>,
+    artifact_plan: Rc<ArtifactPlan>,
     partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<EmitResult> {
     {
@@ -3658,8 +3669,11 @@ pub fn emit_resolved_for_target_selected(
                 selection,
             );
             let _ = v1_rt::trace_mark("compile.emit.begin".to_string());
-            let emit_result =
-                emit_from_artifact_plan(emittable.clone(), artifact_plan.clone(), partition_rows);
+            let emit_result = emit_from_artifact_plan_with_partition_rows(
+                emittable.clone(),
+                artifact_plan.clone(),
+                partition_rows,
+            );
             let _ = v1_rt::trace_mark("compile.emit.done".to_string());
             let emit_files = emit_result.files.clone();
             let emit_diags = emit_result.diagnostics.clone();
