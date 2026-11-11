@@ -2078,7 +2078,7 @@ fn megarac_convergence_step(
 // AN ALREADY-PRESENTED ROW IS PRESENTATION EVIDENCE ONLY WHEN GENERAL SETTINGS READ cd_error_code 0.
 // Boot run 43040335415 (boot 11) met the desired image's row at redirection_status 1, session_index 0,
 // with general settings reading cd_error_code 16 at the first look and again before the handoff
-// (boot_run_43040335415_presented_row, boot_run_43040335415_general_at_look). The row was admitted as
+// (@ref(gunbc.machine_intake.megarac_media_row_reading::boot_run_43040335415_presented_row), @ref(gunbc.machine_intake.megarac_media_row_reading::boot_run_43040335415_general_before_handoff)). The row was admitted as
 // already presented, the host was powered on with the CD override set, and the console shows the
 // firmware walking only network boot options ("Checking Media Presence", PXE over IPv6) and printing
 // "ERROR: Boot option loading failed": no CD was served. Every earlier powered-on handoff that the
