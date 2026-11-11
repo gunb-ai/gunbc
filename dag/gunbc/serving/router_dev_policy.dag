@@ -8,7 +8,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
 import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for }
 import gunbc.serving.serving_replica_profile { srv1_vllm_replica_shape, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile }
-import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, cited_figure_read_obligation }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
 import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size, Second, money_amount_micro, money_amount_micro_count, token_count_value }
@@ -1122,47 +1122,62 @@ fn router_dev_iq3_s_max_model_len() -> Int {
   token_count_value(t: serving_fleet_context_cap) as Int
 }
 
-// A PROJECTED ROW: the naming's endpoint facts, the capacity and retention its anchor derives. Every row that
-// comes out of a layout is the same Strata iq3_s engine on the same context ceiling, which is why one builder
-// serves h11, srv3 and srv4; srv1's vLLM replicas are not layout-projected and stay in the head.
-fn router_dev_replica_row(n: RouterDevReplicaNaming, layout: ServingLayoutResult) -> RouterDevShaped {
-  router_dev_shaped(shape: router_dev_replica_shape(n: n, layout: layout), row: (cap, retention, rests) => RouterDevUpstream {
-    name: n.name, scheme: n.scheme, host: n.host, port: n.port, tls_name: n.tls_name,
-    model: router_dev_iq3_s_model(), capacity: cap, max_model_len: router_dev_iq3_s_max_model_len(), path_prefix: "",
-    retiring_names: n.retiring, in_service: true,
-    retention: retention,
-    effort_effects: iq3_s_effort_rules(),
-    capacity_rests_on: rests,
-  })
-}
+// WHAT ONE GRANTED REPLICA CONTRIBUTES TO ITS HOST'S PROJECTION -- a per-replica sum the projection fold matches
+// in full (B4a, review 93830). An unread throughput is its OWN arm, `ReplicaUnread`, not a Bool tested on top of
+// an otherwise-ordinary row: a degradation hidden behind a predicate and a fabricated default is exactly what
+// gunbc.design_argument::fail_closed forbids ("every degradation is typed, located and countable"). `ReplicaUnread`
+// carries the naming AND its typed cause, so the fold cannot skip deciding how the out-of-service row comes out,
+// and the cause reaches the shipped file as the standing the row's zero capacity rests on. A hard refusal
+// (`ReplicaRefused`) still refuses the whole router, as before.
+type RouterDevReplicaContribution
+  = ReplicaRow { row: RouterDevUpstream }
+  | ReplicaUnread { naming: RouterDevReplicaNaming, cause: NonEmptyStr }
+  | ReplicaRefused { reason: String }
 
-// IS THIS SHAPE REFUSED *BECAUSE THE THROUGHPUT IS UNREAD*? A replica with no throughput reading is a host that
-// has never served -- not a broken host. It is caught by matching the typed `ShapeThroughputUnread` failure mode
-// (serving_capacity_anchor), so the "named but not in service" arm fires for precisely that case and for nothing
-// else: any OTHER shape refusal (mutable model, batch-disabled store, unread build, too-slow swap) is still a hard
-// refusal, because those are faults, not absences of reading (fail_closed). Matching the constructor, not a reason
-// string, is what keeps the router and the anchor from drifting apart (single_authority).
-fn router_dev_shape_is_throughput_unread(shape: ServingCapacityShape) -> Bool {
+// ONE REPLICA'S CONTRIBUTION. Its capacity shape is derived ONCE and matched in full -- review 93830 found a Bool
+// predicate that derived the shape, kept only a Bool, and forced a SECOND derivation inside the row builder; one
+// derivation and one match removes the duplicated evaluation (single_authority: the shape is decided once at its
+// root). A throughput-unread shape (a host that has never served -- butch before deploy) becomes `ReplicaUnread`;
+// every OTHER refusal (mutable model, batch-disabled store, unread build, too-slow swap, or an estimate the router
+// will not admit) becomes `ReplicaRefused`, because those are faults, not an absent reading. Matching the typed
+// failure mode ShapeThroughputUnread -- never a reason string -- is what keeps router and anchor from drifting as
+// the anchor grows new reasons.
+fn router_dev_replica_contribution(n: RouterDevReplicaNaming, layout: ServingLayoutResult) -> RouterDevReplicaContribution {
+  let shape = router_dev_replica_shape(n: n, layout: layout)
   match shape {
-    ServingShapeRefused { deployment: _, reason: ShapeThroughputUnread } => true
-    _ => false
+    ServingShapeRefused { deployment: _, reason: ShapeThroughputUnread } => ReplicaUnread {
+      naming: n,
+      cause: "the anchor's aggregate throughput is unread: this host has never produced a throughput reading, so it is named and kept out of service until it serves" as NonEmptyStr,
+    }
+    _ => match router_dev_shaped(shape: shape, row: (cap, retention, rests) => RouterDevUpstream {
+      name: n.name, scheme: n.scheme, host: n.host, port: n.port, tls_name: n.tls_name,
+      model: router_dev_iq3_s_model(), capacity: cap, max_model_len: router_dev_iq3_s_max_model_len(), path_prefix: "",
+      retiring_names: n.retiring, in_service: true,
+      retention: retention,
+      effort_effects: iq3_s_effort_rules(),
+      capacity_rests_on: rests,
+    }) {
+      RouterDevShapedRow { row: u } => ReplicaRow { row: u }
+      RouterDevShapeRefused { reason: r } => ReplicaRefused { reason: r }
+    }
   }
 }
 
-// A NAMED-BUT-NOT-IN-SERVICE ROW (B4a): the naming's endpoint facts (name, scheme, address, port, TLS) so the
-// replica is NAMED and discoverable, with a zero owned cap, no retention and `in_service: false` so the router
-// never sends a turn to an engine that has never produced a throughput reading. This is the finding's "a replica
-// with no throughput reading is named but not in service (its own arm) instead of refusing the whole router": the
-// row exists and says so, and its host's refusal -- if it had none -- would refuse only itself, never its
-// siblings' rows.
-fn router_dev_unread_row(n: RouterDevReplicaNaming) -> RouterDevUpstream {
+// THE OUT-OF-SERVICE RENDER -- the emitter's EXPLICIT decision for a `ReplicaUnread` arm (review 93830). It keeps
+// the naming's endpoint facts so the replica is NAMED and discoverable, holds a zero owned cap and no retention so
+// the router can never send it a turn, and carries the unread-throughput cause as the standing its zero capacity
+// rests on -- so the shipped file says out loud, through the read obligation the emitter already renders, that
+// this engine is listed but out of service because its throughput has never been read (gunbc.design_argument::
+// fail_closed: "a wrong answer is a loud, typed, located error"). The zero cap is not a fabrication: it is the
+// honest capacity of an engine that serves nothing (RouterDevCapacity -- "0 included (no turns)").
+fn router_dev_out_of_service_row(n: RouterDevReplicaNaming, cause: NonEmptyStr) -> RouterDevUpstream {
   RouterDevUpstream {
     name: n.name, scheme: n.scheme, host: n.host, port: n.port, tls_name: n.tls_name,
     model: router_dev_iq3_s_model(), capacity: OwnedCap { turns: 0 }, max_model_len: router_dev_iq3_s_max_model_len(), path_prefix: "",
     retiring_names: n.retiring, in_service: false,
     retention: NoRetention,
     effort_effects: iq3_s_effort_rules(),
-    capacity_rests_on: [] as List<CitedFigureStanding>,
+    capacity_rests_on: [TranscribedUncited { read_obligation: cause }],
   }
 }
 
@@ -1250,15 +1265,12 @@ fn router_dev_replica_projection(host: HostIdentity, layout: ServingLayoutResult
                 match inner {
                   RouterDevReplicaRefused { reason: r } => RouterDevReplicaRefused { reason: r }
                   RouterDevReplicaProjected { rows: rows } =>
-                    if router_dev_shape_is_throughput_unread(router_dev_replica_shape(n: n, layout: layout)) {
-                      // A replica with no throughput reading is a host that has never served. Name it, keep it
-                      // out of service, and carry on -- it is excluded, not a cause to refuse its siblings.
-                      RouterDevReplicaProjected { rows: concat(rows, [router_dev_unread_row(n)]) }
-                    } else {
-                      match router_dev_replica_row(n: n, layout: layout) {
-                        RouterDevShapeRefused { reason: r } => RouterDevReplicaRefused { reason: r }
-                        RouterDevShapedRow { row: u } => RouterDevReplicaProjected { rows: concat(rows, [u]) }
-                      }
+                    match router_dev_replica_contribution(n: n, layout: layout) {
+                      // A replica with no throughput reading is a host that has never served. Its OWN arm: name it,
+                      // keep it out of service, and carry on -- excluded, never a cause to refuse its siblings.
+                      ReplicaUnread { naming: nn, cause: cause } => RouterDevReplicaProjected { rows: concat(rows, [router_dev_out_of_service_row(n: nn, cause: cause)]) }
+                      ReplicaRefused { reason: r } => RouterDevReplicaRefused { reason: r }
+                      ReplicaRow { row: u } => RouterDevReplicaProjected { rows: concat(rows, [u]) }
                     }
                 })
             }

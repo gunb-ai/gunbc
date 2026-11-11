@@ -24,6 +24,7 @@ import std.optional { Optional, Present, Absent }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout }
 import gunbc.serving.serving_replica_profile { srv3_strata_profile, srv_strata_profile_unread }
 import product.host_identity { HostIdentity }
+import extdeps.external_authority { cited_figure_read_obligation }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv3, operator_host_srv4 }
 import gunbc.serving.router_dev_policy {
   RouterDevHostRoster, RouterDevReplicaNaming, RouterDevUpstream,
@@ -90,6 +91,20 @@ fn row_present(rows: List<RouterDevUpstream>, name: String) -> Bool {
   match row_named(rows, name) { Present { value: _ } => true Absent => false }
 }
 
+// DOES THE ROW CITE A STANDING WITH A READ OBLIGATION? (B4a, review 93830). The out-of-service row is not merely
+// in_service:false with a made-up zero and an empty capacity_rests_on -- it CARRIES the unread-throughput read
+// obligation as the standing its zero capacity rests on, so the shipped file names the degradation out loud
+// (fail_closed: "typed, located and countable"). This is the discriminator: if the row were to regress to an
+// ordinary-looking upstream with capacity_rests_on == [], the claim goes red even though in_service is unchanged.
+fn row_cites_read_obligation(rows: List<RouterDevUpstream>, name: String) -> Bool {
+  match row_named(rows, name) {
+    Present { value: u } =>
+      let obligated = count(filter(u.capacity_rests_on, s => match cited_figure_read_obligation(standing: s) { Present { value: _ } => true Absent => false }))
+      count(u.capacity_rests_on) >= 1 && obligated >= 1
+    Absent => false
+  }
+}
+
 // CLAIM 1: a fourth host joins as a row. The fold is called with one more roster entry than the standing three;
 // the new host's row is present and in service, and the three that were always there are still present.
 test fn witness_a_fourth_host_joins_the_first_party_router_as_a_data_row() -> Bool {
@@ -111,8 +126,9 @@ test fn witness_an_unread_replica_is_named_but_not_in_service_without_refusing_t
     RouterDevFirstPartyRows { rows: rs } =>
       let named = row_present(rs, "b4a-unread-host")
       let not_in_service = !row_in_service(rs, "b4a-unread-host")
+      let cites_unread = row_cites_read_obligation(rs, "b4a-unread-host")
       let siblings_untouched = row_in_service(rs, "srv3-strata") && row_in_service(rs, "srv4-strata")
-      named && not_in_service && siblings_untouched
+      named && not_in_service && cites_unread && siblings_untouched
   }
 }
 
