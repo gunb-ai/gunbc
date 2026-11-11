@@ -842,22 +842,36 @@ data gunbc_run_checks_only_what_its_entry_reaches: DesignRuling = DesignRuling {
 data plans_are_intentions_and_realization_is_downstream: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "plans_are_intentions_and_realization_is_downstream"),
   decided: "2026-11-11",
-  governs: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
   provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"we should have a planning/design intention - and then how that intention is converged is kind of downstream - meaning, any plan/design should havea  clear direction for the repo (i.e. consolidate this, make that structure) - starting from first principles - and then how it is actually implemented may actually change over time (for example, depending on when its staffed, the exact work items may change). I would frame the original design as the most important part - like, what are we trying to accomplish, why we want that/what the motivation is, and then I would just make any planning system look at those intentions and try to realize them\"; asked whether to rewrite the plan that way: \"yes please\". Earlier the same day, on the name: \"i think gunbc plans is good\". Supersedes the 2026-11-10 ruling recorded in the plan as D1 (plans become designs).",
 }
 
 data planning_scheduling_is_cut: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_scheduling_is_cut"),
   decided: "2026-11-11",
-  governs: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
   provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"I think scheduling is important but we should cut it fo rnow - its actually less relevant - I think even a simple column on plans/items with a start/end date could be a 'schedule' - i think the problem is, i am not really consuming any of this information today, so its all stranded. Schedule/allocation is going to be handled manually if at all for now - what i'd like to do is just schedule things qualitatively for a long time - the problem is, scheduling is more of a function of constraints i.e. labor constraints - we aren't at the point where we have to like arbitrage labor and resources to accomplish things - its just a 'what does brian (me) feel like getting done today'\". Supersedes the scheduling half of the 2026-11-10 D1.",
 }
 
 data planning_execution_is_anchored_on_fabric: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_execution_is_anchored_on_fabric"),
   decided: "2026-11-11",
-  governs: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
   provenance: "Operator, 2026-11-11, session bright-ibex-807, answering whether the ctrl session dashboard is the executor and which surface is the workspace, verbatim: \"1. no, that is a side tangent, it would be useful to integrate the two, but is not the final destination. I will consume this dag from that ctrl/ repo in the meantime proably. 2. what do you mean by workspace? we have fabric dispatch half working - i would use that as the anchor/reference\". Earlier the same day: \"i think the daily workspace stuff will survive, but needs to be consolidated/rebranded probably\".",
+}
+
+data formal_work_opts_into_the_planning_process: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "formal_work_opts_into_the_planning_process"),
+  decided: "2026-11-11",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"yeah basically what i would do is get the planning intention into design.md or wherever it needs to be - i want the whole repo to be on the same page for formal work - adhoc work is okay, but this is like the 'you are opted into the process' type work, which i hope to use more of in the future\". Asked the same day whether everyone could be put onto a clear planning and acceptance schedule, even slightly less formally, before the planning system is rebuilt.",
+}
+
+data work_item_acceptance_is_the_managers_or_an_escalation: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "work_item_acceptance_is_the_managers_or_an_escalation"),
+  decided: "2026-11-11",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-11, session bright-ibex-807, verbatim: \"i think for now all iw ant is - this plan is split into these work items with these id's in the roadmap - which are linked to a given session - or more than one work item linked to that session - PRs are kind of orthognonal - meaning, a PR could contain work for multiple/half a work item - it gets too confusing - but, the important part for me is marking work items done - that needs to be some k indo f actual process so we can make real progress\"; asked who marks a work item done: \"the manager of the session is responsible for acceptance basically, if ther ei sno manager it is processed as an eslacation\".",
 }
 
 data planning_debt_ledgers_are_consolidated: DesignRuling = DesignRuling {
@@ -885,6 +899,8 @@ fn design_rulings() -> List<DesignRuling> {
   [
     planning_is_one_source_for_every_repo,
     plans_are_intentions_and_realization_is_downstream,
+    formal_work_opts_into_the_planning_process,
+    work_item_acceptance_is_the_managers_or_an_escalation,
     planning_scheduling_is_cut,
     planning_execution_is_anchored_on_fabric,
     planning_debt_ledgers_are_consolidated,

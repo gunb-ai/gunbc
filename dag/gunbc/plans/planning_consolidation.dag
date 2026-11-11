@@ -8,8 +8,8 @@ import gunbc.markdown_helpers { h2, p, li, ul, ol, quote }
 fn planning_consolidation_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [
-      p(text: "**A plan is an intention:** the direction the repository should take, why, and what will be true of it when that is achieved, reasoned from first principles. How the intention is realized -- which work items, in what order, staffed by whom -- is downstream and replaceable: it may change every time the work is picked up. The planning system reads intentions and tries to realize them; it does not keep a second copy of them."),
-      p(text: "**Grounding:** `gunbc.design_argument::selection_precedes_convergence` (an intention is the caller-supplied goal, a realization is a selection, and achievement is assessed against an independent observation), `gunbc.design_argument::planning_has_one_home`, `gunbc.design_argument::single_authority`, `gunbc.design_argument::consumption`, `gunbc.design_argument::epistemic_humility`."),
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the repository should become, why, and done-when. How it is realized is downstream and not authored here."),
+      p(text: "**Grounding:** `gunbc.design_argument::plans_are_intentions`, `gunbc.design_argument::selection_precedes_convergence` (an intention is the caller-supplied goal, a realization is a selection, and achievement is assessed against an independent observation), `gunbc.design_argument::planning_has_one_home`, `gunbc.design_argument::single_authority`, `gunbc.design_argument::consumption`, `gunbc.design_argument::epistemic_humility`."),
     ]),
     h2(text: "1. Intention"),
     p(text: "**What:** planning is deforked. Every planning fact has one home, and it is quick and easy to see what to work on and where it lives."),
