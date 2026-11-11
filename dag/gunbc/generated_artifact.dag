@@ -3,7 +3,6 @@ module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
-import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
 import gunbc.fleet.fleet_intent { ComputeHost }
 import product.host_identity { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -149,7 +148,12 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     RunnerDeployArtifact => ArtifactLocation { directory: ".github", name: "fleet-runner-deploy.manifest" }
     CouponCadQueryProgramArtifact =>
       ArtifactLocation { directory: "manufacturing", name: "hole_diameter_ladder_r1.py" }
-    WholeCorpusCompileMeasuredRootDemandsArtifact => ArtifactLocation { directory: whole_corpus_compile_demand_projection_directory, name: whole_corpus_compile_demand_projection_name }
+    // WHERE THIS REPOSITORY COMMITS ITS MEASURED-ROOT DEMANDS PROJECTION: a literal row, like every
+    // other row of this match. It is read by the generated-artifact registry that writes the file and
+    // by the instrument argv that hands it to a compile (through artifact_path below), so the two
+    // cannot name different files. The bytes are rendered by
+    // gunbc.whole_corpus_compile_demand_projection, which holds no path of its own.
+    WholeCorpusCompileMeasuredRootDemandsArtifact => ArtifactLocation { directory: "tools", name: "whole_corpus_compile_measured_root_demands.json" }
     ApprovalDeviceVectorsArtifact => ArtifactLocation { directory: "dag/test/fixture/approval_device_redemption", name: "vectors.json" }
     ApproveIosProjectYmlArtifact => ArtifactLocation { directory: "apps/approve-ios", name: "project.yml" }
     ApproveIosProtocolSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Protocol.swift" }
