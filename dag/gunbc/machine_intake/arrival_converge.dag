@@ -430,6 +430,16 @@ fn fru_evidence_serial(evidence: IdentityFruEvidence) -> NonEmptyStr {
   }
 }
 
+// HOW THE READ BECAME EVIDENCE: a committed capture, a capture attributed to a session bound for this unit, or
+// a witness mint that names itself as such. The receipt carries the kind, and a witness that needs to know
+// which stands behind a serial asks here rather than re-opening the evidence shape.
+fn fru_evidence_source(evidence: IdentityFruEvidence) -> FruEvidenceSource {
+  match evidence {
+    FullFruRecordOfBmc { observation: fru } => fru.source
+    CommittedFruBoardArea { observation: fru } => fru.source
+  }
+}
+
 type IdentityBindInputs sole_constructor {
   fru: IdentityFruSlot
   smbios: SmbiosRead
@@ -1462,7 +1472,7 @@ fn arrival_bound_unit_keys(subject: HostIdentity) -> List<UnitKey> {
 // come from the capture readers above. Dissolves with
 // the ALTRAD8UD identity readers frontier, which dissolved when those readers landed: srv13 is retired, and
 // its captures replay in the witness as a control on the forced-change path, never as an admission.
-fn witness_identity_bind_inputs(fru: FruRead, smbios: SmbiosRead, other_units: List<UnitKey>) -> IdentityBindInputs
+fn witness_identity_bind_inputs(fru: IdentityFruSlot, smbios: SmbiosRead, other_units: List<UnitKey>) -> IdentityBindInputs
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_identity_bind_inputs"),
   ]
@@ -1498,16 +1508,27 @@ fn unit_identity_bind_inputs(row: ArrivalUnitCaptureRow) -> IdentityBindInputs u
 // not yet -- the refusal carries the read that would produce one), the SMBIOS slot the same honest absence, and
 // the in-band slot the rescue-OS capture's baseboard read. Nothing here decides what those reads prove: the
 // agreement classifier does, and with one source it refuses with what is missing.
-fn altrad8ud_identity_bind_inputs(unit: HostIdentity) -> IdentityBindInputs uses fs: std.resources.Filesystem {
+// The slot shape a FRU reading takes in this authority: a full record (mtjade1's decoded capture) or a
+// board-area record (an ALTRAD8UD print carrying the three identity fields). The reader decides which a
+// capture is; nothing downstream re-derives it.
+fn identity_fru_slot_of(read: BmcFruCaptureRead) -> IdentityFruSlot {
+  match read {
+    BmcFruCaptureObserved { observation: fru } => IdentityFruObserved { evidence: CommittedFruBoardArea { observation: fru } }
+    BmcFruCaptureRefused { gap: g } => IdentityFruAbsent { gap: g }
+  }
+}
+
+fn altrad8ud_identity_bind_inputs_with_fru(unit: HostIdentity, fru: IdentityFruSlot) -> IdentityBindInputs uses fs: std.resources.Filesystem {
   IdentityBindInputs {
-    fru: match read_committed_bmc_fru_capture(unit: unit) {
-      BmcFruCaptureObserved { observation: fru } => IdentityFruObserved { evidence: CommittedFruBoardArea { observation: fru } }
-      BmcFruCaptureRefused { gap: g } => IdentityFruAbsent { gap: g }
-    },
+    fru: fru,
     smbios: SmbiosReadRefused { gap: SmbiosCaptureNotCommitted { unit: unit as NonEmptyStr, read_that_would_ground_it: altrad8ud_host_smbios_read_obligation } },
     inband: Present { value: read_inband_board_identity(unit: unit) },
     other_units: arrival_bound_unit_keys(subject: unit),
   }
+}
+
+fn altrad8ud_identity_bind_inputs(unit: HostIdentity) -> IdentityBindInputs uses fs: std.resources.Filesystem {
+  altrad8ud_identity_bind_inputs_with_fru(unit: unit, fru: identity_fru_slot_of(read: read_committed_bmc_fru_capture(unit: unit)))
 }
 
 fn converge_arrival_unit_prefix(run: ConvergenceRunId, row: ArrivalUnitCaptureRow, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
@@ -1542,6 +1563,38 @@ fn converge_arrival_unit_through_bmc_secure(run: ConvergenceRunId, row: ArrivalU
     subject: row.unit as StepSubjectKey,
     read: read_unit_manager_capture(row: row),
     inputs: unit_identity_bind_inputs(row: row),
+    prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
+    bmc: bmc,
+    locked: none,
+  )
+}
+
+// A LIVE RUN'S FRU READ FEEDS THE SAME IDENTITY ARMS. The arrival door runs `ipmitool fru print 0` in-run,
+// commits the response to the content-addressed store and reads it back; the reader in
+// gunbc.machine_intake.mtjade1_access_observation (mint_committed_bmc_fru_capture, keyed by the capture row's
+// content digest) is what turns those bytes into a value. So this entry takes THAT value, and not a door-minted
+// IdentityBindInputs: the sealed bundle keeps one minting site per unit arm inside this authority, and the door
+// cannot assert a board area it did not obtain from the reader. Every other input -- the unit's Manager capture,
+// its in-band arm, its SMBIOS absence, the other bound units -- still comes from its rows. A run whose FRU read
+// the reader refuses reaches the same typed refusal as a missing capture; the fold does not degrade.
+fn unit_identity_bind_inputs_with_live_fru(row: ArrivalUnitCaptureRow, fru: IdentityFruSlot) -> IdentityBindInputs uses fs: std.resources.Filesystem {
+  match row.identity_arm {
+    CommittedInbandHostIdentityCapture => altrad8ud_identity_bind_inputs_with_fru(unit: row.unit, fru: fru)
+    // mtjade1's FRU is a committed capture, not a live read; the slot is replaced only so this entry has ONE
+    // shape for every row. Its witnesses stay the control on the committed path above.
+    CommittedBmcFruAndHostSmbiosCaptures => {
+      let base = mtjade1_identity_bind_inputs()
+      IdentityBindInputs { fru: fru, smbios: base.smbios, inband: base.inband, other_units: base.other_units }
+    }
+  }
+}
+
+fn converge_arrival_unit_through_bmc_secure_with_live_fru(run: ConvergenceRunId, row: ArrivalUnitCaptureRow, prior_life: DryPriorLifeWorld, bmc: BmcSecureInputs, fru_read: BmcFruCaptureRead) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+  converge_arrival_through_bmc_secure(
+    run: run,
+    subject: row.unit as StepSubjectKey,
+    read: read_unit_manager_capture(row: row),
+    inputs: unit_identity_bind_inputs_with_live_fru(row: row, fru: identity_fru_slot_of(read: fru_read)),
     prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
     bmc: bmc,
     locked: none,
