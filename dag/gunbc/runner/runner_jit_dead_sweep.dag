@@ -151,6 +151,48 @@ fn jit_retired_prefix_of(old_name: String) -> String {
   runner_slot_instance_name_prefix(host: base as HostIdentity)
 }
 
+// THE DISPATCH-INPUT FORMAT, DECODED ONCE INTO NAMED PARTS. GitHub caps a workflow at 25 workflow_dispatch inputs
+// (extdeps.github.actions workflow_dispatch_max_inputs) and the fleet-converge workflow already declares all 25, so
+// the retired prefix cannot be its own input; it rides the host input after a single ':' (a colon is illegal in a
+// hostname, so it is a safe separator). The format is handled HERE, as a total decoder producing named parts -- not
+// re-spelled ad hoc in the sweep -- and any malformed input is REFUSED with a located reason and never silently
+// narrowed (gunbc.design_argument::minimize_redundancy: a String leaf hiding named parts is anemic modelling;
+// gunbc.design_argument::fail_closed: every path succeeds fully or fails with a typed, located diagnostic and never
+// fabricates a plausible output). Kept pure so the decode is exercised by the claim witness.
+data jit_dead_sweep_input_separator: String = ":"
+
+type JitDispatchInputParse {
+  Parsed { host: String, retired_token: String }
+  Malformed { reason: NonEmptyStr }
+}
+
+fn jit_dead_sweep_parse_dispatch_input(raw: String) -> JitDispatchInputParse {
+  let parts = split(s: raw, delimiter: jit_dead_sweep_input_separator)
+  let n = length(parts)
+  let head = match parts |> first() {
+    Absent => ""
+    Present { value: h } => h
+  }
+  if head == "" {
+    Malformed { reason: "the sweep host input has no host before the first ':' (the host is a required dispatch input, never defaulted)" }
+  } else if n == 1 {
+    Parsed { host: head, retired_token: "" }
+  } else if n == 2 {
+    // The retired token is everything after the first ':' (not filter-and-first, which would drop a token that
+    // happens to equal the head and silently discard a stray third token).
+    let tail = substring(s: raw, start: string_length(s: head) + 1, end: string_length(s: raw))
+    if tail == "" {
+      Parsed { host: head, retired_token: "" }
+    } else if tail == head {
+      Malformed { reason: "the sweep host input repeats the host as its retired name; supply the rename's OLD name, not the current host name" }
+    } else {
+      Parsed { host: head, retired_token: tail }
+    }
+  } else {
+    Malformed { reason: "the sweep host input carries more than one ':' separator; expected '<host>' or '<host>:<retired-name>'" }
+  }
+}
+
 // A row under a retired prefix is a GENUINE retired JIT registration ONLY if it parses as `<retired_slot>-<epoch>-<pid>`
 // against one of the retired host's slot instances. This is what stops a broad retired prefix from sweeping a
 // sibling host's runners or a non-JIT row: their names do not parse against any retired slot instance of THIS host.

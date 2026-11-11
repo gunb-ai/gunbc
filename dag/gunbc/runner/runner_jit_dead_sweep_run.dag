@@ -34,6 +34,7 @@ import gunbc.runner.runner_jit_dead_sweep {
   JitCurrentIncarnation, JitDeadRow, JitDeadSweep, JitDeadSweepSelected,
   JitDeadSweepRefused, JitDeadSweepRefusal, jit_dead_registration_sweep,
   jit_sweep_unobserved_dead_population, jit_retired_prefix_of,
+  jit_dead_sweep_parse_dispatch_input, JitDispatchInputParse, Parsed, Malformed,
 }
 
 // THE JIT DEAD-REGISTRATION SWEEP RUN (fleet-converge modes jit_dead_registration_sweep and its dry run): the
@@ -353,46 +354,38 @@ type JitDeadSweepDispatch {
   temp: String
 }
 
-// The host input may carry the retired prefix after a ':' (the rename's old name), so the mode adds no extra
-// workflow_dispatch input (the committed workflow is at GitHub's 25-input ceiling). A ':' is illegal in a hostname, so
-// it is a safe separator. head = text before the first ':'; prefix = the token after it, if any.
-fn jit_dead_sweep_host_part(raw: String) -> String {
-  match split(s: raw, delimiter: ":") |> first() {
-    Absent => raw
-    Present { value: h } => h
-  }
+// The dispatch read result: a malformed input REFUSES (a located reason, exit non-zero), it is never reduced to a
+// narrower sweep that could report a misleadingly clean result. The format itself is decoded by the pure
+// jit_dead_sweep_parse_dispatch_input (in gunbc.runner.runner_jit_dead_sweep), tested there.
+type JitDeadSweepReadResult {
+  Refused { reason: NonEmptyStr }
+  Provided { dispatch: JitDeadSweepDispatch }
 }
 
-fn jit_dead_sweep_prefix_part(raw: String) -> String {
-  let head = jit_dead_sweep_host_part(raw: raw)
-  match filter(split(s: raw, delimiter: ":"), p => p != head) |> first() {
-    Absent => ""
-    Present { value: p } => p
-  }
-}
-
-fn jit_dead_sweep_read_dispatch() -> JitDeadSweepDispatch? {
+fn jit_dead_sweep_read_dispatch() -> JitDeadSweepReadResult {
   let raw = actions_variable_trimmed(name: jit_dead_sweep_host_env_name as NonEmptyStr)
-  let host = jit_dead_sweep_host_part(raw: raw)
-  // The retired prefix rides the host input after ':'; a separate env (used by tests/CI) overrides when set.
-  let from_host = jit_dead_sweep_prefix_part(raw: raw)
+  let parsed = jit_dead_sweep_parse_dispatch_input(raw: raw)
+  // A separate env (used by tests/CI) overrides the packed token when set. All lets are at body level: a statement
+  // in a match arm silently drops its continuation (recurring_failure_mode: match_arm_statement_body_lowers_to_its_first_expression).
   let retired = actions_variable_trimmed(name: jit_dead_sweep_retired_prefix_env_name as NonEmptyStr)
-  let retired_prefix = if retired == "" { from_host } else { retired }
   let temp = actions_variable_trimmed(name: "RUNNER_TEMP" as NonEmptyStr)
-  if host == "" {
-    none
-  } else {
-    Present {
-      value: JitDeadSweepDispatch {
+  let token = match parsed {
+    Parsed { host: _, retired_token: t } => t
+    Malformed { reason: _ } => ""
+  }
+  let retired_prefix = if retired == "" { token } else { retired }
+  match parsed {
+    Malformed { reason: reason } => Refused { reason: reason }
+    Parsed { host: host, retired_token: _ } => Provided {
+      dispatch: JitDeadSweepDispatch {
         host: host as HostIdentity,
         // THE DEAD ARM'S NAMED TRIGGER. The dispatch carries no observed MainPIDs: the dead-incarnation arm reads
         // every offline JIT row as MainPidUnreadable -> PRESERVED (fail closed) and the report surfaces the population
         // as UNOBSERVED, never as a clean zero. The arm fires only when a real caller (the wet path in srv4's rename
-        // window, P9) supplies `current` from the host unit-MainPID read -- see the module header's two arms.
+        // window, P9) supplies `current` from the host unit-MainPID read -- see the module header.
         current: jit_dead_sweep_no_current_observed(),
-        // The retired prefix is normalised through the slot-instance authority so it matches exactly the name the
-        // renamed-away runners registered under and can never be accidentally broad (a bare "srv4" would match the
-        // sibling "srv40-*"; the authority spells the proper "srv4-").
+        // Normalised through the slot-instance authority so it matches exactly the name the renamed-away runners
+        // registered under and can never be accidentally broad (a bare "srv4" would match the sibling "srv40-*").
         retired_prefixes: if retired_prefix == "" { [] } else { [jit_retired_prefix_of(old_name: retired_prefix) as NonEmptyStr] },
         temp: temp,
       }
@@ -403,8 +396,8 @@ fn jit_dead_sweep_read_dispatch() -> JitDeadSweepDispatch? {
 // THE DRY RUN MODE ENTRY (read-only).
 fn jit_dead_sweep_dry_run_wet() -> ProcessExit uses net: Network {
   match jit_dead_sweep_read_dispatch() {
-    none => exit_failure(reason: "jit-dead-sweep dry run: no host named to sweep (the host is a dispatch input, never a literal)")
-    Present { value: dispatch } =>
+    Refused { reason: reason } => exit_failure(reason: concat("jit-dead-sweep dry run refused a malformed dispatch input: ", reason as String))
+    Provided { dispatch: dispatch } =>
       jit_dead_sweep_dry_run_under_staged_key(
         host: dispatch.host,
         current: dispatch.current,
@@ -421,8 +414,8 @@ fn jit_dead_sweep_wet() -> ProcessExit uses net: Network {
   match jit_dead_sweep_apply_standing {
     JitDeadSweepApplyGated { reason: reason } => exit_failure(reason: reason)
     JitDeadSweepApplyAdmitted => match jit_dead_sweep_read_dispatch() {
-      none => exit_failure(reason: "jit-dead-sweep: no host named to sweep (the host is a dispatch input, never a literal)")
-      Present { value: dispatch } =>
+      Refused { reason: reason } => exit_failure(reason: concat("jit-dead-sweep refused a malformed dispatch input: ", reason as String))
+      Provided { dispatch: dispatch } =>
         jit_dead_sweep_wet_under_staged_key(
           host: dispatch.host,
           current: dispatch.current,

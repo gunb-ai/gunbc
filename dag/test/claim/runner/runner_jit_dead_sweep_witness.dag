@@ -16,6 +16,7 @@ import gunbc.runner.runner_jit_dead_sweep {
   SweepRosterIncomplete, SweepRosterUnavailable, SweepHostSlotsUnresolved,
   jit_dead_registration_sweep, jit_row_is_dead, jit_row_is_retired_selection,
   jit_sweep_selected_names, jit_sweep_host_count, jit_retired_prefix_of,
+  jit_dead_sweep_parse_dispatch_input, JitDispatchInputParse, Parsed, Malformed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -340,4 +341,44 @@ test fn the_retired_prefix_is_normalised_to_a_host_scoped_prefix() -> Bool {
     && jit_retired_prefix_of(old_name: "fox") == "fox-"
     // a normalised prefix cannot match the sibling host that shares the bare prefix
     && !starts_with(s: "srv40-01-1600000000-500", prefix: jit_retired_prefix_of(old_name: "srv4"))
+}
+
+// THE DISPATCH-INPUT DECODER IS TOTAL AND FAIL-CLOSED. The host input packs the retired name after a single ':'
+// (forced by the workflow's 25-input ceiling); the decoder turns it into named parts and REFUSES malformed input
+// rather than silently narrowing the sweep (which would report a misleadingly clean result). (fail_closed;
+// minimize_redundancy -- the format is decoded to named parts, not re-parsed ad hoc.)
+fn dec_host(raw: String) -> String {
+  match jit_dead_sweep_parse_dispatch_input(raw: raw) {
+    Parsed { host: h, retired_token: _ } => h
+    Malformed { reason: _ } => "<malformed>"
+  }
+}
+
+fn dec_token(raw: String) -> String {
+  match jit_dead_sweep_parse_dispatch_input(raw: raw) {
+    Parsed { host: _, retired_token: t } => t
+    Malformed { reason: _ } => "<malformed>"
+  }
+}
+
+fn dec_malformed(raw: String) -> Bool {
+  match jit_dead_sweep_parse_dispatch_input(raw: raw) {
+    Parsed { host: _, retired_token: _ } => false
+    Malformed { reason: _ } => true
+  }
+}
+
+test fn the_dispatch_input_decoder_is_total_and_fail_closed() -> Bool {
+  // well-formed: host only, and host with the retired name after one ':'
+  dec_host("fox") == "fox" && dec_token("fox") == ""
+    && dec_host("fox:fox-old-") == "fox" && dec_token("fox:fox-old-") == "fox-old-"
+    && dec_host("srv4:srv4-old") == "srv4" && dec_token("srv4:srv4-old") == "srv4-old"
+    // malformed: more than one ':' -- the old filter-and-first silently returned 'b' and DROPPED 'c'; now refused
+    && dec_malformed("a:b:c")
+    // malformed: retired repeats the host -- the old filter removed the prefix and applied nothing, reporting a clean
+    // host-only sweep; now refused instead of quietly narrowed
+    && dec_malformed("srv4:srv4")
+    // malformed: no host (required dispatch input, never defaulted)
+    && dec_malformed("")
+    && dec_malformed(":x")
 }
