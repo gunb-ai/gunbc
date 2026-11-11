@@ -1369,7 +1369,8 @@ fn realize_bmcweb_session_login_on_host(
 // non-empty check after the write, because such a check concedes the empty file is writable
 // and was in fact satisfied by editing nothing (it lived in gunbc.srv3.srv3_os_install_actuate
 // `srv3_bmcweb_login` as a shell.Test.IsNonEmpty on the file this fold had just produced,
-// and is deleted with this climb per gunbc.design_argument::guarantee_ladder dissolution-on-climb).
+// and is deleted with this climb per gunbc.design_argument::guarantee_ladder dissolution-on-climb; the host
+// module gunbc.srv3.srv3_os_install_actuate it named was itself deleted with the srv3 boot-once leaf, PXE 2b).
 type BmcwebTokenExtraction =
   | BmcwebTokenExtracted { token: NonEmptyStr }
   | BmcwebTokenExtractRefused { reason: String }
