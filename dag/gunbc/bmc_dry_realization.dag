@@ -26,9 +26,11 @@ import gunbc.bmc_model {
   BootOverrideNone, BootOverrideCdromEfiNextBoot,
 }
 import gunbc.megarac_media_model {
-  MegaRacMediaWorld, megarac_session_valid, megarac_open_session, megarac_close_session,
+  MegaRacMediaWorld, megarac_open_session,
+  megarac_session_valid_by_header, megarac_close_session_by_header,
   megarac_start_media, megarac_stop_media,
 }
+import gunbc.filesystem_model { ModeledFilesystem, fs_file, fs_resolved }
 import extdeps.bmc.megarac_observed_output {
   megarac_media_general_body, megarac_configuration_row, megarac_image_row, megarac_invalid_session_body,
   megarac_session_body, megarac_write_ack_body,
@@ -360,9 +362,29 @@ fn megarac_images_body(media: MegaRacMediaWorld) -> String {
   concat("[", concat(join(map(media.images, i => megarac_image_row(image_name: i.image_name, image_index: i.image_index)), ","), "]"))
 }
 
-fn megarac_authenticated<S>(get: fn(S) -> MegaRacMediaWorld, render: fn(S, OperationCall) -> OperationStep<S>) -> fn(S, OperationCall) -> OperationStep<S> {
+// THE CSRF HEADER FILE, READ FROM THE MODELED FILESYSTEM the caller's bracket wrote it into, resolved
+// against the modeled cwd exactly as filesystem_bindings resolves a path. An absent file reads as "" --
+// which no session's canonical header equals -- so an absent file fails the gate the same way a wrong
+// token does, and the session answers 401.
+fn megarac_read_header(fs: ModeledFilesystem, cwd: String, header_file: String) -> String {
+  match fs_file(fs: fs, path: fs_resolved(cwd: cwd, path: header_file)) {
+    Present { value: f } => f.content
+    Absent => ""
+  }
+}
+
+fn megarac_authenticated<S>(
+  get: fn(S) -> MegaRacMediaWorld,
+  fs: fn(S) -> ModeledFilesystem,
+  cwd: fn(S) -> String,
+  render: fn(S, OperationCall) -> OperationStep<S>,
+) -> fn(S, OperationCall) -> OperationStep<S> {
   fn(state, call) {
-    if megarac_session_valid(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), csrf_token: call_text(call: call, name: "csrf_token")) {
+    if megarac_session_valid_by_header(
+      world: get(state),
+      cookie_jar: call_text(call: call, name: "cookie_jar"),
+      header_content: megarac_read_header(fs: fs(state), cwd: cwd(state), header_file: call_text(call: call, name: "csrf_header_file")),
+    ) {
       render(state, call)
     } else {
       curl_refused_401(state: state, with_status_line: false)
@@ -389,28 +411,28 @@ fn body_member_int(call: OperationCall, key: String) -> Int? {
   }
 }
 
-fn megarac_bindings<S>(get: fn(S) -> MegaRacMediaWorld, put: fn(S, MegaRacMediaWorld) -> S) -> List<OperationBinding<S>> {
+fn megarac_bindings<S>(get: fn(S) -> MegaRacMediaWorld, put: fn(S, MegaRacMediaWorld) -> S, fs: fn(S) -> ModeledFilesystem, cwd: fn(S) -> String) -> List<OperationBinding<S>> {
   [
     OperationBinding { at: megarac_operation(operation: "OpenSession"), handler: fn(state, call) {
       let opened = megarac_open_session(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"))
       curl_answer(state: put(state, opened.world), exit_code: 0, stdout: megarac_session_body(csrf_token: opened.csrf_token), stderr: "")
     } },
     OperationBinding { at: megarac_operation(operation: "ProbeSessionOnMediaRoute"), handler: fn(state, call) {
-      if megarac_session_valid(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), csrf_token: call_text(call: call, name: "csrf_token")) {
+      if megarac_session_valid_by_header(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), header_content: megarac_read_header(fs: fs(state), cwd: cwd(state), header_file: call_text(call: call, name: "csrf_header_file"))) {
         curl_answer(state: state, exit_code: 0, stdout: concat(megarac_configurations_body(media: get(state)), "\n200"), stderr: "")
       } else { curl_refused_401(state: state, with_status_line: true) }
     } },
-    OperationBinding { at: megarac_operation(operation: "GetMediaGeneral"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+    OperationBinding { at: megarac_operation(operation: "GetMediaGeneral"), handler: megarac_authenticated(get: get, fs: fs, cwd: cwd, render: fn(state, call) {
       let m = get(state)
       curl_answer(state: state, exit_code: 0, stdout: megarac_media_general_body(server: m.share.server, source_path: m.share.source_path, share_type: m.share.share_type, mount_cd: m.mount_cd, cd_error_code: m.cd_error_code), stderr: "")
     }) },
-    OperationBinding { at: megarac_operation(operation: "GetRemoteConfigurations"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+    OperationBinding { at: megarac_operation(operation: "GetRemoteConfigurations"), handler: megarac_authenticated(get: get, fs: fs, cwd: cwd, render: fn(state, call) {
       curl_answer(state: state, exit_code: 0, stdout: megarac_configurations_body(media: get(state)), stderr: "")
     }) },
-    OperationBinding { at: megarac_operation(operation: "GetRemoteImages"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+    OperationBinding { at: megarac_operation(operation: "GetRemoteImages"), handler: megarac_authenticated(get: get, fs: fs, cwd: cwd, render: fn(state, call) {
       curl_answer(state: state, exit_code: 0, stdout: megarac_images_body(media: get(state)), stderr: "")
     }) },
-    OperationBinding { at: megarac_operation(operation: "StartMedia"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+    OperationBinding { at: megarac_operation(operation: "StartMedia"), handler: megarac_authenticated(get: get, fs: fs, cwd: cwd, render: fn(state, call) {
       match body_member_text(call: call, key: "image_name") {
         Absent => OperationHarnessFault { reason: "start-media was dispatched without a readable image_name" as NonEmptyStr }
         Present { value: name } => match body_member_int(call: call, key: "image_index") {
@@ -419,11 +441,15 @@ fn megarac_bindings<S>(get: fn(S) -> MegaRacMediaWorld, put: fn(S, MegaRacMediaW
         }
       }
     }) },
-    OperationBinding { at: megarac_operation(operation: "StopMedia"), handler: megarac_authenticated(get: get, render: fn(state, call) {
+    OperationBinding { at: megarac_operation(operation: "StopMedia"), handler: megarac_authenticated(get: get, fs: fs, cwd: cwd, render: fn(state, call) {
       curl_answer(state: put(state, megarac_stop_media(world: get(state))), exit_code: 0, stdout: megarac_write_ack_body, stderr: "")
     }) },
-    OperationBinding { at: megarac_operation(operation: "CloseSession"), handler: megarac_authenticated(get: get, render: fn(state, call) {
-      curl_answer(state: put(state, megarac_close_session(world: get(state), cookie_jar: call_text(call: call, name: "cookie_jar"), csrf_token: call_text(call: call, name: "csrf_token"))), exit_code: 0, stdout: megarac_write_ack_body, stderr: "")
-    }) },
+    OperationBinding { at: megarac_operation(operation: "CloseSession"), handler: fn(state, call) {
+      let cookie = call_text(call: call, name: "cookie_jar")
+      let header = megarac_read_header(fs: fs(state), cwd: cwd(state), header_file: call_text(call: call, name: "csrf_header_file"))
+      if megarac_session_valid_by_header(world: get(state), cookie_jar: cookie, header_content: header) {
+        curl_answer(state: put(state, megarac_close_session_by_header(world: get(state), cookie_jar: cookie, header_content: header)), exit_code: 0, stdout: megarac_write_ack_body, stderr: "")
+      } else { curl_refused_401(state: state, with_status_line: false) }
+    } },
   ]
 }

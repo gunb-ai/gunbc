@@ -22260,6 +22260,41 @@ fn rest_body_null_members_cause(members: &RestNullMembers) -> String {
     }
 }
 
+/// THE ONE PLACE the two renamed-member sentences are worded, shared by the published declared-side cause
+/// below and by `Display`, so the two renderers of one cause cannot drift apart. Both sentences name
+/// DECLARATIONS, never body material: at the renamed-member loop of `decode_record_by_declared_type` the
+/// `authored` name is `authored_name_at(ctx.si(), f)` and the `wire` key is `extract_from_key(f, ctx)`,
+/// each read off the declared child `f`. The response decides only WHICH of the two causes fires, by which
+/// keys it presents, so it cannot put a string into either name -- which is what licenses publishing them
+/// on a credential path, by the same test `rest_body_null_members_cause` applies to member names.
+fn rest_authored_name_sentence(authored: &str, wire: &str) -> String {
+    format!(
+        "member `{}` is the authored name of a field whose declared wire key is `{}`",
+        authored, wire
+    )
+}
+
+/// The ambiguous-spelling companion of [`rest_authored_name_sentence`]: the body presented both spellings
+/// ONE declaration owns. Both names are declared, for the reason given there.
+fn rest_ambiguous_spelling_sentence(authored: &str, wire: &str) -> String {
+    format!(
+        "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
+        wire, authored
+    )
+}
+
+/// THE TYPE-DIRECTED DECODE'S CAUSE, published by `rest_refusal_text` (gunbc.heal_publication) on a
+/// credential path. What is withheld is decided PAYLOAD BY PAYLOAD, not by which renderer a cause reaches:
+/// dropped are `UnknownSpelling`'s `spelling` and `NotAnExactDecimal`'s `json_text`, both copied from the
+/// body's own key and text, and `ModuleWireContractUnresolved`'s `cause`, an upstream message a body can
+/// influence -- `undecodable_cause_is_declared_side_only` plants a sentinel in exactly those payloads.
+/// Published are the coproduct, the located field path (every segment an authored name out of the
+/// declaration tree), the declared members in `rest_body_null_members_cause` when they are declarations,
+/// and the renamed-member pair below, whose two names are read off the declaration. A new arm must be
+/// classified the same way, on the same evidence: where does its payload come from.
+///
+/// `AmbiguousWireContract` counts the rows rather than listing them because a `CoproductWireContract` row
+/// is repository content, not response content, and printing one would report a row an operator can read.
 fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
     let declared = match &refusal.cause {
         RestResponseDecodeCause::DeclarationUnresolved => "the coproduct's declaration identity is unresolved".to_string(),
@@ -22270,8 +22305,17 @@ fn rest_response_declared_cause(refusal: &RestResponseDecodeRefusal) -> String {
         RestResponseDecodeCause::UnsupportedNaming { naming } => format!("the contract's naming policy {} has no realization here", naming),
         RestResponseDecodeCause::NotAString { json_kind } => format!("the member is a {} where a string was declared", json_kind),
         RestResponseDecodeCause::UnknownSpelling { .. } => "the presented string names no arm of the declared coproduct".to_string(),
-        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { .. } => "a renamed member is spelled by its authored name, which is not its declared wire key".to_string(),
-        RestResponseDecodeCause::AmbiguousWireSpelling { .. } => "both the declared wire key and the authored name of one renamed member are present".to_string(),
+        // DECLARED, not presented -- so the pair is published, through the one sentence each shares with
+        // `Display`. Withholding it was the defect this closes: the operator of the heal publisher was told
+        // "a renamed member is spelled by its authored name" with no spelling named, which the person who
+        // owns the workload identity pool provider cannot act on. Measured by the claims at
+        // dag/test/claim/heal_publisher_provision_witness.dag.
+        RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => {
+            rest_authored_name_sentence(authored, wire)
+        }
+        RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => {
+            rest_ambiguous_spelling_sentence(authored, wire)
+        }
         RestResponseDecodeCause::NotAnExactDecimal { .. } => "the member is not a finite exact decimal number".to_string(),
     };
     format!(
@@ -22308,16 +22352,16 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::NotAString { json_kind } => {
                 write!(f, "expected a JSON string, found {}", json_kind)
             }
-            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => write!(
-                f,
-                "member `{}` is the authored name of a field whose declared wire key is `{}`",
-                authored, wire
-            ),
-            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => write!(
-                f,
-                "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
-                wire, authored
-            ),
+            // Delegates rather than re-wording: one owner per sentence, shared with the published
+            // declared-side cause. Two renderers wording the same cause differently is what let the
+            // published line and the claims in dag/test/claim/heal_publisher_provision_witness.dag fall out
+            // of step without any model changing.
+            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => {
+                write!(f, "{}", rest_authored_name_sentence(authored, wire))
+            }
+            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => {
+                write!(f, "{}", rest_ambiguous_spelling_sentence(authored, wire))
+            }
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
@@ -31703,9 +31747,13 @@ mod t9_host_recursion_probes {
     /// coproduct, the located field and the declared encoding/naming/count are kept -- the path is an
     /// authored name out of the declaration tree, never a key out of the body -- and the strings the body
     /// presented are dropped. Every variant of `RestResponseDecodeCause` that
-    /// carries a response-supplied payload is planted here -- `UnknownSpelling`, `NotAnExactDecimal`,
-    /// `ModuleWireContractUnresolved`, `AuthoredNameIsNotTheWireKey` and `AmbiguousWireSpelling` -- so an
-    /// arm edited later to interpolate its payload turns red instead of publishing it.
+    /// carries a RESPONSE-supplied payload is planted here -- `UnknownSpelling`, `NotAnExactDecimal` and
+    /// `ModuleWireContractUnresolved` -- so an arm edited later to interpolate its payload turns red
+    /// instead of publishing it. The two renamed-member causes are NOT among them and are asserted the
+    /// other way, below: their payloads are read off the declaration (`authored_name_at(ctx.si(), f)` and
+    /// `extract_from_key(f, ctx)` on the declared child), so the response cannot put a string into them and
+    /// the operator is owed the pair. Classify a new arm by where its payload comes from, not by which
+    /// renderer it reaches.
     #[test]
     fn undecodable_cause_is_declared_side_only() {
         let located = |cause: crate::v1_interpreter::RestResponseDecodeCause| {
@@ -31754,25 +31802,32 @@ mod t9_host_recursion_probes {
             !module_contract.contains("FAKE-SECRET-MARKER"),
             "cause echoed the module's own unresolved text: {module_contract}"
         );
+        // The renamed-member pair is declared-side, so the published cause must NAME it -- worded by the
+        // sentence `Display` shares, which is what keeps the published line, this test and the DAG claims
+        // from drifting apart. That a body VALUE never reaches the line is checked end to end by
+        // `the_provider_refusal_names_the_declared_pair_and_echoes_no_body_value` in
+        // dag/test/claim/heal_publisher_provision_witness.dag, which decodes a body whose value is
+        // "https://attacker.invalid" and requires that value to be absent.
         let authored_key = crate::v1_interpreter::rest_response_declared_cause(&located(
             crate::v1_interpreter::RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
-                authored: "FAKE-SECRET-MARKER".to_string(),
-                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+                authored: "issuer_uri".to_string(),
+                wire: "issuerUri".to_string(),
             },
         ));
         assert!(
-            !authored_key.contains("FAKE-SECRET-MARKER"),
-            "cause echoed an authored or wire spelling: {authored_key}"
+            authored_key.contains("member `issuer_uri` is the authored name of a field whose declared wire key is `issuerUri`")
+                && authored_key.contains("pulls.head.sha"),
+            "the declared spelling pair was withheld from the published cause: {authored_key}"
         );
         let both_spellings = crate::v1_interpreter::rest_response_declared_cause(&located(
             crate::v1_interpreter::RestResponseDecodeCause::AmbiguousWireSpelling {
-                authored: "FAKE-SECRET-MARKER".to_string(),
-                wire: "FAKE-SECRET-MARKER-WIRE".to_string(),
+                authored: "issuer_uri".to_string(),
+                wire: "issuerUri".to_string(),
             },
         ));
         assert!(
-            !both_spellings.contains("FAKE-SECRET-MARKER"),
-            "cause echoed both spellings of one member: {both_spellings}"
+            both_spellings.contains("both `issuerUri` and its authored name `issuer_uri` are present; the field's spelling is ambiguous"),
+            "the ambiguous-spelling sentence was not the one its shared owner words: {both_spellings}"
         );
         let read_refused = crate::v1_interpreter::rest_body_read_refused_cause(
             "io error: FAKE-SECRET-MARKER while reading a body sent with FAKE-SECRET-MARKER",
