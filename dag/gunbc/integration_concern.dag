@@ -2385,7 +2385,25 @@ data runner_connectivity_observe_admitted_by_no_controller_key_stager: Integrati
       account: "Raised by the node adhoc-cf8a613a-843 srv1 arm-C receipts (PR #16307 witnesses at 12480021961, cargo test -p v1-compiler --lib, 7 passed / 1 failed): 'constructor call admission refused: gunbc.github_effect_perform.stage_controller_app_key refuses call from gunbc.fleet.runner_connectivity_observe_wet.observe_under_staged_key'. Every other arm -- both rest-route entries, the gh-shell canary, both carrier fixtures, both inhabitance controls -- is green at the seeded main, so this refusal is the entry's own admission gap, not the carrier class.",
     },
   },
-  disposition: Open,
+  // CLOSED (vivid-koi-387, 2026-11-11). The operator admitted the connectivity staged-key caller at the
+  // stager; the entry already selects its token source through select_access_token_source, so the
+  // authorization-pattern selection runs at the site and only the stager's admission was missing.
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "212fb1dcdf371f79e9668f89a75ff674ae0d1e3a" as CommitSha,
+    superseded: [],
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "stage_controller_app_key"),
+      tail: [decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key")],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "runner_connectivity_observe_wet"),
+        run: "srv1, cargo test --release -p v1-compiler --lib fleet_roster_entry_resolve_witness at 212fb1dcdf (the_runner_connectivity_observe_entry_resolves_under_the_run_demand_grain, now a plain assert_run_resolves control)",
+        conclusion: "test result: ok. 8 passed; 0 failed (1561.69s); the connectivity entry resolves under the run demand grain",
+      },
+      tail: [],
+    },
+  } },
 }
 
 // PXE 2b: the nbd install actuator's boot-once and the host-generic managed-host boot-once are two
