@@ -596,6 +596,77 @@ fn acceptance_event(parent: RoadmapEventId?, at: String) -> RoadmapEventEnvelope
     parent: parent, author: human_principal(), at: at)
 }
 
+// A RECEIPT DATED `day`, for the claims that ask what the READER does with a day that is not a day. Same fixture
+// as receipt_fixture, one field open: the discriminator is the day and nothing else.
+fn receipt_dated(day: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node(),
+    criteria_digest: content_hash_atom(value: "3502539e920d9e40" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
+      witness_fn: "fixture" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "fixture-artifact" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: day as NonEmptyStr,
+  }
+}
+
+// An acceptance sealed and addressed like any other — the id is computed from the content, so a false day gives a
+// perfectly well-addressed event. Addressing is not belief: what is being asked here is whether the READER folds it.
+fn acceptance_event_dated(day: String) -> RoadmapEventEnvelope {
+  ev(
+    kind: AcceptanceRecordedEvent {
+      receipt: receipt_dated(day: day),
+      evidence: EarnedByPullRequest {
+        pr_url: "https://github.com/gunb-ai/gunbc/pull/16126" as NonEmptyStr,
+        merged_at: "2026-11-09T00:00:00Z" as NonEmptyStr,
+        head_sha: "73e79ab5" as NonEmptyStr,
+      },
+    },
+    parent: none, author: human_principal(), at: "2026-11-09T00:00:00Z")
+}
+
+fn reader_refuses_a_day(day: String) -> Bool {
+  match roadmap_event_decode(text: roadmap_event_wire_text(env: acceptance_event_dated(day: day))) {
+    RoadmapEventUndecodable { reason: _ } => true
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+}
+
+fn reader_folds_a_day(day: String) -> Bool {
+  match roadmap_event_decode(text: roadmap_event_wire_text(env: acceptance_event_dated(day: day))) {
+    RoadmapEventDecoded { envelope: _ } => true
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+}
+
+// THE READER REFUSES AN ACCEPTANCE DATED WITH NO DAY, and that is where the escape hatch actually closed. The door
+// in gunbc.roadmap.roadmap_issue_command is one of two places a false day could be let through; the other is the
+// log itself, because an acceptance is folded from the event's OWN bytes, whatever wrote them. Decoding here
+// answers Undecodable, which the log read turns into a refusal of the whole read — it does NOT skip the event.
+// Skipping is the tempting shape and the fail-open one: a log that quietly dropped the unreadable acceptance would
+// return a confident, plausible answer (the node was never accepted) manufactured from a record nobody could read,
+// which is what gunbc.design_argument::fail_closed refuses ("a failure arm refuses, never widens"). The control
+// claim is the same event on a real day, folded, so the refusals below cannot be an artefact of the fixture.
+test fn the_reader_refuses_an_acceptance_whose_day_is_not_a_calendar_day() -> Bool {
+  reader_refuses_a_day(day: "2025-13-99")
+    && reader_refuses_a_day(day: "2026-02-30")
+    && reader_refuses_a_day(day: "2023-02-29")
+    && reader_refuses_a_day(day: "2026-2-03")
+    && reader_refuses_a_day(day: "2026-02-3")
+    && reader_refuses_a_day(day: "+026-11-03")
+    && reader_refuses_a_day(day: "1999")
+    && reader_refuses_a_day(day: "0")
+    && reader_refuses_a_day(day: "banana--")
+    && reader_folds_a_day(day: "2026-11-09")
+    && reader_folds_a_day(day: "2024-02-29")
+}
+
 fn revocation_kind(receipt: RoadmapAcceptanceReceipt, disposition: AcceptanceRevocationDisposition) -> RoadmapEventKind {
   AcceptanceRevokedEvent {
     receipt: receipt,

@@ -326,6 +326,70 @@ test fn the_absence_of_a_pull_request_is_admitted_only_before_the_cutoff() -> Bo
     match door_earned { none => true, Present { value: _ } => false })
 }
 
+// Does the door REFUSE an absence dated `day`? Any day that is not a calendar day must answer true here.
+fn absence_refuses(day: String) -> Bool {
+  match issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-door-form", day: day), evidence: NoPullRequest) {
+    none => false
+    Present { value: _ } => true
+  }
+}
+
+// Does the door ADMIT an absence dated `day`? Only a real calendar day before the cutoff answers true.
+fn absence_admits(day: String) -> Bool {
+  match issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-door-form", day: day), evidence: NoPullRequest) {
+    none => true
+    Present { value: _ } => false
+  }
+}
+
+// THE DAY IS A CALENDAR DAY, NOT A TEXT THAT SORTS BEFORE ONE. The cutoff door is the one place an acceptance
+// carrying no pull request is admitted, so the receipt's own day IS the evidence — and while that day was a
+// NonEmptyStr compared with string_compare_canonical, every spelling below sorted before "2026-11-01" as text and
+// was therefore ADMITTED while naming no day at all. A self-attested string judged against a date-shaped literal:
+// it reads as a hard rule and fails open, which is the shape gunbc.design_argument::fail_closed names a hard
+// reject ("a diff landing a silent widen … or escape hatch"). The door now reads the day through the checked
+// constructor gunbc.roadmap.roadmap_event_log roadmap_acceptance_day, and its Absent refuses here.
+//
+// The set is chosen to discriminate, not to decorate:
+// - "0", "1999", "2025-13-99" — too short for the form, or beyond any calendar. A text compare admitted all three.
+// - "2026-02-30", "2023-02-29" — the right shape, the wrong calendar. A pattern would pass them; the ONE
+//   day-in-month rule (extdeps.units.iso8601_calendar, reached through the constructor) refuses them, and the
+//   leap-day control two claims below is admitted — so the refusal is the calendar, not a regex.
+// - "2026-2-03", "2026-02-3" — a real day in a form that is not fixed width. parse_int reads "2" and "3"
+//   happily, so each field is round-tripped through the calendar authority's own two-digit renderer.
+// - "+026-11-03" — a signed year: parse_int reads it as 26, and the four-digit year requirement refuses it.
+// - "banana--" — ten characters, dashes in place, nothing numeric.
+test fn the_absence_refuses_a_day_that_is_not_a_calendar_day() -> Bool {
+  claim("'0' refuses: a text that sorts before every date is not a date", absence_refuses(day: "0"))
+    && claim("'1999' refuses: four digits, no month, no day", absence_refuses(day: "1999"))
+    && claim("'2025-13-99' refuses: month 13 and day 99 are outside the calendar", absence_refuses(day: "2025-13-99"))
+    && claim("'2026-02-30' refuses: the shape is right and the day is not", absence_refuses(day: "2026-02-30"))
+    && claim("'2023-02-29' refuses: 2023 is not a leap year", absence_refuses(day: "2023-02-29"))
+    && claim("'2026-2-03' refuses: the month must be two digits", absence_refuses(day: "2026-2-03"))
+    && claim("'2026-02-3' refuses: the day must be two digits", absence_refuses(day: "2026-02-3"))
+    && claim("'+026-11-03' refuses: a signed year is not a four-digit year", absence_refuses(day: "+026-11-03"))
+    && claim("'banana--' refuses: dashes in the right places do not make a day", absence_refuses(day: "banana--"))
+    && claim("a real day before the cutoff is still admitted, leap day included",
+      absence_admits(day: "2026-07-29") && absence_admits(day: "2024-02-29"))
+}
+
+// THE DAY IS CHECKED ON BOTH ARMS. A pull-request-evidenced acceptance carries a real merge fact, and a merge fact
+// is not a substitute for a day: the fold reads the receipt's day, and an event whose accepted_on is not a calendar
+// day is refused there (see test.claim.roadmap.roadmap_event_log_witness). The door says so where the operator can
+// act on it — at the command — rather than letting the record land and the fold stop believing it afterwards.
+test fn the_pull_request_arm_still_requires_a_real_day() -> Bool {
+  let bad = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-door-earned-bad", day: "2025-13-99"), evidence: earned(fact_set()))
+  let good = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-door-earned-good", day: "2026-11-03"), evidence: earned(fact_set()))
+  claim("an evidenced acceptance dated with a false day refuses too",
+    match bad { Present { value: _ } => true, none => false })
+    && claim("the same evidence on a real day is admitted, so the refusal is the day and not the arm",
+      match good { none => true, Present { value: _ } => false })
+}
+
 
 // THE MIGRATION VERIFIER, facet by facet. Each check is its own named claim, because a single Bool over
 // seven assertions says only that something is wrong; the refusal the runbook prints has to say WHICH.

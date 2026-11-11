@@ -1,14 +1,15 @@
 module gunbc.roadmap.roadmap_issue_command
 
 import std.types { String, NonEmptyStr }
-import std.algebra { trim, string_compare_canonical, Ordering, Less }
+import std.algebra { trim }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema,
-  roadmap_acceptance_pr_evidence_cutoff, AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
+  roadmap_acceptance_pr_evidence_cutoff, roadmap_acceptance_day, roadmap_acceptance_day_is_before,
+  AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
 }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
 
@@ -93,23 +94,46 @@ fn issue_command_receipt_node(receipt: RoadmapAcceptanceReceipt) -> String {
   receipt.node as String
 }
 
-// THE PULL-REQUEST EVIDENCE LAW, in one place: the dated door, and nothing else. A command that names a
-// review thread needs no check — the type already guarantees the thread, its merge time and its head came
-// as one fact. A command that says there was NO pull request is admitted only for a receipt whose
-// accepted_on day is before gunbc.roadmap.roadmap_event_log roadmap_acceptance_pr_evidence_cutoff: that
-// absence is the one-time migration's case, and nothing else. An acceptance earned after this log became
-// the authority must name the pull request it was earned by — an absence may only ever mean "this fact
-// never carried one", never "nobody looked".
+// THE PULL-REQUEST EVIDENCE LAW, in one place: the receipt's DAY first, then the dated door, and nothing else.
+//
+// THE DAY IS CHECKED BEFORE THE DOOR, for both arms, because it is a fact the door is stated in terms of. A
+// receipt whose accepted_on is not a calendar day states no day, and a receipt that states no day cannot be
+// placed against a cutoff. Admitting it under the pull-request arm would let that false text sit in the log,
+// where the reader would refuse the whole event; refusing it here means the operator hears the reason from the
+// command rather than from a fold that stopped believing the record.
+//
+// THEN the door. A command that names a review thread needs no further check — the type already guarantees the
+// thread, its merge time and its head came as one fact. A command that says there was NO pull request is admitted
+// only for a receipt whose accepted_on day falls before gunbc.roadmap.roadmap_event_log
+// roadmap_acceptance_pr_evidence_cutoff: that absence is the one-time migration's case, and nothing else. An
+// acceptance earned after this log became the authority must name the pull request it was earned by — an absence
+// may only ever mean "this fact never carried one", never "nobody looked".
+//
+// The comparison is a DAY COUNT (iso8601_days_from_civil, reached through roadmap_acceptance_day_is_before), never
+// a collation. Compared as texts, "0", "1999" and "2025-13-99" all sort before any real cutoff, so the door that
+// admits an evidence-less acceptance opened for anyone willing to write an earlier-LOOKING date: a self-attested
+// string judged against a date-shaped literal, which looks like a hard rule and fails open. That is the shape
+// gunbc.design_argument::fail_closed names a hard reject ("a diff landing a silent widen … or escape hatch"), and
+// the fix is the checked constructor in roadmap_event_log, not a longer list of rejected spellings.
 fn issue_command_acceptance_evidence_law(receipt: RoadmapAcceptanceReceipt, evidence: AcceptancePrEvidence) -> String? {
-  match evidence {
-    EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } => none
-    NoPullRequest => {
-      let day = receipt.accepted_on as String
-      if string_compare_canonical(a: day, b: roadmap_acceptance_pr_evidence_cutoff()) == Less { none }
-      else {
-        Present { value: join(["an acceptance with no pull request is admitted only for a receipt the operator recorded before ",
-          roadmap_acceptance_pr_evidence_cutoff(), "; this receipt says it was accepted on '", day,
-          "'. A live acceptance names the pull request it was earned by — an absent field may only mean this fact never carried one, never that nobody looked"], "") }
+  match roadmap_acceptance_day(text: receipt.accepted_on as String) {
+    Absent => Present { value: join(["accepted_on '", receipt.accepted_on as String,
+      "' is not a calendar day in the form YYYY-MM-DD: a four-digit year, a month the one day-in-month rule admits, and a day inside that month. A receipt that states no day cannot be placed against the cutoff, and the fold refuses such an event rather than folding it"], "") }
+    Present { value: day } => match evidence {
+      EarnedByPullRequest { pr_url: _, merged_at: _, head_sha: _ } => none
+      NoPullRequest => match roadmap_acceptance_day(text: roadmap_acceptance_pr_evidence_cutoff()) {
+        // The cutoff is a constant the model authors, so no input reaches this arm — and it is written anyway,
+        // because the alternative is to default to "admit" when the model cannot read its own rule, which is the
+        // widening fail_closed refuses. If the constant is ever edited into a non-date, nothing is admitted.
+        Absent => Present { value: join(["the acceptance evidence cutoff ", roadmap_acceptance_pr_evidence_cutoff(),
+          " is not a calendar day, so the dated door cannot be evaluated and no evidence-less acceptance is admitted"], "") }
+        Present { value: cutoff } =>
+          if roadmap_acceptance_day_is_before(day: day, than: cutoff) { none }
+          else {
+            Present { value: join(["an acceptance with no pull request is admitted only for a receipt the operator recorded before ",
+              roadmap_acceptance_pr_evidence_cutoff(), "; this receipt says it was accepted on '", receipt.accepted_on as String,
+              "'. A live acceptance names the pull request it was earned by — an absent field may only mean this fact never carried one, never that nobody looked"], "") }
+          }
       }
     }
   }

@@ -8,6 +8,10 @@ import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
+// ONE calendar authority for the acceptance day: the day-in-month rule, the two-digit renderer used to round-trip
+// a field, and the day count the cutoff is compared by all come from here, so the roadmap does not keep a second
+// calendar that can disagree with the one every other date in the tree reads.
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_days_from_civil, iso8601_two_digits, iso8601_utc_instant_parts_are_valid }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceRevocationFacts, RoadmapAcceptanceReceipt,
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_of_revocation, roadmap_node_ids_contain,
@@ -342,6 +346,60 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
 // only ever mean "this fact never carried one", never "nobody looked".
 fn roadmap_acceptance_pr_evidence_cutoff() -> String { "2026-11-01" }
 
+// AN ACCEPTANCE DAY IS A CALENDAR DAY, NOT A STRING THAT HAPPENS TO SORT. `accepted_on` is a NonEmptyStr on the
+// wire because the wire is JSON text; that is not a licence to compare texts. Compared as texts, "0", "1999" and
+// "2025-13-99" all sort before any real cutoff, so the door that admits an acceptance carrying no pull request
+// would open for anyone willing to write an earlier-LOOKING date — an escape hatch wearing a hard rule's clothes,
+// which fail_closed (gunbc.design_argument::fail_closed) refuses: "stronger than catching a wrong state is making
+// it unwritable". So a day is read through THIS checked constructor
+// (gunbc.design_ruling::where_refinements_retire_for_checked_constructors: a checked constructor returning
+// Optional, whose Absent every consumer must face), accepting exactly the fixed-width form `YYYY-MM-DD` with a
+// four-digit year, a month the ONE day-in-month rule admits, and a day inside that month; days are then ordered by
+// iso8601_days_from_civil, never by collation. A malformed day is not a day: the door refuses rather than guessing,
+// and the reader refuses the whole event rather than folding an acceptance whose date was never established.
+fn roadmap_acceptance_day(text: String) -> Iso8601CivilDate? {
+  let t = trim(s: text)
+  if string_length(s: t) != 10 { none }
+  else if substring(s: t, start: 4, end: 5) != "-" || substring(s: t, start: 7, end: 8) != "-" { none }
+  else {
+    match parse_int(s: substring(s: t, start: 0, end: 4)) {
+      Absent => none
+      Present { value: year } =>
+        // Four digits, no sign, no space: parse_int would happily read "+2026" or "-026" as a number, and a
+        // number is not this form.
+        if year < 1000 || year > 9999 { none }
+        else {
+          match parse_int(s: substring(s: t, start: 5, end: 7)) {
+            Absent => none
+            Present { value: month } =>
+              // Round-tripped through the calendar authority's own renderer, so "1", "+1" and " 1" are not months:
+              // only the two digits that render that month back ARE the month.
+              if iso8601_two_digits(n: month) != substring(s: t, start: 5, end: 7) { none }
+              else {
+                match parse_int(s: substring(s: t, start: 8, end: 10)) {
+                  Absent => none
+                  Present { value: day } =>
+                    if iso8601_two_digits(n: day) != substring(s: t, start: 8, end: 10) { none }
+                    // The ONE day-in-month rule, over a midnight clock face: 2026-02-30 and 2026-13-01 are refused
+                    // here exactly as the instant reader refuses them, so no second calendar is written beside it.
+                    else if !iso8601_utc_instant_parts_are_valid(year: year, month: month, day: day, hour: 0, minute: 0, second: 0) { none }
+                    else { Present { value: Iso8601CivilDate { year: year, month: month, day: day } } }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+// Earlier-than on calendar days, by day count — the only ordering the cutoff law may use, because a collation
+// order over texts is what let a false day through it.
+fn roadmap_acceptance_day_is_before(day: Iso8601CivilDate, than: Iso8601CivilDate) -> Bool {
+  iso8601_days_from_civil(y: day.year, m: day.month, d: day.day)
+    < iso8601_days_from_civil(y: than.year, m: than.month, d: than.day)
+}
+
+
 type OptionalMemberRead
   = OptionalMemberAbsent
   | OptionalMemberPresent { value: NonEmptyStr }
@@ -552,6 +610,23 @@ fn event_member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
   match event_member_string(doc: doc, key: key) {
     Present { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
     Absent => none
+  }
+}
+
+// A member that must name a CALENDAR DAY. Present only when the text is a day the one calendar authority
+// admits; anything else reads as none, which the event decoder already turns into RoadmapEventUndecodable — so a
+// record whose accepted_on is "0" or "2025-13-99" refuses the log read instead of being skipped. Skipping would
+// fold the log as though the acceptance had never been made: a plausible answer manufactured from a malformed
+// record, which is exactly what gunbc.design_argument::fail_closed forbids ("a failure arm refuses, never
+// widens"). The distinction between "no such member" and "member, no such day" is deliberate here and visible
+// where it matters: roadmap_acceptance_day itself reports the malformed spellings, and its claims name them.
+fn event_member_calendar_day(doc: JsonValue, key: String) -> NonEmptyStr? {
+  match event_member_nonempty(doc: doc, key: key) {
+    Absent => none
+    Present { value: text } => match roadmap_acceptance_day(text: text as String) {
+      Absent => none
+      Present { value: _ } => Present { value: text }
+    }
   }
 }
 
@@ -796,7 +871,7 @@ fn roadmap_acceptance_receipt_from_doc(node: RoadmapNodeId, doc: JsonValue) -> R
               match event_member_nonempty(doc: doc, key: "accepted_by") {
                 Absent => none
                 Present { value: accepted_by } =>
-                  match event_member_nonempty(doc: doc, key: "accepted_on") {
+                  match event_member_calendar_day(doc: doc, key: "accepted_on") {
                     Absent => none
                     Present { value: accepted_on } =>
                       match event_member_object(doc: doc, key: "red_control") {
