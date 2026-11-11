@@ -7746,6 +7746,22 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   //                              intent and direction together because a forward converge and a rollback are
   //                              the same single write with the pair swapped. It is not a nonce here and is
   //                              never a hostname; the names and words live in gunbc.host.host_hostname_converge.
+  //
+  // WHY THAT ROW CARRIES A WORD AND NOT A NONCE, since one name now means two things. The row is already
+  // per-mode in exactly this way -- the same dispatch field is an RLM transaction nonce for the deploy modes,
+  // the requesting run's `<run id>-<run attempt>` for branch_run_grant, and a boot attempt's identity for
+  // mtcollins1_boot -- and each meaning is named in its description by the mode that owns it, which is this
+  // file's convention for a roster that cannot grow (the `mode` row carries the same per-mode contracts note,
+  // and `printer_request` already carries an operation WORD, `observe` or `converge`, in a free-text field).
+  // The alternative that avoids the fork is four mode wires (hostname_converge / _apply / _rollback / _adopt),
+  // which costs no inputs at all -- modes are options of one row, not rows -- but it puts forward and rollback
+  // in control flow when they are one write with the pair swapped, and splits what the plan of record calls ONE
+  // host-generic mode into four. So the direction stays DATA, and the divergence is stated here, in the row's
+  // own description, and enforced: the word is compared ONLY under `mode == hostname_converge` (an emitter leg
+  // walks every job in the file to hold that), the row has no default and is not required, so no dispatch
+  // actuates by omission, and the entry refuses any value outside the three words instead of writing what it
+  // was handed. Nothing else that reads this field -- the run title, the boot admission, the branch-run key --
+  // runs under this mode.
   // The two roles staying distinct is load-bearing (see fleet_converge_hostname_converge_step_env), and a
   // dispatch that names one machine for both roles is refused by the pair law in hostname_converge_select,
   // in the build job, before any step runs.
@@ -7838,7 +7854,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "transaction_nonce",
-    description: Present { value: "hostname_converge only: NOT a nonce -- the single act word that unlocks exactly one step, closed to converge (write the canonical name) | rollback (write the committed baseline name back) | adopt (the typed baseline re-adopt), as gunbc.host.host_hostname_converge hostname_converge_act_options. The write and the baseline rewrite are guarded by this word in the workflow AND by the entry's own check of it; any other value, including empty, leaves both locked. It is never a hostname: the mode refuses any value outside the three words rather than writing what it was handed. Otherwise: operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). branch_run_grant: the requesting run's <run id>-<run attempt>, set by the branch-run-grant-broker workflow from GitHub's workflow_run event (gunbc.auth.branch_run_grant_broker). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
+    description: Present { value: "ONE FIELD, ONE MEANING PER MODE -- the convention this row already keeps, with each meaning named by the mode that owns it. hostname_converge only: NOT a nonce -- the single act word that unlocks exactly one step, closed to converge (write the canonical name) | rollback (write the committed baseline name back) | adopt (the typed baseline re-adopt), as gunbc.host.host_hostname_converge hostname_converge_act_options. The write and the baseline rewrite are guarded by this word in the workflow AND by the entry's own check of it; any other value, including empty, leaves both locked. It is never a hostname: the mode refuses any value outside the three words rather than writing what it was handed. Otherwise: operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). branch_run_grant: the requesting run's <run id>-<run attempt>, set by the branch-run-grant-broker workflow from GitHub's workflow_run event (gunbc.auth.branch_run_grant_broker). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
     required: false,
     default: none,
     type: InputString,

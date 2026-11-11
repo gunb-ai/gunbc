@@ -132,16 +132,6 @@ fn dispatch_row_exists(name: String) -> Bool {
   any(fleet_converge_dispatch_inputs, r => r.name == name)
 }
 
-fn dispatch_input_default(name: String) -> String {
-  match filter(fleet_converge_dispatch_inputs, r => r.name == name).first() {
-    Absent => ""
-    Present { value: r } =>
-      match r.default {
-        Present { value: d } => d
-        Absent => ""
-      }
-  }
-}
 
 // THE MODE EXISTS IN THE ROSTER AND WIRES TO THE SUBJECT'S OWN STRING. The wire is held by
 // gunbc.host.host_hostname_converge, so a mode that drifted from the module that owns it is caught here
@@ -258,6 +248,72 @@ test fn the_mode_declares_a_subject_domain_that_names_the_host_it_renames() -> B
       s: fleet_converge_arm_domain_clause(mode: HostnameConverge),
       pattern: "github.event.inputs.subject_host",
     )
+}
+
+// THE ACT WORD IS A SHARED FIELD, AND THIS IS THE LEG THAT MAKES THE REUSE SAFE RATHER THAN merely
+// documented. `transaction_nonce` carries three other meanings in this workflow (an RLM transaction nonce,
+// the branch-run grant's `<run id>-<run attempt>`, a boot attempt's identity), so the mode borrows a name it
+// does not own. What keeps that from being dangerous is one property, checked over the WHOLE emitted file and
+// not just this job: no step anywhere may treat one of our three words as an unlock unless the very same
+// condition also requires our mode. A stray comparison in another mode's job would let an operator's nonce of
+// `converge` open a step nobody meant to make openable by a word -- so a word of ours is inert everywhere the
+// mode is not named.
+fn act_word_comparisons() -> List<String> {
+  map(
+    [
+      hostname_converge_act_converge_value,
+      hostname_converge_act_rollback_value,
+      hostname_converge_act_adopt_value,
+    ],
+    w => join(
+      ["github.event.inputs.", hostname_converge_act_input_name as String, " == '", w as String, "'"],
+      "",
+    ),
+  )
+}
+
+// A step condition is admitted if it either does not compare one of our words, or names the mode as well.
+fn step_allows_our_word_only_under_the_mode(step: Step) -> Bool {
+  let text = step_if_text(step: step)
+  let compares_our_word = any(act_word_comparisons(), c => string_contains(s: text, pattern: c))
+  !compares_our_word || string_contains(s: text, pattern: hostname_converge_mode as String)
+}
+
+fn job_allows_our_words_only_under_the_mode(job: Job) -> Bool {
+  all(job.steps, st => step_allows_our_word_only_under_the_mode(step: st))
+}
+
+test fn no_word_of_ours_unlocks_a_step_where_the_mode_is_not_required() -> Bool {
+  all(emitted_jobs(), j => job_allows_our_words_only_under_the_mode(job: j))
+    // And exactly one job belongs to this mode, so "only under our mode" cannot be satisfied by a second job
+    // wearing the mode gate to compare our words for some other purpose.
+    && count(filter(emitted_jobs(), j => j.id == hostname_converge_job_id)) == 1
+}
+
+// THE ACT ROW IS OPT-IN: not required, and no default. A dispatch that never touches the field -- `gh workflow
+// run fleet-converge -f mode=hostname_converge`, or an API dispatch supplying nothing -- therefore carries no
+// word, and a run with no word plans and reads back but cannot write or move a baseline. If a default ever
+// appears on this row, a plain dispatch of the mode would actuate by omission.
+fn row_is_opt_in_without_a_default(name: String) -> Bool {
+  match filter(fleet_converge_dispatch_inputs, r => r.name == name).first() {
+    Absent => false
+    Present { value: r } => row_is_opt_in(r)
+  }
+}
+
+fn row_is_opt_in(row: DispatchInput) -> Bool {
+  if row.required {
+    false
+  } else {
+    match row.default {
+      Absent => true
+      Present { value: _ } => false
+    }
+  }
+}
+
+test fn the_act_row_carries_no_default_and_asks_for_nothing() -> Bool {
+  row_is_opt_in_without_a_default(name: hostname_converge_act_input_name as String)
 }
 
 // THE APPLY IS DOUBLY GATED: the mode, AND an actuating word on the one shared act field. A mode selection
