@@ -2022,13 +2022,21 @@ fn comment_time_text(c: IssueComment) -> String {
 // comment, or the compact automated entry a returned attempt result appends (published and
 // reassigned for merge, verification failed, or handed back) — the answer the requester
 // is owed interleaves with the narrative, never raw belt noise.
+//
+// Which kinds enter the stream is decided by what a reader of the thread needs, not by whether the
+// kind exists: only ResultReturned does, because that is the outcome owed the requester. An
+// acceptance record and an acceptance revocation are verdict records about the item rather than
+// entries in its thread, so they stay out — exactly as Retired does, the act on the node they pair
+// with. They are not hidden by that: the log is still their only home, the event row captions them
+// (issue_event_text at :1845 -> issue_event_payload, which spells both), and the receipt surfaces
+// read them from the log.
 type IssueStreamEntry
   = StreamComment { comment: IssueComment }
   | StreamPublication { env: RoadmapEventEnvelope }
 
 fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
   let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
-  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
+  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  AcceptanceRecordedEvent { receipt: _, evidence: _ } => false  AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
   issue_entries_sort_ascending(concat(comments, publications))
 }
 
