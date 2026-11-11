@@ -1,9 +1,9 @@
 // Ordering-equivalence witness: the install fold routes its readback sorts onto the native
 // `sort_by` kernel. This witness binds the fold's OWN comparator -- gunbc.host.host_effect_realize::
-// tree_path_total_order and ::tree_path_compare, IMPORTED rather than reimplemented, so a single
-// authority decides the path order -- against the native order. Supplying the stress inputs here never
-// removes the last execution of the real path: the modeled side sorts with the imported
-// tree_path_total_order, and the landmark calls the imported tree_path_compare directly. The two orders
+// tree_path_compare, IMPORTED rather than reimplemented, so a single authority decides the path order
+// -- against the native order. Supplying the stress inputs here never removes the last execution of
+// the real path: the modeled side sorts with a TotalOrder built from the imported tree_path_compare,
+// and the landmark calls the imported tree_path_compare directly. The two orders
 // agree on shared prefixes, '/' against other low bytes, case and non-ASCII, and on duplicate-path tie
 // order (stability); a deliberately reversed order is detected. Elevation-free: no host seam is called.
 module test.claim.runner.tree_hash_sort_equivalence
@@ -11,7 +11,7 @@ module test.claim.runner.tree_hash_sort_equivalence
 import std.algebra { list_sort_by_key, list_map, FreeMonoid, TotalOrder, Ordering, Less, Greater, Equal }
 import std.content_hash { sha256_hex_of_text }
 import std.optional { Present, Absent }
-import gunbc.host.host_effect_realize { tree_path_total_order, tree_path_compare, tree_metadata_merge_disagreement }
+import gunbc.host.host_effect_realize { tree_path_compare, tree_metadata_merge_disagreement }
 
 data entry: FreeMonoid<Entry> = [
   Entry { hex: "01", path: "a/b" },
@@ -45,7 +45,10 @@ fn to_lines(xs: FreeMonoid<Entry>) -> String {
 }
 fn native_sorted() -> FreeMonoid<Entry> { entry |> sort_by(e => e.path) }
 fn modeled_sorted() -> FreeMonoid<Entry> {
-  list_sort_by_key(xs: entry, key: fn(e) { e.path }, order: tree_path_total_order)
+  // The fold's declared order is tree_path_compare (the single path-order authority); the modeled
+  // side sorts through it, so the witness compares native sort_by against the very comparator the
+  // metadata merge walk uses -- not a copy.
+  list_sort_by_key(xs: entry, key: fn(e) { e.path }, order: { compare: tree_path_compare })
 }
 fn reversed_sorted() -> FreeMonoid<Entry> {
   list_sort_by_key(xs: entry, key: fn(e) { e.path }, order: reversed_order)
