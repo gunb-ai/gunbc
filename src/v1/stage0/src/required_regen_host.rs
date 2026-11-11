@@ -3555,6 +3555,69 @@ impl RegenConvergenceModel {
     }
 }
 
+/// THE ROUND'S DECIDER, RESOLVED ONCE AND CARRIED. The round's decisions are the model's --
+/// `regen_convergence_generation_bound`, `regen_convergence_bound_exceeded`,
+/// `stage0_stage_rebuild_is_whole_compiler`, `partition_rebuild_actuation`, and the round receipt's
+/// render -- and until now each one resolved `gunbc.regen_round_cost` again for itself: FOUR settled
+/// closures per generation that installs (measured on #16251 at ba126e56 and #16312 at 8a804d39 --
+/// four compile passes of frontend ~30 s + reconcile 4-5 min between generation 0's end and
+/// generation 1's admission), over a closure of 646 modules / 10.4 MB of `.dag`. That is the shape
+/// the generation-begin bound measures: unlike the emission-scope cost recorded on
+/// gunbc.recurring_failure_mode.a_resident_cost_taken_before_the_baseline_of_its_own_growth_check --
+/// which sat BEFORE the baseline and never registered -- this cost lands AFTER generation 0's
+/// baseline, so it is not hidden: it is charged, and four copies of it cross the 3 GiB bound
+/// (5.25 GB measured, 234 MB baseline). One settled copy answers every decision of the round, and
+/// the bound then measures one model instead of four.
+///
+/// THE COPY IS STABLE FOR THE ROUND. Its closure is `.dag` only, and a round's installs and base
+/// snapshot write `.rs`, never `.dag` (the same fact the journal's source authority digest rests
+/// on), so carrying it cannot answer a later decision from a stale model. It is loaded at the FIRST
+/// demand and never before the first generation's baseline: folding a cost into the baseline is what
+/// makes it invisible to the bound that exists to see it, which is the failure that row records.
+pub(crate) struct RegenRoundCostModel {
+    entry: String,
+    graph: Rc<crate::v1_compiler_compile::ResolvedGraph>,
+    indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+}
+
+impl RegenRoundCostModel {
+    fn load(source_roots: &[String]) -> Result<Self, String> {
+        let entry = round_cost_entry(source_roots)?;
+        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the round has no decider: {e}")
+        })?;
+        Ok(Self {
+            entry,
+            graph,
+            indices,
+        })
+    }
+
+    fn context(&self) -> crate::v1_interpreter::InterpContext {
+        super::make_eval_context(
+            &self.graph,
+            self.indices.clone(),
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+        )
+    }
+}
+
+/// ONE DECIDER PER ROUND, TAKEN AT THE FIRST DEMAND AND THEN CARRIED -- the shape
+/// `establish_round_subject` gives the checkpoint subject. The slot belongs to the round driver;
+/// every decision asks the slot, and only the first ask pays.
+fn round_cost_decider<'a>(
+    slot: &'a mut Option<RegenRoundCostModel>,
+    source_roots: &[String],
+) -> Result<&'a RegenRoundCostModel, String> {
+    if slot.is_none() {
+        report_cgroup_memory_diagnostic("parent.decider_model.load.begin");
+        *slot = Some(RegenRoundCostModel::load(source_roots)?);
+        report_cgroup_memory_diagnostic("parent.decider_model.load.end");
+    }
+    slot.as_ref()
+        .ok_or_else(|| "refusal: the round-cost decider is absent after its load".to_string())
+}
+
 /// THE LIVENESS AUTHORITY, loaded once before generation 0 as orchestration state and asked at
 /// every supervisor sample: `gunbc.host.memory_stall_refusal`. The seed supplies the slot readings
 /// it observed and evaluates the authority's own window construction, verdict and texts -- the
@@ -4109,29 +4172,28 @@ fn admit_candidate_manifest(
 /// Evaluate one decision function of the rebuild-scope module. The host effects the answer; the
 /// decision lives in `gunbc.stage0_partition_rebuild_scope`.
 fn rebuild_scope_decision(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     function: &str,
     args: Vec<(Option<String>, ModelValue)>,
 ) -> Result<ModelValue, String> {
-    rebuild_scope_decision_with(source_roots, function, |_| Ok(args))
+    rebuild_scope_decision_with(decider, function, |_| Ok(args))
 }
 
 /// `rebuild_scope_decision` for arguments that are typed model records, which carry symbols of the
 /// evaluation context and so can only be built once it exists.
 fn rebuild_scope_decision_with(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     function: &str,
     args: impl FnOnce(
         &crate::v1_interpreter::InterpContext,
     ) -> Result<Vec<(Option<String>, ModelValue)>, String>,
 ) -> Result<ModelValue, String> {
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let entry = round_cost_entry(source_roots)?;
-    report_cgroup_memory_diagnostic(&format!("parent.decision.begin function={function}"));
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    use crate::v1_interpreter;
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.decision.begin entry={} function={function}",
+        decider.entry
+    ));
+    let ctx = decider.context();
     let args = args(&ctx)?;
     v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
@@ -4183,11 +4245,11 @@ fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String
 }
 
 fn stage_rebuild_is_whole_compiler(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     boundary_files: &[String],
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
-        source_roots,
+        decider,
         "stage0_stage_rebuild_is_whole_compiler",
         vec![(
             Some("boundary_files".to_string()),
@@ -4202,12 +4264,8 @@ fn stage_rebuild_is_whole_compiler(
     }
 }
 
-fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, String> {
-    match rebuild_scope_decision(
-        source_roots,
-        "regen_convergence_generation_bound",
-        Vec::new(),
-    )? {
+fn regen_convergence_generation_bound(decider: &RegenRoundCostModel) -> Result<i64, String> {
+    match rebuild_scope_decision(decider, "regen_convergence_generation_bound", Vec::new())? {
         ModelValue::Int(value) => Ok(value),
         other => Err(format!(
             "refusal: regen_convergence_generation_bound returned {} instead of Int",
@@ -4217,11 +4275,11 @@ fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, St
 }
 
 fn regen_convergence_bound_exceeded(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     generation_ordinal: usize,
 ) -> Result<bool, String> {
     match rebuild_scope_decision(
-        source_roots,
+        decider,
         "regen_convergence_bound_exceeded",
         vec![(
             Some("generation_ordinal".to_string()),
@@ -5558,7 +5616,7 @@ fn round_cost_entry(source_roots: &[String]) -> Result<String, String> {
 }
 
 fn render_round_cost_receipt(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     host: &str,
     tree: &str,
     tree_dirty: bool,
@@ -5575,12 +5633,8 @@ fn render_round_cost_receipt(
     second_generation_candidate_digest: &str,
     base_mirror_authority: Option<(&str, usize, usize, usize)>,
 ) -> Result<String, String> {
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    use crate::v1_interpreter::{self, str_value, Value};
+    let ctx = decider.context();
     // The model's carriers, built in the model's vocabulary: a duration is a
     // `std.measure` Nanosecond (`Measure { count }`) inside `std.observation` Measured, on a
     // `TimedMeasurement` row that names its clock. Milliseconds from the ledger become
@@ -5805,16 +5859,12 @@ fn model_value_to_string_list(value: &ModelValue, what: &str) -> Result<Vec<Stri
 }
 
 fn partition_rebuild_actuation(
-    source_roots: &[String],
+    decider: &RegenRoundCostModel,
     installed_mirrors: &[String],
     host_shell_modules: &[String],
 ) -> Result<PartitionRebuildActuation, String> {
-    use crate::v1_interpreter::{self, ExecutionMode};
-    let entry = round_cost_entry(source_roots)?;
-    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    use crate::v1_interpreter;
+    let ctx = decider.context();
     let call = |function: &str| -> Result<ModelValue, String> {
         let args = vec![
             (
@@ -5941,7 +5991,7 @@ fn partition_move_explained_by_this_change(
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
     match rebuild_scope_decision_with(
-        source_roots,
+        &RegenRoundCostModel::load(source_roots)?,
         "stage0_partition_move_explained_by_affected_inputs",
         |ctx| {
             let mut args = affected_set_model_args(
@@ -8036,6 +8086,7 @@ fn convergence_plan_from_model(
 fn install_convergence_stage(
     model: &RegenConvergenceModel,
     source_roots: &[String],
+    decider: &RegenRoundCostModel,
     workspace: &Path,
     stage0_src: &Path,
     candidate_src: &Path,
@@ -8069,7 +8120,7 @@ fn install_convergence_stage(
         .into_iter()
         .collect();
     let actuation =
-        partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
+        partition_rebuild_actuation(decider, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
         Some(admit_derived_partition_move(
             workspace,
@@ -8793,6 +8844,11 @@ pub fn run_regen_round_cost(
         .as_ref()
         .and_then(|carried| carried.round_subject.clone());
 
+    // THE ROUND'S DECIDER, TAKEN AT ITS FIRST DEMAND AND THEN CARRIED (see `RegenRoundCostModel`).
+    // It is deliberately NOT loaded here: this point sits before generation 0's baseline, and a cost
+    // folded into the baseline is invisible to the generation-begin bound that exists to see it.
+    let mut round_cost: Option<RegenRoundCostModel> = None;
+
     // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
     // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
     // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
@@ -9122,7 +9178,8 @@ pub fn run_regen_round_cost(
     let mut transaction_admitted: BTreeSet<String> = BTreeSet::new();
     let mut transaction_lineage: BTreeMap<String, ConvergenceDisposition> = BTreeMap::new();
 
-    let generation_bound = regen_convergence_generation_bound(source_roots)?;
+    let generation_bound =
+        regen_convergence_generation_bound(round_cost_decider(&mut round_cost, source_roots)?)?;
     let mut partition_moved = false;
     let mut round_records: Vec<String> = Vec::new();
     loop {
@@ -9144,7 +9201,10 @@ pub fn run_regen_round_cost(
                 "generation {generation_ordinal}: mirrors converged, boundary drift under the \
                  rebuilt producer {boundary_drift:?}"
             ));
-            if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+            if regen_convergence_bound_exceeded(
+                round_cost_decider(&mut round_cost, source_roots)?,
+                generation_ordinal,
+            )? {
                 restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "RegenConvergenceBoundExceeded: boundary files did not converge within the \
@@ -9207,7 +9267,10 @@ pub fn run_regen_round_cost(
         round_records.push(format!(
             "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
         ));
-        if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+        if regen_convergence_bound_exceeded(
+            round_cost_decider(&mut round_cost, source_roots)?,
+            generation_ordinal,
+        )? {
             restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "RegenConvergenceBoundExceeded: no fixed point within the declared bound \
@@ -9309,7 +9372,10 @@ pub fn run_regen_round_cost(
         } else {
             Vec::new()
         };
-        let stage_whole_compiler = stage_rebuild_is_whole_compiler(source_roots, &stage_boundary)?;
+        let stage_whole_compiler = stage_rebuild_is_whole_compiler(
+            round_cost_decider(&mut round_cost, source_roots)?,
+            &stage_boundary,
+        )?;
         report_cgroup_memory_diagnostic(&format!(
             "parent.round.drifted.stage_scope_decided whole_compiler={stage_whole_compiler} boundary={}",
             stage_boundary.len()
@@ -9342,6 +9408,7 @@ pub fn run_regen_round_cost(
         let stage_result = install_convergence_stage(
             &convergence_model,
             source_roots,
+            round_cost_decider(&mut round_cost, source_roots)?,
             &workspace,
             &stage0_src,
             &candidate_src,
@@ -9574,7 +9641,7 @@ pub fn run_regen_round_cost(
             None => None,
         };
     let rendered = render_round_cost_receipt(
-        source_roots,
+        round_cost_decider(&mut round_cost, source_roots)?,
         &host,
         &tree,
         tree_dirty,
@@ -11074,7 +11141,7 @@ mod regen_round_cost_tests {
             workspace.join("src/v2").display().to_string(),
         ];
         let rendered = render_round_cost_receipt(
-            &roots,
+            &RegenRoundCostModel::load(&roots).unwrap(),
             "h",
             "t",
             false,
