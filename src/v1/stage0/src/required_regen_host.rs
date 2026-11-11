@@ -1146,7 +1146,7 @@ struct SyncReport {
 /// The module is not decoration -- it is the evidence that the admission was granted by a
 /// declaration rather than by the shape of a file name, and a reader cannot re-derive it from the
 /// basename when several modules can project to one.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdmittedNewMirrorReceipt {
     pub basename: String,
@@ -1693,6 +1693,9 @@ enum MissingMirrorAuthority {
 }
 
 /// One admitted surface: the file the emitter produced, and the DECLARED module that owns the name.
+/// `Eq`/`PartialEq` because the round compares the pre-write filter's list against the join's, and
+/// `Debug` because that comparison refuses with both lists in the message.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct AdmittedMissingMirror {
     basename: String,
     module: String,
