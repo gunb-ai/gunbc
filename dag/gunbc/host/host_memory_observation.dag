@@ -209,10 +209,38 @@ data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadA
 // rows; the capture itself is read only for a host in this population, never speculatively.
 type CensusEnvelopeHostRow {
   host: HostIdentity
+  capture_path: String
 }
 
+// The census population keyed by handle. Each row carries its OWN committed boot-capture path, so the
+// capture a census host reads is decided BY ITS ROW, not chosen elsewhere: adding a census host is a
+// row naming that host's own capture, and it can never be handed another machine's figure.
 fn census_envelope_host_rows() -> List<CensusEnvelopeHostRow> {
-  [ CensusEnvelopeHostRow { host: operator_host_mtcollins1 } ]
+  [ CensusEnvelopeHostRow { host: operator_host_mtcollins1, capture_path: mtcollins1_census_boot_capture_path() } ]
+}
+
+// Read exactly the given host's own capture: the path comes from the caller's matched row and the
+// transcript binds to that host. The single place a census capture is read, so the machine tag and the
+// path both travel with the host and no census host can borrow another's capture.
+fn census_envelope_attempt_from_capture(host: HostIdentity, capture_path: String) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
+  let read = Filesystem.Read(path: capture_path)
+  census_envelope_from_read(
+    success: read.success,
+    content: read.content,
+    error: read.error,
+    machine: host as NonEmptyStr,
+  )
+}
+
+// One lookup decides census membership AND which capture to read for that host: the matched row's own
+// path. A host in no row is none and no capture is read for it; the attempt is built only for the
+// matched row, so querying a non-census host triggers no Filesystem.Read.
+fn census_capture_for_host(host: HostIdentity) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>? {
+  match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
+    Present { value: r } =>
+      Present { value: census_envelope_attempt_from_capture(host: r.host, capture_path: r.capture_path) }
+    Absent => none
+  }
 }
 
 // The CI runner fixed-overhead concern keyed by the host's stable handle (R3,
@@ -240,9 +268,8 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
   match filter(measured_fixed_overhead_rows(), r => (r.host as String) == (host as String)).first() {
     Present { value: r } => r.overhead
     Absent =>
-      match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
-        Present { value: _ } =>
-          host_fixed_overhead_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
+      match census_capture_for_host(host: host) {
+        Present { value: attempt } => host_fixed_overhead_from_census_envelope_attempt(attempt: attempt)
         Absent => HostFixedOverheadUnmeasured {
           reason: "host is not classified in gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
         }
@@ -394,9 +421,8 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   match filter(measured_usable_ram_rows(), r => (r.host as String) == (host as String)).first() {
     Present { value: r } => r.usable_ram
     Absent =>
-      match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
-        Present { value: _ } =>
-          host_usable_ram_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
+      match census_capture_for_host(host: host) {
+        Present { value: attempt } => host_usable_ram_from_census_envelope_attempt(attempt: attempt)
         Absent => HostUsableRamUnmeasured {
           reason: "host is not classified in gunbc_ci_host_usable_ram_for" as NonEmptyStr,
         }
@@ -627,13 +653,7 @@ fn census_envelope_from_read(success: Bool, content: String, error: String, mach
 }
 
 fn mtcollins1_census_envelope_attempt() -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path())
-  census_envelope_from_read(
-    success: read.success,
-    content: read.content,
-    error: read.error,
-    machine: operator_host_mtcollins1 as NonEmptyStr,
-  )
+  census_envelope_attempt_from_capture(host: operator_host_mtcollins1, capture_path: mtcollins1_census_boot_capture_path())
 }
 
 fn host_usable_ram_from_census_envelope_attempt(attempt: ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>) -> HostUsableRam {
@@ -668,13 +688,10 @@ type HostMemoryObservation {
 }
 
 fn gunbc_ci_host_memory_observation_for(host: HostIdentity) -> HostMemoryObservation {
-  match filter(census_envelope_host_rows(), r => (r.host as String) == (host as String)).first() {
-    Present { value: _ } => {
-      let attempt = mtcollins1_census_envelope_attempt()
-      HostMemoryObservation {
-        usable_ram: host_usable_ram_from_census_envelope_attempt(attempt: attempt),
-        fixed_overhead: host_fixed_overhead_from_census_envelope_attempt(attempt: attempt),
-      }
+  match census_capture_for_host(host: host) {
+    Present { value: attempt } => HostMemoryObservation {
+      usable_ram: host_usable_ram_from_census_envelope_attempt(attempt: attempt),
+      fixed_overhead: host_fixed_overhead_from_census_envelope_attempt(attempt: attempt),
     }
     Absent => HostMemoryObservation {
       usable_ram: gunbc_ci_host_usable_ram_for(host: host),

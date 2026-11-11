@@ -14,9 +14,11 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv3,
   operator_host_srv9,
   operator_host_srv14,
+  operator_host_mtcollins1,
 }
 import gunbc.host.host_memory_carrier {
   HostUsableRamMeasured,
+  HostUsableRamConservativeLowerBound,
   HostFixedOverheadMeasured,
 }
 import gunbc.host.host_memory_observation {
@@ -54,4 +56,16 @@ test fn a_host_outside_every_population_gets_a_typed_answer_never_a_borrow() -> 
     }
     && materialized_width_for_host(host: operator_host_srv9) == 0
     && incident_committed_width_at_outage_for(host: operator_host_srv9) == 0
+}
+
+// A census member is classified from its OWN capture, which travels on its row -- never another
+// machine's figure. mtcollins1 is the present census member, so its usable RAM must be a real figure
+// from its own committed boot capture, never the typed unmeasured the outside-population fixture gets.
+// A second census host joins the rows carrying its own capture path, so this holds for every member.
+test fn a_census_member_is_classified_from_its_own_capture() -> Bool {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1) {
+    HostUsableRamMeasured { bytes: _, provenance: _ } => true
+    HostUsableRamConservativeLowerBound { bytes: _, provenance: _ } => true
+    _ => false
+  }
 }
