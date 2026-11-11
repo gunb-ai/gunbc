@@ -5,9 +5,15 @@ import std.types { Bool }
 import std.measure { second_count }
 import std.integer { nat_to_int }
 import extdeps.github.actions { max_job_timeout_minutes }
-import gunbc.auth.approval_gate { approval_poll_overrun_ticks }
-import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes }
-import gunbc.auth.branch_run_grant { branch_run_grant_step_timeout_minutes }
+import gunbc.auth.approval_gate { approval_poll_overrun_ticks, approval_request_window }
+import gunbc.auth.gcp_iam_converge_run {
+  gcp_iam_converge_step_timeout_minutes, gcp_iam_converge_pre_decision_allowance,
+  gcp_iam_converge_step_margin, gcp_iam_converge_poll_cadence, iam_converge_token_lifetime,
+}
+import gunbc.auth.branch_run_grant {
+  branch_run_grant_step_timeout_minutes, branch_run_grant_pre_decision_allowance,
+  branch_run_grant_step_margin, branch_run_grant_poll_cadence,
+}
 import gunbc.fleet.printer_operator_approval {
   printer_operator_approval_window, printer_operator_approval_poll_cadence,
   printer_approval_pre_decision_allowance,
@@ -47,34 +53,67 @@ test fn the_printer_step_covers_its_preparation_and_its_operators_whole_window()
   step >= need
 }
 
-// THE PRINTER JOB IS NOT SHORTER THAN THE STEP IT CONTAINS, and stays inside what a GitHub job may run.
-// A backstop below its own step is a job scheduled to kill its own approval; a backstop above the
-// platform ceiling is a job GitHub refuses to start as written.
-test fn the_printer_job_backstop_contains_its_step_and_the_platform_ceiling() -> Bool {
-  let bookkeeping = gunbc_ci_prelude_allowance_minutes
-    + gunbc_ci_artifact_transfer_step_timeout_minutes * 2
-    + gunbc_ci_aux_step_timeout_minutes * 2
-  fleet_converge_printer_job_backstop_timeout_minutes()
-    >= printer_converge_step_timeout_minutes() + bookkeeping
-    && fleet_converge_printer_job_backstop_timeout_minutes() < max_job_timeout_minutes
+// THE PRINTER JOB CAN HOLD THE CARD IT POLLS, and stays inside what a GitHub job may run. The bound is
+// stated from the DECLARED rows -- the card's window and the site's own allowances -- not from the step
+// ceiling the backstop itself folds: a claim that recomputes the formula it checks only ever agrees with
+// itself (review 93489 on gunbc#16304). Red the day a backstop is edited down, a bookkeeping step is
+// dropped from the fold, or a window is raised past what the job may run.
+test fn the_printer_job_backstop_holds_the_card_it_polls_and_the_platform_ceiling() -> Bool {
+  let job_seconds = fleet_converge_printer_job_backstop_timeout_minutes() * 60
+  let card_and_work_seconds = nat_to_int(n: second_count(s: printer_operator_approval_window()))
+    + nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence)) * approval_poll_overrun_ticks
+    + nat_to_int(n: second_count(s: printer_approval_step_margin))
+    + nat_to_int(n: second_count(s: printer_converge_preparation_allowance))
+  let bookkeeping_seconds = (gunbc_ci_prelude_allowance_minutes
+      + gunbc_ci_artifact_transfer_step_timeout_minutes * 2 + gunbc_ci_aux_step_timeout_minutes * 2) * 60
+  job_seconds >= card_and_work_seconds + bookkeeping_seconds && job_seconds < max_job_timeout_minutes * 60
 }
 
-// THE IAM-CONVERGE JOB IS NOT SHORTER THAN THE LONGER OF THE TWO CARDS IT MAY HOST. Its two request
-// steps are gated to different modes, so one dispatch waits on one card -- and the backstop has to
-// survive whichever one it is. Red the day someone raises a window without raising the job, or sums the
-// two mutually exclusive waits into a backstop no dispatch can ever reach.
-test fn the_iam_converge_job_backstop_contains_the_longer_wait_and_the_ceiling() -> Bool {
-  let bookkeeping = gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
-    + gunbc_ci_aux_step_timeout_minutes * 3 + (gunbc_ci_aux_step_timeout_minutes + 10) * 2
-  let job = fleet_converge_gcp_iam_job_backstop_timeout_minutes()
-  job >= gcp_iam_converge_step_timeout_minutes() + bookkeeping
-    && job >= branch_run_grant_step_timeout_minutes() + bookkeeping
-    && job < max_job_timeout_minutes
+// THE IAM-CONVERGE JOB CAN HOLD EITHER CARD IT MAY HOST. Its two request steps are gated to different
+// modes, so one dispatch waits on one card -- and the backstop has to survive whichever one it is. Each
+// bound is stated from the POLICY ROW the card reads plus that site's declared allowances, never from the
+// step ceilings the fold consumes (review 93489: comparing a formula with itself checks nothing). Red the
+// day someone raises a window without raising the job, drops a bookkeeping step, or sums the two mutually
+// exclusive waits into a backstop no dispatch can ever reach.
+test fn the_iam_converge_job_backstop_holds_either_card_and_the_platform_ceiling() -> Bool {
+  let job_seconds = fleet_converge_gcp_iam_job_backstop_timeout_minutes() * 60
+  let window_seconds = nat_to_int(n: second_count(s: approval_request_window))
+  let bookkeeping_seconds = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + gunbc_ci_aux_step_timeout_minutes * 3 + (gunbc_ci_aux_step_timeout_minutes + 10) * 2) * 60
+  let iam_card_seconds = window_seconds
+    + nat_to_int(n: second_count(s: gcp_iam_converge_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence)) * approval_poll_overrun_ticks
+    + nat_to_int(n: second_count(s: iam_converge_token_lifetime))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_step_margin))
+  let grant_card_seconds = window_seconds
+    + nat_to_int(n: second_count(s: branch_run_grant_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: branch_run_grant_poll_cadence)) * approval_poll_overrun_ticks
+    + nat_to_int(n: second_count(s: branch_run_grant_step_margin))
+  job_seconds >= iam_card_seconds + bookkeeping_seconds
+    && job_seconds >= grant_card_seconds + bookkeeping_seconds
+    && job_seconds < max_job_timeout_minutes * 60
 }
 
-// THE BOOTSTRAP DELTA'S REQUEST JOB, the same check: one wait per job by construction, because its
-// actuation is a separate job behind a fresh federation.
-test fn the_bootstrap_request_job_backstop_contains_its_wait_and_the_ceiling() -> Bool {
-  let job = fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes()
-  job >= gcp_iam_converge_step_timeout_minutes() && job < max_job_timeout_minutes
+// THE BOOTSTRAP DELTA'S REQUEST JOB, the same discipline: one wait per job by construction, because its
+// actuation is a separate job behind a fresh federation, so the bound is one card's window and allowances
+// plus the job's own bookkeeping -- and inside the platform ceiling.
+//
+// The bookkeeping is this job's own four non-polling steps, named one by one off its step list (event-sha
+// checkout, release-bins download, release-bins unpack and verify, WIF auth) rather than copied from the
+// fold, so a step dropped from the backstop's sum -- or a step added to the job without raising it -- is
+// red here. The card half is read off the policy row and the site's declared rows, never from the step
+// ceiling the backstop consumes (review 93489 on gunbc#16304: a claim that recomputes its own formula only
+// ever agrees with itself).
+test fn the_bootstrap_request_job_backstop_holds_its_card_and_the_platform_ceiling() -> Bool {
+  let job_seconds = fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes() * 60
+  let bookkeeping_seconds = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + gunbc_ci_aux_step_timeout_minutes * 2) * 60
+  let card_seconds = nat_to_int(n: second_count(s: approval_request_window))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence)) * approval_poll_overrun_ticks
+    + nat_to_int(n: second_count(s: iam_converge_token_lifetime))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_step_margin))
+  job_seconds >= card_seconds + bookkeeping_seconds && job_seconds < max_job_timeout_minutes * 60
 }

@@ -7,7 +7,6 @@ import extdeps.printing.bambu_lab_lan_protocol { BambuAmsTray }
 import std.process { ProcessExit, exit_failure }
 import std.measure { Second, second, second_count, Minute, minute }
 import std.integer { nat_to_int }
-import std.checked_arithmetic { nat_magnitude }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
 import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
@@ -22,7 +21,7 @@ import gunbc.auth.approval_gate {
   ApprovalFiled, ApprovalFilingRefused, approval_poll_ticks, PollObservedAt,
   PollClockUnreadable, PollBudgetExhausted, approval_gate_from_poll,
   GateAdmitted, GateRefused, approval_refusal_text, approval_request_window, approval_poll_tick_budget, approval_poll_step_timeout_minutes,
-  approval_poll_overrun_ticks, approval_poll_no_post_decision_work,
+  approval_poll_overrun_ticks, approval_poll_no_post_decision_work, approval_credential_bounded_window,
 }
 
 // HOW LONG THE OPERATOR HAS TO DECIDE THE PRINT-START BED-CLEAR CARD.
@@ -63,15 +62,29 @@ data printer_approval_pre_decision_allowance: Second = second(count: 300)
 // before it is caught by an expired token. MEASURE IT on the first hours-long card and correct this row.
 data printer_approval_post_decision_allowance: Second = second(count: 300)
 
+// THE POLL'S CADENCE IS A SITE FACT, not the window: how often this run re-reads its own filing. Ten
+// seconds is how quickly an operator's tap turns into a print; the tick BUDGET below is derived from
+// the window and this cadence and is never counted off independently.
+data printer_operator_approval_poll_cadence: Second = second(count: 10)
+
 // The credential ceiling on the window: the token's life, minus what is already spent before the poll
-// begins and what will be spent after the grant arrives. No absorbing default: a ceiling that computes
-// to zero or below stays zero, which turns the claim RED and stops the card rather than silently
-// handing the operator a window the credential cannot honour.
+// begins, what will be spent after the grant arrives, AND the reserve the poll is granted past its own
+// deadline -- one rule, in the module that owns the poll budget (gunbc.auth.approval_gate
+// approval_credential_bounded_window), so the ceiling and the tick budget cannot disagree about how late a
+// poll may still answer. The reserve belongs in the ceiling for the same reason it belongs in the ticks: an
+// answer that arrives inside it is answered after it. A ceiling that ignored it admitted a card whose
+// boundary YES reached actuation with an expired token -- 300 + 3000 + 300 filled the 3600 s lifetime
+// exactly and left the 40 s reserve nowhere to go. No absorbing default: a ceiling that computes to zero or
+// below stays zero, which turns the claim RED and stops the card rather than silently handing the operator
+// a window the credential cannot honour.
 fn printer_approval_credential_ceiling() -> Second {
-  let room = nat_to_int(n: second_count(s: workload_identity_access_token_lifetime)) -
-    nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance)) -
-    nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
-  if room > 0 { second(count: nat_magnitude(a: room)) } else { second(count: 0) }
+  approval_credential_bounded_window(
+    lifetime: workload_identity_access_token_lifetime,
+    pre_decision_allowance: printer_approval_pre_decision_allowance,
+    post_decision_allowance: printer_approval_post_decision_allowance,
+    cadence: printer_operator_approval_poll_cadence,
+    overrun_ticks: approval_poll_overrun_ticks
+  )
 }
 
 fn printer_operator_approval_window() -> Second {
@@ -83,10 +96,6 @@ fn printer_operator_approval_window() -> Second {
   }
 }
 
-// THE POLL'S CADENCE IS A SITE FACT, not the window: how often this run re-reads its own filing. Ten
-// seconds is how quickly an operator's tap turns into a print; the tick BUDGET below is derived from
-// the window and this cadence and is never counted off independently.
-data printer_operator_approval_poll_cadence: Second = second(count: 10)
 // THE RESERVE, and the rule that spends it, are the fleet's now, not this module's:
 // gunbc.auth.approval_gate approval_poll_overrun_ticks / approval_poll_tick_budget /
 // approval_poll_step_timeout_minutes. What stays local is what is genuinely local -- the cadence an

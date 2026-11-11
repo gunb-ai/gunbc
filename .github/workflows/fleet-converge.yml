@@ -5061,7 +5061,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: printer-lan
-    timeout-minutes: 129
+    timeout-minutes: 128
     if: github.event.inputs.mode == 'printer'
     permissions:
       contents: read
@@ -5181,7 +5181,7 @@ jobs:
           PRINTER_REQUEST_ID: ${{ fromJSON(inputs.printer_request || '{}').request_id }}
           PRINTER_ROOT: ${{ fromJSON(inputs.printer_request || '{}').root }}
           PRINTER_RECIPE: ${{ fromJSON(inputs.printer_request || '{}').recipe }}
-        timeout-minutes: 94
+        timeout-minutes: 93
       - name: Upload printer operation receipt
         id: printer_receipt
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

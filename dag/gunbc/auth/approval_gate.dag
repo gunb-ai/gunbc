@@ -4,6 +4,7 @@ import std.decl_ref { decl_ref }
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
 import std.measure { Second, Minute, second_count, second, minute, minute_count }
 import std.integer { nat_to_int }
+import std.checked_arithmetic { nat_magnitude }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.scoped_authorization {
@@ -253,6 +254,30 @@ fn approval_poll_step_timeout_minutes(
     + nat_to_int(n: second_count(s: post_decision_allowance))
     + nat_to_int(n: second_count(s: step_margin))
   minute(count: (secs + 59) / 60)
+}
+
+// HOW LONG A CARD MAY STAY OPEN WHEN A CREDENTIAL minted BEFORE the poll has to survive it, in the same
+// family as the tick budget above: the lifetime, less the work before the decision, the work after it, and
+// THE SAME RESERVE the tick budget grants past the nominal deadline. That last term is not decoration. The
+// poll is allowed to keep ticking for `overrun_ticks` cadences after the card's stated expiry -- that is
+// how it notices the expiry itself instead of being killed -- and an answer that lands inside that reserve
+// is acted on after it. A ceiling that subtracts only the two allowances therefore admits a card whose
+// boundary answer still reaches actuation with an expired credential: at the printer that was 300 + 3000 +
+// 300 = 3600 s exactly, which left the 40 s reserve with nowhere to go (side chat on gunbc#16304). Same
+// lesson as #16160, one shape on: a wait may not outlive the token it will need afterwards, and the poll's
+// own permitted lateness is part of the wait.
+fn approval_credential_bounded_window(
+  lifetime: Second,
+  pre_decision_allowance: Second,
+  post_decision_allowance: Second,
+  cadence: Second,
+  overrun_ticks: Int
+) -> Second {
+  let room = nat_to_int(n: second_count(s: lifetime)) -
+    nat_to_int(n: second_count(s: pre_decision_allowance)) -
+    nat_to_int(n: second_count(s: post_decision_allowance)) -
+    nat_to_int(n: second_count(s: cadence)) * overrun_ticks
+  if room > 0 { second(count: nat_magnitude(a: room)) } else { second(count: 0) }
 }
 
 fn approval_expires_at(issued: Timestamp, window: Second) -> Timestamp {
