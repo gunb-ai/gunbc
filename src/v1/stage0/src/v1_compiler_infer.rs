@@ -3099,6 +3099,48 @@ pub fn field_type_expr_is_stripped_placeholder(
         && ((te.params.clone().len() as i64) == 0))
 }
 
+pub fn applied_field_carrier(rt: Rc<Node>) -> Rc<Node> {
+    {
+        let new_children = Rc::new({
+            let mut __result = Vec::new();
+            for c in rt.children.clone().iter().cloned() {
+                __result.push(crate::v1_compiler_infer_env::generic_actual_position_type(
+                    c.clone(),
+                ));
+            }
+            __result
+        });
+        if v1_rt::rc_vec_ptr_eq(new_children.clone(), rt.children.clone()) {
+            rt.clone()
+        } else {
+            Rc::new(Node {
+                ident: std::option::Option::None,
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                name: rt.name.clone(),
+                span: rt.span.clone(),
+                ident_span: rt.ident_span.clone(),
+                children: new_children.clone(),
+                connective: rt.connective.clone(),
+                params: rt.params.clone(),
+                inferred: rt.inferred.clone(),
+                return_cardinality: rt.return_cardinality.clone(),
+                uses: rt.uses.clone(),
+                body: rt.body.clone(),
+                transport: rt.transport.clone(),
+                properties: rt.properties.clone(),
+                type_annotation: rt.type_annotation.clone(),
+                is_self_recursive: rt.is_self_recursive.clone(),
+                has_non_tail_self_call: rt.has_non_tail_self_call.clone(),
+                match_pattern: rt.match_pattern.clone(),
+                module_item_kind: rt.module_item_kind.clone(),
+                declaration_marker: rt.declaration_marker.clone(),
+                declaration: rt.declaration.clone(),
+                expr_data: rt.expr_data.clone(),
+            })
+        }
+    }
+}
+
 pub fn field_substitution_carrier(
     sf: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3108,7 +3150,10 @@ pub fn field_substitution_carrier(
         if field_type_expr_is_stripped_placeholder(te.clone(), source_indices) {
             match sf.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    crate::v1_std_core::preserve_outer_optional_cardinality(sf.clone(), rt.clone())
+                    crate::v1_std_core::preserve_outer_optional_cardinality(
+                        sf.clone(),
+                        applied_field_carrier(rt.clone()),
+                    )
                 }
                 _ => te.clone(),
             }
