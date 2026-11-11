@@ -77,7 +77,7 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Absent, Present }
 import std.algebra { FreeSemigroup, length, list_append, string_contains, trim }
 import std.list { first_where }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 import extdeps.iproute2.ip_neigh { ip_program }
 import extdeps.iproute2.ip_show { ip_link_record, ip_oneline_records, ip_show_link_args }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_addresses_are_equal, parse_mac_address_any_case }
@@ -87,8 +87,8 @@ import extdeps.tools.gnu_coreutils { cat_program }
 import extdeps.tools.stat { stat_program }
 import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkCrypt, LsblkDisk, LsblkLoop, LsblkLvm, LsblkOtherType, LsblkPart, LsblkRom, lsblk_program }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of }
-import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.runner.runner_host_file_converge { FleetHostFileSubject, LegElevated, run_fleet_host_leg }
 import gunbc.provisioning.install_target_disk { InstallTargetDisk, install_target_disk_pin }
 import gunbc.provisioning.network_install_receipt { ClientClassUnread, InstalledHostReading, InstalledRootDevice, InstalledRootRead, InstalledRootReading, InstalledRootUnbacked, InstalledRootUnread, InstallerRecordAbsent, InstallerRecordRead, InstallerRecordReading, InstallerRecordUnread, NetworkInstallReadings }
 import gunbc.secure_boot_observation { SecureBootUnobserved }
@@ -637,29 +637,39 @@ fn installed_host_agrees_with_authorized(
 
 // ============================ THE LIVE LEGS ============================
 //
-// The six reads as the fleet performs them: the SAME typed ssh exec that carries every other remote leg in this
-// fleet (the leg shape gunbc.host.export_host_reader_converge composes over), with the commands above and nothing
-// else on the wire. The secret never travels here: the legs read files on the installed host, and the BMC
-// credential belongs to the controller leg of the run, which takes it only as a path to a 0600 file
+// The six reads as the fleet performs them: the SAME elevated remote leg that
+// gunbc.host.export_host_reader_converge composes its reader over (run_fleet_host_leg with
+// LegElevated, gunbc.runner.runner_host_file_converge), with the commands above and nothing else on
+// the wire. The elevation is not a convenience: the installer's own record is root-owned, and a leg
+// that could not read it would answer "absent" — which this fold reads as a host the installer never
+// finished on, and the run would refuse a machine that had in fact completed. The one subject is the
+// one target for every leg, so no leg can drift to another host.
+//
+// The secret never travels here: the legs read files on the installed host, and the BMC credential
+// belongs to the controller leg of the run, which takes it only as a path to a 0600 file
 // (gunbc.auth.private_secret_file).
 //
 // A refused exec is not an empty answer. remote_answer_of turns a refusal into exit 255 with the reason in stderr,
 // and every gate below reads a non-zero exit or unparseable bytes as "not reported" — so a leg that could not run
 // withholds the completion rather than reporting a host it never reached.
-fn network_install_host_legs(target: SshTarget, context: FleetSshExecutionContext) -> InstalledHostRemoteLegs {
+fn network_install_host_legs(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> InstalledHostRemoteLegs {
   InstalledHostRemoteLegs {
-    os_release: fn() { network_install_host_leg(target: target, context: context, command: installed_host_os_release_command()) }
-    machine_id: fn() { network_install_host_leg(target: target, context: context, command: installed_host_machine_id_command()) }
-    link_list: fn() { network_install_host_leg(target: target, context: context, command: installed_host_link_list_command()) }
-    block_report: fn() { network_install_host_leg(target: target, context: context, command: installed_host_block_report_command()) }
-    installer_record: fn() { network_install_host_leg(target: target, context: context, command: installed_host_installer_record_command()) }
-    root_created: fn() { network_install_host_leg(target: target, context: context, command: installed_host_root_created_command()) }
+    os_release: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_os_release_command()) }
+    machine_id: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_machine_id_command()) }
+    link_list: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_link_list_command()) }
+    block_report: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_block_report_command()) }
+    installer_record: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_installer_record_command()) }
+    root_created: fn() { network_install_host_leg(subject: subject, context: context, command: installed_host_root_created_command()) }
   }
 }
 
-fn network_install_host_leg(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> RemoteAnswer {
+fn network_install_host_leg(
+  subject: FleetHostFileSubject, context: FleetSshExecutionContext, command: ArgvCommand
+) -> RemoteAnswer {
   remote_answer_of(
-    outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command))
+    outcome: run_fleet_host_leg(
+      subject: subject, context: context, leg: LegElevated { command: argv_words(command: command) }
+    )
   )
 }
 
