@@ -68,6 +68,7 @@ import gunbc.host.install_boot_subject {
   ControllerIsNotTheBoundOne,
   WriteControllerRefused,
 }
+import gunbc.fleet.fleet_intent { srv15_baseboard }
 import gunbc.host.network_install {
   DiskContentsReader, LsblkBlockDeviceReport, SfdiskPartitionTableReport,
   DiskContentsReport, ContentsNotRead,
@@ -292,7 +293,7 @@ fn dispatch(
         intended_controller: controller,
         observed: mtcollins_access_or_unobserved(),
         secured: secured,
-        board: Absent,
+        board: Present { value: srv15_baseboard.catalog.model },
         route: ByPerWriteApproval,
         capability_row: install_capability_row(),
         qualification: Absent,
@@ -325,7 +326,7 @@ fn dispatch_with_os(os_observation: NetworkInstallOsObservation) -> NetworkInsta
         intended_controller: controller,
         observed: mtcollins_access_or_unobserved(),
         secured: secured,
-        board: Absent,
+        board: Present { value: srv15_baseboard.catalog.model },
         route: ByPerWriteApproval,
         capability_row: install_capability_row(),
         qualification: Absent,
