@@ -998,7 +998,6 @@ type NetworkInstallRunPorts {
   observe_install: fn(NetworkInstallInstallQuery) -> NetworkInstallReadings
   // THE COMPLETION, through the store's compare-and-set against the Absent this run read.
   commit_completion: fn(NetworkInstallCompletion) -> Bool
-}
   // THE RELEASE. The store re-reads the slot and releases only when the owner it reads NOW is the owner this
   // run carries, so a hold that passed to another lane is never released by us, and a run that never took the
   // hold has nothing to release. `network_install_run_and_release` is its only caller, and it is the only way
