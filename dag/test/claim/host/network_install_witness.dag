@@ -217,7 +217,12 @@ fn staged_binding() -> NetworkInstallBindingEvidence {
 // minted only by its own admission, so a fixture of it would be an invented authorization rather than a test
 // input. The claim below is that the row is there to read.
 fn mtcollins1_rows() -> Optional<ManagedHost> {
-  managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)
+  match managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr) {
+    ManagedHostFound { host: h, control: _ } => Present { value: h }
+    ManagedHostFoundUnderDeclaredDrop { host: h, control: _, drop: _, standing_subject: _, current_subject: _ } =>
+      Present { value: h }
+    ManagedHostNotManaged { host: _ } => Absent
+  }
 }
 
 fn mtcollins1_standing() -> Optional<BmcControlStanding> {
@@ -862,7 +867,7 @@ test fn w_a_refused_run_still_writes_a_receipt_saying_nothing_was_reset() -> Boo
     decided_at: 1793300001000,
     refusal: "ReadingStale(deadline=1795824000000)"
   )
-  receipt.refused && !receipt.reset_issued && !receipt.override_read_back && !receipt.completion_recorded &&
+  receipt.refused && !receipt.boot_issued && !receipt.install_read_back && !receipt.completion_recorded &&
     network_install_receipt_lines(receipt: receipt).length() == 13
 }
 
