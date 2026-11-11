@@ -1,0 +1,233 @@
+// test.claim.host.network_install_store_witness — the store's own readings, evaluated on supplied values.
+//
+// gunbc.host.network_install_store is the one place the install run's ports are filled with real effects, so
+// what is checkable without a filesystem or an SSH session is everything that decides whether a run boots,
+// completes, or refuses: which edge file results count as a staged user-data file, which install standings
+// count as the edge having admitted this client, and what a hold observation means. The filesystem and the
+// converge themselves are exercised by the CI wet entry and, later, by the live run the manager dispatches —
+// a claim here could only ever restate what those would report, so none pretends to run them.
+module test.claim.host.network_install_store_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.durable_compare_and_set { CasUnreadableMalformed }
+import product.host_identity { HostIdentity }
+import extdeps.network.mac { Eui48Address, MacParseFailed, MacParsed, mac_address, render_mac_address }
+import gunbc.file_access { FileTreeScope }
+import extdeps.owned_file_system.path { FilePath, authorized_key_roots_file_path }
+import std.durable_exclusive_hold {
+  DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldObservationUnavailable,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable,
+}
+import gunbc.host.network_install {
+  HoldFree, HoldHeldBy, HoldUnreadable, NetworkInstallHoldReading,
+}
+import gunbc.host.network_install_store {
+  EdgeFileNotAmongTheRun, EdgeFileSettled, EdgeFileUnsettled, NetworkInstallEdgeFileStanding,
+  network_install_edge_file_settled, network_install_edge_file_standing, network_install_edge_install_admitted,
+  network_install_edge_user_data_subject, network_install_hold_reading,
+}
+import gunbc.fleet.site_pxe_edge_converge {
+  EdgeFileLeftInPlace, EdgeFileNotApplied, EdgeFileWrittenAndReadBack, EdgeFileWriteRefused,
+  InstallAdmitted, InstallClientNotOnRoster, InstallWithheld, SitePxeEdgeFile, SitePxeEdgeFileResult,
+  SitePxeEdgeInstallRefusal, SitePxeEdgeInstallStanding,
+}
+
+// ── Fixtures ────────────────────────────────────────────────────────────
+
+// srv15's real NIC, the one its 2026-10-29 in-band recovery capture saw come up (9c:6b:00:e7:ca:63), and a
+// second MAC that is not this unit's. Real figures, because a witness about matching must match on the
+// string the edge actually renders.
+data bobo_mac: Eui48Address = mac_address(
+  octet1: 156,
+  octet2: 107,
+  octet3: 0,
+  octet4: 231,
+  octet5: 202,
+  octet6: 99,
+)
+
+data other_mac: Eui48Address = mac_address(
+  octet1: 0,
+  octet2: 184,
+  octet3: 118,
+  octet4: 1,
+  octet5: 2,
+  octet6: 3,
+)
+
+fn user_data_path() -> FilePath {
+  authorized_key_roots_file_path(path: "/srv/gunbc-site-pxe-edge/http/grub/seed/9c-6b-00-e7-ca-63/user-data")
+}
+
+fn edge_file(subject: NonEmptyStr) -> SitePxeEdgeFile {
+  SitePxeEdgeFile {
+    subject: subject,
+    path: user_data_path(),
+    content: "#cloud-config\n",
+    scope: FileTreeScope { root_path: "/srv/gunbc-site-pxe-edge" },
+  }
+}
+
+fn result(subject: NonEmptyStr, outcome: SitePxeEdgeFileOutcome) -> SitePxeEdgeFileResult {
+  SitePxeEdgeFileResult { file: edge_file(subject: subject), outcome: outcome }
+}
+
+// ONE REFUSAL, named and minted from the edge's own arm — a withheld standing has to say why, and the
+// cheapest honest why is the roster, which is the arm that needs no other fixture behind it.
+fn withheld_refusals(mac: Eui48Address) -> FreeSemigroup<SitePxeEdgeInstallRefusal> {
+  FreeSemigroup { head: InstallClientNotOnRoster { mac: mac }, tail: [] }
+}
+
+fn our_subject() -> NonEmptyStr {
+  network_install_edge_user_data_subject(mac: bobo_mac)
+}
+
+// ── Which file results count as a staged user-data file ─────────────────
+
+// THE POSITIVE CONTROL, on the real input: the edge reports the client's user-data written and read back,
+// and the standing names the path the edge itself says it wrote — not a path this module recomputed.
+test fn w_the_written_and_read_back_user_data_file_is_settled() -> Bool {
+  match network_install_edge_file_standing(files: [result(subject: our_subject(), outcome: EdgeFileWrittenAndReadBack)], subject: our_subject()) {
+    EdgeFileSettled { path: path } => network_install_edge_file_settled(standing: EdgeFileSettled { path: path })
+      && (path as String) == "/srv/gunbc-site-pxe-edge/http/grub/seed/9c-6b-00-e7-ca-63/user-data"
+    EdgeFileNotAmongTheRun { subject: _ } => false
+    EdgeFileUnsettled { path: _, reason: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THAT CLAIM: the same file, written but NOT read back, must not count as
+// staged. Were "written" alone enough, the run would boot a unit toward bytes nobody verified, and this
+// claim would flip to true while the install silently relied on an unread file.
+test fn w_a_user_data_file_written_without_read_back_is_not_settled() -> Bool {
+  match network_install_edge_file_standing(
+    files: [result(subject: our_subject(), outcome: EdgeFileWriteRefused { step: "content", reason: "cmp reported a difference" })],
+    subject: our_subject(),
+  ) {
+    EdgeFileSettled { path: _ } => false
+    EdgeFileNotAmongTheRun { subject: _ } => false
+    EdgeFileUnsettled { path: _, reason: reason } => (reason as String) == "content: cmp reported a difference"
+  }
+}
+
+// A FILE THAT IS SIMPLY NOT IN THE RUN'S LIST IS NOT A STAGED BINDING EITHER — the no-binding-means-no-boot
+// obligation, seen from the store side. A fold that defaulted to "settled" would boot into nothing.
+test fn w_an_absent_user_data_file_is_not_among_the_run() -> Bool {
+  match network_install_edge_file_standing(files: [], subject: our_subject()) {
+    EdgeFileNotAmongTheRun { subject: subject } => (subject as String) == (our_subject() as String)
+    EdgeFileSettled { path: _ } => false
+    EdgeFileUnsettled { path: _, reason: _ } => false
+  }
+}
+
+// LEFT IN PLACE IS SETTLED, because the converge read that file back and found it already correct; refusing
+// it would make a rerun of a half-finished converge unable to ever proceed.
+test fn w_a_left_in_place_user_data_file_counts_as_settled() -> Bool {
+  network_install_edge_file_settled(standing: network_install_edge_file_standing(
+    files: [result(subject: our_subject(), outcome: EdgeFileLeftInPlace)],
+    subject: our_subject(),
+  ))
+}
+
+// THE FOLD LOCATES THE FILE BY THE EDGE'S OWN LABEL, so a run that wrote a different client's file does not
+// read as this client's staging. With the labels swapped the fold must answer "not among the run", never
+// "settled" with somebody else's path.
+test fn w_another_client_s_file_is_not_this_client_s_binding() -> Bool {
+  let foreign = result(subject: network_install_edge_user_data_subject(mac: other_mac), outcome: EdgeFileWrittenAndReadBack)
+  match network_install_edge_file_standing(files: [foreign], subject: our_subject()) {
+    EdgeFileNotAmongTheRun { subject: _ } => true
+    EdgeFileSettled { path: _ } => false
+    EdgeFileUnsettled { path: _, reason: _ } => false
+  }
+}
+
+// THE EARLIER VERDICT WINS: a list that names the same subject twice — once refused, once written — must
+// not let the later, kinder entry erase the earlier refusal.
+test fn w_a_refusal_listed_first_is_not_overwritten_by_a_later_success() -> Bool {
+  !network_install_edge_file_settled(standing: network_install_edge_file_standing(
+    files: [
+      result(subject: our_subject(), outcome: EdgeFileNotApplied { reason: "mode was observe-only" }),
+      result(subject: our_subject(), outcome: EdgeFileWrittenAndReadBack),
+    ],
+    subject: our_subject(),
+  ))
+}
+
+// ── Which install standings count as the edge admitting THIS client ─────
+
+// THE POSITIVE CONTROL: the client is admitted among several standings, matched by MAC rather than by
+// position, so a binding for another machine cannot authorize this one's boot.
+test fn w_the_admitted_standing_is_found_by_mac_among_many() -> Bool {
+  network_install_edge_install_admitted(
+    installs: [
+      InstallWithheld { mac: other_mac, refusals: withheld_refusals(mac: other_mac) },
+      InstallAdmitted { mac: bobo_mac },
+    ],
+    mac: bobo_mac,
+  )
+}
+
+// THE DISCRIMINATING RED FOR THAT CLAIM: withheld for our MAC, admitted for another, must answer false. If
+// the fold answered on "any admitted entry", a staged binding for one host would boot a different host —
+// the exact confusion the serial-matched seed exists to prevent.
+test fn w_an_admission_for_another_mac_does_not_admit_this_one() -> Bool {
+  !network_install_edge_install_admitted(
+    installs: [
+      InstallAdmitted { mac: other_mac },
+      InstallWithheld { mac: bobo_mac, refusals: withheld_refusals(mac: bobo_mac) },
+    ],
+    mac: bobo_mac,
+  )
+}
+
+// NO STANDINGS AT ALL IS NOT ADMITTED: the empty converge (a withdrawal, or a run the edge refused to
+// consider) leaves nothing served, and no boot may follow it.
+test fn w_no_install_standings_admits_nobody() -> Bool {
+  !network_install_edge_install_admitted(installs: [], mac: bobo_mac)
+}
+
+// ── What a hold observation means ───────────────────────────────────────
+
+// HELD BY ANOTHER DISPATCH IS NAMED, not swallowed: the receipt has to say who held the unit, and a run
+// that read a holder and reported Free would boot over someone else's BMC session.
+test fn w_a_held_slot_names_its_holder() -> Bool {
+  match network_install_hold_reading(observed: HoldSlotHeld {
+    generation: 3,
+    owner: "arrival/srv15/fleet-converge-run-17" as DurableHoldOwnerRef,
+  }) {
+    HoldHeldBy { owner: owner } => (owner as String) == "arrival/srv15/fleet-converge-run-17"
+    HoldFree => false
+    HoldUnreadable { detail: _ } => false
+  }
+}
+
+// ABSENT AND RELEASED ARE BOTH FREE — the slot has no owner, which is the only state an acquire may win.
+test fn w_an_absent_or_released_slot_is_free() -> Bool {
+  match network_install_hold_reading(observed: HoldSlotAbsent) {
+    HoldFree => match network_install_hold_reading(observed: HoldSlotFree { generation: 4, released_by: "gunbc.host.network_install_store" as DurableHoldReleaseRef }) {
+      HoldFree => true
+      HoldHeldBy { owner: _ } => false
+      HoldUnreadable { detail: _ } => false
+    }
+    HoldHeldBy { owner: _ } => false
+    HoldUnreadable { detail: _ } => false
+  }
+}
+
+// AN UNDECODABLE OR UNREADABLE SLOT IS NOT FREE. This is the arm that decides whether a crash can be
+// mistaken for an idle unit: the slot exists but nobody can say who owns it, so the run refuses instead of
+// assuming the previous run died.
+test fn w_a_slot_nobody_can_read_is_never_free() -> Bool {
+  match network_install_hold_reading(observed: HoldSlotUndecodable { generation: 2, detail: "payload lacked the owner tag" }) {
+    HoldUnreadable { detail: detail } =>
+      match network_install_hold_reading(observed: HoldObservationUnavailable { cause: CasUnreadableMalformed { detail: "the store refused" } }) {
+        HoldUnreadable { detail: _ } => (detail as String) == "payload lacked the owner tag"
+        HoldFree => false
+        HoldHeldBy { owner: _ } => false
+      }
+    HoldFree => false
+    HoldHeldBy { owner: _ } => false
+  }
+}
