@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_host_backing {
   OwnedProvisioningRefused,
   admit_owned_provisioning,
 }
-import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+import gunbc.fleet.fleet_machine_unit_binding { machine_unit_standing }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
 import gunbc.fleet.fleet_host_identity {
@@ -30,6 +30,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv2,
   operator_host_srv3,
   operator_host_srv4,
+  operator_host_srv14,
   operator_host_mtcollins1,
   operator_host_183527,
   operator_host_3dde7f,
@@ -136,16 +137,27 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
 data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
-  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
-  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
-  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
-  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent } },
-  // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Its unit
-  // is bind_unit_key's standing over the FRU and SMBIOS board serials already observed.
+  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv1) } },
+  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv2) } },
+  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv3) } },
+  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv4) } },
+  // srv14/butch: CI-ONLY (operator 2026-11-10 -- CiRunnerParticipation, NO interactive sessions), so it
+  // carries ci_runner_enrollment_participation, NOT the session-bearing participation srv1-4 carry. Added
+  // as a CI runner it does NOT change the sessions population the host_phase_status witness pins at 4
+  // runners; it joins the CI-runner population only. Backing is OwnedProvisioning { control: Bmc, delivery:
+  // InstalledViaVirtualMedia }: installed 2026-10-30 from ubuntu-24.04.3-live-server-arm64 over the BMC's
+  // USB virtual-media gadget (installer block device "Linux File-Stor_Gadget", ds=nocloud;s=/cdrom/nocloud/)
+  // -- NOT PXE, so no new delivery variant is needed (the parent's site_pxe_edge_converge lane is unrelated
+  // to how butch was delivered). Its unit is read from the one physical-binding admission like every owned row; its board
+  // facts bind via gunbc.fleet.machine_board (srv14_baseboard -> fleet_intent_board).
+  HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv14) } },
+  // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Every
+  // owned row's unit is read from the one physical-binding admission (gunbc.fleet.fleet_machine_unit_binding,
+  // A2 of gunbc.plans.fleet_machine_authority): Absent until that machine's board serial is observed.
   HostEnrollmentIntent {
     host: operator_host_mtcollins1,
     participation: ci_runner_enrollment_participation,
-    backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: RamImageBoot }, unit: Present { value: mtcollins1_unit_key_standing } },
+    backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: RamImageBoot }, unit: machine_unit_standing(machine: operator_host_mtcollins1) },
   },
   HostEnrollmentIntent {
     host: operator_host_183527,

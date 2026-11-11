@@ -89,7 +89,8 @@ import gunbc.machine_intake.mtjade1_access_observation {
   read_mtjade1_fru,
   read_mtjade1_smbios_type2,
 }
-import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+import gunbc.fleet.fleet_machine_unit_binding { fleet_bound_unit_keys_except }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1 }
 import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding,
@@ -112,7 +113,7 @@ import gunbc.machine_intake.bmc_credential_policy {
   PublishedCredentialChangeForced,
   bmc_credential_policy_key_eq,
 }
-import gunbc.machine_intake.bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
+import gunbc.machine_intake.bmc_rotation_route_evidence { manager_read_receipt, observed_bmc_network_endpoint }
 import gunbc.machine_intake.bmc_recovery_route { RecoveryRouteUnavailable, recovery_route_unavailability, InBandRecoveryStanding }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
 import gunbc.machine_intake.prior_life_boundary {
@@ -166,7 +167,7 @@ import gunbc.auth.standing_operator_grant {
 }
 import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_named }
+import gunbc.hostname_allocation { operator_host_named }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
 import gunbc.machine_intake.bmc_write_controller {
   BmcWriteRoute, ByStandingGrant, ByPerWriteApproval, BmcWriteControllerSelected, BmcWriteControllerRefused, select_bmc_write_controller,
@@ -278,7 +279,7 @@ fn observe_access(key: StepInstanceKey, read: CurrentManagerRead) -> Observation
           if length(o.firmware_version) == 0 {
             ObservationRefused { cause: FirmwareVersionUnread }
           } else {
-            match mtjade1_observed_endpoint(network: identity.endpoint) {
+            match observed_bmc_network_endpoint(network: identity.endpoint) {
               Absent => ObservationRefused { cause: EndpointUnobserved }
               Present { value: endpoint } =>
                 match manager_read_receipt(read: identity) {
@@ -1305,12 +1306,11 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
 
 // ── mtjade1 ────────────────────────────────────────────────────────────────────────────────────
 
-// The unit keys already bound in this fleet, so a duplicated board serial refuses across units.
-fn arrival_bound_unit_keys() -> List<UnitKey> {
-  match mtcollins1_unit_key_standing {
-    UnitKeyBound { key: k } => [k]
-    UnitKeyRefused { cause: _ } => []
-  }
+// The unit keys OTHER machines hold in this fleet, so a board serial another machine holds refuses across
+// units while the subject's own admitted serial does not. Read from the fleet's one physical-binding
+// admission (gunbc.fleet.fleet_machine_unit_binding), never per machine.
+fn arrival_bound_unit_keys(subject: HostIdentity) -> List<UnitKey> {
+  fleet_bound_unit_keys_except(machine: subject)
 }
 
 // mtjade1 FROM ITS COMMITTED EVIDENCE AND NOTHING ELSE (all 2026-10-04, at 192.168.1.246):
@@ -1341,7 +1341,7 @@ fn witness_identity_bind_inputs(fru: FruRead, smbios: SmbiosRead, other_units: L
 }
 
 fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
-  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys() }
+  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys(subject: operator_host_mtjade1) }
 }
 
 fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLifeWorld) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
@@ -1505,7 +1505,7 @@ fn admit_forced_first_rotation_precedes_prior_life(
   // them here would be a validation where construction holds, gunbc.design_argument::fail_closed.) The build confirmation in the
   // ladder below is then confirmation of the SAME controller's inference: a matching pair from another
   // controller (the foreign-controller RED) cannot reach it.
-  let access_read_endpoint = match mtjade1_observed_endpoint(network: read.identity.endpoint) {
+  let access_read_endpoint = match observed_bmc_network_endpoint(network: read.identity.endpoint) {
     Present { value: e } => (e.host as String)
     Absent => ""
   }

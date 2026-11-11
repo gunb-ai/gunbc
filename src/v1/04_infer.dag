@@ -2,7 +2,7 @@ module v1.compiler.infer
 
 import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
 import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
-import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope }
+import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent }
 import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments, field_access_spine }
 import v1.compiler.ownership { fold_terminal_expr }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
@@ -4065,11 +4065,93 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
 // table does not name (a kernel type, an extensional container, an alias) is read from its own shape; one that resolves to
 // nothing refuses rather than comparing by the target.
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
-  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
+  let applied = equality_reference_applies_arguments(peeled: peeled)
+  // THE WALK JUDGES THE DECLARATION; THE APPLIED ARGUMENTS ARE JUDGED WHERE THEY ARE WRITTEN. This is the one
+  // place that joins admission and emission for an applied reference, and it answers the question the emitted
+  // Rust answers: a derived `impl<V: PartialEq> PartialEq for Engine<V>` holds exactly when the type bound to
+  // V carries PartialEq, so every argument written at the use must itself be equality-admissible -- not merely
+  // the declaration's schema. Measured on the emitted v2 crate the derive roster
+  // (v1.compiler.trait_derive_emit::v1_emit_struct_derives, v1_emit_enum_derives) narrows to Clone only for a
+  // carrier that reaches a function value, and this walk refuses on the same condition, so an admitted `==`
+  // always meets a carrier the emitter gave PartialEq to. While the arguments were not judged at the use,
+  // DemandEngine<NativeDemandValue> went by-target and the emitted body compared it with Rust `==` against a
+  // carrier the roster had narrowed to Clone: E0369, v2-bootstrap run 42575201140 at 0619830d7f6e.
+  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: equality_scope_with_params(scope: scope, rt: rt), visited: visited, depth: depth, at_root: at_root)
+  if w.refusal != none || !applied || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
     w
   } else {
     equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+  }
+}
+
+// AN APPLIED ARGUMENT THAT IS A PARAMETER OF THE GENERIC BEING WALKED COMPARES BY THE TARGET. The authority is
+// the declared roster inference already carries for the declaration in scope
+// (InferScope.enclosing_declared_type_param_names, read by v1.compiler.infer::name_is_enclosing_declared_type_parameter
+// and populated for a function body by v1.compiler.infer::fn_type_param_names); the equality walk populates it for
+// the declaration whose members it is walking (equality_scope_with_params, called from
+// equality_resolved_declaration_structure). This is deliberately NOT "any name the reading could not bind": an
+// unresolved name arrives unidentified too, so an arm built on that admits every typo -- measured, with such an
+// arm a member applied to List<NedDiag> with std.types unimported admitted. The refusal is kept by the executing
+// control test.claim.self_host_equality_admission_witness::an_unresolved_type_name_still_refuses_blocking.
+// Why the parameter must pass: the emitted Rust bounds EVERY parameter of a generic carrier
+// (impl<V: PartialEq> PartialEq for Engine<V>), so the carrier's own shape is admissible for every instantiation;
+// the requirement is discharged where the generic is APPLIED, by this same predicate over the argument actually
+// written there (equality_resolved_declaration_structure -> equality_arguments_by_target). Measured at
+// 3d34fc61ca6e the refused sites were exactly this shape: gunbc.host.host_effect::
+// host_effect_is_converge_loop_evidence refused at the applied argument of `CreateCause<K>` inside EffectShape's
+// schema, and every nested specimen in test.claim.self_host_equality_admission_witness refused at its inner
+// declaration. The pair that keeps this arm honest, both measured at this head: Engine<LeafVal> admits, while
+// Engine<Node> refuses at the route arm and Engine<Value> (a carrier reaching a function value) refuses at its own
+// table entry -- the DemandEngine<NativeDemandValue> shape that produced E0369 in v2-bootstrap run 42575201140 at
+// 0619830d7f6e must never pass here.
+fn equality_argument_is_enclosing_type_parameter(n: Node, scope: InferScope) -> Bool {
+  name_is_enclosing_declared_type_parameter(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n), scope: scope)
+}
+
+// THE ROSTER OF THE DECLARATION THE EQUALITY WALK HAS ENTERED. Its parameters are the names that may appear free
+// in its members, and the walk reaches those members through v1.compiler.infer::equality_product_walk and
+// v1.compiler.infer::equality_coproduct_walk without carrying anything but the scope -- so the roster travels in
+// the scope, in the same field the rest of inference reads. Extending rather than replacing keeps an outer
+// declaration's names visible to an inner walk.
+fn equality_scope_with_params(scope: InferScope, rt: Node) -> InferScope {
+  let names = rt.params |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: p))
+  if names |> count == 0 {
+    scope
+  } else {
+    InferScope {
+      type_env: scope.type_env
+      func_env: scope.func_env
+      locals: scope.locals
+      body_locals: scope.body_locals
+      match_bound_names: scope.match_bound_names
+      module_name: scope.module_name
+      service_registry: scope.service_registry
+      item_registry: scope.item_registry
+      lambda_param_provenance: scope.lambda_param_provenance
+      caller_decl_name: scope.caller_decl_name
+      in_flight_lambda_param_names: scope.in_flight_lambda_param_names
+      enclosing_declared_type_param_names: concat(scope.enclosing_declared_type_param_names, names)
+    }
+  }
+}
+
+// A UNIT-VARIANT PHANTOM TYPE ARGUMENT IS A MARKER, and it compares by the target. `type RackUnit =
+// Measure<Length, RackUnitHeight, Nat>` (std.measure) passes coproduct unit variants as its dimension and
+// scale arguments; they name no declaration, so the by-target table cannot answer for them and the walk
+// refused the whole application -- gunbc.fleet.fleet_physical_inventory::
+// fleet_nominal_rackmount_arithmetic_holds and gunbc.compute.compute_seat_ensure::seat_fell_by, measured
+// at 3d34fc61ca6e with the pre-repair infer. The emitter already decides what these symbols ARE, through
+// the same authority resolve consumes (v1.compiler.infer_env::lookup_unit_variant_phantom_type, the
+// exact-one judgment): a unit marker struct carrying the full derive roster -- measured in the emitted v2
+// crate, `pub struct Length;` and `pub struct RackUnitHeight;` both with
+// `#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]`. A marker declares
+// no fields, so v1.compiler.trait_derive_emit::v1_emit_struct_derives never narrows it, and admission
+// answers by-target for exactly that set. When the judgment is absent, or its evidence is unavailable, the
+// argument refuses as before.
+fn is_unit_variant_phantom_argument(n: Node, scope: InferScope) -> Bool {
+  match lookup_unit_variant_phantom_type(env: scope.type_env, variant_name: authored_name_at(source_indices: scope.type_env.source_indices, node: n)) {
+    UnitVariantPhantomPresent { variant: _ } => true
+    _ => false
   }
 }
 
@@ -4112,6 +4194,10 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
                     let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
                     if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
                       equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
+                    } else if is_unit_variant_phantom_argument(n: peeled, scope: scope) {
+                      true
+                    } else if equality_argument_is_enclosing_type_parameter(n: peeled, scope: scope) {
+                      true
                     } else {
                       false
                     }
