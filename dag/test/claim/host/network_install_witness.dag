@@ -77,7 +77,7 @@ import gunbc.host.network_install {
   network_install_client_for, network_install_requests_for,
   NetworkInstallDispatch, NetworkInstallDispatchAdmitted, NetworkInstallDispatchRefused,
   InstallAlreadyCompleted, JournalUnreadable, network_install_dispatch_admission,
-  NetworkInstallReceipt, network_install_refused_receipt, network_install_receipt_lines,
+  NetworkInstallRunReceipt, network_install_refused_receipt, network_install_receipt_lines,
   NetworkInstallBootVerdict, InstallBootProceeds, InstallBootWithheld, network_install_boot_verdict,
 }
 import gunbc.machine_intake.oob_boot_handoff {
@@ -919,8 +919,8 @@ fn install_selected_text() -> NonEmptyStr {
 
 // A RECEIPT FOR A WITHHELD BOOT, shaped as the wet entry shapes it: nothing installed, nothing journaled, the
 // binding withdrawn, and the controller's answer kept verbatim.
-fn withheld_boot_receipt(readback: String) -> NetworkInstallReceipt {
-  NetworkInstallReceipt {
+fn withheld_boot_receipt(readback: String) -> NetworkInstallRunReceipt {
+  NetworkInstallRunReceipt {
     host: install_unit,
     serial: expected_serial,
     model: Absent,

@@ -117,12 +117,25 @@ import gunbc.durable_cas_file_store { cas_generation_of_digits }
 import std.durable_compare_and_set { cas_generation_count }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
 import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
-import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address }
+import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address, render_mac_address }
 import gunbc.fleet.machine_target_disk_observations {
   target_disk_reading_for,
   site_pxe_edge_disk_identity_admission_window,
 }
-import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeInstallRequest }
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeInstallRequest,
+  site_pxe_edge_binding_mac,
+}
+import gunbc.provisioning.network_install_receipt {
+  NetworkInstallReceipt,
+  NetworkInstallReadings,
+  NetworkInstallSubject,
+  NetworkInstallGap,
+  InstalledToDisk,
+  InstallNotEstablished,
+  network_install_receipt,
+}
+import std.algebra { FreeSemigroup, non_empty_to_list }
 
 // THE CONTENTS PRECONDITION: what the committed capture says is ON the disk about to be erased.
 //
@@ -764,7 +777,7 @@ fn network_install_boot_verdict(outcome: OobBootHandoffOutcome) -> NetworkInstal
 // identity, whether a model was part of the pin, whether the override was read back before the reset, and
 // whether the binding was verified gone. `install_decided_at` is printed as decimal because the receipt is
 // read by a human as well as a parser, and the instant is the one the clock gave at actuation.
-type NetworkInstallReceipt {
+type NetworkInstallRunReceipt {
   host: HostIdentity
   serial: NonEmptyStr
   model: Optional<NonEmptyStr>
@@ -777,14 +790,14 @@ type NetworkInstallReceipt {
   // stopped before a reading existed. A refusal that does not carry the controller's words is unauditable.
   boot_readback: String
   install_read_back: Bool
-  install_evidence: NonEmptyStr
+  install_evidence: String
   binding_withdrawn: Bool
   completion_recorded: Bool
   refused: Bool
   refusal: String
 }
 
-fn network_install_receipt_lines(receipt: NetworkInstallReceipt) -> List<String> {
+fn network_install_receipt_lines(receipt: NetworkInstallRunReceipt) -> List<String> {
   [
     concat("host=", receipt.host as String),
     concat("target_serial=", receipt.serial),
@@ -808,8 +821,8 @@ fn network_install_receipt_lines(receipt: NetworkInstallReceipt) -> List<String>
 // A RECEIPT FOR A REFUSAL, so a withheld install still produces the artifact — the withheld cause is the
 // interesting part of a run that booted nothing, and it is the difference between "the workflow refused" and
 // "the workflow refused BECAUSE the reading went stale at read_at+window".
-fn network_install_refused_receipt(host: HostIdentity, serial: NonEmptyStr, decided_at: EpochMs, refusal: String) -> NetworkInstallReceipt {
-  NetworkInstallReceipt {
+fn network_install_refused_receipt(host: HostIdentity, serial: NonEmptyStr, decided_at: EpochMs, refusal: String) -> NetworkInstallRunReceipt {
+  NetworkInstallRunReceipt {
     host: host,
     serial: serial,
     model: Absent,
@@ -964,6 +977,9 @@ type NetworkInstallInstallQuery {
   host: HostIdentity
   serial: NonEmptyStr
   decided_at: EpochMs
+  // THE ATTEMPT THE READINGS ARE FOLDED AGAINST: the pinned chain and the staged binding, so a reading that
+  // describes some other machine's install cannot answer for this one.
+  subject: NetworkInstallSubject
 }
 
 type NetworkInstallRunPorts {
@@ -977,20 +993,21 @@ type NetworkInstallRunPorts {
   // to render produces) and the run verifies the file is gone.
   stage_binding: fn(SitePxeEdgeInstallRequest) -> NetworkInstallBindingEvidence
   withdraw_binding: fn(HostIdentity) -> Bool
-  // THE INSTALL, read back from the unit: an OS observation naming the target, or nothing.
-  observe_install: fn(NetworkInstallInstallQuery) -> Bool
+  // THE READINGS THE COMPLETION FOLD IS FOLDED FROM: what the edge logged this attempt fetched, and what the
+  // unit answers about the disk it now boots. The fold below is what decides; this port only reports.
+  observe_install: fn(NetworkInstallInstallQuery) -> NetworkInstallReadings
   // THE COMPLETION, through the store's compare-and-set against the Absent this run read.
   commit_completion: fn(NetworkInstallCompletion) -> Bool
 }
 
 type NetworkInstallRunOutcome
   // A gate refused before the unit was touched. Nothing at the edge, no controller write, nothing journaled.
-  = NetworkInstallRunRefused { receipt: NetworkInstallReceipt }
+  = NetworkInstallRunRefused { receipt: NetworkInstallRunReceipt }
   // The unit was reached and something short of a verified install happened: the binding is withdrawn and the
   // receipt says what the controller answered. Retryable — the journal is still Absent.
-  | NetworkInstallRunWithheld { receipt: NetworkInstallReceipt }
+  | NetworkInstallRunWithheld { receipt: NetworkInstallRunReceipt }
   // Install read back, binding verified gone, completion recorded.
-  | NetworkInstallRunCompleted { receipt: NetworkInstallReceipt }
+  | NetworkInstallRunCompleted { receipt: NetworkInstallRunReceipt }
 
 fn network_install_run_completed(outcome: NetworkInstallRunOutcome) -> Bool {
   match outcome {
@@ -1000,7 +1017,7 @@ fn network_install_run_completed(outcome: NetworkInstallRunOutcome) -> Bool {
   }
 }
 
-fn network_install_run_receipt(outcome: NetworkInstallRunOutcome) -> NetworkInstallReceipt {
+fn network_install_run_receipt(outcome: NetworkInstallRunOutcome) -> NetworkInstallRunReceipt {
   match outcome {
     NetworkInstallRunCompleted { receipt: receipt } => receipt
     NetworkInstallRunWithheld { receipt: receipt } => receipt
@@ -1011,6 +1028,7 @@ fn network_install_run_receipt(outcome: NetworkInstallRunOutcome) -> NetworkInst
 fn network_install_run(
   ports: NetworkInstallRunPorts,
   host: HostIdentity,
+  install_subject: NetworkInstallSubject,
   expected_serial: NonEmptyStr,
   dispatch_owner: NonEmptyStr,
   password_file_raw: String,
@@ -1036,7 +1054,7 @@ fn network_install_run(
     journal: journal, hold: hold, host: host, expected_serial: expected_serial, dispatch_owner: dispatch_owner
   ) {
     Present { value: cause } => NetworkInstallRunRefused {
-      receipt: network_install_refused_receipt(
+      receipt: network_install_cause_refused_receipt(
         host: host, serial: expected_serial, decided_at: decided_at,
         refusal: network_install_refusal_text(cause: cause)
       ),
@@ -1047,7 +1065,7 @@ fn network_install_run(
       HoldHeldBy { owner: owner } =>
         if owner == dispatch_owner {
           network_install_run_staged(
-            ports: ports, host: host, expected_serial: expected_serial, dispatch_owner: dispatch_owner,
+            ports: ports, host: host, install_subject: install_subject, expected_serial: expected_serial, dispatch_owner: dispatch_owner,
             password_file_raw: password_file_raw, request: request, population: population, managed: managed,
             intended_controller: intended_controller, observed: observed, secured: secured, board: board,
             route: route, capability_row: capability_row, qualification: qualification, reading: reading,
@@ -1056,20 +1074,20 @@ fn network_install_run(
           )
         } else {
           NetworkInstallRunRefused {
-            receipt: network_install_refused_receipt(
+            receipt: network_install_cause_refused_receipt(
               host: host, serial: expected_serial, decided_at: decided_at,
               cause: HostHeldByAnotherDispatch { host: host, owner: owner }
             ),
           }
         }
       HoldUnreadable { detail: detail } => NetworkInstallRunRefused {
-        receipt: network_install_refused_receipt(
+        receipt: network_install_cause_refused_receipt(
           host: host, serial: expected_serial, decided_at: decided_at,
           cause: HostHoldUnreadable { host: host, detail: detail }
         ),
       }
       HoldFree => network_install_run_staged(
-        ports: ports, host: host, expected_serial: expected_serial, dispatch_owner: dispatch_owner,
+        ports: ports, host: host, install_subject: install_subject, expected_serial: expected_serial, dispatch_owner: dispatch_owner,
         password_file_raw: password_file_raw, request: request, population: population, managed: managed,
         intended_controller: intended_controller, observed: observed, secured: secured, board: board,
         route: route, capability_row: capability_row, qualification: qualification, reading: reading,
@@ -1085,6 +1103,7 @@ fn network_install_run(
 fn network_install_run_staged(
   ports: NetworkInstallRunPorts,
   host: HostIdentity,
+  install_subject: NetworkInstallSubject,
   expected_serial: NonEmptyStr,
   dispatch_owner: NonEmptyStr,
   password_file_raw: String,
@@ -1107,13 +1126,14 @@ fn network_install_run_staged(
 ) -> NetworkInstallRunOutcome {
   match request {
     Absent => NetworkInstallRunRefused {
-      receipt: network_install_refused_receipt(
+      receipt: network_install_cause_refused_receipt(
         host: host, serial: expected_serial, decided_at: decided_at,
         cause: InstallClientUnknown { host: host }
       ),
     }
     Present { value: one_request } =>
       network_install_after_binding(
+        subject: subject,
         dispatch: network_install_dispatch_admission(
           population: population, managed: managed, host: host, expected_serial: expected_serial,
           dispatch_owner: dispatch_owner, intended_controller: intended_controller, observed: observed,
@@ -1138,6 +1158,7 @@ fn network_install_run_staged(
 fn network_install_after_binding(
   dispatch: NetworkInstallDispatch,
   ports: NetworkInstallRunPorts,
+  subject: NetworkInstallSubject,
   host: HostIdentity,
   serial: NonEmptyStr,
   password_file_raw: String,
@@ -1175,7 +1196,7 @@ fn network_install_after_binding(
             ),
           }
           InstallBootProceeds { selected: selected } => network_install_after_boot(
-            ports: ports, host: host, serial: serial, model: model, decided_at: admitted_at,
+            ports: ports, host: host, subject: subject, serial: serial, model: model, decided_at: admitted_at,
             binding: binding, selected: selected
           )
         }
@@ -1189,6 +1210,7 @@ fn network_install_after_binding(
 fn network_install_after_boot(
   ports: NetworkInstallRunPorts,
   host: HostIdentity,
+  subject: NetworkInstallSubject,
   serial: NonEmptyStr,
   model: Optional<NonEmptyStr>,
   decided_at: EpochMs,
@@ -1196,23 +1218,35 @@ fn network_install_after_boot(
   selected: NonEmptyStr
 ) -> NetworkInstallRunOutcome {
   let binding_path = network_install_binding_path(binding: binding)
-  let install_seen = ports.observe_install(query: NetworkInstallInstallQuery {
-    host: host,
-    serial: serial,
-    decided_at: decided_at,
-  })
+  // THE COMPLETION FOLD IS NOT MINE TO INVENT. Whether this attempt installed anything is answered by
+  // gunbc.provisioning.network_install_receipt, which folds the readings against the pinned chain and the staged
+  // binding and mints a receipt ONLY when no typed gap remains: a client class matching the chain's architecture,
+  // every member of it delivered, the seed served, the installed root's MACs carrying the client, the root chain
+  // on a whole disk at the target serial, and an installer record completed inside the attempt's window. Nothing
+  // here re-decides any of that; completion is admitted on InstalledToDisk and on nothing else.
+  let fold = network_install_receipt(
+    subject: subject,
+    readings: ports.observe_install(query: NetworkInstallInstallQuery {
+      host: host,
+      serial: serial,
+      decided_at: decided_at,
+      subject: subject,
+    }),
+  )
+  let established = network_install_fold_established(fold: fold)
+  let evidence = network_install_fold_evidence(fold: fold)
   let withdrawn = ports.withdraw_binding(host: host)
   match admit_network_install_completion(
     host: host,
     serial: serial,
     completed_at: decided_at,
     install_receipt: selected,
-    install_read_back: install_seen,
+    install_read_back: established,
     binding_withdrawn_verified: withdrawn,
     binding_path: binding_path
   ) {
     NetworkInstallCompletionRefusedInstallUnread { host: _ } => NetworkInstallRunWithheld {
-      receipt: NetworkInstallReceipt {
+      receipt: NetworkInstallRunReceipt {
         host: host,
         serial: serial,
         model: model,
@@ -1221,7 +1255,7 @@ fn network_install_after_boot(
         boot_issued: true,
         boot_readback: selected,
         install_read_back: false,
-        install_evidence: "not-read-back",
+        install_evidence: evidence,
         binding_withdrawn: withdrawn,
         completion_recorded: false,
         refused: false,
@@ -1229,7 +1263,7 @@ fn network_install_after_boot(
       },
     }
     NetworkInstallCompletionRefusedBindingNotWithdrawn { host: _, path: path } => NetworkInstallRunWithheld {
-      receipt: NetworkInstallReceipt {
+      receipt: NetworkInstallRunReceipt {
         host: host,
         serial: serial,
         model: model,
@@ -1238,7 +1272,7 @@ fn network_install_after_boot(
         boot_issued: true,
         boot_readback: selected,
         install_read_back: true,
-        install_evidence: selected,
+        install_evidence: evidence,
         binding_withdrawn: false,
         completion_recorded: false,
         refused: false,
@@ -1248,7 +1282,7 @@ fn network_install_after_boot(
     NetworkInstallCompletionAdmitted { completion: completion } =>
       match ports.commit_completion(completion: completion) {
         true => NetworkInstallRunCompleted {
-          receipt: NetworkInstallReceipt {
+          receipt: NetworkInstallRunReceipt {
             host: host,
             serial: serial,
             model: model,
@@ -1257,7 +1291,7 @@ fn network_install_after_boot(
             boot_issued: true,
             boot_readback: selected,
             install_read_back: true,
-            install_evidence: selected,
+            install_evidence: evidence,
             binding_withdrawn: true,
             completion_recorded: true,
             refused: false,
@@ -1267,7 +1301,7 @@ fn network_install_after_boot(
         // The CAS was lost: someone else recorded a completion for this (unit, serial) while this run booted
         // it. That is reported, never overwritten, and the run is not a completion.
         false => NetworkInstallRunWithheld {
-          receipt: NetworkInstallReceipt {
+          receipt: NetworkInstallRunReceipt {
             host: host,
             serial: serial,
             model: model,
@@ -1276,7 +1310,7 @@ fn network_install_after_boot(
             boot_issued: true,
             boot_readback: selected,
             install_read_back: true,
-            install_evidence: selected,
+            install_evidence: evidence,
             binding_withdrawn: true,
             completion_recorded: false,
             refused: false,
@@ -1293,9 +1327,9 @@ fn network_install_withdrawn_refusal(
   serial: NonEmptyStr,
   decided_at: EpochMs,
   cause: NetworkInstallDispatchRefusalCause
-) -> NetworkInstallReceipt {
-  let receipt = network_install_refused_receipt(host: host, serial: serial, decided_at: decided_at, cause: cause)
-  NetworkInstallReceipt {
+) -> NetworkInstallRunReceipt {
+  let receipt = network_install_cause_refused_receipt(host: host, serial: serial, decided_at: decided_at, cause: cause)
+  NetworkInstallRunReceipt {
     host: receipt.host,
     serial: receipt.serial,
     model: receipt.model,
@@ -1321,8 +1355,8 @@ fn network_install_withdrawn_boot_receipt(
   binding: NetworkInstallBindingEvidence,
   readback: String,
   reason: String
-) -> NetworkInstallReceipt {
-  NetworkInstallReceipt {
+) -> NetworkInstallRunReceipt {
+  NetworkInstallRunReceipt {
     host: host,
     serial: serial,
     model: model,
@@ -1425,5 +1459,62 @@ fn network_install_contents_cause_text(contents: TargetDiskContents) -> String {
       concat("the target disk's contents were never read (", reason, ")")
     ContentsEvidenceFromAnotherArtifact { reported: reported, identity: identity } =>
       concat("the blank disk was read from ", reported, " but the serial and model came from ", identity)
+  }
+}
+
+// THE CAUSE IS THE TEXT. A dispatch that never reached the edge still gets a receipt, and that receipt carries the
+// typed cause exactly as this module renders it — one renderer, so the same refusal never reads two ways.
+fn network_install_cause_refused_receipt(
+  host: HostIdentity,
+  serial: NonEmptyStr,
+  decided_at: EpochMs,
+  cause: NetworkInstallDispatchRefusalCause
+) -> NetworkInstallRunReceipt {
+  network_install_refused_receipt(
+    host: host,
+    serial: serial,
+    decided_at: decided_at,
+    refusal: network_install_refusal_text(cause: cause),
+  )
+}
+
+// THE COMPLETION FOLD'S TWO PROJECTIONS. Whether this attempt installed anything is not this module's call — it is
+// what gunbc.provisioning.network_install_receipt says — so the run projects that fold into a boolean for the
+// journal and a sentence for the receipt, and never re-decides it.
+fn network_install_fold_established(fold: NetworkInstallReceipt) -> Bool {
+  match fold {
+    InstalledToDisk {
+      subject: _,
+      client_class: _,
+      root_chain: _,
+      root_disk_serial: _,
+      root_created_at: _,
+      installer_record_at: _,
+      secure_boot: _,
+      trust: _,
+      observed_at: _,
+    } => true
+    InstallNotEstablished { subject: _, gaps: gaps } => false
+  }
+}
+
+fn network_install_fold_evidence(fold: NetworkInstallReceipt) -> String {
+  match fold {
+    InstalledToDisk {
+      subject: _,
+      client_class: _,
+      root_chain: _,
+      root_disk_serial: disk,
+      root_created_at: created,
+      installer_record_at: record,
+      secure_boot: _,
+      trust: _,
+      observed_at: _,
+    } => match disk {
+      Present { value: value } => concat("installed-to-disk root-disk-serial=", value)
+      Absent => concat("installed-to-disk root-created-at=", created as String)
+    }
+    InstallNotEstablished { subject: _, gaps: gaps } =>
+      concat("install-not-established gaps=", length(xs: gaps) as String)
   }
 }

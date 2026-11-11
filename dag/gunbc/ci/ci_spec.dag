@@ -860,6 +860,11 @@ data gunbc_ci_runner_host_restore_target: GunbcRunStepTarget = GunbcRunStepTarge
 // and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
 
+// THE NETWORK-INSTALL RUN LEAVES ONE ARTEFACT, and it is the receipt the workflow uploads: the dispatch, the
+// boot it issued, what the controller read back, what the completion fold said, and whether the edge binding was
+// withdrawn. A run that refuses writes the same shape with the refusal in it; there is no silent no-op.
+data managed_host_network_install_receipt_path: String = "target/managed-host-network-install-receipt.txt"
+
 data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
   function: "site_pxe_edge_observe_ci_wet",
@@ -868,6 +873,14 @@ data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTar
 data gunbc_ci_site_pxe_edge_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
   function: "site_pxe_edge_converge_ci_wet",
+}
+
+// PXE 2c: the one-shot network install for one admitted arrival unit (bobo/srv15 first). The wet entry named
+// here stages the edge binding, boots the unit once, reads the install back through
+// gunbc.provisioning.network_install_receipt, and withdraws the binding; see gunbc.host.network_install.
+data gunbc_ci_managed_host_network_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/network_install.dag",
+  function: "network_install_ci_wet",
 }
 
 data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1372,6 +1385,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_board_function_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
+    gunbc_ci_managed_host_network_install_target,
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_runner_user_session_converge_target,
@@ -2996,6 +3010,16 @@ fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
     function: gunbc_ci_site_pxe_edge_converge_target.function,
     claim_run: false,
     receipt_rel: site_pxe_edge_converge_receipt_path
+  )
+}
+
+fn gunbc_ci_managed_host_network_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_managed_host_network_install_target.entry,
+    function: gunbc_ci_managed_host_network_install_target.function,
+    claim_run: false,
+    receipt_rel: managed_host_network_install_receipt_path
   )
 }
 
