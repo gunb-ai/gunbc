@@ -92,6 +92,11 @@
 #   retirement_refuses_a_completion_receipt_whose_counts_disagree
 #   retirement_refuses_a_completion_receipt_written_against_another_seed
 #   retirement_refuses_input_lines_the_completion_receipt_never_digested
+#   observation_admits_a_fully_retired_roster
+#   observation_refuses_when_the_fail_closed_retired_read_refuses
+#   observation_refuses_when_the_acceptance_decoder_refuses
+#   observation_refuses_when_a_roster_node_is_not_shown_retired
+#   observation_refuses_an_empty_roster
 #
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
@@ -669,17 +674,43 @@ echo "================ PART G: a refused append stops the migration; the input i
 MIG_LEG=$(fence_containing 'INPUT ADMITTED')
 [ -n "$MIG_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-3 block containing INPUT ADMITTED — refusing to invent one"; FAILURES=$((FAILURES+1)); }
 RET_LEG=$(fence_containing 'did not take its retirement')
+OBS_LEG=$(fence_containing 'STANDING ADMITTED')
+[ -n "$OBS_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-6 observation fence to execute — its admissions cannot be witnessed"; FAILURES=$((FAILURES+1)); }
 [ -n "$RET_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-4 block that refuses a retirement — refusing to invent one"; FAILURES=$((FAILURES+1)); }
 if [ -n "$MIG_LEG" ] && [ -n "$RET_LEG" ]; then
   load_from_runbook_t RUNE 'RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done' 'sudo systemd-run'
   # the legs run in a CHILD bash, which has no business inventing the runbook's helpers: RUNE is handed
   # down the way bash passes functions, so what executes is the runbook's own RUNE or nothing.
   export -f RUNE
+  export -f RUN
   GEXP=$TMP/migrate-export; install -d -m 0755 "$GEXP/fabric/storage"
   GTREE=$TMP/release-tree; install -d -m 0755 "$GTREE"
   GB=$TMP/gb; install -d -m 0755 "$GB"
   cat > "$GB/gunbc" <<'EOF'
 #!/usr/bin/env bash
+fn=$(printf '%s\n' "$*" | sed -n 's/.*--function \([a-z_]*\).*/\1/p')
+case "$fn" in
+  # Step 6 reads through the SAME stub: the two report doors and the read-back, each with its own knob so a case can
+  # make exactly one of them refuse while the others admit. These are not appends, so they never touch the append
+  # log — a case that counted them would believe the observation had migrated history when it only read it.
+  roadmap_event_log_retired_report_cli)
+    [ -n "${STUB_RETIRED_RC:-}" ] && { echo "stub gunbc: the fail-closed retired read refuses ($STUB_RETIRED_RC)" >&2; exit "$STUB_RETIRED_RC"; }
+    exit 0 ;;
+  roadmap_event_log_acceptance_report_cli)
+    [ -n "${STUB_ACCEPTANCE_RC:-}" ] && { echo "stub gunbc: the acceptance decoder refuses ($STUB_ACCEPTANCE_RC)" >&2; exit "$STUB_ACCEPTANCE_RC"; }
+    exit 0 ;;
+  roadmap_event_log_read_back_cli)
+    rp=$(printf '%s\n' "$*" | sed -n 's/.*--arg report_path=\([^ ]*\).*/\1/p')
+    [ -n "$rp" ] || { echo "stub gunbc: the read-back was handed no report_path" >&2; exit 1; }
+    : > "$rp"
+    printf '%s\n' "${EXPECTED_ROSTER:-}" | tr ',' '\n' | while read -r nd; do
+      [ -n "$nd" ] || continue
+      [ "$nd" = "${STUB_STANDING_SKIP:-}" ] && continue
+      printf '  %s: retired by the event log\n' "$nd" >> "$rp"
+    done
+    printf 'MIGRATION VERIFIED\n' >> "$rp"
+    exit 0 ;;
+esac
 printf '%s\n' "$*" >> "$APPEND_LOG"
 n=$(wc -l < "$APPEND_LOG" | tr -d ' ')
 if [ -n "${STUB_FAIL_ON:-}" ] && [ "$n" -eq "$STUB_FAIL_ON" ]; then
@@ -721,6 +752,22 @@ EOF
   }
   printf '%s\n' "$MIG_LEG" > "$TMP/migleg.sh"
   printf '%s\n' "$RET_LEG" > "$TMP/retleg.sh"
+  printf '%s\n' "$OBS_LEG" > "$TMP/obsleg.sh"
+  run_observe() { # $1 = label, rest = STUB_* / STUB_ROSTER overrides; runs step 6 as the operator's shell would
+    local label="$1"; shift
+    : > "$TMP/appends.log"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
+    # The roster knob is read HERE, in this shell: "$@" reaches env(1), not the parent's own expansion, so a
+    # ${STUB_ROSTER-default} written below would silently ignore an intentionally empty roster — the one case whose
+    # whole point is emptiness.
+    local roster='entry-graph-union-construction,shell-dag-floor-peak-calibration-rows' knob
+    for knob in "$@"; do case "$knob" in STUB_ROSTER=*) roster="${knob#STUB_ROSTER=}" ;; esac; done
+    local out rc; out=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+      MANIFEST="$(cat "$GEXP/seed.jsonl")" \
+      ROSTER="$roster" \
+      OPERATOR='principal:google-oidc/accounts/116084671989231734979' "$@" bash "$TMP/obsleg.sh" 2>&1); rc=$?
+    echo "  [$label] rc=$rc appends=$(wc -l < "$APPEND_LOG" | tr -d ' ')"; echo "$out" | sed 's/^/    /'
+    LAST_OUT="$out"; LAST_RC=$rc; LAST_APPENDS=$(wc -l < "$APPEND_LOG" | tr -d ' ')
+  }
 
   seed_export; run_migrate "the export as measured: 17 seed acceptances, empty fabric tail"
   [ "$LAST_RC" -eq 0 ] || fail "G1: the migration refused a correct export: [$LAST_OUT]"
@@ -857,6 +904,39 @@ EOF
   [ "$RC" -ne 0 ] || fail "G13: step 4 retired over inputs whose bytes differ from the ones the completed migration digested — a count and a seed digest cannot see this"
   echo "$OUT" | grep -qF 'digests different input lines' || fail "G13: the refusal did not name the input digest: [$OUT]"
   [ ! -s "$APPEND_LOG" ] || fail "G13: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  # ---- round eleven: step 6, the step that DECIDES the page is migrated, witnessed for the first time ---------
+  # Nothing in ten rounds of review reached this fence, and it needed no new idea to break: its three admissions
+  # were PRINTED, not consumed. The fence runs in the operator's shell with no `set -e`, so a refusing fail-closed
+  # retired read, a refusing acceptance decoder, or a standing renderer showing one of two nodes retired each fell
+  # through to a step that completed and called the page migrated. Each gate now captures its status and refuses;
+  # these cases make exactly one of them refuse at a time — and the happy path runs first, so a broken harness
+  # cannot be mistaken for a working gate.
+  seed_export; run_observe "the observation as it should run: both doors admit, both roster nodes retired"
+  [ "$LAST_RC" -eq 0 ] || fail "G14: the observation refused a correct read-back: [$LAST_OUT]"
+  echo "$LAST_OUT" | grep -qF 'STANDING ADMITTED: 2 of 2 roster nodes retired by the event log' \
+    || fail "G14: the standing was never admitted by name and number: [$LAST_OUT]"
+  [ "$LAST_APPENDS" = 0 ] || fail "G14: the observation appended $(wc -l < "$APPEND_LOG") receipt(s) — it reads, it does not write"
+
+  seed_export; run_observe "the fail-closed retired read refuses" STUB_RETIRED_RC=1
+  [ "$LAST_RC" -ne 0 ] || fail "G15: the step COMPLETED although the fail-closed retired read refused — the page was accepted as migrated over a log nobody could read"
+  echo "$LAST_OUT" | grep -qF 'OBSERVATION REFUSED: the fail-closed retired read exited' \
+    || fail "G15: the refusal did not name the retired read: [$LAST_OUT]"
+
+  seed_export; run_observe "the acceptance decoder refuses" STUB_ACCEPTANCE_RC=1
+  [ "$LAST_RC" -ne 0 ] || fail "G16: the step completed although the acceptance decoder refused"
+  echo "$LAST_OUT" | grep -qF 'OBSERVATION REFUSED: the acceptance decoder exited' \
+    || fail "G16: the refusal did not name the decoder: [$LAST_OUT]"
+
+  seed_export; run_observe "the log shows only one of the two roster nodes retired" STUB_STANDING_SKIP=shell-dag-floor-peak-calibration-rows
+  [ "$LAST_RC" -ne 0 ] || fail "G17: a read-back showing 1 of 2 roster nodes retired was accepted as a completed migration"
+  echo "$LAST_OUT" | grep -qF 'shows 1 of 2 roster nodes retired' \
+    || fail "G17: the refusal did not name the standing count: [$LAST_OUT]"
+
+  seed_export; run_observe "an empty roster arrives from step 5" STUB_ROSTER=
+  [ "$LAST_RC" -ne 0 ] || fail "G18: an empty roster certified the migration — zero expected is zero admitted, which is how a verification passes by having no subject"
+  echo "$LAST_OUT" | grep -qF 'the roster is empty' \
+    || fail "G18: the refusal did not name the empty roster: [$LAST_OUT]"
 fi
 echo
 

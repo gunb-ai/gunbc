@@ -885,10 +885,14 @@ beside them that decide nothing and only report:
 
 ```bash
 # exit 0 = the fail-closed retired read ADMITTED the set (a log it cannot read exits 1 naming the reason, and
-# is never served as an empty retired set); the reason the runtime prints IS the diagnostic.
-RUN "$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_log_retired_report_cli"
-# exit 0 = the one decoder of the one home admitted the acceptance history.
-RUN "$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_log_acceptance_report_cli"
+# is never served as an empty retired set); the reason the runtime prints IS the diagnostic. An admission nobody
+# consumes is a comment: this fence has no `set -e`, so the status is CAPTURED and a refusal stops the step here,
+# before anything can call the page migrated.
+RUN "$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_log_retired_report_cli"; RETIRED_RC=$?
+[ "$RETIRED_RC" -eq 0 ] || { echo "OBSERVATION REFUSED: the fail-closed retired read exited $RETIRED_RC — the log was not read the way production reads it, so the page is NOT accepted as migrated"; exit 1; }
+# exit 0 = the one decoder of the one home admitted the acceptance history. Same rule, same reason.
+RUN "$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_log_acceptance_report_cli"; ACCEPTANCE_RC=$?
+[ "$ACCEPTANCE_RC" -eq 0 ] || { echo "OBSERVATION REFUSED: the acceptance decoder exited $ACCEPTANCE_RC — the history the page will serve is not the one the migration admitted"; exit 1; }
 # exit 0 = verifier + both readers + the write all admitted, in one document (step 5's artifact, regenerated).
 # The manifest and the roster are DATA and travel in the ENVIRONMENT through RUNE, exactly as in step 5. An
 # earlier pass put them INSIDE the command string (`--arg expected_manifest=\"$MANIFEST\"`) that RUN hands to
@@ -898,15 +902,25 @@ RUN "$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 --entry dag/gun
 # which is the same class as the export finding. Same data, same route, one argument, byte-for-byte.
 CMD="$BIN run --source-root $TREE/dag --source-root $TREE/src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_log_read_back_cli --arg repo_root=/opt/gunbc/gunbc --arg expected_manifest=\"\$EXPECTED_MANIFEST\" --arg retired_roster=\"\$EXPECTED_ROSTER\" --arg report_path=$D/read-back.after.out"
 # An empty manifest would certify nothing, so the variables step 5 set are required to still be set here; an
-# environment that lost them is a refusal, not a read-back over zero expected lines.
+# environment that lost them is a refusal, not a read-back over zero expected lines. The roster's emptiness is
+# checked BEFORE the ${VAR:?} forms, and by a refusal of its own: an empty roster makes every expected count zero,
+# and a verification with no subject passes — and ${VAR:?} killing an interactive operator shell mid-step is not a
+# gate either.
+[ -n "$ROSTER" ] || { echo "OBSERVATION REFUSED: the roster is empty — a read-back that expects nothing admits nothing"; exit 1; }
 : "${MANIFEST:?OBSERVATION REFUSED: EXPECTED_MANIFEST is unset — re-run step 5 in this shell}"
 : "${ROSTER:?OBSERVATION REFUSED: EXPECTED_ROSTER is unset — re-run step 5 in this shell}"
 RUNE "EXPECTED_MANIFEST=$MANIFEST" "EXPECTED_ROSTER=$ROSTER" > "$D/read-back.after.driver.log" 2>&1
 READ_AFTER_RC=$?
 [ "$READ_AFTER_RC" -eq 0 ] || { echo "OBSERVATION REFUSED: the post-deploy read-back exited $READ_AFTER_RC — the page is NOT accepted as migrated; do not close the cutover, and step 7 is the rollback"; exit 1; }
 cat "$D/read-back.after.out"
-# and the per-node standing, as the log's own standing renderer words it:
-grep -c 'retired by the event log' "$D/read-back.after.out"   # expect 2 (both roster nodes)
+# and the per-node standing, as the log's own standing renderer words it. The expected count comes from the roster
+# the operator carried in from step 5 — not from a literal here — and the count is REQUIRED, not printed: a fence
+# without `set -e` that merely displays "0" reports a successful observation while serving the old carriers. A
+# roster that arrived empty would make the comparison pass at zero, so an empty roster is its own refusal.
+EXPECTED_STANDING=$(printf '%s\n' "$ROSTER" | tr ',' '\n' | grep -c '[^[:space:]]')
+STANDING=$(grep -c 'retired by the event log' "$D/read-back.after.out")
+[ "$STANDING" = "$EXPECTED_STANDING" ] || { echo "OBSERVATION REFUSED: the log's own standing renderer shows $STANDING of $EXPECTED_STANDING roster nodes retired — the page is NOT accepted as migrated"; exit 1; }
+echo "STANDING ADMITTED: $STANDING of $EXPECTED_STANDING roster nodes retired by the event log"
 ```
 
 One thing the doors deliberately do NOT need: a row in `gunbc.auth.privileged_effect_census`. That census
