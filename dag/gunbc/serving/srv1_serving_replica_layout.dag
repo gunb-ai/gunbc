@@ -1,6 +1,8 @@
 module gunbc.serving.srv1_serving_replica_layout
 import v2.extdeps.languages.bash_build {
   BracketBare,
+  bash_build_test_bracket,
+  bash_build_test_comparison,
   bash_build_command_from_word_nodes,
   bash_build_word_lit,
   bash_build_and_then,
