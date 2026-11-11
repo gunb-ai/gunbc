@@ -2206,8 +2206,21 @@ fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: Stri
 // machine's name read out of a dispatch field. One spelling, used both by the domain fold above and by the
 // jobs that set their own group, so a mode can never be grouped on a field other than the one its subject
 // is named in.
+fn fleet_converge_host_mutation_group_expression(field: NonEmptyStr) -> Expression {
+  FunctionCall {
+    function: Format,
+    args: [
+      StringLiteral { value: join([fleet_host_mutation_group_prefix, "{0}"], "") },
+      ContextAccess { context: Github, path: ["event", "inputs", field as String] },
+    ],
+  }
+}
+
+// The job-level spelling: the same expression, interpolated. A clause inside the shared converge job's
+// `${{ ... }}` group consumes the expression itself (serialize_expression), never this interpolated form --
+// an interpolation nested inside an expression is a workflow GitHub refuses to parse.
 fn fleet_converge_host_mutation_group_for(field: NonEmptyStr) -> String {
-  join([fleet_host_mutation_group_prefix, fleet_converge_dispatch_input_interpolation(input: field as String)], "")
+  interpolate(expression: fleet_converge_host_mutation_group_expression(field: field))
 }
 
 fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
@@ -2221,7 +2234,8 @@ fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
     // grouped on is the field that decides which machine gets renamed -- a typo there is a job that never
     // collides with anything, which is exactly what a green run would not show. (This arm used to compose the
     // string `github.event.inputs.target` by hand, which no mode can reach: no mode declared it.)
-    TargetHostDomain { field: f } => join([when, fleet_converge_host_mutation_group_for(field: f), " || "], "")
+    TargetHostDomain { field: f } =>
+      join([when, serialize_expression(expression: fleet_converge_host_mutation_group_expression(field: f)), " || "], "")
     OwnRunConfined => join([when, "format('", fleet_own_run_group_prefix, "{0}', github.run_id) || "], "")
   }
 }
