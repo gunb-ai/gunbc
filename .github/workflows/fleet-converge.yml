@@ -16,12 +16,12 @@ on:
       host:
         description: Executor fleet host (runner pinned here; plan mode observes this host)
         required: true
-        options: [srv1, srv2, srv3, srv4, mtcollins1]
+        options: [srv1, srv2, srv3, srv4, srv14, mtcollins1]
         type: choice
       subject_host:
         description: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg."
         required: false
-        options: [srv1, srv2, srv3, srv4, mtcollins1]
+        options: [srv1, srv2, srv3, srv4, srv14, mtcollins1]
         type: choice
       arrival_subject:
         description: "arrival_converge only: the arrival-population unit (not executor host, not managed_host). Options are gunbc.machine_intake.arrival_subject arrival_converge_subject_options. Names signed off msg_f03558d1"
@@ -36,7 +36,7 @@ on:
       reset_observer:
         description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
         required: false
-        options: [srv1, srv2, srv3, srv4]
+        options: [srv1, srv2, srv3, srv4, srv14]
         type: choice
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names"
@@ -3155,7 +3155,7 @@ jobs:
     timeout-minutes: 115
     if: github.event.inputs.mode == 'host_reset_return'
     concurrency:
-      group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"
+      group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\", \"srv14\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"
       cancel-in-progress: false
     steps:
       - name: Checkout (the event sha only; no dispatch input selects these bytes)
@@ -4280,7 +4280,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: gcp-iam-converge
-    timeout-minutes: 60
+    timeout-minutes: 284
     if: github.event.inputs.mode == 'gcp_iam_converge'
     permissions:
       contents: read
@@ -4403,7 +4403,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge'
-        timeout-minutes: 40
+        timeout-minutes: 259
   gcp-iam-bootstrap-apply:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build, gcp-iam-bootstrap-request]
@@ -4536,7 +4536,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build, gcp-iam-bootstrap-request, gcp-iam-bootstrap-apply]
     environment: gcp-iam-converge
-    timeout-minutes: 60
+    timeout-minutes: 319
     if: "!cancelled() && needs.build.result == 'success' && (needs['gcp-iam-bootstrap-apply'].result == 'success' || needs['gcp-iam-bootstrap-apply'].result == 'skipped') && (github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'branch_run_grant')"
     permissions:
       contents: read
@@ -4657,7 +4657,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge'
-        timeout-minutes: 40
+        timeout-minutes: 259
       - name: "Branch run grant: read the run from GitHub and the account's policy as iam-observe, file one request, wait for the operator"
         id: branch_run_grant_request
         run: |-
@@ -4668,7 +4668,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           BRANCH_RUN_KEY: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'branch_run_grant'
-        timeout-minutes: 40
+        timeout-minutes: 249
+      - name: WIF auth again (OIDC -> gcp-iam-converge pool -> iam-observe SA; minted only now that the operator has approved, because the job's first observe token predates the wait)
+        id: wif_auth_iam_observe
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-gcp-iam-converge/providers/github-gcp-iam-converge-oidc
+          service_account: iam-observe@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        if: (github.event.inputs.mode == 'gcp_iam_converge' && steps.gcp_iam_request.outputs.approved == 'true') || (github.event.inputs.mode == 'branch_run_grant' && steps.branch_run_grant_request.outputs.approved == 'true')
+        timeout-minutes: 5
       - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)
         id: wif_auth_iam_converge
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -4686,7 +4696,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/gcp_iam_converge_run.dag --function gcp_iam_converge_apply_wet
         env:
-          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth_iam_observe.outputs.access_token }}
           IAM_CONVERGE_ACCESS_TOKEN: ${{ steps.wif_auth_iam_converge.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge' && steps.gcp_iam_request.outputs.approved == 'true'
         timeout-minutes: 15
@@ -4696,7 +4706,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/branch_run_grant.dag --function branch_run_grant_apply_wet
         env:
-          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth_iam_observe.outputs.access_token }}
           GITHUB_TOKEN: ${{ github.token }}
           BRANCH_RUN_KEY: ${{ github.event.inputs.transaction_nonce }}
           IAM_CONVERGE_ACCESS_TOKEN: ${{ steps.wif_auth_iam_converge.outputs.access_token }}
@@ -5051,7 +5061,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: printer-lan
-    timeout-minutes: 65
+    timeout-minutes: 129
     if: github.event.inputs.mode == 'printer'
     permissions:
       contents: read
@@ -5171,7 +5181,7 @@ jobs:
           PRINTER_REQUEST_ID: ${{ fromJSON(inputs.printer_request || '{}').request_id }}
           PRINTER_ROOT: ${{ fromJSON(inputs.printer_request || '{}').root }}
           PRINTER_RECIPE: ${{ fromJSON(inputs.printer_request || '{}').recipe }}
-        timeout-minutes: 45
+        timeout-minutes: 94
       - name: Upload printer operation receipt
         id: printer_receipt
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

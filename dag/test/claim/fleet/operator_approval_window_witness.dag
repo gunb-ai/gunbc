@@ -1,0 +1,214 @@
+module test.claim.fleet.operator_approval_window_witness
+// EVERY OPERATOR CARD'S DECISION WINDOW, AND THE TWO CEILINGS IT MUST FIT INSIDE.
+//
+// WHY THIS FILE EXISTS. The fleet files operator cards from six places, and until 2026-11-10 four of
+// them restated the decision window beside the one row that owns it (gunbc.auth.approval_gate
+// approval_request_window). The card that made it visible was printer-01's bed-clear card, run
+// 42919682079: it closed fifteen minutes after it was filed, while nobody was looking at the inbox, and
+// the print died as ApprovalExpired on a decision nobody had refused. The restatements are gone -- each
+// site now READS the policy row -- and a restated literal is exactly what these claims make red, along
+// with the two ways a long window can be a lie:
+//
+//   (1) THE CREDENTIAL. A token minted before the wait and presented after it must still be alive when
+//       the decision is acted on (#16160's ACCESS_TOKEN_EXPIRED). Where a site holds a token across the
+//       wait, its window is capped by the token's lifetime and this file says so in the open; where a
+//       site mints only after the decision, no row here caps it and the comment at the site says why.
+//   (2) THE JOB. A card whose window outruns the step that polls it is killed mid-poll, which is WORSE
+//       than an expired card: the run dies with a live approval, no typed refusal, and an operator who
+//       believes they answered. Every polling module derives its step timeout from its own window, and
+//       every derived bound here is checked against GitHub's own job ceiling
+//       (extdeps.github.actions max_job_timeout_minutes).
+//
+// WHY NOTHING HERE IMPORTS THE WORKFLOW. gunbc.fleet.fleet_converge_workflow is a 8.4k-line projection
+// whose typecheck alone outruns the witness harness's budget -- the lesson of gunbc#15901, which split
+// srv1_root_mutation_approval_witness for exactly that reason. The emitted-job halves of these claims
+// live in test.claim.fleet.operator_approval_workflow_window_witness, the only witness that pays for the
+// projection. What stays here is read from the approval and polling modules, one interface each
+// (gunbc.design_argument::witness_one_interface).
+
+import std.types { Bool }
+import std.measure { second_count, minute_count }
+import std.integer { nat_to_int }
+import extdeps.github.actions { max_job_timeout_minutes }
+import gunbc.auth.approval_gate { approval_request_window }
+import gunbc.auth.access_token_source { workload_identity_access_token_lifetime }
+import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
+import gunbc.auth.gcp_iam_converge_run {
+  gcp_iam_converge_file_window, gcp_iam_converge_poll_cadence, gcp_iam_converge_poll_ticks,
+  gcp_iam_converge_step_timeout_minutes, gcp_iam_converge_pre_decision_allowance,
+  gcp_iam_converge_step_margin, gcp_iam_converge_expiry_overrun_ticks,
+}
+import gunbc.auth.branch_run_grant {
+  branch_run_grant_file_window, branch_run_grant_window, branch_run_grant_poll_cadence,
+  branch_run_grant_poll_tick_budget, branch_run_grant_step_timeout_minutes,
+  branch_run_grant_pre_decision_allowance, branch_run_grant_step_margin,
+  branch_run_grant_expiry_overrun_ticks, branch_run_grant_filing_allowance,
+}
+import gunbc.fleet.printer_operator_approval {
+  printer_operator_approval_window, printer_operator_approval_poll_cadence,
+  printer_operator_approval_poll_tick_budget, printer_approval_credential_ceiling,
+  printer_approval_pre_decision_allowance, printer_approval_post_decision_allowance,
+  printer_approval_step_timeout_minutes, printer_approval_step_margin,
+  printer_approval_expiry_overrun_ticks,
+}
+import gunbc.fabric.fabric_storage_state_provision { fabric_storage_state_provision_card_window }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  srv1_root_mutation_approval_window, srv1_root_mutation_poll_cadence,
+  srv1_root_mutation_poll_tick_budget, srv1_root_mutation_expiry_overrun_ticks,
+  srv1_root_mutation_prelude_allowance, srv1_root_mutation_step_margin,
+  srv1_root_mutation_approval_step_timeout_minutes,
+}
+
+// THE POLICY IS ONE ROW AND IT IS AT LEAST A FEW HOURS. The operator's request of 2026-11-10 was that a
+// card stay open "as long as possible, at least a few hours"; four hours is what the fleet decided, and
+// it is not free-standing -- the ceiling is GitHub's own job limit, because every one of these waits
+// lives inside one job. Red the moment the row is lowered below a few hours or raised past what a job
+// can host.
+test fn the_decision_window_is_a_policy_of_hours() -> Bool {
+  nat_to_int(n: second_count(s: approval_request_window)) >= 3 * 3600
+    && nat_to_int(n: second_count(s: approval_request_window)) < max_job_timeout_minutes * 60
+}
+
+// ONE ROW, EVERY READER THAT CAN HONOUR IT. The four cards that hold no credential across their wait
+// read the policy row verbatim -- srv1 mints its admitted-only credential AFTER the tap, so nothing it
+// presents has to survive one; a local literal at any of them -- "temporarily hardened", "just for this
+// run", or a number copied from a neighbour -- goes red here.
+test fn the_cards_that_hold_nothing_across_the_wait_read_the_policy_row() -> Bool {
+  srv1_root_mutation_approval_window() == approval_request_window
+    && gcp_iam_converge_file_window() == approval_request_window
+    && branch_run_grant_file_window() == approval_request_window
+    && fabric_storage_state_provision_card_window() == approval_request_window
+}
+
+// THE PRINTER'S CARD READS THE POLICY ROW TOO, AND IS CAPPED BY THE CREDENTIAL IT MUST PRESENT AFTER
+// THE DECISION. Not by a hand-written number: the cap is the token's lifetime minus what the run spends
+// on both sides of the wait. So the window is the policy where the credential reaches that far, and the
+// credential's own reach where it does not -- today 3000 s, because the token is federated at the top of
+// the job and presented again after the tap. Mint it after the decision (or hold no Google identity on
+// this path) and this claim starts demanding the full four hours from the printer as well.
+test fn the_printers_card_is_the_policy_row_or_the_reach_of_its_credential() -> Bool {
+  let window = nat_to_int(n: second_count(s: printer_operator_approval_window()))
+  let policy = nat_to_int(n: second_count(s: approval_request_window))
+  let ceiling = nat_to_int(n: second_count(s: printer_approval_credential_ceiling()))
+  window > 0 && window == (if policy <= ceiling { policy } else { ceiling })
+}
+
+// THE CREDENTIAL LIFETIME IS A CEILING, NOT A SUGGESTION. Red on a window that the token minted before
+// the poll cannot survive to act on: the whole path -- pre-poll work, the operator's decision, and the
+// post-decision delivery that reads the printer's credential from Secret Manager -- has to fit inside the
+// one access token the job holds. This is the #16160 lesson made continuous: that incident was a token
+// minted at 02:07:18 and first used at 02:14:54, 456 s against a 300 s lifetime.
+test fn the_printers_window_fits_inside_the_credential_that_has_to_survive_it() -> Bool {
+  let spent = nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_operator_approval_window()))
+    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+  spent <= nat_to_int(n: second_count(s: workload_identity_access_token_lifetime))
+}
+
+// AND THE CEILING IS HONEST: it is what it says, and it is not quietly zero.
+test fn the_printers_credential_ceiling_is_the_token_minus_the_run() -> Bool {
+  let ceiling = nat_to_int(n: second_count(s: printer_approval_credential_ceiling()))
+  let token = nat_to_int(n: second_count(s: workload_identity_access_token_lifetime))
+  let spent = nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+  ceiling == token - spent && ceiling > 0
+}
+
+// THE POLL COVERS ITS OWN WINDOW, FOR EVERY POLL THAT WAITS OUT ITS CARD. The tick budget is derived
+// from the window and the cadence, so a longer window cannot leave a run that stops counting early: the
+// ticks alone must reach the deadline, and the reserve beyond it must be there for the deadline read
+// itself. Before this, the printer's call site hand-wrote 90 ticks beside a 900 s window -- two copies of
+// one fact, and the second copy did not have to agree. The reserve is the site's OWN declared overrun row,
+// not a 4 typed into this claim: a claim that restates the thing it checks checks nothing.
+// SCOPE, said plainly: four polls wait out their card, and four are checked. The fifth,
+// gunbc.runner.runner_group_restriction_ensure_run microvm_runner_group_poll_tick_budget, deliberately
+// stops polling long before its card closes and lets a later pass redeem the grant, so its budget is NOT
+// expected to reach its deadline and it is named in its own module instead.
+test fn every_polls_tick_budget_reaches_its_deadline() -> Bool {
+  let printer_ticks = nat_to_int(n: printer_operator_approval_poll_tick_budget())
+    * nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
+  let srv1_ticks = nat_to_int(n: srv1_root_mutation_poll_tick_budget())
+    * nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
+  let iam_ticks = nat_to_int(n: gcp_iam_converge_poll_ticks())
+    * nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence))
+  let grant_ticks = nat_to_int(n: branch_run_grant_poll_tick_budget())
+    * nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
+  printer_ticks
+    >= nat_to_int(n: second_count(s: printer_operator_approval_window()))
+      + printer_approval_expiry_overrun_ticks
+        * nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
+    && srv1_ticks
+      >= nat_to_int(n: second_count(s: srv1_root_mutation_approval_window()))
+        + srv1_root_mutation_expiry_overrun_ticks
+          * nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
+    && iam_ticks
+      >= nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
+        + gcp_iam_converge_expiry_overrun_ticks
+          * nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence))
+    && grant_ticks
+      >= nat_to_int(n: second_count(s: branch_run_grant_file_window()))
+        + branch_run_grant_expiry_overrun_ticks
+          * nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
+}
+
+// THE WINDOW FITS INSIDE THE STEP THAT POLLS IT, WITH THE RUN'S OWN WORK ON BOTH SIDES. A step ceiling
+// below the window is a job that kills its own approval; this is the claim the operator's request
+// actually needs, because it is what makes raising a window safe rather than a coin flip on when the
+// operator happens to tap.
+test fn every_window_fits_inside_the_step_that_polls_it() -> Bool {
+  let srv1_step = nat_to_int(n: minute_count(m: srv1_root_mutation_approval_step_timeout_minutes())) * 60
+  let srv1_need = nat_to_int(n: second_count(s: srv1_root_mutation_prelude_allowance))
+    + nat_to_int(n: second_count(s: srv1_root_mutation_approval_window()))
+    + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
+      * srv1_root_mutation_expiry_overrun_ticks
+    + nat_to_int(n: second_count(s: srv1_root_mutation_step_margin))
+  let iam_step = gcp_iam_converge_step_timeout_minutes() * 60
+  let iam_need = nat_to_int(n: second_count(s: gcp_iam_converge_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence))
+      * nat_to_int(n: gcp_iam_converge_expiry_overrun_ticks)
+    + nat_to_int(n: second_count(s: iam_converge_token_lifetime))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_step_margin))
+  let grant_step = branch_run_grant_step_timeout_minutes() * 60
+  let grant_need = nat_to_int(n: second_count(s: branch_run_grant_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: branch_run_grant_file_window()))
+    + nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
+      * nat_to_int(n: branch_run_grant_expiry_overrun_ticks)
+    + nat_to_int(n: second_count(s: branch_run_grant_step_margin))
+  let printer_step = nat_to_int(n: minute_count(m: printer_approval_step_timeout_minutes())) * 60
+  let printer_need = nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_operator_approval_window()))
+    + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
+      * nat_to_int(n: printer_approval_expiry_overrun_ticks)
+    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_approval_step_margin))
+  srv1_step >= srv1_need
+    && iam_step >= iam_need
+    && grant_step >= grant_need
+    && printer_step >= printer_need
+}
+
+// NO DERIVED STEP CEILING PASSES WHAT A GITHUB JOB MAY RUN. A step inside a job cannot outlive the job,
+// and a job cannot exceed GitHub's ceiling; deriving a wait from a window without checking it against
+// the ceiling is how a policy change becomes a runner kill. Red on a window anyone raises past what a job
+// can honestly host.
+test fn no_polling_step_exceeds_the_job_ceiling() -> Bool {
+  let limit = max_job_timeout_minutes * 60
+  nat_to_int(n: minute_count(m: srv1_root_mutation_approval_step_timeout_minutes())) * 60 < limit
+    && gcp_iam_converge_step_timeout_minutes() * 60 < limit
+    && branch_run_grant_step_timeout_minutes() * 60 < limit
+    && nat_to_int(n: minute_count(m: printer_approval_step_timeout_minutes())) * 60 < limit
+}
+
+// THE GRANT MUST OUTLIVE THE CARD THAT BUYS IT. The branch run grant's cell is written at the apply --
+// after the operator answers -- and is dated from the RUN's start. If its window were allowed to be
+// shorter than the card's, a late tap would write a cell that is already lapsed: the operator approves,
+// and the run is refused for a reason nobody can see on the card. This claim is why the cell window grew
+// with the card window instead of staying at its old hour.
+test fn the_granted_cell_outlives_the_card_that_grants_it() -> Bool {
+  let cell = nat_to_int(n: second_count(s: branch_run_grant_window()))
+  let card = nat_to_int(n: second_count(s: branch_run_grant_file_window()))
+    + nat_to_int(n: second_count(s: branch_run_grant_filing_allowance))
+  cell > card
+    && cell <= card + nat_to_int(n: second_count(s: iam_converge_token_lifetime))
+}

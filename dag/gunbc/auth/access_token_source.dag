@@ -3,6 +3,7 @@ module gunbc.auth.access_token_source
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { Secret, NonEmptyStr, Bool, String }
+import std.measure { Second, second }
 import std.algebra { trim }
 import std.upsert_decision {
   Absent,
@@ -74,6 +75,24 @@ type AccessTokenResolution
 // the job, so the value is already in the job environment whatever this module does -- reading it
 // here removes an argv exposure rather than creating an environment one.
 data workload_identity_token_env: NonEmptyStr = "WIF_ACCESS_TOKEN" as NonEmptyStr
+
+// HOW LONG THE TOKEN THE AUTH STEPS EXPORT IS USABLE, which is NOT the sentence above. "Its lifetime
+// is the job" describes when the VALUE stops being read -- the variable lives in the job environment
+// until the job ends. It says nothing about when the BEARER TOKEN stops being accepted: Google's
+// documented default access-token expiry is one hour, and our own minting call requests no
+// `token_lifetime` at all (gunbc.fleet.fleet_workflow_steps ci_wif_auth_step_with_condition sends
+// none), so one hour is exactly what the job holds. The two lifetimes differing is the whole of the
+// #16160 ACCESS_TOKEN_EXPIRED class: a run that mints at job start and presents the token after a long
+// wait gets 401s for a credential that was valid when it was taken. HENCE THE RULE THIS ROW EXISTS TO
+// MAKE CHECKABLE: a token minted BEFORE a wait may be presented AFTER it only while the wait plus
+// everything spent before and after the mint still fits inside this lifetime; otherwise mint after the
+// wait, as gunbc.auth.gcp_iam_converge_run's actuation auth step and
+// gunbc.fleet.srv1_root_mutation_approval_run's admitted-only mint both do.
+// RE-DERIVE, do not trust: this is the platform's default, not a value we requested. Where a longer
+// token is genuinely needed the minting path can ask for one -- extdeps.cloud.gcp.oauth mint_access_token
+// carries max_desired_expiry_seconds -- but that must be a deliberate widening of a short-lived cloud
+// credential, weighed against the blast radius of a leaked one, not a side effect of a longer poll.
+data workload_identity_access_token_lifetime: Second = second(count: 3600)
 
 // PURE, so the arms are witnessable without an environment. An absent variable and an empty one are
 // two different operator situations -- the workflow did not run the auth step, versus the auth step

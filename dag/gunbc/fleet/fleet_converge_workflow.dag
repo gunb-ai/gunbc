@@ -54,6 +54,7 @@ import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_d
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
 import gunbc.fleet.printer_federation { printer_environment, printer_provider_resource, printer_service_account,printer_lan_host_identity }
+import gunbc.fleet.printer_operator_approval { printer_approval_step_timeout_minutes }
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
 import gunbc.auth.mtjade1_arrival_pair {
   mtjade1_arrival_environment, mtjade1_arrival_provider_resource, mtjade1_arrival_service_account,
@@ -69,7 +70,8 @@ import extdeps.google.sheets { sheets_token_env }
 
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import gunbc.auth.access_token_source { workload_identity_token_env }
-import std.measure { Second, minute_count, second_count }
+import std.measure { Second, second, minute_count, second_count }
+import std.integer { nat_to_int }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name, runner_host_closure_resolve_budget }
 
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv, YamlValue, YamlString, YamlSequence, YamlMapping }
@@ -145,6 +147,7 @@ import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gc
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
+import gunbc.auth.branch_run_grant { branch_run_grant_step_timeout_minutes }
 import gunbc.auth.gcp_iam_bootstrap_federation { gcp_iam_bootstrap_environment, gcp_iam_bootstrap_wif_provider_resource, iam_bootstrap_service_account }
 import gunbc.auth.gcp_iam_bootstrap_delta_run { iam_bootstrap_token_env, gcp_iam_bootstrap_delta_approved_output }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
@@ -7237,10 +7240,41 @@ data fleet_converge_gcp_iam_job_gate: Expression = LogicalAnd {
 
 data fleet_converge_gcp_iam_job_if: String = serialize_expression(expression: fleet_converge_gcp_iam_job_gate)
 
-fn fleet_converge_branch_run_grant_env(with_converge_token: Bool) -> List<YamlKeyValue> {
+// THE JOB HOLDS ONE POLLING STEP AT A TIME -- the two request steps are gated to different modes and
+// only one runs per dispatch -- so the backstop is the PRELUDE ALLOWANCE plus the job's other steps at
+// their tiers plus the LONGER of the two waits, never their sum: summing two steps that can never both
+// run would size the job against a schedule the workflow cannot produce, and would hand back half the
+// window the cards promise. Each wait comes from the polling module's OWN derived bound (the IAM
+// converge's, and gunbc.auth.branch_run_grant branch_run_grant_step_timeout_minutes -- this step no
+// longer borrows the other run's number), which is the point: raise a card's window and the job
+// backstop rises with it, and the claim in
+// dag/test/claim/fleet/operator_approval_window_witness.dag keeps every window inside the step it polls
+// in and inside GitHub's job ceiling.
+fn fleet_converge_gcp_iam_job_backstop_timeout_minutes() -> Duration {
+  let poll = if gcp_iam_converge_step_timeout_minutes() >= branch_run_grant_step_timeout_minutes() {
+    gcp_iam_converge_step_timeout_minutes()
+  } else {
+    branch_run_grant_step_timeout_minutes()
+  }
+  gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + poll
+    + gunbc_ci_aux_step_timeout_minutes + (gunbc_ci_aux_step_timeout_minutes + 10)
+    + (gunbc_ci_aux_step_timeout_minutes + 10)
+}
+
+// THE BOOTSTRAP DELTA'S REQUEST JOB, the same construction: it files through the IAM converge's own
+// request_and_wait_as (one run, one window, one derived wait) and its actuation waits in a job of its
+// OWN behind a fresh federation, so this job holds exactly one poll and the sum is exact.
+fn fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes() -> Duration {
+  gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes
+    + gcp_iam_converge_step_timeout_minutes()
+}
+
+fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr, with_converge_token: Bool) -> List<YamlKeyValue> {
   concat(
     [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", observe_step_id as String), ".outputs.access_token }}"), ""))),
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
       kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
     ],
@@ -7254,11 +7288,11 @@ fn fleet_converge_branch_run_grant_request_step() -> Step {
     id: Present { value: "branch_run_grant_request" },
     run: gunbc_ci_branch_run_grant_request_invoke(),
     shell: none,
-    env: Present { value: fleet_converge_branch_run_grant_env(with_converge_token: false) },
+    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: "wif_auth" as NonEmptyStr, with_converge_token: false) },
     working_directory: none,
     if_condition: Present { value: fleet_converge_branch_run_grant_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
+    timeout_minutes: Present { value: branch_run_grant_step_timeout_minutes() }
   }
 }
 
@@ -7268,7 +7302,7 @@ fn fleet_converge_branch_run_grant_apply_step() -> Step {
     id: Present { value: "branch_run_grant_apply" },
     run: gunbc_ci_branch_run_grant_apply_invoke(),
     shell: none,
-    env: Present { value: fleet_converge_branch_run_grant_env(with_converge_token: true) },
+    env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: fleet_converge_gcp_iam_observe_reauth_step_id, with_converge_token: true) },
     working_directory: none,
     if_condition: Present { value: fleet_converge_branch_run_grant_approved_if },
     continue_on_error: none,
@@ -7294,6 +7328,44 @@ fn fleet_converge_gcp_iam_request_step() -> Step {
 
 // THE SECOND FEDERATION, as iam-converge, for the actuation token's lifetime and no longer. Its id is
 // not wif_auth, so no step that reads the job's observe token can read this one by accident.
+// THE OBSERVE IDENTITY, FEDERATED AGAIN, ONLY NOW THAT THE OPERATOR HAS ANSWERED.
+//
+// WHY A SECOND ONE IS NEEDED: this job's first iam-observe federation runs at the top of the job, and
+// the request step after it may wait the operator's WHOLE decision window (gunbc.auth.approval_gate
+// approval_request_window) before any apply step runs. A Google access token lives 3600 s
+// (gunbc.auth.access_token_source workload_identity_access_token_lifetime) and nothing we send asks for
+// more, so the token the job took before the wait is refused long after the wait ends -- #16160's
+// ACCESS_TOKEN_EXPIRED class, on the path that runs only because a human said yes: the re-plan, the
+// re-admission read and the readback all present that token, so a late tap would fail the run the
+// operator just approved. Here the apply is a step in the SAME job (contrast
+// fleet_converge_gcp_iam_bootstrap_job, whose apply crosses a job boundary and so federates fresh by
+// construction), and the fix is the one this file already uses for the iam-converge token below: mint it
+// when the decision exists, not before.
+//
+// ITS CONDITION IS THE ACTUATION FEDERATION'S, not a looser one: a token mintable without a live
+// approval in the step outputs would be a credential the gate does not already control.
+data fleet_converge_gcp_iam_observe_reauth_step_id: NonEmptyStr = "wif_auth_iam_observe" as NonEmptyStr
+
+fn fleet_converge_gcp_iam_observe_reauth_step() -> Step {
+  UsesStep {
+    name: Present { value: "WIF auth again (OIDC -> gcp-iam-converge pool -> iam-observe SA; minted only now that the operator has approved, because the job's first observe token predates the wait)" },
+    id: Present { value: fleet_converge_gcp_iam_observe_reauth_step_id as String },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: gcp_iam_observe_wif_provider_resource())),
+        kv(key: "service_account", value: yaml_string(s: iam_observe_service_account as String)),
+        kv(key: "token_format", value: yaml_string(s: "access_token")),
+        kv(key: "create_credentials_file", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_approved_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_gcp_iam_actuate_auth_step() -> Step {
   UsesStep {
     name: Present { value: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-converge SA; only after a live approval)" },
@@ -7322,7 +7394,7 @@ fn fleet_converge_gcp_iam_apply_step() -> Step {
     run: gunbc_ci_gcp_iam_converge_apply_invoke(),
     shell: none,
     env: Present { value: [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: concat(concat(concat("${{ steps.", fleet_converge_gcp_iam_observe_reauth_step_id as String), ".outputs.access_token }}"), ""))),
       kv(key: iam_converge_token_env as String, value: yaml_string(s: "${{ steps.wif_auth_iam_converge.outputs.access_token }}")),
     ] },
     working_directory: none,
@@ -7443,6 +7515,7 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
       ),
       fleet_converge_gcp_iam_request_step(),
       fleet_converge_branch_run_grant_request_step(),
+      fleet_converge_gcp_iam_observe_reauth_step(),
       fleet_converge_gcp_iam_actuate_auth_step(),
       fleet_converge_gcp_iam_apply_step(),
       fleet_converge_branch_run_grant_apply_step(),
@@ -7451,7 +7524,7 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_gcp_iam_job_if },
-    timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() + 20 },
+    timeout_minutes: Present { value: fleet_converge_gcp_iam_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -8110,26 +8183,36 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 
 // The printer's identity pins this job to main and to its dedicated environment.
 // Inputs are data passed through env, never interpolated into executable shell.
-// Preparation (CAD and slicing) plus the 15-minute bed-clear approval window must fit one pass.
-data printer_converge_step_timeout_minutes: Duration = 45
+// WHAT THE PRINTER STEP IS TOLD TO WAIT, COMPOSED FROM THE MODEL RATHER THAN COUNTED BY HAND.
+// The approval half is DERIVED from the card the step polls (gunbc.fleet.printer_operator_approval
+// printer_approval_step_timeout_minutes: the operator's whole decision window plus the pre-poll reads,
+// the deadline overrun reads and the post-decision delivery). The preparation half is this row.
+//
+// THE 45 THIS ROW USED TO CARRY WAS THE WINDOW RESTATED -- its comment said "preparation plus the
+// 15-minute bed-clear approval window", so the step ceiling owned a copy of a window the model owns
+// elsewhere. Two consequences, both of which this row now owns. (1) The two copies could only drift.
+// (2) The window could never outgrow what this number happened to leave room for, and the failure when
+// someone tried is the one that matters: the runner kills the job MID-POLL, which is WORSE than an
+// expired card -- the run dies with a live approval and no typed refusal, and the operator's later tap
+// lands on a job that no longer exists. WHAT REMAINS HERE is the site fact the approval module cannot
+// know: CAD and slicing on this host. 1800 s is the preparation share of the retired 45-minute budget,
+// so no pass loses room; it is SIZED from that budget, not measured, and
+// printer_preparation_timeout_minutes is the operation's own bound. The witness that pins this
+// composition (dag/test/claim/fleet/operator_approval_window_witness.dag) is what goes red if
+// the two ever disagree.
+data printer_converge_preparation_allowance: Second = second(count: 1800)
 
-// THE PRINTER CREDENTIAL IS SIGNED IN ONLY ON REVIEWED MAIN (operator ruling 2026-10-25, design A).
-// A branch run may prepare and record a request, which needs no credential; the approval-and-start
-// pass is main's code (gunbc.fleet.print_converge print_pass_route), so off main the job holds no
-// printer token at all. The printer-lan pool is pinned to main as well; this keeps branch code from
-// ever asking.
-fn fleet_converge_printer_wif_auth_step() -> Step {
-  ci_wif_auth_step_with_condition(name: "WIF auth (dedicated printer credential reader; reviewed main only)", id: "wif_auth",
-    provider_resource: printer_provider_resource(), service_account: printer_service_account as String,
-    if_condition: Present { value: serialize_expression(expression: fleet_converge_github_ref_is_reviewed_main()) })
+fn printer_converge_step_timeout_minutes() -> Duration {
+  let preparation_minutes = (nat_to_int(n: second_count(s: printer_converge_preparation_allowance)) + 59) / 60
+  preparation_minutes + nat_to_int(n: minute_count(m: printer_approval_step_timeout_minutes()))
 }
 
-fn fleet_converge_printer_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
-    environment: Present { value: printer_environment as String },
-    steps: [
+// THE JOB BACKSTOP IS THE PRELUDE ALLOWANCE PLUS EVERY STEP THE JOB DECLARES, folded -- the same
+// construction fleet_converge_build_job_backstop_timeout_minutes uses, and now load-bearing: this job
+// holds a step that waits on a human, and a backstop smaller than the step it contains is a job that
+// kills its own approval mid-poll. The step list is a function so the fold and the job cannot disagree.
+fn fleet_converge_printer_job_steps() -> List<Step> {
+  [
       fleet_converge_event_sha_checkout_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(),
       fleet_converge_printer_wif_auth_step(),
       RunStep {
@@ -8147,15 +8230,42 @@ fn fleet_converge_printer_job() -> Job {
           kv(key: "PRINTER_RECIPE", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').recipe }}")),
         ] },
         working_directory: none, if_condition: none, continue_on_error: none,
-        timeout_minutes: Present { value: printer_converge_step_timeout_minutes },
+        timeout_minutes: Present { value: printer_converge_step_timeout_minutes() },
       },
       fleet_converge_receipt_upload_step(id: "printer_receipt", name: "Upload printer operation receipt",
         artifact: "printer-operation", path: printer_workflow_receipt_path, if_condition: "success()"),
-    ],
+  ]
+}
+
+fn fleet_converge_printer_job_backstop_timeout_minutes() -> Duration {
+  fold(
+    fleet_converge_printer_job_steps(),
+    init: gunbc_ci_prelude_allowance_minutes,
+    f: (acc, st) => acc + step_declared_timeout_minutes(st: st),
+  )
+}
+
+// THE PRINTER CREDENTIAL IS SIGNED IN ONLY ON REVIEWED MAIN (operator ruling 2026-10-25, design A).
+// A branch run may prepare and record a request, which needs no credential; the approval-and-start
+// pass is main's code (gunbc.fleet.print_converge print_pass_route), so off main the job holds no
+// printer token at all. The printer-lan pool is pinned to main as well; this keeps branch code from
+// ever asking.
+fn fleet_converge_printer_wif_auth_step() -> Step {
+  ci_wif_auth_step_with_condition(name: "WIF auth (dedicated printer credential reader; reviewed main only)", id: "wif_auth",
+    provider_resource: printer_provider_resource(), service_account: printer_service_account as String,
+    if_condition: Present { value: serialize_expression(expression: fleet_converge_github_ref_is_reviewed_main()) })
+}
+
+fn fleet_converge_printer_job() -> Job {
+  Job {
+    id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
+    environment: Present { value: printer_environment as String },
+    steps: fleet_converge_printer_job_steps(),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
-    timeout_minutes: Present { value: printer_converge_step_timeout_minutes + 20 },
+    timeout_minutes: Present { value: fleet_converge_printer_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
     permissions: Present { value: WorkflowPermissions {
@@ -8279,7 +8389,7 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
       env: none,
       outputs: Present { value: [kv(key: gcp_iam_bootstrap_delta_approved_output, value: yaml_string(s: concat(concat("${{ steps.gcp_iam_bootstrap_request.outputs.", gcp_iam_bootstrap_delta_approved_output), " }}")))] },
       if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
-      timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() + 20 },
+      timeout_minutes: Present { value: fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes() },
       continue_on_error: none,
       concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }

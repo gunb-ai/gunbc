@@ -1,0 +1,79 @@
+module test.claim.fleet.operator_approval_workflow_window_witness
+// THE EMITTED JOB AND STEP CEILINGS BEHIND EVERY OPERATOR CARD'S WAIT.
+
+import std.types { Bool }
+import std.measure { second_count }
+import std.integer { nat_to_int }
+import extdeps.github.actions { max_job_timeout_minutes }
+import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes }
+import gunbc.auth.branch_run_grant { branch_run_grant_step_timeout_minutes }
+import gunbc.fleet.printer_operator_approval {
+  printer_operator_approval_window, printer_operator_approval_poll_cadence,
+  printer_approval_expiry_overrun_ticks, printer_approval_pre_decision_allowance,
+  printer_approval_post_decision_allowance, printer_approval_step_margin,
+}
+import gunbc.fleet.fleet_converge_workflow {
+  printer_converge_step_timeout_minutes, printer_converge_preparation_allowance,
+  fleet_converge_printer_job_backstop_timeout_minutes,
+  fleet_converge_gcp_iam_job_backstop_timeout_minutes,
+  fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes,
+}
+import gunbc.fleet.fleet_workflow_steps {
+  gunbc_ci_prelude_allowance_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes,
+  gunbc_ci_aux_step_timeout_minutes,
+}
+
+// WHY THIS WITNESS IS SEPARATE, AND WHY IT IS THE ONLY ONE THAT PAYS FOR THIS IMPORT. The step and job
+// ceilings live in gunbc.fleet.fleet_converge_workflow, whose projection alone outruns the witness
+// harness's per-test budget (gunbc#15901: a claim that imports the converge workflow took 4316 s of a
+// 5400 s budget and starved the suite). Everything checkable from the approval and polling modules
+// without it lives in test.claim.fleet.operator_approval_window_witness; only what is genuinely a fact
+// about the EMITTED jobs lives here.
+
+// THE PRINTER STEP'S CEILING COVERS ITS WHOLE PASS: preparation, the operator's entire decision window,
+// the deadline overrun reads, the post-decision delivery, and the stated margin. Before 2026-11-10 this
+// number was 45, with a comment naming the fifteen-minute window inside it -- a hand-carried copy, so the
+// step could not outlast the card and the card could not outlast the step.
+test fn the_printer_step_covers_its_preparation_and_its_operators_whole_window() -> Bool {
+  let step = printer_converge_step_timeout_minutes() * 60
+  let need = nat_to_int(n: second_count(s: printer_converge_preparation_allowance))
+    + nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_operator_approval_window()))
+    + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
+      * nat_to_int(n: printer_approval_expiry_overrun_ticks)
+    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_approval_step_margin))
+  step >= need
+}
+
+// THE PRINTER JOB IS NOT SHORTER THAN THE STEP IT CONTAINS, and stays inside what a GitHub job may run.
+// A backstop below its own step is a job scheduled to kill its own approval; a backstop above the
+// platform ceiling is a job GitHub refuses to start as written.
+test fn the_printer_job_backstop_contains_its_step_and_the_platform_ceiling() -> Bool {
+  let bookkeeping = gunbc_ci_prelude_allowance_minutes
+    + gunbc_ci_artifact_transfer_step_timeout_minutes * 2
+    + gunbc_ci_aux_step_timeout_minutes * 2
+  fleet_converge_printer_job_backstop_timeout_minutes()
+    >= printer_converge_step_timeout_minutes() + bookkeeping
+    && fleet_converge_printer_job_backstop_timeout_minutes() < max_job_timeout_minutes
+}
+
+// THE IAM-CONVERGE JOB IS NOT SHORTER THAN THE LONGER OF THE TWO CARDS IT MAY HOST. Its two request
+// steps are gated to different modes, so one dispatch waits on one card -- and the backstop has to
+// survive whichever one it is. Red the day someone raises a window without raising the job, or sums the
+// two mutually exclusive waits into a backstop no dispatch can ever reach.
+test fn the_iam_converge_job_backstop_contains_the_longer_wait_and_the_ceiling() -> Bool {
+  let bookkeeping = gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes * 3 + (gunbc_ci_aux_step_timeout_minutes + 10) * 2
+  let job = fleet_converge_gcp_iam_job_backstop_timeout_minutes()
+  job >= gcp_iam_converge_step_timeout_minutes() + bookkeeping
+    && job >= branch_run_grant_step_timeout_minutes() + bookkeeping
+    && job < max_job_timeout_minutes
+}
+
+// THE BOOTSTRAP DELTA'S REQUEST JOB, the same check: one wait per job by construction, because its
+// actuation is a separate job behind a fresh federation.
+test fn the_bootstrap_request_job_backstop_contains_its_wait_and_the_ceiling() -> Bool {
+  let job = fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes()
+  job >= gcp_iam_converge_step_timeout_minutes() && job < max_job_timeout_minutes
+}

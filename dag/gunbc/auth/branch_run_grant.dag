@@ -5,6 +5,7 @@ import gunbc.fleet.fleet_converge_run_name { mode_of_run_title }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
 import std.measure { Second, second, second_count }
+import std.integer { nat_to_int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
@@ -45,8 +46,9 @@ import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, Approve
 import gunbc.auth.approval_gate {
   approval_refusal_text, GateAdmitted, GateRefused, approval_gate_from_poll,
   approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
-  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
+  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused, approval_request_window,
 }
+import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 
 // ── ONE APPROVED BRANCH RUN MAY ACT AS ONE RUN-SCOPED ACCOUNT ──────────────────────────────────
@@ -64,7 +66,21 @@ import gunbc.auth.approval_request_client { stored_request_from_authorization }
 // derive the same cell and the same digest (the apply re-derives and re-admits, as
 // gunbc.auth.gcp_iam_converge_run does): an expiry read off the clock at each step would make the
 // approved request unreproducible.
-data branch_run_grant_window: Second = second(count: 3600)
+// HOW LONG THE GRANTED CELL STAYS USABLE, MEASURED FROM THE RUN'S OWN START -- and it is DERIVED, not
+// chosen. The cell is written at the apply, which happens after the operator answers, so the window has
+// to cover the whole path from the run's start to a used grant: the broker's read and this step's plan
+// and filing, the operator's full decision window (the same policy row the card itself reads, below --
+// a cell that lapses before the card does is a card that approves nothing), and the actuation the cell
+// authorizes, which is bounded by the impersonated iam-converge token's lifetime. A shorter row here
+// is not a smaller risk but a quieter failure: the operator taps, the apply writes a cell that is
+// already lapsed, and the branch's run is refused for a reason nobody can see in the card.
+data branch_run_grant_filing_allowance: Second = second(count: 600)
+
+fn branch_run_grant_window() -> Second {
+  second(count: second_count(s: branch_run_grant_filing_allowance)
+    + second_count(s: branch_run_grant_file_window())
+    + second_count(s: iam_converge_token_lifetime))
+}
 
 // ── the branch run, as GitHub records it: judged by gunbc.auth.branch_dispatch_federation judge_branch_run ──
 
@@ -231,9 +247,54 @@ fn branch_run_grant_request(g: BranchRunGrant, attempt: AttemptIdentity) -> Auth
 
 data branch_run_grant_approved_output: String = "approved"
 
-data branch_run_grant_file_window: Second = second(count: 1800)
+// HOW LONG THE OPERATOR HAS TO DECIDE THIS CARD: THE POLICY ROW, READ (gunbc.auth.approval_gate
+// approval_request_window). The thirty minutes this carried were a third copy of a decision the fleet
+// makes once -- the same failure the printer's fifteen minutes had, and the cell window above had to
+// grow with it, because a grant that lapses before the card does makes the operator's tap meaningless.
+// NOTHING HERE CAPS IT: the credential that acts on this decision is minted AFTER it (the workflow's
+// iam-converge federation runs only on the approved output, and
+// mint_impersonation_token_for_run is reached only from the PollAdmitted arm), which is what #16160
+// asks of a long wait. The bound that does exist -- the job hosting the wait -- is held by the claim in
+// dag/test/claim/fleet/operator_approval_window_witness.dag, and this module's request step carries its
+// own derived step timeout rather than borrowing the IAM converge's, so the two runs cannot drift apart
+// while sharing a job.
+fn branch_run_grant_file_window() -> Second {
+  approval_request_window
+}
 
 data branch_run_grant_poll_cadence: Second = second(count: 15)
+
+// POLLS HELD IN RESERVE BEYOND THE DEADLINE, so the wait ends on the model's own ApprovalExpired
+// verdict and not on a runner kill (see gunbc.fleet.srv1_root_mutation_approval_run run 41972155901).
+data branch_run_grant_expiry_overrun_ticks: Int = 4
+
+// WHAT THE STEP SPENDS BEFORE THE POLL: read the run from GitHub, read the account's policy as
+// iam-observe, and file. SIZED from the bounded calls it covers, not measured.
+data branch_run_grant_pre_decision_allowance: Second = second(count: 300)
+
+data branch_run_grant_step_margin: Second = second(count: 180)
+
+// TICKETS DERIVED FROM THE WINDOW AND THE CADENCE: ceiling(window / cadence) so a window that is not a
+// whole number of cadences still reaches its deadline, plus the overrun reserve. The call site used to
+// divide the window by the cadence inline, which both truncated and stopped at the deadline.
+fn branch_run_grant_poll_tick_budget() -> Int {
+  let cadence = nat_to_int(n: second_count(s: branch_run_grant_poll_cadence))
+  let window = nat_to_int(n: second_count(s: branch_run_grant_file_window()))
+  let ticks = (window + cadence - 1) / cadence
+  ticks + branch_run_grant_expiry_overrun_ticks
+}
+
+// THE REQUEST STEP'S CEILING, DERIVED FROM THIS MODULE'S WINDOW. It never borrows
+// gcp_iam_converge_step_timeout_minutes: that bound belongs to a different run's wait, and two polling
+// steps in one job that each take their ceiling from someone else's window is how a job comes to kill a
+// poll mid-wait. It carries no actuation allowance because this step actuates nothing -- the apply is a
+// later step, behind its own federation.
+fn branch_run_grant_step_timeout_minutes() -> Int {
+  (nat_to_int(n: second_count(s: branch_run_grant_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: branch_run_grant_file_window()))
+    + nat_to_int(n: second_count(s: branch_run_grant_poll_cadence)) * branch_run_grant_expiry_overrun_ticks
+    + nat_to_int(n: second_count(s: branch_run_grant_step_margin)) + 59) / 60
+}
 
 type BranchRunGrantStanding
   = BranchRunGrantRequestable { request: AuthorizationRequest<BranchRunGrant> }
@@ -289,10 +350,10 @@ fn branch_run_grant_request_wet() -> ProcessExit {
         BranchRunGrantRequestable { request: q } => match approval_instant_now() {
           Absent => exit_failure(reason: "branch run grant: clock unreadable; the request cannot be filed")
           Present { value: issued } => {
-            let expires = approval_expires_at(issued: issued, window: branch_run_grant_file_window)
+            let expires = approval_expires_at(issued: issued, window: branch_run_grant_file_window())
             match approval_file_stored_request(stored: stored_request_from_authorization(request: q, issued_at: issued, expires_at: expires), body_file_name: "branch-run-grant-submit.json", submit_timeout: second(count: 30)) {
               ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("branch run grant: filing refused: ", r))
-              ApprovalFiled => match approval_poll_ticks(remaining: second_count(s: branch_run_grant_file_window) / second_count(s: branch_run_grant_poll_cadence), cadence: branch_run_grant_poll_cadence, escalation_id: q.escalation_id, expires_at: expires) {
+              ApprovalFiled => match approval_poll_ticks(remaining: branch_run_grant_poll_tick_budget(), cadence: branch_run_grant_poll_cadence, escalation_id: q.escalation_id, expires_at: expires) {
                 PollClockUnreadable => exit_failure(reason: "branch run grant: clock unreadable while waiting for the decision")
                 PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "branch run grant: no decision within the window; nothing granted")
                 PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: q, observed_at: at) {

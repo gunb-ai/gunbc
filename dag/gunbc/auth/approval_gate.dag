@@ -170,6 +170,21 @@ fn approval_instant_now() -> Timestamp? {
 // it had a typed thing to say (run 41972155901 was killed two minutes before its own deadline), and a
 // run that polls LESS throws away a decision the operator was free to give.
 //
+// WHAT THE WAIT HOLDS, SAID PLAINLY: a polling run is a LIVE JOB, so a longer window is bought with a
+// runner slot for its whole length plus window/cadence GETs at the broker. No poll site here is a general
+// queue drain: every one of them is pinned to the machine it acts on and single-flight while it waits.
+// The printer's wait runs on the printer's own LAN host, in the exclusive group `printer-<printer>`
+// (gunbc.fleet.fleet_converge_workflow fleet_converge_printer_job), and that host is doing nothing else
+// while a bed waits to be cleared; srv1's root-mutation wait runs on srv1 in `gunbc-host-mutation-<host>`; the
+// GCP IAM converge wait runs on its named host in the group `gcp-iam-converge` with
+// cancel-in-progress false, so a second converge run QUEUES rather than doubling the hold. The exposure
+// is therefore one slot per group per host, not a fleet-wide hold -- which is why these windows were
+// raised in place. Where a slot for hours is NOT affordable, the honest answer is not a shorter window --
+// it is file-and-exit: the run files the request, exits, and a later scheduled pass redeems the grant,
+// which is a redesign of every poll site (a redeemer needs the same typed grant read the poll's admitted
+// arm does today, and a fresh credential of its own) and is recorded here as THE ALTERNATIVE, not built
+// by this change.
+//
 // THE DEFAULT IS FOUR HOURS, quick-newt's pick of 2026-11-05 under the operator's ruling that a
 // 30-minute window lapses before a human can reach the phone; it is a row, not a literal, because the
 // operator may change it. The ceiling on raising it is not taste: the jobs that carry this wait derive

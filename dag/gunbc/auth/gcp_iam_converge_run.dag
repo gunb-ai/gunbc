@@ -6,6 +6,7 @@ import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, Approve
 
 import std.types { Int, List, NonEmptyStr, String, Secret, Bool, Timestamp }
 import std.measure { Second, second, second_count }
+import std.integer { nat_to_int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import std.optional { Present, Absent }
@@ -18,7 +19,7 @@ import gunbc.auth.approval_gate {
   approval_refusal_text, ApprovalGate, GateAdmitted, GateRefused, approval_gate_from_poll,
   approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
-  approval_standing_read, StandingReadAt, StandingClockUnreadable,
+  approval_standing_read, StandingReadAt, StandingClockUnreadable, approval_request_window,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization, ApprovalPollStanding }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
@@ -44,26 +45,61 @@ import gunbc.auth.gcp_iam_converge {
 // no operator-token arm: both tokens resolve only from the workflow's auth-step variables. The job
 // runs on srv1 because the approval client files and polls over srv1's loopback.
 
-data gcp_iam_converge_file_window: Second = second(count: 1800)
+// HOW LONG THE OPERATOR HAS TO DECIDE THIS CARD: THE POLICY ROW, READ. The thirty minutes this carried
+// was a second copy of a decision the fleet already made once (gunbc.auth.approval_gate
+// approval_request_window, four hours by operator ruling 2026-11-05); an operator who tapped a GCP IAM
+// card between half an hour and four hours was tapping a card the model had already given up on.
+// NOTHING HERE CAPS IT, and that is the point of stating why: this run holds no credential across the
+// wait. It files and polls as iam-observe through the broker's loopback, and the credential that acts
+// on the decision -- the iam-converge actuation token -- is federated by a LATER step that runs only
+// on the approved output (see the ORDER above), which is exactly what #16160 asks for. So the only
+// bound on this window is the job that hosts the wait, and the claim that holds it there is
+// dag/test/claim/fleet/operator_approval_window_witness.dag. The same row is read by the bootstrap
+// delta filing, which reuses this module's request_and_wait_as: two cards, one policy, one authority.
+fn gcp_iam_converge_file_window() -> Second {
+  approval_request_window
+}
 
 data gcp_iam_converge_poll_cadence: Second = second(count: 15)
 
+// POLLS HELD IN RESERVE BEYOND THE DEADLINE, so the wait ends on the model's own ApprovalExpired
+// verdict rather than on a runner kill: srv1_root_mutation_approval_run's run 41972155901 was killed
+// two minutes before its deadline, so the fold never produced a typed refusal for the record. Four
+// ticks at the fifteen-second cadence is a minute of room for the deadline read.
+data gcp_iam_converge_expiry_overrun_ticks: Int = 4
+
+// WHAT THE STEP SPENDS BEFORE THE POLL BEGINS: the plan (a roster read under iam-observe) and the
+// filing. SIZED from the bounded API calls it covers, not measured; it is a ceiling, so an under-sized
+// row shows up as a red claim long before it shows up as a killed job.
+data gcp_iam_converge_pre_decision_allowance: Second = second(count: 300)
+
+data gcp_iam_converge_step_margin: Second = second(count: 180)
+
 // DERIVED, not spelled beside the two values it depends on (review 71318): the ticks are the filing
-// window divided by the cadence, so changing either keeps the poll covering the whole window.
+// window divided by the cadence -- ceiling, so a window that is not a whole number of cadences is
+// still covered to its deadline -- plus the overrun reserve.
 fn gcp_iam_converge_poll_ticks() -> Int {
-  second_count(s: gcp_iam_converge_file_window) / second_count(s: gcp_iam_converge_poll_cadence)
+  let cadence = nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence))
+  let window = nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
+  let ticks = (window + cadence - 1) / cadence
+  ticks + gcp_iam_converge_expiry_overrun_ticks
 }
 
 data gcp_iam_converge_submit_timeout: Second = second(count: 30)
 
 // THE STEP BUDGET IS DERIVED FROM THE CONSENT WINDOW, not chosen beside it: the request step waits at
-// most the filing window for the tap, and plan, apply and readback are bounded API calls. Ten
-// minutes over the window is the actuation allowance, the same as the impersonated token's lifetime.
-// THE WAITS CANNOT OUTLAST THE TOKEN (review 81321): every create's operation reads share the one
-// impersonated token, so past its lifetime a read is refused as unreadable (typed, the create is never
-// reissued) whatever the step timeout allows; the lifetime is therefore the whole actuation bound.
+// most the filing window for the tap, and plan, file and the deadline reads are bounded calls. The
+// actuation allowance is the impersonated token's lifetime, because the waits cannot outlast that
+// token (review 81321): every create's operation reads share the one impersonated token, so past its
+// lifetime a read is refused as unreadable (typed, the create is never reissued) whatever the step
+// timeout allows; the lifetime is therefore the whole actuation bound, and it is spent AFTER the
+// decision by the apply step -- it never bounds the operator's time to decide.
 fn gcp_iam_converge_step_timeout_minutes() -> Int {
-  (second_count(s: gcp_iam_converge_file_window) + second_count(s: iam_converge_token_lifetime) + 59) / 60
+  (nat_to_int(n: second_count(s: gcp_iam_converge_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_file_window()))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_poll_cadence)) * gcp_iam_converge_expiry_overrun_ticks
+    + nat_to_int(n: second_count(s: iam_converge_token_lifetime))
+    + nat_to_int(n: second_count(s: gcp_iam_converge_step_margin)) + 59) / 60
 }
 
 // THE ACTUATION TOKEN'S VARIABLE. The workflow's impersonating auth step publishes it to the apply
@@ -136,7 +172,7 @@ fn request_and_wait_as<Subject>(request: AuthorizationRequest<Subject>, label: S
   match approval_instant_now() {
     Absent => exit_failure(reason: concat(label, ": clock unreadable; the request cannot be filed"))
     Present { value: issued } => {
-      let expires = approval_expires_at(issued: issued, window: gcp_iam_converge_file_window)
+      let expires = approval_expires_at(issued: issued, window: gcp_iam_converge_file_window())
       let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
       match approval_file_stored_request(stored: stored, body_file_name: body_file_name, submit_timeout: gcp_iam_converge_submit_timeout) {
         ApprovalFilingRefused { reason: r } => exit_failure(reason: join([label, ": filing refused: ", r], ""))

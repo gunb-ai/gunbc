@@ -5,7 +5,9 @@ import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import std.types { String, NonEmptyStr }
 import extdeps.printing.bambu_lab_lan_protocol { BambuAmsTray }
 import std.process { ProcessExit, exit_failure }
-import std.measure { Second, second }
+import std.measure { Second, second, second_count, Minute, minute }
+import std.integer { nat_to_int }
+import std.checked_arithmetic { nat_magnitude }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
 import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
@@ -13,19 +15,105 @@ import gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }
 import gunbc.fleet.printer_actuation { PrinterStartClaims, print_request, start_authorized, printer_state_generation, report_allows_start }
 import gunbc.fleet.printer_report { report_using_session }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.auth.access_token_source { AccessTokenSource, workload_identity_access_token_lifetime }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_gate {
   approval_instant_now, approval_expires_at, approval_file_stored_request,
   ApprovalFiled, ApprovalFilingRefused, approval_poll_ticks, PollObservedAt,
   PollClockUnreadable, PollBudgetExhausted, approval_gate_from_poll,
-  GateAdmitted, GateRefused, approval_refusal_text,
+  GateAdmitted, GateRefused, approval_refusal_text, approval_request_window,
 }
 
-// HOW LONG THE OPERATOR HAS TO DECIDE THE PRINT-START BED-CLEAR CARD, declared ONCE. The card is
-// filed and answered inside the run that filed it (it polls), so its window is that run's poll
-// budget: 90 ticks at a 10 s cadence.
-data printer_operator_approval_window: Second = second(count: 900)
+// HOW LONG THE OPERATOR HAS TO DECIDE THE PRINT-START BED-CLEAR CARD.
+//
+// THE DECISION WINDOW IS NOT STATED HERE: it is one row in the module that owns approvals
+// (gunbc.auth.approval_gate approval_request_window, four hours by operator ruling 2026-11-05), and
+// this module READS it. The 900 s this row used to carry was the operator request of 2026-11-10 --
+// the bed-clear card for printer-01 (run 42919682079) closed fifteen minutes after it was filed,
+// while nobody was watching the inbox, and the print died as `ApprovalExpired` on a decision nobody
+// had refused. Four hours is what the fleet decided a human gets; a card that grants less than the
+// policy in one place is the restated-literal bug DESIGN's worked example on the seven submit
+// deadlines names: two values that agree are two chances to disagree.
+//
+// WHAT MAKES THIS A SITE-LOCAL DERIVATION AND NOT A COPY is the credential the run presents AFTER the
+// decision. The CI route's credential source is the Secret Manager arm (gunbc.fleet.printer_workflow_run
+// printer_secret_manager_credential_source), so the post-admission path reads the printer's access code
+// from Secret Manager with the job's workload-identity token -- and that token was minted by the WIF
+// auth step BEFORE this function began to poll (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_printer_job passes steps.wif_auth.outputs.access_token into the step's environment).
+// A Google access token lives 3600 s (gunbc.auth.access_token_source
+// workload_identity_access_token_lifetime) and nothing in our workflow asks for more. So the card may
+// stay open only as long as the credential that acts on the decision still works: open it longer and
+// the operator's YES is answered by a 401, which is #16160's ACCESS_TOKEN_EXPIRED failure with a
+// human's approval behind it -- worse than an expired card, because the human believes they acted.
+// The honest alternatives are to mint after the decision (split the run so the credential is federated
+// once the grant exists, as gunbc.auth.gcp_iam_converge_run's actuation auth step and
+// gunbc.fleet.srv1_root_mutation_approval_run's admitted-only mint already do) or to hold no Google
+// identity at all on this path (the host-custody arm). Both are structural; neither is this change.
+// Until one lands, the ceiling below is what this card honestly offers, and the claim in
+// dag/test/claim/fleet/operator_approval_window_witness.dag is RED if the window ever exceeds
+// the credential that has to survive it.
+data printer_approval_pre_decision_allowance: Second = second(count: 300)
+// WHAT THE RUN SPENDS AFTER THE DECISION BEFORE THE TOKEN IS PRESENTED: the state re-read
+// (start_authorized refuses if the bed moved while the operator was deciding -- the re-check that makes
+// a long window safe at all), the Secret Manager credential read, the claim, the upload and the start.
+// SIZED, not measured: 300 s is the order of a Secret Manager read plus a LAN start, and the same row
+// is what the step timeout is built from, so a run that needs longer is caught by the step bound
+// before it is caught by an expired token. MEASURE IT on the first hours-long card and correct this row.
+data printer_approval_post_decision_allowance: Second = second(count: 300)
+
+// The credential ceiling on the window: the token's life, minus what is already spent before the poll
+// begins and what will be spent after the grant arrives. No absorbing default: a ceiling that computes
+// to zero or below stays zero, which turns the claim RED and stops the card rather than silently
+// handing the operator a window the credential cannot honour.
+fn printer_approval_credential_ceiling() -> Second {
+  let room = nat_to_int(n: second_count(s: workload_identity_access_token_lifetime)) -
+    nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance)) -
+    nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+  if room > 0 { second(count: nat_magnitude(a: room)) } else { second(count: 0) }
+}
+
+fn printer_operator_approval_window() -> Second {
+  if nat_to_int(n: second_count(s: approval_request_window))
+    <= nat_to_int(n: second_count(s: printer_approval_credential_ceiling())) {
+    approval_request_window
+  } else {
+    printer_approval_credential_ceiling()
+  }
+}
+
+// THE POLL'S CADENCE IS A SITE FACT, not the window: how often this run re-reads its own filing. Ten
+// seconds is how quickly an operator's tap turns into a print; the tick BUDGET below is derived from
+// the window and this cadence and is never counted off independently.
+data printer_operator_approval_poll_cadence: Second = second(count: 10)
+// POLLS HELD IN RESERVE BEYOND THE DEADLINE, so the wait ends on the model's own ApprovalExpired
+// verdict rather than on a runner kill -- the same reason srv1_root_mutation_approval_run keeps four
+// (its run 41972155901 was killed two minutes before its deadline, so the fold never spoke).
+data printer_approval_expiry_overrun_ticks: Int = 4
+
+// TICKETS ARE DERIVED, never restated: ceiling(window / cadence) covers the whole window -- the 90 this
+// call site used to hand-write was 900 s over a 10 s cadence, a second copy of a number the window
+// already owns -- and the overrun covers the deadline read itself.
+fn printer_operator_approval_poll_tick_budget() -> Int {
+  let ticks = (nat_to_int(n: second_count(s: printer_operator_approval_window()))
+      + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence)) - 1)
+    / nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence))
+  ticks + printer_approval_expiry_overrun_ticks
+}
+
+// WHAT THE RUNNER IS TOLD TO WAIT: prelude + window + the overrun reads + the post-decision delivery +
+// margin. The step bound is a CEILING, not the run's duration, so it is allowed -- required -- to cover
+// the whole window; the run ends early the moment the operator answers.
+data printer_approval_step_margin: Second = second(count: 180)
+
+fn printer_approval_step_timeout_minutes() -> Minute {
+  let secs = nat_to_int(n: second_count(s: printer_approval_pre_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_operator_approval_window()))
+    + nat_to_int(n: second_count(s: printer_operator_approval_poll_cadence)) * printer_approval_expiry_overrun_ticks
+    + nat_to_int(n: second_count(s: printer_approval_post_decision_allowance))
+    + nat_to_int(n: second_count(s: printer_approval_step_margin))
+  minute(count: (secs + 59) / 60)
+}
 
 // The ntfy approval adapter: it files the start request, polls for the signed grant and hands
 // that grant to gunbc.fleet.printer_actuation start_authorized, which owns every physical effect.
@@ -57,11 +145,11 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
     Present { value: request } => match approval_instant_now() {
       Absent => exit_failure(reason: "Cannot read clock")
       Present { value: now } => {
-        let expires = approval_expires_at(issued: now, window: printer_operator_approval_window)
+        let expires = approval_expires_at(issued: now, window: printer_operator_approval_window())
         let stored = stored_request_from_authorization(request: request, issued_at: now, expires_at: expires)
         match approval_file_stored_request(stored: stored, body_file_name: concat(printer, "-approval.json"), submit_timeout: second(count: 30)) {
           ApprovalFilingRefused { reason: r } => exit_failure(reason: r)
-          ApprovalFiled => match approval_poll_ticks(remaining: 90, cadence: second(count: 10), escalation_id: request.escalation_id, expires_at: expires) {
+          ApprovalFiled => match approval_poll_ticks(remaining: printer_operator_approval_poll_tick_budget(), cadence: printer_operator_approval_poll_cadence, escalation_id: request.escalation_id, expires_at: expires) {
             PollClockUnreadable => exit_failure(reason: "Cannot read approval clock")
             PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "Print approval did not arrive; nothing sent")
             PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
