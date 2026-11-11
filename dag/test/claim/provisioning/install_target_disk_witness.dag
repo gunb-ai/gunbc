@@ -1,0 +1,525 @@
+module test.claim.provisioning.install_target_disk_witness
+
+// WITNESSES FOR THE DISK-IDENTITY CARRIER (PXE 2a). Everything here asks the same question in a different shape:
+// can an install be authorized against a disk nobody has looked at, against a wildcard, or against a fact that
+// has gone stale? The claims below are the answers, one per state, and each is written so that weakening the
+// rule it names turns it red — a carrier that admitted a stale reading makes claim 10 red, a carrier that let a
+// class-shaped key through makes claims 3, 11 and 14 red, a carrier that degraded a pinned target to the
+// installer's choice makes claim 12 red, and a carrier that confused "nobody read it" with "what was read is not
+// enough" makes claims 14 and 15 red.
+//
+// The instants are THIS FILE'S decision instant (`decided` below — 2026-11-10T00:00:00Z, the instant these claims
+// are made at) and readings placed relative to it, so the staleness claims are claims about the WINDOW and not
+// about the calendar. The model carries no instant of its own to agree with: admit_install_target_disk is handed
+// the one the caller is deciding at, which is the only reason a reading can be shown to have gone stale.
+import std.types { Bool, Int, NonEmptyStr, String, EpochMs, Milliseconds }
+import std.algebra { FreeSemigroup, non_empty_to_list, string_contains }
+import std.list { first_where }
+import std.optional { Optional, Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.yaml.types { YamlValue }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
+import extdeps.storage.device_identification {
+  ReportedDeviceIdentity,
+  admit_reported_device_identity,
+  ReportedDeviceIdentityAdmitted,
+  ReportedDeviceIdentityRefused,
+  DeviceIdentificationRefusal,
+  DeviceIdentificationRefused,
+  DeviceIdentificationEmpty,
+  DeviceIdentificationCharacterOutsideTheRepertoire,
+  DeviceIdentificationEdgeWhitespace,
+  DeviceIdentificationNothingReported,
+  reported_device_identity_serial,
+  reported_device_identity_model,
+  device_identification_token_text,
+}
+import extdeps.os.ubuntu_autoinstall {
+  AutoinstallDirectLayoutTarget,
+  AutoinstallDiskPin,
+  MatchedDisk,
+  InstallerChoosesDisk,
+  autoinstall_disk_pin_serial,
+  autoinstall_disk_pin_model,
+}
+import gunbc.provisioning.install_target_disk {
+  DiskIdentitySource,
+  TargetDiskReading,
+  DiskReported,
+  NoDiskReported,
+  NotRead,
+  LsblkBlockReport,
+  RedfishStorageDrive,
+  InstallTargetDisk,
+  InstallTargetDiskAdmission,
+  InstallTargetDiskAdmitted,
+  InstallTargetDiskWithheld,
+  InstallTargetDiskWithheldCause,
+  TargetDiskNeverRead,
+  NoTargetDiskReported,
+  TargetDiskIdentityUnusable,
+  TargetDiskReadingFromTheFuture,
+  TargetDiskReadingStale,
+  TargetDiskSerialNotReported,
+  admit_install_target_disk,
+  install_target_disk_host,
+  install_target_disk_read_at,
+  install_target_disk_pin,
+  install_target_disk_pinned_match,
+  install_target_disk_direct_layout_target,
+  disk_identity_source_text,
+  target_disk_reading_host,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RUN'S DECISION INSTANT: 2026-11-10T00:00:00Z, the instant the site's install requests are authorized at.
+data decided: EpochMs = 1794268800000
+
+// THE FLEET'S STANDING WINDOW: thirty days, the value
+// gunbc.fleet.machine_target_disk_observations site_pxe_edge_disk_identity_admission_window carries. Claims about
+// staleness use it rather than a private number so a change to the fleet's rule shows up here.
+data window: Milliseconds = 2592000000
+
+// THE SAME INSTANT, MOVED BY WHAT THE CLAIM NEEDS. Stated as instants and not as arithmetic on a brand, because
+// the claims are about where a reading sits relative to the window and a reader should be able to see that in
+// the number: the window is 2,592,000,000 ms (30 days) before `decided`.
+data one_ms_after_decision: EpochMs = 1794268800001
+
+data exactly_the_window_ago: EpochMs = 1791676800000
+
+data one_ms_past_the_window: EpochMs = 1791676799999
+
+// WHAT LSBL PRINTED FOR srv15's NVMe, in artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt. The
+// witness states the identity the same way the capture does, so the claims below are about the carrier's rules
+// and not about an invented value.
+data witness_serial: String = "25466Q801557"
+
+data witness_model: String = "WD Green SN350 1TB 2G0C"
+
+// A READING OF A DISK, taken at the instant a claim controls. The serial arrives as the text the tool printed,
+// wrapped as reported: a capture that printed a model and no serial is a different reading (reading_model_only
+// below), not this one with an empty string in it.
+fn reading(serial: String, model: Optional<String>, source: DiskIdentitySource, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: operator_host_srv15,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Present { value: serial as NonEmptyStr },
+    reported_model: match model {
+      Absent => Absent
+      Present { value: m } => Present { value: m as NonEmptyStr }
+    },
+    source: source,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
+}
+
+// THE srv14 CAPTURE'S READING, in general: `lsblk --output=NAME,SIZE,MODEL` printed a model and no serial. It is
+// a reading — somebody looked — and it is not an identity, which is the distinction the one-disk rule below
+// refuses on.
+fn reading_model_only(model: String, source: DiskIdentitySource, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: operator_host_srv15,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Absent,
+    reported_model: Present { value: model as NonEmptyStr },
+    source: source,
+    captured_in: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
+}
+
+// A READING WHOSE CAPTURE HAD NEITHER COLUMN — distinct from reading(serial: "", ...), which is a capture that
+// had the column and printed nothing in it. The two refusals must stay distinguishable: one tells the operator
+// to re-run lsblk, the other tells them to re-run it asking for SERIAL.
+fn reading_nothing_reported(source: DiskIdentitySource, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: operator_host_srv15,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Absent,
+    reported_model: Absent,
+    source: source,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
+}
+
+fn reported_model(text: String) -> Optional<String> {
+  Present { value: text }
+}
+
+fn admitted_target(reading: TargetDiskReading) -> Optional<InstallTargetDisk> {
+  match admit_install_target_disk(reading: reading, decided_at: decided, window: window) {
+    InstallTargetDiskAdmitted { target: target } => Present { value: target }
+    InstallTargetDiskWithheld { host: _, cause: _ } => Absent
+  }
+}
+
+fn withheld_cause(reading: TargetDiskReading) -> Optional<InstallTargetDiskWithheldCause> {
+  match admit_install_target_disk(reading: reading, decided_at: decided, window: window) {
+    InstallTargetDiskAdmitted { target: _ } => Absent
+    InstallTargetDiskWithheld { host: _, cause: cause } => Present { value: cause }
+  }
+}
+
+// THE SERIAL ON A CARRIER'S PIN. There is no match-key list to read any more: the pin holds the serial as a
+// field it cannot be built without (extdeps.os.ubuntu_autoinstall's AutoinstallDiskPin).
+fn pin_serial_text(target: InstallTargetDisk) -> String {
+  device_identification_token_text(
+    token: autoinstall_disk_pin_serial(pin: install_target_disk_pin(disk: target)),
+  ) as String
+}
+
+// THE MODEL ON A CARRIER'S PIN, or "" when the reading reported none — "" is not a model the admitter could
+// have accepted (extdeps.storage.device_identification refuses an empty token), so a claim comparing against a
+// real model cannot be satisfied by the absent case.
+fn pin_model_text(target: InstallTargetDisk) -> String {
+  match autoinstall_disk_pin_model(pin: install_target_disk_pin(disk: target)) {
+    Absent => ""
+    Present { value: token } => device_identification_token_text(token: token) as String
+  }
+}
+
+// AN IDENTITY, admitted the way the admitter admits one, so the pin builder is asked about the same values a
+// reading carries. Absent when the text is not a usable token: a claim then goes red rather than inventing an
+// identity to reason about.
+fn identity_of(serial: Optional<String>, model: Optional<String>) -> Optional<ReportedDeviceIdentity> {
+  match admit_reported_device_identity(serial: serial, model: model) {
+    ReportedDeviceIdentityAdmitted { identity: identity } => Present { value: identity }
+    ReportedDeviceIdentityRefused { cause: _ } => Absent
+  }
+}
+
+// THE SERIAL THE CARRIER WAS ADMITTED WITH, as text, or "" when it reported none — "" is not a serial the
+// admitter could have accepted (extdeps.storage.device_identification refuses an empty token), so a claim that
+// compares against a real serial cannot be satisfied by the absent case.
+fn admitted_serial_text(target: InstallTargetDisk) -> String {
+  match reported_device_identity_serial(identity: target.identity) {
+    Absent => ""
+    Present { value: token } => device_identification_token_text(token: token) as String
+  }
+}
+
+// 1. A reading taken inside the window admits, and the carrier carries BOTH instants: the instant the disk was
+// read and the instant it was admitted. A carrier that dropped `read_at` downstream could not tell an operator
+// how old the claim about their disk was.
+test fn an_admitted_reading_carries_the_identity_and_both_instants() -> Bool {
+  match admitted_target(reading: reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: target } =>
+      install_target_disk_host(disk: target) == operator_host_srv15
+        && install_target_disk_read_at(disk: target) == decided
+        && admitted_serial_text(target: target) == witness_serial
+  }
+}
+
+// 2. The pin a carrier holds is the serial the reading reported, and the model it reported with it — the two
+// values the reference says match udev's ID_SERIAL and ID_MODEL. There is no key LIST to inspect: the pin's
+// serial is a field a caller cannot leave out, which is why this claims the VALUES and leaves the order they
+// appear in to where the document is actually written (site_pxe_edge_converge_witness reads the rendered
+// `match:` block). RED: drop the reported model from the pin and the last line is red; take the serial from
+// somewhere other than the reading and the first is.
+test fn the_pin_names_the_serial_and_carries_the_reported_model() -> Bool {
+  match admitted_target(reading: reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: target } =>
+      pin_serial_text(target: target) == witness_serial
+        && pin_model_text(target: target) == witness_model
+  }
+}
+
+// 3. THE ONE BUILDER REPORTS AND ONLY REPORTS. With a serial and a model it hands back a pin holding both; with
+// a serial alone the pin's model is Absent — it invents no refinement the capture did not print, because
+// upstream ANDs the keys it is given ("Every supplied key must match for the disk to be a match") and an
+// invented `ssd`/`size`/model would be a constraint nobody observed, honoured anyway, erased on. The class keys
+// have no field to be invented INTO, which is the same safety property the old "a carrier never emits ssd"
+// claim asked for, held by the type instead of by a filter over a list.
+// RED: fill the model in when it was not reported and the second half is red; drop a reported one and the first is.
+test fn the_builder_invents_no_refinement_the_reading_did_not_report() -> Bool {
+  match identity_of(serial: Present { value: witness_serial }, model: Present { value: witness_model }) {
+    Absent => false
+    Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+      Absent => false
+      Present { value: pin } =>
+        device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+          && match autoinstall_disk_pin_model(pin: pin) {
+              Absent => false
+              Present { value: token } => device_identification_token_text(token: token) as String == witness_model
+            }
+    }
+  }
+    && match identity_of(serial: Present { value: witness_serial }, model: Absent) {
+      Absent => false
+      Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+        Absent => false
+        Present { value: pin } => match autoinstall_disk_pin_model(pin: pin) {
+          Absent => device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+          Present { value: _ } => false
+        }
+      }
+    }
+}
+
+// 4. A model whose disk has never been read is withheld, and the cause says so with the reason the fleet's own
+// row records (srv14's capture printed no SERIAL column). Nothing renders, nothing boots, and the operator is
+// told what to go read.
+test fn a_disk_that_was_never_read_withholds_the_install_and_says_why() -> Bool {
+  let why = "lsblk printed NAME,SIZE,MODEL and no SERIAL column" as NonEmptyStr
+  match withheld_cause(reading: NotRead { host: operator_host_srv15, why: why }) {
+    Absent => false
+    Present { value: cause } => match cause {
+      TargetDiskNeverRead { host: h, why: w } => h == operator_host_srv15 && w == why
+      _ => false
+    }
+  }
+}
+
+// 5. A reader that ran and reported no disk is withheld WITH ITS NAME. Both of this fleet's BMCs answer the
+// Redfish Storage collection with zero members, so this arm is what the BMC path produces, and the cause names
+// the reader, the artifact, and its report rather than saying "nothing was seen".
+test fn a_reader_that_reported_no_disk_names_the_reader_that_failed() -> Bool {
+  let empty_collection = "Members: [], Members@odata.count: 0" as NonEmptyStr
+  match withheld_cause(reading: NoDiskReported {
+    host: operator_host_srv15,
+    source: RedfishStorageDrive,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system_Storage.json" as NonEmptyStr,
+    report: empty_collection,
+  }) {
+    Absent => false
+    Present { value: cause } => match cause {
+      NoTargetDiskReported { host: h, source: s, captured_in: c, report: r } =>
+        h == operator_host_srv15 && disk_identity_source_text(source: s) as String == "redfish-storage"
+          && c as String == "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system_Storage.json"
+          && r == empty_collection
+      _ => false
+    }
+  }
+}
+
+// 6. A GLOB IS NOT A DISK IDENTITY. The Canonical reference's own example of a serial match is `serial: CT*`,
+// which matches every disk of a class — the exact thing a destructive install must not be authorized against.
+// The repertoire has no `*`, so this reading never admits and the cause says which character class failed.
+test fn a_glob_shaped_serial_is_not_a_disk_identity() -> Bool {
+  match withheld_cause(reading: reading(serial: "CT*", model: Absent, source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: cause } => match cause {
+      TargetDiskIdentityUnusable { host: _, source: _, cause: c } => match c {
+        DeviceIdentificationCharacterOutsideTheRepertoire => true
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+// 7. An empty serial is not an identity either — and it is refused as EMPTY, not as a character problem, so the
+// operator reading the cause is sent to "go read the serial" and not to "fix a typo".
+test fn an_empty_serial_is_refused_as_empty() -> Bool {
+  match withheld_cause(reading: reading(serial: "", model: Absent, source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: cause } => match cause {
+      TargetDiskIdentityUnusable { host: _, source: _, cause: c } => match c {
+        DeviceIdentificationEmpty => true
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+// 8. A serial with stray whitespace at either edge — the shape a shell capture produces when a column is padded
+// — is refused rather than silently trimmed, because trimming is a guess about what the tool meant.
+test fn edge_whitespace_is_refused_not_trimmed() -> Bool {
+  match withheld_cause(reading: reading(serial: " 25466Q801557 ", model: Absent, source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: cause } => match cause {
+      TargetDiskIdentityUnusable { host: _, source: _, cause: c } => match c {
+        DeviceIdentificationEdgeWhitespace => true
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+// 9. A reading taken AFTER the decision is not a reading of the current state. This is the shape a clock that
+// runs behind its machine produces, and a negative age must not count as fresh: the identity it reports is one
+// the run has no way to have observed.
+test fn a_reading_from_after_the_decision_refuses_the_install() -> Bool {
+  match withheld_cause(reading: reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: one_ms_after_decision)) {
+    Absent => false
+    Present { value: cause } => match cause {
+      TargetDiskReadingFromTheFuture { host: _, read_at: r, decided_at: d } => r == one_ms_after_decision && d == decided
+      _ => false
+    }
+  }
+}
+
+// 10. A READING OLDER THAN THE WINDOW REFUSES THE INSTALL, and the boundary is the window itself: one
+// millisecond outside it is refused, and at exactly the window the reading is still the current state. The
+// second half is what makes this a discriminating pair — a model that ignored `window` would pass the first half
+// by binding nothing and the second half by binding everything.
+test fn a_reading_older_than_the_window_refuses_the_install() -> Bool {
+  let too_old = reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: one_ms_past_the_window)
+  let at_the_boundary = reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: exactly_the_window_ago)
+  is_withheld(reading: too_old)
+    && is_admitted(reading: at_the_boundary)
+    && match withheld_cause(reading: too_old) {
+      Absent => false
+      Present { value: cause } => match cause {
+        TargetDiskReadingStale { host: _, read_at: r, decided_at: d, deadline: dl } => r == one_ms_past_the_window && d == decided && dl == 1794268799999
+        _ => false
+      }
+    }
+}
+
+fn is_admitted(reading: TargetDiskReading) -> Bool {
+  match admit_install_target_disk(reading: reading, decided_at: decided, window: window) {
+    InstallTargetDiskAdmitted { target: _ } => true
+    InstallTargetDiskWithheld { host: _, cause: _ } => false
+  }
+}
+
+fn is_withheld(reading: TargetDiskReading) -> Bool {
+  !is_admitted(reading: reading)
+}
+
+// 11. ONLY A SERIAL GIVES THE BUILDER AN ANSWER. Two disks off the same production line carry the same model —
+// this fleet holds Samsung and Intel parts in quantity — and every class key (`ssd`, `size`, `path`, `model`)
+// is true of all of them, which is why extdeps.os.ubuntu_autoinstall's AutoinstallDiskPin takes the serial as a
+// field it cannot be built without and this module no longer keeps a list of match keys to search for the one
+// that binds. The witness states the rule against readings, not against a predicate: a serial in hand, the
+// builder has an answer; the same disk reported by model alone, it has none.
+// RED: make the builder answer for a model-only identity — the state the type exists to make unwritable — and
+// the second half is red; make it refuse a serial and the first is.
+test fn only_a_serial_gives_the_builder_an_answer() -> Bool {
+  match identity_of(serial: Present { value: witness_serial }, model: Present { value: witness_model }) {
+    Absent => false
+    Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
+    && match identity_of(serial: Absent, model: Present { value: "SAMSUNG MZVPV512HDGL-000H1" }) {
+      Absent => false
+      Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
+}
+
+// 12. THE LAYOUT TARGET A CARRIER GIVES IS A MATCHED DISK, never the installer's choice. This is the one line
+// where the pin can silently disappear: if the mapping handed back InstallerChoosesDisk the document would still
+// render, still install, and still erase something — it would just pick what to erase itself. RED: degrade the
+// mapping and this is red while every rendering claim stays green, which is why it is claimed here and not only
+// at the document.
+test fn the_target_a_carrier_gives_is_a_matched_disk() -> Bool {
+  match admitted_target(reading: reading(serial: witness_serial, model: reported_model(witness_model), source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: target } =>
+      match install_target_disk_direct_layout_target(disk: target) {
+        MatchedDisk { pin: pin } =>
+          device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+        InstallerChoosesDisk => false
+      }
+  }
+}
+
+// 13. THERE IS NO CLASS-ONLY MATCH TO BUILD, AND EVERY PIN CAME FROM A SERIAL. The claim this file used to make
+// — hand-build a MatchedDisk from `ssd`/`size` and watch the rule refuse it — can no longer be written, and
+// that is the finding: the arm holds an AutoinstallDiskPin, whose serial a caller cannot omit, so the wrong
+// state has no spelling (gunbc.design_argument::fail_closed, "stronger than catching a wrong state is making
+// it unwritable"). What is still checkable is that the one door is really the only door: a reading with a serial
+// yields a pin carrying that serial and nothing the reading did not report, and a reading that reported nothing
+// yields no pin at all.
+// RED: answer with the model in the serial's field and the last half is red; answer with a pin when no serial
+// was reported and the first half's Absent-arm is; lose the serial and the first is.
+test fn a_pin_exists_only_for_a_reading_that_reported_a_serial() -> Bool {
+  match identity_of(serial: Present { value: witness_serial }, model: Absent) {
+    Absent => false
+    Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+      Absent => false
+      Present { value: pin } =>
+        device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+          && match autoinstall_disk_pin_model(pin: pin) {
+            Absent => true
+            Present { value: _ } => false
+          }
+    }
+  }
+    // And the two fields are not interchangeable: the serial goes in the serial's field. A builder that put the
+    // model there would still render a `match:` block, and the installer would test every WD Green against the
+    // model string and pick one — which is the defect, wearing the right key's name.
+    && match identity_of(serial: Present { value: witness_serial }, model: Present { value: witness_model }) {
+      Absent => false
+      Present { value: identity } => match install_target_disk_pinned_match(identity: identity) {
+        Absent => false
+        Present { value: pin } =>
+          device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String == witness_serial
+            && witness_serial != witness_model
+      }
+    }
+}
+
+// 14. THE ONE-DISK RULE IS APPLIED AT ADMISSION, NOT JUST STATED. The reading is srv14's real state: lsblk
+// printed `nvme0n1 476.9G SAMSUNG MZVPV512HDGL-000H1` from NAME,SIZE,MODEL — a model, no serial. Every field it
+// did report is a usable token, so this is NOT the unusable-identity refusal: what fails is that the keys those
+// fields can build name a CLASS (upstream tests every candidate disk against each supplied key, so a model
+// matches every disk of that model) and an install must not be authorized against a class. The mirror half is
+// what makes it discriminating: the same model, with the serial, admits — so a model that refused everything,
+// or that ignored the missing serial and minted a carrier, is red here rather than green.
+test fn a_model_without_a_serial_is_refused_because_it_names_no_single_disk() -> Bool {
+  match withheld_cause(reading: reading_model_only(model: "SAMSUNG MZVPV512HDGL-000H1", source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: cause } => match cause {
+      TargetDiskSerialNotReported { host: h, source: s, reported: reported } =>
+        h == operator_host_srv15
+          && s == LsblkBlockReport
+          && match reported_device_identity_serial(identity: reported) {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match reported_device_identity_model(identity: reported) {
+            Absent => false
+            Present { value: token } => device_identification_token_text(token: token) as String == "SAMSUNG MZVPV512HDGL-000H1"
+          }
+      _ => false
+    }
+  }
+    && match admitted_target(reading: reading(serial: "SAMSUNG PT02", model: reported_model("SAMSUNG MZVPV512HDGL-000H1"), source: LsblkBlockReport, read_at: decided)) {
+      Absent => false
+      Present { value: target } =>
+        pin_serial_text(target: target) == "SAMSUNG PT02"
+          && pin_model_text(target: target) == "SAMSUNG MZVPV512HDGL-000H1"
+    }
+}
+
+// 15. A READING THAT REPORTED NOTHING IS REFUSED FOR BEING NOTHING, not for being unusable, and the two causes
+// stay distinguishable: an empty serial says "the field was there and blank", the nothing-reported cause says
+// "the capture never had that column" — the difference between re-running lsblk and re-running it with SERIAL.
+test fn a_reading_that_reported_neither_field_is_refused_as_nothing_reported() -> Bool {
+  match withheld_cause(reading: reading_nothing_reported(source: LsblkBlockReport, read_at: decided)) {
+    Absent => false
+    Present { value: cause } => match cause {
+      TargetDiskIdentityUnusable { host: h, source: _, cause: inner } =>
+        h == operator_host_srv15 && match inner {
+          DeviceIdentificationNothingReported => true
+          _ => false
+        }
+      _ => false
+    }
+  }
+    && match withheld_cause(reading: reading(serial: "", model: reported_model(witness_model), source: LsblkBlockReport, read_at: decided)) {
+      Absent => false
+      Present { value: cause } => match cause {
+        TargetDiskIdentityUnusable { host: _, source: _, cause: inner } => match inner {
+          DeviceIdentificationEmpty => true
+          _ => false
+        }
+        _ => false
+      }
+    }
+}

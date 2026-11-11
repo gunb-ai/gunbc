@@ -1605,7 +1605,27 @@ data gcp_token_lifetime_condition_and_expiry_unconsumed: IntegrationConcern = In
       },
       account: "Found while writing the DESIGN worked example: default_token_lifetime has no consumer; optional_impersonation restates the 3600 s limit as a retired where-refinement and drops expire_time; bootstrap_authority_may_grant restates 3600 as a bare literal.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        // The revision PR #16150 carried when this sighting was written; the sighting commit sits on
+        // top of it and changes no fact recorded here.
+        revision: "28769a9bf75ec6cdf465ad1154900194919b5af8",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "default_token_lifetime") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "admit_token_lifetime") },
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "token_lifetime_wire") },
+            CitesDeclaration { declaration: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "AccessTokenLifetime") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.optional_impersonation", decl_name: "optional_impersonation") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.heal_publication", decl_name: "heal_publisher_lifetime_ruling") },
+            CitesDeclaration { declaration: decl_ref(module_path: "test.claim.tailscale_acl_phase2_design_witness", decl_name: "the_admitted_lifetime_has_one_constructor") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap_authority", decl_name: "bootstrap_authority_may_grant") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.gcp_operation_wait", decl_name: "gcp_operation_budget_fits_actuation_allowance") },
+          ],
+        },
+        account: "Sighted again on PR #16150, where part of it closed and the rest got sharper -- so the row stays Open rather than being closed on the merged half. CLOSED by that change, in the order the requirement names them: the upstream model now owes all four facts (default_token_lifetime carries default_lifetime, ordinary_maximum, extended_maximum and the extended_maximum_condition naming constraints/iam.allowServiceAccountCredentialLifetimeExtension, so nothing may conclude a lifetime is grantable from extended_maximum); the protobuf Duration spelling has one owner in the API model (token_lifetime_wire, which encodes and deliberately does not rule); the ordinary maximum is asked for through one checked constructor returning Optional (admit_token_lifetime), whose admitted value is a sole_constructor type no foreign module can build, measured by an executing claim rather than asserted; and optional_impersonation returns the mint's expireTime instead of dropping it, Absent on the arm where no mint ran. The 'no inspected production request path consumes it' half also closed: heal_publisher_lifetime_ruling is an inspected path that consumes the ruling, and the publisher-side mint runs it. STILL OPEN, which is why this is a sighting and not an Integrated disposition: bootstrap_authority_may_grant still compares against a bare 3600 instead of reading ordinary_maximum, and gcp_operation_budget_fits_actuation_allowance still compares two configured durations (gcp_operation_poll_budget against iam_converge_token_lifetime) rather than consuming an observed expireTime, so the credential-validity obligation the requirement ends on is unmet. Closing the row here would be the record DESIGN refuses (gunbc.design_argument::continuous_generalization: a completed work item, a merged abstraction or a shorter ledger is not evidence of integration).",
+      },
+    ],
   },
   disposition: Open,
 }
@@ -1898,232 +1918,6 @@ data host_effect_apply_witness_import_block_absent: IntegrationConcern = Integra
   disposition: Open,
 }
 
-data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = IntegrationConcern {
-  identity: "roadmap_attempt_metering_plain_head_refusal",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
-    requirement: "a pre-seal plain metering.json at an attempt entry whose sealed slot exists with generation >= 1 answers a typed refusal through the seal contract; it is never read or adopted by a fallback arm inside attempt_metering_read",
-    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass, which dissolves the population the adoption op serves" },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
-    tail: [],
-  },
-  question: "Should a plain metering.json beside a sealed slot ever be readable? No: the sealed slot is the only metering record store; the refusal arm records the non-migration, and the adoption op (roadmap_attempt_metering_belt_departed_adoption) is the only route that moves plain bytes into the slot.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_current_head") },
-        tail: [],
-      },
-      account: "srv2 measured 23 plain metering.json records dated 2026-10-24 under the live attempt-state root, all predating the index route; a reader that answered absent or head for them would silently drop metered usage, so it refuses typed instead.",
-    },
-    tail: [],
-  },
-  disposition: Open,
-}
-
-data roadmap_attempt_metering_belt_departed_adoption: IntegrationConcern = IntegrationConcern {
-  identity: "roadmap_attempt_metering_belt_departed_adoption",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
-    requirement: "the departed pass carries an adoption step that reads a plain metering.json exactly once, verifies it through metering_observe_against, and commits it as generation one through attempt_metering_commit with ExpectSlotAbsent; a record that fails verification refuses typed and stays in place, and adopting twice is a lost race or a no-op, never a duplicate",
-    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass" },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
-    tail: [
-      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_commit"),
-    ],
-  },
-  question: "How do the 23 pre-seal plain metering.json records reach the sealed slot without a second read path? Through this adoption step, invoked by belt_metering_departed before the new reader serves; it retires when the srv2 inventory reads empty.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "7476b9b85bb42b3590945d0d768e77c315c97e9a",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_observe_against") },
-        tail: [],
-      },
-      account: "the 23 records predate the index route, so the for-attempt pass cannot reach them; only the departed pass (or an operator-invoked boundary over the same modeled act) can adopt them, and neither route reaches attempts already processed by the old pass -- those rows are a known gap beside this one.",
-    },
-    tail: [],
-  },
-  disposition: Open,
-}
-
-data roadmap_metering_closing_plain_writer_retired: IntegrationConcern = IntegrationConcern {
-  identity: "roadmap_metering_closing_plain_writer_retired",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
-    requirement: "the closing cutover no longer creates plain metering.json; systemd-run --collect unit_type=exec writing metering.json is retired as a dead route, the census enumerates sealed slot generations for the closing sweep, and the gate observes the metering writer unit inactive with no process before sweeping",
-    standing: RequirementUnestablished { decided_by: "nothing; this row records a retirement, not a gap to reopen -- the sealed slot is the only metering record store" },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
-    tail: [],
-  },
-  question: "Any surviving route that writes a plain metering.json during closing? None: the transient-unit write is removed and the census that guards closing enumerates slot generations instead; the residual is an out-of-band unmask of the writer unit, documented and refused by the gate's observation.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate") },
-        tail: [],
-      },
-      account: "masking gunbc-obligation-<instance>-metering.service on srv2 refused the belt's transient-unit creation (executed observation, relayed as the blocker-2(b) receipt), so the retired writer is enforceable by unit mask and the gate observes unit-inactive plus no-process before the sweep.",
-    },
-    tail: [],
-  },
-  disposition: Open,
-}
-
-data attempt_request_binding_races_itself_beside_the_store: IntegrationConcern = IntegrationConcern {
-  identity: "attempt_request_binding_races_itself_beside_the_store",
-  kind: SuspectedFork {
-    authorities: DistinctAuthorities {
-      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
-      second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
-      rest: [
-        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_store", decl_name: "attempt_state_create_new_at"),
-      ],
-    },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
-    tail: [
-      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
-    ],
-  },
-  question: "Who may replace an attempt's request binding once one stands -- gunbc.durable_cas_file_store's committed generations with a carried expectation, or this module's create-new plus read-back comparison?",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit") },
-        tail: [
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance") },
-          CitesArtifact {
-            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_request_record|storage|attempt_request_binding_create_for_instance|1, kept at review 90974",
-            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
-          },
-        ],
-      },
-      account: "Read at 8505cef2363: `attempt_request_binding_create_for_instance` (:188) mints the store and delegates to `attempt_request_binding_commit` (:169), which creates with `attempt_state_create_new_at` and on an occupied name reads the standing bytes, decodes them and refuses a different binding -- correct behaviour, held twice: the same rule exists in `gunbc.durable_cas_file_store` as an expectation that answers a lost race typed. An unreadable standing binding is refused here by this module's own reading of the file, not by the library's typed unreadable-slot state.",
-    },
-    tail: [],
-  },
-  disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
-        control: decl_ref(module_path: "test.claim.roadmap.attempt_request_binding_commit_wet_witness", decl_name: "a_different_binding_cannot_replace_the_first"),
-        statement: "the first binding stands: a repeated create of the same binding is idempotent, a different binding cannot replace it, and an unreadable existing binding is not replaced -- whatever route holds the exclusion, these three answers must not change",
-      },
-    ],
-    next: climbs_when(capability: "the binding is committed through generations with a carried expectation and a typed lost race, the refusal of a different binding comes from the library rather than from this module's read-back, and a mutation of the expectation rule reddens a binding row"),
-  },
-}
-
-data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
-  identity: "metering_roster_written_by_hand_beside_the_store",
-  kind: SuspectedFork {
-    authorities: DistinctAuthorities {
-      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
-      second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
-      rest: [
-        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
-      ],
-    },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
-    tail: [
-      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
-      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
-    ],
-  },
-  question: "Who may put a metering roster entry, or the sealed roster, where one already stands -- gunbc.durable_cas_file_store's committed generations, or this module's own create-only write with its read-back adjudication?",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once") },
-        tail: [
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold") },
-          CitesArtifact {
-            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_metering|storage|metering_roster_admit|1, narrowed rather than deleted at review 90974",
-            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
-          },
-        ],
-      },
-      account: "Read at 8505cef2363: `attempt_metering_create_once` (:1394) writes create-only and, on an occupied name, reads the standing bytes back and compares; `metering_roster_seal_under_hold` (:1661) publishes the sealed roster through it. `attempt_metering_commit` puts the RECORD through `file_compare_and_set` with a carried expectation and a typed lost race, so the same question -- may these bytes stand where those stand -- is answered twice in one module, and only one of the two answers can tell a lost race from a matching one.",
-    },
-    tail: [],
-  },
-  disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
-        control: decl_ref(module_path: "test.claim.c_roadmap2_metering_record_cas_wet_witness", decl_name: "an_entry_that_names_the_worker_is_refused_by_name_and_the_roster_refuses_to_read"),
-        statement: "the roster's own naming rule stands through a migration: an entry file may only add a launch beyond the worker, and an entry that names the worker is refused by name -- the bytes the create-only route wrote today stay readable by the reader that follows",
-      },
-    ],
-    next: climbs_when(capability: "the roster entry and the sealed roster are put through committed generations, the reader reads the head, and a mutation of the library's expectation rule reddens a roster row -- today it reddens none, because these two writes bypass the library"),
-  },
-}
-
-data served_observation_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
-  identity: "served_observation_written_by_hand_beside_the_store",
-  kind: SuspectedFork {
-    authorities: DistinctAuthorities {
-      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
-      second: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
-      rest: [
-        decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put"),
-      ],
-    },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_write_for_instance"),
-    tail: [
-      decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
-      decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put"),
-    ],
-  },
-  question: "Who owns a durable write of a kept served-observation index or body record -- gunbc.durable_cas_file_store's committed generations, or this module's own Filesystem.Write into <instance_root>/served-observations?",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "8d7634470095bdac5307cf31af73ea60d92753fa" as CommitSha,
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put") },
-        tail: [
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put") },
-          CitesArtifact {
-            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_served_observation|storage|served_observation_write_for_instance|1 that PR 1 of the sealed-store lane narrowed rather than deleted",
-            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
-          },
-        ],
-      },
-      account: "Read at 8d7634470095: `served_observation_index_put` (dag/gunbc/roadmap/roadmap_served_observation.dag:239) and `served_observation_body_put` (:248) each call `Filesystem.Write` on a path built from the instance root, with no expectation about what stands there; `served_observation_write_for_instance` (:258) composes them. The sealed stores in the same lane write generation-suffixed slots through `file_compare_and_set`, where a stale expectation is a typed refusal. A mutation of the library's expectation rule reddens a row for every sealed store and no row here, because the writes bypass the library -- which is the test that says the rule is kept twice. srv1's observation directories hold plain `index.json` and body files written by this route (captured under dag/test/fixture/c_roadmap2_srv1_bytes), so migrating means adopting those bytes, not replacing them.",
-    },
-    tail: [],
-  },
-  disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
-    preserve: [
-      PreservedObligation {
-        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_write_for_instance"),
-        control: decl_ref(module_path: "test.claim.c_roadmap2_old_bytes_wet_witness", decl_name: "the_served_observation_index_bytes_survive_the_seal"),
-        statement: "the bytes the hand route wrote stand: an srv1 observation directory's kept index and body files are read back unchanged by the sealed reader, and a migration that cannot read them has replaced the population rather than migrated it",
-      },
-    ],
-    next: climbs_when(capability: "the index and the body are put through the store library's committed generations, the readers read the head, srv1's plain files are adopted -- verified before they are moved and retired by the act that moves them -- and a mutation of the library's expectation rule reddens a served-observation row, which today it does not"),
-  },
-}
-
 
 // THE srv1 MICROVM SLOTS' CHARGE IS RELEASED BY A READING THE LANE NEVER WRITES (filed by
 // still-otter-622, 2026-11-09, under the operator decision
@@ -2391,7 +2185,285 @@ data branch_match_arm_closure_declared_return_not_admitted: IntegrationConcern =
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, roadmap_attempt_metering_plain_head_refusal, roadmap_attempt_metering_belt_departed_adoption, roadmap_metering_closing_plain_writer_retired, attempt_request_binding_races_itself_beside_the_store, metering_roster_written_by_hand_beside_the_store, served_observation_written_by_hand_beside_the_store]
+// PXE 2a (gunbc#16275, session proud-crab-189). The install's target disk is bound by observed serial in two
+// places, and the change that added the second one is the change that records it
+// (gunbc.design_argument::root_generalization: the answer belongs where the pattern was introduced).
+data pxe_2a_base_revision: CommitSha = "ae3f13cead619854afadb36d449c44ba27b5d1fd"
+
+data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConcern = IntegrationConcern {
+  identity: "install_target_disk_binds_a_disk_beside_the_seed_selector",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),
+      second: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+    tail: [
+      decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "install_target_disk_pinned_match"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "TargetDiskSelector"),
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "BoundDiskEvidence"),
+    ],
+  },
+  question: "Is 'the disk this install may erase is the one with this observed serial' one decision or two? select_target_disk matches a TargetDiskSelector over a probe's whole population and mints sealed DiskSelectionProvenance with matched/observed counts; admit_install_target_disk admits ONE reported reading against a clock and a freshness window and renders upstream's storage.layout.match keys. The second cannot be fed the first honestly (a one-element population would claim discrimination nobody enumerated) and the first has no instant in its type, so neither can absorb the other today. What unifies them is the observation both want: a host's disk identity, read once, admitted once.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: pxe_2a_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "DiskSelectionProvenance") },
+        ],
+      },
+      account: "Raised by the 2026-11-10 review of gunbc#16275 against the PR that added gunbc.provisioning.install_target_disk. Read both modules in full: the seed's selection answers WHICH OF THE REPORTED POPULATION does a rule pick, is sealed to select_target_disk by DiskSelectionProvenance's admit_callers wall, and is consumed by bind_ubuntu_autoinstall_seed; the carrier answers MAY THIS INSTALL BE ACTUATED given this reading and this instant, is consumed by gunbc.fleet.site_pxe_edge_converge's install payload and gunbc.os_install_emit. The overlap is real — both turn an observed serial into a binding — and the difference is not cosmetic: a one-element call to select_target_disk would mint provenance claiming matched 1 of observed 1 over a population nobody enumerated, and that selection carries no read time, so the operator's requirement (refuse when the identity is no longer current) cannot be stated in it. Recorded rather than silently kept apart: the shared root is the disk observation, and PXE 2c is the first consumer that will hold both halves in one run.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "where does an admitted disk observation live, so that a population selection and a freshness-bound authorization are two readings of one record rather than two records? Candidates are gunbc.provisioning.install_target_disk's carrier, the seed's sealed DiskSelectionProvenance, or a third module beside extdeps.storage.device_identification — undecided until a run holds both.",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+        control: Absent,
+        statement: "a unification keeps what the carrier's admission refuses today: a reading never taken, a reader that reported no disk, an identity whose text is a glob, a reading whose fields hold no serial so no extdeps.os.ubuntu_autoinstall AutoinstallDiskPin can be built, a reading from after the decision, and a reading older than the caller's window — each still with its typed cause, and the site still withholding per host with the other hosts served",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk"),
+        control: Absent,
+        statement: "a unification keeps the seed's discriminating-power evidence (matched and observed counts over the population the probe reported) rather than loosening it to a serial string someone typed",
+      },
+    ],
+    next: climbs_when(capability: "PXE 2c lands — the workflow that reads the target disk identity in the SAME run as the boot, so one run holds both the host's enumerated disk population and a freshness-bound authorization for the disk it boots. At that revision: feed select_target_disk its population from admitted TargetDiskReading rows, or mint the seed's DiskSelectionProvenance from an InstallTargetDisk, and delete whichever of the two bindings stops being the authority. A third spelling of 'the disk is the one with this serial' before then is a defect, not a convenience."),
+  },
+}
+
+data attempt_request_binding_races_itself_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "attempt_request_binding_races_itself_beside_the_store",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
+      rest: [
+        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_store", decl_name: "attempt_state_create_new_at"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
+    ],
+  },
+  question: "Who may replace an attempt's request binding once one stands -- gunbc.durable_cas_file_store's committed generations with a carried expectation, or this module's create-new plus read-back comparison?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_request_record|storage|attempt_request_binding_create_for_instance|1, kept at review 90974",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8505cef2363: `attempt_request_binding_create_for_instance` (:188) mints the store and delegates to `attempt_request_binding_commit` (:169), which creates with `attempt_state_create_new_at` and on an occupied name reads the standing bytes, decodes them and refuses a different binding -- correct behaviour, held twice: the same rule exists in `gunbc.durable_cas_file_store` as an expectation that answers a lost race typed. An unreadable standing binding is refused here by this module's own reading of the file, not by the library's typed unreadable-slot state.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
+        control: decl_ref(module_path: "test.claim.roadmap.attempt_request_binding_commit_wet_witness", decl_name: "a_different_binding_cannot_replace_the_first"),
+        statement: "the first binding stands: a repeated create of the same binding is idempotent, a different binding cannot replace it, and an unreadable existing binding is not replaced -- whatever route holds the exclusion, these three answers must not change",
+      },
+    ],
+    next: climbs_when(capability: "the binding is committed through generations with a carried expectation and a typed lost race, the refusal of a different binding comes from the library rather than from this module's read-back, and a mutation of the expectation rule reddens a binding row"),
+  },
+}
+data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "metering_roster_written_by_hand_beside_the_store",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
+      rest: [
+        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
+    ],
+  },
+  question: "Who may put a metering roster entry, or the sealed roster, where one already stands -- gunbc.durable_cas_file_store's committed generations, or this module's own create-only write with its read-back adjudication?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_metering|storage|metering_roster_admit|1, narrowed rather than deleted at review 90974",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8505cef2363: `attempt_metering_create_once` (:1394) writes create-only and, on an occupied name, reads the standing bytes back and compares; `metering_roster_seal_under_hold` (:1661) publishes the sealed roster through it. `attempt_metering_commit` puts the RECORD through `file_compare_and_set` with a carried expectation and a typed lost race, so the same question -- may these bytes stand where those stand -- is answered twice in one module, and only one of the two answers can tell a lost race from a matching one.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
+        control: decl_ref(module_path: "test.claim.c_roadmap2_metering_record_cas_wet_witness", decl_name: "an_entry_that_names_the_worker_is_refused_by_name_and_the_roster_refuses_to_read"),
+        statement: "the roster's own naming rule stands through a migration: an entry file may only add a launch beyond the worker, and an entry that names the worker is refused by name -- the bytes the create-only route wrote today stay readable by the reader that follows",
+      },
+    ],
+    next: climbs_when(capability: "the roster entry and the sealed roster are put through committed generations, the reader reads the head, and a mutation of the library's expectation rule reddens a roster row -- today it reddens none, because these two writes bypass the library"),
+  },
+}
+data roadmap_attempt_metering_belt_departed_adoption: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_attempt_metering_belt_departed_adoption",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
+    requirement: "the departed pass carries an adoption step that reads a plain metering.json exactly once, verifies it through metering_observe_against, and commits it as generation one through attempt_metering_commit with ExpectSlotAbsent; a record that fails verification refuses typed and stays in place, and adopting twice is a lost race or a no-op, never a duplicate",
+    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_commit"),
+    ],
+  },
+  question: "How do the 23 pre-seal plain metering.json records reach the sealed slot without a second read path? Through this adoption step, invoked by belt_metering_departed before the new reader serves; it retires when the srv2 inventory reads empty.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "7476b9b85bb42b3590945d0d768e77c315c97e9a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_observe_against") },
+        tail: [],
+      },
+      account: "the 23 records predate the index route, so the for-attempt pass cannot reach them; only the departed pass (or an operator-invoked boundary over the same modeled act) can adopt them, and neither route reaches attempts already processed by the old pass -- those rows are a known gap beside this one.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_attempt_metering_plain_head_refusal",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
+    requirement: "a pre-seal plain metering.json at an attempt entry whose sealed slot exists with generation >= 1 answers a typed refusal through the seal contract; it is never read or adopted by a fallback arm inside attempt_metering_read",
+    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass, which dissolves the population the adoption op serves" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
+    tail: [],
+  },
+  question: "Should a plain metering.json beside a sealed slot ever be readable? No: the sealed slot is the only metering record store; the refusal arm records the non-migration, and the adoption op (roadmap_attempt_metering_belt_departed_adoption) is the only route that moves plain bytes into the slot.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_current_head") },
+        tail: [],
+      },
+      account: "srv2 measured 23 plain metering.json records dated 2026-10-24 under the live attempt-state root, all predating the index route; a reader that answered absent or head for them would silently drop metered usage, so it refuses typed instead.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+data roadmap_metering_closing_plain_writer_retired: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_metering_closing_plain_writer_retired",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
+    requirement: "the closing cutover no longer creates plain metering.json; systemd-run --collect unit_type=exec writing metering.json is retired as a dead route, the census enumerates sealed slot generations for the closing sweep, and the gate observes the metering writer unit inactive with no process before sweeping",
+    standing: RequirementUnestablished { decided_by: "nothing; this row records a retirement, not a gap to reopen -- the sealed slot is the only metering record store" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
+    tail: [],
+  },
+  question: "Any surviving route that writes a plain metering.json during closing? None: the transient-unit write is removed and the census that guards closing enumerates slot generations instead; the residual is an out-of-band unmask of the writer unit, documented and refused by the gate's observation.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate") },
+        tail: [],
+      },
+      account: "masking gunbc-obligation-<instance>-metering.service on srv2 refused the belt's transient-unit creation (executed observation, relayed as the blocker-2(b) receipt), so the retired writer is enforceable by unit mask and the gate observes unit-inactive plus no-process before the sweep.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+data served_observation_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "served_observation_written_by_hand_beside_the_store",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      second: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
+      rest: [
+        decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_write_for_instance"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put"),
+    ],
+  },
+  question: "Who owns a durable write of a kept served-observation index or body record -- gunbc.durable_cas_file_store's committed generations, or this module's own Filesystem.Write into <instance_root>/served-observations?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8d7634470095bdac5307cf31af73ea60d92753fa" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_served_observation|storage|served_observation_write_for_instance|1 that PR 1 of the sealed-store lane narrowed rather than deleted",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8d7634470095: `served_observation_index_put` (dag/gunbc/roadmap/roadmap_served_observation.dag:239) and `served_observation_body_put` (:248) each call `Filesystem.Write` on a path built from the instance root, with no expectation about what stands there; `served_observation_write_for_instance` (:258) composes them. The sealed stores in the same lane write generation-suffixed slots through `file_compare_and_set`, where a stale expectation is a typed refusal. A mutation of the library's expectation rule reddens a row for every sealed store and no row here, because the writes bypass the library -- which is the test that says the rule is kept twice. srv1's observation directories hold plain `index.json` and body files written by this route (captured under dag/test/fixture/c_roadmap2_srv1_bytes), so migrating means adopting those bytes, not replacing them.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_write_for_instance"),
+        control: decl_ref(module_path: "test.claim.c_roadmap2_old_bytes_wet_witness", decl_name: "the_served_observation_index_bytes_survive_the_seal"),
+        statement: "the bytes the hand route wrote stand: an srv1 observation directory's kept index and body files are read back unchanged by the sealed reader, and a migration that cannot read them has replaced the population rather than migrated it",
+      },
+    ],
+    next: climbs_when(capability: "the index and the body are put through the store library's committed generations, the readers read the head, srv1's plain files are adopted -- verified before they are moved and retired by the act that moves them -- and a mutation of the library's expectation rule reddens a served-observation row, which today it does not"),
+  },
+}
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector]
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, attempt_request_binding_races_itself_beside_the_store, metering_roster_written_by_hand_beside_the_store, roadmap_attempt_metering_belt_departed_adoption, roadmap_attempt_metering_plain_head_refusal, roadmap_metering_closing_plain_writer_retired, served_observation_written_by_hand_beside_the_store]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

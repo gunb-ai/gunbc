@@ -9,6 +9,7 @@ import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestReadExchange, RestExchangeRefusal, classify_rest_refusal }
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef, DeleteOrganizationRunner }
+import product.host_identity { HostIdentity }
 import extdeps.github.actions_jit_runner { JitRunnerName }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire, OrganizationRunnerDeletedBody }
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
@@ -56,6 +57,10 @@ type JitSlotExit
   | SlotListenerOutcomeUnobserved { cause: NonEmptyStr }
   | SlotLostBoot { superseded_by: HostBootId }
   | SlotUnitStopping { unit: NonEmptyStr }
+  // THE SWEEP'S OWN ARM: a JIT registration retired by gunbc.runner.runner_jit_dead_sweep -- an offline
+  // non-current incarnation, or a registration under a retired (renamed-away) name. The host is carried so the
+  // receipt says whose registration was retired without any per-host literal.
+  | SlotSweptDeadRegistration { host: HostIdentity, reason: NonEmptyStr }
 
 // THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its
 // only constructor, so the runner this fold may delete is one an authorized mint named -- a caller
@@ -206,6 +211,26 @@ fn listed_deregistration_subject_of(
         }
       }
     }
+  }
+}
+
+// THE JIT DEAD-SWEEP SUBJECT. Mints the sealed recovered-registration arm for a JIT-NAMED roster row, so the sweep's
+// wet run deletes it through the SAME organization runner API route the service sweep uses --
+// gunbc.runner.runner_jit_deregistration ensure_jit_runner_deregistered lists by name, deletes the matching ids, and
+// re-reads; this module adds no second client. The subject carries the roster row's name verbatim (the wet run has
+// already decided it is dead or retired). Admitted only to the sweep's own deletion -- a recovered subject is never
+// mintable by an unrelated caller (the seal that makes "only the sweep deletes" mechanical).
+fn jit_dead_sweep_recovered_subject(
+  organization: GitHubOrganizationRef,
+  name: JitRunnerName,
+  authority: GitHubCredentialAuthority,
+) -> RecoveredReservedRegistration? admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_subjects"),
+] {
+  match authority_installation(authority: authority) {
+    Absent => none
+    Present { value: held } =>
+      Present { value: RecoveredReservedRegistration { organization: organization, name: name, app: held.app, installation: held.installation } }
   }
 }
 
