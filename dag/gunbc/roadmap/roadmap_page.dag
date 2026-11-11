@@ -1285,8 +1285,20 @@ type PageTree {
   children: Map<String, List<RoadmapNode>>
 }
 
-fn page_tree(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> PageTree {
-  PageTree { rows: row_graph(nodes: nodes, edges: edges), children: roadmap_primary_children_index(nodes: nodes, edges: edges) }
+// The tree's readiness graph indexes the plan the log ATTESTES (roadmap_spawner readiness_graph), so the
+// section tree, its top-level filter and each row's parent-state come from the one subtraction. The
+// caller states what it read from the log; a render that reads no log says `[]` -- which is what
+// launch_host_unobserved_static_render() already says about the host.
+fn page_tree(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> PageTree {
+  PageTree {
+    rows: row_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+    children: roadmap_primary_children_index(nodes: nodes, edges: edges),
+  }
 }
 
 fn node_li(rn: RoadmapNode, tree: PageTree, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -1314,7 +1326,11 @@ fn node_li(rn: RoadmapNode, tree: PageTree, merged: List<Int>, fuel: Int, launch
 }
 
 fn nodes_ul(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
-  nodes_ul_in(items: items, tree: page_tree(nodes: nodes, edges: edges), merged: merged, fuel: fuel, launch: launch)
+  nodes_ul_in(
+    items: items,
+    tree: page_tree(nodes: nodes, edges: edges, accepted: launch.accepted, withheld: launch.withheld),
+    merged: merged, fuel: fuel, launch: launch,
+  )
 }
 
 fn nodes_ul_in(items: List<RoadmapNode>, tree: PageTree, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -1322,7 +1338,7 @@ fn nodes_ul_in(items: List<RoadmapNode>, tree: PageTree, merged: List<Int>, fuel
 }
 
 fn group_markup(g: SectionGroup, merged: List<Int>, launch: LaunchRowContext) -> List<Fragment> {
-  let tree = page_tree(nodes: g.nodes, edges: g.edges)
+  let tree = page_tree(nodes: g.nodes, edges: g.edges, accepted: launch.accepted, withheld: launch.withheld)
   let tops = g.nodes |> filter(n => count(roadmap_parent_ids_in(parents: tree.rows.parents, node: n.node)) == 0)
   let ul = nodes_ul_in(items: tops, tree: tree, merged: merged, fuel: roadmap_page_max_depth(), launch: launch)
   if g.label == "" {
@@ -2687,9 +2703,14 @@ fn issue_detail_page_for(
     RoadmapAuthorityProjected { doc, accepted: accepted, withheld: withheld } =>
       let nodes = doc_all_nodes(doc: doc)
       let edges = doc_all_edges(doc: doc)
-      let ctx = page_launch_context(doc: doc, merged: authored_merged_prs(), launch: launch)
+      let ctx = page_launch_context(
+        doc: doc, merged: authored_merged_prs(), launch: launch,
+        accepted: accepted, withheld: withheld,
+      )
       let observation = observation_impact_view(workflow_refused: attempts_refused)
-      let obs = RowObservations { graph: row_graph(nodes: nodes, edges: edges), merged: authored_merged_prs(), attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
+      let obs = RowObservations {
+        graph: row_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+        merged: authored_merged_prs(), attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
       match (filter(nodes, n => (n.node as String) == node_id)).first() {
         Absent =>
           issue_detail_not_found_page(node_id: node_id, viewer: viewer)
@@ -2896,8 +2917,24 @@ fn issue_detail_hierarchy_for(rn: RoadmapNode, plan: List<RoadmapNode>, declared
     status_of: fn(related) { observed_node_status(rn: related, obs: obs, accepted: accepted, withheld: withheld) })
 }
 
-fn page_launch_context(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> LaunchRowContext {
-  LaunchRowContext { standing: launch, graph: launch_graph_of_document(doc: doc), merged: merged }
+// The row context is built ONCE per render and carried to every row, section tree and child list, so
+// the two sets the log attests ride along with it: no consumer downstream can build a readiness graph
+// from the raw plan and disagree with the spawner and the dispatcher about a child whose parent the log
+// closed. (roadmap_presentation LaunchRowContext; roadmap_spawner readiness_graph.)
+fn page_launch_context(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  launch: LaunchHostStanding,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> LaunchRowContext {
+  LaunchRowContext {
+    standing: launch,
+    graph: launch_graph_of_document(doc: doc, accepted: accepted, withheld: withheld),
+    merged: merged,
+    accepted: accepted,
+    withheld: withheld,
+  }
 }
 
 fn daily_workspace_view_of_for_accepted(
@@ -2915,8 +2952,10 @@ fn daily_workspace_view_of_for_accepted(
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
-  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
-  let graph = row_graph(nodes: nodes, edges: edges)
+  let ctx = page_launch_context(
+    doc: doc, merged: merged, launch: launch, accepted: accepted_ids, withheld: withheld,
+  )
+  let graph = row_graph(nodes: nodes, edges: edges, accepted: accepted_ids, withheld: withheld)
   let obs = RowObservations { graph: graph, merged: merged, attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
   let rows = map(nodes, rn => observed_row_view(rn: rn, obs: obs))
   let ready_count = count(rows |> filter(r =>
@@ -3011,8 +3050,18 @@ el_class("main", "daily-workspace", [
 // this tree). That is the gunbc.design_argument::single_authority tell exactly -- a claim dominated by one call whose result
 // it does not inspect -- and the substrate's whole remedy is to SUPPLY the value instead of computing
 // it. Every production caller below passes roadmap_css(), so the served page is unchanged.
-fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
-  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
+fn roadmap_page_impl_with_stylesheet(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  main_prefix: List<Fragment>,
+  launch: LaunchHostStanding,
+  stylesheet: SiteStyles,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  let ctx = page_launch_context(
+    doc: doc, merged: merged, launch: launch, accepted: accepted, withheld: withheld,
+  )
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged, launch: ctx))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged, launch: ctx))
   let main_children = concat(main_prefix, concat(lead, secs))
@@ -3027,22 +3076,47 @@ fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, ma
   site_document(title: "gunbc — roadmap", heading: "roadmap", styles: stylesheet, content: body_children)
 }
 
-fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: main_prefix, launch: launch, stylesheet: roadmap_styles())
+fn roadmap_page_impl(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  main_prefix: List<Fragment>,
+  launch: LaunchHostStanding,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: main_prefix, launch: launch, stylesheet: roadmap_styles(), accepted: accepted, withheld: withheld)
 }
 
 // The supplied-stylesheet seam a row claim renders through. It is the same page fold; only the head's
 // style text is handed in. A claim that asserts on the stylesheet must use roadmap_page_launch.
-fn roadmap_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
-  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: [], launch: launch, stylesheet: stylesheet)
+fn roadmap_page_launch_with_stylesheet(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  launch: LaunchHostStanding,
+  stylesheet: SiteStyles,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: [], launch: launch, stylesheet: stylesheet, accepted: accepted, withheld: withheld)
 }
 
-fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch_host_unobserved_static_render())
+fn roadmap_page(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch_host_unobserved_static_render(), accepted: accepted, withheld: withheld)
 }
 
-fn roadmap_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch)
+fn roadmap_page_launch(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  launch: LaunchHostStanding,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch, accepted: accepted, withheld: withheld)
 }
 
 // roadmap_page_for_doc exists so a claim about how a TICKET ROW renders can be written without a
@@ -3052,7 +3126,11 @@ fn roadmap_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHo
 // the rendering at all. Passing an unfocused document keeps that claim measuring markup.
 // roadmap_page_for_authority keeps the declared focus, because the served page IS the focused view.
 
-fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
+fn roadmap_page_for_doc(
+  doc: RoadmapDocument,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
   roadmap_page_impl(
     doc: doc,
     merged: authored_merged_prs(),
@@ -3061,6 +3139,7 @@ fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
       finish_line_progress_markup(),
     ],
     launch: launch_host_unobserved_static_render(),
+    accepted: accepted, withheld: withheld,
   )
 }
 
@@ -3095,7 +3174,11 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 // The supplied-stylesheet seam of the served roadmap route: the projection's own page fold with only
 // the head's style text handed in, so a claim about rows of a supplied projection does not pay for
 // the stylesheet it never reads. roadmap_page_for_projection_launch passes roadmap_css().
-fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
+fn roadmap_page_for_projection_launch_with_stylesheet(
+  proj: RoadmapAuthorityProjection,
+  launch: LaunchHostStanding,
+  stylesheet: SiteStyles,
+) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_page_impl_with_stylesheet(
@@ -3107,8 +3190,12 @@ fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProj
         ],
         launch: launch,
         stylesheet: stylesheet,
+        // No plan is rendered on this arm -- the projection refused -- so no parent state is claimed:
+        // the empty lists are the absence the refusal itself states, not a log read that came up empty.
+        accepted: [],
+        withheld: [],
       )
-    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: _ } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
       roadmap_page_impl_with_stylesheet(
         doc: doc,
         merged: authored_merged_prs(),
@@ -3118,6 +3205,8 @@ fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProj
         ],
         launch: launch,
         stylesheet: stylesheet,
+        accepted: accepted,
+        withheld: withheld,
       )
   }
 }

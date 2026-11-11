@@ -337,7 +337,7 @@ test fn witness_real_issue_page_chain_equals_the_lineage_walk() -> Bool {
   let plan = filter(declared, n => (n.node as String) == hv_real_node_id())
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [RoadmapSection { title: "", elements: [section_group(label: "", nodes: plan, edges: [])] }] }
   let obs = RowObservations {
-    graph: row_graph(nodes: plan, edges: []), merged: [], attempts: [], attempts_refused: none,
+    graph: row_graph(nodes: plan, edges: [], accepted: [], withheld: []), merged: [], attempts: [], attempts_refused: none,
     standings: StandingsUnobserved { reason: "witness supplies no standings" },
     launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
     stale_nodes: [], profiles: [] }
@@ -377,7 +377,7 @@ fn real_ancestor_statuses(listed_accepted: Bool) -> List<NodeStatus> {
   let plan = filter(declared, n => (n.node as String) == hv_real_node_id())
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [RoadmapSection { title: "", elements: [section_group(label: "", nodes: plan, edges: [])] }] }
   let obs = RowObservations {
-    graph: row_graph(nodes: plan, edges: []), merged: [], attempts: [], attempts_refused: none,
+    graph: row_graph(nodes: plan, edges: [], accepted: [], withheld: []), merged: [], attempts: [], attempts_refused: none,
     standings: StandingsUnobserved { reason: "witness supplies no standings" },
     launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
     stale_nodes: [], profiles: [] }

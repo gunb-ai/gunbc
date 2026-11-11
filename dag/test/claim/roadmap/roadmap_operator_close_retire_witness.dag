@@ -961,10 +961,16 @@ fn w_blocked_by_retired() -> Bool {
   let child_n = operator_node("node-blocked-child")
   let nodes = [parent_n, child_n]
   let edges = [RoadmapEdge { child: "node-blocked-child" as NonEmptyStr as RoadmapNodeId, parent: "node-retired-parent" as NonEmptyStr as RoadmapNodeId }]
+  // The claim's subject is the RETIRED standing of the parent, not the log's sets, so the log states
+  // nothing closed here; the sets it does carry -- the withheld parent -- is asserted on the row below.
   let launch_ctx = LaunchRowContext {
     standing: launch_fixture_standing_clear(mode: ManualReady),
-    graph: launch_graph_of_document(doc: launch_fixture_doc(nodes: nodes, edges: edges)),
+    graph: launch_graph_of_document(
+      doc: launch_fixture_doc(nodes: nodes, edges: edges), accepted: [], withheld: [],
+    ),
     merged: [] as List<Int>,
+    accepted: [],
+    withheld: [],
   }
   let retired_standing = NodeRetired { by: "op" as NonEmptyStr, reason: "debt exclusion frontier closed by operator" as NonEmptyStr }
   let row = work_row_view(
@@ -972,6 +978,7 @@ fn w_blocked_by_retired() -> Bool {
     rounds: RoundsUnobserved { reason: "witness: no active attempt" as NonEmptyStr },
     launch: launch_ctx, worker_alive: false, standing: none, attempt_stale: false, profiles: [],
     standings: StandingsObserved { rows: [NodeStandingRow { node_id: "node-retired-parent", standing: retired_standing, assignment: roadmap_assignment_empty() }] },
+    accepted: [], withheld: [],
   )
   let held_text = match row.scheduling {
     SchedulingNotReady { missing } => readiness_text_with_retired(r: NotReady { missing: missing }, retired: row.retired_blockers)
@@ -987,6 +994,7 @@ fn w_blocked_by_retired() -> Bool {
     rn: child_n, nodes: nodes, edges: edges, merged: [] as List<Int>, activity: NoActiveWork,
     rounds: RoundsUnobserved { reason: "witness: no active attempt" as NonEmptyStr },
     launch: launch_ctx, worker_alive: false, standing: none, attempt_stale: false, profiles: [],
+    accepted: [], withheld: [],
   )
   claim("a child held forever by a retired parent says so; an open parent reads plainly",
     row.retired_blockers == ["node-retired-parent"]

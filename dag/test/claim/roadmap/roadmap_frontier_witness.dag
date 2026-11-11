@@ -172,7 +172,7 @@ fn fixture_workspace_view(doc: RoadmapDocument, merged: List<Int>) -> DailyWorks
     rn: rn, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: [], attempts_refused: none),
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: [], attempts_refused: none),
-    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: []))
+    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: [], accepted: [], withheld: []))
   daily_workspace_view(rows: rows, edges: edges, program: none, observation: observation_impact_view(workflow_refused: none), families: [], members: [], memberships: [])
 }
 

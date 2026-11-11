@@ -128,17 +128,35 @@ fn canary_graph_without_edge() -> RoadmapDocument {
   canary_doc(nodes: [canary_parent(), canary_child()], edges: [])
 }
 
-fn scheduling_of(doc: RoadmapDocument, id: RoadmapNodeId) -> WorkScheduling? {
+// The three helpers below ask the page's OWN scheduler (roadmap_presentation work_scheduling), not a
+// witness-side copy, and they hand it the event log's sets -- which is how this file can say that a node
+// whose parent the log closed is Ready while a node whose parent is open is not: the page and the spawner
+// have to answer from the same subtraction (roadmap_spawner readiness_graph).
+fn scheduling_of(
+  doc: RoadmapDocument,
+  id: RoadmapNodeId,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> WorkScheduling? {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   match nodes |> filter(n => n.node == id) |> first {
-    Present { value: n } => Present { value: work_scheduling(rn: n, nodes: nodes, edges: edges) }
+    Present { value: n } =>
+      Present { value: work_scheduling(rn: n, nodes: nodes, edges: edges, accepted: accepted, withheld: withheld) }
     Absent => Absent
   }
 }
 
-fn blockers_of(doc: RoadmapDocument, id: RoadmapNodeId) -> List<String> {
-  match scheduling_of(doc: doc, id: id) {
+// The blocked-side helper: every caller asks it about a child whose parent is still open in the log, so
+// the sets it hands the scheduler are the empty ones -- written out, because a blocked decision that
+// quietly consulted a different population than the frontier's would be a second authority.
+fn blockers_of(
+  doc: RoadmapDocument,
+  id: RoadmapNodeId,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<String> {
+  match scheduling_of(doc: doc, id: id, accepted: accepted, withheld: withheld) {
     Present { value: s } =>
       match s {
         SchedulingNotReady { missing } => flat_map(missing, g => dependency_blockers_of(g: g))
@@ -167,7 +185,7 @@ fn is_ready(
       next_spawnable(doc: doc, merged: [], accepted: accepted, withheld: withheld),
       n => n.node == id,
     )
-    && (match scheduling_of(doc: doc, id: id) {
+    && (match scheduling_of(doc: doc, id: id, accepted: accepted, withheld: withheld) {
       Present { value: s } => match s {
         SchedulingReady => true
         SchedulingNotReady { missing: _ } => false
@@ -178,7 +196,7 @@ fn is_ready(
 
 fn blocked_exactly_by(doc: RoadmapDocument, id: RoadmapNodeId, blocker: String) -> Bool {
   let frontier = spawn_frontier(doc: doc, merged: [], accepted: [], withheld: [])
-  let blockers = blockers_of(doc: doc, id: id)
+  let blockers = blockers_of(doc: doc, id: id, accepted: [], withheld: [])
   let unmet = node_unmet_parent_ids(
     nodes: doc_all_nodes(doc: doc), edges: doc_all_edges(doc: doc), accepted: [], withheld: [], id: id,
   )
@@ -326,6 +344,30 @@ test fn witness_canary_three_lifecycle_states_are_distinct() -> Bool {
     )
 }
 
+// ONE SUBTRACTION, TWO ASKERS. The spawner's frontier (`roadmap_spawner spawn_frontier`,
+// `next_spawnable`) and the page's scheduler (`roadmap_presentation work_scheduling`) are different code
+// paths over the same plan, and a launch decision is worth nothing unless they answer the same way about
+// the same node from the same population. So each of the three populations is asked of BOTH, in one
+// claim: a parent still open in the log blocks the child in both; a parent the log accepted clears it in
+// both; a parent the log RETIRED -- deliberately closed, before the document has caught up -- clears it in
+// both, which is the case that had two answers (the spawner said Ready, the scheduler named the closed
+// parent as missing) until `roadmap_spawner readiness_graph` began indexing `plan_edges`.
+//
+// The open population is the non-vacuity half: without it the claim would be satisfied by a world in
+// which nothing is ever blocked, and the blockers count pins that the blockage is the dependency, not an
+// unrelated gap.
+test fn witness_spawner_and_page_scheduler_answer_from_the_same_population() -> Bool {
+  let parent = roadmap_launch_canary_parent_node_id()
+  let child = roadmap_launch_canary_child_node_id()
+  let doc = canary_graph()
+  !is_ready(doc: doc, accepted: [], withheld: [], id: child)
+    && count(blockers_of(doc: doc, id: child, accepted: [], withheld: [])) == 1
+    && is_ready(doc: doc, accepted: [parent], withheld: [], id: child)
+    && count(blockers_of(doc: doc, id: child, accepted: [parent], withheld: [])) == 0
+    && is_ready(doc: doc, accepted: [], withheld: [parent], id: child)
+    && count(blockers_of(doc: doc, id: child, accepted: [], withheld: [parent])) == 0
+}
+
 // The same law's other arm, at the spawner grain: the log's Retired event is what closes a
 // dependency edge. One fixture, two populations — the parent closes the edge exactly when the log
 // holds it retired — so the predicate cannot be a restatement of "the row says closed", and it
@@ -344,7 +386,11 @@ test fn falsifier_deleting_edge_changes_child_decision() -> Bool {
     && is_ready(
       doc: doc, accepted: [], withheld: [], id: roadmap_launch_canary_child_node_id(),
     )
-    && count(blockers_of(doc: doc, id: roadmap_launch_canary_child_node_id())) == 0
+    && count(
+      blockers_of(
+        doc: doc, id: roadmap_launch_canary_child_node_id(), accepted: [], withheld: [],
+      )
+    ) == 0
 }
 
 // Falsifier (b): a different blocker identity is refused by the exact-identity join.
@@ -423,7 +469,7 @@ test fn finding_unspecified_contract_is_on_the_frontier_but_not_ready() -> Bool 
   let admission = launch_admission(
     cause: Operator,
     standing: launch_fixture_standing_clear(mode: ManualReady),
-    graph: launch_graph_of_document(doc: doc),
+    graph: launch_graph_of_document(doc: doc, accepted: [], withheld: []),
     merged: [],
     node_id: roadmap_launch_canary_child_node_id() as String,
     reserved: 0,
@@ -432,7 +478,9 @@ test fn finding_unspecified_contract_is_on_the_frontier_but_not_ready() -> Bool 
     && !is_ready(
       doc: doc, accepted: [], withheld: [], id: roadmap_launch_canary_child_node_id(),
     )
-    && (match scheduling_of(doc: doc, id: roadmap_launch_canary_child_node_id()) {
+    && (match scheduling_of(
+      doc: doc, id: roadmap_launch_canary_child_node_id(), accepted: [], withheld: [],
+    ) {
       Present { value: s } => match s {
         SchedulingNotReady { missing } => count(missing) == 1 && all(missing, g => match g { GapContract { detail: _ } => true  _ => false })
         _ => false

@@ -11398,8 +11398,10 @@ fn belt_launch_host_standing_for_page_over(
   let pre = belt_launch_host_standing(instance: instance)
   match plan {
     RoadmapAuthorityProjectionRefused { detail: _ } => pre
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => {
-      let graph = launch_graph_of_document(doc: doc)
+    RoadmapAuthorityProjected { doc, accepted, withheld } => {
+      // The sets go in: the page-session probe asks the same gate the dispatcher asks, and a child whose
+      // parent the log closed would otherwise be held back here while the spawner lists it.
+      let graph = launch_graph_of_document(doc: doc, accepted: accepted, withheld: withheld)
       let merged = authored_merged_prs()
       match belt_page_sessions_need(standing: pre, graph: graph, merged: merged, nodes: doc_all_nodes(doc: doc)) {
         PageSessionsNeeded { first_node_id: _ } => belt_launch_host_standing_complete(instance: instance, standing: pre)

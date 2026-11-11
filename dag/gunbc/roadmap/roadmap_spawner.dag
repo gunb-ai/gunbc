@@ -408,7 +408,7 @@ fn node_unmet_parent_ids(
   id: RoadmapNodeId,
 ) -> List<RoadmapNodeId> {
   node_unmet_parent_ids_in(
-    graph: readiness_graph(nodes: nodes, edges: plan_edges(edges: edges, accepted: accepted, withheld: withheld)),
+    graph: readiness_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
     id: id,
   )
 }
@@ -425,11 +425,27 @@ type ReadinessGraph {
   parents: Map<String, List<RoadmapNodeId>>
 }
 
-fn readiness_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> ReadinessGraph {
+// ONE SUBTRACTION FOR EVERY CONSUMER. The graph indexes the plan the log ATTESTS: the parents index
+// is built over `plan_edges`, so a parent the log accepted -- or deliberately retired, before the
+// document catches up -- is absent from the graph itself, not merely excused later. The page's
+// scheduling (`roadmap_presentation work_scheduling`), the dispatcher's admission gate
+// (`roadmap_launch_admission launch_node_readiness`) and the spawner's Ready all read this graph, so
+// they cannot disagree about a child whose parent the log closed -- which is what a claim found when
+// the spawner subtracted the sets and this index did not.
+//
+// The two sets are REQUIRED, not defaulted: a caller that has read the log states what it read, and a
+// caller that has not says `[]` out loud -- an empty list here means "the log holds nothing off", the
+// same absence the plan carries, never "nobody looked".
+fn readiness_graph(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> ReadinessGraph {
   ReadinessGraph {
     lineage: lineage_index(nodes: nodes),
     fuel: count(nodes) + 1,
-    parents: roadmap_parent_index(edges: edges),
+    parents: roadmap_parent_index(edges: plan_edges(edges: edges, accepted: accepted, withheld: withheld)),
   }
 }
 

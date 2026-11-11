@@ -56,7 +56,7 @@ fn centered_node() -> RoadmapNode {
 }
 
 fn graph_of(n: RoadmapNode) -> LaunchGraphStanding {
-  launch_graph_of_document(doc: canary_doc(nodes: [n], edges: []))
+  launch_graph_of_document(doc: canary_doc(nodes: [n], edges: []), accepted: [], withheld: [])
 }
 
 test fn a_node_without_centering_refuses_dispatch_naming_centering() -> Bool {

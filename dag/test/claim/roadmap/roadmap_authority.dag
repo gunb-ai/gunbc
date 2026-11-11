@@ -1167,7 +1167,7 @@ test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
 // names the prerequisite among its dependency blockers, and the prerequisite, which depends on
 // nothing, names no dependency gap -- so the blocker is the edge's, not a gap every row carries.
 fn declared_dependency_blockers(id: String) -> List<String> {
-  let graph = readiness_graph(nodes: nodes(), edges: edges())
+  let graph = readiness_graph(nodes: nodes(), edges: edges(), accepted: [], withheld: [])
   fold(declared_node(id: id), init: [], f: (acc, n) => match node_readiness_in_graph(node: n, graph: graph, merged: []) {
     ReadyToDispatch => acc
     NotReady { missing } => fold(missing, init: acc, f: (inner, g) => match g {

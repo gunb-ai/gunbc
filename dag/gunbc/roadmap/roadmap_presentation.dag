@@ -320,16 +320,32 @@ type WorkScheduling
 // walks lineage over the rendered graph itself: the projected graph carries every open project, so
 // a member's parent walk resolves inside it, and a planted fixture graph is its own universe. The
 // single-row forms below index the graph for the one row they answer.
-fn row_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> ReadinessGraph {
-  readiness_graph(nodes: nodes, edges: edges)
+fn row_graph(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> ReadinessGraph {
+  // The sets pass straight through: readiness_graph indexes the log's plan (its comment owns the why).
+  readiness_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld)
 }
 
 fn work_readiness_in(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> NodeReadiness {
   node_readiness_in_graph(node: rn, graph: graph, merged: merged)
 }
 
-fn work_readiness(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
-  work_readiness_in(rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged)
+fn work_readiness(
+  rn: RoadmapNode,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+  merged: List<Int>,
+) -> NodeReadiness {
+  work_readiness_in(
+    rn: rn, graph: row_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+    merged: merged,
+  )
 }
 
 fn work_scheduling_in(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> WorkScheduling {
@@ -355,8 +371,18 @@ fn row_unmet_prerequisites(view: WorkRowView) -> UnmetPrerequisites {
   }
 }
 
-fn work_scheduling(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int> = []) -> WorkScheduling {
-  work_scheduling_in(rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged)
+fn work_scheduling(
+  rn: RoadmapNode,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+  merged: List<Int> = [],
+) -> WorkScheduling {
+  work_scheduling_in(
+    rn: rn, graph: row_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+    merged: merged,
+  )
 }
 
 fn work_scheduling_key(s: WorkScheduling) -> String {
@@ -631,10 +657,18 @@ fn row_disclosure(line: RoadmapItem) -> DisclosureView {
 // 2026-08-01): a ClearSessionAction; cleanup admission is an OBSERVED fact the sessions channel
 // owns (session_action_view), and this fn derives dispatch alone.
 
+// The row-side launch context: the host standing, the graph the dispatcher's gate reads, and the two
+// sets the event log ATTESTS. They ride along here because every consumer of a row's readiness graph
+// (the row view, the section tree, the child lists) is handed this context already -- so a render site
+// cannot build a readiness graph from the raw plan and quietly disagree with the spawner and the
+// dispatcher about a child whose parent the log closed. An empty list is the plan's own absence, stated
+// by the caller that read the log; see `roadmap_spawner readiness_graph`.
 type LaunchRowContext {
   standing: LaunchHostStanding
   graph: LaunchGraphStanding
   merged: List<Int>
+  accepted: List<RoadmapNodeId>
+  withheld: List<RoadmapNodeId>
 }
 
 fn row_launch_admission(ctx: LaunchRowContext, node_id: String) -> LaunchAdmission {
@@ -1110,6 +1144,8 @@ fn work_row_view(
   rn: RoadmapNode,
   nodes: List<RoadmapNode>,
   edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
   merged: List<Int>,
   activity: ActivityView,
   rounds: HarnessRoundLedger,
@@ -1122,8 +1158,8 @@ fn work_row_view(
   standings: RoadmapStandings = StandingsUnobserved { reason: "this projection observes no live standings" as NonEmptyStr },
 ) -> WorkRowView {
   work_row_view_in(
-    rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged,
-    activity: activity, rounds: rounds, launch: launch, worker_alive: worker_alive, standing: standing,
+    rn: rn, graph: row_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+    merged: merged, activity: activity, rounds: rounds, launch: launch, worker_alive: worker_alive, standing: standing,
     attempt_stale: attempt_stale, profiles: profiles, assignment: assignment, standings: standings,
   )
 }

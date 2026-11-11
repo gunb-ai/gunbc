@@ -102,7 +102,7 @@ fn admit(id: String) -> LaunchAdmission {
   launch_admission(
     cause: Operator,
     standing: launch_fixture_standing_clear(mode: ManualReady),
-    graph: launch_graph_of_document(doc: canary_doc(nodes: rw_nodes(), edges: [])),
+    graph: launch_graph_of_document(doc: canary_doc(nodes: rw_nodes(), edges: []), accepted: [], withheld: []),
     merged: [],
     node_id: id,
     reserved: 0,
@@ -110,7 +110,7 @@ fn admit(id: String) -> LaunchAdmission {
 }
 
 fn page(id: String) -> WorkScheduling {
-  work_scheduling(rn: rw_node(id: id), nodes: rw_nodes(), edges: [])
+  work_scheduling(rn: rw_node(id: id), nodes: rw_nodes(), edges: [], accepted: [], withheld: [])
 }
 
 fn labels(missing: List<ReadinessGap>) -> List<String> {
