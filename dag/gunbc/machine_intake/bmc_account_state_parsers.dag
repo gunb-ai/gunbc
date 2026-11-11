@@ -27,6 +27,7 @@ import extdeps.languages.json.parse {
   JsonMemberAbsent,
   JsonMemberDuplicated,
   JsonMemberFound,
+  JsonMemberNotAnObject,
   JsonNumber,
   JsonObject,
   JsonParsed,
@@ -232,7 +233,7 @@ fn ipmi_user_access_rows(text: String, channel: IpmiChannelNumber) -> IpmiUserAc
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_committed_getaccess_table_decodes_every_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_malformed_privilege_word_refuses_never_a_defaulted_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "a_flag_column_of_garbage_refuses_though_the_carrier_drops_the_flags"),
-    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_account_state_transport"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
   ]
 {
   let lines = filter(split(s: text, delimiter: "\n"), l => {
@@ -489,7 +490,7 @@ fn redfish_account_service_lockout_from_body(body: String) -> RedfishAccountServ
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "the_openbmc_account_service_body_decodes_the_lockout_props"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_parsers_witness", decl_name: "an_account_service_without_a_threshold_is_unreadable_never_zero"),
-    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_account_state_transport"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_rows"),
   ]
 {
   match json_root_object(body: body) {
@@ -509,6 +510,85 @@ fn redfish_account_service_lockout_from_body(body: String) -> RedfishAccountServ
                 account_lockout_counter_reset_enabled: json_member_bool(v: root, key: "AccountLockoutCounterResetEnabled"),
               )
             }
+          }
+      }
+  }
+}
+
+// ── IPMI user-test verdict (PXE 1c, review 93366) ──────────────────────────────────────────────
+// THE SINGLE AUTHORITY that turns an `ipmitool user test` capture into an acceptance verdict. It
+// replaces the substring guess the capture assembler first shipped with, which minted
+// ObservedCredentialAccepted on any body carrying the letters "ok" (it matched inside "token",
+// "invoked", "lookup") and missed refusals worded outside a hand-picked list. This matches WHOLE
+// whitespace tokens only -- "successful" can never be read as "Success" -- and a body that prints
+// neither word ("Unable to establish IPMI v2 / RMCP+ session", a timeout, an empty body) is
+// Unrecognized and the caller REFUSES. Grounded in the committed discriminator capture
+// artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt (29-30):
+//     user test 2 20 <pw>    ->  Success
+//     user test 2 20 admin   ->  Failure: password incorrect
+// closed_grounded_substrate: the word ipmitool itself prints is decoded, not guessed.
+type IpmiUserTestVerdict
+  = UserTestAccepted
+  | UserTestRejected
+  | UserTestUnrecognized { detail: NonEmptyStr }
+
+fn any_token_starts_with(toks: List<String>, prefix: String) -> Bool {
+  any(toks, t => starts_with(s: t, prefix: prefix))
+}
+
+fn ipmi_user_test_verdict_from_output(body: String) -> IpmiUserTestVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "the_user_test_words_are_decoded_not_guessed"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_managed_test"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_break_glass"),
+  ]
+{
+  let toks = ws_tokens(rest: body, current: "", acc: [])
+  let accepted = any_token_starts_with(toks: toks, prefix: "Success")
+  let rejected = any_token_starts_with(toks: toks, prefix: "Failure")
+  // Anchored whole-token prefixes: a token is whitespace-delimited, so "Success"/"Failure" are read
+  // as whole words. "successful" (lower-case) is not "Success"; a token carrying neither prefix
+  // cannot tip the verdict. Both words present is contradictory -> Unrecognized, never trusted-half.
+  if accepted && !rejected { UserTestAccepted }
+  else if rejected && !accepted { UserTestRejected }
+  else { UserTestUnrecognized { detail: "user-test output printed neither a Success nor a Failure word" as NonEmptyStr } }
+}
+
+// ── Redfish service-root surface fact (PXE 1c, review 93366) ───────────────────────────────────
+// THE SINGLE AUTHORITY for whether the unit exposes a usable Redfish surface. Grounded STRUCTURAL
+// decode, not a keyword search: a real ServiceRoot is a JSON object whose @odata.type names the
+// ServiceRoot schema (captures: srv13-first-contact-2026-10-07/bmc-3.22.00/root_.json
+// "#ServiceRoot.v1_15_0.ServiceRoot"; mtcollins1 redfish_ServiceRoot.json "#ServiceRoot.v1_5_2").
+// bmcweb reports an unavailable or denied surface as an ERROR ENVELOPE {"error":{...}} (capture
+// mtcollins1-bmc-user3-route-2026-09-14/redfish_VirtualMedia_401_body.txt). An error envelope is
+// NotServed; a ServiceRoot is Served; a JSON object that is neither, or a body that is not a JSON
+// object at all (an HTML 404, plaintext, a truncated read), is Unrecognized and the caller REFUSES --
+// it is NOT served, and nothing is guessed. The assembler used to set the fact true for any body
+// mentioning "redfish"/"SessionService"/"@odata.id", which an error body satisfies. fail_closed.
+type RedfishServiceRootVerdict
+  = ServiceRootServed
+  | ServiceRootNotServed { detail: NonEmptyStr }
+  | ServiceRootUnrecognized { detail: NonEmptyStr }
+
+fn redfish_service_root_verdict_from_body(body: String) -> RedfishServiceRootVerdict
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "the_service_root_is_decoded_structurally_not_by_keyword"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_account_state_capture", decl_name: "assemble_account_state_transport"),
+  ]
+{
+  match json_root_object(body: body) {
+    none => ServiceRootUnrecognized { detail: "the service-root body is not a JSON object" as NonEmptyStr }
+    Present { value: root } =>
+      match json_object_unique_member(v: root, key: "error") {
+        JsonMemberFound { value: _ } => ServiceRootNotServed { detail: "Redfish answered with an error envelope" as NonEmptyStr }
+        JsonMemberDuplicated { count: _ } => ServiceRootNotServed { detail: "Redfish answered with an error envelope" as NonEmptyStr }
+        JsonMemberNotAnObject => ServiceRootUnrecognized { detail: "the object has no decodable error member" as NonEmptyStr }
+        JsonMemberAbsent =>
+          match json_member_string(v: root, key: "@odata.type") {
+            Present { value: t } =>
+              if starts_with(s: t, prefix: "#ServiceRoot") { ServiceRootServed }
+              else { ServiceRootUnrecognized { detail: "@odata.type does not name the ServiceRoot schema" as NonEmptyStr } }
+            none => ServiceRootUnrecognized { detail: "the object carries no @odata.type" as NonEmptyStr }
           }
       }
   }

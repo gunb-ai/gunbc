@@ -26,7 +26,11 @@ import gunbc.machine_intake.bmc_secure {
 import gunbc.machine_intake.bmc_account_state_capture {
   BmcAccountStateCaptures, BmcAccountStateCaptureOutcome, CapturedTransportAssembled, CapturedTransportUndecodable,
   UserAccessRowsUndecodable, AccountsCollectionUndecodableWhileServed, CensusNamesDisagreeWithCollection,
-  ServedCensusClaimedWithoutSurface, assemble_account_state_transport,
+  ServedCensusClaimedWithoutSurface, UserTestUndecodable, RedfishSurfaceUndecodable, assemble_account_state_transport,
+}
+import gunbc.machine_intake.bmc_account_state_parsers {
+  ipmi_user_test_verdict_from_output, UserTestAccepted, UserTestRejected, UserTestUnrecognized,
+  redfish_service_root_verdict_from_body, ServiceRootServed, ServiceRootNotServed, ServiceRootUnrecognized,
 }
 import extdeps.bmc.ipmi_channel {
   IpmiChannelCensusMember, IpmiLanBadPasswordThresholdRead, IpmiLanBadPasswordThresholdNotAvailable,
@@ -64,7 +68,10 @@ data account_service_capture: String = "{\"AccountLockoutThreshold\":3,\"Account
 // 3 / yes / 300 / 300; note ipmitool's key alignment, "Bad Password Threshold  :" has a double space and
 // "Invalid password disable:" none). The threshold IS present, so it decodes to a Read, not NotAvailable.
 data lan_config_capture: String = "Set in Progress         : Set Complete\nAuth Type Support       : NONE MD2 MD5 PASSWORD \nIP Address Source       : DHCP Address\nIP Address              : 192.168.1.252\nMAC Address             : ac:1f:6b:e3:f5:7b\n802.1q VLAN ID          : Disabled\nBad Password Threshold  : 3\nInvalid password disable: yes\nAttempt Count Reset Int.: 300\nUser Lockout Interval   : 300\n"
-data surface_capture: String = "{\"@odata.id\":\"/redfish/v1/\",\"Links\":{\"Sessions\":{\"@odata.id\":\"/redfish/v1/SessionService/Sessions\"}}}"
+// The srv13 first-contact committed ServiceRoot (grounded: artifacts/bmc/srv13-first-contact-2026-10-07/
+// bmc-3.22.00/root_.json): @odata.type names the ServiceRoot schema, so the structural decoder says Served.
+// An @odata.id-only or an error-envelope body would NOT decode as served.
+data surface_capture: String = "{\"@odata.id\":\"/redfish/v1/\",\"@odata.type\":\"#ServiceRoot.v1_15_0.ServiceRoot\",\"Id\":\"RootService\",\"Name\":\"OpenBMC\",\"RedfishVersion\":\"1.17.0\",\"Links\":{\"Sessions\":{\"@odata.id\":\"/redfish/v1/SessionService/Sessions\"}}}"
 
 fn root_census() -> BmcRedfishAccountCensusReading {
   BmcRedfishCensusServed { accounts: [BmcRedfishAccountCensusEntry { name: "root", enabled: true, is_managed_account: true }] }
@@ -76,13 +83,13 @@ fn faithful_captures() -> BmcAccountStateCaptures {
     channel: 1,
     channel_members: members(),
     redfish_census: root_census(),
-    managed_answer: committed("ipmi-user-test-managed", "check-password: ok"),
+    managed_answer: committed("ipmi-user-test-managed", "Success"),
     census_answer: committed("ipmi-get-user-access", getaccess_capture),
     redfish_accounts_answer: committed("redfish-accounts", accounts_capture),
     redfish_surface_answer: committed("redfish-surface", surface_capture),
     account_service_answer: committed("redfish-account-service", account_service_capture),
     lan_config_answer: committed("ipmi-get-lan-config", lan_config_capture),
-    break_glass_answer: Present { value: committed("ipmi-user-test-break-glass", "check-password: ok") },
+    break_glass_answer: Present { value: committed("ipmi-user-test-break-glass", "Success") },
   }
 }
 
@@ -96,6 +103,8 @@ fn assembled(captures: BmcAccountStateCaptures) -> BmcAccountStateCaptureOutcome
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "no_break_glass_answer_assembles_unmaterializable_never_a_substituted_reference"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_census"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_census"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_managed_user_test_with_neither_success_nor_failure_word_refuses_never_an_accepted_guess"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_account_state_capture_witness", decl_name: "a_plaintext_service_root_body_refuses_never_an_unfounded_surface"),
   ]
 {
   assemble_account_state_transport(captures: captures)
@@ -163,7 +172,7 @@ test fn a_rejecting_managed_user_test_assembles_managed_accepted_false() -> Bool
   let c = faithful_captures()
   let rejected = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
-    managed_answer: committed("ipmi-user-test-managed", "Set User Password command failed: Invalid user name or password"),
+    managed_answer: committed("ipmi-user-test-managed", "Failure: password incorrect"),
     census_answer: c.census_answer, redfish_accounts_answer: c.redfish_accounts_answer,
     redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
     lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
@@ -252,21 +261,101 @@ test fn a_malformed_getaccess_table_refuses_user_access_rows_never_a_defaulted_c
 }
 
 // RED (single_authority, never an unfounded census). The driver supplies a Served Redfish census while the
-// service-root probe body is NOT a Redfish surface (a 404): the census cannot be founded on a surface the
-// probe says is absent, so the assembler refuses with ServedCensusClaimedWithoutSurface -- it does not
-// trust the driver's Served census over the contradicting surface bytes.
+// service-root probe body is an ERROR ENVELOPE (bmcweb's own "not served / denied" shape), which the decoder
+// reads as NOT served: the census cannot be founded on a surface the probe says is absent, so the assembler
+// refuses with ServedCensusClaimedWithoutSurface -- it does not trust the driver's Served census over the
+// contradicting surface bytes.
 test fn a_served_census_over_a_non_redfish_surface_refuses_never_an_unfounded_census() -> Bool {
   let c = faithful_captures()
   let broken = BmcAccountStateCaptures {
     channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
     managed_answer: c.managed_answer, census_answer: c.census_answer,
     redfish_accounts_answer: c.redfish_accounts_answer,
-    redfish_surface_answer: committed("redfish-surface", "404 Not Found"),
+    redfish_surface_answer: committed("redfish-surface", "{\"error\":{\"code\":\"Base.1.19.GeneralError\",\"message\":\"denied\"}}"),
     account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
     break_glass_answer: c.break_glass_answer,
   }
   match assembled(captures: broken) {
     CapturedTransportUndecodable { cause: ServedCensusClaimedWithoutSurface { detail: _ } } => true
+    _ => false
+  }
+}
+
+// RED (fail_closed -- the review-93366 discriminator). A managed user-test body that carries the letters
+// "ok" but prints NEITHER a whole-word Success NOR Failure ("check-password: ok") is the EXACT body the
+// substring version minted ObservedCredentialAccepted on. Now it REFUSES with UserTestUndecodable: an
+// unrecognizable probe is never read as an acceptance. This is the single discriminating red for the fix.
+test fn a_managed_user_test_with_neither_success_nor_failure_word_refuses_never_an_accepted_guess() -> Bool {
+  let c = faithful_captures()
+  let broken = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: committed("ipmi-user-test-managed", "check-password: ok"),
+    census_answer: c.census_answer, redfish_accounts_answer: c.redfish_accounts_answer,
+    redfish_surface_answer: c.redfish_surface_answer, account_service_answer: c.account_service_answer,
+    lan_config_answer: c.lan_config_answer, break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: broken) {
+    CapturedTransportUndecodable { cause: UserTestUndecodable { detail: _ } } => true
+    _ => false
+  }
+}
+
+// RED (fail_closed). A service-root body that is plaintext, not JSON (an HTML 404 page): the surface fact is
+// NOT decodable, so the assembler refuses with RedfishSurfaceUndecodable -- it does not default the surface
+// served or un-served.
+test fn a_plaintext_service_root_body_refuses_never_an_unfounded_surface() -> Bool {
+  let c = faithful_captures()
+  let broken = BmcAccountStateCaptures {
+    channel: c.channel, channel_members: c.channel_members, redfish_census: c.redfish_census,
+    managed_answer: c.managed_answer, census_answer: c.census_answer,
+    redfish_accounts_answer: c.redfish_accounts_answer,
+    redfish_surface_answer: committed("redfish-surface", "<!DOCTYPE html><html><body>404 Not Found</body></html>"),
+    account_service_answer: c.account_service_answer, lan_config_answer: c.lan_config_answer,
+    break_glass_answer: c.break_glass_answer,
+  }
+  match assembled(captures: broken) {
+    CapturedTransportUndecodable { cause: RedfishSurfaceUndecodable { detail: _ } } => true
+    _ => false
+  }
+}
+
+// DECODER WITNESS (closed_grounded_substrate; single authority for the user-test verdict). ipmitool's whole
+// words Success / Failure are decoded; a session-failure line and a decoy body full of the letters that the
+// substring version read as success ("ok", "token", "invoked", "lookup", "successful") are all Unrecognized.
+// No substring can tip an acceptance -- only a whole-word Success or Failure token can.
+test fn the_user_test_words_are_decoded_not_guessed() -> Bool {
+  match ipmi_user_test_verdict_from_output(body: "Success") {
+    UserTestAccepted =>
+      match ipmi_user_test_verdict_from_output(body: "Failure: password incorrect") {
+        UserTestRejected =>
+          match ipmi_user_test_verdict_from_output(body: "Unable to establish IPMI v2 / RMCP+ session") {
+            UserTestUnrecognized { detail: _ } =>
+              match ipmi_user_test_verdict_from_output(body: "check-password: ok token invoked lookup successful") {
+                UserTestUnrecognized { detail: _ } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// DECODER WITNESS (single authority for the surface fact). A real ServiceRoot (@odata.type) is Served; a
+// bmcweb ERROR ENVELOPE -- even one whose message names Redfish -- is NotServed (the keyword does NOT make
+// it served); a non-JSON body (HTML) is Unrecognized. Structural, not keyword.
+test fn the_service_root_is_decoded_structurally_not_by_keyword() -> Bool {
+  match redfish_service_root_verdict_from_body(body: surface_capture) {
+    ServiceRootServed =>
+      match redfish_service_root_verdict_from_body(body: "{\"error\":{\"code\":\"Base.1.19.GeneralError\",\"message\":\"Redfish service disabled\"}}") {
+        ServiceRootNotServed { detail: _ } =>
+          match redfish_service_root_verdict_from_body(body: "<!DOCTYPE html><html><body>404 Not Found</body></html>") {
+            ServiceRootUnrecognized { detail: _ } => true
+            _ => false
+          }
+        _ => false
+      }
     _ => false
   }
 }
