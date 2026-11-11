@@ -9380,6 +9380,17 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
 // `RestResult<Body>` annotation would be -- the arms are read from the model, never restated here.
 // A caller therefore reaches a body field only by eliminating the refusal arm. Every other method
 // resolution passes through unchanged.
+// THE ONE AUTHORITATIVE DEFINITION of the rest-result carrier's identity. THE SINGLE AUTHORITY
+// (gunbc.design_argument::single_authority): the reader `rest_operation_result_type` below and the
+// runtime-reader registry both consult this row -- renaming or re-homing the carrier is a one-row
+// edit, and the demand seed cannot drift from what the reader actually resolves.
+type RestCarrierDeclaration {
+  home_module: String
+  type_name: String
+}
+
+data rest_result_carrier_declaration: RestCarrierDeclaration = RestCarrierDeclaration { home_module: "extdeps.transports.rest", type_name: "RestResult" }
+
 type RestOperationResultType {
   resolved_result: Node?
   diagnostics: List<ErrorNode>
@@ -9389,18 +9400,19 @@ fn rest_operation_result_type(resolution: KnownMethodResolution, site: SourceSpa
   match resolution.result_type {
     Present { value: body } =>
       if resolution.rest_operation {
-        let carrier = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "RestResult", span: kernel_span(name: "RestResult"), ident_span: Present { value: kernel_span(name: "RestResult") }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        let carrier_name = rest_result_carrier_declaration.type_name
+        let carrier = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: carrier_name, span: kernel_span(name: carrier_name), ident_span: Present { value: kernel_span(name: carrier_name) }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         let decl = resolve_generic_use_decl(env: scope.type_env, n: carrier)
         match decl.params |> first {
           Present { value: body_slot } =>
             RestOperationResultType {
-              resolved_result: Present { value: generic_declaration_application(n: carrier, decl: decl, type_name: "RestResult", resolved_args: [body], slot_bindings: map_insert(empty_map(), authored_name_at(source_indices: scope.type_env.source_indices, node: body_slot), body), env: scope.type_env) },
+              resolved_result: Present { value: generic_declaration_application(n: carrier, decl: decl, type_name: carrier_name, resolved_args: [body], slot_bindings: map_insert(empty_map(), authored_name_at(source_indices: scope.type_env.source_indices, node: body_slot), body), env: scope.type_env) },
               diagnostics: []
             }
           Absent =>
             RestOperationResultType {
               resolved_result: none,
-              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: "extdeps.transports.rest RestResult (import it where a rest operation is called)", span: site }, module_name: scope.module_name)]
+              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: concat(rest_result_carrier_declaration.home_module, concat(" ", concat(carrier_name, " (import it where a rest operation is called)"))), span: site }, module_name: scope.module_name)]
             }
         }
       } else {
@@ -16912,7 +16924,7 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
       }
     }
   }
-  concat(realization_wire_contract_row_edges(item: item, source_indices: source_indices),
+  concat(runtime_key_reader_row_edges(item: item, source_indices: source_indices),
     if reader == "" { [] } else {
       match rhs {
         Absent => []
@@ -16940,6 +16952,163 @@ fn realization_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) 
 // the boundary audit polices it. The category is the reader's own key set, not a list of names this file
 // wants: every data row whose declared type is `CoproductWireContract`, and every data row the reader can
 // find under the name `wire_contract`.
+// A RUNTIME KEYED READ is a consultation of a declaration by a key the reader holds OUTSIDE the
+// source text: a fold name spelled only in host code, a coproduct designated by a data row's
+// DeclarationRef, a handler named in argv. #16156 made realization demanded-only, and such a read
+// then asks for a declaration NO DEMANDED EDGE CAN NAME -- the reader refuses at RUN time with a
+// loaded-index miss no compile-time audit ever saw (the srv1 lab serve unit crash-looped exactly
+// so, refusing `http_ingress_handler_identity` at startup). The rule that keeps the demanded grain
+// honest: every runtime keyed read declares its key class HERE, so its keys enter the SAME demand
+// seeds and the SAME edge inventory `realization_of` assembles, and `realization_audit` refuses by
+// READER NAME on any key this run did not realize. A new keyed read is one variant plus its arms
+// in the two dispatches below -- never a second ad-hoc seed site beside this one, and never a
+// hand-listed name at the consumer: the consumer reads the declared row, the registry grows it.
+// A DECLARED COPRODUCT, not a String tag: the kernel checks every consultation by variant, an
+// unknown shape is a compile error rather than a silent fall-through (gunbc.design_argument::
+// fail_closed), and a new keyed read is one variant plus its arms in the two dispatches below.
+// `name` is the audit identity realization_audit refuses under -- one per instance.
+type RuntimeKeyReader =
+    WireContractShape { name: String }
+  | DeclaredKeyRow { name: String, reader_module: String, row_name: String }
+  | RestCarrier { name: String }
+
+// THE REGISTRY. `wire_contract_index` (#16241, the first instance): the interpreter decodes a
+// coproduct through the wire-contract row keyed by its `coproduct` DeclarationRef -- the category
+// of rows IS the key set, found by the shape test `realization_wire_contract_read_row`, each row's
+// designated coproduct the key it reads. `rest_result_carrier` (#16279): every operation
+// rest_operation_result_type types resolves the result carrier at the call (its arm below).
+// `loaded_index_keyed_call` (the srv1 serve-unit class): the ingress host consults folds BY NAME
+// at run time; its key set is the declared data row `http_ingress_host_read_folds` OF THE MODULE
+// IT SERVES -- the module gate is the graph's own: a run that never loads gunbc.http_ingress
+// never sees the row and seeds nothing extra. Review 93371 refused this instance while its
+// `row_name` named no data row anywhere (an inert-but-unresolvable row is a silent widen); it
+// joins now WITH ITS ROW IN THE TREE (dag/gunbc/http_ingress.dag) and its serve-entry test.
+data runtime_key_readers: List<RuntimeKeyReader> = [
+  WireContractShape { name: "wire_contract_index" },
+  DeclaredKeyRow { name: "loaded_index_keyed_call", reader_module: "gunbc.http_ingress", row_name: "http_ingress_host_read_folds" },
+  RestCarrier { name: "rest_result_carrier" },
+]
+
+// The declared-key row of this class, when the module that owns it is in THIS graph: a run that
+// does not load the serving module has no such reader running, so owes no seed. THE ONE PREDICATE
+// both dispatches below consult -- the seed exists exactly when the edges do (review 93428's
+// single-gate rule).
+fn runtime_key_module_by_name(modules: List<ResolvedModule>, module_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == module_name) |> first {
+    Absent => none
+    Present { value: m } => Present { value: m.module }
+  }
+}
+
+fn runtime_key_declared_row(modules: List<ResolvedModule>, reader_module: String, row_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match runtime_key_module_by_name(modules: modules, module_name: reader_module, source_indices: source_indices) {
+    Absent => none
+    Present { value: m } =>
+      match module_items(n: m) |> filter(i => i.module_item_kind == ModuleItemDataValue && i.name == row_name) |> first {
+        Present { value: row } => Present { value: row }
+        Absent => none
+      }
+  }
+}
+
+// The keys a declared-key row lists: its ExprListLit element literals, read the way the checker
+// reads any string literal.
+fn runtime_key_declared_row_keys(row: Node) -> List<String> {
+  match row.body {
+    Absent => []
+    Present { value: body } =>
+      fold(body.children, init: [], f: (acc, child) =>
+        match expr_literal_string_optional(expr: child) {
+          Absent => acc
+          Present { value: key } => list_push(acc: acc, item: key)
+        })
+  }
+}
+
+// THE SINGLE REST TEST FOR A DECLARED SERVICE: any operation the checker's own
+// service_operation_is_rest admits (op-level transport, else the service-level one).
+fn service_is_rest_declared(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if item.module_item_kind != ModuleItemService {
+    false
+  } else {
+    item.children |> filter(c => service_operation_is_rest(op: c, service: item, source_indices: source_indices)) |> count != 0
+  }
+}
+
+fn graph_has_rest_service(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let items = fold(modules, init: [], f: (acc, m) => concat(acc, module_items(n: m.module)))
+  items |> filter(i => service_is_rest_declared(item: i, source_indices: source_indices)) |> count != 0
+}
+
+// THE SINGLE DEMAND-SEED SOURCE FOR ALL RUNTIME READERS: each reader's keys as the reader itself
+// holds them, in the authored form `realized` is keyed by (measured: the wire row realizes under
+// its BARE name). A declared-key row seeds ITSELF -- the host reads the row at run time, so the
+// row must be realized -- plus every key it lists.
+fn runtime_key_reader_seed_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  fold(runtime_key_readers, init: [], f: (acc, r) =>
+    match r {
+      // The wire-contract index keys over the CATEGORY: every row the encoding reader can find
+      // named `wire_contract`, exactly as before the registry existed.
+      WireContractShape { name: _ } =>
+        concat(acc, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+      // A declared-key row seeds ITSELF -- the host reads the row at run time, so the row must be
+      // realized -- plus every key it lists, but only when its owning module is in THIS graph: no
+      // serving module, no reader, no owed seed.
+      DeclaredKeyRow { name: _, reader_module: reader_module, row_name: row_name } =>
+        match runtime_key_declared_row(modules: modules, reader_module: reader_module, row_name: row_name, source_indices: source_indices) {
+          Absent => acc
+          Present { value: row } => concat(acc, concat(list_push(acc: [], item: authored_name_at(source_indices: source_indices, node: row)), runtime_key_declared_row_keys(row: row)))
+        }
+      // THE REST CARRIER SEEDS ITS ONE DECLARATION IDENTITY: the reader is rest_operation_result_type
+      // -> resolve_generic_use_decl(env: scope.type_env, n: carrier) with the synthesized carrier
+      // Node named "RestResult"; that bare name is the ONE spelling looked up, so it is the ONE
+      // spelling demanded. THE ONE GATE, shared with the edge arm below: the graph declares at least
+      // one rest-declared service (graph_has_rest_service folds service_is_rest_declared, the very
+      // predicate the edge arm tests per service), so an edge exists exactly when the seed exists --
+      // the seed cannot drift behind what the audit's edges refuse on. A graph with no rest service
+      // seeds nothing extra over main; when the carrier's home module is absent the carrier is
+      // absent from `declared` too, and realization_audit's declared-guard skips the edge.
+      RestCarrier { name: _ } =>
+        if graph_has_rest_service(modules: modules, source_indices: source_indices) {
+          concat(acc, [rest_result_carrier_declaration.type_name])
+        } else {
+          acc
+        }
+    })
+}
+
+// THE SINGLE EDGE INVENTORY CONTRIBUTION FOR ALL RUNTIME READERS. The wire instance keeps its own
+// row-to-designated-coproduct fns below; the declared-key instance edges from the row to each key
+// it lists, UNDER THE READER'S NAME, so a run missing a fold is refused by realization_audit
+// blaming `loaded_index_keyed_call` -- not a wall -- naming the key and the row that declares it;
+// the rest instance edges from each rest-declared service to the carrier, UNDER THE READER'S NAME,
+// so a run missing the carrier is refused by realization_audit blaming `rest_result_carrier` --
+// not a wall -- naming the carrier.
+fn runtime_key_reader_row_edges(item: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
+  fold(runtime_key_readers, init: [], f: (acc, r) =>
+    match r {
+      // The wire instance keeps its own row-to-designated-coproduct edges, unchanged.
+      WireContractShape { name: _ } =>
+        concat(acc, realization_wire_contract_row_edges(item: item, source_indices: source_indices))
+      DeclaredKeyRow { name: name, reader_module: _, row_name: row_name } =>
+        if item.module_item_kind == ModuleItemDataValue && item.name == row_name {
+          fold(runtime_key_declared_row_keys(row: item), init: acc, f: (a, key) => list_push(acc: a, item: RealizationEdge { reader: name, name: key, span: item.span }))
+        } else {
+          acc
+        }
+      RestCarrier { name: name } =>
+        if item.module_item_kind == ModuleItemService && service_is_rest_declared(item: item, source_indices: source_indices) {
+          // THE REST CARRIER IS A SERVICE-DECLARED READ: every operation rest_operation_result_type
+          // would type resolves this carrier at the call, so the service that DECLARES a rest
+          // transport reads it. Edge under the reader's name: a run missing the carrier is refused
+          // by realization_audit blaming `rest_result_carrier` and naming the carrier.
+          list_push(acc: acc, item: RealizationEdge { reader: name, name: rest_result_carrier_declaration.type_name, span: item.span })
+        } else {
+          acc
+        }
+    })
+}
+
 fn realization_wire_contract_read_row(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if item.module_item_kind != ModuleItemDataValue {
     false
@@ -17108,7 +17277,7 @@ fn realization_names(modules: List<ResolvedModule>, seeds: List<String>, source_
   let declaration_index = fold(items, init: empty_map(), f: (idx, item) =>
     let nm = authored_name_at(source_indices: source_indices, node: item)
     map_insert(idx, nm, list_push(match map_get(idx, nm) { Present { value: l } => l  Absent => [] }, item)))
-  let demand_seeds = concat(seeds, realization_wire_contract_read_names(modules: modules, source_indices: source_indices))
+  let demand_seeds = concat(seeds, runtime_key_reader_seed_names(modules: modules, source_indices: source_indices))
   let seeded = fold(demand_seeds, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let first = fold(map_keys(seeded), init: DemandWave { demanded: seeded, fresh: map_keys(seeded) }, f: (w, nm) =>
     fold(match map_get(declaration_index, nm) { Present { value: l } => l  Absent => [] }, init: w, f: (a, item) =>
