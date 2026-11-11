@@ -42,8 +42,12 @@ import gunbc.host.host_standup {
   assimilation_complete,
   host_standup_p3_gunbc_pinned_tree_landed,
   assimilation_input_is_required,
+  host_standup_install_route,
+  host_standup_install_phase_owed,
+  ResolvedInstallRoute,
+  NoInstallPhaseOwed,
 }
-import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, ProviderGuest }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
   CiRunnerParticipation,
@@ -111,17 +115,20 @@ fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool
   }
 }
 
-// ONLY AN OS INSTALLED OVER VIRTUAL MEDIA OWES THE INSTALL STEPS AND A CONVERGE POLICY. An appliance
-// image arrives through the appliance's own first boot and a RAM image is booted rather than installed,
-// so neither has a mechanism to resolve or an actuation to run. A RAM-image host carries no mutable
-// converged state either: its slots and knobs are inputs to the image, owed by the image-baked arm of
-// gunbc.host.host_converge fleet_converge_policy_from rather than applied by a converge.
+// WHICH DELIVERIES OWES THE INSTALL STEPS AND A CONVERGE POLICY. An OS installed over virtual media and an
+// OS installed over a one-shot network boot both have a mechanism to resolve and an actuation to run, and
+// both leave a disk a converge re-reads. An appliance image arrives through the appliance's own first boot
+// and a RAM image is booted rather than installed, so neither has a mechanism to resolve or an actuation to
+// run. A RAM-image host carries no mutable converged state either: its slots and knobs are inputs to the
+// image, owed by the image-baked arm of gunbc.host.host_converge fleet_converge_policy_from rather than
+// applied by a converge.
 fn delivery_owes_install(d: OwnedOsDelivery) -> Bool {
-  match d {
-    InstalledViaVirtualMedia => true
-    ApplianceImage => false
-    RamImageBoot => false
-  }
+  // ONE HOME: this reads the same selector the standup spine's install phases name as their authority
+  // (gunbc.host.host_standup::host_standup_install_route), so "does this medium owe the install steps" and
+  // "which route satisfies them" are answered by one total match over OwnedOsDelivery. A medium added without
+  // a route is a compile error there, which is what keeps this from being able to green a host on the wrong
+  // route: an arm cannot say "owed" here and name no authorities there.
+  host_standup_install_phase_owed(delivery: d)
 }
 
 // HostIdentityConverge and ReachSecretsNetwork are shared: every enrolled host needs a converged

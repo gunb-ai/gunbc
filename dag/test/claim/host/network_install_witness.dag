@@ -1,0 +1,889 @@
+// test.claim.host.network_install_witness — the witnesses PXE 2c's plan item asks for.
+//
+// Four of them are named by the plan, and each is driven by a DISCRIMINATING RED plus a REAL-INPUT POSITIVE
+// CONTROL, per the plan's own rule ("every witness names the change that would flip it"). The four are:
+//   no edge binding means no PATCH              → w_no_edge_binding_plans_no_boot_step, with its red's twin
+//   an unread or stale disk reading withholds   → w_the_stale_reading_withholds_the_install_at_its_own_deadline
+//   a seed whose match names no single disk     → w_a_model_only_reading_names_no_disk_to_erase
+//   a repeat dispatch refuses                   → w_a_completed_install_refuses_the_second_dispatch
+// plus the ordering, journal-decoding, contents, hold, completion and settle claims that make those four mean
+// what they claim rather than merely pass.
+//
+// WHAT A WITNESS MAY NOT DEPEND ON. srv15's arrival population row and standing grant land on another branch
+// (PXE 1d-a), so no claim here reads the COMMITTED arrival population: every membership claim drives the
+// supplied-population form, which is the shape admit_arrival_subject_in was made public for. A claim that said
+// "the committed population refuses srv15" would be a claim about a date, and would flip under this file when
+// 1d-a lands. The BMC standings are the committed mtcollins1 rows (a real input, not a fixture), because
+// BmcSecureStanding is minted only by its own admission and no fixture of it belongs in this file.
+module test.claim.host.network_install_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String, EpochMs, Milliseconds }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.types {
+  BootTargetPxe, BootOverrideModeUefi, BootOverrideModeLegacy, BootOverrideOnce, BootOverrideContinuous,
+}
+import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessUnobserved }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import gunbc.host.managed_host { ManagedHost, managed_host_binding_for }
+import gunbc.host.bmc_control_binding { BmcControlStanding, bmc_control_binding }
+import gunbc.host.managed_host_boot_once {
+  BootOnceSetting,
+  BootOnceReadbackObserved,
+  BootOnceReadbackAbsent,
+  bound_controller_of,
+  BoundControllerFound,
+  BoundControllerAbsent,
+  plan_boot_once_on_standing,
+  boot_once_intended_setting,
+  boot_once_has_reset,
+}
+import gunbc.machine_intake.arrival_subject { ArrivalConvergePopulationRow }
+import gunbc.machine_intake.bmc_write_controller { ByPerWriteApproval }
+import gunbc.auth.standing_operator_grant {
+  StandingOperatorGrant, StandingGrantEffect, StandingGrantHost,
+  StandingArrivalArchive, StandingArrivalFirmwareQualification,
+}
+import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization, InterlockPending }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.provisioning.install_target_disk { TargetDiskReading, DiskReported, NotRead, LsblkBlockReport }
+
+import gunbc.host.network_install {
+  DiskContentsReader, LsblkBlockDeviceReport, SfdiskPartitionTableReport,
+  DiskContentsReport, ContentsNotRead,
+  TargetDiskContentsAdmitted, TargetDiskContentsRefused, admit_target_disk_contents,
+  NetworkInstallJournalReading, JournalSlotAbsent, JournalSlotCompleted, JournalSlotUnreadable,
+  JournalSlotMalformed, network_install_journal_reading, network_install_journal_slot_key,
+  NetworkInstallCompletionAdmitted,
+  NetworkInstallCompletionRefusedInstallUnread, NetworkInstallCompletionRefusedBindingNotWithdrawn,
+  admit_network_install_completion, network_install_journal_payload,
+  NetworkInstallHoldReading, HoldFree, HoldHeldBy, HoldUnreadable,
+  NetworkInstallBindingEvidence, BindingStagedAndReadBack, BindingAbsent, BindingWriteFailed,
+  BindingReadBackMismatch,
+  NetworkInstallOsObservation, InstalledOsObserved, InstalledOsNotObserved,
+  NetworkInstallDispatch, NetworkInstallDispatchAdmitted, NetworkInstallDispatchRefused,
+  InstallAlreadyCompleted, JournalUnreadable, network_install_dispatch_admission,
+  network_install_refused_receipt, network_install_receipt_lines,
+  network_install_may_reset, network_install_settle_boot_once,
+}
+
+// ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
+
+// THE ARTIFACT THE IDENTITY ROW NAMES, and the one the contents reports below are read from. Passing it in
+// rather than reading it back off the report is what makes the contents precondition mean something: the erase
+// is authorized by ONE capture, serial, model and blankness all from the same file.
+data identity_artifact: NonEmptyStr = "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt"
+
+// The unit these claims drive. NOT a fleet host: it exists only as a supplied population row, which is the
+// shape gunbc.machine_intake.arrival_subject was written to accept.
+data install_unit: HostIdentity = "network-install-fixture-unit"
+
+data dispatch_owner: NonEmptyStr = "run-2c-0001"
+
+data expected_serial: NonEmptyStr = "25466Q801557"
+
+// The srv15 capture's own numbers, used as data rather than as an assertion about srv15: 2026-10-29T00:00Z,
+// the earliest instant artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt supports, and the
+// 30-day window gunbc.fleet.machine_target_disk_observations carries.
+data reading_instant: EpochMs = 1793232000000
+data window: Milliseconds = 2592000000
+
+fn door_effects() -> List<StandingGrantEffect> {
+  [StandingArrivalArchive, StandingArrivalFirmwareQualification]
+}
+
+// A LABELLED FIXTURE, in the grain test.claim.machine_intake.arrival_subject_witness uses: the ruling text
+// says it is a fixture, so nothing here can be mistaken for an operator authorization.
+fn fixture_grant(host: HostIdentity) -> StandingOperatorGrant {
+  StandingOperatorGrant {
+    identity: "network-install-fixture-grant" as NonEmptyStr,
+    principal: "operator" as NonEmptyStr,
+    ruled_at: "2026-11-11T00:00:00Z",
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: "fixture ruling for the network-install dispatch admission" as NonEmptyStr,
+      effect_subject: "fixture install unit" as NonEmptyStr,
+      interlock: InterlockPending { obligation: "fixture" as NonEmptyStr },
+    },
+    scope: StandingGrantHost { host: host },
+    effects: door_effects(),
+  }
+}
+
+fn population_of(host: HostIdentity) -> List<ArrivalConvergePopulationRow> {
+  [
+    ArrivalConvergePopulationRow {
+      host: host,
+      producer: decl_ref(
+        module_path: "test.claim.host.network_install_witness", decl_name: "fixture_producer"
+      ),
+      grant: fixture_grant(host: host),
+    }
+  ]
+}
+
+fn fixture_producer() -> Bool {
+  true
+}
+
+// A DISK READING WITH A SERIAL — the shape the 2026-10-29 srv15 capture reported (serial and model both).
+fn reported_disk(host: HostIdentity, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: host,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Present { value: expected_serial },
+    reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
+}
+
+// THE SAME DISK AS THE FLEET READING IT, minus the serial — what the 2026-10-16 srv14 capture actually
+// printed (a model for every disk, a serial for none).
+fn model_only_disk(host: HostIdentity, read_at: EpochMs) -> TargetDiskReading {
+  DiskReported {
+    host: host,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Absent,
+    reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/srv14-inband-recovery/host_identity.txt" as NonEmptyStr,
+    read_at: read_at,
+  }
+}
+
+fn contents_report(
+  partition_table: Bool, filesystems: List<NonEmptyStr>, readers: List<DiskContentsReader>
+) -> DiskContentsReport {
+  DiskContentsReport {
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: reading_instant,
+    partition_table_reported: partition_table,
+    filesystems_reported: filesystems,
+    readers: readers,
+  }
+}
+
+fn both_readers() -> List<DiskContentsReader> {
+  [LsblkBlockDeviceReport, SfdiskPartitionTableReport]
+}
+
+fn staged_binding() -> NetworkInstallBindingEvidence {
+  BindingStagedAndReadBack {
+    client: "9c:6b:00:e7:ca:63" as NonEmptyStr,
+    path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr,
+  }
+}
+
+// mtcollins1's COMMITTED managed-host rows, which is where a BmcSecureStanding comes from in this file: it is
+// minted only by its own admission, so a fixture of it would be an invented authorization rather than a test
+// input. The claim below is that the row is there to read.
+fn mtcollins1_rows() -> Optional<ManagedHost> {
+  managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)
+}
+
+fn mtcollins1_standing() -> Optional<BmcControlStanding> {
+  match mtcollins1_rows() {
+    Absent => Absent
+    Present { value: m } => Present { value: bmc_control_binding(observed: m.access, secured: m.secure) }
+  }
+}
+
+fn mtcollins1_controller() -> Optional<BmcControllerEndpoint> {
+  match mtcollins1_standing() {
+    Absent => Absent
+    Present { value: standing } => match bound_controller_of(standing: standing) {
+      BoundControllerFound { endpoint: endpoint, account: _ } => Present { value: endpoint }
+      BoundControllerAbsent => Absent
+    }
+  }
+}
+
+// AN UNBOUND CONTROLLER: the same secured standing, with no access observation behind it. This is the shape
+// srv15 is in until its BMC account-state read lands.
+fn unobserved_access() -> BmcAccessObservationStanding {
+  match mtcollins1_controller() {
+    Absent => BmcAccessUnobserved { endpoint: missing_controller_endpoint() }
+    Present { value: endpoint } => BmcAccessUnobserved { endpoint: endpoint }
+  }
+}
+
+fn missing_controller_endpoint() -> BmcControllerEndpoint {
+  BmcControllerEndpoint { host: "203.0.113.201" as NonEmptyStr }
+}
+
+fn secured_standing() -> Optional<BmcSecureStanding> {
+  match mtcollins1_rows() {
+    Absent => Absent
+    Present { value: m } => Present { value: m.secure }
+  }
+}
+
+// ONE CALL, EVERY GATE. The gates this file drives are the first four, so the arguments past them are fixed at
+// their admitting values; what a claim varies is named.
+fn dispatch(
+  journal: NetworkInstallJournalReading,
+  hold: NetworkInstallHoldReading,
+  binding: NetworkInstallBindingEvidence,
+  population: List<ArrivalConvergePopulationRow>,
+  reading: TargetDiskReading,
+  decided_at: EpochMs
+) -> NetworkInstallDispatch {
+  match mtcollins1_controller() {
+    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 BMC rows this witness drives are absent; see w_the_committed_controller_this_file_drives_is_bound" } }
+    Present { value: controller } => match secured_standing() {
+      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 secure standing this witness drives is absent; see w_the_committed_controller_this_file_drives_is_bound" } }
+      Present { value: secured } => network_install_dispatch_admission(
+        population: population,
+        managed: [],
+        host: install_unit,
+        expected_serial: expected_serial,
+        dispatch_owner: dispatch_owner,
+        intended_controller: controller,
+        observed: mtcollins_access_or_unobserved(),
+        secured: secured,
+        board: Absent,
+        route: ByPerWriteApproval,
+        qualification: Absent,
+        journal: journal,
+        hold: hold,
+        reading: reading,
+        decided_at: decided_at,
+        window: window,
+        contents_report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+        binding: binding,
+        os_observation: InstalledOsNotObserved
+      )
+    }
+  }
+}
+
+// THE SAME DISPATCH, WITH ONLY THE OS OBSERVATION VARIED, so the positive/negative pair above compares one
+// fact against the same everything-else.
+fn dispatch_with_os(os_observation: NetworkInstallOsObservation) -> NetworkInstallDispatch {
+  match mtcollins_controller() {
+    Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 BMC rows this witness drives are absent; see w_the_committed_controller_this_file_drives_is_bound" } }
+    Present { value: controller } => match secured_standing() {
+      Absent => NetworkInstallDispatchRefused { cause: JournalUnreadable { host: install_unit, serial: expected_serial, detail: "the committed mtcollins1 secure standing this witness drives is absent; see w_the_committed_controller_this_file_drives_is_bound" } }
+      Present { value: secured } => network_install_dispatch_admission(
+        population: population_of(host: install_unit),
+        managed: [],
+        host: install_unit,
+        expected_serial: expected_serial,
+        dispatch_owner: dispatch_owner,
+        intended_controller: controller,
+        observed: mtcollins_access_or_unobserved(),
+        secured: secured,
+        board: Absent,
+        route: ByPerWriteApproval,
+        qualification: Absent,
+        journal: JournalSlotAbsent,
+        hold: HoldFree,
+        reading: reported_disk(host: install_unit, read_at: reading_instant),
+        decided_at: 1793300001000,
+        window: window,
+        contents_report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+        binding: staged_binding(),
+        os_observation: os_observation
+      )
+    }
+  }
+}
+
+fn mtcollins_access_or_unobserved() -> BmcAccessObservationStanding {
+  match mtcollins1_rows() {
+    Absent => unobserved_access()
+    Present { value: m } => m.access
+  }
+}
+
+// ── THE PLAN'S FOURTH OBLIGATION: A REPEAT DISPATCH REFUSES, BEFORE ANY BMC WRITE ────────────────
+
+// A completed install for THIS (unit, disk) refuses the dispatch with the cause that says so, naming the
+// instant it completed. "Before any BMC write" is a property of the ordering, witnessed below: this refusal is
+// returned without a controller ever being consulted.
+test fn w_a_completed_install_refuses_the_second_dispatch() -> Bool {
+  match dispatch(
+    journal: JournalSlotCompleted { completed_at: 1793300000000 },
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: h, serial: s, completed_at: at } } =>
+      h == install_unit && (s as String) == (expected_serial as String) && at == 1793300000000
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// RED DISCRIMINATOR: with the journal read as Absent, the SAME inputs do not refuse for completion. Reverting
+// the journal gate to nothing (or reading the slot as absent on a read error) flips this and the claim above
+// together; passing them both is what shows the refusal came from the slot and not from elsewhere.
+test fn w_the_same_dispatch_is_not_refused_for_completion_when_the_slot_is_absent() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: _, serial: _, completed_at: _ } } => false
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => true
+  }
+}
+
+// AN UNREADABLE JOURNAL REFUSES, and so does a payload that is not what we wrote. Fail-closed on both: a
+// store that will not answer is not evidence that no install completed.
+test fn w_an_unreadable_or_malformed_journal_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotUnreadable { detail: "cas root unreadable" },
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: JournalUnreadable { host: _, serial: _, detail: _ } } => true
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// THE JOURNAL DECODER, which is the difference between "installed" and "a stranger wrote this key".
+test fn w_the_journal_decoder_reads_only_what_we_write() -> Bool {
+  match network_install_journal_reading(payload: Absent) {
+    JournalSlotAbsent => match network_install_journal_reading(payload: Present { value: "1793300000000" }) {
+      JournalSlotCompleted { completed_at: at } =>
+        at == 1793300000000 && match network_install_journal_reading(payload: Present { value: "not-a-number" }) {
+          JournalSlotMalformed { payload: _ } => match network_install_journal_reading(payload: Present { value: "" }) {
+            JournalSlotMalformed { payload: _ } => true
+            JournalSlotAbsent => false
+            JournalSlotCompleted { completed_at: _ } => false
+            JournalSlotUnreadable { detail: _ } => false
+          }
+          JournalSlotAbsent => false
+          JournalSlotCompleted { completed_at: _ } => false
+          JournalSlotUnreadable { detail: _ } => false
+        }
+      JournalSlotAbsent => false
+      JournalSlotMalformed { payload: _ } => false
+      JournalSlotUnreadable { detail: _ } => false
+    }
+    JournalSlotCompleted { completed_at: _ } => false
+    JournalSlotMalformed { payload: _ } => false
+    JournalSlotUnreadable { detail: _ } => false
+  }
+}
+
+// THE SLOT KEY IS THE IDENTITY, which is why a replaced disk is not blocked by the old disk's completion and
+// why no payload parser is needed.
+test fn w_the_slot_key_carries_the_unit_and_the_disk() -> Bool {
+  let a = network_install_journal_slot_key(host: install_unit, serial: "25466Q801557" as NonEmptyStr)
+  let b = network_install_journal_slot_key(host: install_unit, serial: "ANOTHER-SERIAL" as NonEmptyStr)
+  (a as String) != (b as String) &&
+    // THE KEY IS THE IDENTITY, spelled out: the separator between the unit and the disk is what keeps two
+    // pairings from naming one slot, so the expected spelling is written here rather than recomputed.
+    (a as String) == "network-install-completion/network-install-fixture-unit/25466Q801557" &&
+    match network_install_journal_reading(payload: Present { value: "0" }) {
+      // "0" is not a generation, so a slot claiming it is malformed rather than "installed at the epoch".
+      JournalSlotMalformed { payload: _ } => true
+      JournalSlotAbsent => false
+      JournalSlotCompleted { completed_at: _ } => false
+      JournalSlotUnreadable { detail: _ } => false
+    }
+}
+
+// ── THE PLAN'S FIRST OBLIGATION: NO EDGE BINDING MEANS NO PATCH ──────────────────────────────────
+
+// A client the edge is not serving gets NO BOOT PLAN AT ALL — not a plan whose Set step is skipped, which is
+// what "no PATCH" has to mean: the Redfish boot override is a PATCH, and a dispatch that never builds a
+// BootOncePlan cannot issue one.
+test fn w_no_edge_binding_plans_no_boot_step() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: BindingAbsent { client: "9c:6b:00:e7:ca:63" as NonEmptyStr },
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// A BINDING THAT WAS WRITTEN BUT NOT READ BACK IS NOT A BINDING, and neither is a write that failed: three
+// ways the staging can fail, all three refused. The positive control below is the same call with the file
+// read back as written.
+test fn w_a_binding_that_did_not_read_back_plans_no_boot_step() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: BindingReadBackMismatch {
+      client: "9c:6b:00:e7:ca:63" as NonEmptyStr,
+      path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr,
+      reason: "the bytes on disk differ from what was staged" as NonEmptyStr,
+    },
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// ── THE HOLD: TWO DISPATCHES CANNOT BOTH BOOT ONE MACHINE ────────────────────────────────────────
+
+// Another owner holds the unit → refuse, whatever the other inputs say.
+test fn w_a_hold_held_by_another_dispatch_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldHeldBy { owner: "run-2c-0002" as NonEmptyStr },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// POSITIVE CONTROL FOR THE HOLD: the SAME hold, owned by THIS dispatch, is not a refusal — that is re-entry
+// after a crashed run, and it must not be locked out by its own hold. The comparison is by owner, so the
+// refusal above cannot be an artifact of "any hold refuses".
+test fn w_holding_the_unit_myself_is_not_a_refusal() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldHeldBy { owner: dispatch_owner },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => true
+  } && match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldHeldBy { owner: "run-2c-0002" as NonEmptyStr },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// THE ORDERING, witnessed rather than asserted: a completed journal refuses even when another dispatch also
+// holds the unit, so the journal is read FIRST and a repeat cannot hide behind a hold, and a hold refuses even
+// when the binding is absent, so a concurrent dispatch is reported as the concurrency it is.
+test fn w_the_journal_is_read_before_the_hold_and_the_binding() -> Bool {
+  match dispatch(
+    journal: JournalSlotCompleted { completed_at: 1793300000000 },
+    hold: HoldHeldBy { owner: "run-2c-0002" as NonEmptyStr },
+    binding: BindingAbsent { client: "9c:6b:00:e7:ca:63" as NonEmptyStr },
+    population: [],
+    reading: NotRead { host: install_unit, why: "nothing was read" as NonEmptyStr },
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: _, serial: _, completed_at: _ } } => true
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// ── THE PLAN'S SECOND OBLIGATION: AN UNREAD OR STALE READING WITHHOLDS THE INSTALL ───────────────
+
+// THE FLEET ROW GOES STALE AT THE INSTANT IT IS DECIDED, NOT AT ONE IT CARRIES: the same reading admits at
+// read_at+window and withholds one millisecond later. This is the shape 2a's handoff warns about — a frozen
+// decided_at anywhere in the run would make both halves of this claim pass forever.
+test fn w_the_stale_reading_withholds_the_install_at_its_own_deadline() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: reading_instant + window
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => match dispatch(
+      journal: JournalSlotAbsent,
+      hold: HoldFree,
+      binding: staged_binding(),
+      population: population_of(host: install_unit),
+      reading: reported_disk(host: install_unit, read_at: reading_instant),
+      decided_at: reading_instant + window + 1
+    ) {
+      NetworkInstallDispatchRefused { cause: _ } => true
+      NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    }
+  }
+}
+
+// A READING NEVER TAKEN withholds the install: NotRead is a fact about the world, and the run refuses on it.
+test fn w_a_never_read_disk_withholds_the_install() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: NotRead { host: install_unit, why: "no OS to read, Redfish /Storage answered Members: []" as NonEmptyStr },
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// ── THE PLAN'S THIRD OBLIGATION: A MATCH THAT NAMES NO SINGLE DISK REFUSES ───────────────────────
+
+// A MODEL-ONLY READING — exactly what the 2026-10-16 srv14 capture reported — names a class of disks, not one
+// disk, and the run refuses. This is the seed-selector refusal at the authorization layer: nothing downstream
+// gets to render a match with no serial.
+test fn w_a_model_only_reading_names_no_disk_to_erase() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: model_only_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// A DISPATCH FOR THE WRONG DISK REFUSES: the run names the disk it means, and an admitted reading for a
+// DIFFERENT disk is not a licence to erase it. Discriminates against "install onto whatever is in the bay".
+test fn w_a_disk_that_is_not_the_one_dispatched_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: DiskReported {
+      host: install_unit,
+      device: "nvme0n1" as NonEmptyStr,
+      reported_serial: Present { value: "REPLACEMENT-DISK-0001" as NonEmptyStr },
+      reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
+      source: LsblkBlockReport,
+      captured_in: "artifacts/bmc/srv15-inband-recovery-2026-11-20/host_identity.txt" as NonEmptyStr,
+      read_at: reading_instant,
+    },
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// ── THE CONTENTS PRECONDITION: WHAT IS ON THE DISK ABOUT TO BE ERASED ────────────────────────────
+
+// THE ADMITTING ARM, named for what was read: both readers, no partition table, no filesystem, and the same
+// artifact the serial and model came from. This is the srv15 capture's actual shape (host_identity.txt:72-76
+// shows the target with no child partition; secureboot_disk_bootorder.txt:3-8 shows sfdisk printing no
+// partition table).
+test fn w_the_capture_that_reported_nothing_admits_the_erase() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsAdmitted { contents: _ } => true
+    TargetDiskContentsRefused { contents: _ } => false
+  }
+}
+
+// A PARTITION TABLE, OR ANY FILESYSTEM, REFUSES: the disk has content and this workflow does not erase content
+// nobody read as disposable.
+test fn w_content_that_was_seen_refuses_the_erase() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: true, filesystems: [], readers: both_readers()),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsRefused { contents: _ } => match admit_target_disk_contents(
+      report: contents_report(partition_table: false, filesystems: ["ext4" as NonEmptyStr], readers: both_readers()),
+      identity_captured_in: identity_artifact
+    ) {
+      TargetDiskContentsRefused { contents: _ } => true
+      TargetDiskContentsAdmitted { contents: _ } => false
+    }
+    TargetDiskContentsAdmitted { contents: _ } => false
+  }
+}
+
+// ONE READER IS NOT ENOUGH, in either direction: `lsblk` alone never enumerates a partition table it was not
+// asked for, and `sfdisk` alone reports no filesystems. Nothing was swept, so nothing is admitted.
+test fn w_a_single_reader_admits_nothing() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: [LsblkBlockDeviceReport]),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsRefused { contents: ContentsNotRead { reason: _ } } =>
+      match admit_target_disk_contents(
+        report: contents_report(partition_table: false, filesystems: [], readers: [SfdiskPartitionTableReport]),
+        identity_captured_in: identity_artifact
+      ) {
+        TargetDiskContentsRefused { contents: ContentsNotRead { reason: _ } } => true
+        TargetDiskContentsRefused { contents: _ } => false
+        TargetDiskContentsAdmitted { contents: _ } => false
+      }
+    TargetDiskContentsRefused { contents: _ } => false
+    TargetDiskContentsAdmitted { contents: _ } => false
+  }
+}
+
+// THE CONTENTS MUST BE THE CONTENTS OF THE DISK THIS INSTALL PINNED. A report from a different artifact — a
+// stale capture, or someone else's blank disk — refuses with its own cause, naming both sides. Red: delete the
+// artifact comparison and the borrowed report admits, which is how a disk nobody looked at gets erased.
+test fn w_contents_read_from_a_different_artifact_refuse() -> Bool {
+  match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+    identity_captured_in: "artifacts/bmc/srv15-inband-recovery-2026-09-01/host_identity.txt" as NonEmptyStr
+  ) {
+    TargetDiskContentsRefused { contents: ContentsEvidenceFromAnotherArtifact { reported: r, identity: i } } =>
+      (r as String) == (contents_report(partition_table: false, filesystems: [], readers: both_readers()).captured_in as String) &&
+        (i as String) == "artifacts/bmc/srv15-inband-recovery-2026-09-01/host_identity.txt"
+    TargetDiskContentsRefused { contents: _ } => false
+    TargetDiskContentsAdmitted { contents: _ } => false
+  } && match admit_target_disk_contents(
+    report: contents_report(partition_table: false, filesystems: [], readers: both_readers()),
+    identity_captured_in: identity_artifact
+  ) {
+    TargetDiskContentsAdmitted { contents: _ } => true
+    TargetDiskContentsRefused { contents: _ } => false
+  }
+}
+
+// ── COMPLETION IS WRITTEN ONLY AFTER THE INSTALL AND THE WITHDRAWAL BOTH HOLD ─────────────────────
+
+// A FAILED INSTALL STAYS RETRYABLE: no read-back, no completion record — so the host is not locked out of a
+// retry by a journal entry for an install that never happened.
+test fn w_an_unread_install_records_no_completion() -> Bool {
+  match admit_network_install_completion(
+    host: install_unit,
+    serial: expected_serial,
+    completed_at: 1793300000000,
+    install_receipt: "artifacts/pxe/srv15-install-2026-11-20/receipt.txt" as NonEmptyStr,
+    install_read_back: false,
+    binding_withdrawn_verified: true,
+    binding_path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr
+  ) {
+    NetworkInstallCompletionRefusedInstallUnread { host: h } => h == install_unit
+    NetworkInstallCompletionAdmitted { completion: _ } => false
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: _, path: _ } => false
+  }
+}
+
+// A BINDING STILL BEING SERVED RECORDS NO COMPLETION — the case that would otherwise leave a host with a live
+// installer binding and an "already installed" journal entry, which is the worst residue this workflow could
+// produce.
+test fn w_a_binding_still_served_records_no_completion() -> Bool {
+  match admit_network_install_completion(
+    host: install_unit,
+    serial: expected_serial,
+    completed_at: 1793300000000,
+    install_receipt: "artifacts/pxe/srv15-install-2026-11-20/receipt.txt" as NonEmptyStr,
+    install_read_back: true,
+    binding_withdrawn_verified: false,
+    binding_path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr
+  ) {
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: h, path: _ } => h == install_unit
+    NetworkInstallCompletionAdmitted { completion: _ } => false
+    NetworkInstallCompletionRefusedInstallUnread { host: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: both facts hold, the record mints, and what it writes is the completion instant — the
+// only thing the payload carries, because the slot key already names the unit and the disk.
+test fn w_a_verified_install_and_withdrawal_records_the_completion() -> Bool {
+  match admit_network_install_completion(
+    host: install_unit,
+    serial: expected_serial,
+    completed_at: 1793300000000,
+    install_receipt: "artifacts/pxe/srv15-install-2026-11-20/receipt.txt" as NonEmptyStr,
+    install_read_back: true,
+    binding_withdrawn_verified: true,
+    binding_path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr
+  ) {
+    NetworkInstallCompletionAdmitted { completion: completion } =>
+      (network_install_journal_payload(completion: completion) as String) == "1793300000000"
+    NetworkInstallCompletionRefusedInstallUnread { host: _ } => false
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: _, path: _ } => false
+  }
+}
+
+// ── THE MEMBERSHIP GATE, DRIVEN WITH A SUPPLIED POPULATION ───────────────────────────────────────
+
+// A WIRE WITH NO ARRIVAL ROW IS NOT BOOTED, and the refusal carries the arrival admission's own cause rather
+// than a flattened string. The population is supplied, so this claim does not depend on PXE 1d-a landing.
+test fn w_a_wire_with_no_arrival_row_is_never_booted() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: [],
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// THE COMMITTED BMC EVIDENCE IS READ, NOT INVENTED: mtcollins1's managed-host rows exist and its controller is
+// bound, which is where this file gets a BmcSecureStanding without minting one. If this ever flips, every
+// BMC-side claim above has silently changed meaning, so it is asserted rather than assumed.
+test fn w_the_committed_controller_this_file_drives_is_bound() -> Bool {
+  match mtcollins1_standing() {
+    Absent => false
+    Present { value: standing } => match bound_controller_of(standing: standing) {
+      BoundControllerFound { endpoint: _, account: _ } => true
+      BoundControllerAbsent => false
+    }
+  }
+}
+
+// ── THE SETTLE GATE: NO RESET WITHOUT THE CONTROLLER'S OWN READ-BACK (2b's property, re-asserted here) ──
+
+// THE WORKFLOW NEVER PLANS A LEGACY BOOT, AND A PLAN THAT WAS NEVER SETTLED RESETS NOTHING: the staged plan
+// carries [Set, ReadBack] and no reset step. This is 2b's guarantee re-asserted at the workflow's own gate —
+// 2c must not widen it, and a run that skipped the observation gets no reset.
+test fn w_the_planner_alone_resets_nothing_through_the_workflow_gate() -> Bool {
+  match mtcollins1_standing() {
+    Absent => false
+    Present { value: standing } =>
+      let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
+      !network_install_may_reset(plan: staged) && !boot_once_has_reset(plan: staged)
+  }
+}
+
+// THE 2b PROPERTY, AT 2c's GATE. The plan is built by 2b's own core over the COMMITTED bound standing, then the
+// run executes [Set, ReadBack] and hands the workflow the CONTROLLER'S OWN RECORD. Three readings, three
+// outcomes: the record that says the override took as written admits the reset; a record still saying
+// Continuous (the set did not stick) refuses; a record naming Legacy firmware refuses, because the arm64 fleet
+// boots UEFI and resetting into the wrong firmware is worse than not resetting at all.
+test fn w_only_the_controllers_own_matching_record_admits_the_reset() -> Bool {
+  match mtcollins1_standing() {
+    Absent => false
+    Present { value: standing } =>
+      let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
+      let matched = BootOnceReadbackObserved { setting: boot_once_intended_setting(target: BootTargetPxe) }
+      let still_continuous = BootOnceReadbackObserved {
+        setting: BootOnceSetting {
+          target: BootTargetPxe, enabled: BootOverrideContinuous, mode: BootOverrideModeUefi,
+        }
+      }
+      let legacy = BootOnceReadbackObserved {
+        setting: BootOnceSetting {
+          target: BootTargetPxe, enabled: BootOverrideOnce, mode: BootOverrideModeLegacy,
+        }
+      }
+      network_install_may_reset(plan: network_install_settle_boot_once(plan: staged, observed: matched)) &&
+        !network_install_may_reset(
+          plan: network_install_settle_boot_once(plan: staged, observed: still_continuous)
+        ) &&
+        !network_install_may_reset(plan: network_install_settle_boot_once(plan: staged, observed: legacy)) &&
+        !boot_once_has_reset(plan: network_install_settle_boot_once(plan: staged, observed: legacy))
+  }
+}
+
+// THE SAME GATE ON A CONTROL THAT NEVER ANSWERED: an absent read-back is a mismatch, so the reset is dropped.
+// A BMC that accepted a PATCH and then went silent must not have its host rebooted into an installer nobody
+// confirmed is set.
+test fn w_a_silent_controller_resets_nothing() -> Bool {
+  match mtcollins1_standing() {
+    Absent => false
+    Present { value: standing } =>
+      let staged = plan_boot_once_on_standing(control: standing, target: BootTargetPxe, mode: BootOverrideModeUefi)
+      !network_install_may_reset(
+        plan: network_install_settle_boot_once(plan: staged, observed: BootOnceReadbackAbsent)
+      )
+  }
+}
+
+// ── THE THREE GATES THE FOUR PLAN OBLIGATIONS DEPEND ON BUT DO NOT NAME ─────────────────────────
+
+// A BINDING WHOSE WRITE FAILED REFUSES like an absent one: the run does not boot a client into a file it is not
+// sure exists. Together with the two other binding claims this covers all four ways staging can fail.
+test fn w_a_binding_whose_write_failed_plans_no_boot_step() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: BindingWriteFailed {
+      client: "9c:6b:00:e7:ca:63" as NonEmptyStr,
+      path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr,
+      reason: "the edge refused the write" as NonEmptyStr,
+    },
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// A HOLD THAT CANNOT BE READ REFUSES: "I could not tell whether someone else is installing this machine" is
+// not "nobody is". The comparison is against the FREE reading, which the admitted claims above all use.
+test fn w_an_unreadable_hold_refuses() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldUnreadable { detail: "the durable store did not answer" },
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// A UNIT POSITIVELY RUNNING AN OS IS NOT REINSTALLED BY THIS WORKFLOW. The refusal is on the POSITIVE
+// observation only — InstalledOsNotObserved is what an in-flight install looks like from the outside, and
+// refusing on that would make the workflow unable to install anything. Discriminating red: an operator who
+// decided "unreadable means not installed" would make the unreadable reading admit, which is exactly how a
+// half-installed machine gets wiped twice; so this claim pairs the two.
+test fn w_an_observed_installed_os_refuses_and_an_unreadable_observation_does_not() -> Bool {
+  match dispatch(
+    journal: JournalSlotAbsent,
+    hold: HoldFree,
+    binding: staged_binding(),
+    population: population_of(host: install_unit),
+    reading: reported_disk(host: install_unit, read_at: reading_instant),
+    decided_at: 1793300001000
+  ) {
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => true
+    NetworkInstallDispatchRefused { cause: _ } => false
+  } && match dispatch_with_os(
+    os_observation: InstalledOsObserved { host: install_unit, evidence: "uname -r answered 6.8.0-58-generic" as NonEmptyStr }
+  ) {
+    NetworkInstallDispatchRefused { cause: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+  }
+}
+
+// A REFUSED RUN STILL LEAVES A RECEIPT, saying it refused and that nothing was reset: the audit artifact of a
+// run that booted nothing is the interesting one.
+test fn w_a_refused_run_still_writes_a_receipt_saying_nothing_was_reset() -> Bool {
+  let receipt = network_install_refused_receipt(
+    host: install_unit,
+    serial: expected_serial,
+    decided_at: 1793300001000,
+    refusal: "ReadingStale(deadline=1795824000000)"
+  )
+  receipt.refused && !receipt.reset_issued && !receipt.override_read_back && !receipt.completion_recorded &&
+    network_install_receipt_lines(receipt: receipt).length() == 13
+}

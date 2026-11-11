@@ -60,12 +60,41 @@ type OwnedControlRoute
   = Bmc
   | NoOutOfBand
 
+// InstalledViaNetworkBoot is the fourth way: the machine is booted ONCE over the network from the site
+// PXE edge, which serves the installer and its seed, and the boot order returns to the disk by itself
+// because it was a one-shot override, not a permanent setting. It is a different arm from
+// InstalledViaVirtualMedia rather than a flag on it, because the two differ in every fact a consumer asks
+// about the medium: virtual media mounts an image the BMC presents as a device, so the installer's block
+// device is the BMC's gadget and no network seed is involved, while a network boot takes its image and its
+// seed from the edge and pins the disk to erase by reported identity (gunbc.provisioning.install_target_disk),
+// an authorization the virtual-media route does not carry. The BMC is still required -- somebody has to
+// order the one-shot PXE boot and read the override back (gunbc.host.managed_host_boot_once) -- so a
+// network-installed machine with no out-of-band route has no route to run its install either.
 type OwnedOsDelivery
   = InstalledViaVirtualMedia
+  | InstalledViaNetworkBoot
   | ApplianceImage
   | RamImageBoot
 
 type OwnedProvisioning { control: OwnedControlRoute, delivery: OwnedOsDelivery }
+
+// WHAT CONTROL ROUTE A DELIVERY MEDIUM REQUIRES, as ONE total fact per arm rather than as control flow
+// inside the admission. The virtual-media and network-boot mediums are both delivered THROUGH a controller:
+// the first presents an image as a device, the second needs a one-shot boot override ordered and read back.
+// An appliance image and a RAM image need none -- the first arrives through the appliance's own first boot,
+// the second is booted from an artifact by a setting the operator made. A fifth medium that does not name
+// its requirement here does not compile, which is the point: the crossing check cannot be skipped by
+// omission. gunbc.rung_drop::owned_provisioning_impossible_pair_admitted_at_enrolment names the further
+// restoration still owed (the medium as a capability of the route, so the impossible pair has no
+// constructor at all); this is the fold that row's sighting records as done here.
+fn owned_os_delivery_control_requirement(delivery: OwnedOsDelivery) -> OwnedControlRoute? {
+  match delivery {
+    InstalledViaVirtualMedia => Present { value: Bmc }
+    InstalledViaNetworkBoot => Present { value: Bmc }
+    ApplianceImage => none
+    RamImageBoot => none
+  }
+}
 
 // THE ONE ADMISSION OVER THE {control, delivery} PAIR. The two facts are independent by ruling (merry-fox-82,
 // 2026-10-22), so the product can still spell a machine that cannot exist: an OS installed over virtual media is
@@ -82,11 +111,20 @@ type OwnedProvisioningAdmission
 fn admit_owned_provisioning(provisioning: OwnedProvisioning) -> OwnedProvisioningAdmission {
   match provisioning.control {
     Bmc => OwnedProvisioningAdmitted
-    NoOutOfBand => match provisioning.delivery {
-      InstalledViaVirtualMedia => OwnedProvisioningRefused { provisioning: provisioning }
-      ApplianceImage => OwnedProvisioningAdmitted
-      RamImageBoot => OwnedProvisioningAdmitted
-    }
+    NoOutOfBand =>
+      // ONE CHECK FOR EVERY MEDIUM, through owned_os_delivery_control_requirement, so the arm a later
+      // medium adds cannot skip it. A medium that requires a route the machine does not have cannot be
+      // admitted: neither InstalledViaVirtualMedia (no controller to mount its image) nor
+      // InstalledViaNetworkBoot (no controller to order and read back its one-shot PXE boot) can run its
+      // install with no out-of-band route.
+      match owned_os_delivery_control_requirement(delivery: provisioning.delivery) {
+        Present { value: r } => if r == provisioning.control {
+          OwnedProvisioningAdmitted
+        } else {
+          OwnedProvisioningRefused { provisioning: provisioning }
+        }
+        none => OwnedProvisioningAdmitted
+      }
   }
 }
 
@@ -115,6 +153,10 @@ fn backing_converge_realization(backing: HostBacking) -> ConvergeRealization {
   match backing {
     OwnedMachine { provisioning: OwnedProvisioning { control: _, delivery: d }, unit: _ } => match d {
       InstalledViaVirtualMedia => ConvergeApplied
+      // A network-installed host keeps its OS on its own disk and carries mutable state a converge both
+      // applies and re-reads, exactly as a virtual-media-installed one does. What differs between them is
+      // the medium of the install, not whether the result is convergeable.
+      InstalledViaNetworkBoot => ConvergeApplied
       ApplianceImage => ConvergeApplied
       RamImageBoot => ImageBaked
     }

@@ -1,0 +1,851 @@
+// gunbc.host.network_install — one run, one unit, one disk, one install; then it withdraws itself.
+//
+// PXE 2c. The workflow the plan calls managed_host_network_install: stage the site PXE edge's install binding
+// for ONE client, boot that client ONCE over the network, let the installer erase and write ONE pinned disk,
+// read the install back, and REMOVE the binding — all in one run, on srv4. Everything that makes this safe to
+// hand to a machine is decided here, in pure functions, before any effect: the mode's wet entry reads the
+// clock, calls this, and acts only on what this returns.
+//
+// ONE INSTANT. `decided_at` is the run's own reading of gunbc.clock_read, taken once. It authorizes the disk
+// (gunbc.provisioning.install_target_disk admit_install_target_disk compares the reading's instant against
+// it) and it is printed in the receipt. There is no decided_at DATA row and there must never be one: review
+// 93312 removed exactly that, because a frozen instant makes the staleness check pass forever
+// (gunbc.design_argument::real_time_authority).
+//
+// ONE AUTHORIZATION. The only thing that permits an erase is an Admitted InstallTargetDisk, minted by
+// admit_install_target_disk over the PRODUCTION fleet row, this run's instant, and the request's window. The
+// same carrier that authorized the erase is the one whose pin the seed renders, so the disk that was
+// authorized and the disk the installer is told to wipe are one object rather than two readings that happen
+// to agree. gunbc.design_argument::install_authorization_pinpoints_one_target names the root.
+//
+// WHAT ELSE THIS DECIDES, and in this order, because the order is the safety property:
+//   0. THE COMPLETION JOURNAL FIRST, before any BMC write: a (unit, disk serial) already recorded complete
+//      refuses the dispatch with InstallAlreadyCompleted. The journal is durable compare-and-set state under
+//      gunbc.host_state_root host_state_tree on srv4, read as the run's first effect, so a second dispatch
+//      after a completed install refuses before it can touch anything.
+//   1. THE HOLD. A durable exclusive hold on the unit for the whole run (std.durable_exclusive_hold, the
+//      interlock the arrival door uses), so two concurrent dispatches cannot both read an empty journal and
+//      both boot the same machine.
+//   2. THE SUBJECT. gunbc.host.install_boot_subject admit_install_boot_subject — an admitted arrival subject
+//      with a bound, secured controller whose committed write controller admits the boot-device write. srv15
+//      is NOT a managed host and this route does not pretend otherwise.
+//   3. THE DISK. admit_install_target_disk, then its pin, then the CONTENTS PRECONDITION below.
+//   4. THE BINDING. The edge's install file for this client must be staged AND read back before the boot is
+//      planned at all — a client with no binding gets no Redfish PATCH, because there is nothing for it to
+//      boot into. The staged binding is what the boot gate reads.
+//   5. THE BOOT. 2b's own planner core through plan_install_boot_once, then [Set, ReadBack], then the
+//      OBSERVED read-back into settle_boot_once_read_back. The reset is admitted only by the reading the
+//      controller gave back; a caller-supplied read-back would defeat the property, so this module exposes no
+//      entry that takes one.
+//   6. THE READ-BACK, then THE WITHDRAWAL, then THE RECORD. Completion is recorded only after the install is
+//      read back AND the binding is verified gone; if the binding survives, the run fails and NO completion is
+//      written, so a retry is possible instead of a host left with a live installer binding and an
+//      "already installed" journal entry.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO. It does not authorize itself (the per-write approval and the
+// approval-broker grant are outside the repo, and select_bmc_write_controller is the model's say-so); it does
+// not enroll the unit (PXE 4); and it does not read a credential from argv — the BMC credential travels by the
+// stdin/0600 route gunbc.auth.bmc_credential_source already models, which refuses to echo it.
+module gunbc.host.network_install
+
+import std.types {
+  Bool,
+  List,
+  NonEmptyStr,
+  String,
+  EpochMs,
+  Milliseconds
+}
+import std.optional { Optional, Present, Absent }
+import std.list { list_member, first_where }
+import product.host_identity {
+  HostIdentity
+}
+import extdeps.bmc.types {
+  BootTargetPxe,
+  BootOverrideModeUefi
+}
+import gunbc.host.install_boot_subject {
+  InstallBootSubject,
+  InstallBootSubjectAdmitted,
+  InstallBootSubjectRefused,
+  InstallBootSubjectRefusalCause,
+  admit_install_boot_subject,
+  plan_install_boot_once
+}
+import gunbc.host.managed_host_boot_once {
+  BootOncePlan,
+  BootOnceStaged,
+  BootOnceRefused,
+  BootOnceReadback,
+  BootOnceResetAdmitted,
+  BootOnceResetRefused,
+  settle_boot_once_read_back,
+  boot_once_has_reset,
+  BootOnceRefusalCause,
+  BootOnceHostUnbound
+}
+import extdeps.storage.device_identification { device_identification_token_text }
+import gunbc.provisioning.install_target_disk {
+  TargetDiskReading,
+  InstallTargetDisk,
+  InstallTargetDiskAdmitted,
+  InstallTargetDiskWithheld,
+  InstallTargetDiskWithheldCause,
+  admit_install_target_disk,
+  install_target_disk_pin
+}
+import extdeps.os.ubuntu_autoinstall {
+  AutoinstallDiskPin,
+  autoinstall_disk_pin_serial,
+  autoinstall_disk_pin_model,
+}
+import gunbc.machine_intake.arrival_subject { ArrivalConvergePopulationRow }
+import gunbc.machine_intake.bmc_write_controller { BmcWriteRoute }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import extdeps.board_authority { BoardAuthorityRef }
+import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
+import gunbc.durable_cas_file_store { cas_generation_of_digits }
+import std.durable_compare_and_set { cas_generation_count }
+import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
+import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
+import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address }
+import gunbc.fleet.machine_target_disk_observations {
+  target_disk_reading_for,
+  site_pxe_edge_disk_identity_admission_window,
+}
+import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeInstallRequest }
+
+// THE CONTENTS PRECONDITION: what the committed capture says is ON the disk about to be erased.
+//
+// The install destroys exactly one thing — the target disk — so its precondition is scoped to that disk and
+// to nothing else (the unit's host-scoped prior life, such as the in-band BMC credential recovery and the
+// hand-edited Aptio setting recorded in artifacts/bmc/srv15-inband-recovery-2026-10-29/00_README.txt, belongs
+// to the arrival door's PriorLifeBoundary, not here). The admitting arm is named for WHAT WAS READ rather
+// than for a conclusion: the readers on srv15's capture were `lsblk -o NAME,SIZE,FSTYPE,LABEL,PARTLABEL` and
+// `sfdisk -l`, which report no partition table and no filesystem. Neither sweeps 931.5 GiB, so the type does
+// not claim byte-emptiness, and a reader list is part of what was admitted rather than prose beside it.
+type DiskContentsReader = LsblkBlockDeviceReport | SfdiskPartitionTableReport
+
+type TargetDiskContents
+  // What the two readers reported on the named artifact at the named instant: no partition table, no
+  // filesystem on any partition, nothing the firmware offers as an OS on that disk. THE ONLY ADMITTING ARM.
+  = NoPartitionTableOrFilesystemReported {
+      captured_in: NonEmptyStr
+      read_at: EpochMs
+      readers: List<DiskContentsReader>
+    }
+  // A partition table, or a partition reporting a filesystem. The disk has content; erasing it is a prior-life
+  // effect and this workflow does not perform it. Refusal.
+  | PartitionTableOrFilesystemReported {
+      captured_in: NonEmptyStr
+      read_at: EpochMs
+      readers: List<DiskContentsReader>
+    }
+  // Nothing was read, or what was read cannot be attributed to both readers on a named artifact. Refusal:
+  // "nobody looked" is not evidence of "nothing there".
+  | ContentsNotRead { reason: NonEmptyStr }
+  // THE CONTENTS WERE READ FROM A DIFFERENT ARTIFACT THAN THE ONE THAT GAVE THE SERIAL AND MODEL. Refusal: the
+  // erase is authorized by ONE capture, and a blank disk read out of some other file does not license erasing
+  // the disk this run pinned. This is what keeps "the disk was blank" from drifting onto a stale or borrowed
+  // reading as the fleet row is edited over the months.
+  | ContentsEvidenceFromAnotherArtifact { reported: NonEmptyStr, identity: NonEmptyStr }
+
+// WHAT THE READERS REPORTED, before admission turns it into a permission. Raw optionals rather than tokens:
+// the only thing that turns a report into an admitted TargetDiskContents is admit_target_disk_contents.
+type DiskContentsReport {
+  captured_in: NonEmptyStr
+  read_at: EpochMs
+  partition_table_reported: Bool
+  filesystems_reported: List<NonEmptyStr>
+  readers: List<DiskContentsReader>
+}
+
+type TargetDiskContentsAdmission
+  = TargetDiskContentsAdmitted { contents: TargetDiskContents }
+  | TargetDiskContentsRefused { contents: TargetDiskContents }
+
+// WHICH ARTIFACT AUTHORIZED THIS ERASE. The reading is the evidence 2a's admission was decided on, and its
+// captured_in is the only artifact whose "nothing is on that disk" can be trusted for this install. NotRead and
+// NoDiskReported name no artifact: they can never have admitted a disk, and the arm below refuses anyway.
+fn target_disk_reading_captured_in(reading: TargetDiskReading) -> Optional<NonEmptyStr> {
+  match reading {
+    DiskReported { captured_in: captured_in } => Present { value: captured_in }
+    NoDiskReported { captured_in: captured_in } => Present { value: captured_in }
+    NotRead { host: _ } => Absent
+  }
+}
+
+fn disk_contents_reader_eq(a: DiskContentsReader, b: DiskContentsReader) -> Bool {
+  a == b
+}
+
+fn disk_contents_report_has_reader(report: DiskContentsReport, reader: DiskContentsReader) -> Bool {
+  list_member(xs: report.readers, x: reader, eq: disk_contents_reader_eq)
+}
+
+// THE ADMITTING ROUTE. Three things must hold, and each refuses with its own named cause. BOTH READERS must
+// be present: lsblk alone cannot rule out a partition table it did not enumerate, and sfdisk alone does not
+// report filesystems. The report must come from THE SAME ARTIFACT that reported the serial and model — the
+// artifact is passed in rather than trusted from the report's own header, because a report that vouches for
+// itself vouches for nothing. And nothing may have been seen: a partition table or any filesystem is content,
+// and this workflow does not erase content. Anything short of that is a refusal, and a refusal boots nothing.
+fn admit_target_disk_contents(
+  report: DiskContentsReport, identity_captured_in: NonEmptyStr
+) -> TargetDiskContentsAdmission {
+  if disk_contents_report_has_reader(report: report, reader: LsblkBlockDeviceReport) == false {
+    TargetDiskContentsRefused {
+      contents: ContentsNotRead { reason: "the capture names no lsblk block-device report" }
+    }
+  } else if disk_contents_report_has_reader(report: report, reader: SfdiskPartitionTableReport) == false {
+    TargetDiskContentsRefused {
+      contents: ContentsNotRead { reason: "the capture names no sfdisk partition-table report" }
+    }
+  } else if (report.captured_in as String) != (identity_captured_in as String) {
+    TargetDiskContentsRefused {
+      contents: ContentsEvidenceFromAnotherArtifact {
+        reported: report.captured_in, identity: identity_captured_in
+      }
+    }
+  } else if report.partition_table_reported == true {
+    TargetDiskContentsRefused {
+      contents: PartitionTableOrFilesystemReported {
+        captured_in: report.captured_in,
+        read_at: report.read_at,
+        readers: report.readers,
+      }
+    }
+  } else if report.filesystems_reported.length() > 0 {
+    TargetDiskContentsRefused {
+      contents: PartitionTableOrFilesystemReported {
+        captured_in: report.captured_in,
+        read_at: report.read_at,
+        readers: report.readers,
+      }
+    }
+  } else {
+    TargetDiskContentsAdmitted {
+      contents: NoPartitionTableOrFilesystemReported {
+        captured_in: report.captured_in,
+        read_at: report.read_at,
+        readers: report.readers,
+      }
+    }
+  }
+}
+
+// ─────────────────────────────── THE COMPLETION JOURNAL ───────────────────────────────
+//
+// WHY A JOURNAL AT ALL. The dated disk admission cannot stop a SECOND install: after a successful install the
+// fleet row is still inside its window, so a second dispatch would authorize a second erase under the one
+// authorization that was issued for the first. "This run already completed" is a fact about the world that
+// only survives the run, so it is stored durably — through the compare-and-set store under
+// gunbc.host_state_root host_state_tree on srv4, which is the state plane this fleet already uses. It is read
+// as the run's FIRST effect, before the BMC is reachable, so a repeat dispatch refuses before any write.
+//
+// ONE RECORD PER (UNIT, DISK SERIAL), WHICH IS WHY THERE IS NO PARSER. The identity of a completion is in its
+// SLOT KEY, not in a payload that has to be decoded: a completion for a unit whose disk was later replaced is
+// a different key and does not block reinstalling onto the new disk (which is right — the new disk needs its
+// own fresh reading anyway). The payload carries only the completion instant, so the only parsing in this file
+// is "are these digits", using the same digits reader the CAS store itself uses.
+data network_install_journal_slot_prefix: NonEmptyStr = "network-install-completion/"
+
+fn network_install_journal_slot_key(host: HostIdentity, serial: NonEmptyStr) -> NonEmptyStr {
+  join([network_install_journal_slot_prefix, host as String, "/", serial], "")
+}
+
+// WHAT THE SLOT SAYS. Four readings, because "absent", "unreadable" and "not what we wrote" are three
+// different facts with three different answers: only Absent permits an install. Unreadable refuses (an
+// exclusive store that cannot be read is not evidence of exclusivity), and Malformed refuses rather than
+// guessing that a foreign payload means "not installed".
+type NetworkInstallJournalReading
+  = JournalSlotAbsent
+  | JournalSlotCompleted { completed_at: EpochMs }
+  | JournalSlotUnreadable { detail: String }
+  | JournalSlotMalformed { payload: String }
+
+// THE PURE READING OF A SLOT PAYLOAD. The wet entry reads the payload out of the CAS store and hands it here;
+// keeping the store's probe type out of this function is what lets the claim be driven without a live srv4.
+// The payload is the completion instant in DECIMAL and nothing else — the slot key already says which unit
+// and which disk this completion belongs to, so there is nothing else to parse, and the one reading used is
+// the same digits reader the CAS store itself uses to name a generation.
+fn network_install_journal_reading(payload: Optional<String>) -> NetworkInstallJournalReading {
+  match payload {
+    Absent => JournalSlotAbsent
+    Present { value: text } => match cas_generation_of_digits(s: text) {
+      Absent => JournalSlotMalformed { payload: text }
+      Present { value: digits } => JournalSlotCompleted { completed_at: cas_generation_count(g: digits) }
+    }
+  }
+}
+
+// THE COMPLETION RECORD, and the only route that mints it. It is minted from the two facts that must BOTH
+// hold — the install was read back, and the binding was verified gone — so a run that could not withdraw its
+// binding cannot record a completion, and the host stays retryable rather than being locked out by its own
+// half-finished install. There is no other constructor and no field is writable from outside.
+type NetworkInstallCompletion sole_constructor {
+  host: HostIdentity
+  serial: NonEmptyStr
+  completed_at: EpochMs
+  install_receipt: NonEmptyStr
+  withdrawal_verified: Bool
+}
+
+type NetworkInstallCompletionAdmission
+  = NetworkInstallCompletionAdmitted { completion: NetworkInstallCompletion }
+  // A completion is not written when the install was not read back: nothing proves the erase landed.
+  | NetworkInstallCompletionRefusedInstallUnread { host: HostIdentity }
+  // A completion is not written when the binding is still being served: the next PXE boot of that client
+  // would find an installer, which is the residue this workflow exists to remove.
+  | NetworkInstallCompletionRefusedBindingNotWithdrawn { host: HostIdentity, path: NonEmptyStr }
+
+fn admit_network_install_completion(
+  host: HostIdentity,
+  serial: NonEmptyStr,
+  completed_at: EpochMs,
+  install_receipt: NonEmptyStr,
+  install_read_back: Bool,
+  binding_withdrawn_verified: Bool,
+  binding_path: NonEmptyStr
+) -> NetworkInstallCompletionAdmission {
+  if install_read_back == false {
+    NetworkInstallCompletionRefusedInstallUnread { host: host }
+  } else if binding_withdrawn_verified == false {
+    NetworkInstallCompletionRefusedBindingNotWithdrawn { host: host, path: binding_path }
+  } else {
+    NetworkInstallCompletionAdmitted {
+      completion: NetworkInstallCompletion {
+        host: host,
+        serial: serial,
+        completed_at: completed_at,
+        install_receipt: install_receipt,
+        withdrawal_verified: true,
+      }
+    }
+  }
+}
+
+// THE PAYLOAD A COMPLETION WRITES: the completion instant, decimal, and nothing else. The write is a
+// compare-and-set against the Absent the run read, so a dispatcher that recorded first wins and this one
+// loses the CAS instead of silently rewriting a completion it did not perform.
+fn network_install_journal_payload(completion: NetworkInstallCompletion) -> String {
+  completion.completed_at as String
+}
+
+fn network_install_completion_host(completion: NetworkInstallCompletion) -> HostIdentity {
+  completion.host
+}
+
+fn network_install_completion_serial(completion: NetworkInstallCompletion) -> NonEmptyStr {
+  completion.serial
+}
+
+fn network_install_completion_instant(completion: NetworkInstallCompletion) -> EpochMs {
+  completion.completed_at
+}
+
+// ───────────────────────────── THE DISPATCH ADMISSION ─────────────────────────────
+//
+// THE ONE QUESTION: may this run erase this disk on this unit, right now? Everything downstream — the edge
+// write, the Redfish PATCH, the reset — is admitted only by an answer of Admitted from here, and the answer is
+// computed from inputs alone so a witness can drive every refusal without a live BMC, a live edge, or a live
+// srv4. The wet entry reads the clock, reads the journal slot and the hold, and hands the results here; it
+// acts on nothing until this returns.
+//
+// THE ORDER IS THE SPECIFICATION. Each step's refusal short-circuits the rest, so an earlier refusal means
+// the later questions were never asked — which is what makes "refuses before any BMC write" a property of the
+// code rather than of a comment:
+//   JOURNAL  a completion for (unit, serial) already exists → InstallAlreadyCompleted, before anything.
+//   HOLD     someone else holds the unit, or the store cannot be read → refuse; exclusivity must be PROVEN.
+//   SUBJECT  the unit is not an admitted arrival with a bound, authorized controller → refuse, and no BMC
+//            endpoint is contacted for a wire that is not an admitted unit.
+//   DISK     the dated admission withholds → refuse carrying its typed cause; a pin naming no single disk, or
+//            a disk that is not the one this dispatch named → refuse.
+//   CONTENTS the capture does not report "no partition table, no filesystem" → refuse; erasing content that
+//            was never read is not this workflow's to do.
+//   BINDING  the client's install file is not staged AND read back on the edge → refuse. NO REDFISH PATCH IS
+//            PLANNED, because a client that boots into no binding gets a prompt, not an installer.
+//   OS       an installed OS is POSITIVELY observed on the unit → refuse (an absent observation is not a
+//            refusal: a unit being installed is precisely a unit that cannot answer SSH yet).
+//   BOOT     only now is the boot-once planned, through 2b's core, and even then it is STAGED: the reset still
+//            waits for the OBSERVED read-back in network_install_settle_boot_once.
+//
+// WHY THE DISPATCH NAMES THE SERIAL. A network install is always for ONE named disk; there is no "install
+// onto whatever is in the bay". The journal key needs the serial before the disk is admitted, and the honest
+// way to satisfy that is to make the caller state which disk it means and then require the admitted reading
+// to agree — so a stale row pointing at a replaced disk refuses with TargetDiskIsNotTheDispatchedOne rather
+// than quietly installing onto the new disk under the old disk's authorization.
+
+// WHETHER THE UNIT IS ALREADY BEING INSTALLED BY ANOTHER DISPATCH. Read from the durable exclusive hold
+// (std.durable_exclusive_hold, the interlock the arrival door uses). Three readings, and only HoldFree — or a
+// hold owned by THIS dispatch, which is what re-entry after a crash looks like — permits the run.
+type NetworkInstallHoldReading
+  = HoldFree
+  | HoldHeldBy { owner: NonEmptyStr }
+  | HoldUnreadable { detail: String }
+
+// WHETHER THE CLIENT'S INSTALL BINDING IS BEING SERVED BY THE EDGE, and how that was established. A binding
+// that was written but never read back is not a binding: the run cannot know the installer the client will
+// fetch is the one it staged.
+type NetworkInstallBindingEvidence
+  = BindingStagedAndReadBack { client: NonEmptyStr, path: NonEmptyStr }
+  | BindingAbsent { client: NonEmptyStr }
+  | BindingWriteFailed { client: NonEmptyStr, reason: NonEmptyStr }
+  | BindingReadBackMismatch { client: NonEmptyStr, path: NonEmptyStr, reason: NonEmptyStr }
+
+// WHETHER THE UNIT IS ALREADY RUNNING AN INSTALLED OS, as a POSITIVE observation only. The three readings are
+// deliberately not collapsed: "observed installed" is a fact that refuses, while "did not answer" is the
+// normal state of a machine about to be installed and must not refuse, or no install could ever run.
+type NetworkInstallOsObservation
+  = InstalledOsObserved { host: HostIdentity, evidence: NonEmptyStr }
+  | InstalledOsNotObserved
+  | InstalledOsUnreadable { detail: String }
+
+type NetworkInstallDispatchRefusalCause
+  // JOURNAL. A completed install for this (unit, disk) exists; a second erase under the same authorization
+  // needs a fresh dispatch with a fresh reading, not a repeat of this one.
+  = InstallAlreadyCompleted { host: HostIdentity, serial: NonEmptyStr, completed_at: EpochMs }
+  | JournalUnreadable { host: HostIdentity, serial: NonEmptyStr, detail: String }
+  | JournalPayloadMalformed { host: HostIdentity, serial: NonEmptyStr, payload: String }
+  // HOLD. Another dispatch owns the unit, or the store will not answer. Either way this run cannot prove it
+  // has the unit to itself, and two dispatches booting one machine is the failure the hold exists to prevent.
+  | HostHeldByAnotherDispatch { host: HostIdentity, owner: NonEmptyStr }
+  | HostHoldUnreadable { host: HostIdentity, detail: String }
+  // SUBJECT. Carries install_boot_subject's own typed cause verbatim — membership, binding, endpoint, or the
+  // write controller's refusal — so the receipt says which of the four facts failed.
+  | BootSubjectRefused { cause: InstallBootSubjectRefusalCause }
+  // DISK. install_target_disk's own typed cause (NeverRead, NoDiskReported, IdentityUnusable,
+  // TargetDiskSerialNotReported, ReadingFromTheFuture, ReadingStale{deadline}) carried, never flattened.
+  | DiskAdmissionWithheld { cause: InstallTargetDiskWithheldCause }
+  // A reading with no serial cannot name one disk to erase; this is the seed-selector refusal at the
+  // authorization layer, and it is separate from the disk admission's own causes because it is about the
+  // SHAPE of the pin rather than the freshness of the reading.
+  | TargetNamesNoSingleDisk { host: HostIdentity }
+  // The admitted disk is a different disk from the one this dispatch named.
+  | TargetDiskIsNotTheDispatchedOne { host: HostIdentity, expected: NonEmptyStr, reported: NonEmptyStr }
+  // The reading that authorized this erase names no artifact at all, so the contents evidence cannot be tied to
+  // it. Unreachable behind an admitted disk today; the arm exists because tying the two readings together is
+  // what makes the contents precondition mean anything.
+  | TargetDiskReadingCarriesNoArtifact { host: HostIdentity }
+  // CONTENTS. The carrying value is the refused TargetDiskContents itself, which already says what was seen
+  // (a partition table, a filesystem) or what was missing (a reader, an artifact).
+  | ContentsNotAdmitted { contents: TargetDiskContents }
+  // BINDING. Nothing was staged for this client, or it was not verified — so no PATCH is planned.
+  | EdgeBindingNotStaged { host: HostIdentity, client: NonEmptyStr, reason: String }
+  // OS. A positive observation of an installed OS on a unit this run means to install: almost certainly the
+  // wrong unit, or a unit whose completion was never journaled. Refuse and let a human look.
+  | InstalledOsAlreadyObserved { host: HostIdentity, evidence: NonEmptyStr }
+  // BOOT. 2b's own refusal (Legacy firmware, a target outside the allowed alphabet, an unbound controller, a
+  // read-back mismatch at settle). A plan that was refused plans no Set.
+  | BootOnceRefusedByController { cause: BootOnceRefusalCause }
+
+type NetworkInstallDispatch
+  = NetworkInstallDispatchAdmitted {
+      host: HostIdentity
+      subject: InstallBootSubject
+      disk: InstallTargetDisk
+      serial: NonEmptyStr
+      model: Optional<NonEmptyStr>
+      decided_at: EpochMs
+      binding: NetworkInstallBindingEvidence
+      plan: BootOncePlan
+    }
+  | NetworkInstallDispatchRefused { cause: NetworkInstallDispatchRefusalCause }
+
+// THE ADMISSION. Named arguments all the way down; every one of these is a fact some effect read, not a
+// default this module could invent.
+fn network_install_dispatch_admission(
+  population: List<ArrivalConvergePopulationRow>,
+  managed: List<HostIdentity>,
+  host: HostIdentity,
+  expected_serial: NonEmptyStr,
+  dispatch_owner: NonEmptyStr,
+  intended_controller: BmcControllerEndpoint,
+  observed: BmcAccessObservationStanding,
+  secured: BmcSecureStanding,
+  board: BoardAuthorityRef?,
+  route: BmcWriteRoute,
+  qualification: RunnerThroughputAssessment<HostIdentity>?,
+  journal: NetworkInstallJournalReading,
+  hold: NetworkInstallHoldReading,
+  reading: TargetDiskReading,
+  decided_at: EpochMs,
+  window: Milliseconds,
+  contents_report: DiskContentsReport,
+  binding: NetworkInstallBindingEvidence,
+  os_observation: NetworkInstallOsObservation
+) -> NetworkInstallDispatch {
+  match journal {
+    JournalSlotCompleted { completed_at: completed_at } => NetworkInstallDispatchRefused {
+      cause: InstallAlreadyCompleted { host: host, serial: expected_serial, completed_at: completed_at },
+    }
+    JournalSlotUnreadable { detail: detail } => NetworkInstallDispatchRefused {
+      cause: JournalUnreadable { host: host, serial: expected_serial, detail: detail },
+    }
+    JournalSlotMalformed { payload: payload } => NetworkInstallDispatchRefused {
+      cause: JournalPayloadMalformed { host: host, serial: expected_serial, payload: payload },
+    }
+    JournalSlotAbsent => match hold {
+      HoldHeldBy { owner: owner } =>
+        if owner == dispatch_owner {
+          network_install_admit_subject(
+            population: population, managed: managed, host: host, expected_serial: expected_serial,
+            intended_controller: intended_controller, observed: observed, secured: secured, board: board,
+            route: route, qualification: qualification, reading: reading, decided_at: decided_at,
+            window: window, contents_report: contents_report, binding: binding,
+            os_observation: os_observation
+          )
+        } else {
+          NetworkInstallDispatchRefused { cause: HostHeldByAnotherDispatch { host: host, owner: owner } }
+        }
+      HoldUnreadable { detail: detail } =>
+        NetworkInstallDispatchRefused { cause: HostHoldUnreadable { host: host, detail: detail } }
+      HoldFree => network_install_admit_subject(
+        population: population, managed: managed, host: host, expected_serial: expected_serial,
+        intended_controller: intended_controller, observed: observed, secured: secured, board: board,
+        route: route, qualification: qualification, reading: reading, decided_at: decided_at,
+        window: window, contents_report: contents_report, binding: binding, os_observation: os_observation
+      )
+    }
+  }
+}
+
+// STEP 2 ONWARD. Split out only because the journal and hold gates above must be able to refuse without
+// evaluating anything about the BMC; the sequence after this point is the one written in the header.
+fn network_install_admit_subject(
+  population: List<ArrivalConvergePopulationRow>,
+  managed: List<HostIdentity>,
+  host: HostIdentity,
+  expected_serial: NonEmptyStr,
+  intended_controller: BmcControllerEndpoint,
+  observed: BmcAccessObservationStanding,
+  secured: BmcSecureStanding,
+  board: BoardAuthorityRef?,
+  route: BmcWriteRoute,
+  qualification: RunnerThroughputAssessment<HostIdentity>?,
+  reading: TargetDiskReading,
+  decided_at: EpochMs,
+  window: Milliseconds,
+  contents_report: DiskContentsReport,
+  binding: NetworkInstallBindingEvidence,
+  os_observation: NetworkInstallOsObservation
+) -> NetworkInstallDispatch {
+  // THE BINDING IS ASKED BEFORE THE BMC. It is a precondition of the boot, not an authorization to erase, and
+  // it is the cheapest fact to read: a client the edge is not serving has nothing to boot into, so this run
+  // refuses without evaluating one piece of BMC evidence. The erase authorization is still required before any
+  // plan exists — moving this gate earlier cannot let an unauthorized disk through, because the plan below is
+  // only ever built from an Admitted disk.
+  match binding {
+    BindingAbsent { client: client } => NetworkInstallDispatchRefused {
+      cause: EdgeBindingNotStaged {
+        host: host, client: client, reason: "the edge serves no install file for this client"
+      }
+    }
+    BindingWriteFailed { client: client, reason: reason } =>
+      NetworkInstallDispatchRefused { cause: EdgeBindingNotStaged { host: host, client: client, reason: reason } }
+    BindingReadBackMismatch { client: client, path: _, reason: reason } => NetworkInstallDispatchRefused {
+      cause: EdgeBindingNotStaged {
+        host: host, client: client,
+        reason: join(["the staged file did not read back as written: ", reason], ""),
+      }
+    }
+    BindingStagedAndReadBack { client: _, path: _ } => match admit_install_boot_subject(
+      population: population, managed: managed, subject: host, intended_controller: intended_controller,
+      observed: observed, secured: secured, board: board, route: route, qualification: qualification
+    ) {
+      InstallBootSubjectRefused { cause: cause } =>
+        NetworkInstallDispatchRefused { cause: BootSubjectRefused { cause: cause } }
+      InstallBootSubjectAdmitted { subject: subject } => match admit_install_target_disk(
+        reading: reading, decided_at: decided_at, window: window
+      ) {
+        InstallTargetDiskWithheld { host: _, cause: cause } =>
+          NetworkInstallDispatchRefused { cause: DiskAdmissionWithheld { cause: cause } }
+        InstallTargetDiskAdmitted { target: disk } => network_install_check_pin(
+          host: host, subject: subject, disk: disk, expected_serial: expected_serial, reading: reading,
+          contents_report: contents_report, os_observation: os_observation, binding: binding,
+          decided_at: decided_at
+        )
+      }
+    }
+  }
+}
+
+// THE FOUR FACTS ABOUT THE DISK, in the order they are read, each refusing with a cause that names only what
+// it checked. THE PIN FIRST: what the disk was admitted WITH is what the seed will render, so "names no single
+// disk" and "is not the disk this dispatch named" are both decided against the pin and nothing else — a seed
+// that cannot name one disk never reaches a renderer, which is the last place a wipe can be stopped. THEN THE
+// ARTIFACT: the contents report must be the one this same capture wrote, because a blank-disk claim borrowed
+// from another file authorizes nothing. THEN THE CONTENTS. THEN THE OS, last because it is the only one of the
+// four that can be wrong about a machine which is simply not answering yet.
+fn network_install_check_pin(
+  host: HostIdentity,
+  subject: InstallBootSubject,
+  disk: InstallTargetDisk,
+  expected_serial: NonEmptyStr,
+  reading: TargetDiskReading,
+  contents_report: DiskContentsReport,
+  os_observation: NetworkInstallOsObservation,
+  binding: NetworkInstallBindingEvidence,
+  decided_at: EpochMs
+) -> NetworkInstallDispatch {
+  let pin = install_target_disk_pin(disk: disk)
+  let reported_serial = device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin))
+  // A pin whose serial is empty could name no disk. 2a's admission refuses that case itself today
+  // (TargetDiskSerialNotReported), and the branch stays because a rendering that names no disk must refuse
+  // even if the admission upstream is ever widened.
+  if (reported_serial as String) == "" {
+    NetworkInstallDispatchRefused { cause: TargetNamesNoSingleDisk { host: host } }
+  } else if (reported_serial as String) != (expected_serial as String) {
+    NetworkInstallDispatchRefused {
+      cause: TargetDiskIsNotTheDispatchedOne {
+        host: host, expected: expected_serial, reported: reported_serial
+      }
+    }
+  } else {
+    match target_disk_reading_captured_in(reading: reading) {
+      Absent => NetworkInstallDispatchRefused { cause: TargetDiskReadingCarriesNoArtifact { host: host } }
+      Present { value: identity_artifact } => match admit_target_disk_contents(
+        report: contents_report, identity_captured_in: identity_artifact
+      ) {
+        TargetDiskContentsRefused { contents: contents } =>
+          NetworkInstallDispatchRefused { cause: ContentsNotAdmitted { contents: contents } }
+        TargetDiskContentsAdmitted { contents: _ } =>
+          // Only a POSITIVE observation of an installed OS can still refuse here. An unreadable observation
+          // does not: a machine about to be installed is exactly one that cannot answer SSH.
+          match os_observation {
+            InstalledOsObserved { host: _, evidence: evidence } => NetworkInstallDispatchRefused {
+              cause: InstalledOsAlreadyObserved { host: host, evidence: evidence },
+            }
+            InstalledOsNotObserved => network_install_plan_boot(
+              host: host, subject: subject, disk: disk, pin: pin, decided_at: decided_at, binding: binding
+            )
+            InstalledOsUnreadable { detail: _ } => network_install_plan_boot(
+              host: host, subject: subject, disk: disk, pin: pin, decided_at: decided_at, binding: binding
+            )
+          }
+      }
+    }
+  }
+}
+
+// STEP 7: THE BOOT PLAN, reached only with an admitted disk, admitted contents, and a staged-and-read-back
+// binding. It goes through 2b's ONE core via gunbc.host.install_boot_subject plan_install_boot_once, with the
+// mode pinned UEFI and the target pinned PXE: this workflow boots one client into one installer, so it exposes
+// no caller choice of target. The result is STAGED — it carries [Set, ReadBack] and no reset. The reset is
+// admitted only by network_install_settle_boot_once below, against what the controller actually said.
+fn network_install_plan_boot(
+  host: HostIdentity,
+  subject: InstallBootSubject,
+  disk: InstallTargetDisk,
+  pin: AutoinstallDiskPin,
+  decided_at: EpochMs,
+  binding: NetworkInstallBindingEvidence
+) -> NetworkInstallDispatch {
+  match plan_install_boot_once(subject: subject, target: BootTargetPxe, mode: BootOverrideModeUefi) {
+    BootOnceRefused { cause: cause } =>
+      NetworkInstallDispatchRefused { cause: BootOnceRefusedByController { cause: cause } }
+    BootOnceStaged { account: _, controller: _, setting: _ } => NetworkInstallDispatchAdmitted {
+      host: host,
+      subject: subject,
+      disk: disk,
+      serial: device_identification_token_text(token: autoinstall_disk_pin_serial(pin: pin)) as String,
+      model: network_install_pin_model_text(pin: pin),
+      decided_at: decided_at,
+      binding: binding,
+      plan: plan_install_boot_once(subject: subject, target: BootTargetPxe, mode: BootOverrideModeUefi),
+    }
+    // The planner core cannot return these — it stages, and only a settled read-back produces them — but a
+    // match over an imported sum names every variant, and a plan that has ALREADY been settled must not be
+    // re-dispatched as if it were fresh: it is refused here rather than re-planned.
+    BootOnceResetAdmitted { account: _, steps: _ } =>
+      NetworkInstallDispatchRefused { cause: BootOnceRefusedByController { cause: BootOnceHostUnbound } }
+    BootOnceResetRefused { account: _, steps: _, cause: _ } =>
+      NetworkInstallDispatchRefused { cause: BootOnceRefusedByController { cause: BootOnceHostUnbound } }
+  }
+}
+
+// THE MODEL'S DISK MODEL STRING, carried into the receipt as Optional text: the seed renders match{serial,
+// model} when a model was reported, and the receipt must say which of the two the pin held. Absent is not an
+// error — it is a serial-only pin, which is exactly the lever for a disk whose reported model drifts.
+fn network_install_pin_model_text(pin: AutoinstallDiskPin) -> Optional<NonEmptyStr> {
+  match autoinstall_disk_pin_model(pin: pin) {
+    Absent => Absent
+    Present { value: model } => Present { value: device_identification_token_text(token: model) }
+  }
+}
+
+// THE ONLY ROUTE FROM A STAGED PLAN TO A RESET, and it takes the READ-BACK THE CONTROLLER GAVE. This is 2b's
+// property, not a re-statement of it: the caller runs the plan's [Set, ReadBack] steps, OBSERVES the override
+// the controller now reports, and hands the observed BootOnceReadback here. There is no variant of this
+// function that accepts an intended setting, a caller-authored expectation, or a plan that already has a reset:
+// pass a reading that does not match the intended setting and settle returns a plan with the reset dropped and
+// BootOnceResetRefused naming both readings, so the host is never reset into an installer nobody confirmed.
+fn network_install_settle_boot_once(plan: BootOncePlan, observed: BootOnceReadback) -> BootOncePlan {
+  settle_boot_once_read_back(plan: plan, observed: observed)
+}
+
+// WHETHER A SETTLED PLAN MAY BE RESET. The wet entry checks this and nothing else before the reset, and it
+// records the two facts separately in the receipt so "the read-back vetoed the boot" is distinguishable from
+// "the controller was never touched".
+fn network_install_may_reset(plan: BootOncePlan) -> Bool {
+  match plan {
+    BootOnceStaged { account: _, controller: _, setting: _ } => boot_once_has_reset(plan: plan)
+    BootOnceRefused { cause: _ } => false
+    BootOnceResetAdmitted { account: _, steps: _ } => boot_once_has_reset(plan: plan)
+    BootOnceResetRefused { account: _, steps: _, cause: _ } => boot_once_has_reset(plan: plan)
+  }
+}
+
+// THE RECEIPT. What a run leaves behind, and the reason the run is auditable after the fact rather than
+// reconstructed from the machine: the instant that authorized the erase, the disk that was authorized by
+// identity, whether a model was part of the pin, whether the override was read back before the reset, and
+// whether the binding was verified gone. `install_decided_at` is printed as decimal because the receipt is
+// read by a human as well as a parser, and the instant is the one the clock gave at actuation.
+type NetworkInstallReceipt {
+  host: HostIdentity
+  serial: NonEmptyStr
+  model: Optional<NonEmptyStr>
+  decided_at: EpochMs
+  binding_path: NonEmptyStr
+  override_read_back: Bool
+  reset_issued: Bool
+  install_read_back: Bool
+  install_evidence: NonEmptyStr
+  binding_withdrawn: Bool
+  completion_recorded: Bool
+  refused: Bool
+  refusal: String
+}
+
+fn network_install_receipt_lines(receipt: NetworkInstallReceipt) -> List<String> {
+  [
+    join(["host=", receipt.host as String], ""),
+    join(["target_serial=", receipt.serial], ""),
+    match receipt.model {
+      Absent => "target_model=<not reported: serial-only pin>"
+      Present { value: model } => join(["target_model=", model as String], "")
+    },
+    join(["install_decided_at=", receipt.decided_at as String], ""),
+    join(["edge_binding_path=", receipt.binding_path], ""),
+    join(["override_read_back_before_reset=", if receipt.override_read_back { "true" } else { "false" }], ""),
+    join(["reset_issued=", if receipt.reset_issued { "true" } else { "false" }], ""),
+    join(["install_read_back=", if receipt.install_read_back { "true" } else { "false" }], ""),
+    join(["install_evidence=", receipt.install_evidence], ""),
+    join(["edge_binding_withdrawn=", if receipt.binding_withdrawn { "true" } else { "false" }], ""),
+    join(["completion_recorded=", if receipt.completion_recorded { "true" } else { "false" }], ""),
+    join(["refused=", if receipt.refused { "true" } else { "false" }], ""),
+    join(["refusal=", receipt.refusal], ""),
+  ]
+}
+
+// A RECEIPT FOR A REFUSAL, so a withheld install still produces the artifact — the withheld cause is the
+// interesting part of a run that booted nothing, and it is the difference between "the workflow refused" and
+// "the workflow refused BECAUSE the reading went stale at read_at+window".
+fn network_install_refused_receipt(host: HostIdentity, serial: NonEmptyStr, decided_at: EpochMs, refusal: String) -> NetworkInstallReceipt {
+  NetworkInstallReceipt {
+    host: host,
+    serial: serial,
+    model: Absent,
+    decided_at: decided_at,
+    binding_path: "none",
+    override_read_back: false,
+    reset_issued: false,
+    install_read_back: false,
+    install_evidence: "none",
+    binding_withdrawn: false,
+    completion_recorded: false,
+    refused: true,
+    refusal: refusal,
+  }
+}
+
+// ─────────────────── THE REQUEST THIS RUN STAGES, DERIVED — NEVER DECLARED PER MACHINE ───────────────────
+//
+// THE BINDING THIS WORKFLOW STAGES IS NOT A ROW, IT IS A CONSEQUENCE. The 2026-11-11 ruling on this lane
+// (msg_40c346af) took the install requests out of gunbc.fleet.site_pxe_edge_converge's standing list — a
+// standing list re-renders what it serves, so a machine that had finished installing would have its installer
+// file put back by the next converge and could be wiped by a later PXE boot, a repeat path no journal of mine
+// can see. The alternative that ruling rejected was a named `srv15_network_install_request` datum, and the
+// reason to reject it is the reason this file exists at all: a datum per machine is a datum that can be wrong,
+// forgotten, or left behind after the machine is installed. So a request is BUILT here from the two facts that
+// already have owners — the unit's install-client NIC and its dated target-disk row — and the next unit is one
+// row in the table below plus its rows in those two tables, with no new named anything.
+//
+// THE TABLE IS A BINDING, NOT A REQUEST. It says which NIC a unit boots its installer from, which is a fact
+// about the machine, and nothing about whether an install is allowed. A host missing here has no install
+// client, and `network_install_request_for` answers Absent: the run refuses with EdgeBindingNotStaged, because
+// there is nothing at the edge to stage.
+type NetworkInstallClientRow {
+  host: HostIdentity
+  mac: NonEmptyStr
+  architecture: Architecture
+}
+
+data network_install_client_bindings: List<NetworkInstallClientRow> = [
+  // bobo, the first unit this workflow installs. Its MAC is the one its 2026-10-29 in-band recovery capture
+  // reported for the NIC that is up — enp1s0, "link becomes ready" in that capture's journalctl -k — and the
+  // architecture is the one its firmware boots: the capture's efibootmgr shows UEFI entries only, and the BMC's
+  // Aptio BIOS has PXE Support enabled by hand over the serial console.
+  NetworkInstallClientRow {
+    host: operator_host_srv15,
+    mac: srv15_host_nic_mac,
+    architecture: Aarch64,
+  },
+]
+
+// A host bound to TWO NICs is a host whose install client is not known, not a host whose installer gets to pick
+// one: which NIC the DHCPDISCOVERY arrives on decides which file the edge serves, so an ambiguous binding is
+// refused rather than resolved by list order.
+fn network_install_client_for(host: HostIdentity) -> Optional<NetworkInstallClientRow> {
+  match first_where(xs: network_install_client_bindings, keep: row => row.host == host) {
+    Present { value: row } =>
+      if count(filter(network_install_client_bindings, other => other.host == host)) == 1 {
+        Present { value: row }
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+}
+
+// THE ONE REQUEST THIS RUN STAGES, or Absent when the unit cannot be staged at all: no client row, or a client
+// row whose MAC does not parse, means there is nothing to bind. The disk reading is NOT filtered here — it is
+// admitted once, by admit_install_target_disk, in the dispatch admission that also decides the boot. A request
+// whose reading has gone stale is still a well-formed request; what withholds it is the admission, and the
+// refusal has to come from there with its own typed cause rather than from a quiet Absent here.
+fn network_install_request_for(host: HostIdentity) -> Optional<SitePxeEdgeInstallRequest> {
+  match network_install_client_for(host: host) {
+    Absent => Absent
+    Present { value: row } =>
+      let client = parse_mac_address(text: row.mac as String)
+      match client {
+        MacParsed { address: _ } => Present {
+          value: SitePxeEdgeInstallRequest {
+            client: client,
+            target_disk: target_disk_reading_for(host: host),
+            disk_admission_window: site_pxe_edge_disk_identity_admission_window,
+            architecture: row.architecture,
+          }
+        }
+        MacParseFailed { error: _ } => Absent
+      }
+  }
+}
+
+// WHAT THE WITHDRAWAL PUSHES AT THE EDGE: nothing. The standing SitePxeEdgeConverge mode serves no install
+// binding, and this run's withdraw step converges with this same empty list, which is the only route to the
+// removal path d5d8218a2ca added. Stating it once, here, is what keeps a second caller from "helpfully" passing
+// a standing list and re-creating the file behind the run's back.
+data network_install_no_requests: List<SitePxeEdgeInstallRequest> = []
+
+// THE REQUEST LIST A CONVERGE RUN PUSHES AT THE EDGE, in the shape run_site_pxe_edge takes: the unit's one
+// request when it has one, and nothing when it does not. There is no second route to this list, in this module
+// or anywhere else — which is what makes the stage/withdraw pair in the wet entry honest, since both halves
+// address exactly the files this function can name.
+fn network_install_requests_for(host: HostIdentity) -> List<SitePxeEdgeInstallRequest> {
+  match network_install_request_for(host: host) {
+    Present { value: request } => [request]
+    Absent => []
+  }
+}
