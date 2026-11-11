@@ -16966,11 +16966,68 @@ fn realization_wire_contract_read_row(item: Node, source_indices: Map<String, Ne
 
 // The rows of that category, by the closure's own authored names: seeds of the demanded set, because the
 // only thing that could name them is a reader that holds its key in another module's row.
+// A `wire_contract` DEFAULT written as an alias (`data wire_contract: VariantEncoding = a`) names its
+// target by a bare variable, and resolve_module_encoding follows that link -- and any link after it --
+// recursively with fuel 32; the whole chain is seeded with the default, because a link left unrealized
+// makes the host report the default "aliases ..., which resolves nowhere" for a row that exists.
 fn realization_wire_contract_read_names(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   fold(modules, init: [], f: (acc, m) =>
     fold(module_items(n: m.module), init: acc, f: (a, item) =>
       if !realization_wire_contract_read_row(item: item, source_indices: source_indices) { a }
+      else if authored_name_at(source_indices: source_indices, node: item) == "wire_contract" {
+        fold(realization_wire_contract_alias_chain(modules: modules, start: item, source_indices: source_indices),
+          init: list_push(acc: a, item: authored_name_at(source_indices: source_indices, node: item)),
+          f: (acc2, nm) => list_push(acc: acc2, item: nm))
+      }
       else { list_push(acc: a, item: authored_name_at(source_indices: source_indices, node: item)) }))
+}
+
+// THE ALIAS CHAIN A MODULE DEFAULT MAY BE. Empty unless the default's body is a bare variable; then every
+// link the host would walk, with the host's own bounds: fuel 32, a cycle guard over already-seen names,
+// and a stop at the first body that is not a variable (that body IS the encoding).
+fn realization_wire_contract_alias_chain(modules: List<ResolvedModule>, start: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  match start.body {
+    Present { value: body } => match body.expr_data {
+      ExprVar { binding_kind: _ } =>
+        map_keys(realization_alias_chain_step(modules: modules, name: expr_var_name_at(texpr: body, source_indices: source_indices), acc: empty_map(), fuel: 32, source_indices: source_indices))
+      _ => []
+    }
+    Absent => []
+  }
+}
+
+fn realization_alias_chain_step(modules: List<ResolvedModule>, name: String, acc: Map<String, Bool>, fuel: Int, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  let seen = match map_get(acc, name) { Present { value: _ } => true  Absent => false }
+  if fuel <= 0 || seen {
+    acc
+  } else {
+    let item_lists = modules |> map(m => module_items(n: m.module))
+    let items = item_lists |> fold(init: [], f: (items_acc, items_of_m) => concat(items_acc, items_of_m))
+    let candidates = items |> map(item => realization_alias_body_name(item: item, name: name, source_indices: source_indices))
+    let target = candidates |> fold(init: "", f: (found, candidate) =>
+      if found == "" { candidate } else { found })
+    if target == "" {
+      map_insert(acc, name, true)
+    } else {
+      realization_alias_chain_step(modules: modules, name: target, acc: map_insert(acc, name, true), fuel: fuel - 1, source_indices: source_indices)
+    }
+  }
+}
+
+// The variable a data declaration aliases to, when one is named `name` and its body is a bare variable.
+// "" means "no alias": not a data item, not this name, or a non-variable body.
+fn realization_alias_body_name(item: Node, name: String, source_indices: Map<String, NewlineIndex>) -> String {
+  if item.module_item_kind == ModuleItemDataValue && authored_name_at(source_indices: source_indices, node: item) == name {
+    match item.body {
+      Present { value: body } => match body.expr_data {
+        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: body, source_indices: source_indices)
+        _ => ""
+      }
+      Absent => ""
+    }
+  } else {
+    ""
+  }
 }
 
 // THE KEY READ THE ROW PERFORMS. A contract row IS a lookup key the interpreter holds: its `coproduct`

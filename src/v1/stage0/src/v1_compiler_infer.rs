@@ -29424,7 +29424,7 @@ pub fn realization_wire_contract_read_names(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    modules.iter().cloned().fold(
+    modules.clone().iter().cloned().fold(
         Rc::new(vec![]),
         |acc: Rc<Vec<String>>, m: Rc<ResolvedModule>| {
             crate::v1_std_core::module_items(m.module.clone())
@@ -29434,17 +29434,170 @@ pub fn realization_wire_contract_read_names(
                     if !realization_wire_contract_read_row(item.clone(), source_indices.clone()) {
                         a
                     } else {
-                        v1_rt::rc_list_push(
-                            a,
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
+                        if (crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            item.clone(),
+                        ) == "wire_contract".to_string())
+                        {
+                            realization_wire_contract_alias_chain(
+                                modules.clone(),
                                 item.clone(),
-                            ),
-                        )
+                                source_indices.clone(),
+                            )
+                            .iter()
+                            .cloned()
+                            .fold(
+                                v1_rt::rc_list_push(
+                                    a,
+                                    crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        item.clone(),
+                                    ),
+                                ),
+                                |acc2: Rc<Vec<String>>, nm: String| {
+                                    v1_rt::rc_list_push(acc2, nm.clone())
+                                },
+                            )
+                        } else {
+                            v1_rt::rc_list_push(
+                                a,
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    item.clone(),
+                                ),
+                            )
+                        }
                     }
                 })
         },
     )
+}
+
+pub fn realization_wire_contract_alias_chain(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    start: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    match start.body.clone() {
+        Some(body) => match (*body.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => Rc::new(v1_rt::map_keys(&realization_alias_chain_step(
+                modules,
+                crate::v1_std_core::expr_var_name_at(body.clone(), source_indices.clone()),
+                v1_rt::rc_empty_map::<String, bool>(),
+                32,
+                source_indices.clone(),
+            ))),
+            _ => Rc::new(vec![]),
+        },
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn realization_alias_chain_step(
+    mut __tco_loop_modules: Rc<Vec<Rc<ResolvedModule>>>,
+    mut __tco_loop_name: String,
+    mut __tco_loop_acc: Rc<HashMap<String, bool>>,
+    mut __tco_loop_fuel: i64,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut modules = __tco_loop_modules;
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let seen = match v1_rt::map_get(&acc, name.clone()) {
+                Some(_) => true,
+                std::option::Option::None => false,
+            };
+            if ((fuel.clone() <= 0) || seen.clone()) {
+                break acc.clone();
+            } else {
+                let item_lists = Rc::new({
+                    let mut __result = Vec::new();
+                    for m in modules.iter().cloned() {
+                        __result.push(crate::v1_std_core::module_items(m.module.clone()));
+                    }
+                    __result
+                });
+                let items = item_lists.iter().cloned().fold(
+                    Rc::new(vec![]),
+                    |items_acc: _, items_of_m: Rc<Vec<Rc<Node>>>| {
+                        v1_rt::concat(items_acc, items_of_m.clone())
+                    },
+                );
+                let candidates = Rc::new({
+                    let mut __result = Vec::new();
+                    for item in items.iter().cloned() {
+                        __result.push(realization_alias_body_name(
+                            item.clone(),
+                            name.clone(),
+                            source_indices.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let target = candidates.iter().cloned().fold(
+                    "".to_string(),
+                    |found: String, candidate: String| {
+                        if (found.clone() == "".to_string()) {
+                            candidate.clone()
+                        } else {
+                            found.clone()
+                        }
+                    },
+                );
+                if (target.clone() == "".to_string()) {
+                    break v1_rt::rc_map_insert(acc.clone(), name.clone(), true);
+                } else {
+                    {
+                        let __tco_0 = modules;
+                        let __tco_1 = target.clone();
+                        let __tco_2 = v1_rt::rc_map_insert(acc, name, true);
+                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        let __tco_4 = source_indices;
+                        __tco_loop_modules = __tco_0;
+                        __tco_loop_name = __tco_1;
+                        __tco_loop_acc = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        __tco_loop_source_indices = __tco_4;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn realization_alias_body_name(
+    item: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
+        && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+            == name.clone()))
+    {
+        match item.body.clone() {
+            Some(body) => match (*body.expr_data.clone()).clone() {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => crate::v1_std_core::expr_var_name_at(body.clone(), source_indices.clone()),
+                _ => "".to_string(),
+            },
+            std::option::Option::None => "".to_string(),
+        }
+    } else {
+        "".to_string()
+    }
 }
 
 pub fn realization_wire_contract_row_edges(
@@ -40624,74 +40777,10 @@ pub fn same_declaration_site(a: Rc<Node>, b: Rc<Node>) -> bool {
     }
 }
 
-pub fn bare_import_owner_index(
+pub fn build_emit_graph_info(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, String>>>> {
-    modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
-        |acc: Rc<HashMap<String, Rc<HashMap<String, String>>>>, tm: Rc<TypedModule>| {
-            let si = tm.type_env.source_indices.clone();
-            let module_name = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
-            let leaf_to_owner = crate::v1_std_core::module_imports(tm.module.clone())
-                .iter()
-                .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<String, String>(),
-                    |inner: Rc<HashMap<String, String>>, imp: Rc<Node>| {
-                        let import_path =
-                            crate::v1_std_core::authored_name_at(si.clone(), imp.clone());
-                        crate::v1_std_core::import_specific_names_at(imp.clone(), si.clone())
-                            .iter()
-                            .cloned()
-                            .fold(
-                                inner,
-                                |inner_names: Rc<HashMap<String, String>>,
-                                 imported_name: String| {
-                                    match v1_rt::map_get(&inner_names, imported_name.clone()) {
-                                        Some(_) => inner_names.clone(),
-                                        std::option::Option::None => {
-                                            if (v1_rt::map_get(
-                                                &registry,
-                                                crate::v1_std_core::callable_identity(Rc::new(
-                                                    DeclaredCallableIdentity {
-                                                        owner_module_path: import_path.clone(),
-                                                        decl_name: imported_name.clone(),
-                                                    },
-                                                )),
-                                            ) != std::option::Option::None)
-                                            {
-                                                v1_rt::rc_map_insert(
-                                                    inner_names.clone(),
-                                                    imported_name.clone(),
-                                                    import_path.clone(),
-                                                )
-                                            } else {
-                                                inner_names.clone()
-                                            }
-                                        }
-                                    }
-                                },
-                            )
-                    },
-                );
-            v1_rt::rc_map_insert(acc, module_name.clone(), leaf_to_owner.clone())
-        },
-    )
-}
-
-pub fn imported_owner_of_bare_ref(
-    import_index: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
-    module_name: String,
-    leaf: String,
-) -> Option<String> {
-    match v1_rt::map_get(&import_index, module_name.clone()) {
-        Some(leaf_to_owner) => v1_rt::map_get(&leaf_to_owner, leaf.clone()),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn emit_graph_info_build_state(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitInfoBuildState> {
+) -> Rc<EmitGraphInfo> {
     {
         let qualified_names = match modules.clone().first().cloned() {
             Some(m) => m.type_env.symbol_index.clone(),
@@ -40737,7 +40826,7 @@ pub fn emit_graph_info_build_state(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Emit
                 )
             },
         );
-        Rc::new(EmitInfoBuildState {
+        let built = Rc::new(EmitInfoBuildState {
             type_summaries: crate::v1_compiler_infer_emit_info::close_fn_fields(
                 built_raw.type_summaries.clone(),
                 built_raw.structural_alias_fn_surface_names.clone(),
@@ -40748,64 +40837,7 @@ pub fn emit_graph_info_build_state(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Emit
             fn_decl_identity_items: built_raw.fn_decl_identity_items.clone(),
             structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names.clone(),
             structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names.clone(),
-        })
-    }
-}
-
-pub fn build_value_ref_graph_info(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<EmitGraphInfo> {
-    {
-        let built = emit_graph_info_build_state(modules.clone());
-        let base = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
-        Rc::new(EmitGraphInfo {
-            item_leaf_owner_modules:
-                crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(registry.clone()),
-            bare_import_owner_index: bare_import_owner_index(modules.clone(), registry.clone()),
-            type_summaries: built.type_summaries.clone(),
-            variant_to_enum: crate::v1_compiler_infer_emit_info::derive_variant_to_enum(
-                built.type_summaries.clone(),
-            ),
-            type_decl_items: base.type_decl_items.clone(),
-            data_variant_wire_spellings: base.data_variant_wire_spellings.clone(),
-            fn_decl_items: base.fn_decl_items.clone(),
-            fn_decl_identity_items: base.fn_decl_identity_items.clone(),
-            fn_map_key_bounds: base.fn_map_key_bounds.clone(),
-            fn_equality_bounds: base.fn_equality_bounds.clone(),
-            recursive_type_set: base.recursive_type_set.clone(),
-            fielded_variants: base.fielded_variants.clone(),
-            positional_payload_variants: base.positional_payload_variants.clone(),
-            shared_types: base.shared_types.clone(),
-            ownership_index: base.ownership_index.clone(),
-            moved_argument_index: base.moved_argument_index.clone(),
-            movable: base.movable.clone(),
-            moved_argument_occurrences: base.moved_argument_occurrences.clone(),
-            owned_bindings: base.owned_bindings.clone(),
-            read_only_params_index: base.read_only_params_index.clone(),
-            read_only_params: base.read_only_params.clone(),
-            clone_bounded_type_params: base.clone_bounded_type_params.clone(),
-            map_key_required_type_names: base.map_key_required_type_names.clone(),
-            clone_impl_required_type_params: base.clone_impl_required_type_params.clone(),
-            map_key_bounded_type_params: base.map_key_bounded_type_params.clone(),
-            fn_generic_param_names: base.fn_generic_param_names.clone(),
-            fn_type_env: base.fn_type_env.clone(),
-            fn_return_type: base.fn_return_type.clone(),
-            expected_type: base.expected_type.clone(),
-            tco_cursor_params: base.tco_cursor_params.clone(),
-            tco_cursor_tails: base.tco_cursor_tails.clone(),
-            trmc_out: base.trmc_out.clone(),
-            dying_base_sites: base.dying_base_sites.clone(),
-        })
-    }
-}
-
-pub fn build_emit_graph_info(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<EmitGraphInfo> {
-    {
-        let built = emit_graph_info_build_state(modules.clone());
+        });
         let all_recursive = modules.iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
             |acc: _, m: Rc<TypedModule>| {
@@ -40835,8 +40867,7 @@ pub fn build_emit_graph_info(
         );
         Rc::new(EmitGraphInfo {
             item_leaf_owner_modules:
-                crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(registry.clone()),
-            bare_import_owner_index: bare_import_owner_index(modules.clone(), registry.clone()),
+                crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(registry),
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
             data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(

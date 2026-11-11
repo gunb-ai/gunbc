@@ -880,7 +880,14 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
       },
       account: "Raised by review artifact 92786 on PR #16156: the PR adds src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs (~345 lines of hand-written Rust) next to the generated mirror; the ruling's enrollment deferral covered the demanded_scope controls but named no landing for these witnesses. This row is that landing plan; the witnesses currently run green in the release profile on the head they test.",
     },
-    tail: [],
+    tail: [ConcernSighting {
+      revision: "c3f6da1f78e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_wire_contract_read_names") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_wire_contract_alias_chain") }],
+      },
+      account: "The wire-contract alias-chain and read-row witnesses (grain_seeds_wire_contract_read_rows_so_the_decode_index_resolves_actor_spelling, grain_seeds_every_link_of_a_wire_contract_alias_chain; fixture dag/test/fixture/demanded_scope/wire_contract_alias_chain.dag) extend the same file by ~150 lines of hand-written Rust under this same deferral: at enrollment, node adhoc-0eedbb6e-a35 moves or admits the whole file, not just the #16156 block. Green in the release profile on the head they test; the earlier PR #16244 that first carried them was closed superseded by #16241 plus this delta.",
+    }],
   },
   disposition: Open,
 }
