@@ -1,0 +1,444 @@
+module test.claim.machine_intake.prior_life_capture_live_witness
+
+// WITNESSES FOR THE LIVE PRIOR-LIFE ARCHIVE (PXE 1d-c). These claims run the DECODERS AND CLASSIFIERS of
+// gunbc.machine_intake.prior_life_capture_live on grounded controller outputs — the shapes OpenBMC 3.22.00
+// (srv15/bobo) and ipmitool actually print — and assert what each verdict must be. The mint itself
+// (live_prior_life_captures) runs ops against a live controller and is exercised by the manager's
+// dispatched arrival run, not here; what this file pins is everything the mint decides BETWEEN the ops:
+// the TOTAL boot-override map (ruling B), the honest gap typing (ruling C), the stop-on-first-auth-refusal
+// classification (smart-crane-730, 2026-11-11), the bounded log-service walk, and the never-fabricate
+// discipline (an unreadable line refuses; an empty SEL is a capture, an empty VirtualMedia collection is a
+// capture, a missing surface is a typed gap — never an invented empty).
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { concat }
+import gunbc.machine_intake.prior_life_capture_live {
+  LiveDecodeRecordsOk,
+  LiveDecodeRefused,
+  LiveDecodeGap,
+  LiveDecodeOverrideOk,
+  LiveDecodeRefsOk,
+  LiveDecodeRefsRefused,
+  LiveDecodeTextOk,
+  LiveDecodeVmOk,
+  LiveDecodePointsOk,
+  LiveReadAuthRefused,
+  LiveReadNotServed,
+  LiveReadOk,
+  LiveReadTransportFailed,
+  live_boot_override_of,
+  live_classify_http,
+  live_classify_ipmi,
+  live_connected_via,
+  live_log_service_refs,
+  live_manager_date_time,
+  live_media_type,
+  live_sensor_points,
+  live_sel_records,
+  live_virtual_media_members,
+}
+import gunbc.machine_intake.prior_life_boundary {
+  CarrierFirmwareCannotServe,
+  CarrierSurfaceUnmodeled,
+}
+import gunbc.bmc_model {
+  BmcBootOverride,
+  BootOverrideCdromEfiNextBoot,
+  BootOverrideNone,
+  BootOverridePxeNextBoot,
+}
+import extdeps.bmc.redfish_virtual_media {
+  ConnectedViaApplet,
+  ConnectedViaNotConnected,
+  ConnectedViaOem,
+  ConnectedViaUri,
+  MediaCd,
+  MediaDvd,
+  MediaFloppy,
+  MediaUsbStick,
+  RedfishVirtualMediaConnectedVia,
+  RedfishVirtualMediaMediaType,
+  RedfishVirtualMediaParent,
+  UnderSystem,
+  redfish_virtual_media_type_wire,
+}
+
+fn vm_parent() -> RedfishVirtualMediaParent {
+  UnderSystem { system_id: "system" as NonEmptyStr }
+}
+
+// ── THE BOOT-OVERRIDE MAP IS TOTAL (ruling B). ───────────────────────────────────────────────────────
+// The model names only None, CdromEfiNextBoot and PxeNextBoot. The map must NAME what the firmware says,
+// never collapse an unmodellable override into None (a PXE override read as None would let an arrival
+// archive "no override" while the machine is armed to PXE-boot — the exact state srv15 is in: a console
+// BIOS edit enabled IPv4 PXE, per artifacts/bmc/srv15-inband-recovery-2026-10-29/).
+
+fn boot_body(enabled: String, target: String) -> String {
+  concat("{\"Boot\":{\"BootSourceOverrideEnabled\":\"", concat(enabled, concat("\",\"BootSourceOverrideTarget\":\"", concat(target, "\"}}}"))))
+}
+
+fn the_boot_map_reads_a_pxe_next_boot_override_as_pxe_next_boot() -> Bool {
+  match live_boot_override_of(body: boot_body(enabled: "Once", target: "Pxe") as NonEmptyStr) {
+    LiveDecodeOverrideOk { override: o } => o == BootOverridePxeNextBoot
+    _ => false
+  }
+}
+
+fn the_boot_map_reads_a_disabled_override_as_none_whatever_the_stale_target_says() -> Bool {
+  match live_boot_override_of(body: boot_body(enabled: "Disabled", target: "Pxe") as NonEmptyStr) {
+    LiveDecodeOverrideOk { override: o } => o == BootOverrideNone
+    _ => false
+  }
+}
+
+fn the_boot_map_reads_a_cd_next_boot_override_as_cdrom_efi() -> Bool {
+  match live_boot_override_of(body: boot_body(enabled: "Once", target: "Cd") as NonEmptyStr) {
+    LiveDecodeOverrideOk { override: o } => o == BootOverrideCdromEfiNextBoot
+    _ => false
+  }
+}
+
+fn the_boot_map_refuses_a_continuous_override_as_a_typed_gap_never_none() -> Bool {
+  match live_boot_override_of(body: boot_body(enabled: "Continuous", target: "Pxe") as NonEmptyStr) {
+    LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: _ } => true
+    _ => false
+  }
+}
+
+fn the_boot_map_refuses_an_unmodellable_target_as_a_typed_gap_never_none() -> Bool {
+  match live_boot_override_of(body: boot_body(enabled: "Once", target: "BiosBootMenu") as NonEmptyStr) {
+    LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: _ } => true
+    _ => false
+  }
+}
+
+fn the_boot_map_calls_a_missing_boot_object_a_firmware_cannot_serve_gap() -> Bool {
+  match live_boot_override_of(body: "{\"Id\":\"system\"}" as NonEmptyStr) {
+    LiveDecodeGap { cause: CarrierFirmwareCannotServe { detail: _ }, note: _ } => true
+    _ => false
+  }
+}
+
+// RED for ruling B, stated as the pair that fixes the DIRECTION of the map: the armed-Pxe reading must
+// differ from None. If the map ever regressed to collapsing Pxe into None, the positive claim above moves
+// while this one moves with it — together they make the collapse unrepresentable.
+fn an_armed_pxe_override_never_reads_as_none() -> Bool {
+  match live_boot_override_of(body: boot_body(enabled: "Once", target: "Pxe") as NonEmptyStr) {
+    LiveDecodeOverrideOk { override: o } => !(o == BootOverrideNone)
+    _ => false
+  }
+}
+
+// ── THE VIRTUAL MEDIA SURFACE: EVERY FIELD OR A REFUSAL. ─────────────────────────────────────────────
+
+fn media_types_round_trip_the_schema_wire() -> Bool {
+  is_media(redfish_virtual_media_type_wire(t: MediaCd), MediaCd)
+    && is_media(redfish_virtual_media_type_wire(t: MediaDvd), MediaDvd)
+    && is_media(redfish_virtual_media_type_wire(t: MediaUsbStick), MediaUsbStick)
+    && is_media(redfish_virtual_media_type_wire(t: MediaFloppy), MediaFloppy)
+}
+
+fn is_media(wire: String, want: RedfishVirtualMediaMediaType) -> Bool {
+  match live_media_type(text: wire) {
+    Present { value: got } => got == want
+    Absent => false
+  }
+}
+
+// RED: an invented wire name must NOT name a media type (a silent accept would archive an unknown medium
+// as a known one).
+fn an_unknown_media_wire_name_names_no_type() -> Bool {
+  match live_media_type(text: "TapeDrive") {
+    Absent => true
+    _ => false
+  }
+}
+
+fn connected_via_maps_the_schema_values_and_refuses_the_rest() -> Bool {
+  is_via("NotConnected", ConnectedViaNotConnected)
+    && is_via("URI", ConnectedViaUri)
+    && is_via("Applet", ConnectedViaApplet)
+    && is_via("Oem", ConnectedViaOem)
+    && no_via("Telnet")
+}
+
+fn is_via(wire: String, want: RedfishVirtualMediaConnectedVia) -> Bool {
+  match live_connected_via(text: wire) {
+    Present { value: got } => got == want
+    Absent => false
+  }
+}
+
+fn no_via(wire: String) -> Bool {
+  match live_connected_via(text: wire) {
+    Absent => true
+    _ => false
+  }
+}
+
+// An EMPTY served VirtualMedia collection is an empty CAPTURE (the detached fleet is the honest srv15
+// prior-life reading), not a gap.
+fn an_empty_virtual_media_collection_is_an_empty_capture() -> Bool {
+  match live_virtual_media_members(body: "{\"Members\":[]}" as NonEmptyStr, parent: vm_parent()) {
+    LiveDecodeVmOk { members: ms } => ms.length() == 0
+    _ => false
+  }
+}
+
+// A member with an unreadable field refuses the WHOLE carrier (a half-invisible mount is never archived).
+fn a_half_decodable_virtual_media_member_refuses_the_carrier() -> Bool {
+  match live_virtual_media_members(
+    body: "{\"Members\":[{\"Id\":\"1\",\"Inserted\":true,\"ConnectedVia\":\"Telnet\",\"MediaType\":[]}]}" as NonEmptyStr,
+    parent: vm_parent(),
+  ) {
+    LiveDecodeRefused { detail: _ } => true
+    _ => false
+  }
+}
+
+// ── THE LOG-SERVICES WALK: LINKS FOLLOWED, BOUND ENFORCED, NO SILENT MEMBER LOSS. ────────────────────
+
+fn log_service_refs_follow_the_entries_link_and_derive_the_canonical_one() -> Bool {
+  match live_log_service_refs(
+    body: "{\"Members\":[{\"Id\":\"Audit\",\"Entries\":{\"@odata.id\":\"/redfish/v1/Managers/bmc/LogServices/Audit/Entries\"}},{\"Id\":\"SEL\"}]}" as NonEmptyStr,
+    log_services_path: "/redfish/v1/Managers/bmc/LogServices" as NonEmptyStr,
+  ) {
+    LiveDecodeRefsOk { refs: rs, over_bound: ob } =>
+      !ob && rs.length() == 2
+        && (match first(rs) {
+            Present { value: a } => a.id == "Audit" && a.entries_path == "/redfish/v1/Managers/bmc/LogServices/Audit/Entries"
+            Absent => false
+          })
+        && (match first(rs.skip(n: 1)) {
+            Present { value: b } => b.id == "SEL" && b.entries_path == "/redfish/v1/Managers/bmc/LogServices/SEL/Entries"
+            Absent => false
+          })
+    _ => false
+  }
+}
+
+fn a_collection_beyond_the_bound_is_flagged_not_silently_truncated() -> Bool {
+  match live_log_service_refs(body: nine_member_log_services_body() as NonEmptyStr, log_services_path: "/redfish/v1/Managers/bmc/LogServices" as NonEmptyStr) {
+    LiveDecodeRefsOk { refs: rs, over_bound: ob } => ob && rs.length() == 8
+    _ => false
+  }
+}
+
+// RED: the malformed-collection refusal stays a refusal — a reader that archived a member-less collection
+// as the empty service list would make the bound claim meaningless.
+fn a_log_services_body_without_members_refuses_rather_than_archiving_empty() -> Bool {
+  match live_log_service_refs(body: "{\"@odata.id\":\"/x\"}" as NonEmptyStr, log_services_path: "/x" as NonEmptyStr) {
+    LiveDecodeRefsRefused { detail: _ } => true
+    _ => false
+  }
+}
+
+fn nine_member_log_services_body() -> String {
+  let open = "{\"Members\":["
+  member_chunk(i: 8, acc: member_chunk(i: 7, acc: member_chunk(i: 6, acc: member_chunk(i: 5, acc: member_chunk(i: 4, acc: member_chunk(i: 3, acc: member_chunk(i: 2, acc: member_chunk(i: 1, acc: member_chunk(i: 0, acc: open)))))))))
+}
+
+fn member_chunk(i: Int, acc: String) -> String {
+  let sep = if i == 0 { "" } else { "," }
+  concat(acc, concat(sep, concat("{\"Id\":\"S", concat(int_text(i: i), "\"}}}"))))
+}
+
+// ── THE SEL CARRIER: NOTHING FABRICATED, NOTHING DROPPED, EMPTINESS HONEST. ──────────────────────────
+
+fn a_real_sel_elist_line_archives_one_record() -> Bool {
+  match live_sel_records(text: "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted\n") {
+    LiveDecodeRecordsOk { records: rs } => rs.length() == 1 && (match first(rs) {
+      Present { value: one } => one.id_hex == "0x0001" && one.sensor == "User callback"
+      Absent => false
+    })
+    _ => false
+  }
+}
+
+// srv15's KNOWN prior life (cool-owl-838's read of artifacts/bmc/srv15-inband-recovery-2026-10-29/): an
+// in-band `ipmitool user set password 1` on 2026-10-29 — the archive path must carry a line of exactly
+// this shape (it is prior life, not an error).
+fn the_known_inband_password_set_line_archives_as_found() -> Bool {
+  match live_sel_records(text: "0x0003 | 10/29/2026 | 09:14:22 | 0x20 | Command sent to BMC | Asserted |") {
+    LiveDecodeRecordsOk { records: rs } => rs.length() == 1 && (match first(rs) {
+      Present { value: one } => one.id_hex == "0x0003" && one.date == "10/29/2026"
+      Absent => false
+    })
+    _ => false
+  }
+}
+
+fn an_unreadable_sel_line_refuses_the_carrier_rather_than_dropping_the_run() -> Bool {
+  match live_sel_records(text: "Can't get SEL info: Invalid argument") {
+    LiveDecodeRefused { detail: _ } => true
+    _ => false
+  }
+}
+
+fn an_empty_sel_stdout_is_an_empty_capture_not_a_gap() -> Bool {
+  match live_sel_records(text: "\r\n") {
+    LiveDecodeRecordsOk { records: rs } => rs.length() == 0
+    _ => false
+  }
+}
+
+// ── THE SENSOR SNAPSHOT: EVERY MEMBER OR A REFUSAL. ──────────────────────────────────────────────────
+
+fn the_sensors_snapshot_decodes_each_member_by_its_reading_type() -> Bool {
+  match live_sensor_points(
+    body: "{\"Members\":[{\"Name\":\"Inlet Temp\",\"ReadingType\":\"Temperature\",\"Reading\":41.0,\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"}},{\"Name\":\"Fan1\",\"ReadingType\":\"Tachometer\",\"Reading\":8100.0,\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"}}]}" as NonEmptyStr,
+  ) {
+    LiveDecodePointsOk { points: ps } => ps.length() == 2
+      && (match first(ps) {
+          Present { value: p0 } => p0.name == "Inlet Temp"
+          Absent => false
+        })
+      && (match first(ps.skip(n: 1)) {
+          Present { value: p1 } => p1.name == "Fan1"
+          Absent => false
+        })
+    _ => false
+  }
+}
+
+// RED: one unreadable member refuses the WHOLE snapshot — a partial sensor picture archived as complete is
+// a fabrication this lane forbids.
+fn one_unreadable_sensor_member_refuses_the_snapshot() -> Bool {
+  match live_sensor_points(
+    body: "{\"Members\":[{\"Name\":\"Inlet Temp\",\"ReadingType\":\"Temperature\",\"Reading\":41.0,\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"}},{\"Name\":\"Broken\"}]}" as NonEmptyStr,
+  ) {
+    LiveDecodeRefused { detail: _ } => true
+    _ => false
+  }
+}
+
+// ── THE CLOCK CARRIER (ruling C): read from the door's Manager bytes, never invented. ────────────────
+
+fn the_clock_carrier_reads_the_managers_datetime() -> Bool {
+  match live_manager_date_time(body: "{\"Id\":\"bmc\",\"DateTime\":\"2026-11-11T09:00:00Z\"}" as NonEmptyStr) {
+    LiveDecodeTextOk { text: t } => t == "2026-11-11T09:00:00Z"
+    _ => false
+  }
+}
+
+fn a_manager_body_without_datetime_is_a_refusal_never_an_invented_clock() -> Bool {
+  match live_manager_date_time(body: "{\"Id\":\"bmc\"}" as NonEmptyStr) {
+    LiveDecodeRefused { detail: _ } => true
+    _ => false
+  }
+}
+
+// ── STOP-ON-FIRST-AUTH-REFUSAL: THE CLASSIFIER DISTINGUISHES, NEVER CONFLATES. ───────────────────────
+// (smart-crane-730, 2026-11-11: the first authentication refusal ends the mint; ipmitool's own retry
+// behaviour is bounded by the shared `-R 1 -N 1` pin — worst case 2 failed attempts per invocation.)
+
+fn lanplus_authentication_failures_classify_as_auth_refusals() -> Bool {
+  is_auth_ipmi("Error: RAKP 2 HMAC is invalid")
+    && is_auth_ipmi("Error: Unauthorized name given")
+    && is_auth_ipmi("Error: Insufficient privilege level was requested")
+}
+
+fn is_auth_ipmi(err: String) -> Bool {
+  match live_classify_ipmi(success: false, stdout: "", stderr: err) {
+    LiveReadAuthRefused => true
+    _ => false
+  }
+}
+
+fn an_unestablished_session_says_nothing_about_the_credential() -> Bool {
+  // "Unable to establish IPMI v2" is extdeps.bmc.ipmi_session's UNESTABLISHED sentence: no credential
+  // verdict, so the mint fails closed WITHOUT an auth stop — srv15's lockout budget was not touched.
+  match live_classify_ipmi(success: false, stdout: "", stderr: "Error: Unable to establish IPMI v2 / RMCP+ session") {
+    LiveReadTransportFailed { detail: _ } => true
+    _ => false
+  }
+}
+
+fn ipmi_commands_the_controller_does_not_implement_are_not_served_gaps() -> Bool {
+  match live_classify_ipmi(success: false, stdout: "", stderr: "Unknown command (0x81)") {
+    LiveReadNotServed { detail: _ } => true
+    _ => false
+  }
+}
+
+fn the_op_successes_are_never_classified_as_failures() -> Bool {
+  match live_classify_ipmi(success: true, stdout: "0x0001 | 10/29/2026 | 12:00:00 | User callback | User password set | Asserted", stderr: "") {
+    LiveReadOk => match live_classify_http(success: true, body: "{\"Members\":[]}", stderr: "") {
+      LiveReadOk => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn redfish_refusals_classify_by_the_vendors_own_sentences() -> Bool {
+  is_auth_http_stderr("curl: (22) The requested URL returned error: 401")
+    && is_auth_http_body("{\"error\":{\"message\":\"Your credentials did not authenticate\"}}")
+    && (match live_classify_http(success: false, body: "{\"error\":{\"message\":\"Resource at /redfish/v1/x not found\"}}", stderr: "") {
+        LiveReadNotServed { detail: _ } => true
+        _ => false
+      })
+    && (match live_classify_http(success: false, body: "", stderr: "curl: (28) Operation timed out") {
+        LiveReadTransportFailed { detail: _ } => true
+        _ => false
+      })
+}
+
+fn is_auth_http_stderr(err: String) -> Bool {
+  match live_classify_http(success: false, body: "", stderr: err) {
+    LiveReadAuthRefused => true
+    _ => false
+  }
+}
+
+fn is_auth_http_body(body: String) -> Bool {
+  match live_classify_http(success: false, body: body, stderr: "") {
+    LiveReadAuthRefused => true
+    _ => false
+  }
+}
+
+// RED for the stop rule, both directions: a transport failure must NOT be labelled an auth refusal (a
+// false stop would claim a credential refusal the controller never issued), and an auth refusal must NOT
+// be labelled transport or not-served (a false continue would keep spending srv15's lockout budget after
+// the credential was rejected — the very failure mode the manager's stop rule exists to prevent).
+fn transport_failures_and_auth_refusals_are_never_conflated() -> Bool {
+  let timeout = live_classify_http(success: false, body: "", stderr: "curl: (28) Operation timed out")
+  let refused = live_classify_http(success: false, body: "", stderr: "curl: (22) The requested URL returned error: 401")
+  match timeout {
+    LiveReadAuthRefused => false
+    _ =>
+      match refused {
+        LiveReadTransportFailed { detail: _ } => false
+        LiveReadNotServed { detail: _ } => false
+        LiveReadOk => false
+        _ => true
+      }
+  }
+}
+
+// small pure helper
+fn int_text(i: Int) -> String {
+  if i == 0 {
+    "0"
+  } else if i == 1 {
+    "1"
+  } else if i == 2 {
+    "2"
+  } else if i == 3 {
+    "3"
+  } else if i == 4 {
+    "4"
+  } else if i == 5 {
+    "5"
+  } else if i == 6 {
+    "6"
+  } else if i == 7 {
+    "7"
+  } else if i == 8 {
+    "8"
+  } else {
+    "9"
+  }
+}

@@ -290,8 +290,16 @@ type CarrierPayload
   | PowerStatePayload { power: BmcPower }
   | SensorSnapshotPayload { points: List<RedfishTelemetryPoint> }
 
+// WHY A REQUIRED CARRIER IS MISSING, typed. `CarrierSurfaceUnmodeled` says the reader has no model for
+// what the controller serves; `CarrierFirmwareCannotServe` says the CONTROLLER itself does not serve the
+// surface at all — the read completed and the endpoint refused with not-found/not-implemented, so the gap
+// is the firmware's fact, not the reader's gap in coverage. Ruling C (smart-crane-730, 2026-11-11) admits
+// the arm for the live archive; the policy row decides whether a gap of either kind refuses. A gap is never
+// a fabricated empty capture: the distinction between "served, nothing in it" and "not served" is exactly
+// what these two arms keep apart.
 type CarrierGapCause
   = CarrierSurfaceUnmodeled {}
+  | CarrierFirmwareCannotServe { detail: NonEmptyStr }
 
 type CarrierCapture
   = CarrierCaptured { carrier: PriorLifeCarrier, payload: CarrierPayload }
@@ -452,8 +460,11 @@ fn capture_json(c: CarrierCapture) -> JsonValue {
   match c {
     CarrierCaptured { carrier: k, payload: p } =>
       arm(name: "Captured", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "payload", value: payload_json(p: p))])
-    CarrierGap { carrier: k, cause: _ } =>
-      arm(name: "Gap", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "cause", value: arm(name: "SurfaceUnmodeled", members: []))])
+    CarrierGap { carrier: k, cause: g } =>
+      arm(name: "Gap", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "cause", value: match g {
+        CarrierSurfaceUnmodeled {} => arm(name: "SurfaceUnmodeled", members: [])
+        CarrierFirmwareCannotServe { detail: d } => arm(name: "FirmwareCannotServe", members: [json_kv(key: "detail", value: json_string(s: d as String))])
+      })])
   }
 }
 

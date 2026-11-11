@@ -1,0 +1,1299 @@
+module gunbc.machine_intake.prior_life_capture_live
+
+// THE LIVE PRIOR-LIFE ARCHIVE (PXE 1d-c). Where gunbc.machine_intake.prior_life_boundary classifies a
+// supplied DRY world, this module READINGLY assembles the same CarrierCaptures from srv15's (ALTRAD8UD,
+// OpenBMC 3.22.00) controller over the declared read-only ops, so a live arrival fold carries real prior
+// life into PriorLifeBoundary instead of stopping there. Provenance: the design note approved by
+// smart-crane-730 on 2026-11-11 (rulings A, B, C) and the seam agreed with merry-seal-673: the door owns
+// composition and the credential brackets; THIS module owns the carrier reads, the decoders, and the
+// capture verdicts. The door hands this mint the PATHS its brackets minted (one 0600 password file used
+// via `-f`, never argv; one netrc) — never secret bytes — and runs it inside the held arrival slot.
+//
+// WHAT MAKES A CAPTURE HONEST HERE:
+//  * Every response is committed through gunbc.provider_wire_evidence.retain_private_evidence_bytes_detailed
+//    and READ BACK before it is decoded; the CarrierCapture is assembled from the READ-BACK bytes, so the
+//    archive claim is re-checkable from the store, not from a value that evaporated with the call.
+//    (No second BmcSuppliedResponse mint exists — commit_captured_response stays the sole mint in
+//    gunbc.machine_intake.bmc_account_state_live, per the seam; the raw bytes ride the same evidence
+//    discipline directly, and this module's OWN rows are the carrier verdicts keyed by content digest.)
+//  * A carrier whose read failed for a NON-authenticated transport reason REFUSES the whole mint
+//    (LiveCaptureRefused): a half-read prior life must not reach the classifier dressed up as gaps.
+//    Gaps are reserved for what the controller ANSWERED and could not serve (typed CarrierGapCause), and
+//    an empty list appears only when the controller SERVED an empty collection — never fabricated.
+//  * STOP ON FIRST AUTH REFUSAL (smart-crane-730, 2026-11-11): the first IpmiSessionAuthRefused or
+//    401-class Redfish refusal ends the mint immediately. A rejected managed credential means every later
+//    op would fail too; continuing only burns srv15's lockout budget. Rows already committed stay
+//    readable from the store — the refusal arm carries them — but no further authenticated op is issued.
+//  * Read-only ops only: every op here is declared `readonly` at its module; no account write, no BIOS
+//    write, no boot-parameter SET, no SEL/LogService clearing POST. The retry bound is pinned in the
+//    shared authenticated templates of extdeps.bmc/ipmi.dag (`-R 1 -N 1`), so the worst case per
+//    invocation is 2 failed authentications, and the door's gate compares THAT against the served
+//    Bad Password Threshold. Redfish rides one curl invocation per op with no auth retry (curl(1) does
+//    not retry a 401 unless asked; these argv never ask).
+//
+// THE FLEET-SPECIFIC BINDINGS (log-services path, audit service id, chassis id, VirtualMedia parent) are
+// PARAMETERS: the door passes the values its platform context knows (for srv15:
+// "/redfish/v1/Managers/bmc/LogServices", the audit log service's served Id, asrock_altrad8ud_redfish_chassis_id,
+// UnderSystem { system_id: "system" }). This module stays platform-neutral so the ALTRAD8UD row of
+// gunbc.machine_intake.prior_life_boundary — not a reader constant — remains the authority on what is
+// required; the row is swift-ram-509's single authority, carrying the operator's ruling msg_9ed289f6
+// ("Admit uncleared, archive only", escalation msg_9a98f6c6-1d7e-431a-b4c7-91d632558be1).
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.algebra { concat, length, string_contains, take_prefix, trim }
+import extdeps.uri { Uri, uri_from_wire }
+import extdeps.languages.json.emit { JsonBool, JsonValue }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import gunbc.scm.json_member {
+  MemberArray,
+  MemberFailed,
+  MemberLookupFailed,
+  MemberObject,
+  MemberString,
+  MemberValue,
+  read_member,
+  read_member_value,
+  read_string_member,
+}
+import extdeps.bmc.ipmi { Tool as IpmiTool }
+import extdeps.bmc.http { Tool as HttpTool }
+import extdeps.bmc.ipmi_session { IpmiSessionAuthRefused, ipmi_session_failure }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
+import extdeps.bmc.ipmitool_print_read { ipmitool_sel_elist_rows }
+import extdeps.bmc.redfish_telemetry {
+  ObservationEstablished,
+  ObservationRefused,
+  RedfishLogEntry,
+  RedfishLogService,
+  RedfishOtherReading,
+  RedfishPointKind,
+  RedfishRotationalRpm,
+  RedfishTelemetryPoint,
+  RedfishTemperatureCelsius,
+  redfish_log_entries,
+  redfish_point,
+}
+import extdeps.bmc.redfish_virtual_media {
+  ConnectedViaApplet,
+  ConnectedViaNotConnected,
+  ConnectedViaOem,
+  ConnectedViaUri,
+  MediaCd,
+  MediaDvd,
+  MediaFloppy,
+  MediaUsbStick,
+  RedfishVirtualMediaConnectedVia,
+  RedfishVirtualMediaLocator,
+  RedfishVirtualMediaMediaType,
+  RedfishVirtualMediaObservation,
+  RedfishVirtualMediaParent,
+  redfish_virtual_media_collection_path,
+}
+import gunbc.bmc_model {
+  BmcBootOverride,
+  BmcPowerOff,
+  BmcPowerOn,
+  BmcSelRecord,
+  BootOverrideCdromEfiNextBoot,
+  BootOverrideNone,
+  BootOverridePxeNextBoot,
+}
+import gunbc.provider_wire_evidence {
+  PrivateEvidenceBytesRetained,
+  PrivateEvidenceBytesRetentionRefused,
+  private_evidence_object_path,
+  retain_private_evidence_bytes_detailed,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
+import gunbc.machine_intake.prior_life_boundary {
+  AccountEventsPayload,
+  BmcClockPayload,
+  BootOverridePayload,
+  CarrierCapture,
+  CarrierCaptured,
+  CarrierFirmwareCannotServe,
+  CarrierGap,
+  CarrierGapCause,
+  CarrierSurfaceUnmodeled,
+  LogServicesPayload,
+  PowerStatePayload,
+  PriorLifeAuditAccountEvents,
+  PriorLifeBmcClock,
+  PriorLifeBootOverride,
+  PriorLifeCarrier,
+  PriorLifePowerState,
+  PriorLifeRedfishLogCollections,
+  PriorLifeSelAndEventLogs,
+  PriorLifeSensorSnapshot,
+  PriorLifeVirtualMediaState,
+  SensorSnapshotPayload,
+  SelPayload,
+  VirtualMediaPayload,
+}
+
+// THE OP ROSTER, SPELLED ONCE. These names are exactly what the door's lockout gate counts (seam with
+// merry-seal-673): two authenticated ipmitool ops riding the shared `-R 1 -N 1` templates, and the Redfish
+// GETs — one curl invocation per op, no auth retry. The Entries reads are one per log service the
+// controller SERVES (bounded below). The BmcClock carrier costs NO op because the door's GetManager
+// read-back bytes are handed in (ruling C: reuse the door's read, never a second session for the clock).
+data live_op_sel_list: NonEmptyStr = "ipmi.SelListAuthenticated"
+data live_op_chassis_status: NonEmptyStr = "ipmi.ChassisStatus"
+data live_op_get_system: NonEmptyStr = "http.GetSystem"
+data live_op_log_services: NonEmptyStr = "http.GetResourceByPath:LogServices"
+data live_op_log_entries: NonEmptyStr = "http.GetResourceByPath:LogEntry"
+data live_op_virtual_media: NonEmptyStr = "http.GetResourceByPath:VirtualMedia"
+data live_op_sensors: NonEmptyStr = "http.GetChassisSensors"
+
+// How many log services' Entries collections one mint will follow. A collection served LONGER than this is
+// not half-read and quietly archived: it is a typed gap (the reader's bound is its coverage fact), and the
+// policy row decides whether the gap refuses. srv15's OpenBMC 3.22.00 serves a small fixed member set; the
+// bound exists for the pathological answer, not the fleet.
+data live_log_services_read_bound: Int = 8
+
+// --------------------------------------------------------------------------- rows, mint, outcome
+
+// One carrier's verdict row. The raw response bytes live in the private evidence store (this module
+// retains them itself, per the seam — it does NOT mint BmcSuppliedResponse); the boundary claim must be
+// readable from THESE rows plus the store, so each row names the carrier, the op that produced it, the
+// CONTENT DIGEST of the committed read-back bytes it was decoded from (`Absent` when nothing was ever
+// committed: an op-level gap or the door-supplied clock), and the decode verdict.
+type LiveCarrierRow {
+  carrier: PriorLifeCarrier,
+  op_label: NonEmptyStr,
+  digest_hex: Optional<NonEmptyStr>,
+  verdict: LiveCarrierVerdict,
+}
+
+type LiveCarrierVerdict
+  = LiveCarrierArchived { note: NonEmptyStr }
+  | LiveCarrierGap { cause: CarrierGapCause, note: NonEmptyStr }
+
+// THE MINT. sole_constructor because the captures are honest only if they went through the
+// commit-then-read-back discipline below; nothing else may assemble them (seam (b) with merry-seal-673:
+// the established-boundary content is authored HERE and the door renders what it is handed; the dry arm's
+// "FOLDED: stopped at the boundary" text stays the door's on the dry side alone).
+type LivePriorLifeCaptures sole_constructor {
+  rows: List<LiveCarrierRow>,
+  captures: List<CarrierCapture>,
+}
+
+// Why the mint stopped before all eight carriers were decided.
+type LiveCaptureStop {
+  carrier: PriorLifeCarrier,
+  op_label: NonEmptyStr,
+  detail: NonEmptyStr,
+}
+
+type LiveCaptureFailure {
+  op_label: NonEmptyStr,
+  detail: NonEmptyStr,
+}
+
+type LivePriorLifeCaptureOutcome
+  = LiveCaptured { captures: LivePriorLifeCaptures }
+  // First authenticated refusal: run over, rows kept for the record, NO further authenticated op issued.
+  | LiveStoppedAtAuthenticationRefusal { stop: LiveCaptureStop, rows: List<LiveCarrierRow> }
+  // A non-authenticated transport failure, a retention refusal, or a read-back other than what was
+  // written. Fail closed: no partial archive reaches the classifier.
+  | LiveCaptureRefused { failure: LiveCaptureFailure, rows: List<LiveCarrierRow> }
+
+// THE ONE ENTRY POINT. The door calls this inside its held slot, inside its password_file/netrc brackets,
+// with the paths those brackets minted. `manager_body` is the door's GetManager read-back bytes (the clock
+// carrier decodes its DateTime without opening another session); every other carrier is read here.
+fn live_prior_life_captures(
+  bmc_host: NonEmptyStr,
+  managed_account: NonEmptyStr,
+  password_file: NonEmptyStr,
+  netrc_file: NonEmptyStr,
+  evidence_root: FilePath,
+  cipher_suite_argv: List<String>,
+  manager_body: NonEmptyStr,
+  log_services_path: NonEmptyStr,
+  audit_log_service_id: NonEmptyStr,
+  chassis_id: NonEmptyStr,
+  virtual_media_parent: RedfishVirtualMediaParent,
+) -> LivePriorLifeCaptureOutcome {
+  let start = live_state_empty(audit_id: audit_log_service_id)
+  let s1 = live_clock_step(start: start, manager_body: manager_body)
+  let s2 = live_sel_step(
+    start: s1,
+    bmc_host: bmc_host,
+    managed_account: managed_account,
+    password_file: password_file,
+    cipher_suite_argv: cipher_suite_argv,
+    evidence_root: evidence_root,
+  )
+  let s3 = live_power_step(
+    start: s2,
+    bmc_host: bmc_host,
+    managed_account: managed_account,
+    password_file: password_file,
+    cipher_suite_argv: cipher_suite_argv,
+    evidence_root: evidence_root,
+  )
+  let s4 = live_boot_step(start: s3, bmc_host: bmc_host, netrc_file: netrc_file, evidence_root: evidence_root)
+  let s5 = live_log_services_step(
+    start: s4,
+    bmc_host: bmc_host,
+    netrc_file: netrc_file,
+    evidence_root: evidence_root,
+    log_services_path: log_services_path,
+  )
+  let s6 = live_audit_step(start: s5)
+  let s7 = live_virtual_media_step(
+    start: s6,
+    bmc_host: bmc_host,
+    netrc_file: netrc_file,
+    evidence_root: evidence_root,
+    virtual_media_parent: virtual_media_parent,
+  )
+  let s8 = live_sensors_step(
+    start: s7,
+    bmc_host: bmc_host,
+    netrc_file: netrc_file,
+    evidence_root: evidence_root,
+    chassis_id: chassis_id,
+  )
+  live_outcome_of(state: s8)
+}
+
+// --------------------------------------------------------------------------- state
+
+// One service's decoded entries ride in the state until the collection is assembled. `unserved` records
+// that THIS service's Entries refused or did not decode; a log service whose entries are invisible makes
+// the whole RedfishLogCollections carrier a gap — it is never archived as if empty.
+type LiveServiceEntry {
+  id: NonEmptyStr,
+  digest_hex: NonEmptyStr,
+  entries: List<RedfishLogEntry>,
+  unserved: NonEmptyStr,
+}
+
+type LiveCaptureState {
+  rows: List<LiveCarrierRow>,
+  captures: List<CarrierCapture>,
+  // The first authenticated refusal, if one happened.
+  stopped: Optional<LiveCaptureStop>,
+  // A retention/read-back refusal or a non-authenticated op failure.
+  failure: Optional<LiveCaptureFailure>,
+  // The entries read back for the NAMED audit service, kept so the AuditAccountEvents carrier is assembled
+  // from bytes ALREADY retained (no second read, no second digest).
+  audit_entries: Optional<List<RedfishLogEntry>>,
+  audit_digest: Optional<NonEmptyStr>,
+  services: List<LiveServiceEntry>,
+  audit_id: NonEmptyStr,
+}
+
+fn live_state_empty(audit_id: NonEmptyStr) -> LiveCaptureState {
+  LiveCaptureState {
+    rows: [],
+    captures: [],
+    stopped: Absent,
+    failure: Absent,
+    audit_entries: Absent,
+    audit_digest: Absent,
+    services: [],
+    audit_id: audit_id,
+  }
+}
+
+fn live_stopped(state: LiveCaptureState) -> Bool {
+  match state.stopped {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn live_failed(state: LiveCaptureState) -> Bool {
+  match state.failure {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn live_halted(state: LiveCaptureState) -> Bool {
+  live_stopped(state: state) || live_failed(state: state)
+}
+
+fn live_record(state: LiveCaptureState, row: LiveCarrierRow, capture: CarrierCapture) -> LiveCaptureState {
+  LiveCaptureState {
+    rows: concat(state.rows, [row]),
+    captures: concat(state.captures, [capture]),
+    stopped: state.stopped,
+    failure: state.failure,
+    audit_entries: state.audit_entries,
+    audit_digest: state.audit_digest,
+    services: state.services,
+    audit_id: state.audit_id,
+  }
+}
+
+fn live_stop(state: LiveCaptureState, stop: LiveCaptureStop) -> LiveCaptureState {
+  LiveCaptureState {
+    rows: state.rows,
+    captures: state.captures,
+    stopped: Present { value: stop },
+    failure: state.failure,
+    audit_entries: state.audit_entries,
+    audit_digest: state.audit_digest,
+    services: state.services,
+    audit_id: state.audit_id,
+  }
+}
+
+fn live_fail(state: LiveCaptureState, failure: LiveCaptureFailure) -> LiveCaptureState {
+  LiveCaptureState {
+    rows: state.rows,
+    captures: state.captures,
+    stopped: state.stopped,
+    failure: Present { value: failure },
+    audit_entries: state.audit_entries,
+    audit_digest: state.audit_digest,
+    services: state.services,
+    audit_id: state.audit_id,
+  }
+}
+
+fn live_outcome_of(state: LiveCaptureState) -> LivePriorLifeCaptureOutcome {
+  match state.stopped {
+    Present { value: stop } => LiveStoppedAtAuthenticationRefusal { stop: stop, rows: state.rows }
+    Absent =>
+      match state.failure {
+        Present { value: failure } => LiveCaptureRefused { failure: failure, rows: state.rows }
+        Absent => LiveCaptured { captures: LivePriorLifeCaptures { rows: state.rows, captures: state.captures } }
+      }
+  }
+}
+
+// --------------------------------------------------------------------------- evidence
+
+// Committed-and-read-back bytes. This is the whole evidence discipline of the mint: retain, read the store
+// back, and decode ONLY what the store returns. A refusal here is a run-level failure, never a gap.
+type LiveCommit
+  = LiveCommitted { digest_hex: NonEmptyStr, bytes: String }
+  | LiveRetentionRefused { detail: NonEmptyStr }
+  | LiveReadBackRefused { detail: NonEmptyStr }
+
+fn live_retain_and_read_back(root: FilePath, bytes: String) -> LiveCommit {
+  match retain_private_evidence_bytes_detailed(root: root, bytes: bytes) {
+    PrivateEvidenceBytesRetentionRefused { cause } => LiveRetentionRefused { detail: cause }
+    PrivateEvidenceBytesRetained { ref: stored, content_digest: _, byte_count: _ } =>
+      live_read_back(root: root, hex: stored.content_address_hex, written: bytes)
+  }
+}
+
+// ONE store read, bound once — three projections of one Read result, not three reads.
+fn live_read_back(root: FilePath, hex: NonEmptyStr, written: String) -> LiveCommit {
+  let back = Filesystem.Read(path: private_evidence_object_path(root: root, hex: hex))
+  match filesystem_read_outcome(content: back.content, success: back.success, error: back.error) {
+    FilesystemReadRefused { error: e } => LiveReadBackRefused { detail: e as NonEmptyStr }
+    FilesystemReadSucceeded { content: text } =>
+      if text == written {
+        LiveCommitted { digest_hex: hex, bytes: text }
+      } else {
+        // The store answered with bytes that are not what was written. Decoding them would attribute
+        // to the controller a response it did not give; decoding the ORIGINAL bytes would skip the
+        // read-back. Neither is honest: refuse the mint.
+        LiveReadBackRefused { detail: "the retained object read back with bytes other than those committed" }
+      }
+  }
+}
+
+// --------------------------------------------------------------------------- failure classification
+
+// Which way a FAILED read failed. Auth refusal is the only stop-the-run classification (stop-on-first);
+// not-found / not-implemented is the firmware's fact and becomes a typed gap; anything else is transport
+// and refuses the mint whole. The strings are the vendors' own sentences:
+//  - ipmitool lanplus: the RAKP / completion lines classified by extdeps.bmc.ipmi_session (single
+//    authority — this module never re-decides what an authentication refusal looks like).
+//  - curl --fail-with-body on OpenBMC 3.22.00: stderr carries "The requested URL returned error: 401",
+//    and a Redfish error body answers 404 with "not found" and 501 with "not implemented"
+//    (DSP0266 GeneralError; DMTF Redfish Resource v1.x ErrorMessage).
+type LiveReadClass
+  = LiveReadOk
+  | LiveReadAuthRefused
+  | LiveReadNotServed { detail: NonEmptyStr }
+  | LiveReadTransportFailed { detail: NonEmptyStr }
+
+fn live_classify_ipmi(success: Bool, stdout: String, stderr: String) -> LiveReadClass {
+  if success {
+    LiveReadOk
+  } else {
+    let out = concat(stdout, stderr)
+    match ipmi_session_failure(output: out) {
+      Present { value: IpmiSessionAuthRefused } => LiveReadAuthRefused
+      _ =>
+        if string_contains(s: out, pattern: "Invalid argument") || string_contains(s: out, pattern: "Unknown command") || string_contains(s: out, pattern: "Invalid data field") {
+          LiveReadNotServed { detail: out as NonEmptyStr }
+        } else {
+          LiveReadTransportFailed { detail: out as NonEmptyStr }
+        }
+    }
+  }
+}
+
+fn live_classify_http(success: Bool, body: String, stderr: String) -> LiveReadClass {
+  if success {
+    LiveReadOk
+  } else if string_contains(s: stderr, pattern: "error: 401") || string_contains(s: stderr, pattern: "error: 403") || string_contains(s: body, pattern: "not authorized") || string_contains(s: body, pattern: "AuthenticationRequired") {
+    LiveReadAuthRefused
+  } else if string_contains(s: stderr, pattern: "error: 404") || string_contains(s: stderr, pattern: "error: 501") || string_contains(s: body, pattern: "not found") || string_contains(s: body, pattern: "not implemented") {
+    LiveReadNotServed { detail: concat(body, stderr) as NonEmptyStr }
+  } else {
+    LiveReadTransportFailed { detail: concat(body, stderr) as NonEmptyStr }
+  }
+}
+
+// --------------------------------------------------------------------------- steps
+
+// BMC CLOCK — ZERO OP. The door's GetManager read-back body carries the manager's DateTime; reusing it is
+// the pattern smart-crane-730 ruled in (ruling C): the clock carrier records the controller's clock as the
+// door's read SAW it, and costs no additional authenticated session. No DateTime member is the firmware
+// not serving the surface — a typed gap, never an invented clock.
+fn live_clock_step(start: LiveCaptureState, manager_body: NonEmptyStr) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    match live_manager_date_time(body: manager_body) {
+      LiveDecodeRefused { detail } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeBmcClock, op_label: "reuse:http.GetManager", digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: "the Manager body carries no DateTime" } },
+        capture: CarrierGap { carrier: PriorLifeBmcClock, cause: CarrierFirmwareCannotServe { detail: detail } },
+      )
+      LiveDecodeTextOk { text } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeBmcClock, op_label: "reuse:http.GetManager", digest_hex: Absent, verdict: LiveCarrierArchived { note: "DateTime read from the door's Manager read-back, which the door committed" } },
+        capture: CarrierCaptured { carrier: PriorLifeBmcClock, payload: BmcClockPayload { date_time: text } },
+      )
+    }
+  }
+}
+
+// SEL AND EVENT LOGS — `ipmitool sel elist` under the managed credential via the 0600 file. An elist the
+// decoder cannot read line-for-line is a gap (never a dropped line); a genuinely empty SEL is a SERVED
+// empty list, which is a capture, not a gap — srv15's known 2026-10-29 in-band activity should in fact
+// appear here, and whatever the controller serves is archived as found.
+fn live_sel_step(
+  start: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  managed_account: NonEmptyStr,
+  password_file: NonEmptyStr,
+  cipher_suite_argv: List<String>,
+  evidence_root: FilePath,
+) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    let resp = IpmiTool.SelListAuthenticated(
+      bmc_host: bmc_host,
+      username: managed_account,
+      password_file: password_file,
+      cipher_suite_argv: cipher_suite_argv,
+      deadline: "5s",
+      kill_after: "1s",
+    )
+    match live_classify_ipmi(success: resp.success, stdout: resp.stdout, stderr: resp.transport_stderr) {
+      LiveReadAuthRefused => live_stop(
+        state: state,
+        stop: LiveCaptureStop { carrier: PriorLifeSelAndEventLogs, op_label: live_op_sel_list, detail: "the controller refused the managed credential" },
+      )
+      LiveReadNotServed { detail } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeSelAndEventLogs, op_label: live_op_sel_list, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: "the SEL surface refused the read" } },
+        capture: CarrierGap { carrier: PriorLifeSelAndEventLogs, cause: CarrierFirmwareCannotServe { detail: detail } },
+      )
+      LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: detail })
+      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.stdout) {
+        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: concat("private evidence retention refused: ", detail) })
+        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sel_list, detail: concat("read-back of retained bytes failed: ", detail) })
+        LiveCommitted { digest_hex, bytes } => match live_sel_records(text: bytes) {
+          LiveDecodeRefused { detail } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeSelAndEventLogs, op_label: live_op_sel_list, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
+            capture: CarrierGap { carrier: PriorLifeSelAndEventLogs, cause: CarrierSurfaceUnmodeled {} },
+          )
+          LiveDecodeRecordsOk { records } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeSelAndEventLogs, op_label: live_op_sel_list, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "sel elist rows read back from the store" } },
+            capture: CarrierCaptured { carrier: PriorLifeSelAndEventLogs, payload: SelPayload { records: records } },
+          )
+        }
+      }
+    }
+  }
+}
+
+// POWER STATE — `ipmitool chassis status`, decoded by the single authority
+// extdeps.bmc.ipmi_chassis_control.chassis_observation (no second power parser here).
+fn live_power_step(
+  start: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  managed_account: NonEmptyStr,
+  password_file: NonEmptyStr,
+  cipher_suite_argv: List<String>,
+  evidence_root: FilePath,
+) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    let resp = IpmiTool.ChassisStatus(
+      bmc_host: bmc_host,
+      username: managed_account,
+      password_file: password_file,
+      cipher_suite_argv: cipher_suite_argv,
+      deadline: "5s",
+      kill_after: "1s",
+    )
+    match live_classify_ipmi(success: resp.success, stdout: resp.stdout, stderr: resp.transport_stderr) {
+      LiveReadAuthRefused => live_stop(
+        state: state,
+        stop: LiveCaptureStop { carrier: PriorLifePowerState, op_label: live_op_chassis_status, detail: "the controller refused the managed credential" },
+      )
+      LiveReadNotServed { detail } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifePowerState, op_label: live_op_chassis_status, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: "the chassis status surface refused the read" } },
+        capture: CarrierGap { carrier: PriorLifePowerState, cause: CarrierFirmwareCannotServe { detail: detail } },
+      )
+      LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_chassis_status, detail: detail })
+      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.stdout) {
+        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_chassis_status, detail: concat("private evidence retention refused: ", detail) })
+        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_chassis_status, detail: concat("read-back of retained bytes failed: ", detail) })
+        LiveCommitted { digest_hex, bytes } => match chassis_observation(success: true, stdout: bytes) {
+          ChassisPowerRead { power_on: on } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifePowerState, op_label: live_op_chassis_status, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "power line read back from the store" } },
+            capture: CarrierCaptured { carrier: PriorLifePowerState, payload: PowerStatePayload { power: if on { BmcPowerOn } else { BmcPowerOff } } },
+          )
+          ChassisStatusUndecodable { cause } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifePowerState, op_label: live_op_chassis_status, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: cause } },
+            capture: CarrierGap { carrier: PriorLifePowerState, cause: CarrierSurfaceUnmodeled {} },
+          )
+          ChassisUnreadable => live_fail(
+            state: state,
+            failure: LiveCaptureFailure { op_label: live_op_chassis_status, detail: "a read-back the shared decoder called unreadable" },
+          )
+        }
+      }
+    }
+  }
+}
+
+// BOOT OVERRIDE — the GET of the system resource's Boot object, mapped TOTAL per ruling B
+// (smart-crane-730, 2026-11-11): the model names only None, CdromEfiNextBoot and PxeNextBoot, so a target
+// or persistence the model cannot name becomes a typed gap — it never collapses into None, and no override
+// the firmware serves is quietly dropped. GET only: the boot-parameter SET is a write and is not here.
+fn live_boot_step(start: LiveCaptureState, bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, evidence_root: FilePath) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    let resp = HttpTool.GetSystem(bmc_host: bmc_host, netrc_file: netrc_file)
+    match live_classify_http(success: resp.success, body: resp.body, stderr: "") {
+      LiveReadAuthRefused => live_stop(
+        state: state,
+        stop: LiveCaptureStop { carrier: PriorLifeBootOverride, op_label: live_op_get_system, detail: "the controller refused the managed credential" },
+      )
+      LiveReadNotServed { detail } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeBootOverride, op_label: live_op_get_system, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: "the system resource refused the read" } },
+        capture: CarrierGap { carrier: PriorLifeBootOverride, cause: CarrierFirmwareCannotServe { detail: detail } },
+      )
+      LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_get_system, detail: detail })
+      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
+        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_get_system, detail: concat("private evidence retention refused: ", detail) })
+        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_get_system, detail: concat("read-back of retained bytes failed: ", detail) })
+        LiveCommitted { digest_hex, bytes } => match live_boot_override_of(body: bytes) {
+          LiveDecodeGap { cause, note } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeBootOverride, op_label: live_op_get_system, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: cause, note: note } },
+            capture: CarrierGap { carrier: PriorLifeBootOverride, cause: cause },
+          )
+          LiveDecodeOverrideOk { override } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeBootOverride, op_label: live_op_get_system, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "Boot object read back from the store" } },
+            capture: CarrierCaptured { carrier: PriorLifeBootOverride, payload: BootOverridePayload { boot_override: override } },
+          )
+        }
+      }
+    }
+  }
+}
+
+// REDFISH LOG COLLECTIONS — the LogServices collection at the platform-supplied path, then the Entries
+// collection of EVERY member the controller served, up to live_log_services_read_bound. Members beyond the
+// bound are the reader's coverage limit, typed as CarrierSurfaceUnmodeled — the policy row decides.
+fn live_log_services_step(
+  start: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  netrc_file: NonEmptyStr,
+  evidence_root: FilePath,
+  log_services_path: NonEmptyStr,
+) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    let resp = HttpTool.GetResourceByPath(
+      bmc_host: bmc_host,
+      netrc_file: netrc_file,
+      odata_path: log_services_path,
+      max_seconds: "10",
+    )
+    match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+      LiveReadAuthRefused => live_stop(
+        state: state,
+        stop: LiveCaptureStop { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, detail: "the controller refused the managed credential" },
+      )
+      LiveReadNotServed { detail } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: "the LogServices collection refused the read" } },
+        capture: CarrierGap { carrier: PriorLifeRedfishLogCollections, cause: CarrierFirmwareCannotServe { detail: detail } },
+      )
+      LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: detail })
+      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
+        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: concat("private evidence retention refused: ", detail) })
+        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_log_services, detail: concat("read-back of retained bytes failed: ", detail) })
+        LiveCommitted { digest_hex, bytes } => match live_log_service_refs(body: bytes, log_services_path: log_services_path) {
+          LiveDecodeRefsRefused { detail } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
+            capture: CarrierGap { carrier: PriorLifeRedfishLogCollections, cause: CarrierSurfaceUnmodeled {} },
+          )
+          LiveDecodeRefsOk { refs, over_bound } =>
+            match live_entries_for_refs(
+              state: state,
+              bmc_host: bmc_host,
+              netrc_file: netrc_file,
+              evidence_root: evidence_root,
+              refs: refs,
+            ) {
+              state_after =>
+                if live_halted(state: state_after) {
+                  state_after
+                } else if over_bound {
+                  // The bound was hit: the archive would claim the whole collection from a prefix of it.
+                  live_record(
+                    state: state_after,
+                    row: LiveCarrierRow { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: "the collection served more log services than this reader follows" } },
+                    capture: CarrierGap { carrier: PriorLifeRedfishLogCollections, cause: CarrierSurfaceUnmodeled {} },
+                  )
+                } else {
+                  match live_collected_services(state: state_after) {
+                    LiveDecodeRefsRefused { detail } => live_record(
+                      state: state_after,
+                      row: LiveCarrierRow { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
+                      capture: CarrierGap { carrier: PriorLifeRedfishLogCollections, cause: CarrierSurfaceUnmodeled {} },
+                    )
+                    LiveDecodeServicesOk { services } => live_record(
+                      state: state_after,
+                      row: LiveCarrierRow { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_services, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "every served log service read back with its entries" } },
+                      capture: CarrierCaptured { carrier: PriorLifeRedfishLogCollections, payload: LogServicesPayload { services: services } },
+                    )
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+// AUDIT / ACCOUNT EVENTS — assembled from the Entries bytes ALREADY retained for the named service in the
+// step above: no second read, no second digest. The named service absent among those SERVED is the
+// firmware not serving the audit surface, typed CarrierFirmwareCannotServe with the named id in the detail.
+fn live_audit_step(start: LiveCaptureState) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    match state.audit_entries {
+      Present { value: entries } =>
+        match state.audit_digest {
+          Present { value: digest } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeAuditAccountEvents, op_label: live_op_log_entries, digest_hex: Present { value: digest }, verdict: LiveCarrierArchived { note: "Entries of the named audit log service, read back from the store" } },
+            capture: CarrierCaptured { carrier: PriorLifeAuditAccountEvents, payload: AccountEventsPayload { entries: entries } },
+          )
+          Absent => live_fail(
+            state: state,
+            failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: "an audit entry list carried no digest" },
+          )
+        }
+      Absent =>
+        if live_service_ids_were_read(state: state) {
+          // The collection WAS read and the named audit service is not among its served members: the
+          // firmware does not serve this surface under this id.
+          let detail = concat("the LogServices collection served no log service with Id ", state.audit_id as String)
+          live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeAuditAccountEvents, op_label: live_op_log_entries, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail as NonEmptyStr }, note: "the audit surface is not served under the named id" } },
+            capture: CarrierGap { carrier: PriorLifeAuditAccountEvents, cause: CarrierFirmwareCannotServe { detail: detail as NonEmptyStr } },
+          )
+        } else {
+          // The collection itself became a gap earlier; the audit carrier inherits a cannot-serve gap
+          // rather than being silently dropped — every required carrier gets a verdict row.
+          let detail = concat("the audit surface could not be reached: the LogServices collection under ", state.audit_id as String, " was not readable as a member list")
+          live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeAuditAccountEvents, op_label: live_op_log_entries, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail as NonEmptyStr }, note: "no member list was decoded, so no audit service could be located" } },
+            capture: CarrierGap { carrier: PriorLifeAuditAccountEvents, cause: CarrierFirmwareCannotServe { detail: detail as NonEmptyStr } },
+          )
+        }
+    }
+  }
+}
+
+// VIRTUAL MEDIA — the collection GET under the platform-supplied parent. Every member field is decoded or
+// the WHOLE carrier becomes a typed gap: a half-decoded member list would archive a fleet whose mounted
+// images are partly invisible. An empty served collection archives as empty — detached media is a real
+// prior-life fact, not a missing capture.
+fn live_virtual_media_step(
+  start: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  netrc_file: NonEmptyStr,
+  evidence_root: FilePath,
+  virtual_media_parent: RedfishVirtualMediaParent,
+) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    let resp = HttpTool.GetResourceByPath(
+      bmc_host: bmc_host,
+      netrc_file: netrc_file,
+      odata_path: redfish_virtual_media_collection_path(parent: virtual_media_parent),
+      max_seconds: "10",
+    )
+    match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+      LiveReadAuthRefused => live_stop(
+        state: state,
+        stop: LiveCaptureStop { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, detail: "the controller refused the managed credential" },
+      )
+      LiveReadNotServed { detail } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: "the VirtualMedia collection refused the read" } },
+        capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierFirmwareCannotServe { detail: detail } },
+      )
+      LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: detail })
+      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
+        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("private evidence retention refused: ", detail) })
+        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_virtual_media, detail: concat("read-back of retained bytes failed: ", detail) })
+        LiveCommitted { digest_hex, bytes } => match live_virtual_media_members(body: bytes, parent: virtual_media_parent) {
+          LiveDecodeRefused { detail } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
+            capture: CarrierGap { carrier: PriorLifeVirtualMediaState, cause: CarrierSurfaceUnmodeled {} },
+          )
+          LiveDecodeVmOk { members } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeVirtualMediaState, op_label: live_op_virtual_media, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "every served VirtualMedia member decoded" } },
+            capture: CarrierCaptured { carrier: PriorLifeVirtualMediaState, payload: VirtualMediaPayload { members: members } },
+          )
+        }
+      }
+    }
+  }
+}
+
+// SENSOR SNAPSHOT — the chassis Sensors collection, decoded member-by-member through the single Redfish
+// point reader (extdeps.bmc.redfish_telemetry.redfish_point), the ReadingType of EACH member selecting its
+// kind. A member this reader refuses takes the whole carrier as a typed gap.
+fn live_sensors_step(
+  start: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  netrc_file: NonEmptyStr,
+  evidence_root: FilePath,
+  chassis_id: NonEmptyStr,
+) -> LiveCaptureState {
+  let state = start
+  if live_halted(state: state) {
+    state
+  } else {
+    let resp = HttpTool.GetChassisSensors(bmc_host: bmc_host, chassis_id: chassis_id, netrc_file: netrc_file)
+    match live_classify_http(success: resp.success, body: resp.body, stderr: "") {
+      LiveReadAuthRefused => live_stop(
+        state: state,
+        stop: LiveCaptureStop { carrier: PriorLifeSensorSnapshot, op_label: live_op_sensors, detail: "the controller refused the managed credential" },
+      )
+      LiveReadNotServed { detail } => live_record(
+        state: state,
+        row: LiveCarrierRow { carrier: PriorLifeSensorSnapshot, op_label: live_op_sensors, digest_hex: Absent, verdict: LiveCarrierGap { cause: CarrierFirmwareCannotServe { detail: detail }, note: "the Sensors collection refused the read" } },
+        capture: CarrierGap { carrier: PriorLifeSensorSnapshot, cause: CarrierFirmwareCannotServe { detail: detail } },
+      )
+      LiveReadTransportFailed { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: detail })
+      LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
+        LiveRetentionRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: concat("private evidence retention refused: ", detail) })
+        LiveReadBackRefused { detail } => live_fail(state: state, failure: LiveCaptureFailure { op_label: live_op_sensors, detail: concat("read-back of retained bytes failed: ", detail) })
+        LiveCommitted { digest_hex, bytes } => match live_sensor_points(body: bytes) {
+          LiveDecodeRefused { detail } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeSensorSnapshot, op_label: live_op_sensors, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierGap { cause: CarrierSurfaceUnmodeled {}, note: detail } },
+            capture: CarrierGap { carrier: PriorLifeSensorSnapshot, cause: CarrierSurfaceUnmodeled {} },
+          )
+          LiveDecodePointsOk { points } => live_record(
+            state: state,
+            row: LiveCarrierRow { carrier: PriorLifeSensorSnapshot, op_label: live_op_sensors, digest_hex: Present { value: digest_hex }, verdict: LiveCarrierArchived { note: "every served sensor member decoded" } },
+            capture: CarrierCaptured { carrier: PriorLifeSensorSnapshot, payload: SensorSnapshotPayload { points: points } },
+          )
+        }
+      }
+    }
+  }
+}
+
+// --------------------------------------------------------------------------- the log-service loop
+
+type LiveLogServiceRef {
+  id: NonEmptyStr,
+  entries_path: NonEmptyStr,
+}
+
+type LiveServicesCollected
+  = LiveDecodeServicesOk { services: List<RedfishLogService> }
+  | LiveDecodeRefsRefused { detail: NonEmptyStr }
+
+// Follow the Entries collection of each served log service (truncated to the bound BEFORE the loop;
+// `over_bound` is decided by the caller from the FULL member count — refs arrives already truncated and
+// carries the flag in its own type), threading the state. Stop-on-first-refusal holds inside the loop:
+// the first refused credential ends everything.
+fn live_entries_for_refs(
+  state: LiveCaptureState,
+  bmc_host: NonEmptyStr,
+  netrc_file: NonEmptyStr,
+  evidence_root: FilePath,
+  refs: List<LiveLogServiceRef>,
+) -> LiveCaptureState {
+  fold(refs, init: state, f: (acc, r) =>
+    if live_halted(state: acc) {
+      acc
+    } else {
+      let resp = HttpTool.GetResourceByPath(
+        bmc_host: bmc_host,
+        netrc_file: netrc_file,
+        odata_path: r.entries_path,
+        max_seconds: "10",
+      )
+      match live_classify_http(success: resp.success, body: resp.body, stderr: resp.transport_stderr) {
+        LiveReadAuthRefused => live_stop(
+          state: acc,
+          stop: LiveCaptureStop { carrier: PriorLifeRedfishLogCollections, op_label: live_op_log_entries, detail: "the controller refused the managed credential mid-collection" },
+        )
+        LiveReadNotServed { detail } => live_attach_service(
+          state: acc,
+          id: r.id,
+          digest_hex: None_hex_placeholder,
+          entries: [],
+          unserved: detail,
+        )
+        LiveReadTransportFailed { detail } => live_fail(state: acc, failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: detail })
+        LiveReadOk => match live_retain_and_read_back(root: evidence_root, bytes: resp.body) {
+          LiveRetentionRefused { detail } => live_fail(state: acc, failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: concat("private evidence retention refused: ", detail) })
+          LiveReadBackRefused { detail } => live_fail(state: acc, failure: LiveCaptureFailure { op_label: live_op_log_entries, detail: concat("read-back of retained bytes failed: ", detail) })
+          LiveCommitted { digest_hex, bytes } => match redfish_log_entries(body: bytes) {
+            ObservationRefused { cause } => live_attach_service(state: acc, id: r.id, digest_hex: digest_hex, entries: [], unserved: cause)
+            ObservationEstablished { observed: entries } => live_attach_service(state: acc, id: r.id, digest_hex: digest_hex, entries: entries, unserved: "")
+          }
+        }
+      }
+    }
+  )
+}
+
+// Not a digest: the marker for a service whose Entries never produced a committed object. It is NEVER
+// written into a row's digest column (rows carry Absent there), and the collection check refuses the whole
+// carrier on any service that carries it.
+data None_hex_placeholder: NonEmptyStr = "unserved:no-committed-object"
+
+fn live_attach_service(state: LiveCaptureState, id: NonEmptyStr, digest_hex: NonEmptyStr, entries: List<RedfishLogEntry>, unserved: NonEmptyStr) -> LiveCaptureState {
+  let next_services = concat(state.services, [LiveServiceEntry { id: id, digest_hex: digest_hex, entries: entries, unserved: unserved }])
+  // The audit fields attach ONLY for a cleanly decoded audit Entries collection: an audit service whose
+  // Entries refused must leave audit_entries Absent so the audit step records the cannot-serve gap rather
+  // than failing the run over an entry list that was never read.
+  if id == state.audit_id && unserved == "" {
+    LiveCaptureState {
+      rows: state.rows,
+      captures: state.captures,
+      stopped: state.stopped,
+      failure: state.failure,
+      audit_entries: Present { value: entries },
+      audit_digest: Present { value: digest_hex },
+      services: next_services,
+      audit_id: state.audit_id,
+    }
+  } else {
+    LiveCaptureState {
+      rows: state.rows,
+      captures: state.captures,
+      stopped: state.stopped,
+      failure: state.failure,
+      audit_entries: state.audit_entries,
+      audit_digest: state.audit_digest,
+      services: next_services,
+      audit_id: state.audit_id,
+    }
+  }
+}
+
+// True when the member list was decoded at all (services non-empty): the audit step distinguishes "the
+// collection was read and the audit id is not among the members" from "the collection never decoded".
+fn live_service_ids_were_read(state: LiveCaptureState) -> Bool {
+  state.services.length() > 0
+}
+
+fn live_collected_services(state: LiveCaptureState) -> LiveServicesCollected {
+  match first(state.services.filter(e => e.unserved != "")) {
+    Present { value: entry } => LiveDecodeRefsRefused { detail: concat("log service ", entry.id as String, " did not serve entries this reader could decode") }
+    Absent => LiveDecodeServicesOk { services: map(state.services, e => RedfishLogService { id: e.id, entries: e.entries }) }
+  }
+}
+
+// --------------------------------------------------------------------------- decoders
+
+// Small decode sums shared by the decoders below. Refusal prose is the reader's claim about what it could
+// not read; the policy rows never see it directly — it rides the row note.
+type LiveDecodeOutcome
+  = LiveDecodeTextOk { text: NonEmptyStr }
+  | LiveDecodeRefused { detail: NonEmptyStr }
+
+type LiveRecordsOutcome
+  = LiveDecodeRecordsOk { records: List<BmcSelRecord> }
+  | LiveDecodeRefused { detail: NonEmptyStr }
+
+type LiveOverrideOutcome
+  = LiveDecodeOverrideOk { override: BmcBootOverride }
+  | LiveDecodeGap { cause: CarrierGapCause, note: NonEmptyStr }
+
+type LiveRefsOutcome
+  = LiveDecodeRefsOk { refs: List<LiveLogServiceRef>, over_bound: Bool }
+  | LiveDecodeRefsRefused { detail: NonEmptyStr }
+
+type LiveVmOutcome
+  = LiveDecodeVmOk { members: List<RedfishVirtualMediaObservation> }
+  | LiveDecodeRefused { detail: NonEmptyStr }
+
+type LivePointsOutcome
+  = LiveDecodePointsOk { points: List<RedfishTelemetryPoint> }
+  | LiveDecodeRefused { detail: NonEmptyStr }
+
+fn live_parse(body: String) -> Optional<JsonValue> {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: v } => Present { value: v }
+    JsonDocumentUnreadable { gap: _ } => Absent
+  }
+}
+
+// The Manager's clock, from the door's read-back body: OpenBMC renders Managers.*.DateTime as a string
+// (Redfish Manager v1.x DateTime). Absent-or-nonstring is the firmware not serving the clock surface.
+fn live_manager_date_time(body: NonEmptyStr) -> LiveDecodeOutcome {
+  match live_parse(body: body as String) {
+    Absent => LiveDecodeRefused { detail: "the Manager body is not a JSON document" }
+    Present { value: doc } => match read_string_member(v: doc, key: "DateTime") {
+      MemberString { value: s } => if s == "" {
+        LiveDecodeRefused { detail: "DateTime is empty" }
+      } else {
+        LiveDecodeTextOk { text: s as NonEmptyStr }
+      }
+      MemberFailed { cause: _ } => LiveDecodeRefused { detail: "no string DateTime member" }
+      MemberArray { elements: _ } => LiveDecodeRefused { detail: "DateTime is not a string" }
+      MemberObject { value: _ } => LiveDecodeRefused { detail: "DateTime is not a string" }
+    }
+  }
+}
+
+// `ipmitool sel elist` rows via the single authority (extdeps.bmc.ipmitool_print_read), which already
+// drops blank lines and refuses the WHOLE report on any line it cannot read — never dropping it silently.
+// A stdout with no readable lines but no refused line is a SERVED empty SEL: an empty capture, not a gap.
+fn live_sel_records(text: String) -> LiveRecordsOutcome {
+  match ipmitool_sel_elist_rows(stdout: text) {
+    Present { value: rows } => LiveDecodeRecordsOk { records: map(rows, r => BmcSelRecord { id_hex: r.record_id_hex as String, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state }) }
+    Absent => LiveDecodeRefused { detail: "a sel elist line this reader cannot parse" }
+  }
+}
+
+// THE TOTAL BOOT-OVERRIDE MAP (ruling B). Redfish Boot renders BootSourceOverrideTarget together with
+// BootSourceOverrideEnabled (Disabled | Once | Continuous). The model names exactly None,
+// CdromEfiNextBoot and PxeNextBoot, so:
+//   Enabled "Disabled"                        => None (whatever the stale target says, nothing is armed)
+//   Enabled "Once"    target "Pxe"            => PxeNextBoot
+//   Enabled "Once"    target "Cd"/"Cdrom"     => CdromEfiNextBoot
+//   Enabled "Continuous" any target           => TYPED GAP: a standing every-boot override is not a name
+//                                                the model has, and folding it into a next-boot arm would
+//                                                state something the firmware did not say.
+//   any other target/enabled value            => TYPED GAP naming it — never None.
+//   no Boot object at all                     => CarrierFirmwareCannotServe (the system resource does not
+//                                                serve the surface).
+fn live_boot_override_of(body: NonEmptyStr) -> LiveOverrideOutcome {
+  match live_parse(body: body as String) {
+    Absent => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "the system body is not a JSON document" }
+    Present { value: doc } => match read_member(v: doc, key: "Boot") {
+      MemberObject { value: boot } =>
+        match read_string_member(v: boot, key: "BootSourceOverrideEnabled") {
+          MemberString { value: enabled } =>
+            if enabled == "Disabled" {
+              LiveDecodeOverrideOk { override: BootOverrideNone }
+            } else {
+              match read_string_member(v: boot, key: "BootSourceOverrideTarget") {
+                MemberString { value: target } =>
+                  if enabled == "Continuous" {
+                    LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: concat("BootSourceOverrideEnabled is Continuous with target ", target) }
+                  } else if enabled != "Once" {
+                    LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: concat("BootSourceOverrideEnabled value ", enabled, " this reader cannot name") }
+                  } else if target == "Pxe" {
+                    LiveDecodeOverrideOk { override: BootOverridePxeNextBoot }
+                  } else if target == "Cd" || target == "Cdrom" {
+                    LiveDecodeOverrideOk { override: BootOverrideCdromEfiNextBoot }
+                  } else {
+                    LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: concat("BootSourceOverrideTarget ", target, " names no arm of BmcBootOverride") }
+                  }
+                MemberFailed { cause: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "no string BootSourceOverrideTarget member beside an armed Enabled" }
+                MemberArray { elements: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "BootSourceOverrideTarget is not a string" }
+                MemberObject { value: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "BootSourceOverrideTarget is not a string" }
+              }
+            }
+          MemberFailed { cause: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "no string BootSourceOverrideEnabled member" }
+          MemberArray { elements: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "BootSourceOverrideEnabled is not a string" }
+          MemberObject { value: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "BootSourceOverrideEnabled is not a string" }
+        }
+      MemberFailed { cause: _ } =>
+        LiveDecodeGap { cause: CarrierFirmwareCannotServe { detail: "the system resource serves no Boot object" }, note: "no Boot member" }
+      MemberString { value: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "Boot is not an object" }
+      MemberArray { elements: _ } => LiveDecodeGap { cause: CarrierSurfaceUnmodeled {}, note: "Boot is not an object" }
+    }
+  }
+}
+
+// The Members array of the LogServices collection: each member's Id plus its Entries link (following
+// links by GET is the only navigation this reader has — GetResourceByPath is the link follower of ruling
+// C). A member without an Id is unreadable; a member without an Entries link gets the canonical
+// <path>/<Id>/Entries the Redfish LogService schema mandates.
+fn live_log_service_refs(body: NonEmptyStr, log_services_path: NonEmptyStr) -> LiveRefsOutcome {
+  match live_parse(body: body as String) {
+    Absent => LiveDecodeRefsRefused { detail: "the LogServices body is not a JSON document" }
+    Present { value: doc } => match read_member(v: doc, key: "Members") {
+      MemberArray { elements: members } =>
+        if length(xs: members) > live_log_services_read_bound {
+          // Still decode refs up to the bound so the Entries loop has something honest to read; the flag
+          // makes the carrier a gap regardless.
+          match live_refs_of_elements(elements: take_prefix(xs: members, n: live_log_services_read_bound), log_services_path: log_services_path) {
+            Present { value: refs } => LiveDecodeRefsOk { refs: refs, over_bound: true }
+            Absent => LiveDecodeRefsRefused { detail: "a Members element carries no string Id" }
+          }
+        } else {
+          match live_refs_of_elements(elements: members, log_services_path: log_services_path) {
+            Present { value: refs } => LiveDecodeRefsOk { refs: refs, over_bound: false }
+            Absent => LiveDecodeRefsRefused { detail: "a Members element carries no string Id" }
+          }
+        }
+      _ => LiveDecodeRefsRefused { detail: "the LogServices collection serves no Members array" }
+    }
+  }
+}
+
+fn live_refs_of_elements(elements: List<JsonValue>, log_services_path: NonEmptyStr) -> Optional<List<LiveLogServiceRef>> {
+  let initial: Optional<List<LiveLogServiceRef>> = Present { value: [] }
+  fold(elements, init: initial, f: (acc, e) => match acc {
+    Absent => Absent
+    Present { value: t } => match live_ref_of_element(element: e, log_services_path: log_services_path) {
+      Present { value: r } => Present { value: concat(t, [r]) }
+      Absent => Absent
+    }
+  })
+}
+
+fn live_ref_of_element(element: JsonValue, log_services_path: NonEmptyStr) -> Optional<LiveLogServiceRef> {
+  match read_string_member(v: element, key: "Id") {
+    MemberString { value: id } =>
+      if id == "" {
+        Absent
+      } else {
+        let entries_path = match read_member(v: element, key: "Entries") {
+          MemberObject { value: link } => match read_string_member(v: link, key: "@odata.id") {
+            MemberString { value: p } => if p == "" {
+              concat(log_services_path, concat("/", concat(id, "/Entries"))) as NonEmptyStr
+            } else {
+              p as NonEmptyStr
+            }
+            _ => concat(log_services_path, concat("/", concat(id, "/Entries"))) as NonEmptyStr
+          }
+          _ => concat(log_services_path, concat("/", concat(id, "/Entries"))) as NonEmptyStr
+        }
+        Present { value: LiveLogServiceRef { id: id as NonEmptyStr, entries_path: entries_path } }
+      }
+    _ => Absent
+  }
+}
+
+// VirtualMedia members, each mapped into the model row of extdeps.bmc.redfish_virtual_media. EVERY field
+// decodes or the whole carrier refuses — an observation list with a hole in it would archive a fleet whose
+// mounted images are partly invisible. Field names per the Redfish VirtualMedia v1.x schema; OpenBMC
+// 3.22.00 renders members inline in the collection.
+fn live_virtual_media_members(body: NonEmptyStr, parent: RedfishVirtualMediaParent) -> LiveVmOutcome {
+  match live_parse(body: body as String) {
+    Absent => LiveDecodeRefused { detail: "the VirtualMedia body is not a JSON document" }
+    Present { value: doc } => match read_member(v: doc, key: "Members") {
+      MemberArray { elements: members } => live_vm_of_elements(elements: members, parent: parent)
+      _ => LiveDecodeRefused { detail: "the VirtualMedia collection serves no Members array" }
+    }
+  }
+}
+
+fn live_vm_of_elements(elements: List<JsonValue>, parent: RedfishVirtualMediaParent) -> LiveVmOutcome {
+  let initial: LiveVmOutcome = LiveDecodeVmOk { members: [] }
+  fold(elements, init: initial, f: (acc, e) => match acc {
+    LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
+    LiveDecodeVmOk { members } => match live_vm_member(v: e, parent: parent) {
+      LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
+      LiveDecodeMemberOk { member } => LiveDecodeVmOk { members: concat(members, [member]) }
+    }
+  })
+}
+
+type LiveMemberOutcome
+  = LiveDecodeMemberOk { member: RedfishVirtualMediaObservation }
+  | LiveDecodeRefused { detail: NonEmptyStr }
+
+fn live_vm_member(v: JsonValue, parent: RedfishVirtualMediaParent) -> LiveMemberOutcome {
+  match read_string_member(v: v, key: "Id") {
+    MemberString { value: id } =>
+      if id == "" {
+        LiveDecodeRefused { detail: "a VirtualMedia member carries an empty Id" }
+      } else {
+        match read_member_value(v: v, key: "Inserted") {
+          MemberValue { value: JsonBool { value: inserted } } =>
+            match read_string_member(v: v, key: "ConnectedVia") {
+              MemberString { value: via } => match live_connected_via(text: via) {
+                Present { value: connected_via } =>
+                  match read_member(v: v, key: "MediaType") {
+                    MemberArray { elements: media } => match live_media_types(elements: media) {
+                      LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
+                      LiveDecodeMediaOk { types } =>
+                        match read_member_value(v: v, key: "Image") {
+                          MemberLookupFailed { cause: _ } =>
+                            LiveDecodeMemberOk { member: RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: parent, media_id: id as NonEmptyStr }, media_types: types, connected_via: connected_via, inserted: inserted, image: Absent } }
+                          MemberValue { value: v_image } => match v_image {
+                            JsonString { value: image } => match uri_from_wire(url: image) {
+                              Present { value: uri } =>
+                                LiveDecodeMemberOk { member: RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: parent, media_id: id as NonEmptyStr }, media_types: types, connected_via: connected_via, inserted: inserted, image: Present { value: uri } } }
+                              Absent => LiveDecodeRefused { detail: "a VirtualMedia Image is not a URI this reader parses" }
+                            }
+                            _ => LiveDecodeRefused { detail: "a VirtualMedia Image is not a string" }
+                          }
+                        }
+                    }
+                    _ => LiveDecodeRefused { detail: "a VirtualMedia member serves no MediaType array" }
+                  }
+              }
+              Absent => LiveDecodeRefused { detail: "ConnectedVia names no value of the VirtualMedia schema" }
+            }
+              MemberFailed { cause: _ } => LiveDecodeRefused { detail: "a VirtualMedia member carries no string ConnectedVia" }
+              MemberArray { elements: _ } => LiveDecodeRefused { detail: "ConnectedVia is not a string" }
+              MemberObject { value: _ } => LiveDecodeRefused { detail: "ConnectedVia is not a string" }
+            }
+          _ => LiveDecodeRefused { detail: "a VirtualMedia member carries no boolean Inserted" }
+        }
+      }
+    _ => LiveDecodeRefused { detail: "a VirtualMedia member carries no string Id" }
+  }
+}
+
+type LiveMediaOutcome
+  = LiveDecodeMediaOk { types: List<RedfishVirtualMediaMediaType> }
+  | LiveDecodeRefused { detail: NonEmptyStr }
+
+fn live_media_types(elements: List<JsonValue>) -> LiveMediaOutcome {
+  let initial: LiveMediaOutcome = LiveDecodeMediaOk { types: [] }
+  fold(elements, init: initial, f: (acc, e) => match acc {
+    LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
+    LiveDecodeMediaOk { types } => match e {
+      JsonString { value: wire } => match live_media_type(text: wire) {
+        Present { value: t } => LiveDecodeMediaOk { types: concat(types, [t]) }
+        Absent => LiveDecodeRefused { detail: concat("MediaType value ", wire, " names no arm of RedfishVirtualMediaType") }
+      }
+      _ => LiveDecodeRefused { detail: "a MediaType element is not a string" }
+    }
+  })
+}
+
+// The wire spellings are the schema's enum values, and redfish_virtual_media_type_wire is their single
+// authority — the inverse map here is CHECKED against it, so a schema rename cannot drift silently.
+fn live_media_type(text: String) -> Optional<RedfishVirtualMediaMediaType> {
+  if text == redfish_virtual_media_type_wire(t: MediaCd) {
+    Present { value: MediaCd }
+  } else if text == redfish_virtual_media_type_wire(t: MediaDvd) {
+    Present { value: MediaDvd }
+  } else if text == redfish_virtual_media_type_wire(t: MediaUsbStick) {
+    Present { value: MediaUsbStick }
+  } else if text == redfish_virtual_media_type_wire(t: MediaFloppy) {
+    Present { value: MediaFloppy }
+  } else {
+    Absent
+  }
+}
+
+fn live_connected_via(text: String) -> Optional<RedfishVirtualMediaConnectedVia> {
+  if text == "NotConnected" {
+    Present { value: ConnectedViaNotConnected }
+  } else if text == "URI" {
+    Present { value: ConnectedViaUri }
+  } else if text == "Applet" {
+    Present { value: ConnectedViaApplet }
+  } else if text == "Oem" {
+    Present { value: ConnectedViaOem }
+  } else {
+    Absent
+  }
+}
+
+// The chassis Sensors collection: every member decoded through the single Redfish point reader, its
+// ReadingType (Sensor v1.x) selecting the kind. One unreadable member refuses the WHOLE snapshot — a
+// partial sensor picture archived as complete is exactly the fabrication this lane forbids.
+fn live_sensor_points(body: NonEmptyStr) -> LivePointsOutcome {
+  match live_parse(body: body as String) {
+    Absent => LiveDecodeRefused { detail: "the Sensors body is not a JSON document" }
+    Present { value: doc } => match read_member(v: doc, key: "Members") {
+      MemberArray { elements: members } => live_points_of_elements(elements: members)
+      _ => LiveDecodeRefused { detail: "the Sensors collection serves no Members array" }
+    }
+  }
+}
+
+fn live_points_of_elements(elements: List<JsonValue>) -> LivePointsOutcome {
+  let initial: LivePointsOutcome = LiveDecodePointsOk { points: [] }
+  fold(elements, init: initial, f: (acc, e) => match acc {
+    LiveDecodeRefused { detail } => LiveDecodeRefused { detail: detail }
+    LiveDecodePointsOk { points } =>
+      match read_string_member(v: e, key: "ReadingType") {
+        MemberString { value: reading_type } =>
+          match redfish_point(v: e, kind: live_point_kind(text: reading_type), reading_key: "Reading") {
+            ObservationRefused { cause } => LiveDecodeRefused { detail: cause }
+            ObservationEstablished { observed: point } => LiveDecodePointsOk { points: concat(points, [point]) }
+          }
+        MemberFailed { cause: _ } => LiveDecodeRefused { detail: "a sensor member carries no string ReadingType" }
+        MemberArray { elements: _ } => LiveDecodeRefused { detail: "ReadingType is not a string" }
+        MemberObject { value: _ } => LiveDecodeRefused { detail: "ReadingType is not a string" }
+      }
+  })
+}
+
+// ReadingType wires onto the model's kinds; anything the model does not classify reads as OtherReading,
+// WHICH IS STILL HONEST because the raw member is retained and the point's own fields come from the
+// controller — OtherReading says "the fleet does not sort this one", not "this sensor is empty".
+fn live_point_kind(text: String) -> RedfishPointKind {
+  if text == "Temperature" {
+    RedfishTemperatureCelsius
+  } else if text == "Tachometer" {
+    RedfishRotationalRpm
+  } else {
+    RedfishOtherReading { reading_type: text as NonEmptyStr }
+  }
+}
