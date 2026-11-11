@@ -16,7 +16,7 @@ import gunbc.roadmap.roadmap_project { node_project_membership_in, MembershipMem
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, IssueAssignmentProjection, RoadmapStandings, StandingsUnobserved, NodeStandingRow,
   NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeReadyForReview, NodeForked, NodeHistoryIncomplete,
-  NodeRetired, standing_for_node,
+  NodeRetired, NodeAccepted, standing_for_node,
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
@@ -1886,6 +1886,10 @@ fn row_pulses(row: WorkRowView) -> Bool {
         NodeBlocked { by: _, reason: _ } => true
         NodeHandedBack { by: _, reason: _ } => true
         NodeRetired { by: _, reason: _ } => false
+        // An accepted node is closed by a receipt, exactly as a retired one is closed by the operator's word:
+        // nothing is in flight, so it does not pulse. Pulsing is the animation for work that is live, and an
+        // acceptance is the end of that (roadmap_standing_is_terminal makes the same pair its only true arms).
+        NodeAccepted { by: _, receipt: _ } => false
         NodeReadyForReview { by: _, pr: _, head: _ } => true
         NodeForked { heads: _ } => true
         NodeHistoryIncomplete { missing_parents: _ } => true
@@ -2127,6 +2131,9 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
       NodeBlocked { by: _, reason: _ } => "blocked"
       NodeHandedBack { by: _, reason: _ } => "handed_back"
       NodeRetired { by: _, reason: _ } => "retired"
+      // The word this standing's own display uses in the log (roadmap_event_log, the standing display), so the
+      // page and the log never spell one fact two ways.
+      NodeAccepted { by: _, receipt: _ } => "accepted"
       NodeReadyForReview { by: _, pr: _, head: _ } => "ready_for_review"
       NodeForked { heads: _ } => "unknown"
       NodeHistoryIncomplete { missing_parents: _ } => "unknown"
@@ -2138,6 +2145,11 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
   if standing == "unknown" || activity == "unobservable" { DisplayUnknown }
   else if work_lifecycle_is_closed(l: view.lifecycle) { closed_lifecycle_display_status(l: view.lifecycle) }
   else if standing == "retired" { DisplayRetired }
+  // Accepted is the OTHER closed hand, and it is not Retired: a receipt closed the node, which is what
+  // DisplayDone means in this vocabulary (closed, and — unlike DisplayRetired — it satisfies a dependent's
+  // prerequisite). A row can reach here with a lifecycle that has not caught up to the log; the log's standing
+  // is the fact, so it decides, and the row is shown as Done rather than as something still in flight.
+  else if standing == "accepted" { DisplayDone }
   else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { DisplayBlocked }
   else if standing == "in_progress" || activity == "active" { DisplayActive }
   else if lifecycle == "review" || standing == "ready_for_review" { DisplayReview }
@@ -2373,6 +2385,9 @@ fn row_has_work_in_flight(row: WorkRowView) -> Bool {
       NodeBlocked { by: _, reason: _ } => true
       NodeHandedBack { by: _, reason: _ } => true
       NodeRetired { by: _, reason: _ } => true
+      // Accepted is the most moved a node can be — a receipt closed it — so the row stays on the page with its
+      // standing shown rather than being filtered out as never-having-been-anything.
+      NodeAccepted { by: _, receipt: _ } => true
       NodeReadyForReview { by: _, pr: _, head: _ } => true
       NodeForked { heads: _ } => true
       NodeHistoryIncomplete { missing_parents: _ } => true

@@ -14,6 +14,7 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge,
   RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable,
+  RoadmapAcceptanceReceipt,
 }
 import gunbc.roadmap.roadmap_status {
   AuthoredLine,
@@ -51,7 +52,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear, launch_fixture_doc, launch_fixture_identity,
 }
-import gunbc.roadmap.roadmap_issue_status { DisplayReady, DisplayDone, DisplayRetired, issue_display_status_is_closed }
+import gunbc.roadmap.roadmap_issue_status { DisplayReady, DisplayDone, DisplayRetired, DisplayActive, issue_display_status_is_closed }
 import gunbc.roadmap.roadmap_presentation {
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
   CompletedWork, ActivityUnobservable,
@@ -80,7 +81,7 @@ import gunbc.roadmap.roadmap_presentation {
   DailyWorkspaceView, daily_workspace_view, row_is_active_work,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
-  lifecycle_chip_renders,
+  lifecycle_chip_renders, issue_display_status, row_has_work_in_flight,
   WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
   WorkBandEntry, BandRow, BandFamily, BandProject,
   ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
@@ -96,9 +97,11 @@ import gunbc.roadmap.roadmap_presentation {
   issue_status_label, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapNodeStanding, NodeOpen, NodeInProgress, EventPrincipalAuthenticated,
+  RoadmapNodeStanding, NodeOpen, NodeInProgress, NodeRetired, NodeAccepted,
+  EventPrincipal, EventPrincipalAuthenticated,
 }
 import gunbc.principal_projection { fabric_workflow_principal }
+import std.content_hash { content_hash_atom }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -2016,4 +2019,80 @@ test fn issue_path_compacts_only_display_and_omits_current_title() -> Bool {
       fx_ancestor(slug: "parent", title: "Parent"),
     ]) == ["Root", "› … 2 ›", "Parent"]
     && issue_breadcrumb_compact_labels(ancestors: [fx_ancestor(slug: "root", title: "Root")]) == ["Root"]
+}
+
+// ── THE ACCEPTED STANDING, PRESENTED ──────────────────────────────────────────────────────────────
+// This PR added NodeAccepted to RoadmapNodeStanding (gunbc.roadmap.roadmap_event_log), which made every
+// exhaustive match over the sum in the presentation layer non-exhaustive: srv1 caught row_pulses refusing to
+// compile (roadmap_presentation.dag, "non-exhaustive match: missing variant(s) NodeAccepted"). Three sites now
+// name the arm — row_pulses, issue_display_status, row_has_work_in_flight — and a claim fixes what each decides,
+// because "added an arm" without a verdict is how an arm gets filled with whatever compiles.
+//
+// The verdicts, and the reason each is not arbitrary:
+//   row_pulses            false — pulsing is the animation for work that is live; a receipt closed this node, so
+//                              it stands with NodeRetired, and roadmap_standing_is_terminal makes those two the
+//                              sum's only terminal hands.
+//   row_has_work_in_flight true  — the row did move, further than any other standing does, and filtering it out
+//                              would make an accepted node look as though it was never anything.
+//   issue_display_status  DisplayDone — the vocabulary's closed-and-evidenced member. DisplayRetired is the
+//                              OTHER closed hand and must keep its own answer; merging the two is exactly the
+//                              defect this PR exists to remove.
+fn fx_accepted_receipt() -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: "hier-task-open" as RoadmapNodeId,
+    criteria_digest: content_hash_atom(value: "3502539e920d9e40" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap.roadmap_presentation_witness" as NonEmptyStr,
+      witness_fn: "fx_accepted_receipt" as NonEmptyStr,
+      executed_on: "2026-11-11" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "fixture-artifact" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-11" as NonEmptyStr,
+  }
+}
+
+// The same specimen row the pulse claims already use, with one standing pinned on it and nothing else changed —
+// so a difference between two of these rows is the standing and nothing else.
+fn fx_standing_row(standing: RoadmapNodeStanding) -> WorkRowView {
+  fx_row_of(
+    rows: fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: standing }),
+    node_id: "hier-task-open")
+}
+
+fn fx_human_principal() -> EventPrincipal {
+  EventPrincipalAuthenticated { ref: fabric_workflow_principal }
+}
+
+test fn witness_accepted_row_does_not_pulse() -> Bool {
+  // NodeOpen is the routine default and NodeInProgress the live one: the two controls that keep the new arm
+  // from passing by returning true (or false) for everything.
+  !row_pulses(row: fx_standing_row(NodeAccepted { by: fx_human_principal(), receipt: fx_accepted_receipt() }))
+    && !row_pulses(row: fx_standing_row(NodeRetired { by: fx_human_principal(), reason: "closed by the operator" as NonEmptyStr }))
+    && !row_pulses(row: fx_standing_row(NodeOpen))
+    && row_pulses(row: fx_standing_row(NodeInProgress { by: fx_human_principal(), last_note: "working" as NonEmptyStr }))
+}
+
+test fn witness_accepted_row_is_not_filtered_out_as_never_having_been_anything() -> Bool {
+  // Both rows have no active attempt and no holder, so the only thing that can make them differ is the standing.
+  row_has_work_in_flight(row: fx_standing_row(NodeAccepted { by: fx_human_principal(), receipt: fx_accepted_receipt() }))
+    && !row_has_work_in_flight(row: fx_standing_row(NodeOpen))
+}
+
+test fn witness_accepted_and_retired_keep_separate_closed_answers() -> Bool {
+  let accepted_row = fx_standing_row(NodeAccepted { by: fx_human_principal(), receipt: fx_accepted_receipt() })
+  let retired_row = fx_standing_row(NodeRetired { by: fx_human_principal(), reason: "closed by the operator" as NonEmptyStr })
+  let progress_row = fx_standing_row(NodeInProgress { by: fx_human_principal(), last_note: "working" as NonEmptyStr })
+  // The control that keeps the display assertions from passing vacuously: issue_display_status tests the
+  // lifecycle BEFORE any standing arm, so if these rows were closed by lifecycle every verdict below would be
+  // the lifecycle's answer and the new arm would be untested.
+  !work_lifecycle_is_closed(l: accepted_row.lifecycle)
+    && !work_lifecycle_is_closed(l: retired_row.lifecycle)
+    && !work_lifecycle_is_closed(l: progress_row.lifecycle)
+    && issue_display_status(view: accepted_row) == DisplayDone
+    && issue_display_status(view: retired_row) == DisplayRetired
+    && issue_display_status(view: progress_row) == DisplayActive
 }
