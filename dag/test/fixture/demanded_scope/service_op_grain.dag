@@ -1,0 +1,49 @@
+module test.fixture.demanded_scope.service_op_grain
+
+// THE BODY ARM OF THE #16156 SERVICE-OP METHOD-SURFACE PAIR.
+//
+// WHAT THIS FILE ISOLATES. #16156 (5e315131, "run: realize only the declarations an entry can name")
+// replaced the blanket first wave that realized EVERY non-function declaration with a wave seeded only by
+// what the entry can NAME. On the `gunbc run` grain that dropped the method surface of a service whose
+// operation the entry spells only inside a `fn(_scope) { ... }` lambda subject: the measured refusal is
+// `method '<Op>' cannot be resolved: receiver type 'Primitive(test.RestReplay)' establishes no method
+// surface, so the method's existence is not established and no declared frontier row admits it` (BuildBuddy
+// a96b05f2 at main; the same entries resolve at e1dd6b50, 63dd5bc0). The lambda arm of the pair is the real
+// main-resident witness entry `rest_status_and_body_are_persistable` in test.claim.rest_exchange_replay.
+//
+// THIS IS THE CONTROL: the SAME operation of the SAME service, reached through the SAME braceless
+// whole-module import of the SAME probe module, spelled DIRECTLY in an entry body instead of inside a lambda
+// subject; import style and the service are held fixed. MEASURED RESULT: this arm and the lambda arm BOTH
+// refused at main (BuildBuddy 20375b92 / a96b05f2) and both resolved at e1dd6b50, so the lambda-subject
+// position is ruled out as the axis by execution. The dropped link, established by the srv1 GATE_WET probe
+// chain and fixed in src/v1/04_infer.dag, is the rest service's `RestResult` carrier row: the run-grain
+// demand seeds must include it through the `runtime_key_readers` registry, independently of position.
+// Consumed by `service_op_surface_spelled_in_an_entry_body_is_realized` in
+// src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs.
+
+import std.types { Bool, String }
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import test.fixture.rest_exchange_replay_probe
+import test.fixture.demanded_scope.service_op_grain_aligned_probe
+
+fn service_op_spelled_in_entry_body() -> Bool {
+  match test.RestReplay.Observe() {
+    RestAnswered { answer } => answer.message == "accepted"
+    RestRefused { refusal: _ } => false
+  }
+}
+
+// THE ALIGNED SHAPE CONTROL. Same file, same entry-body position, same braceless whole-module import style
+// as the arm above; the ONLY difference is that this service is authored under its own module's namespace
+// (`service_op_grain_aligned_probe.SvcAligned`, spine first segment == the import's local name), mirroring the
+// green production shape `service shell.Env` in module `extdeps.shell` (`shell.Env.Get(...)`). It guards that
+// production-aligned shape: if a future cut breaks the namespace-aligned spelling while the other arms still
+// pass, this arm fails. Consumed by
+// `service_op_surface_spelled_in_an_aligned_namespace_entry_body_is_realized` in
+// src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs.
+fn service_op_spelled_in_aligned_namespace_body() -> Bool {
+  match service_op_grain_aligned_probe.SvcAligned.Observe() {
+    RestAnswered { answer } => answer.message == "accepted"
+    RestRefused { refusal: _ } => false
+  }
+}

@@ -3,7 +3,7 @@ module gunbc.plans.host_thermal_operating_point
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
+import gunbc.markdown_helpers { h2, h3, p, li, ul, ol, cell, row }
 import std.types { List, String }
 
 // THE WORKING DESIGN FOR "srv3 AND srv4 RUN TOO HOT" (gunbc-private#287, 2026-11-05), worked from that

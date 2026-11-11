@@ -22,6 +22,7 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallStoragePolicy,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
+  InstallerChoosesDisk,
   AutoinstallSshServer,
 }
 import std.optional { Present }
@@ -262,7 +263,7 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
-  storage_policy: StoragePolicyDirectLayout,
+  storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
 }
 
 data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -274,7 +275,7 @@ data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
-  storage_policy: StoragePolicyDirectLayout,
+  storage_policy: StoragePolicyDirectLayout { target: InstallerChoosesDisk },
 }
 
 data srv3_os_install_plan_standing: Srv3OsInstallPlanStanding = srv3_os_install_plan_standing_for(

@@ -539,7 +539,7 @@ data curated_cargo_probe_record_fold_accumulator_reason: Symbol = ^curated_cargo
 // FEW DISTINCT ROOTS in the common closure cover the family, incl. exactly one E0391 cycle
 // everywhere. (b) dotted namespace-qualified render: 05_emit_orchestration + emit_produced
 // (knowledge->measured) and 03_name_resolve (CORRECTED off ProbeStageAssemble emit_assemble_refuse
-// — its former gunbc_plans_md_helpers closure contamination is gone, it now emits+assembles and
+// — its former gunbc_markdown_helpers closure contamination is gone, it now emits+assembles and
 // refuses at cargo on dotted-in-pattern). (c) materialization_carriers keeps its namespace
 // first-error but its histogram is the outlier (E0308:87 E0277:80 E0599:66 E0369:61) — the
 // repr/trait residue named in the plan's emit_representation_mismatch antagonize row, now sized
