@@ -383,14 +383,17 @@ type MicrovmHostBinding
   | MicrovmHostBindingRefused { cause: MicrovmHostBindingRefusal }
 
 // FOUR CAUSES FOR WHAT THE SITE ALONE CAN NAME, AND ONE SHARED CAUSE FOR WHAT THE SELECTOR NAMES.
-// The four send an operator to four different places: a dispatch that named no host, a machine that
-// could not name itself, a machine that is not the one the dispatch selected, and a machine no roster
-// describes. The fifth carries the selector's own typed refusal (gunbc.hostname_allocation::
-// ObservedHostJoinRefusal) for a NAME neither side can resolve, and says which spelling it refused.
+// The four send an operator to four different places: a dispatch whose host variable was never set, a
+// machine whose probe failed outright, a machine that is not the one the dispatch selected, and a machine
+// no roster describes. The fifth carries the selector's own typed refusal for a NAME neither side can
+// resolve. NONE OF THEM CARRIES A HAND-WRITTEN SENTENCE ABOUT AN EMPTY OR UNPLACEABLE NAME: the two that
+// come from the join carry the `ObservedHostJoinRefusal` itself and are rendered by the rule that produced
+// it, because "the dispatch named nothing", "the machine named nothing" and "this spelling is nobody's" are
+// the join's decisions, and a site that restates them is a second place deciding the same fact.
 type MicrovmHostBindingRefusal
   = ExpectedHostAbsent { detail: String }
   | HostObservationFailed { reason: String }
-  | HostBindingRefused { expected: NonEmptyStr, observed: NonEmptyStr }
+  | HostBindingRefused { cause: ObservedHostJoinRefusal }
   | HostNotRostered { host: NonEmptyStr }
   | HostNameUnresolved { cause: ObservedHostJoinRefusal }
 
@@ -398,19 +401,24 @@ type MicrovmHostBindingRefusal
 // values a witness can construct; the wet wrapper below is the only thing that has to run on a
 // machine to obtain them (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
 //
-// BOTH INPUTS ARE NAMES, AND THE JOIN RESOLVES THEM (gunbc.hostname_allocation
+// BOTH INPUTS ARE STRINGS, AND THE JOIN DECIDES EVERYTHING ABOUT THEM (gunbc.hostname_allocation
 // ::observed_host_selector_join; gunbc.plans.fleet_machine_authority section 4.4 (b*)). What the dispatch
 // selected and what this machine answers each resolve through the allocation's selector, and the join
 // holds only when they name the SAME HostIdentity -- so a dispatch for srv14 on the machine answering
 // "butch" binds, where the old comparison of the two strings refused it. The bound host and the host
-// spec lookup below carry the RESOLVED identity, never either spelling as observed; a side that
-// resolves to nothing refuses through HostNameUnresolved and no spec is looked up for a name.
-fn microvm_host_binding_of(expected: NonEmptyStr, observed: NonEmptyStr) -> MicrovmHostBinding {
-  match observed_host_selector_join(expected: expected as String, observed: observed as String) {
+// spec lookup below carry the RESOLVED identity, never either spelling as observed. The inputs are plain
+// `String` rather than `NonEmptyStr` on purpose: an empty name is the rule's `ObservedHostUnnamed` refusal,
+// and demanding non-emptiness at this door would oblige every caller to test for emptiness itself and
+// invent a reason for it -- which is what two of them did until this line was written.
+fn microvm_host_binding_of(expected: String, observed: String) -> MicrovmHostBinding {
+  match observed_host_selector_join(expected: expected, observed: observed) {
     ObservedHostSelectorJoinRefused { cause: c } =>
       match c {
-        JoinHostsDisagree { expected: e, observed: o } =>
-          MicrovmHostBindingRefused { cause: HostBindingRefused { expected: e as NonEmptyStr, observed: o as NonEmptyStr } }
+        // The disagreement keeps its own standing, because it sends an operator somewhere different from
+        // "nobody can be placed": the wrong machine is running this. The refusal itself travels with it,
+        // so the sentence is the rule's and not a paraphrase written here.
+        JoinHostsDisagree { expected: _, observed: _ } =>
+          MicrovmHostBindingRefused { cause: HostBindingRefused { cause: c } }
         _ => MicrovmHostBindingRefused { cause: HostNameUnresolved { cause: c } }
       }
     ObservedHostSelectorAgreed { host: identity } =>
@@ -428,10 +436,11 @@ fn microvm_host_binding_refusal_text(c: MicrovmHostBindingRefusal) -> String {
             "; the subject is the host the dispatch selected and this run was given none, so it will not converge whatever machine it happens to be running on"], "")
     HostObservationFailed { reason: r } =>
       join(["HostObservationFailed -- the host could not name itself (", r, "), so its identity cannot be joined to the dispatch's selection"], "")
-    HostBindingRefused { expected: e, observed: o } =>
-      join(["HostBindingRefused -- the dispatch selected ", e as String, " and this machine answers ", o as String,
-            "; NOTHING has been fetched, installed or written. A run that continued here would mutate ", o as String,
-            " and certify it under ", e as String, "'s name"], "")
+    // Both join refusals are rendered by the rule that decided them. This file adds only which standing
+    // the operator is being told about; what the refusal SAYS about an empty or unplaceable name lives in
+    // gunbc.hostname_allocation and is not paraphrased here.
+    HostBindingRefused { cause: c1 } =>
+      join(["HostBindingRefused -- ", observed_host_join_refusal_text(cause: c1)], "")
     HostNotRostered { host: h } =>
       join(["HostNotRostered -- ", h as String, " carries no runner host spec, so no executor login and no grant roster are declared for it"], "")
     HostNameUnresolved { cause: c2 } =>
@@ -441,20 +450,20 @@ fn microvm_host_binding_refusal_text(c: MicrovmHostBindingRefusal) -> String {
 
 fn microvm_host_binding_wet() -> MicrovmHostBinding {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    // Only the VARIABLE being absent is decided here: nothing can be joined when the dispatch never spoke,
+    // and that is a fact about the CI environment rather than about a name. A variable that is set to an
+    // empty value is a name the caller selected which happens to be empty, and emptiness is the join's
+    // decision -- it used to be tested here and given a locally-written reason, which was a second place
+    // deciding what an empty name means.
     ActionsVariableAbsent { variable: _, detail: d } =>
       MicrovmHostBindingRefused { cause: ExpectedHostAbsent { detail: d } }
     ActionsVariablePresent { value: expected } =>
       match hostname_short_read(transport: LocalShell) {
+        // A failed probe is still this site's own fact: no observation exists to hand to the rule.
         HostnameShortCaptureRefused { reason: r } =>
           MicrovmHostBindingRefused { cause: HostObservationFailed { reason: r } }
         HostnameShortCaptured { value: v } =>
-          if trim(s: expected) == "" {
-            MicrovmHostBindingRefused { cause: ExpectedHostAbsent { detail: "is set to an empty value" } }
-          } else if trim(s: v) == "" {
-            MicrovmHostBindingRefused { cause: HostObservationFailed { reason: "hostname -s returned empty output" } }
-          } else {
-            microvm_host_binding_of(expected: trim(s: expected) as NonEmptyStr, observed: trim(s: v) as NonEmptyStr)
-          }
+          microvm_host_binding_of(expected: trim(s: expected), observed: trim(s: v))
       }
   }
 }

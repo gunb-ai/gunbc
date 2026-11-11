@@ -18,6 +18,7 @@ import gunbc.runner.runner_microvm_host_ready {
   KvmDeviceDelegation, KvmDeviceDelegated, KvmDeviceDelegationContradicted, KvmDeviceDelegationUnreadable,
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
   MicrovmHostBindingRefusal, HostBindingRefused, HostNotRostered, HostNameUnresolved,
+  ExpectedHostAbsent, HostObservationFailed,
   microvm_host_binding_of, microvm_host_binding_refusal_text,
   kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_ready_in_this_process,
   group_names_contain, firecracker_host_standing_text,
@@ -183,19 +184,21 @@ test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_gr
 // first in both wet entries, outside the arm that reaches HOME, the fetch, the install and the
 // receipt write.
 test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
-  let mismatch = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv3" as NonEmptyStr)
-  let agreed = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv1" as NonEmptyStr)
-  let unresolved = microvm_host_binding_of(expected: "srv-nope" as NonEmptyStr, observed: "srv-nope" as NonEmptyStr)
+  let mismatch = microvm_host_binding_of(expected: "srv1", observed: "srv3")
+  let agreed = microvm_host_binding_of(expected: "srv1", observed: "srv1")
+  let unresolved = microvm_host_binding_of(expected: "srv-nope", observed: "srv-nope")
   // THE SHAPE THE OLD JOIN REFUSED OUTRIGHT: a dispatch for srv14, a kernel answering "butch". The
   // two strings disagreed, so this run was refused as a mis-dispatch on a host that was perfectly
   // correctly dispatched. Resolving both names first, the join AGREES on the machine and the only
   // refusal left is the roster's own gap -- srv14 carries no runner host spec yet -- which is a
   // different cause sending an operator to a different place.
-  let named_host = microvm_host_binding_of(expected: "srv14" as NonEmptyStr, observed: "butch" as NonEmptyStr)
+  let named_host = microvm_host_binding_of(expected: "srv14", observed: "butch")
   (match mismatch {
     MicrovmHostBindingRefused { cause: c } =>
       (match c {
-        HostBindingRefused { expected: e, observed: o } => (e as String) == "srv1" && (o as String) == "srv3"
+        HostBindingRefused { cause: _ } =>
+          string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "srv1")
+            && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "srv3")
         _ => false
       })
         && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "NOTHING has been fetched, installed or written")
@@ -216,7 +219,7 @@ test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
       MicrovmHostBindingRefused { cause: c } =>
         match c {
           HostNotRostered { host: h } => (h as String) == "srv14"
-          HostBindingRefused { expected: _, observed: _ } => false
+          HostBindingRefused { cause: _ } => false
           HostNameUnresolved { cause: _ } => false
           ExpectedHostAbsent { detail: _ } => false
           HostObservationFailed { reason: _ } => false
@@ -422,4 +425,34 @@ test fn the_standing_text_reports_the_instruments() -> Bool {
   string_contains(s: text, pattern: "gnu-time-max-rss=present")
     && string_contains(s: text, pattern: "cgroup-memory-peak=absent")
     && string_contains(s: text, pattern: "systemd-memory-peak=unreadable(")
+}
+
+// AN EMPTY NAME FROM EITHER SIDE IS THE RULE'S REFUSAL, NOT A LOCALLY-WRITTEN ONE. Both binding sites used
+// to test emptiness themselves and emit their own reason ("hostname -s returned empty output"), which kept a
+// second answer to "what does an empty name mean" beside the rule's. Now both names reach the join as the
+// strings they are, and the join says WHICH SIDE named nothing -- the dispatch's word or the machine's -- in
+// the sentence gunbc.hostname_allocation owns.
+test fn an_empty_name_from_either_side_refuses_through_the_rule() -> Bool {
+  let no_selection = microvm_host_binding_of(expected: "", observed: "srv1")
+  let no_answer = microvm_host_binding_of(expected: "srv1", observed: "")
+  (match no_selection {
+    MicrovmHostBindingRefused { cause: c } =>
+      match c {
+        HostNameUnresolved { cause: _ } =>
+          string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "named nothing")
+            && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "caller selected")
+        _ => false
+      }
+    MicrovmHostBound { spec: _, host: _ } => false
+  })
+    && (match no_answer {
+      MicrovmHostBindingRefused { cause: c } =>
+        match c {
+          HostNameUnresolved { cause: _ } =>
+            string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "named nothing")
+              && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "own answer")
+          _ => false
+        }
+      MicrovmHostBound { spec: _, host: _ } => false
+    })
 }
