@@ -2,7 +2,7 @@ module test.claim.host.host_standup_spine_witness
 
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet.fleet_enrollment { fleet_enrollment_intents, fleet_participation_eq, CiRunnerParticipation }
-import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, ProviderGuest, ImageBaked }
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, ProviderGuest }
 import std.measure { Millisecond, millisecond }
 import gunbc.host.host_standup { host_standup_gap_count, host_standup_gap_count_at_actuation_verdict }
 import gunbc.host.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
@@ -170,7 +170,7 @@ test fn srv3_live_fleet_offer_carries_ci() -> Bool {
   // are exactly the hosts enrolled for CiRunnerParticipation, compared host-to-host, and srv3 --
   // the host this witness is about -- is named by its declaration, not counted.
   // Admissible backing for a fleet offer is a FLEET-OWNED machine (gunbc.fleet.fleet_host_backing
-  // HostBacking.OwnedMachine); a ProviderGuest or ImageBaked host is CI-enrolled but supplied by
+  // HostBacking.OwnedMachine); a ProviderGuest host is CI-enrolled but supplied by
   // someone else and owes no fleet offer. The join compares the offer hosts to exactly the
   // CI-enrolled hosts whose declared backing is owned -- both directions, by HostIdentity.
   let ci_owned_hosts = map(
@@ -180,7 +180,6 @@ test fn srv3_live_fleet_offer_carries_ci() -> Bool {
         && match i.backing {
              OwnedMachine { provisioning: _ } => true
              ProviderGuest { route: _, entitlement: _, resource: _ } => false
-             ImageBaked => false
            }
     ),
     i => i.host as String
