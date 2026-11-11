@@ -151,15 +151,16 @@ import gunbc.machine_intake.prior_life_boundary {
   DryArchiveStoreKeepsWrites,
 }
 import gunbc.machine_intake.arrival_converge {
+  identity_bind_inputs_for_live_reads,
   converge_arrival_through_bmc_secure,
   BmcSecureInputs,
   ArrivalPrefixVerdict,
   CurrentManagerRead,
-  IdentityBindInputs,
   IdentityFruObserved,
   CommittedFruBoardArea,
   PriorLifeInputs,
 }
+import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.fleet.convergence_fold { ConvergenceRunId, StepSubjectKey }
 import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialFetch, SecretCredentialReady }
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
@@ -449,12 +450,17 @@ fn arrival_wet_prefix_record(
                                       BmcFruCaptureRefused { gap: _ } =>
                                         ArrivalRunRefused { reason: "the FRU bytes read back from the store do not decode an identity-grade board area: IdentityBindProvisional has no second source and the door refuses rather than bind a serial on one reading" as NonEmptyStr }
                                       BmcFruCaptureObserved { observation: board } => {
-                                        let inputs = IdentityBindInputs {
+                                        // The seam the fold's own identity arm uses, minted where the
+                                        // sealed inputs live: the door passes the FRU evidence IT
+                                        // committed and read back, the typed SMBIOS absence, the
+                                        // in-band reading, and nothing else -- no other unit's key
+                                        // is known to this run.
+                                        let inputs = identity_bind_inputs_for_live_reads(
                                           fru: IdentityFruObserved { evidence: CommittedFruBoardArea { observation: board } },
                                           smbios: SmbiosReadRefused { gap: SmbiosCaptureNotCommitted { unit: row.unit as NonEmptyStr, read_that_would_ground_it: "this door reads no host SMBIOS: the second source for this run is the FRU print through the store" } },
                                           inband: Present { value: captures.inband },
                                           other_units: [],
-                                        }
+                                        )
                                         let world = bmc_world(power: BmcPowerOff)
                                         let prior_life = DryPriorLifeWorld {
                                           bmc: world,
@@ -578,6 +584,7 @@ fn arrival_account_entries(verdicts: List<RedfishAccountEntryVerdict>) -> List<B
 fn arrival_lan_members(row: ArrivalUnitCaptureRow, channel: IpmiChannelNumber) -> List<IpmiChannelCensusMember> {
   match row.controller_network {
     BmcNetworkObservedStatic { address: address, prefix: _prefix, gateway: _gateway, link: _link, basis: _basis } => [ipmi_lan_channel_member(channel: channel, medium: IpmiMedium8023Lan, address: address)]
+    BmcNetworkObservedDhcpLease { address: address, prefix: _, basis: _ } => [ipmi_lan_channel_member(channel: channel, medium: IpmiMedium8023Lan, address: address)]
     BmcNetworkUnobserved { discriminator: _d } => []
   }
 }
@@ -844,7 +851,7 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     observation_subject: MachineIntakeSubject {
       subject: QualificationSubject {
         unit_key: (row.unit as NonEmptyStr) as UnitKey,
-        assembly_manifest_digest: content_hash_of_value(census_text as NonEmptyStr),
+        assembly_manifest_digest: content_hash_of_value(census_text),
         firmware_manifest_digest: content_hash_of_value(accounts_collection_body),
       },
       attempt_id: attempt_value as IntakeAttemptId,
@@ -856,20 +863,20 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
   match arrival_wet_prefix_record(unit: subject.host, run_wire: run_wire, captures: captures) {
     ArrivalRunRefused { reason: reason } => exit_failure(reason: concat("ARRIVAL WET REFUSED: ", reason as String))
     ArrivalRunObserved { observation: observation, fru_read: fru_read, managed_user: managed_user, published_user: published_user, policy: policy, verdict: verdict, dissolution: dissolution } => {
-      let receipt = join([
+      let receipt = [
         concat("# Arrival run ", run_wire as String),
         concat("- unit: ", row.unit as String),
         concat("- controller: ", binding.bmc.host as String),
         concat("- census channel: ", to_string(census_channel)),
-        concat("- roster channels committed: ", to_string(length(roster_paths))),
+        concat("- roster channels committed: ", to_string(roster_paths.length())),
         concat("- managed user id: ", to_string(managed_user as Int)),
         concat("- published user id: ", to_string(published_user as Int)),
-        concat("- observed firmware: ", observation.firmware.family as String, " ", observation.firmware.version as String),
-        concat("- served surfaces: ", to_string(length(observation.served_surfaces))),
+        concat("- observed firmware: ", observation.observed_manager.firmware_version as String),
+        concat("- credential policy: ", board_model_label(board: policy.key.board) as String),
         concat("- evidence root: ", evidence_root as String),
         "FOLDED: stopped at the boundary, not converged",
         concat("- dissolution: ", dissolution_description(condition: dissolution) as String),
-      ], "\n")
+      ].join("\n")
       let receipt_path = concat(unit_hold_store_path(tree: host_tree), concat("/arrival-receipt-", concat(run_wire as String, ".md"))) as FilePath
       let receipt_write = Filesystem.Write(path: receipt_path as String, content: receipt)
       if !receipt_write.success {

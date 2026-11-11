@@ -81,11 +81,11 @@ fn srv15_wet_captures() -> ArrivalRunCaptures {
 // keyed by unit, the bytes it digests, and the public decoder. The section shapes
 // mirror the committed capture; the NIC is the fleet-bound host NIC whose MAC srv1
 // saw on the wire (srv15_host_nic_mac).
-fn srv15_inband_read() -> InbandBoardRead {
-  let content = join(["### dmidecode baseboard", "Product Name        : ASRock Rack ALTRAD8UD-1L2T", "Serial Number       : BR80S6102300049", "### nics", "enP2p4s0 mac=9c:6b:00:e7:ca:63 carrier=1", "enP2p4s0 inet 192.168.1.248 UP"], "\n")
+fn srv15_inband_read() -> InbandBoardRead? {
+  let content = ["### dmidecode baseboard", "Product Name        : ASRock Rack ALTRAD8UD-1L2T", "Serial Number       : BR80S6102300049", "### nics", "enP2p4s0 mac=9c:6b:00:e7:ca:63 carrier=1", "enP2p4s0 inet 192.168.1.248 UP"].join("\n")
   match inband_host_identity_capture_row(unit: operator_host_srv15) {
-    Present { value: row } => decode_inband_board_capture(content: content, row: row, channel_content: none)
-    Absent => exit_failure(reason: "WITNESS ROW ABSENT: the committed srv15 in-band capture row is gone from the registry")
+    Present { value: row } => Present { value: decode_inband_board_capture(content: content, row: row, channel_content: none) }
+    Absent => Absent
   }
 }
 
