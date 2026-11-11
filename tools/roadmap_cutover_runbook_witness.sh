@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # SCAFFOLD — dissolve-on: TWO capabilities, because they retire DIFFERENT halves of this file.
 #   (1) orch-emitted, for the RESIDUAL SHELL (the stubs and the case assertions): the bash target grammar
 #       (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by
@@ -27,9 +26,18 @@
 #   PART D  the rollback's restart leg, EXECUTED against a stateful systemctl stub: the units the export found
 #           active really receive `systemctl start`, the ones it found inactive really do not, and an export that
 #           is empty, off-roster, or missing a roster unit refuses with the readers still down. D5 proves the
-#           fixture can see the defect it was written for (the pasted-second-list shape starts nothing).
+#           fixture can see the defect it was written for: the pasted-second-list shape is REFUSED as an invalid
+#           inventory, not merely reported as "RESTORED 0"; D6 and D7 refuse a unit recorded twice and a word
+#           that is not a state `systemctl is-active` can print.
 #   PART E  the expected manifest arrives byte-for-byte through RUNE's environment and never through argv; E2
 #           runs the shape the runbook no longer uses and requires it to arrive CORRUPT, so E1 is not vacuous.
+#   PART F  the stop of the readers: all five units AND the timer must report inactive, no gunbc process may
+#           remain, and every stop command must have returned successfully — a red case for each way the world can
+#           disagree, plus a join of the roster step 1 MEASURES against the roster step 2 ADMITS, so the two lists
+#           cannot drift apart silently.
+#   PART G  the migration and the retirements: the input is counted against the export BEFORE any append, the first
+#           refused append aborts the run, and step 4 refuses to retire a history step 3 never admitted. These are
+#           failure injection — a stub CLI that says no, and the requirement that NOTHING ran after it.
 #
 # Nothing in this file is a second authority: RUNF, UNITS, export_drop_ins, restore_drop_ins and need are loaded
 # out of the runbook at run time, so the thing being witnessed is literally the text the operator runs, and a
@@ -40,6 +48,44 @@
 #
 # Run:  bash tools/roadmap_cutover_runbook_witness.sh docs/runbooks/roadmap-event-log-cutover.md
 #       (optional second argument: the path to dag/gunbc/witness/roadmap_cutover.dag)
+# CASES IMPLEMENTED HERE — one line per gunbc.witness.roadmap_cutover::cutover_witness_case_rows row
+# this carrier executes. The two-way join against these rows runs in this file (PART H here, PART B in
+# the dispatch witness): a row with no line here is a promise no script keeps, and a line here with no
+# row is a case the model has never heard of. The names are data, so prose cannot satisfy the join.
+#   guard_admits_an_absolute_export_directory
+#   guard_refuses_a_shifted_delivery
+#   guard_admits_two_intact_arguments
+#   guard_refuses_a_shifted_two_argument_delivery
+#   guard_refuses_a_revision_that_is_not_forty_hex
+#   drop_in_round_trip_with_pre_existing_and_deploy_added
+#   citations_join_the_runbook_headings_to_the_model_rows_both_ways
+#   a_citation_naming_an_unmodelled_step_is_reported
+#   a_modelled_step_without_its_citation_is_reported
+#   rollback_starts_exactly_the_units_the_export_found_active
+#   rollback_refuses_an_export_naming_a_unit_off_the_roster
+#   rollback_refuses_a_roster_unit_the_export_never_measured
+#   rollback_refuses_an_export_that_measured_nothing
+#   the_restart_fixture_can_see_the_defect_it_was_written_for
+#   the_manifest_reaches_the_reader_intact_through_the_environment
+#   the_interpolated_manifest_shape_is_refused_by_the_shell_that_parses_it
+#   the_witness_itself_fails_when_a_guard_stops_refusing
+#   stop_admits_the_measured_quiet_readers
+#   stop_refuses_a_reader_still_answering
+#   stop_refuses_a_timer_still_firing
+#   stop_refuses_a_unit_that_would_not_stop
+#   stop_refuses_a_timer_that_would_not_unload
+#   stop_refuses_a_surviving_gunbc_process
+#   stop_and_export_share_one_roster
+#   rollback_refuses_a_unit_recorded_twice
+#   rollback_refuses_a_word_that_is_not_a_state
+#   migration_admits_what_the_export_measured
+#   migration_stops_at_the_first_refused_append
+#   migration_refuses_a_seed_that_changed_after_the_export
+#   migration_refuses_a_fabric_object_without_a_line
+#   migration_refuses_a_second_revocation
+#   retirement_refuses_without_step_three_admission
+#   retirement_refuses_with_no_revocation_admitted
+#
 set -u
 RB=${1:?usage: roadmap_cutover_runbook_witness.sh <path to the runbook>}
 [ -f "$RB" ] || { echo "WITNESS REFUSED: no runbook at [$RB] — there is nothing to witness"; exit 2; }
@@ -363,8 +409,39 @@ echo "$OUT" | sed 's/^/    /'
 if grep -q . "$CTL_STARTED"; then
   fail "D5: the pasted-list shape started $(tr '\n' ' ' < "$CTL_STARTED") — the leg no longer reads the export directly, so the shape that hid the defect is back"
 else
-  echo "    D5 OK: the pasted shape starts nothing at all, which is the defect this PART was written to catch"
+  # Zero starts is necessary and NOT sufficient: an inventory the leg cannot trust must refuse, because "RESTORED
+  # 0 unit(s)" after a rollback that restored nothing reads as a completed rollback. F7's fix is the refusal.
+  [ "$RC" -ne 0 ] || fail "D5: the pasted-list shape was ACCEPTED (rc=0) — a malformed inventory must refuse, not report zero restores"
+  echo "$OUT" | grep -qF 'expected exactly two fields' \
+    || fail "D5: the refusal did not identify the malformed record: [$OUT]"
+  echo "    D5 OK: the pasted shape is REFUSED as an invalid inventory, before anything is started"
 fi
+
+# The two shapes the old check could not see either: the same unit twice (a second record silently overwrites the
+# first's state) and a word that is not a state systemd reports.
+echo "--- D6: a unit recorded twice is refused ---"
+# rebuilt from the five measured records: D5 left the PASTED shape in place, and building a new shape on top of a
+# broken one would test the wrong input.
+printf '%s\n' "gunbc-roadmap.service active" "gunbc-roadmap-tailnet-door.service active" \
+  "gunbc-roadmap-belt-discovery.service inactive" "gunbc-roadmap-belt-exit.service inactive" \
+  "gunbc-roadmap-belt-credential-recovery.service inactive" > "$RBEXP/units.active.before"
+{ cat "$RBEXP/units.active.before"; echo "gunbc-roadmap.service inactive"; } > "$TMP/dup.before"
+cp "$TMP/dup.before" "$RBEXP/units.active.before"
+: > "$CTL_STARTED"; OUT=$(PATH="$CTL:$SUDO:$SBIN:$PATH" RUNF "$RBEXP" 7A < "$TMP/leg.sh" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "D6: a unit recorded twice was accepted — the second record silently overwrites the first's state"
+echo "$OUT" | grep -qF 'recorded more than once' || fail "D6: the refusal did not name the duplicate: [$OUT]"
+[ ! -s "$CTL_STARTED" ] || fail "D6: it refused and started something anyway: $(tr '\n' ' ' < "$CTL_STARTED")"
+
+echo "--- D7: a word that is not a state systemd reports is refused ---"
+grep -vx 'gunbc-roadmap.service inactive' "$TMP/dup.before" \
+  | sed 's/^gunbc-roadmap.service active$/gunbc-roadmap.service running/' > "$TMP/state.before"
+cp "$TMP/state.before" "$RBEXP/units.active.before"
+: > "$CTL_STARTED"; OUT=$(PATH="$CTL:$SUDO:$SBIN:$PATH" RUNF "$RBEXP" 7A < "$TMP/leg.sh" 2>&1); RC=$?
+echo "$OUT" | sed 's/^/    /'
+[ "$RC" -ne 0 ] || fail "D7: [running] was accepted as a unit state — it is what `systemctl is-failed`-style output looks like, not an is-active answer"
+echo "$OUT" | grep -qF 'not a state systemd reports' || fail "D7: the refusal did not name the bad state: [$OUT]"
+[ ! -s "$CTL_STARTED" ] || fail "D7: it refused and started something anyway: $(tr '\n' ' ' < "$CTL_STARTED")"
 echo
 
 echo "================ PART E: the manifest arrives as DATA, not as shell ================"
@@ -476,5 +553,256 @@ fi
 CMD="$SAFE_CMD"
 echo
 
+echo "================ PART F: stopping the readers is a measured admission, not a printed hope ================"
+# Step 2 used to end in three lines of `# expect: inactive` comments. A comment is not an admission: an
+# unobserved stop leaves a reader answering from the old carrier for the whole migration window, and these are
+# SEPARATE operator-shell blocks, so the `set -euo pipefail` inside step 1's RUNF script never reaches them.
+fence_containing() { # the body of the ```bash fence whose text contains $1 — the runbook stays the authority
+  awk -v m="$1" '
+    /^```bash$/ { inf = 1; buf = ""; next }
+    inf && /^```$/ { if (index(buf, m) > 0) { printf "%s", buf; exit } inf = 0 }
+    inf { buf = buf $0 "\n" }' "$RB"
+}
+STOP_LEG=$(fence_containing 'STOP ADMITTED')
+[ -n "$STOP_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-2 block ending in STOP ADMITTED — refusing to invent one"; FAILURES=$((FAILURES+1)); HELPERS_MISSING=1; }
+if [ -z "$HELPERS_MISSING" ]; then
+  STCTL=$TMP/stctl; install -d -m 0755 "$STCTL"
+  cat > "$STCTL/systemctl" <<'EOF'
+#!/usr/bin/env bash
+# A state table, so "is-active" answers what the case CLAIMED rather than what the last case left behind.
+case "$1" in
+  is-active) shift
+             for u in "$@"; do s=$(awk -v u="$u" '$1==u{print $2}' "$CTL_STATE" | head -1); printf '%s\n' "${s:-inactive}"; done ;;
+  stop)      shift
+             for u in "$@"; do
+               if [ "$u" = "${STUB_STOP_FAIL:-}" ]; then echo "stub: $u refuses to stop" >&2; exit 1; fi
+               printf '%s\n' "$u" >> "$CTL_STOPPED"
+               # a unit that RESISTS the stop keeps its recorded state — that is what a stuck reader looks like,
+               # and it is the only way F2/F3 can ask the question without lying about the world
+               [ "$u" = "${STUB_STOP_KEEPS:-}" ] && continue
+               grep -vx "$u .*" "$CTL_STATE" > "$CTL_STATE.new" && mv "$CTL_STATE.new" "$CTL_STATE"
+               printf '%s inactive\n' "$u" >> "$CTL_STATE"
+             done ;;
+  reset-failed) : ;;
+  *) exit 0 ;;
+esac
+EOF
+  cat > "$STCTL/ps" <<'EOF'
+#!/usr/bin/env bash
+[ -n "${PS_OUT:-}" ] && printf '%s\n' "${PS_OUT:-}"
+exit 0
+EOF
+  chmod +x "$STCTL/systemctl" "$STCTL/ps"
+  export CTL_STOPPED=$TMP/stopped.log
+  all_inactive() { : > "$TMP/ctl.state"
+    for u in "${UNITS[@]}" gunbc-roadmap-belt-credential-recovery.timer; do printf '%s %s\n' "$u" "${1:-inactive}" >> "$TMP/ctl.state"; done; }
+  set_state() { awk -v u="$1" '$1!=u' "$TMP/ctl.state" > "$TMP/ctl.state.new" && mv "$TMP/ctl.state.new" "$TMP/ctl.state"
+                printf '%s %s\n' "$1" "$2" >> "$TMP/ctl.state"; }
+  run_stop() { # $1 = label; the rest are VAR=value overrides
+    local label="$1"; shift
+    : > "$CTL_STOPPED"; export CTL_STATE=$TMP/ctl.state
+    local out rc; out=$(env PATH="$STCTL:$SUDO:$SBIN:$PATH" "$@" bash "$TMP/stopleg.sh" 2>&1); rc=$?
+    echo "  [$label] rc=$rc"; echo "$out" | sed 's/^/    /'
+    LAST_OUT="$out"; LAST_RC=$rc
+  }
+  printf '%s\n' "$STOP_LEG" > "$TMP/stopleg.sh"
+
+  all_inactive; run_stop "every unit and the timer inactive, no process"
+  [ "$LAST_RC" -eq 0 ] || fail "F1: the stopped readers were ADMITTED as refused — the step-2 block cannot pass its own happy path"
+  echo "$LAST_OUT" | grep -qF 'STOP ADMITTED: 5 units and the timer report inactive' \
+    || fail "F1: no admission line was printed: [$LAST_OUT]"
+  [ "$(wc -l < "$CTL_STOPPED" | tr -d ' ')" = 6 ] \
+    || fail "F1: it stopped $(wc -l < "$CTL_STOPPED") unit(s), expected the five readers AND the timer"
+
+  all_inactive; set_state gunbc-roadmap-tailnet-door.service active
+  run_stop "one reader still active after the stop" STUB_STOP_KEEPS=gunbc-roadmap-tailnet-door.service
+  [ "$LAST_RC" -ne 0 ] || fail "F2: a reader still answering was admitted — this is the reported defect"
+  echo "$LAST_OUT" | grep -qF 'gunbc-roadmap-tailnet-door.service reports [active]' \
+    || fail "F2: the refusal did not name the reader still up: [$LAST_OUT]"
+
+  all_inactive; set_state gunbc-roadmap-belt-credential-recovery.timer active
+  run_stop "the timer still firing after the stop" STUB_STOP_KEEPS=gunbc-roadmap-belt-credential-recovery.timer
+  [ "$LAST_RC" -ne 0 ] || fail "F3: a timer still firing was admitted — the oneshots would write into the migration window"
+  echo "$LAST_OUT" | grep -qF 'gunbc-roadmap-belt-credential-recovery.timer reports [active]' \
+    || fail "F3: the refusal did not name the timer: [$LAST_OUT]"
+
+  all_inactive; run_stop "one stop command fails" STUB_STOP_FAIL=gunbc-roadmap-belt-exit.service
+  [ "$LAST_RC" -ne 0 ] || fail "F4: a failed stop was admitted"
+  echo "$LAST_OUT" | grep -qF 'gunbc-roadmap-belt-exit.service did not stop' \
+    || fail "F4: the refusal did not name the unit that refused to stop: [$LAST_OUT]"
+
+  all_inactive; run_stop "the timer refuses to be unloaded" STUB_STOP_FAIL=gunbc-roadmap-belt-credential-recovery.timer
+  [ "$LAST_RC" -ne 0 ] || fail "F5: a timer that could not be unloaded was admitted"
+  echo "$LAST_OUT" | grep -qF 'the belt-credential-recovery timer is still loaded' \
+    || fail "F5: the refusal did not name the timer: [$LAST_OUT]"
+
+  all_inactive; run_stop "a gunbc process is still running" PS_OUT="briansrls 4242 1 0 09:00 ? 00:00:01 /opt/gunbc/bin/gunbc serve"
+  [ "$LAST_RC" -ne 0 ] || fail "F6: a surviving gunbc process was admitted as stopped"
+  echo "$LAST_OUT" | grep -qF 'gunbc process(es) still running' \
+    || fail "F6: the refusal did not name the surviving process: [$LAST_OUT]"
+
+  # THE TWO ROSTERS MUST BE THE SAME FIVE. Step 1 measures; step 2 admits. Add a unit to one list and not the
+  # other and the migration runs with a reader nobody measured — a whole that no check can see.
+  EXP_FENCE=$(fence_containing 'units.active.before')
+  ROSTER_MEASURED=$(printf '%s\n' "$EXP_FENCE" | sed -n '/^UNITS=(/,/)/p' | tr -d '()"' | tr -s ' \' ' ' | tr ' ' '\n' | grep -E '^gunbc' | sort)
+  ROSTER_ADMITTED=$(printf '%s\n' "$STOP_LEG" | sed -n '/^READERS=(/,/)/p' | tr -d '()"' | tr -s ' \' ' ' | tr ' ' '\n' | grep -E '^gunbc' | sort)
+  if [ "$ROSTER_MEASURED" != "$ROSTER_ADMITTED" ]; then
+    fail "F7: step 1 measures [$(echo "$ROSTER_MEASURED" | tr '\n' ' ')] but step 2 admits [$(echo "$ROSTER_ADMITTED" | tr '\n' ' ')] — the export and the admission must be the same five"
+  else
+    echo "  [F7 the two rosters are the same five units] OK: $(echo "$ROSTER_ADMITTED" | tr '\n' ' ')"
+  fi
+fi
+echo
+
+echo "================ PART G: a refused append stops the migration; the input is counted before it ================"
+# The migration loops read a file and call the modeled CLI per line. Under a process substitution `set -e` cannot
+# see a dead producer, and a loop body that ignores status appends the rest anyway — so the block now prepares its
+# inputs with checked commands, counts them against the export, and aborts at the FIRST refusal. These cases are
+# failure injection: the stub gunbc refuses one append and the witness requires that nothing after it happened.
+MIG_LEG=$(fence_containing 'INPUT ADMITTED')
+[ -n "$MIG_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-3 block containing INPUT ADMITTED — refusing to invent one"; FAILURES=$((FAILURES+1)); }
+RET_LEG=$(fence_containing 'did not take its retirement')
+[ -n "$RET_LEG" ] || { echo "WITNESS REFUSED: the runbook has no step-4 block that refuses a retirement — refusing to invent one"; FAILURES=$((FAILURES+1)); }
+if [ -n "$MIG_LEG" ] && [ -n "$RET_LEG" ]; then
+  load_from_runbook_t RUNE 'RUNE() { local envs=() k; for k in "$@"; do envs+=(--setenv="$k"); done' 'sudo systemd-run'
+  # the legs run in a CHILD bash, which has no business inventing the runbook's helpers: RUNE is handed
+  # down the way bash passes functions, so what executes is the runbook's own RUNE or nothing.
+  export -f RUNE
+  GEXP=$TMP/migrate-export; install -d -m 0755 "$GEXP/fabric/storage"
+  GTREE=$TMP/release-tree; install -d -m 0755 "$GTREE"
+  GB=$TMP/gb; install -d -m 0755 "$GB"
+  cat > "$GB/gunbc" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$APPEND_LOG"
+n=$(wc -l < "$APPEND_LOG" | tr -d ' ')
+if [ -n "${STUB_FAIL_ON:-}" ] && [ "$n" -eq "$STUB_FAIL_ON" ]; then
+  echo "stub gunbc: this receipt is refused by the modeled CLI (append $n)" >&2; exit 1
+fi
+exit 0
+EOF
+  chmod +x "$GB/gunbc"
+  seed_export() { # 17 acceptances + 1 revocation, the fabric tail empty, unless $1 says otherwise
+    rm -f "$GEXP"/fabric/storage/*; : > "$GEXP/migrate.acceptance.lines"
+    : > "$GEXP/seed.jsonl"
+    for i in $(seq 1 "${1:-17}"); do
+      printf '%s\n' "{\"kind\":\"acceptance_recorded\",\"node\":\"roadmap-node-$i\",\"pr_url\":\"https://github.com/gunb-ai/gunbc/pull/16$i\",\"merged_at\":\"2026-11-0${i: -1}T09:00:00Z\",\"head_sha\":\"$(printf 'a%.0s' $(seq 1 40))\",\"author\":\"principal:google-oidc/accounts/116084671989231734979\"}" >> "$GEXP/seed.jsonl"
+    done
+    printf '%s\n' '{"kind":"acceptance_revoked","node":"roadmap-node-9","reason":"operator revoked: it was the customer'"'"'s own row, not ours","author":"principal:google-oidc/accounts/116084671989231734979"}' >> "$GEXP/seed.jsonl"
+    printf '0\n' > "$GEXP/fabric/acceptance.count"
+    printf '18\n' > "$GEXP/seed.count"   # what step 1 measured; it does not move when a later edit changes the file
+    [ "${2:-}" = withfabric ] || return 0
+    printf '%s\n' 'fabric_storage.object;1731000000:{"payload":{"line":"roadmap-operator-acceptance;roadmap-node-18;https://github.com/gunb-ai/gunbc/pull/16200;2026-11-07T09:00:00Z;ffffffffffffffffffffffffffffffffffffffff"}}' \
+      > "$GEXP/fabric/storage/obj-18"
+    printf '1\n' > "$GEXP/fabric/acceptance.count"
+  }
+  run_migrate() { local label="$1"; shift
+    : > "$TMP/appends.log"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
+    local out rc; out=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+      OPERATOR='principal:google-oidc/accounts/116084671989231734979' "$@" bash "$TMP/migleg.sh" 2>&1); rc=$?
+    echo "  [$label] rc=$rc appends=$(wc -l < "$APPEND_LOG" | tr -d ' ')"; echo "$out" | sed 's/^/    /'
+    LAST_OUT="$out"; LAST_RC=$rc; LAST_APPENDS=$(wc -l < "$APPEND_LOG" | tr -d ' ')
+  }
+  printf '%s\n' "$MIG_LEG" > "$TMP/migleg.sh"
+  printf '%s\n' "$RET_LEG" > "$TMP/retleg.sh"
+
+  seed_export; run_migrate "the export as measured: 17 seed acceptances, empty fabric tail"
+  [ "$LAST_RC" -eq 0 ] || fail "G1: the migration refused a correct export: [$LAST_OUT]"
+  [ "$LAST_APPENDS" = 18 ] || fail "G1: $LAST_APPENDS appends reached the CLI, expected 17 acceptances + 1 revocation"
+  echo "$LAST_OUT" | grep -qF 'INPUT ADMITTED: 17 acceptance lines (17 from the seed, 0 from the fabric tail) and 1 revocation' \
+    || fail "G1: the input was not admitted by name and number: [$LAST_OUT]"
+  [ "$(grep -c roadmap_acceptance_record_cli "$APPEND_LOG")" = 17 ] || fail "G1: not every acceptance went through roadmap_acceptance_record_cli"
+  [ "$(grep -c roadmap_acceptance_revoke_cli "$APPEND_LOG")" = 1 ] || fail "G1: the revocation did not go through roadmap_acceptance_revoke_cli"
+
+  seed_export; run_migrate "the third append is refused by the modeled CLI" STUB_FAIL_ON=3
+  [ "$LAST_RC" -ne 0 ] || fail "G2: an append that was refused did not stop the migration — this is the reported defect"
+  echo "$LAST_OUT" | grep -qF 'MIGRATION REFUSED: acceptance 3 of 17' \
+    || fail "G2: the refusal did not say WHICH append failed: [$LAST_OUT]"
+  [ "$LAST_APPENDS" = 3 ] || fail "G2: it kept appending after the refusal — $LAST_APPENDS appends, expected the run to stop at 3"
+
+  seed_export 16; run_migrate "the seed carries 16 acceptances where the export says 17"
+  [ "$LAST_RC" -ne 0 ] || fail "G3: an input cut short was accepted; the migration would have appended 16 and reported success"
+  echo "$LAST_OUT" | grep -qF 'the file changed after step 1' \
+    || fail "G3: the refusal did not name the short input: [$LAST_OUT]"
+  [ "$LAST_APPENDS" = 0 ] || fail "G3: it appended $LAST_APPENDS receipt(s) although the input failed admission"
+
+  seed_export 17 withfabric
+  printf '%s\n' 'fabric_storage.object;1731000001:{"payload":{"note":"roadmap-operator-acceptance recorded here lost its line field"}}' > "$GEXP/fabric/storage/obj-19"
+  printf '2\n' > "$GEXP/fabric/acceptance.count"
+  run_migrate "a fabric object carries no payload.line"
+  [ "$LAST_RC" -ne 0 ] || fail "G4: a fabric object with no payload.line was accepted as a receipt"
+  echo "$LAST_OUT" | grep -qF 'does not carry a payload.line' || fail "G4: the refusal did not name the malformed object: [$LAST_OUT]"
+  [ "$LAST_APPENDS" = 0 ] || fail "G4: it appended $LAST_APPENDS receipt(s) although the fabric tail failed admission"
+
+  # the count is taken from the export file, so the extra revocation is added the way an operator would: in the seed
+  seed_export 16
+  printf '%s\n' '{"kind":"acceptance_revoked","node":"roadmap-node-11","reason":"second","author":"principal:x"}' >> "$GEXP/seed.jsonl"
+  run_migrate "the seed carries two revocations"
+  [ "$LAST_RC" -ne 0 ] || fail "G5: a second revocation was accepted without admission"
+  echo "$LAST_OUT" | grep -qF 'exactly one revocation' || fail "G5: the refusal did not name the revocation count: [$LAST_OUT]"
+
+  # STEP 4 CANNOT RUN ON A HALF-MIGRATED HISTORY — its precondition is step 3's admission files, not a memory.
+  seed_export; : > "$GEXP/migrate.acceptance.lines"; export APPEND_LOG=$TMP/appends.log ARGV_FILE=$TMP/gargv ENV_FILE=$TMP/genv
+  : > "$TMP/appends.log"
+  OUT=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+    OPERATOR='principal:google-oidc/accounts/116084671989231734979' bash "$TMP/retleg.sh" 2>&1); RC=$?
+  echo "  [step 4 with step 3's admission file missing] rc=$RC"; echo "$OUT" | sed 's/^/    /'
+  [ "$RC" -ne 0 ] || fail "G6: the retirements ran although step 3 never admitted its input"
+  echo "$OUT" | grep -qF 'did not admit its input' || fail "G6: the refusal did not name step 3's admission: [$OUT]"
+  [ ! -s "$APPEND_LOG" ] || fail "G6: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+
+  seed_export; printf 'x\n' > "$GEXP/migrate.acceptance.lines"; : > "$GEXP/migrate.revocation.lines"
+  : > "$TMP/appends.log"
+  OUT=$(env PATH="$GB:$REC:$SUDO:$SBIN:$PATH" D="$GEXP" BIN="$GB/gunbc" TREE="$GTREE" \
+    OPERATOR='principal:google-oidc/accounts/116084671989231734979' bash "$TMP/retleg.sh" 2>&1); RC=$?
+  [ "$RC" -ne 0 ] || fail "G7: the retirements ran with an empty revocation file"
+  [ ! -s "$APPEND_LOG" ] || fail "G7: it retired something: $(wc -l < "$APPEND_LOG") append(s)"
+fi
+echo
+
+echo "================ PART H: the cases this file declares are the model's rows, joined both ways ================"
+# The model lists what has to be witnessed; this file runs it. Until now nothing connected the two lists, so a
+# model row could promise a case no script runs, and a case could run that the model never authorised. The row
+# names are the join key and they are READ from the model, never retyped here; and a refusing row is satisfied
+# only if its promised diagnostic actually appears in this file or in the runbook — a promise has to be kept in
+# text that executes, not only written down above.
+SELF_H=${BASH_SOURCE[0]:-$0}
+model_case_rows() { # name|must|refusal_text for every gunbc.witness.roadmap_cutover case row of carrier runbook_witness_carrier
+  awk -v car="runbook_witness_carrier" '
+    /^[[:space:]]*name:/         { n = $0; sub(/^[^"]*"/, "", n); sub(/".*/, "", n) }
+    /^[[:space:]]*carrier:/      { c = $0; sub(/^[^:]*:[[:space:]]*/, "", c); sub(/[[:space:]]*$/, "", c) }
+    /^[[:space:]]*must:/         { m = $0; sub(/^[^"]*"/, "", m); sub(/".*/, "", m) }
+    /^[[:space:]]*refusal_text:/ { r = $0; sub(/^[^"]*"/, "", r); sub(/".*/, "", r)
+                                   if (c == car) printf "%s|%s|%s\n", n, m, r }' "$MODEL"
+}
+declared_cases() { awk '/^# CASES IMPLEMENTED HERE/ {on=1; next}
+                       on { if ($0 ~ /^#   [a-z0-9_]+$/) { sub(/^#   /, ""); print; next }
+                            if ($0 ~ /^#/) next   # prose between the header and the names is skipped, not fatal
+                            exit }' "$SELF_H"
+}
+ROWS=$(model_case_rows)
+DECL=$(declared_cases)
+[ -n "$ROWS" ] || fail "the join is empty: not one case row could be read from [$MODEL] — an empty read must not pass"
+[ -n "$DECL" ] || fail "the join is empty: this file declares no cases at all"
+while IFS='|' read -r n m r; do
+  [ -n "$n" ] || continue
+  printf '%s\n' "$DECL" | grep -qx -- "$n" \
+    || fail "the model demands case [$n] of this carrier and this file does not declare it"
+  if [ "$m" = refuse ]; then
+    [ -n "$r" ] || fail "refusing case [$n] promises no diagnostic"
+    grep -qF -- "$r" "$SELF_H" || grep -qF -- "$r" "$RB" \
+      || fail "case [$n] promises the diagnostic [$r] and neither this witness nor the runbook prints it"
+  elif [ "$m" = admit ]; then
+    [ -z "$r" ] || fail "admitting case [$n] carries a refusal string — which is it?"
+  else
+    fail "case [$n] has must: [$m], which is neither admit nor refuse"
+  fi
+done <<<"$ROWS"
+while read -r n; do
+  [ -n "$n" ] || continue
+  printf '%s\n' "$ROWS" | cut -d'|' -f1 | grep -qx -- "$n" \
+    || fail "this file declares case [$n], which the model has never heard of"
+done <<<"$DECL"
+echo "model rows for this carrier: $(printf '%s\n' "$ROWS" | grep -c .)   declared here: $(printf '%s\n' "$DECL" | grep -c .)"
+echo
 if [ "$FAILURES" -eq 0 ]; then echo "ALL ASSERTIONS HOLD"; else echo "$FAILURES ASSERTION(S) FAILED"; fi
 exit "$FAILURES"

@@ -232,18 +232,30 @@ The operator ruled (relayed 2026-11-10): all five roadmap units move together to
 a tick cannot fire into the window:
 
 ```bash
-sudo systemctl stop gunbc-roadmap-belt-credential-recovery.timer
-sudo systemctl stop gunbc-roadmap.service \
-                    gunbc-roadmap-tailnet-door.service \
-                    gunbc-roadmap-belt-discovery.service \
-                    gunbc-roadmap-belt-exit.service \
-                    gunbc-roadmap-belt-credential-recovery.service
+set -euo pipefail
+# THE SAME FIVE THIS CUTOVER OWNS — spelled identically to UNITS in step 1's export (tools/
+# roadmap_cutover_runbook_witness.sh PART G refuses the two spellings apart), plus the timer that drives two
+# of the oneshots. A roster here that differs from the exported one means a reader was never measured.
+READERS=(gunbc-roadmap.service gunbc-roadmap-tailnet-door.service gunbc-roadmap-belt-discovery.service \
+         gunbc-roadmap-belt-exit.service gunbc-roadmap-belt-credential-recovery.service)
+TIMER=gunbc-roadmap-belt-credential-recovery.timer
+# EVERY ACT IS CHECKED, AND THE STOP IS ADMITTED BY MEASUREMENT — the old block printed "expect: inactive"
+# and moved on, which is how an unobserved stop leaves a reader serving the old code through the whole
+# migration window. Timer first, so a tick cannot fire into the window.
+sudo systemctl stop "$TIMER" || { echo "STOP REFUSED: the belt-credential-recovery timer is still loaded"; exit 1; }
+for U in "${READERS[@]}"; do
+  sudo systemctl stop "$U" || { echo "STOP REFUSED: $U did not stop"; exit 1; }
+done
 # two of the belt oneshots are in `failed` state today; clear that so a later start is not refused
-sudo systemctl reset-failed gunbc-roadmap-belt-exit.service \
-                            gunbc-roadmap-belt-credential-recovery.service
-systemctl is-active gunbc-roadmap.service gunbc-roadmap-tailnet-door.service   # expect: inactive, inactive
-systemctl is-active gunbc-roadmap-belt-credential-recovery.timer               # expect: inactive
-ps -ef | grep -c "[/]opt/gunbc/bin/gunbc"                                       # expect: 0 while stopped
+sudo systemctl reset-failed gunbc-roadmap-belt-exit.service gunbc-roadmap-belt-credential-recovery.service \
+  || { echo "STOP REFUSED: the failed state could not be cleared"; exit 1; }
+for U in "${READERS[@]}" "$TIMER"; do
+  ST=$(systemctl is-active "$U" 2>/dev/null || true)
+  [ "$ST" = inactive ] || { echo "STOP REFUSED: $U reports [$ST], not inactive — no migration write may follow"; exit 1; }
+done
+LIVE=$(ps -ef | grep -c "[/]opt/gunbc/bin/gunbc" || true)
+[ "${LIVE:-0}" -eq 0 ] || { echo "STOP REFUSED: $LIVE gunbc process(es) still running"; exit 1; }
+echo "STOP ADMITTED: ${#READERS[@]} units and the timer report inactive, no gunbc process remains"
 ```
 
 Nothing else on srv1 reads this carrier; the enumeration, with each unit file, is under "Who else reads
@@ -301,32 +313,75 @@ values is what makes it migratable; the verifier then requires its reason, revok
 byte for byte.
 
 ```bash
+set -euo pipefail
 cd $TREE
+: "${D:?MIGRATION REFUSED: EXPORT_DIR is not set — run step 1 and use the path it echoed}"
+: "${OPERATOR:?MIGRATION REFUSED: the author is part of the fact; an empty author is a wrong fact}"
 
-# 17 acceptances, in their recorded order: fabric tail lines first (empty in practice today), then the
-# seed's acceptance lines. The three pull-request arguments are empty BECAUSE THE FACT IS ABSENT — the
-# seed recorded no pull request for any of them (see above); the route refuses a half-filled triple, an
-# empty string where a value was recorded, and any absence dated on or after 2026-11-01.
+# INPUT PREPARATION IS ITS OWN CHECKED STEP, NOT A PROCESS SUBSTITUTION. `< <( … )` hides every failure from
+# `set -e`: a dead `sudo`, a jq error, or a missing seed line would simply produce fewer lines, the loop would
+# append what it got, and the block would report a migration that migrated LESS THAN THE EXPORT. So the inputs
+# are written to files by checked commands and their counts are admitted against the export BEFORE any append.
+sudo grep -rl 'roadmap-operator-acceptance' $D/fabric/storage > "$D/migrate.fabric.objects" 2>/dev/null || true
+: > "$D/migrate.acceptance.lines"
+while read -r o; do
+  sudo sed 's/^fabric_storage\.object;[0-9]*://' "$o" | jq -er '.payload.line' >> "$D/migrate.acceptance.lines" \
+    || { echo "MIGRATION REFUSED: $o does not carry a payload.line — the fabric tail is not what the export measured"; exit 1; }
+done < "$D/migrate.fabric.objects"
+grep acceptance_recorded "$D/seed.jsonl" > "$D/migrate.seed.acceptance"
+cat "$D/migrate.seed.acceptance" >> "$D/migrate.acceptance.lines"
+grep acceptance_revoked  "$D/seed.jsonl" > "$D/migrate.revocation.lines"
+
+NFB=$(tr -dc '0-9' < "$D/fabric/acceptance.count" 2>/dev/null) \
+  || { echo "MIGRATION REFUSED: the export carries no fabric/acceptance.count — step 1 never measured the fabric tail"; exit 1; }
+NFB=${NFB:-0}
+NSEED_EXPORT=$(tr -dc '0-9' < "$D/seed.count" 2>/dev/null) \
+  || { echo "MIGRATION REFUSED: the export carries no seed.count — step 1 never counted the seed"; exit 1; }
+NSEED=$(wc -l < "$D/seed.jsonl"); NSEED=${NSEED:-0}
+# The seed the digest admitted in step 1 must still be the seed step 1 COUNTED. A file edited, truncated or
+# half-written after the export is not the evidence the export describes, and the count below would otherwise
+# quietly derive its own expectation from it.
+[ "$NSEED" = "$NSEED_EXPORT" ] \
+  || { echo "MIGRATION REFUSED: the seed holds $NSEED lines where the export measured $NSEED_EXPORT — the file changed after step 1"; exit 1; }
+NREV=$(wc -l < "$D/migrate.revocation.lines"); NREV=${NREV:-0}
+NFAB=$(wc -l < "$D/migrate.acceptance.lines"); NFAB=${NFAB:-0}
+# The expected acceptance count is DERIVED from what step 1 measured (seed lines minus revocations) plus the
+# fabric tail the export counted — never copied from this document, so it cannot drift out of date here.
+EXPECT=$(( NSEED - NREV + NFB ))
+[ "$NFAB" -eq "$EXPECT" ] \
+  || { echo "MIGRATION REFUSED: $NFAB acceptance lines prepared, the export says $EXPECT — the input was cut short; nothing is appended"; exit 1; }
+[ "$NREV" -eq 1 ] \
+  || { echo "MIGRATION REFUSED: the seed must carry exactly one revocation, found $NREV; nothing is appended"; exit 1; }
+echo "INPUT ADMITTED: $NFAB acceptance lines ($(( NSEED - NREV )) from the seed, $NFB from the fabric tail) and $NREV revocation"
+
+# EACH APPEND IS AN ADMITTED STEP, NOT A LINE IN A LOOP: the first refusal aborts the block, so no later
+# receipt is appended and step 4's retirements cannot run on top of a half-migrated history. Each append
+# prints its own located refusal (roadmap_acceptance_line_of refuses; it never guesses a node or a receipt).
+I=0
 while IFS= read -r LINE; do
+  I=$((I + 1))
   CMD="$BIN run --source-root dag --source-root src/v2 \
     --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_acceptance_record_cli \
     --arg repo_root=/opt/gunbc/gunbc --arg receipt_line=\"\$RECEIPT_LINE\" \
     --arg pr_url= --arg merged_at= --arg head_sha= \
-    --arg author='$OPERATOR'"
-  RUNE "RECEIPT_LINE=$LINE"
-done < <( { sudo grep -rl 'roadmap-operator-acceptance' $D/fabric/storage 2>/dev/null | while read -r o; do
-             sudo sed 's/^fabric_storage\.object;[0-9]*://' "$o"
-           done | jq -r '.payload.line'; }
-           grep acceptance_recorded $D/seed.jsonl )
+    --arg author=\"\$OPERATOR\""
+  RUNE "RECEIPT_LINE=$LINE" "OPERATOR=$OPERATOR" \
+    || { echo "MIGRATION REFUSED: acceptance $I of $NFAB did not append — no further appends, and step 4 must not run"; exit 1; }
+  echo "appended acceptance $I/$NFAB"
+done < "$D/migrate.acceptance.lines"
 
 # then the revocations, in recorded order, after the acceptance they name is live:
+J=0
 while IFS= read -r LINE; do
+  J=$((J + 1))
   CMD="$BIN run --source-root dag --source-root src/v2 \
     --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_acceptance_revoke_cli \
     --arg repo_root=/opt/gunbc/gunbc --arg revocation_line=\"\$REVOCATION_LINE\" \
-    --arg author='$OPERATOR'"
-  RUNE "REVOCATION_LINE=$LINE"
-done < <(grep acceptance_revoked $D/seed.jsonl)
+    --arg author=\"\$OPERATOR\""
+  RUNE "REVOCATION_LINE=$LINE" "OPERATOR=$OPERATOR" \
+    || { echo "MIGRATION REFUSED: revocation $J of $NREV did not append — no further appends, and step 4 must not run"; exit 1; }
+  echo "appended revocation $J/$NREV"
+done < "$D/migrate.revocation.lines"
 ```
 
 Each append prints its own refusal, verbatim and located, if the line is not spelled exactly as the
@@ -360,13 +415,28 @@ are the identities printed by step 4, read out of the carrier through the produc
 ## 4. Then the two retirements (step 1(a)) — the retirement is the newest fact, so it goes last — row `migrate-retired`
 
 ```bash
+set -euo pipefail
 cd $TREE
+: "${D:?RETIREMENT REFUSED: EXPORT_DIR is not set — the step-3 admission files are the precondition for this block}"
+: "${OPERATOR:?RETIREMENT REFUSED: the author is part of the fact; an empty author is a wrong fact}"
+# step 3's admission is a PRECONDITION, checked here rather than trusted: its line files are what prove every
+# acceptance reached the carrier before the retirement became the newest fact on any node.
+[ -s "$D/migrate.acceptance.lines" ] \
+  || { echo "RETIREMENT REFUSED: $D/migrate.acceptance.lines is missing or empty — step 3 did not admit its input"; exit 1; }
+[ -s "$D/migrate.revocation.lines" ] \
+  || { echo "RETIREMENT REFUSED: $D/migrate.revocation.lines is missing or empty — step 3 did not admit its input"; exit 1; }
+
+# THE RETIREMENT TEXT AND AUTHOR TRAVEL AS ENVIRONMENT DATA, never spliced into the command string. The first
+# refusal aborts the loop: a half-retired floor is not a retired floor, and step 5 must not be told otherwise.
+RETIRED_TEXT='The floor cut retired this work; its remaining cost lives on its successor.'
 for NODE in entry-graph-union-construction shell-dag-floor-peak-calibration-rows; do
-  RUN "$BIN run --source-root dag --source-root src/v2 \
+  CMD="$BIN run --source-root dag --source-root src/v2 \
     --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_record_cli \
-    --arg repo_root=/opt/gunbc/gunbc --arg node=$NODE --arg kind=retire \
-    --arg text='The floor cut retired this work; its remaining cost lives on its successor.' \
-    --arg author=$OPERATOR"
+    --arg repo_root=/opt/gunbc/gunbc --arg node=\"\$NODE\" --arg kind=retire \
+    --arg text=\"\$RETIRED_TEXT\" --arg author=\"\$OPERATOR\""
+  RUNE "NODE=$NODE" "RETIRED_TEXT=$RETIRED_TEXT" "OPERATOR=$OPERATOR" \
+    || { echo "RETIREMENT REFUSED: $NODE did not take its retirement — no further retirement, and step 5 must not run"; exit 1; }
+  echo "retired $NODE"
 done
 ```
 
@@ -530,6 +600,9 @@ RUNE "EXPECTED_MANIFEST=$MANIFEST" "EXPECTED_ROSTER=$ROSTER" >> "$D/read-back.dr
 # deploy) is retired; the CI dashboard_deploy transaction is the ONE deploy path … Nothing was mutated."
 REPO=gunb-ai/gunbc
 TAG="t6-cutover-$SHA"
+# The exclusive-dispatch fence. A FIXED path, not $TMPDIR: two operator shells have to contend on the same file
+# for the fence to be a fence. Held across check → dispatch → watch by dispatch_stage, released on success.
+STAGE_LOCK=/tmp/gunbc-t6-cutover-dispatch.lock
 git -C /opt/gunbc/gunbc rev-parse --verify "${SHA}^{commit}" >/dev/null
 git -C /opt/gunbc/gunbc tag -f "$TAG" "$SHA"
 git -C /opt/gunbc/gunbc push -f origin "refs/tags/$TAG"
@@ -547,6 +620,15 @@ echo "PINNED REF tag=$TAG resolves=$RESOLVED"
 dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are extra -f inputs
   local want="$1"; shift
   local raw live before run tries got_mode got_sha new nnew
+  # AN EXCLUSIVE-DISPATCH BOUNDARY THAT IS ONE. The in-flight check and the dispatch are two GitHub calls, so a
+  # second operator shell on this host can slip between them and both pass the check. The fence below is held
+  # across the whole of check → dispatch → watch, so the second shell refuses AT THE FENCE instead of racing.
+  # `flock -n` REFUSES rather than queueing — queueing would dispatch the instant the first concluded, which is
+  # the second run being prevented. A dispatch from ANOTHER host cannot take this fence; it is answered by the
+  # poll's uniqueness refusal below, where two new runs is a refusal and never a pick-one.
+  : "${STAGE_LOCK:?NO DEPLOY: STAGE_LOCK is unset; the exclusive-dispatch fence would have no path}"
+  exec 9>"$STAGE_LOCK"
+  flock -n 9 || { echo "NO DEPLOY: another dispatch for this cutover holds $STAGE_LOCK on this host; refusing to dispatch a second run"; exit 1; }
   # THE SNAPSHOT IS FAIL-CLOSED, AND IT IS NOT A PIPELINE. `before=$(gh … | sort -u | tr …)` reports the status of
   # TR, which is zero when the GitHub call failed: an empty "before" then makes EVERY pre-existing run at this
   # revision look new, and the poll below adopts somebody else's run — with mode and head_sha both agreeing,
@@ -560,12 +642,23 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
   # queued or in progress is a dispatch this runbook did not make; from that moment the poll cannot tell its run
   # from ours, which is precisely the misidentification being refused. Two dispatches at one revision are refused
   # rather than untangled after the fact.
-  if ! live=$(gh run list --repo "$REPO" --workflow fleet-converge.yml --limit 50 --status queued --status in_progress \
-                --json headSha,event \
-                -q "[.[] | select(.headSha==\"$SHA\" and .event==\"workflow_dispatch\") | .databaseId] | length"); then
+  # ONE QUERY, NO --status FLAGS. gh documents --status as a single string-valued filter, so passing it twice
+  # does not establish that both populations were examined; and queued+in_progress alone leave out a run sitting
+  # in requested, waiting, pending or action_required — every one of which is still coming, and would be adopted
+  # by the poll below as though this invocation had made it. The population is therefore named IN the query.
+  if ! live=$(gh run list --repo "$REPO" --workflow fleet-converge.yml --limit 50 \
+                --json databaseId,headSha,event,status \
+                -q "[.[] | select(.event==\"workflow_dispatch\" and .headSha==\"$SHA\"
+                      and (.status==\"queued\" or .status==\"in_progress\" or .status==\"requested\"
+                           or .status==\"waiting\" or .status==\"pending\" or .status==\"action_required\"))
+                    | .databaseId] | length"); then
     echo "NO DEPLOY: the in-flight check for mode=$want failed; refusing to dispatch"; exit 1; fi
-  [ "${live:-0}" = 0 ] || { echo "NO DEPLOY: $live workflow_dispatch run(s) at $SHA are queued or in progress; refusing to dispatch beside a run this runbook did not create"; exit 1; }
-  gh workflow run fleet-converge.yml --repo "$REPO" --ref "$TAG" -f host=srv1 -f mode="$want" "$@"
+  [ "${live:-0}" = 0 ] || { echo "NO DEPLOY: $live workflow_dispatch run(s) at $SHA are in a nonterminal state (queued, requested, waiting, pending, in_progress or action_required); refusing to dispatch beside a run this runbook did not create"; exit 1; }
+  # THE DISPATCH ITSELF IS CHECKED. A gh that fails here dispatched NOTHING; polling on would find somebody
+  # else's run at this revision and mode — head_sha and mode both agreeing, because it really is that revision
+  # and that mode — and record it as this stage's run.
+  gh workflow run fleet-converge.yml --repo "$REPO" --ref "$TAG" -f host=srv1 -f mode="$want" "$@" \
+    || { echo "NO DEPLOY: gh workflow run failed for mode=$want; nothing was dispatched, so no run is adopted"; exit 1; }
   run=''; tries=0
   while true; do
     tries=$((tries + 1))
@@ -592,6 +685,7 @@ dispatch_stage() {   # $1 = the mode this stage must declare; remaining args are
   gh run watch "$run" --repo "$REPO" --exit-status \
     || { echo "NO DEPLOY: the $want run ($run) did not complete successfully"; exit 1; }
   STAGE_RUN="$run"
+  exec 9>&-   # the transaction is closed and positively identified; the next stage may take the fence
   echo "STAGE $want run=$STAGE_RUN mode=$got_mode revision=$got_sha"
 }
 
@@ -834,20 +928,27 @@ if [ "$DISPOSITION" = 7B ]; then
   echo 'ROLLBACK 7B: re-enter step 5b — the modeled deploy is the only route that emits the unit definitions it starts.'
   echo 'Nothing was started here.'
 else
-  # THE EXPORT IS READ AS DATA, TWICE: once to admit it, once to act on it. A line naming a unit that is not one of
-  # the five this cutover owns is not ours to start, and a roster unit with no recorded line is a unit whose state
-  # nobody knows — guessing "was down" there is how a reader stays silently off after a rollback.
+  # No file, or an empty one, is no measurement at all: restoring "nothing" from an export that was never
+  # written is exactly how readers stay down while the runbook prints a completion line.
   [ -s "$D/units.active.before" ] \
     || { echo "ROLLBACK REFUSED: $D/units.active.before is missing or empty — no measurement of what was running"; exit 1; }
-  while read -r U STATE; do
-    case " ${UNITS[*]} " in *" $U "*) ;; *)
-      echo "ROLLBACK REFUSED: [$U] is not in the admitted five-unit roster — nothing is started"; exit 1;; esac
-    [ -n "$STATE" ] || { echo "ROLLBACK REFUSED: the line for [$U] records no state — nothing is started"; exit 1; }
-  done < "$D/units.active.before"
-  for U in "${UNITS[@]}"; do
-    grep -q "^$U " "$D/units.active.before" \
-      || { echo "ROLLBACK REFUSED: the export has no line for $U; refusing to guess whether it was running"; exit 1; }
-  done
+  # THE EXPORT IS ADMITTED AS AN INVENTORY BEFORE ANYTHING IS STARTED. Not merely "two nonempty words":
+  # `read -r U STATE` accepts `gunbc-roadmap.service gunbc-roadmap.service active` and binds STATE to
+  # "gunbc-roadmap.service active", which is not "active" — so the malformed inventory was silently read as
+  # "nothing to restore", the same silent-nonrestoration failure the whole of 7A exists to prevent, arriving
+  # through the input instead of the loop. So: exactly two fields per record, the second one a state systemd
+  # actually reports, the first one an admitted unit, one record per unit, and every admitted unit present.
+  # (PART D of tools/roadmap_cutover_runbook_witness.sh refuses this input and every other shape defect here.)
+  awk -v roster="${UNITS[*]}" '
+    BEGIN { n = split(roster, r, " "); for (i = 1; i <= n; i++) want[r[i]] = 0 }
+    NF != 2 { print "  line " NR ": expected exactly two fields (unit state), found " NF; bad = 1; next }
+    $2 !~ /^(active|inactive|failed|activating|deactivating|reloading|maintenance)$/ {
+      print "  line " NR ": state [" $2 "] is not a state systemd reports"; bad = 1 }
+    !($1 in want) { print "  line " NR ": unit [" $1 "] is not in the admitted five-unit roster"; bad = 1 }
+    ($1 in want) && want[$1]++ { print "  line " NR ": unit [" $1 "] is recorded more than once"; bad = 1 }
+    END { for (u in want) if (want[u] == 0) { print "  the export has no line for " u "; refusing to guess whether it was running"; bad = 1 }
+          exit (bad ? 1 : 0) }' "$D/units.active.before" \
+    || { echo "ROLLBACK REFUSED: $D/units.active.before is not a valid inventory — nothing is started"; exit 1; }
   RESTORED=0
   while read -r U STATE; do
     [ "$STATE" = active ] || continue
@@ -882,7 +983,8 @@ A runbook is executable text: a shifted argument, a variable expanded in the wro
 prints, or a rollback that restarts nothing are defects CI cannot see, because no CI job runs this file. Two
 witnesses live beside it, and they extract the helpers, guard blocks, the rollback's restore leg and
 `dispatch_stage` FROM THIS FILE at run time (asserting byte-identity as they go), so they cannot drift into
-testing a paraphrase:
+testing a paraphrase. Parts A-E cover argument delivery, the drop-in round trip, the model/heading join, the
+rollback and the read-back; PART F is the stop of the readers and PART G the migration loops:
 
 ```bash
 bash tools/roadmap_cutover_runbook_witness.sh  docs/runbooks/roadmap-event-log-cutover.md
@@ -895,7 +997,6 @@ Nothing in them touches a real system: `sudo` becomes a function that strips the
 assertion — the exit status AND the diagnostic are required, and a case that disagrees with its own expectation
 fails the witness. They are run before the migration is authorized, not after it fails. Their output at this
 revision, verbatim:
-
 ### A — argument delivery through the actual helper invocation
 
 ```text
@@ -918,7 +1019,6 @@ revision, verbatim:
 
 A6 is the assertion about the assertions: the whole witness is re-run against a copy of this file whose step-1
 argument guard has been neutralised, and the witness must fail. If it did not, the A-series would be narration.
-
 ### B — the drop-in round trip, pre-existing AND deployment-added
 
 ```text
@@ -933,7 +1033,7 @@ ROLLBACK REFUSED: an unsatisfied predicate — nothing is started
 ROUND TRIP OK: every unit's drop-in directory returned to its own path, byte-identical; the
                deployment-added one is gone; the pre-cutover ones (on both units) are back.
 ```
-### C — the modelled steps and this book's headings are the same nine steps
+### C — the modelled steps and this book’s headings are the same nine steps
 
 ```text
 ================ PART C: the runbook's headings and the model's rows join both ways ================
@@ -949,23 +1049,44 @@ C1 OK: every modelled step is cited by exactly one heading, and every citation n
     ROLLBACK 7A COMPLETE — DEGRADED: the old reader cannot decode the three retired events already on
     origin, so the page still answers 503 until a build that decodes them is deployed. Report it as such.
 --- D2: the export names a unit this cutover does not own — refuse, and start nothing ---
-    ROLLBACK REFUSED: [not-our-unit.service] is not in the admitted five-unit roster — nothing is started
+      line 2: unit [not-our-unit.service] is not in the admitted five-unit roster
+      the export has no line for gunbc-roadmap-belt-discovery.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap-tailnet-door.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap-belt-credential-recovery.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap-belt-exit.service; refusing to guess whether it was running
+    ROLLBACK REFUSED: $TMP/rollback-export/units.active.before is not a valid inventory — nothing is started
 --- D3: a roster unit has no line in the export — refusing to guess that it was down ---
-    ROLLBACK REFUSED: the export has no line for gunbc-roadmap-belt-credential-recovery.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap-belt-credential-recovery.service; refusing to guess whether it was running
+    ROLLBACK REFUSED: $TMP/rollback-export/units.active.before is not a valid inventory — nothing is started
 --- D4: an empty export — no measurement, no rollback start ---
     ROLLBACK REFUSED: $TMP/rollback-export/units.active.before is missing or empty — no measurement of what was running
 --- D5: the fixture must be able to see the defect it exists for (the pasted-list shape) ---
-    RESTORED 0 unit(s) that step 2 found active (of 5 admitted)
-    ROLLBACK 7A COMPLETE — DEGRADED: the old reader cannot decode the three retired events already on
-    origin, so the page still answers 503 until a build that decodes them is deployed. Report it as such.
-    D5 OK: the pasted shape starts nothing at all, which is the defect this PART was written to catch
+      line 1: expected exactly two fields (unit state), found 3
+      line 2: expected exactly two fields (unit state), found 3
+      line 3: expected exactly two fields (unit state), found 3
+      line 4: expected exactly two fields (unit state), found 3
+      line 5: expected exactly two fields (unit state), found 3
+      the export has no line for gunbc-roadmap-belt-discovery.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap-tailnet-door.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap-belt-credential-recovery.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap-belt-exit.service; refusing to guess whether it was running
+      the export has no line for gunbc-roadmap.service; refusing to guess whether it was running
+    ROLLBACK REFUSED: $TMP/rollback-export/units.active.before is not a valid inventory — nothing is started
+    D5 OK: the pasted shape is REFUSED as an invalid inventory, before anything is started
+--- D6: a unit recorded twice is refused ---
+      line 6: unit [gunbc-roadmap.service] is recorded more than once
+    ROLLBACK REFUSED: $TMP/rollback-export/units.active.before is not a valid inventory — nothing is started
+--- D7: a word that is not a state systemd reports is refused ---
+      line 1: state [running] is not a state systemd reports
+    ROLLBACK REFUSED: $TMP/rollback-export/units.active.before is not a valid inventory — nothing is started
 ```
 
 
 D5 is the case that keeps D1 honest: the same export in the shape the defective rollback READ it (a second unit
 list pasted in front of the states, so `read -r U STATE` bound `<unit> active` to STATE and nothing ever equalled
-`active`). If that shape ever came back, D5 sees zero starts and the witness fails.
-
+`active`). Zero starts is NOT an acceptable answer there — `RESTORED 0 unit(s)` after a rollback that restored
+nothing reads as a completed rollback — so D5 requires a REFUSAL naming the malformed record, and D6/D7 do the same
+for a unit recorded twice and for a word that is not a state `systemctl is-active` can print.
 ### E — the expected manifest travels as data, never as shell
 
 ```text
@@ -975,8 +1096,6 @@ loaded from the runbook: RUN, the plain transient-unit helper
 --- E1: RUNE delivers the manifest byte-for-byte, and none of it is in argv ---
 --- E2: the unsafe interpolated shape must be CAUGHT corrupting it (the fixture's own eyes) ---
     E2 OK: SHAPE REFUSED — the interpolated shape never even ran; the spliced JSON left the inner shell with a syntax error (rc=2). That is the strongest form of the finding: the old step 6 could have failed to certify anything at all
-
-ALL ASSERTIONS HOLD
 ```
 
 
@@ -984,8 +1103,88 @@ E2 is what makes E1 worth reading: it rebuilds the shape step 6 used to have —
 command string — and requires it to arrive altered. `$(cat …)` written inside the string would NOT reproduce the
 defect (a substitution the inner shell performs stays data); it is the outer splice that turns data back into
 syntax, which is why the fix is the environment (`RUNE`), not a rewording.
+### F — step 2: the readers are stopped, and the stop is admitted by measurement
 
-### F — step 5b: the activation cannot follow a run it did not dispatch
+```text
+================ PART F: stopping the readers is a measured admission, not a printed hope ================
+  [every unit and the timer inactive, no process] rc=0
+    STOP ADMITTED: 5 units and the timer report inactive, no gunbc process remains
+  [one reader still active after the stop] rc=1
+    STOP REFUSED: gunbc-roadmap-tailnet-door.service reports [active], not inactive — no migration write may follow
+  [the timer still firing after the stop] rc=1
+    STOP REFUSED: gunbc-roadmap-belt-credential-recovery.timer reports [active], not inactive — no migration write may follow
+  [one stop command fails] rc=1
+    stub: gunbc-roadmap-belt-exit.service refuses to stop
+    STOP REFUSED: gunbc-roadmap-belt-exit.service did not stop
+  [the timer refuses to be unloaded] rc=1
+    stub: gunbc-roadmap-belt-credential-recovery.timer refuses to stop
+    STOP REFUSED: the belt-credential-recovery timer is still loaded
+  [a gunbc process is still running] rc=1
+    STOP REFUSED: 1 gunbc process(es) still running
+  [F7 the two rosters are the same five units] OK: gunbc-roadmap-belt-credential-recovery.service gunbc-roadmap-belt-discovery.service gunbc-roadmap-belt-exit.service gunbc-roadmap-tailnet-door.service
+```
+
+
+The stop used to end in three lines of `# expect: inactive`. A comment is not an admission: an unobserved stop
+leaves a reader answering from the old carrier for the whole migration window. F1 requires the five readers AND the
+timer to have been stopped (six acts, not five — the timer drives two oneshots), and F2-F6 require a refusal for
+each way the world can disagree: a reader that resists the stop, a timer still firing, a failed stop command, a
+timer that will not unload, and a gunbc process still running. F7 joins the five-unit roster this book measures
+against the five-unit roster step 2 admits, so the two lists cannot drift apart silently.
+### G — steps 3 and 4: one refused append ends the migration
+
+```text
+================ PART G: a refused append stops the migration; the input is counted before it ================
+loaded from the runbook: RUNE
+  [the export as measured: 17 seed acceptances, empty fabric tail] rc=0 appends=18
+    INPUT ADMITTED: 17 acceptance lines (17 from the seed, 0 from the fabric tail) and 1 revocation
+    appended acceptance 1/17
+    appended acceptance 2/17
+    appended acceptance 3/17
+    appended acceptance 4/17
+    appended acceptance 5/17
+    appended acceptance 6/17
+    appended acceptance 7/17
+    appended acceptance 8/17
+    appended acceptance 9/17
+    appended acceptance 10/17
+    appended acceptance 11/17
+    appended acceptance 12/17
+    appended acceptance 13/17
+    appended acceptance 14/17
+    appended acceptance 15/17
+    appended acceptance 16/17
+    appended acceptance 17/17
+    appended revocation 1/1
+  [the third append is refused by the modeled CLI] rc=1 appends=3
+    INPUT ADMITTED: 17 acceptance lines (17 from the seed, 0 from the fabric tail) and 1 revocation
+    appended acceptance 1/17
+    appended acceptance 2/17
+    stub gunbc: this receipt is refused by the modeled CLI (append 3)
+    MIGRATION REFUSED: acceptance 3 of 17 did not append — no further appends, and step 4 must not run
+  [the seed carries 16 acceptances where the export says 17] rc=1 appends=0
+    MIGRATION REFUSED: the seed holds 17 lines where the export measured 18 — the file changed after step 1
+  [a fabric object carries no payload.line] rc=1 appends=0
+    MIGRATION REFUSED: $TMP/migrate-export/fabric/storage/obj-19 does not carry a payload.line — the fabric tail is not what the export measured
+  [the seed carries two revocations] rc=1 appends=0
+    MIGRATION REFUSED: the seed must carry exactly one revocation, found 2; nothing is appended
+  [step 4 with step 3's admission file missing] rc=1
+    RETIREMENT REFUSED: $TMP/migrate-export/migrate.acceptance.lines is missing or empty — step 3 did not admit its input
+
+================ PART H: the cases this file declares are the model's rows, joined both ways ================
+model rows for this carrier: 33   declared here: 33
+
+ALL ASSERTIONS HOLD
+```
+
+
+These are failure injection, not narration. G2 has the modeled CLI refuse the THIRD receipt and requires that
+nothing after it was appended — a loop that kept going would migrate a history with a hole in it and still print a
+completion line. G3 removes a seed line after step 1 counted it: the expectation is grounded in what the export
+measured, not in the shortened file, so a cut-short input cannot certify itself. G4 and G5 are the fabric object
+whose payload lost its line, and a second revocation hidden at the measured line count. G6 and G7 run step 4
+against step 3's missing admission files: a half-migrated history cannot be retired over.
+### H — step 5b: the activation cannot follow a run it did not dispatch
 
 ```text
 OK   the dispatched run is identified and admitted — admitted: STAGE plan run=21 mode=plan revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -996,13 +1195,26 @@ OK   a pre-existing run cannot impersonate the dispatch — refused (rc=1): NO D
 OK   the dispatched run did not conclude success — refused (rc=1): NO DEPLOY: the plan run (21) did not complete successfully
 OK   a snapshot command that fails is refused — refused (rc=1): NO DEPLOY: the pre-dispatch run snapshot for mode=plan failed; refusing to dispatch blind
 OK   a snapshot that comes back empty is refused — refused (rc=1): NO DEPLOY: the pre-dispatch run snapshot for mode=plan is empty; treating every existing run as new is not a correlation
-OK   a dispatch already in flight at the revision is refused — refused (rc=1): NO DEPLOY: 1 workflow_dispatch run(s) at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa are queued or in progress; refusing to dispatch beside a run this runbook did not create
+OK   a dispatch already in flight at the revision is refused — refused (rc=1): NO DEPLOY: 1 workflow_dispatch run(s) at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa are in a nonterminal state (queued, requested, waiting, pending, in_progress or action_required); refusing to dispatch beside a run this runbook did not create
 OK   the in-flight check failing is refused — refused (rc=1): NO DEPLOY: the in-flight check for mode=plan failed; refusing to dispatch
 OK   two new runs at one revision are refused (no guessing which is ours) — refused (rc=1): NO DEPLOY: 2 runs appeared for mode=plan at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; two dispatches are racing, and the first of them is not evidence of authorship
+OK   a run waiting for a runner is found by the in-flight check — refused (rc=1): NO DEPLOY: 1 workflow_dispatch run(s) at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa are in a nonterminal state (queued, requested, waiting, pending, in_progress or action_required); refusing to dispatch beside a run this runbook did not create
+OK   a run awaiting a decision is found by the in-flight check — refused (rc=1): NO DEPLOY: 1 workflow_dispatch run(s) at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa are in a nonterminal state (queued, requested, waiting, pending, in_progress or action_required); refusing to dispatch beside a run this runbook did not create
+OK   a run requested but not started is found by the in-flight check — refused (rc=1): NO DEPLOY: 1 workflow_dispatch run(s) at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa are in a nonterminal state (queued, requested, waiting, pending, in_progress or action_required); refusing to dispatch beside a run this runbook did not create
+OK   a failed dispatch is refused and never polled — refused (rc=1): NO DEPLOY: gh workflow run failed for mode=plan; nothing was dispatched, so no run is adopted
+OK   a fence held by another dispatch is refused — refused (rc=1): NO DEPLOY: another dispatch for this cutover holds $TMP/held.lock on this host; refusing to dispatch a second run
+OK   no fence path at all is refused — refused (rc=1): $TMP/inner.sh: line 11: STAGE_LOCK: NO DEPLOY: STAGE_LOCK is unset; the exclusive-dispatch fence would have no path
 OK   a poll that fails is refused — refused (rc=1): NO DEPLOY: the poll for mode=plan failed
 ALL DISPATCH-IDENTIFICATION CASES HOLD
 ```
 
+
+The four newest cases are about authorship rather than outcome. A run in `waiting`, `requested` or
+`action_required` must stop the dispatch — `gh`'s `--status` is one string-valued filter, so passing it twice proved
+nothing and those runs were simply adopted. The stub answers only for the states the QUERY NAMES, so a filter that
+quietly dropped one fails its own case. A failed `gh workflow run` must be refused WITHOUT a poll, which is asserted
+by counting the polls issued rather than by reading a sentence. And the fence is a real contended `flock` held by a
+separate live process: stubbed, the case would prove only that a stub can say no.
 
 
 ### The model behind this file
@@ -1015,8 +1227,10 @@ admits the next change — and the witness cases as data
 refusing case must print). Its claims, run on the runner:
 
 ```text
-every_cutover_step_names_a_modelled_route_and_an_admission
-a_step_missing_its_admission_is_caught_by_the_same_check
+every_cutover_step_is_authorized_to_act
+a_step_without_an_admission_is_reported_and_located
+a_roadmap_write_without_a_modelled_entry_is_reported
+an_unnamed_host_effect_is_reported
 every_refusing_witness_case_names_the_diagnostic_it_expects
 a_refusing_case_with_no_refusal_text_is_reported
 the_scaffold_promises_name_the_emitter_that_would_retire_them
@@ -1026,6 +1240,13 @@ a_scaffold_discriminator_naming_an_undeclared_case_is_rejected
 The claims are deliberately free of change-detectors: none of them asserts how many steps or cases exist. Each
 states an obligation (a predicate, a named host effect, a modelled entry where a roadmap fact changes, a refusal
 text a refusing case must print) and proves it can go red by carrying a row or case that meets it wrongly.
+
+The two lists are joined to the executed procedure BOTH ways, by the witnesses rather than by this prose: PART C
+here pairs every numbered heading with a step row and every step row with a heading, and PART H of
+`tools/roadmap_cutover_runbook_witness.sh` (PART B of the dispatch witness) pairs every case row with a case the
+carrier declares, and every declared case with a row — while additionally requiring that a refusing row's promised
+diagnostic appears in text that actually runs. A row that promises a case nothing runs, a case that runs with no
+row, and a promise no script keeps are each separately fatal.
 
 ### Also checked, at this revision
 

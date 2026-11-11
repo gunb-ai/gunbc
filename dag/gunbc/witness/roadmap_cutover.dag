@@ -66,7 +66,7 @@ data cutover_step_rows: List<CutoverStep> = [
     modeled_entry: ""
     host_effect: "systemctl stop of the five gunbc-roadmap readers and their timers, so nothing writes the fabric partitions while the migration runs"
     writes_roadmap_state: false
-    admission: "the authoritative remote tip is recorded first, and each unit is either active or already inactive before the stop"
+    admission: "the authoritative remote tip is recorded first, and the stop ADMITS ITSELF BY MEASUREMENT: every one of the five readers AND the timer reports inactive, no gunbc process remains, and no stop command failed. The five the export measured and the five the stop admits are joined against each other (PART F), not retyped twice and hoped into agreement"
   },
   CutoverStep {
     ordinal: 3
@@ -84,7 +84,7 @@ data cutover_step_rows: List<CutoverStep> = [
     modeled_entry: "gunbc.roadmap.roadmap_event_cli::roadmap_acceptance_record_cli (the receipt line, in the exported manifest's recorded order) and gunbc.roadmap.issue_command_apply (the operator tail)"
     host_effect: "appends the eighteen acceptance chains and the operator-tail revocations to the authoritative event-log branch"
     writes_roadmap_state: true
-    admission: "every replayed receipt's digest matches the digest exported in step 1, the chains replayed number the eighteen recorded there, and each revocation names a receipt that is live at that moment"
+    admission: "every replayed receipt's digest matches the digest exported in step 1, the chains replayed number the eighteen recorded there, and each revocation names a receipt that is live at that moment. The input is counted BEFORE any append — seed lines equal to what step 1 counted, fabric tail equal to the export's count, exactly one revocation — and the FIRST refused receipt aborts the block, so a half-migrated history cannot walk into the retirement step"
   },
   CutoverStep {
     ordinal: 5
@@ -93,7 +93,7 @@ data cutover_step_rows: List<CutoverStep> = [
     modeled_entry: "gunbc.roadmap.roadmap_event_cli::roadmap_event_record_cli (two RetiredEvent appends, kind word retire, through the event-log carrier to origin's roadmap-events branch)"
     host_effect: "appends the two Retired events, last, so the retirement is the newest fact about each node"
     writes_roadmap_state: true
-    admission: "each node id is named by the operator's ruling, and after the append the retired-set reader answers it as retired while the plan no longer contains it"
+    admission: "each node id is named by the operator's ruling, the two admission files step 3 wrote are present and non-empty BEFORE the first retirement, and after the append the retired-set reader answers it as retired while the plan no longer contains it"
   },
   CutoverStep {
     ordinal: 6
@@ -111,7 +111,7 @@ data cutover_step_rows: List<CutoverStep> = [
     modeled_entry: "gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs (admission) behind the fleet-converge workflow's dashboard_dispatch_run (dispatch)"
     host_effect: "installs and starts the staged build on the host through the modeled deploy, and pushes the cutover tag it was dispatched against"
     writes_roadmap_state: false
-    admission: "verification passed; the dispatched reference resolves to the staged revision; the pre-dispatch run snapshot succeeded and is non-empty; no dispatch of this revision is already queued or in progress; exactly ONE new run appeared (two is a race and is refused, not guessed); and that run declares the mode it was dispatched for at that revision and concluded successfully"
+    admission: "verification passed; the dispatched reference resolves to the staged revision; the pre-dispatch run snapshot succeeded and is non-empty; the NONTERMINAL POPULATION is named inside the query — queued, requested, waiting, pending, in_progress, action_required — because gh documents --status as one string-valued filter and repeating the flag proves nothing; no dispatch of this revision is in that population; an exclusive fence on this host is held across check → dispatch → watch so a second shell cannot slip between them; gh workflow run itself is checked, so a failed dispatch is refused WITHOUT any poll; exactly ONE new run appeared (two is a race and is refused, not guessed); and that run declares the mode it was dispatched for at that revision and concluded successfully"
   },
   CutoverStep {
     ordinal: 8
@@ -327,8 +327,8 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
     name: "the_restart_fixture_can_see_the_defect_it_was_written_for"
     carrier: runbook_witness_carrier
     feeds: "the same export in the shape the defective rollback read it — a second unit list pasted in front of the states"
-    must: "admit"
-    refusal_text: ""
+    must: "refuse"
+    refusal_text: "expected exactly two fields"
   },
   CutoverWitnessCase {
     name: "the_manifest_reaches_the_reader_intact_through_the_environment"
@@ -392,7 +392,162 @@ data cutover_witness_case_rows: List<CutoverWitnessCase> = [
     feeds: "a gh whose candidate query exits nonzero mid-poll"
     must: "refuse"
     refusal_text: "the poll for mode=plan failed"
+  },
+  CutoverWitnessCase {
+    name: "stop_admits_the_measured_quiet_readers"
+    carrier: runbook_witness_carrier
+    feeds: "step 2's block with every reader and the timer reporting inactive and no gunbc process left, through a state-table systemctl stub"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "stop_refuses_a_reader_still_answering"
+    carrier: runbook_witness_carrier
+    feeds: "the same block with one reader that RESISTS the stop and still reports active afterwards"
+    must: "refuse"
+    refusal_text: "reports [active]"
+  },
+  CutoverWitnessCase {
+    name: "stop_refuses_a_timer_still_firing"
+    carrier: runbook_witness_carrier
+    feeds: "the same block with the belt-credential-recovery timer resisting the stop — a timer left firing writes into the migration window"
+    must: "refuse"
+    refusal_text: "reports [active]"
+  },
+  CutoverWitnessCase {
+    name: "stop_refuses_a_unit_that_would_not_stop"
+    carrier: runbook_witness_carrier
+    feeds: "the same block where one systemctl stop exits nonzero"
+    must: "refuse"
+    refusal_text: "did not stop"
+  },
+  CutoverWitnessCase {
+    name: "stop_refuses_a_timer_that_would_not_unload"
+    carrier: runbook_witness_carrier
+    feeds: "the same block where the timer's own stop fails"
+    must: "refuse"
+    refusal_text: "the belt-credential-recovery timer is still loaded"
+  },
+  CutoverWitnessCase {
+    name: "stop_refuses_a_surviving_gunbc_process"
+    carrier: runbook_witness_carrier
+    feeds: "the same block with one /opt/gunbc/bin/gunbc process still running after every unit reports inactive"
+    must: "refuse"
+    refusal_text: "gunbc process(es) still running"
+  },
+  CutoverWitnessCase {
+    name: "stop_and_export_share_one_roster"
+    carrier: runbook_witness_carrier
+    feeds: "the five-unit roster in step 1's export and the five-unit roster in step 2's admission, read out of the runbook and joined — add a unit to one list and the witness refuses"
+    must: "refuse"
+    refusal_text: "the export and the admission must be the same five"
+  },
+  CutoverWitnessCase {
+    name: "rollback_refuses_a_unit_recorded_twice"
+    carrier: runbook_witness_carrier
+    feeds: "the exported inventory with one unit recorded a second time, so the later record silently overwrites the first's state"
+    must: "refuse"
+    refusal_text: "recorded more than once"
+  },
+  CutoverWitnessCase {
+    name: "rollback_refuses_a_word_that_is_not_a_state"
+    carrier: runbook_witness_carrier
+    feeds: "the exported inventory with 'running' where a state systemd reports belongs — non-empty, and not an is-active answer"
+    must: "refuse"
+    refusal_text: "not a state systemd reports"
+  },
+  CutoverWitnessCase {
+    name: "migration_admits_what_the_export_measured"
+    carrier: runbook_witness_carrier
+    feeds: "step 3's block over a fixture export: 17 seed acceptances, an empty fabric tail, one revocation; every append reaches the modeled CLI and none is invented"
+    must: "admit"
+    refusal_text: ""
+  },
+  CutoverWitnessCase {
+    name: "migration_stops_at_the_first_refused_append"
+    carrier: runbook_witness_carrier
+    feeds: "the same block with the modeled CLI refusing the THIRD receipt; nothing after it may be appended and step 4 must not run"
+    must: "refuse"
+    refusal_text: "did not append"
+  },
+  CutoverWitnessCase {
+    name: "migration_refuses_a_seed_that_changed_after_the_export"
+    carrier: runbook_witness_carrier
+    feeds: "the same block with one seed line removed after step 1 counted it, where a naive count would derive its own expectation from the shortened file"
+    must: "refuse"
+    refusal_text: "the file changed after step 1"
+  },
+  CutoverWitnessCase {
+    name: "migration_refuses_a_fabric_object_without_a_line"
+    carrier: runbook_witness_carrier
+    feeds: "the same block with a fabric object that carries the recorded token but no payload.line"
+    must: "refuse"
+    refusal_text: "does not carry a payload.line"
+  },
+  CutoverWitnessCase {
+    name: "migration_refuses_a_second_revocation"
+    carrier: runbook_witness_carrier
+    feeds: "the same block with a second revocation in the seed at the measured line count, so only the content check can see it"
+    must: "refuse"
+    refusal_text: "exactly one revocation"
+  },
+  CutoverWitnessCase {
+    name: "retirement_refuses_without_step_three_admission"
+    carrier: runbook_witness_carrier
+    feeds: "step 4's block run with step 3's acceptance-admission file missing, so a half-migrated history cannot be retired over"
+    must: "refuse"
+    refusal_text: "did not admit its input"
+  },
+  CutoverWitnessCase {
+    name: "retirement_refuses_with_no_revocation_admitted"
+    carrier: runbook_witness_carrier
+    feeds: "step 4's block run with the revocation-admission file empty, which is the same half-migrated state through the other door"
+    must: "refuse"
+    refusal_text: "did not admit its input"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_waiting_for_a_runner"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where a workflow_dispatch run at the revision sits in 'waiting'; the fixture answers only for states the QUERY names, so a filter that dropped waiting gets 0 and adopts it"
+    must: "refuse"
+    refusal_text: "waiting"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_awaiting_a_decision"
+    carrier: dispatch_witness_carrier
+    feeds: "the same, with the run in 'action_required' — the state repeated --status flags never looked at"
+    must: "refuse"
+    refusal_text: "action_required"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_run_that_was_requested"
+    carrier: dispatch_witness_carrier
+    feeds: "the same, with the run still in 'requested'"
+    must: "refuse"
+    refusal_text: "requested"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_a_failed_dispatch_and_never_polls"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage where gh workflow run exits nonzero; the witness also counts the polls issued, because polling after a dispatch that never happened can only adopt somebody else's run"
+    must: "refuse"
+    refusal_text: "nothing was dispatched"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_while_another_dispatch_holds_the_fence"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage while a separate live process holds the exclusive-dispatch lock — a real contended flock, not a stub told to refuse"
+    must: "refuse"
+    refusal_text: "on this host"
+  },
+  CutoverWitnessCase {
+    name: "dispatch_refuses_without_a_fence_path"
+    carrier: dispatch_witness_carrier
+    feeds: "dispatch_stage with STAGE_LOCK removed from its environment, so the boundary would silently not exist"
+    must: "refuse"
+    refusal_text: "the exclusive-dispatch fence would have no path"
   }
+
 ]
 
 // A case that must refuse but does not name the diagnostic it expects is not a witness: any nonzero exit would
@@ -459,20 +614,20 @@ data runbook_scaffold: Disposition = Scaffold {
 
 data runbook_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the orchestration-to-shell bash-emit target. The operator runs this text today because the steps below need a transient privileged unit, a here-documented script body, and a comparison of an effective systemd catalog against an exported one — constructions the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for. The SEQUENCE those constructions render is not shell-owned: it is cutover_step_rows, and each roadmap fact changes only through the modeled entry its row names. When the modeled host-effect and instrument routes (gunbc.instrument_targets, gunbc.live_deploy, gunbc.fleet) can carry the steps themselves, this file's commands are emitted from the rows and the file shrinks to the operator's reading matter — prerequisites, readback and dispositions.")
 
-data runbook_loc_delta_net: Int = 1040
+data runbook_loc_delta_net: Int = 1261
 data runbook_test_discriminator: String = "drop_in_round_trip_with_pre_existing_and_deploy_added"
 
 data runbook_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: TWO capabilities, because they retire DIFFERENT halves of tools/roadmap_cutover_runbook_witness.sh. (1) orch-emitted, for the residual shell (the sudo/systemd-run/systemctl stubs and the case assertions): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a function definition carrying a case statement over globs, a here-doc that writes a stub script, an array assignment read back as a whole-array expansion, or command substitution inside a test predicate — a missing target-language capability (class (b) of the hand-shell gate), not an unauthored migration. (2) modelled, for the witness process: its cases are the rows above (cutover_witness_case_rows) and its helpers are loaded from docs/runbooks/roadmap-event-log-cutover.md, never copied. When those rows run as a gunbc test row in gunbc.instrument_targets through the modelled filesystem and host-effect routes, this file is DELETED rather than emitted.")
 
-data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the same two capabilities as its sibling, with the second half specific to this carrier. (1) orch-emitted, for the residual shell (the gh stub, the case driver, and the run-id set difference): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a case statement over glob patterns, an indexed array read by slicing from a given index, a here-doc that materialises a stub executable, or command substitution inside an assignment used as a predicate. (2) modelled: the six dispatch cases are rows above (cutover_witness_case_rows) and dispatch_stage itself is loaded from docs/runbooks/roadmap-event-log-cutover.md; when fleet-converge's own admission (gunbc.fleet.fleet_converge_plan_revision) is exercised through modelled test rows, this file is DELETED rather than emitted.")
+data dispatch_witness_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the same two capabilities as its sibling, with the second half specific to this carrier. (1) orch-emitted, for the residual shell (the gh stub, the case driver, and the run-id set difference): the bash target grammar (v2.extdeps.languages.bash rows, built by v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) has no production for a case statement over glob patterns, an indexed array read by slicing from a given index, a here-doc that materialises a stub executable, or command substitution inside an assignment used as a predicate. (2) modelled: every dispatch case is a row above (cutover_witness_case_rows) and dispatch_stage itself is loaded from docs/runbooks/roadmap-event-log-cutover.md; when fleet-converge's own admission (gunbc.fleet.fleet_converge_plan_revision) is exercised through modelled test rows, this file is DELETED rather than emitted.")
 
 // THE SIZE OF THE DEBT, NOT A CELEBRATION OF IT: net new hand-written shell this PR adds, per carrier. Counted
 // interim scaffold, not a census shrink; the review that asked for these rows named the count as the thing to
 // watch, so it lives where a claim can read it rather than in prose. Counting rule, so the number is checkable and
 // not prose that quietly rots: wc -l of each carrier, every line of which this PR adds (all three files are new in
 // it). Re-measure with: wc -l docs/runbooks/roadmap-event-log-cutover.md tools/roadmap_cutover_*.sh
-data runbook_witness_loc_delta_net: Int = 480
-data dispatch_witness_loc_delta_net: Int = 136
+data runbook_witness_loc_delta_net: Int = 808
+data dispatch_witness_loc_delta_net: Int = 265
 
 // Each carrier names the case that distinguishes it — the one that would pass on any nonzero exit if the witness
 // were weak, which is why it is the discriminator and not the admitting case.
