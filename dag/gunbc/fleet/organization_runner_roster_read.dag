@@ -890,7 +890,7 @@ fn organization_runner_roster_report_via_rest(org: NonEmptyStr, page_size: PageS
   classify_roster_walk(walk: walk, observed_on: clock_now_probed_at_or_unknown())
 }
 
-// THE PRODUCTION ROSTER. gunbc.apply and gunbc.runner.runner_capacity_realize plan from this.
+// THE PRODUCTION ROSTER. gunbc.apply plans from this; slot adds actuate only through the converge.
 fn organization_runner_roster_live_read() -> OrganizationRunnerRosterEvidence {
   organization_runner_roster_report(org: organization_runner_roster_org(), page_size: github_max_page_size).evidence
 }
