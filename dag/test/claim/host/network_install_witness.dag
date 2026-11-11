@@ -354,7 +354,7 @@ test fn w_a_completed_install_refuses_the_second_dispatch() -> Bool {
     NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: h, serial: s, completed_at: at } } =>
       h == install_unit && (s as String) == (expected_serial as String) && at == 1793300000000
     NetworkInstallDispatchRefused { cause: _ } => false
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -372,7 +372,7 @@ test fn w_the_same_dispatch_is_not_refused_for_completion_when_the_slot_is_absen
   ) {
     NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: _, serial: _, completed_at: _ } } => false
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => true
   }
 }
 
@@ -389,7 +389,7 @@ test fn w_an_unreadable_or_malformed_journal_refuses() -> Bool {
   ) {
     NetworkInstallDispatchRefused { cause: JournalUnreadable { host: _, serial: _, detail: _ } } => true
     NetworkInstallDispatchRefused { cause: _ } => false
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -452,7 +452,7 @@ test fn w_no_edge_binding_plans_no_boot_step() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -473,7 +473,7 @@ test fn w_a_binding_that_did_not_read_back_plans_no_boot_step() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -490,7 +490,7 @@ test fn w_a_hold_held_by_another_dispatch_refuses() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -507,7 +507,7 @@ test fn w_holding_the_unit_myself_is_not_a_refusal() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => true
   } && match dispatch(
     journal: JournalSlotAbsent,
     hold: HoldHeldBy { owner: "run-2c-0002" as NonEmptyStr },
@@ -517,7 +517,7 @@ test fn w_holding_the_unit_myself_is_not_a_refusal() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -535,7 +535,7 @@ test fn w_the_journal_is_read_before_the_hold_and_the_binding() -> Bool {
   ) {
     NetworkInstallDispatchRefused { cause: InstallAlreadyCompleted { host: _, serial: _, completed_at: _ } } => true
     NetworkInstallDispatchRefused { cause: _ } => false
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -554,7 +554,7 @@ test fn w_the_stale_reading_withholds_the_install_at_its_own_deadline() -> Bool 
     decided_at: reading_instant + window
   ) {
     NetworkInstallDispatchRefused { cause: _ } => false
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => match dispatch(
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => match dispatch(
       journal: JournalSlotAbsent,
       hold: HoldFree,
       binding: staged_binding(),
@@ -563,7 +563,7 @@ test fn w_the_stale_reading_withholds_the_install_at_its_own_deadline() -> Bool 
       decided_at: reading_instant + window + 1
     ) {
       NetworkInstallDispatchRefused { cause: _ } => true
-      NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+      NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
     }
   }
 }
@@ -579,7 +579,7 @@ test fn w_a_never_read_disk_withholds_the_install() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -598,7 +598,7 @@ test fn w_a_model_only_reading_names_no_disk_to_erase() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -622,7 +622,7 @@ test fn w_a_disk_that_is_not_the_one_dispatched_refuses() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -775,7 +775,7 @@ test fn w_a_wire_with_no_arrival_row_is_never_booted() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -802,7 +802,6 @@ test fn w_a_binding_whose_write_failed_plans_no_boot_step() -> Bool {
     hold: HoldFree,
     binding: BindingWriteFailed {
       client: "9c:6b:00:e7:ca:63" as NonEmptyStr,
-      path: "/srv/tftp/grub/grub.cfg-01-9c-6b-00-e7-ca-63" as NonEmptyStr,
       reason: "the edge refused the write" as NonEmptyStr,
     },
     population: population_of(host: install_unit),
@@ -810,7 +809,7 @@ test fn w_a_binding_whose_write_failed_plans_no_boot_step() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -826,7 +825,7 @@ test fn w_an_unreadable_hold_refuses() -> Bool {
     decided_at: 1793300001000
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -844,13 +843,13 @@ test fn w_an_observed_installed_os_refuses_and_an_unreadable_observation_does_no
     reading: reported_disk(host: install_unit, read_at: reading_instant),
     decided_at: 1793300001000
   ) {
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => true
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => true
     NetworkInstallDispatchRefused { cause: _ } => false
   } && match dispatch_with_os(
     os_observation: InstalledOsObserved { host: install_unit, evidence: "uname -r answered 6.8.0-58-generic" as NonEmptyStr }
   ) {
     NetworkInstallDispatchRefused { cause: _ } => true
-    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+    NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
   }
 }
 
@@ -1081,7 +1080,7 @@ test fn w_an_installed_host_is_protected_by_more_than_an_absent_row() -> Bool {
             }
           ) {
             NetworkInstallDispatchRefused { cause: _ } => true
-            NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _, plan: _ } => false
+            NetworkInstallDispatchAdmitted { host: _, subject: _, disk: _, serial: _, model: _, decided_at: _, binding: _ } => false
           }
           Present { value: _ } => false
         }

@@ -1513,7 +1513,6 @@ fn network_install_fold_evidence(fold: NetworkInstallReceipt) -> String {
       Present { value: value } => concat("installed-to-disk root-disk-serial=", value)
       Absent => concat("installed-to-disk root-created-at=", created as String)
     }
-    InstallNotEstablished { subject: _, gaps: gaps } =>
-      concat("install-not-established gaps=", length(xs: gaps) as String)
+    InstallNotEstablished { subject: _, gaps: gaps } => "install-not-established"
   }
 }
