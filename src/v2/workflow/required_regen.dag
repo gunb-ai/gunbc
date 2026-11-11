@@ -15,7 +15,17 @@ import std.algebra { list_append, list_snoc_item, Cons, Empty, fold_list, length
 // name every generated file through it. An admission that computed its own spelling would be a
 // second authority over the same fact -- the drift gate and the emitter would agree only while two
 // implementations agreed by accident -- so this carrier IMPORTS it and no branch below re-derives it.
-import gunbc.rust_emitted_edge { rust_module_emit_filename }
+//
+// THE PURE PROJECTION IS THE ONE IMPORTED, NOT rust_module_emit_filename. That sibling adds
+// `main` -> `main_mod`, and it exists because an emitted MODULE FILE called main.rs would collide
+// with the crate's own entry file -- see dag/gunbc/rust_emitted_edge.dag:49-62, where the carrier
+// itself gives that as the reason. A stage0 seed mirror is not an entry file: the crate root is
+// lib.rs and every mirror is a `pub mod` beside it, so a module whose projection spells `main`
+// owns `main.rs` as a mirror. Importing the entry-file rule here would refuse the mirror a module
+// really has and admit a basename the emitter never writes. The two call sites of
+// rust_module_emit_filename in the corpus are both the emitted module's own file; file and path
+// naming throughout src/v1/05_emit_rust.dag is module_to_filename.
+import gunbc.rust_emitted_edge { module_to_filename }
 
 // ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;
@@ -242,8 +252,18 @@ data no_mirror_admissions: List<MissingMirrorAdmission> = []
 
 // THE ONLY PLACE THE SPELLING IS COMPUTED: the projection's result, with the extension the compared
 // roster carries. Anything wanting the basename of a declared module asks for THIS.
+//
+// WHAT THE AUTHORITY ACTUALLY CARRIES, so this call is not read as more than it is: a partition row
+// lists its units in the FLAT spelling already (`stage0_v1_infer_modules()` in
+// src/v2/workflow/rust_crate_partition.dag enumerates "v1_compiler_parse", not
+// "v1.compiler.parse"), so for every row the corpus holds today the projection is the identity and
+// the join is row string + ".rs". The dotted forms exercised below, and the ambiguous arm that
+// depends on two spellings meeting at one basename, are defense in depth against a row naming a
+// dotted module -- a shape the partition does not emit today, and one the witness
+// every_declared_stage0_module_name_is_already_flat pins as a fact of the authored authority rather
+// than as an assumption of this file.
 fn declared_mirror_basename(module: String) -> String {
-  concat(rust_module_emit_filename(module_name: module), ".rs")
+  concat(module_to_filename(name: module), ".rs")
 }
 
 // EVERY declared module projecting to this basename, in declaration order -- not a first-match

@@ -1674,9 +1674,16 @@ fn collect_dir_shadows(
 ///
 /// Two rules the carrier owns and this file does not contradict:
 ///   * THE SPELLING IS THE PROJECTION. The basename a module owns is asked of the EMITTED MIRROR of
-///     `gunbc.rust_emitted_edge::rust_module_emit_filename` -- one call, one spelling source. A
-///     second file re-deriving `.` -> `_` would be a second authority over one fact, which is what
-///     made `lib.rs` membership a coin flip before #16310.
+///     `gunbc.rust_emitted_edge::module_to_filename` (`src/v1/stage0/src/gunbc_rust_emitted_edge.rs:50`)
+///     -- one call, one spelling source. A second file re-deriving `.` -> `_` would be a second
+///     authority over one fact, which is what made `lib.rs` membership a coin flip before #16310.
+///     THE SIBLING IS NOT SUBSTITUTABLE: `rust_module_emit_filename` adds `main` -> `main_mod` for a
+///     reason that does not hold here -- it exists so an emitted module file does not collide with
+///     the crate's ENTRY file, and a seed mirror is never the entry file (the crate root is lib.rs).
+///     Using it would refuse a module's real `main.rs` mirror and admit a `main_mod.rs` the emitter
+///     never writes. This mirrors what the corpus itself does: file and path naming across
+///     `v1_compiler_emit_rust.rs` is `module_to_filename`, and this file's own pre-existing
+///     `compared_mirror_rows` spells the join with the same flat projection.
 ///   * THE DECLARATION IS THE CHANGE'S OWN PARTITION. The names come from the rows this run resolved
 ///     from the workspace (`emitted_tree_packages`), never from the copy compiled into this binary:
 ///     the compiled copy belongs to the previous build and CANNOT contain the module the change is
@@ -1757,7 +1764,7 @@ fn declared_partition_module_names(
 fn declared_mirror_basename(module: &str) -> String {
     format!(
         "{}.rs",
-        crate::gunbc_rust_emitted_edge::rust_module_emit_filename(module.to_string())
+        crate::gunbc_rust_emitted_edge::module_to_filename(module.to_string())
     )
 }
 
@@ -3723,14 +3730,31 @@ mod tests {
     fn the_spelling_of_a_mirrors_name_has_exactly_one_source() {
         // The admission is only as honest as this call: re-deriving `.` -> `_` here would put a
         // second authority over one fact, which is the shape that made `lib.rs` membership a coin
-        // flip before #16310. Pinned against the projection's own declared behaviour, including the
-        // `main` -> `main_mod` collision the carrier names.
+        // flip before #16310.
+        //
+        // THE FIRST TWO LINES ARE THE SHAPE THE AUTHORITY REALLY CARRIES. A partition row lists its
+        // units flat already -- `stage0_v1_infer_modules()` in src/v2/workflow/rust_crate_partition.dag
+        // enumerates "v1_compiler_parse" -- so on real rows the projection is the identity and the
+        // join is the row string plus the extension. That is the case the merge path exercises, and
+        // it is pinned first so a change here cannot pass on dotted fixtures alone.
+        assert_eq!(declared_mirror_basename("v1_compiler_parse"), "v1_compiler_parse.rs");
+        // The dotted form, which the projection also has to handle, and the non-injectivity that is
+        // why the ambiguous arm exists.
         assert_eq!(declared_mirror_basename("v1.compiler.emit_rust"), "v1_compiler_emit_rust.rs");
-        assert_eq!(declared_mirror_basename("main"), "main_mod.rs");
         assert_eq!(
             declared_mirror_basename("a.b_c"),
             declared_mirror_basename("a.b.c"),
             "the projection is not injective, which is why the ambiguous arm exists"
+        );
+        // AND THE ENTRY-FILE RULE DOES NOT COME ALONG. `rust_module_emit_filename` would answer
+        // "main_mod.rs" here, which is right for an emitted module file (it must not collide with
+        // the crate's entry file) and wrong for a mirror: the stage0 crate root is lib.rs, so a
+        // module projecting to `main` owns `main.rs`. This assertion is the discriminator between
+        // the two siblings; swapping the import would redden it.
+        assert_eq!(
+            declared_mirror_basename("main"),
+            "main.rs",
+            "a mirror is not an entry file"
         );
     }
 
@@ -12351,6 +12375,12 @@ pub fn regen_reverse_closure_host(
 /// The committed mirror population as `(module, basename)` rows: a module whose mirror basename
 /// (`a.b.c` -> `a_b_c.rs`) is a committed generated file. Rows are the join of two authorities the
 /// regen already owns -- the module index and the committed generated population -- never a list.
+///
+/// THE BASENAME IS ASKED, NOT SPOKEN HERE: it comes from [declared_mirror_basename], the one call
+/// to the emitted projection. Spelling `.` to `_` beside the admission that asks the projection
+/// leaves two authorities over one fact -- the shape #16310 removed for `lib.rs` membership, sitting
+/// in a sibling of the very surface this change opens. Real partition rows are already flat, so this
+/// is behavior-preserving on every row the corpus holds today; it closes the fork for a dotted one.
 pub fn compared_mirror_rows(
     stage0_src: &Path,
     modules: &[String],
@@ -12361,7 +12391,7 @@ pub fn compared_mirror_rows(
     Ok(modules
         .iter()
         .filter_map(|module| {
-            let basename = format!("{}.rs", module.replace('.', "_"));
+            let basename = declared_mirror_basename(module);
             committed
                 .contains(&basename)
                 .then(|| (module.clone(), basename))
