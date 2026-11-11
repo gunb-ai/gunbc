@@ -1,6 +1,8 @@
 module gunbc.fleet.fleet_tailnet
 
 import std.types { NonEmptyStr, String, Port }
+import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
 // THE FLEET'S TAILNET DOMAIN, as a leaf. gunbc.fleet.fleet_intent_network fleet_intent_network carries it
 // as its topology's tailnet_domain, and the approval broker composes its public address from it
@@ -23,12 +25,14 @@ data fleet_tailnet_domain: NonEmptyStr? = Present { value: "tailecbe08.ts.net" }
 // tailscale serve is what joins them,
 // and each is asserted for its own job.
 //
-// THE ABSENT ARM FAILS LOUD RATHER THAN PLAUSIBLY. tailnet_domain is Optional, and the service
-// config's `endpoint` cannot carry an Optional -- so a deployment whose tailnet domain is
-// undeclared has no address, and the honest encoding of that is a host in the RFC 2606 `.invalid`
-// TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
-// fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
-// arm is witnessed so it is not merely asserted.
+// THE ABSENT ARM FAILS CLOSED, NOT PLAUSIBLY. The machine's name (from the registry) and the
+// tailnet domain are both Optional; an unregistered machine or an undeclared domain yields Absent --
+// no address. The old form fabricated a host in the RFC 2606 `.invalid` TLD for the absent-domain
+// case, a plausible-looking fabricated default DESIGN.md rejects; the honest encoding of "no address"
+// is Absent, and the caller refuses with its own cause rather than substituting a host that cannot
+// resolve. THE HOST IS THE MACHINE'S CANONICAL REGISTRY NAME, read through gunbc.hostname_allocation's
+// registry lookup, never a handle spelling (D12); this composition is the one site the tailnet host
+// string is built.
 //
 // ONE COMPOSITION FOR EVERY SERVICE TAILSCALE SERVE PUBLISHES: the host and port are the parameters;
 // on srv1 the port is the only fact that differs between the retired ntfy address and the roadmap
@@ -39,21 +43,27 @@ data fleet_tailnet_domain: NonEmptyStr? = Present { value: "tailecbe08.ts.net" }
 // scheme, host and path on URLComponents separately (gunbc.approve_ios_swift_wire ServerConfig), so
 // it needs the bare host and not the base URL. The base URL below is built FROM this, so the two
 // cannot disagree.
-fn tailnet_host_from(host: NonEmptyStr, domain: NonEmptyStr?) -> NonEmptyStr {
+fn tailnet_host_from(machine: HostIdentity, domain: NonEmptyStr?) -> NonEmptyStr? {
   match domain {
-    Present { value: d } => join([host as String, ".", d as String], "") as NonEmptyStr
-    Absent => "tailnet-domain-undeclared.invalid" as NonEmptyStr
+    Present { value: d } =>
+      match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
+        Present { value: label } => Present { value: join([label as String, ".", d as String], "") as NonEmptyStr }
+        Absent => Absent
+      }
+    Absent => Absent
   }
 }
 
-fn tailnet_base_url_from(host: NonEmptyStr, domain: NonEmptyStr?, port: Port?) -> NonEmptyStr {
-  match domain {
-    Present { value: _ } =>
-      join([
-        "https://",
-        tailnet_host_from(host: host, domain: domain) as String,
-        match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
-      ], "") as NonEmptyStr
-    Absent => join(["https://", tailnet_host_from(host: host, domain: domain) as String], "") as NonEmptyStr
+fn tailnet_base_url_from(machine: HostIdentity, domain: NonEmptyStr?, port: Port?) -> NonEmptyStr? {
+  match tailnet_host_from(machine: machine, domain: domain) {
+    Present { value: h } =>
+      Present {
+        value: join([
+          "https://",
+          h as String,
+          match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
+        ], "") as NonEmptyStr
+      }
+    Absent => Absent
   }
 }
