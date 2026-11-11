@@ -8,8 +8,6 @@ import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
 import gunbc.runner.runner_host_deploy {
-  srv3_runner_host_spec,
-  srv4_runner_host_spec,
   runner_host_spec_for,
   RunnerHostSpecFound,
   RunnerHostSpecAbsent,
@@ -128,7 +126,7 @@ type RunnerCapacityInBandAdmissionProbes {
 type RunnerCapacityHostInBandAdmissionRequirement {
   host: HostIdentity
   transport_binding: RunnerCapacityInBandTransportBinding
-  executing_principal: NonEmptyStr
+  executing_principal: NonEmptyStr?
   required_operations: List<RunnerCapacitySlotAddPrivilegeOperation>
   probes: RunnerCapacityInBandAdmissionProbes
 }
@@ -156,13 +154,16 @@ fn runner_capacity_in_band_admission_probes() -> RunnerCapacityInBandAdmissionPr
   }
 }
 
-fn runner_capacity_executing_principal_for_host(host: HostIdentity) -> NonEmptyStr {
-  if (host as String) == (operator_host_srv3 as String) {
-    srv3_runner_host_spec.runner_user
-  } else if (host as String) == (operator_host_srv4 as String) {
-    srv4_runner_host_spec.runner_user
-  } else {
-    "briansrls" as NonEmptyStr
+// The runner's executing-principal concern, keyed by the host's stable handle. The principal is the
+// runner account recorded on the host's RunnerHostSpec (the same srvN_runner_host_spec.runner_user the
+// arm-per-host form read; srv1/srv2 carry the operator principal "briansrls", srv3/srv4 the runner
+// account) -- so it is derived from the one host record rather than a per-machine branch. A handle with
+// no RunnerHostSpec has no executing principal and reports a typed none, never the "briansrls" default
+// the old else-arm handed any unknown host.
+fn runner_capacity_executing_principal_for_host(host: HostIdentity) -> NonEmptyStr? {
+  match runner_host_spec_for(host: host) {
+    RunnerHostSpecFound { spec: spec } => Present { value: spec.runner_user }
+    RunnerHostSpecAbsent { host: _ } => none
   }
 }
 
