@@ -184,7 +184,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "v1_compiler_infer_types",
         "v1_compiler_ownership",
         "v1_compiler_emit_core_support",
-        "v1_compiler_type_head_exposure"
+        "v1_compiler_type_head_exposure",
+        "v1_compiler_rest_cause_text"
       ],
       reexport_packages: [
         "v1-stage0-runtime",
