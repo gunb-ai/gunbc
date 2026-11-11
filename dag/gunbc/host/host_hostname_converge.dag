@@ -1,6 +1,7 @@
 module gunbc.host.host_hostname_converge
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { nat_to_decimal_string }
 import std.optional { Present, Absent }
 import std.disposition { Disposition }
 import std.realization_reconcile { reconciliation_converged }
@@ -359,7 +360,7 @@ fn hostname_converge_candidate_count_text(candidates: List<DnsLabel>) -> String 
     if candidates.length() == 2 {
       "two"
     } else {
-      join([candidates.length() as String, ""], "")
+      nat_to_decimal_string(value: candidates.length())
     }
   }
 }

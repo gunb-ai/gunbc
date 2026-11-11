@@ -154,7 +154,7 @@ test fn the_job_carries_plan_apply_read_back_and_adopt() -> Bool {
     Present { value: job } =>
       any(step_names(job: job), n => string_contains(s: n, pattern: "dry plan"))
         && any(step_names(job: job), n => string_contains(s: n, pattern: "wet apply"))
-        && any(step_names(job: job), n => string_contains(s: n, pattern: "read the target")
+        && any(step_names(job: job), n => string_contains(s: n, pattern: "read the target"))
         && any(step_names(job: job), n => string_contains(s: n, pattern: "re-adopt the committed hostname baseline"))
   }
 }
