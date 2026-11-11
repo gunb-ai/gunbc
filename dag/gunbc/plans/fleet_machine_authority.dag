@@ -211,8 +211,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
         ul(items: [
           li(text: "`runner_host_withdraw` drains the host."),
           li(text: "The flip PR moves that row's `next_name` to `name` and regenerates workflows."),
-          li(text: "The peer-run hostname mode sets and reads back the hostname."),
-          li(text: "The Tailscale mode sets and reads back the tailnet name."),
+          li(text: "**The OS hostname and the tailnet name flip as one step and are read back in one observation.** The peer-run hostname mode sets the hostname and the Tailscale mode sets the tailnet name, and the step completes only when one read over the same route shows both equal to the target (`hostname -s` and `status --json` `Self.HostName`). They are not two independent steps: Tailscale re-derives the machine name from the OS hostname when that changes, so a host with only one half moved is not stable across a restart. A read-back where the tailnet half moved and the OS half did not refuses (P8c, `ReadBackNamesDiverged`); the mirror state, OS moved and tailnet lagging, is the middle of the step, and the Tailscale write closes it. Both targets come from the registry, never from the handle's spelling, and which accessor holds the target follows the transition: before the flip PR lands, `next_name_for_fleet_slot` is the accepted target that S2 prepares against; once it lands, the row's `name` is the target and `next_name` is Absent, so this step reads `canonical_hostname_for_fleet_slot`. The window refuses to apply unless the prepared target equals the post-flip canonical name, which catches a flip PR that moved the wrong name."),
           li(text: "A DHCP renew updates the router name, and `network_identity_subsumption` reads it back."),
           li(text: "`runner_host_file_converge` and `runner_host_restore` bring the runners back, and the next JIT mints carry the new label."),
         ]),
@@ -222,8 +221,7 @@ fn fleet_machine_authority_body() -> List<MarkdownBlock> {
         p(text: "**S3 rollback, covering everything the window changed.** Each step is run as a rehearsal (a dry plan) before the window:"),
         ul(items: [
           li(text: "Revert the flip PR, so the row's name returns and the workflows regenerate."),
-          li(text: "The hostname mode sets the old name back and reads it."),
-          li(text: "The Tailscale mode sets the old name back and reads it."),
+          li(text: "The hostname and Tailscale modes set the old name back as one step, and one read-back shows both halves at the old name: `canonical_hostname_for_fleet_slot` once the revert has landed."),
           li(text: "DHCP renew."),
           li(text: "Runners re-mint under the old label."),
           li(text: "The account migration is not in this window (D13). It ran earlier in its own window, so the management path verified in S2 is under the account the host already uses."),
