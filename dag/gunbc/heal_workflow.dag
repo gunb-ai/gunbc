@@ -646,7 +646,7 @@ data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = GunbcRunStepTar
 // SCOPED TO WHAT THE PULL REQUEST CAN AFFECT (gunbc.plans.read_set_convergence P2b). `--regen-affected-scope`
 // asks a child for the scope (required_regen_host EmissionScopeReceipt) over the pull request's own change
 // from merge-base(base, HEAD), with what the base gained since that merge-base read apart as the generator
-// delta (gunbc.regen_affected_set regen_affected_set_over_diverged_change, P2c), after any interrupted round
+// delta (gunbc.regen_affected_change regen_affected_set_over_diverged_change, P2c), after any interrupted round
 // is recovered; a change that reaches no committed mirror is a successful zero-work round, an added or
 // deleted module, an edited seed build input (gunbc.seed_build_inputs) or a generator change on the base
 // is the whole population, and a scope that cannot be computed refuses (operator decision 2026-11-10). Switched on only now that the base carries the scoped protocol (P2a):
