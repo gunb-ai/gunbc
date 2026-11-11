@@ -21,15 +21,16 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // - gunbc.roadmap.roadmap_attempt_metering.metering_persist_for_attempt, whose observe reaches the same
 //   head — unreachable for exactly these rows, because no modeled belt route touches them (below).
 //
-// WHY THE POPULATION IS NOT YET COUNTED: the belt reaches an attempt only while LIVE (a dispatch ref,
+// WHY THE POPULATION COULD NOT BE COUNTED BY A GUNBC INSTRUMENT (it IS enumerated now, below): the belt reaches an attempt only while LIVE (a dispatch ref,
 // belt_attempts_observe_for_instance) or while INDEXED (a metering-attempt.<L1>.<node>.<L2>.<key>.json
 // file, metering_attempt_index). metering_attempt_index_admit landed on main at b87550652ec (2026-11-05),
 // AFTER every one of these records was written, so none carries an index entry, and the entry directory
 // name (<node> + attempt_state_slots.attempt_infix '-a' + <attempt_key>, attempt_state_entry_name) cannot
 // be reverse-parsed because '-a' also occurs inside node names. No instrument of the corpus enumerates
 // the rows today; the read-only classification step of the #15574 srv2 op-boundary script (step [2b],
-// equality against both authorities) is the provisional enumeration route and is not a gunbc instrument
-// target, which is exactly what NoInstrumentObservesTheZero names.
+// equality against both authorities) was the enumeration route: it ran on srv2 on 2026-11-09
+// (the op-boundary script run recorded in the #15574 body) and enumerated the 23 records that the row below now lists.
+// It is still not a gunbc instrument target, which is exactly what NoInstrumentObservesTheZero names.
 
 data pre_seal_metering_records_unserved_pending_adoption: RungDrop = RungDrop {
   identity: "pre_seal_metering_records_unserved_pending_adoption" as NonEmptyStr,
