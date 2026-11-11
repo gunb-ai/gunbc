@@ -1132,7 +1132,7 @@ fn network_install_run_staged(
     }
     Present { value: one_request } =>
       network_install_after_binding(
-        subject: subject,
+        subject: install_subject,
         dispatch: network_install_dispatch_admission(
           population: population, managed: managed, host: host, expected_serial: expected_serial,
           dispatch_owner: dispatch_owner, intended_controller: intended_controller, observed: observed,
