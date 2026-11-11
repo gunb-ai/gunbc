@@ -1033,6 +1033,12 @@ EOF
   [ -s "$GEXP/migration.verified" ] && [ -s "$GEXP/read-back.out" ] \
     || fail "G20: the admitting step left no admission to gate on: verified=[$(cat "$GEXP/migration.verified" 2>/dev/null | head -1)] readback=[$(cat "$GEXP/read-back.out" 2>/dev/null | head -1)]"
 
+  # The admission has to carry the verification name, or step 5b's binding gate has nothing to read.
+  [ -s "$GEXP/verify.attempt" ] \
+    || fail "G20: step 5 admitted without recording its verification attempt — step 5b would have nothing to compare the admission against"
+  [ "$(sed -n 's/^ATTEMPT=//p' "$GEXP/migration.verified")" = "$(head -n1 "$GEXP/verify.attempt")" ] \
+    || fail "G20: the admission does not name the verification that produced it [$(sed -n 's/^ATTEMPT=//p' "$GEXP/migration.verified") vs $(head -n1 "$GEXP/verify.attempt")]"
+
   seed_export
   run_verify "step 5 re-run, where the read-back admits but writes nothing" STUB_READBACK_NOWRITE=1
   [ "$LAST_RC" -ne 0 ] || fail "G21: step 5 certified activation from a read-back that produced no document at all"
@@ -1112,6 +1118,17 @@ echo
     || fail "G24: the refusal did not name the failed deletion: [$LAST_OUT]"
   echo "$LAST_OUT" | grep -vF 'could not destroy' | grep -qF 'MIGRATION VERIFIED' \
     && fail "G24: it printed the activation admission after a refused deletion"
+  # THE STATE THE CONSUMER MUST NOT BE ABLE TO USE, produced rather than described. The deletion loop stops at its
+  # first failure, so BOTH of the previous attempt's documents are still on disk — the reviewer's premise, asserted
+  # here so the consumer case in the dispatch witness is known to reproduce a state step 5 really leaves.
+  [ -s "$GEXP/read-back.out" ] \
+    || fail "G24: the read-back the refused re-run could not destroy is gone, so the consumer case would be testing an empty directory"
+  [ -s "$GEXP/migration.verified" ] \
+    || fail "G24: the admission the refused re-run could not destroy is gone, so the consumer case would be testing an empty directory"
+  [ -s "$GEXP/verify.attempt" ] \
+    || fail "G24: the re-run did not record its own verification attempt before refusing — an unrecorded entry is what lets the old admission speak for it"
+  [ "$(sed -n 's/^ATTEMPT=//p' "$GEXP/migration.verified")" != "$(head -n1 "$GEXP/verify.attempt")" ] \
+    || fail "G24: the surviving admission still names the current attempt file, so step 5b would deploy on it — the mint must come BEFORE the deletion"
 
   # G25: step 6 restarts and the previous attempt's report cannot be destroyed
   seed_export; run_migrate "the migration completes"; run_retire "step 4 retires the two nodes"

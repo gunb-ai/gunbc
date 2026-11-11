@@ -586,6 +586,17 @@ instead of certifying.
 # leaves the PREVIOUS attempt's documents standing: the `grep '^MIGRATION VERIFIED'` below is satisfied by the stale
 # document, the digest it records is the digest of that stale document, and activation is certified by a read-back
 # that never happened in this attempt. Both go together — an admission missing half its evidence is no admission.
+# THE VERIFICATION IS NAMED BEFORE ANYTHING CAN FAIL, and the admission document written at the end of this step
+# carries that name; step 5b compares them BEFORE it contacts GitHub. A checked deletion is necessary and is not
+# sufficient: if destroying one of the two documents fails, step 5 refuses — and BOTH of the previous attempt's
+# documents are still on disk, because the loop stops at the failure. Step 5b then finds a `migration.verified`
+# that exists, binds this revision, digests the read-back that is still there, and matches the live tip. Every one
+# of its predicates can pass on documents this attempt never wrote. The name is what separates them: this line
+# rewrites $D/verify.attempt on every entry into the step, so a refused re-run leaves the CURRENT name beside the
+# PREVIOUS attempt's admission, and the two cannot be made to agree by anything that survived.
+VERIFY_ATTEMPT=$(printf '%s-%s-%s' "$(date -u +%FT%TZ)" "$$" "${RANDOM}${RANDOM}" | sha256sum | cut -c1-16)
+printf '%s\n' "$VERIFY_ATTEMPT" > "$D/verify.attempt" \
+  || { echo "MIGRATION REFUSED: this verification could not be recorded in $D/verify.attempt — an unrecorded verification cannot be told from an earlier one, which is the hole step 5b would then fall into"; exit 1; }
 # THE DELETION IS AN ADMISSION PREDICATE. This fence does not run under `set -e` (it cannot: its job is to inspect
 # a failing read-back and print its refusal), so a bare `rm -f` whose status nobody reads is not a gate — a
 # deletion that fails (read-only mount, immutable file, another user's ownership) leaves the PREVIOUS attempt's
@@ -620,6 +631,7 @@ if [ "$READ_BACK_RC" -eq 0 ] && grep -q '^MIGRATION VERIFIED' "$D/read-back.out"
     echo "MANIFEST_SHA256=$(sha256sum "$D/seed.jsonl" | cut -d' ' -f1)"
     echo "READ_BACK_SHA256=$(sha256sum "$D/read-back.out" | cut -d' ' -f1)"
     echo "VERIFIED_AT=$(date -u +%FT%TZ)"
+    echo "ATTEMPT=$VERIFY_ATTEMPT"
   } > "$D/migration.verified"
   cat "$D/migration.verified"; cat "$D/read-back.out"
   echo 'MIGRATION VERIFIED — the only state from which step 5b may be entered'
@@ -697,9 +709,10 @@ admitted doors are named, rather than a third invented:
 
 ```bash
 # ONE AUTHORIZED INVOCATION, BOUND TO THE EXACT REVISION, BEHIND AN EXECUTABLE GATE — and each stage's run is
-# POSITIVELY IDENTIFIED before its receipts are consumed. (1) The gate: five predicates, each refusing before
+# POSITIVELY IDENTIFIED before its receipts are consumed. (1) The gate: eight predicates, each refusing before
 # GitHub is contacted, and the verifier asked AGAIN on the spot, so a migration verified at 03:00 whose branch
-# moved at 03:05 cannot be activated on the 03:00 receipt. # (2) The reference: gh workflow run takes a REF, and a bare commit SHA is not what the CLI documents — so each
+# moved at 03:05 cannot be activated on the 03:00 receipt.
+# (2) The reference: gh workflow run takes a REF, and a bare commit SHA is not what the CLI documents — so each
 # stage is dispatched against its OWN TAG, minted by THIS invocation at this revision with a per-invocation
 # nonce, pushed, and verified to resolve to $SHA before anything is dispatched. The ref is what the poll then
 # correlates a run TO: see the minting block inside dispatch_stage.
@@ -708,6 +721,17 @@ admitted doors are named, rather than a third invented:
 # Actions API, then watches it to a successful conclusion. Nothing consumes a receipt from a run that was not
 # identified as its own.
 test -s "$D/migration.verified"                     || { echo 'NO DEPLOY: step 5 never admitted the read-back'; exit 1; }
+# AND THE ADMISSION MUST NAME THIS VERIFICATION. The predicates below can all be satisfied by documents an
+# earlier step 5 wrote — which is exactly the state a step 5 that REFUSED on a failed invalidation leaves behind,
+# since its deletion loop stops at the failure and the previous attempt's pair survives together. step 5 rewrites
+# $D/verify.attempt on entry, before anything fallible; the admission carries the name of the run that produced it.
+# Both names are printed on refusal, because "step 5 refused and its old admission is still standing" and
+# "someone copied an admission in from another export" are different incidents with different repairs.
+[ -s "$D/verify.attempt" ]                          || { echo 'NO DEPLOY: no verification attempt is recorded — nothing shows the admission below came from a step 5 that ran to completion'; exit 1; }
+VERIFY_ATTEMPT_NOW=$(head -n1 "$D/verify.attempt")
+[ "${#VERIFY_ATTEMPT_NOW}" -eq 16 ]                 || { echo "NO DEPLOY: the recorded verification attempt is [$VERIFY_ATTEMPT_NOW], not the 16 characters step 5 mints"; exit 1; }
+ADMIT_ATTEMPT=$(sed -n 's/^ATTEMPT=//p' "$D/migration.verified")
+[ "$ADMIT_ATTEMPT" = "$VERIFY_ATTEMPT_NOW" ]        || { echo "NO DEPLOY: $D/migration.verified does not name THIS verification — the admission names ${ADMIT_ATTEMPT:-<nothing>} and step 5's latest run recorded $VERIFY_ATTEMPT_NOW, so a step 5 that refused is being spoken for by documents it never wrote"; exit 1; }
 grep -q "^SHA=$SHA$" "$D/migration.verified"        || { echo 'NO DEPLOY: the receipt binds another revision'; exit 1; }
 grep -q "^READ_BACK_SHA256=$(sha256sum "$D/read-back.out" | cut -d' ' -f1)$" "$D/migration.verified" \
                                                   || { echo 'NO DEPLOY: the read-back document is not the one verified'; exit 1; }
