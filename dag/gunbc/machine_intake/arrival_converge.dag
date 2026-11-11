@@ -92,6 +92,7 @@ import gunbc.machine_intake.mtjade1_access_observation {
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
 import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.machine_intake.bmc_rotation_route {
+  admitted_forced_first_rotation_eq,
   BmcRotationRouteStanding,
   BmcAccountWriteRequest,
   ObservedSurfaceRead,
@@ -173,6 +174,7 @@ import gunbc.machine_intake.bmc_write_controller {
 }
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
+  step_instance_key_eq,
   StepSubjectKey,
   StepInstanceKey,
   ConvergenceStep,
