@@ -1,4 +1,4 @@
-module gunbc.plans.md_helpers
+module gunbc.markdown_helpers
 
 import std.markdown {
   MarkdownBlock, MarkdownListItem, MarkdownTaskItem,

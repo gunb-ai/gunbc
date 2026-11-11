@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // function reaches the FREE FUNCTION. Where the two disagree in arity that refuses loudly; where
 // they AGREE it returns a plausible wrong value and no diagnostic at all. Reproduced twice
 // independently on live corpus symbols before this fixture existed: a local bound to a named fn
-// and called as `p` returned a ParagraphBlock from gunbc.plans.md_helpers (visible only because
+// and called as `p` returned a ParagraphBlock from gunbc.markdown_helpers (visible only because
 // an unrelated cross-representation equality guard tripped on `== 42`), and silent-bear-842's
 // fabric observer consumed the same displacement as a Bool predicate -- constantly true, a fold
 // over three elements returning 3 where the direct fold counts 2, with nothing to see.

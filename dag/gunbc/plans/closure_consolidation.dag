@@ -3,7 +3,7 @@ module gunbc.plans.closure_consolidation
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote }
+import gunbc.markdown_helpers { h2, h3, p, li, ul, quote }
 
 fn closure_consolidation_body() -> List<MarkdownBlock> {
   [
