@@ -671,9 +671,14 @@ fn http_ingress_native_contract(admission: HttpIngressAdmission, program: Native
 // execution's loaded index"). This row is that reader's DECLARED KEY SET: the infer-side runtime
 // key registry (src/v1/04_infer.dag runtime_key_readers, instance loaded_index_keyed_call) seeds
 // and edges these names into realization, and the host reads THE SAME ROW at startup to refuse
-// with every missing key named instead of dying at the first consult. One authority, read twice:
-// a fold the host gains without entering this row is caught by the loaded-index check at startup,
-// and a row entry the host never evaluates is dead weight the audit keeps visible.
+// with every missing key named instead of dying at the first consult. What each check enforces:
+// the STARTUP check (cli_run/http_ingress_host.rs) refuses a run where any name THIS ROW lists is
+// absent from the loaded index; the CI EQUALITY test
+// (src/v1/stage0/src/cli_run/demanded_typecheck_equivalence.rs
+// the_host_by_name_call_sites_equal_the_declared_key_row) refuses a host by-name call site absent
+// from this row -- the class startup cannot see, the crash-loop this row exists to remove -- and
+// refuses a row entry the host never evaluates, keeping dead weight visible. The row stays the
+// single authority: host startup and both tests READ IT, none transcribes it.
 data http_ingress_host_read_folds: List<String> = [
   "http_ingress_arguments",
   "http_ingress_announcement",

@@ -1045,11 +1045,57 @@ fn sdo_observe_refusal_present(messages: &[String]) -> bool {
 // its reader fold, and every fold the row lists are in `realized`. RED at main (no instance, no
 // row); GREEN once the registry (runtime_key_readers, loaded_index_keyed_call) seeds them.
 
+/// The ONE authority for the host's by-name key set is the .dag row; these tests read the row
+/// from its source file and read the host's call sites from the host source -- no test ever
+/// transcribes the set (review 93610: a third copy is a fork with extra steps).
+fn scan_by_name_literals(text: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'"' {
+                j += 1;
+            }
+            let lit = &text[i + 1..j];
+            if lit.starts_with("http_ingress_")
+                && lit.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+            {
+                out.insert(lit.to_string());
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+fn declared_key_row_names() -> std::collections::BTreeSet<String> {
+    let text = std::fs::read_to_string("dag/gunbc/http_ingress.dag")
+        .expect("the declaring .dag file must exist");
+    let start = text
+        .find("data http_ingress_host_read_folds: List<String> = [")
+        .expect("the declared key row must exist in the .dag");
+    let end = text[start..]
+        .find(']')
+        .map(|e| start + e)
+        .expect("the declared key row must close");
+    scan_by_name_literals(&text[start..end])
+}
+
+/// The serve entry must realize the row itself, its reader fold, and every fold the row LISTS --
+/// names read from the row's source, never transcribed. RED at main (no instance, no row: the file
+/// has no such row / nothing seeds it); GREEN once the registry (runtime_key_readers,
+/// loaded_index_keyed_call) seeds them.
 #[test]
 fn serve_entry_realizes_the_host_declared_key_row() {
     std::thread::Builder::new()
         .stack_size(512 << 20)
         .spawn(|| {
+            let row = declared_key_row_names();
+            assert!(!row.is_empty(), "the declared key row must list the host's by-name folds");
             let (_sources, _intern, si, modules, _graph) =
                 graph_from("dag/gunbc/roadmap/roadmap_ingress.dag");
             let demand = grain_demand(&modules, &["roadmap_ingress"], &si);
@@ -1057,44 +1103,51 @@ fn serve_entry_realizes_the_host_declared_key_row() {
                 DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
                 DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
             };
-            let declared: Vec<&str> = vec![
-                "http_ingress_host_read_folds",
-                "http_ingress_host_read_folds_reader",
-                "http_ingress_arguments",
-                "http_ingress_announcement",
-                "http_ingress_body_limit_bytes",
-                "http_ingress_budget_refused",
-                "http_ingress_cpu_limit_ms",
-                "http_ingress_fact_plan",
-                "http_ingress_frame",
-                "http_ingress_handler_error",
-                "http_ingress_handler_identity",
-                "http_ingress_head_limit_bytes",
-                "http_ingress_listener_refusal",
-                "http_ingress_not_a_response",
-                "http_ingress_outgoing",
-                "http_ingress_pre_evaluation_routes",
-                "http_ingress_read_refused",
-                "http_ingress_read_timeout_ms",
-                "http_ingress_wall_limit_ms",
-                "http_ingress_wire_head",
-            ];
-            let missing: Vec<&str> = declared
+            let mut missing: Vec<String> = row
                 .iter()
-                .copied()
-                .filter(|n| !realization.realized.contains_key(*n))
+                .filter(|n| !realization.realized.contains_key(n.as_str()))
+                .cloned()
                 .collect();
+            if !realization.realized.contains_key("http_ingress_host_read_folds") {
+                missing.push("http_ingress_host_read_folds".to_string());
+            }
             eprintln!(
                 "LOADED_INDEX_KEYED_CALL entry=roadmap_ingress missing={:?} total={}",
                 missing,
-                declared.len()
+                row.len()
             );
             assert!(
                 missing.is_empty(),
-                "the host's declared key row (gunbc.http_ingress http_ingress_host_read_folds), its reader fold, and every fold the row lists must be realized for the serve entry: missing {missing:?}"
+                "the host's declared key row (gunbc.http_ingress http_ingress_host_read_folds), the row itself, and every fold the row lists must be realized for the serve entry: missing {missing:?}"
             );
         })
         .unwrap()
         .join()
         .unwrap();
+}
+
+/// THE SET-EqualITY CHECK (review 93610): the host's by-name call sites and the .dag row are the
+/// two places the inventory appears; they MUST be equal as sets, read from their source files in
+/// CI. A host fold gained without entering the row turns this RED (the class the startup check
+/// cannot see); a row entry the host never evaluates turns this RED too (dead weight kept
+/// visible). Neither direction is caught by anything else.
+#[test]
+fn the_host_by_name_call_sites_equal_the_declared_key_row() {
+    let host = std::fs::read_to_string("src/v1/stage0/src/cli_run/http_ingress_host.rs")
+        .expect("the ingress host source must exist");
+    let host_lits = scan_by_name_literals(&host);
+    let row = declared_key_row_names();
+    let host_only: Vec<&String> = host_lits.difference(&row).collect();
+    let row_only: Vec<&String> = row.difference(&host_lits).collect();
+    eprintln!(
+        "HOST_CALL_SITES_EQUALITY host_only={:?} row_only={:?} host={} row={}",
+        host_only,
+        row_only,
+        host_lits.len(),
+        row.len()
+    );
+    assert!(
+        host_only.is_empty() && row_only.is_empty(),
+        "the host's by-name fold literals and the declared key row must be EQUAL as sets: host-only (crash-loop class, row must gain them) = {host_only:?}, row-only (dead weight, row must lose them) = {row_only:?}"
+    );
 }
