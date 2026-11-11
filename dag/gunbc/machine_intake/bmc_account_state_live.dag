@@ -10,22 +10,30 @@ module gunbc.machine_intake.bmc_account_state_live
 //     stamps every instant from the observer's clock (never the controller's), and DERIVES the published
 //     retirement under the credential-policy row (it never probes the published credential).
 //
-// WHY THIS IS THE REAL-EFFECTS BOUNDARY AND NOTHING PAST IT. This module runs no subprocess, opens no
-// socket, reads no clock, and fetches no secret. The WET layer -- the arrival-door dispatch that the
-// operator-approved run-scoped service account drives on srv1 (fleet-converge arrival_converge) -- is what
-// executes the ipmitool / Redfish operations (the extdeps.bmc.ipmi / extdeps.bmc.http operation rows the
-// controller inputs select), materializes the managed secret through
-// gunbc.auth.secret_ref_credential.fetch_secret_ref_credential, reads the wall clock through
-// gunbc.clock_read.observer_clock_read, and WRITES each response to the content-addressed evidence store,
-// reading its EvidenceRef back. Those raw committed captures are THIS module's input. Enforcing the two
-// safety properties therefore does not need code here: (a) the published credential has NO parameter on
+// WHY THIS IS THE REAL-EFFECTS BOUNDARY -- AND WHAT DOES NOT YET EXIST. This module runs no subprocess,
+// opens no socket, reads no clock, and fetches no secret. TODAY its only callers are its three witnesses.
+// Its consumer is NOT wired yet and this module claims no caller it does not have: the arrival-door BmcSecure
+// binding (a later change, written against PXE 1b #16299) and the wet dispatch (fleet-converge
+// arrival_converge on srv1, dispatched by the manager) are the DECLARED LATER consumers of this entry --
+// privileged_effect_census records that arrival_converge_wet does not yet invoke BmcSecure Apply. When those
+// land, the dispatch is the party that RUNS the four extdeps.bmc.ipmi operations added with this change
+// (UserList / ChannelGetAccess / LanPrint / UserTestManaged) and the extdeps.bmc.http GET operations,
+// materializes the managed secret through gunbc.auth.secret_ref_credential.fetch_secret_ref_credential, reads
+// the clock through gunbc.clock_read.observer_clock_read, and writes each response to the content-addressed
+// evidence store, reading its EvidenceRef back -- producing the raw committed captures THIS module consumes.
+// That is the CONTRACT this entry is written against, not a description of running code: the operations named
+// above have no executing consumer until the dispatch is wired, so they -- and this entry -- are the frontier's
+// REMAINING, trigger = the arrival-door BmcSecure binding plus one executed srv15 run whose receipt is
+// committed. Enforcing the two safety properties therefore does not need code here: (a) the published
+// credential has NO parameter on
 // this path -- the reader only ever takes ManagedCredentialReference / the goal's break-glass reference and
 // derives the published retirement, so a published login cannot be requested; (b) an instant cannot be a
 // controller clock -- supplied_transport_read_bmc_account_state turns read_at_millis into a sealed observer
 // instant via gunbc.clock_read. A witness hands the same captures a wet transport would, and gets the same
 // observation the dry reader mints for that world.
 //
-// NOTHING NEW IS ENROLLED. This module's only consumer is the arrival-door run (the dispatch above); per
+// NOTHING NEW IS ENROLLED. This module's declared later consumer is the arrival-door dispatch described
+// above (not yet wired); per
 // gunbc.design_ruling job_roster_closed_to_growth / ci_job_budgets_closed_to_growth it adds no CI lane and
 // no wet-terminal scheduled claim -- the frontier is discharged by the executed srv15 run, not a CI job.
 
