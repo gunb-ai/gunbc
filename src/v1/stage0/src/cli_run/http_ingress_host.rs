@@ -670,7 +670,7 @@ fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
                 other => {
                     return Err(format!(
                         "http_ingress_host_read_folds_reader answered a non-list: {}",
-                        format_value(ctx, other)
+                        ctx.format_value(other)
                     ))
                 }
             };
