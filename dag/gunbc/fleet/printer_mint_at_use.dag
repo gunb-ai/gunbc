@@ -34,7 +34,7 @@ import std.measure { nanosecond }
 import extdeps.cloud.gcp.iam { gcp_impersonated_presentation }
 import extdeps.cloud.gcp.gcp { cloud_platform_scope }
 import std.credential_admission { CredentialPresented, CredentialPresentationRefused, CredentialUseRequirement }
-import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
+import extdeps.transports.rest { rest_refusal_text, rest_credential_refusal_cause }
 import gunbc.auth.federated_workload_credential {
   FederatedWorkloadCredential,
   FederatedWorkloadCredentialMint,
@@ -86,23 +86,6 @@ type PrinterGoogleTokenResolution
 data printer_mint_at_use_requirement: CredentialUseRequirement = CredentialUseRequirement {
   required_remaining: nanosecond(count: 30000000000),
   skew_margin: nanosecond(count: 10000000000),
-}
-
-// Renders a RestRefusal to a short cause string, following the same
-// discipline as heal_publication's rest_refusal_text: the body is withheld
-// on credential paths, the transport cause is named, and a refused leg keeps
-// its status code.
-fn rest_refusal_text(o: RestRefusal) -> String {
-  match o {
-    RestStatusRefused { status, body: _ } => concat("status ", to_string(status as Int))
-    RestTransportRefused { cause: _ } => "transport refused (cause withheld on a credential path)"
-    RestCredentialRefused { refusal: credential_refusal } => {
-      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
-      cause as String
-    }
-    RestBodyUndecodable { status, cause } =>
-      concat(concat("status ", to_string(status as Int)), concat(" undecodable (", concat(cause, ")")))
-  }
 }
 
 // Build the printer's mint request from the named federation constants.
