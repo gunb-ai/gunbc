@@ -20,6 +20,6 @@ data gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation: RecurringFailur
   ],
   evidence: [
     DeclarationRef { module_path: "gunbc.fleet.fleet_workflow_steps", decl_name: "gunbc_ci_aux_step_timeout_minutes", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_mtcollins1_boot_admit_target", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_step", decl_name: "gunbc_ci_mtcollins1_boot_admit_target", field: WholeDeclaration },
   ],
 }
