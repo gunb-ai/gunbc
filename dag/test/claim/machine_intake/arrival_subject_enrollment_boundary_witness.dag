@@ -11,7 +11,7 @@ import gunbc.auth.standing_operator_grant {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
 import gunbc.fleet.fleet_enrollment {
-  fleet_enrollments, apply_mode_for_host, reach_admission_for_host, host_run_scoped_federation,
+  fleet_enrollments, apply_mode_for_host, reach_policy_for_host, host_run_scoped_federation,
 }
 import gunbc.host.managed_host { managed_hosts }
 import gunbc.machine_intake.arrival_subject {
@@ -115,7 +115,7 @@ test fn a_managed_bobo_is_confusion_not_an_arrival() -> Bool {
 test fn bobo_carries_no_enrollment_policy_to_inherit() -> Bool {
   match apply_mode_for_host(host: operator_host_srv15) {
     Present { value: _ } => false
-    Absent => match reach_admission_for_host(host: operator_host_srv15) {
+    Absent => match reach_policy_for_host(host: operator_host_srv15) {
       Present { value: _ } => false
       Absent => match host_run_scoped_federation(host: operator_host_srv15) {
         Present { value: _ } => false

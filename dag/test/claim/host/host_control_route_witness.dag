@@ -95,7 +95,7 @@ test fn a_guest_without_a_recorded_acquisition_is_not_controlled() -> Bool {
       entitlement: hetzner_cloud_guest_entitlement(row: cax41_catalog, offer: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "cax41_catalog")),
       resource: ProviderResourceAwaited { read_obligation: "record the acquisition of ubuntu-32gb-hel1-1" },
     },
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   }
   match enrolled_host_control(intent: intent, provider_reads: both_read) {
     HostControlRefused { refusal: ProviderResourceNotAcquired { host: _, read_obligation: o } } =>
@@ -154,7 +154,7 @@ fn owned_intent(control: OwnedControlRoute, delivery: OwnedOsDelivery) -> HostEn
     host: operator_host_mtcollins1,
     participation: ci_runner_enrollment_participation,
     backing: OwnedMachine { provisioning: OwnedProvisioning { control: control, delivery: delivery }, unit: Absent },
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   }
 }
 

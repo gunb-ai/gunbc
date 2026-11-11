@@ -94,14 +94,15 @@ fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
   }
 }
 
-// Whether the fleet may reach this host for recovery work, and if not, why. Re-homed here from
-// gunbc.runner.runner_broker_progress_watchdog, whose watchdog and gunbc.runner.runner_connectivity_recovery
-// both report it. srv3 and srv4 are refused because host-key login is unavailable there -- a fact
-// about those machines, so it is stated on their rows and not spelled as a comparison in the
-// recovery route.
-type HostReachAdmission
-  = HostReachAdmitted
-  | HostReachRefused { host: HostIdentity, reason: NonEmptyStr }
+// What the enrollment PERMITS about reaching this host for recovery work. This is the POLICY a row
+// states -- it does NOT name the host: the row's own `host` column already does, and restating it here
+// would let a row say "this is srv4" while refusing "srv3". The identity-bearing verdict --
+// gunbc.runner.runner_broker_progress_watchdog's `HostReachAdmission`, which gunbc.runner.runner_connectivity_recovery
+// reports -- is BUILT from the host actually asked about, so the machine a refusal names is the machine
+// that was queried (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed).
+type HostReachPolicy
+  = HostKeyLoginAdmitted
+  | HostKeyLoginRefused { reason: NonEmptyStr }
 
 // WHY srv3 AND srv4 ARE NOT REACHABLE for recovery work: host-key login is unavailable on those two
 // machines, so a recovery route that reached them over SSH would fail closed at the transport anyway
@@ -140,7 +141,7 @@ data mtcollins1_boot_run_scoped_federation_names: HostRunScopedFederation = RunS
 
 // An enrollment joins three separate facts about one stable identity: what the host is FOR
 // (participation), and what SUPPLIES it (backing, gunbc.fleet.fleet_host_backing), and what the fleet
-// PERMITS it (apply_mode, reach_admission and run_scoped_federation above). Its allocated names live
+// PERMITS it (apply_mode, reach_policy and run_scoped_federation above). Its allocated names live
 // in gunbc.hostname_allocation and are not repeated here. A known identity can exist without a
 // participation, a participation can exist before its readiness is established, and only the
 // applicable admission downstream produces runnable capacity.
@@ -149,7 +150,7 @@ type HostEnrollmentIntent {
   participation: List<FleetParticipation>
   backing: HostBacking
   apply_mode: ConvergeApplyMode
-  reach_admission: HostReachAdmission
+  reach_policy: HostReachPolicy
   run_scoped_federation: HostRunScopedFederation
 }
 
@@ -209,13 +210,13 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
 
 data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv1) },
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
   HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv2) },
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
   HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv3) },
-    apply_mode: FreshStandup, reach_admission: HostReachRefused { host: operator_host_srv3, reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
+    apply_mode: FreshStandup, reach_policy: HostKeyLoginRefused { reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
   HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv4) },
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachRefused { host: operator_host_srv4, reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginRefused { reason: host_key_login_unavailable_reason }, run_scoped_federation: NoRunScopedFederation },
   // srv14/butch: CI-ONLY (operator 2026-11-10 -- CiRunnerParticipation, NO interactive sessions), so it
   // carries ci_runner_enrollment_participation, NOT the session-bearing participation srv1-4 carry. Added
   // as a CI runner it does NOT change the sessions population the host_phase_status witness pins at 4
@@ -226,7 +227,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
   // to how butch was delivered). Its unit is read from the one physical-binding admission like every owned row; its board
   // facts bind via gunbc.fleet.machine_board (srv14_baseboard -> fleet_intent_board).
   HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: machine_unit_standing(machine: operator_host_srv14) },
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
   // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Every
   // owned row's unit is read from the one physical-binding admission (gunbc.fleet.fleet_machine_unit_binding,
   // A2 of gunbc.plans.fleet_machine_authority): Absent until that machine's board serial is observed.
@@ -234,7 +235,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
     host: operator_host_mtcollins1,
     participation: ci_runner_enrollment_participation,
     backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: RamImageBoot }, unit: machine_unit_standing(machine: operator_host_mtcollins1) },
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: mtcollins1_boot_run_scoped_federation_names,
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: mtcollins1_boot_run_scoped_federation_names,
   },
   HostEnrollmentIntent {
     host: operator_host_183527,
@@ -243,7 +244,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
       route: hetzner_nuremberg_route(),
       resource: ProviderResourceAcquired { acquisition: hetzner_cax41_nbg1_1_acquisition },
     ),
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   },
   HostEnrollmentIntent {
     host: operator_host_3dde7f,
@@ -252,7 +253,7 @@ data fleet_enrollment_intents: List<HostEnrollmentIntent> = [
       route: hetzner_helsinki_route(),
       resource: ProviderResourceAcquired { acquisition: hetzner_cax41_hel1_1_acquisition },
     ),
-    apply_mode: ExistingHostQuiescentReload, reach_admission: HostReachAdmitted, run_scoped_federation: NoRunScopedFederation,
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   },
 ]
 
@@ -341,9 +342,9 @@ fn apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode? {
   }
 }
 
-fn reach_admission_for_host(host: HostIdentity) -> HostReachAdmission? {
+fn reach_policy_for_host(host: HostIdentity) -> HostReachPolicy? {
   match enrollment_for_host(host: host) {
-    Present { value: e } => Present { value: e.reach_admission }
+    Present { value: e } => Present { value: e.reach_policy }
     Absent => Absent
   }
 }

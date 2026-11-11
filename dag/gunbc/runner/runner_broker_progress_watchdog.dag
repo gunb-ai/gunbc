@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool, Duration, Timestamp, List }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
-import gunbc.fleet.fleet_enrollment { HostReachAdmission }
+import product.host_identity { HostIdentity }
 
 data runner_broker_progress_watchdog_authority_disposition: ConstructionMechanism = SingleAuthority
 
@@ -48,6 +48,13 @@ data runner_watchdog_diagnostic_read_scaffold: Disposition = Scaffold {
 type ConnectivityEvidenceGrade
   = ObservedEvidence
   | OperatorDeclaredEvidence { reason: NonEmptyStr }
+
+// The runtime verdict on whether recovery may reach a host, carrying WHICH host was asked. The
+// policy it reports is decided by the host's gunbc.fleet.fleet_enrollment row; the identity here is the
+// queried host, never a value copied onto that row.
+type HostReachAdmission
+  = HostReachAdmitted
+  | HostReachRefused { host: HostIdentity, reason: NonEmptyStr }
 
 type RunnerRemoteRegistration
   = RunnerRemoteOnline { runner_name: NonEmptyStr, labels: List<String> }
