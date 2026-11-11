@@ -10,12 +10,21 @@ module gunbc.machine_intake.bmc_account_state_capture
 // user-test with `managed_accepted: true`, and the reader would mint ObservedCredentialAccepted on
 // evidence that shows a rejection. The single authority that turns a response body into a verdict is the
 // decoder in gunbc.machine_intake.bmc_account_state_parsers. THIS module is the sanctioned builder that
-// closes the fork at the PRODUCTION side: every decoded field of the transport it returns is the OUTPUT of
-// running the corresponding capture body through that decoder (or the entry decoder upstream), so a decoded
-// field cannot disagree with the bytes it claims to describe. The wet driver (the real-effects half) builds
-// its captures from real ipmitool / Redfish responses and calls exactly this assembler; the witness builds
-// them from committed real captures. There is no path from raw capture bytes to an observation that skips a
-// decoder here.
+// is the sanctioned builder: EVERY decoded field of a transport IT BUILDS is the OUTPUT of running the
+// corresponding capture body through that decoder (or the entry decoder upstream), so a field on one of
+// ITS transports cannot disagree with the bytes it claims to describe. It does NOT make the record
+// unwritable: BmcSuppliedAccountStateTransport is still a hand-constructible record and
+// supplied_transport_read_bmc_account_state still accepts a hand-built one (the supplied-transport witness
+// builds one directly), so a mismatched decoded field beside committed bytes remains WRITABLE on that lower
+// route -- the fork is avoided only on the ASSEMBLER path (guarantee_ladder: report only the rung executed
+// evidence reaches; fail_closed: making the bad state unwritable beats catching it). The LIVE read closes
+// it: the bound entry gunbc.machine_intake.bmc_account_state_live bmc_account_state_live_read takes
+// BmcAccountStateCaptures and builds the transport ONLY through this assembler, exposing no hand-built one,
+// so the dispatched live path cannot carry a mismatched field. Trigger that closes it for EVERY caller: make
+// the reader take BmcAccountStateCaptures directly (or derive the decoded fields), retiring direct
+// construction -- named as remaining, not claimed closed. The wet driver (the real-effects half) builds its
+// captures from real ipmitool / Redfish responses and calls exactly this assembler through that entry; the
+// witness builds them from committed real captures.
 //
 // GENERIC, NOT PER-HOST (operator ruling D2). No srvN literal, no board string, no `host == X` branch: the
 // controller facts (the LAN channel, the managed account name, the channel-members the driver already read)
@@ -94,47 +103,27 @@ type BmcAccountStateCaptureOutcome
   = CapturedTransportAssembled { transport: BmcSuppliedAccountStateTransport }
   | CapturedTransportUndecodable { cause: BmcAccountStateCaptureRefusal }
 
-// Does `target` appear exactly in `names`? Proven list recursion, the same idiom the parsers fold with.
+// Membership / bidirectional tie expressed with the List quantifiers (the existing helpers the corpus
+// folds with -- std.list's list_member / list_cover are themselves built on .any / .all), not a hand-rolled
+// list recursion (minimize_redundancy: net concepts must not grow by re-invention).
 fn name_present(names: List<String>, target: String) -> Bool {
-  match first(names) {
-    none => false
-    Present { value: n } => if n == target { true } else { name_present(names: names.skip(n: 1), target: target) }
-  }
+  names.any(n => n == target)
 }
 
 // Every census entry's name is listed by the Accounts collection body -- this is the tie that stops the
 // read presenting an account the controller's own collection does not list.
 fn every_entry_name_in_collection(entries: List<BmcRedfishAccountCensusEntry>, names: List<String>) -> Bool {
-  match first(entries) {
-    none => true
-    Present { value: e } =>
-      if name_present(names: names, target: e.name) {
-        every_entry_name_in_collection(entries: entries.skip(n: 1), names: names)
-      } else {
-        false
-      }
-  }
+  entries.all(e => name_present(names: names, target: e.name))
 }
 
 // And the converse: every account the collection lists has a decoded entry, so the census is not a
 // partial view of the collection the bytes proved exists.
 fn every_collection_name_in_entries(names: List<String>, entries: List<BmcRedfishAccountCensusEntry>) -> Bool {
-  match first(names) {
-    none => true
-    Present { value: n } =>
-      if entry_named_present(entries: entries, target: n) {
-        every_collection_name_in_entries(names: names.skip(n: 1), entries: entries)
-      } else {
-        false
-      }
-  }
+  names.all(n => entry_named_present(entries: entries, target: n))
 }
 
 fn entry_named_present(entries: List<BmcRedfishAccountCensusEntry>, target: String) -> Bool {
-  match first(entries) {
-    none => false
-    Present { value: e } => if e.name == target { true } else { entry_named_present(entries: entries.skip(n: 1), target: target) }
-  }
+  entries.any(e => e.name == target)
 }
 
 // THE ASSEMBLER. Raw committed captures in; a transport out whose decoded fields are produced from the
