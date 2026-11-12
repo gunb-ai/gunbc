@@ -33,10 +33,13 @@ module gunbc.fleet.machine_lifecycle
 // land (PlannedProducer, which carries the plan document as its own resolvable citation alongside the
 // future site), or no producer at all (UnmodeledLeg). The third arm is not a route that reads as modeled:
 // `route_is_modeled` reads it and reports the route unmodeled, so an unowned step can never be counted as
-// covered -- the inflation review 94062 found in the first version, where a leg whose pointer said
-// "unowned" still turned the population claim green. What a leg may NOT be is a hand step: no arm of
-// TransitionProducer expresses one, and the citations are read back through std.annotation_reference's
-// own segment tests, so a paraphrase cannot sit in a field that names a declaration.
+// covered: a leg whose own pointer says "unowned" turning the population claim green is rung inflation
+// (gunbc.design_argument::guarantee_ladder: an inflated class never ranks for climbing). What a leg may NOT
+// be is a hand step -- no arm of TransitionProducer expresses one. Citations are read back through
+// std.annotation_reference's own segment tests, which is a SHAPE test and says so: it keeps a paraphrase out
+// of a field that names a declaration, and it does not decide whether that declaration exists. Existence is a
+// corpus question, claimed once per population against the declaration index by the witness
+// (test.claim.fleet.machine_lifecycle_witness.every_real_route_citation_is_a_declaration_the_corpus_declares).
 //
 // WHO TAKES THIS UP, named rather than implied. This module is the model P13 owes; the changes that RUN its
 // routes are the steps listed in `machine_lifecycle_consumer_steps` and claimed there one by one: P11.x
@@ -219,10 +222,10 @@ type RetirementArtifact
 // (gunbc.design_argument::source_annotations: "An invariant, receipt, event, ruling, citation, status,
 // count or dissolution condition belongs in a typed carrier"; "Prose is not forbidden; unclassified prose
 // is."). Either a named step of this plan lands the producer -- cited, through PlanLanding, so the claim is
-// resolvable rather than plausible -- or no step of this plan owns it. Review 94095 found the first version
-// packing the kind identity, its status and its owner into one String row
-// ("oauth-redirect-uri: S4 gap, no derivation site and no owning PR"), which no checker can read and whose
-// ownership claim no reader could verify.
+// resolvable rather than plausible -- or no step of this plan owns it. A kind's identity, its status and its
+// owner are three facts; written as one row of text -- "oauth-redirect-uri: S4 gap, no derivation site and no
+// owning PR" is the shape this exists to prevent -- no checker can read any of them and no reader can verify
+// the ownership.
 type DeficitStanding
   = OwnedByPlanStep { lands_in: PlanLanding }
   | NoStepOfThisPlanOwnsIt
@@ -241,9 +244,10 @@ type UndeclaredArtifactKind {
 // derivations of 2.3, and the plan says its BMC secret refs and per-host /etc/gunbc paths are exactly the
 // literals that remain for it; P8d is the JIT offline-registration sweep the plan requires before the first
 // S4; the OAuth redirect URIs are registered and read back at the flips, which is P10.x (the plan's S3 step
-// adds them beside the old ones, and P11.x retires the old ones per host). The first version of this data
-// called two of the four "no owning PR" -- the plan says otherwise, and a gap report that misnames its owner
-// is worse than no gap report.
+// adds them beside the old ones, and P11.x retires the old ones per host). Two of these four could plausibly
+// have been reported as owning nothing; the plan names an owner for all four, and a gap report that misnames
+// its owner is worse than no gap report (gunbc.design_argument::fail_closed: a plausible output is never
+// fabricated).
 data undeclared_retirement_artifact_kind_rows: List<UndeclaredArtifactKind> = [
   UndeclaredArtifactKind { name: "bmc-admin-secret-id", standing: OwnedByPlanStep { lands_in: plan_step(step: StepP4) } },
   UndeclaredArtifactKind { name: "etc-gunbc-machine-path", standing: OwnedByPlanStep { lands_in: plan_step(step: StepP4) } },
@@ -259,7 +263,7 @@ fn plan_step(step: FleetMachineAuthorityStep) -> PlanLanding {
 
 fn deficit_is_owned_by_step(standing: DeficitStanding, step: FleetMachineAuthorityStep) -> Bool {
   match standing {
-    OwnedByPlanStep { lands_in: l } => plan_landing_is_well_formed(landing: l) && l.step == step
+    OwnedByPlanStep { lands_in: l } => plan_landing_is_shaped(landing: l) && l.step == step
     NoStepOfThisPlanOwnsIt => false
   }
 }
@@ -421,13 +425,13 @@ fn o4_transition_population(
 // sentence; and UnmodeledLeg for a step with no producer at all, which reports the route UNMODELED. There is
 // NO arm meaning "someone does this by hand", so P13's Done condition ("each O4 transition has a modeled
 // route; none is a hand step") is structural on the type and witnessed over the population. And a gap is not
-// a route: `route_is_modeled` reads UnmodeledLeg and returns false. The first version had no third arm, so a
-// planned leg whose own pointer read "unowned: no provider re-image producer is modeled yet" still counted as
-// covered -- the rung inflation review 94062 caught (gunbc.design_argument::guarantee_ladder: an inflated
-// class never ranks for climbing). Citation shapes are checked where they are read, with the same segment
-// tests std.annotation_reference applies to a citation written in a comment, so a paraphrase cannot occupy a
-// field that names a declaration; which plan step really schedules a planned leg is the pointer a reviewer
-// reads, and the witness pins the planned set verbatim.
+// a route: `route_is_modeled` reads UnmodeledLeg and returns false, so a planned leg whose own pointer reads
+// "unowned: no provider re-image producer is modeled yet" cannot count as covered -- an inflated class never
+// ranks for climbing (gunbc.design_argument::guarantee_ladder). Citations are checked for SHAPE where they
+// are read, with the same segment tests std.annotation_reference applies to a citation written in a comment,
+// which keeps a paraphrase out of a field that names a declaration; existence is claimed against the
+// declaration index by the witness, and which plan step really schedules a planned leg is the pointer a
+// reviewer reads, with the planned set pinned verbatim by a claim.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // THE PLAN DOCUMENT, CITED AS A DECLARATION THAT EXISTS TODAY: the plan module and the data declaration that
@@ -514,15 +518,18 @@ fn unmodeled_leg(what: String, standing: DeficitStanding) -> TransitionLeg {
 }
 
 // THE CITATION SHAPE, read through the same segment tests the annotation scanner applies to a reference
-// written in a comment (v2.std.source_annotation: "<module path>::<declaration name>"). The first version
-// checked only that the strings were non-empty, which is how prose got into a declaration field.
-fn declaration_ref_is_well_formed(reference: DeclarationRef) -> Bool {
+// written in a comment (v2.std.source_annotation: "<module path>::<declaration name>"). Non-empty strings are
+// not enough -- that is how prose got into a declaration field -- but shape is not existence either, and this
+// function claims only the shape half. It stays module-local rather than moving beside `decl_ref` because
+// std.annotation_reference already imports std.decl_ref (dag/std/annotation_reference.dag), so a validator
+// there would close a cycle over the two std modules.
+fn declaration_ref_is_shaped(reference: DeclarationRef) -> Bool {
   segment_is_module_path(segment: reference.module_path as String)
     && segment_is_identifier(segment: reference.decl_name as String)
 }
 
-fn plan_landing_is_well_formed(landing: PlanLanding) -> Bool {
-  declaration_ref_is_well_formed(reference: landing.plan)
+fn plan_landing_is_shaped(landing: PlanLanding) -> Bool {
+  declaration_ref_is_shaped(reference: landing.plan)
     && declaration_ref_display_key(ref: landing.plan)
       == declaration_ref_display_key(ref: fleet_machine_authority_plan_ref)
 }
@@ -537,9 +544,9 @@ fn plan_landing_is_well_formed(landing: PlanLanding) -> Bool {
 // up, and neither is described as more than it decides.
 fn leg_names_a_producer(leg: TransitionLeg) -> Bool {
   match leg.producer {
-    RealProducer { ref: r, detail: d } => declaration_ref_is_well_formed(reference: r) && (d as String) != ""
+    RealProducer { ref: r, detail: d } => declaration_ref_is_shaped(reference: r) && (d as String) != ""
     PlannedProducer { site: s, lands_in: l } =>
-      declaration_ref_is_well_formed(reference: s) && plan_landing_is_well_formed(landing: l)
+      declaration_ref_is_shaped(reference: s) && plan_landing_is_shaped(landing: l)
     UnmodeledLeg { reason: _ } => false
   }
 }
@@ -843,7 +850,7 @@ type TransitionEffect
       enrolled_population_unchanged: Bool,
     }
   | MachineRetired { machine: HostIdentity, artifacts: List<RetirementArtifact> }
-  | MachineReplaced { retired: HostIdentity, replacement: HostIdentity, inherited_facts: List<NonEmptyStr> }
+  | MachineReplaced { retired: HostIdentity, replacement: HostIdentity }
 
 fn admitted_enrollment_for(machine: HostIdentity) -> HostEnrollmentIntent? {
   filter(admitted_enrollments(intents: fleet_enrollment_intents), e => host_identity_eq(a: e.host, b: machine)).first()
@@ -943,7 +950,7 @@ fn admit_registered_transition(ledger: List<MachineRetirement>, t: MachineTransi
             true => TransitionRefused { transition: t, cause: RetiredHandleReissued { machine: n } }
             false => TransitionAdmitted {
               transition: t,
-              effect: MachineReplaced { retired: r, replacement: n, inherited_facts: [] },
+              effect: MachineReplaced { retired: r, replacement: n },
               route: machine_transition_route(t: t),
             }
           }

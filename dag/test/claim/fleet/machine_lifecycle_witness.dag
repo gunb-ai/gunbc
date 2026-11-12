@@ -117,10 +117,10 @@ import gunbc.fleet.machine_lifecycle {
   UnregisteredMachine,
   admit_machine_transition,
   admit_machine_transition_in,
-  declaration_ref_is_well_formed,
+  declaration_ref_is_shaped,
   every_o4_transition_is_modeled,
   fleet_machine_authority_plan_ref,
-  plan_landing_is_well_formed,
+  plan_landing_is_shaped,
   machine_lifecycle_standing,
   machine_lifecycle_standing_in,
   machine_lifecycle_standings,
@@ -165,8 +165,8 @@ data swapped_board_serial: String = "02030A800TEXFT999"
 
 // THE BMC EACH FIXTURE BOARD IS READ FROM, supplied by the witness -- DESIGN.md,
 // gunbc.design_argument::witness_one_interface: "A witness's inputs are SUPPLIED VALUES at its boundary",
-// so production code fabricates none of this (review 94141 found a fixture in the module copying
-// mtcollins1's endpoint onto any machine it was handed). mtcollins1's endpoint is its own recorded
+// so production code fabricates none of this -- a fixture that copies one machine's endpoint onto every
+// machine it is handed is exactly what that rule keeps out. mtcollins1's endpoint is its own recorded
 // observation input; srv1's is built from the out-of-band endpoint the fleet topology records for srv1
 // (gunbc.fleet.fleet_intent_network.srv1_bmc_endpoint, label "srv1-bmc"), because srv1 has no
 // `UnitIdentityInputs` row until P3 lands its readings. Neither machine borrows the other's endpoint, so a
@@ -428,8 +428,11 @@ test fn retire_and_replace_refuses_a_successor_that_reissues_the_retired_handle(
   }
 }
 
-// AND A REAL SUCCESSOR IS ADMITTED WITH NOTHING CARRIED OVER: `inherited_facts` is the plan's sentence
-// "its facts do not inherit from the retired one unless a transition says so", and it is empty here.
+// AND A REAL SUCCESSOR IS ADMITTED WITH NOTHING CARRIED OVER. The plan says a replacement's "facts do not
+// inherit from the retired one unless a transition says so", and `MachineReplaced` carries no fact slot at
+// all: a field that only ever holds [] is dead data whose first real value would be unclassified prose in a
+// String row (gunbc.design_argument::source_annotations). Inheriting a fact therefore has to arrive as a
+// named carrier with a producer and a reader -- the strong form of "unless a transition says so".
 test fn replace_admits_a_distinct_successor_with_no_facts_inherited() -> Bool {
   match admit_machine_transition_in(
     ledger: retired_ledger(),
@@ -437,10 +440,9 @@ test fn replace_admits_a_distinct_successor_with_no_facts_inherited() -> Bool {
   ) {
     TransitionAdmitted { transition: _, effect: e, route: _ } =>
       match e {
-        MachineReplaced { retired: r, replacement: n, inherited_facts: facts } =>
+        MachineReplaced { retired: r, replacement: n } =>
           host_identity_eq(a: r, b: operator_host_mtcollins1)
             && host_identity_eq(a: n, b: operator_host_srv14)
-            && facts.length() == 0
         _ => false
       }
     TransitionRefused { transition: _, cause: _ } => false
@@ -684,11 +686,11 @@ test fn the_rename_effect_promotes_the_drawn_name_and_holds_the_handle() -> Bool
 fn leg_names_a_resolvable_producer(leg: TransitionLeg) -> Bool {
   match leg.producer {
     RealProducer { ref: r, detail: d } =>
-      declaration_ref_display_key(ref: r) != "" && declaration_ref_is_well_formed(reference: r) && (d as String) != ""
+      declaration_ref_display_key(ref: r) != "" && declaration_ref_is_shaped(reference: r) && (d as String) != ""
     PlannedProducer { site: s, lands_in: l } =>
       declaration_ref_display_key(ref: s) != ""
-        && declaration_ref_is_well_formed(reference: s)
-        && plan_landing_is_well_formed(landing: l)
+        && declaration_ref_is_shaped(reference: s)
+        && plan_landing_is_shaped(landing: l)
     UnmodeledLeg { reason: _ } => false
   }
 }
@@ -704,12 +706,13 @@ fn leg_cites(module_path: String, decl: String, leg: TransitionLeg) -> Bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// THE ROUTES ARE CITED, NOT PARAPHRASED. Review 94062 found the first version counting a leg as modeled
-// while its own pointer read "unowned: no provider re-image producer is modeled yet", because a leg was
-// "named" by checking that three strings were non-empty. These claims are the anti-inflation pair the
-// finding needs: the real citations are answered by the declaration index rather than by this file's
-// opinion, and the planned set is pinned, so a leg that drifts from "a named step of this plan lands it"
-// into "nobody owns this" reddens a claim instead of passing as coverage
+// THE ROUTES ARE CITED, NOT PARAPHRASED. A leg whose own pointer reads "unowned: no provider re-image
+// producer is modeled yet" is not coverage, and three non-empty strings do not name a producer
+// (gunbc.design_argument::guarantee_ladder on inflated rungs; gunbc.design_argument::fail_closed on checks
+// that are not consumers). This is the anti-inflation pair: the real citations are answered by the
+// declaration index rather than by this file's opinion, and the planned set is pinned, so a leg that drifts
+// from "a named step of this plan lands it" into "nobody owns this" reddens a claim instead of passing as
+// coverage
 // (gunbc.design_argument::guarantee_ladder: an inflated class never ranks for climbing;
 // gunbc.design_argument::fail_closed: a plausible output is never fabricated).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -796,8 +799,8 @@ test fn every_real_route_citation_is_a_declaration_the_corpus_declares() -> Bool
           RealProducer { ref: r, detail: _ } =>
             row_declares(rows: rows, key: route_citation_key(reference: r))
           PlannedProducer { site: s, lands_in: l } =>
-            declaration_ref_is_well_formed(reference: s)
-              && plan_landing_is_well_formed(landing: l)
+            declaration_ref_is_shaped(reference: s)
+              && plan_landing_is_shaped(landing: l)
               && row_declares(rows: rows, key: route_citation_key(reference: l.plan))
           UnmodeledLeg { reason: r } => deficit_has_no_owning_step(standing: r)
         },
@@ -870,9 +873,9 @@ test fn a_route_whose_only_leg_is_an_unmodeled_gap_is_not_a_modeled_route() -> B
 
 // THE GAP THAT IS REALLY OPEN, said out loud: the plan defines reprovision over the machine's admitted
 // delivery (2.5), and OwnedOsDelivery has no provider arm, so a provider guest's reprovision has no
-// producer and its route reports unmodeled -- exactly the leg the first version passed off as a planned
-// producer. Every other O4 transition for that same machine is still modeled, so the claim says which hole
-// is open rather than declaring the whole map blank.
+// producer and its route reports unmodeled -- the exact leg a spelling-only check would let pass as a planned
+// producer. Every other O4 transition for that same machine is still modeled, so the claim says which hole is
+// open rather than declaring the whole map blank.
 test fn a_provider_guest_reprovision_reports_its_gap_instead_of_counting_as_modeled() -> Bool {
   let swap = fixture_board_swap_evidence(
     machine: operator_host_mtcollins1,
@@ -913,7 +916,7 @@ fn guest_route_except_reprovision_is_modeled(t: MachineTransition, guest: HostId
 test fn the_model_names_the_changes_that_take_it_up() -> Bool {
   let steps = machine_lifecycle_consumer_steps
   steps.length() == 2
-    && all(steps, landing => plan_landing_is_well_formed(landing: landing))
+    && all(steps, landing => plan_landing_is_shaped(landing: landing))
     && any(steps, landing => landing.step == StepP11x)
     && any(steps, landing => landing.step == StepP12)
 }
