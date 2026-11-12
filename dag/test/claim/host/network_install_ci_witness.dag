@@ -194,7 +194,7 @@ test fn w_the_entry_refuses_to_write_the_fact_that_authorizes_its_own_erase() ->
 test fn w_the_installed_os_reading_is_reported_as_the_reading_the_entry_does_not_have() -> Bool {
   match network_install_ci_os_observation(host: ci_host) {
     InstalledOsUnreadable { detail: detail } => string_contains(s: detail as String, pattern: "srv15")
-    InstalledOsObserved { name: _ } => false
+    InstalledOsObserved { host: _, evidence: _ } => false
     InstalledOsNotObserved => false
   }
 }

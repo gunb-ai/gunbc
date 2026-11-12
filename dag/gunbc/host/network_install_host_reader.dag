@@ -76,6 +76,7 @@ module gunbc.host.network_install_host_reader
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Absent, Present }
 import std.algebra { FreeSemigroup, length, list_append, string_contains, trim }
+import std.integer { int_to_decimal_string }
 import std.list { first_where }
 import extdeps.iproute2.ip_neigh { ip_program }
 import extdeps.iproute2.ip_show { ip_link_record, ip_oneline_records, ip_show_link_args }
@@ -326,7 +327,7 @@ fn installed_host_root_report(block_report_raw: String) -> InstalledHostRootRepo
     Present { value: leaf } =>
       if length(xs: mounted) > 1 {
         InstalledHostRootNotMounted {
-          why: concat("lsblk printed ", concat(show(length(xs: mounted)), " rows mounted at /; the root filesystem was not guessed from among them")) as NonEmptyStr
+          why: concat("lsblk printed ", concat(int_to_decimal_string(value: length(xs: mounted)), " rows mounted at /; the root filesystem was not guessed from among them")) as NonEmptyStr
         }
       } else if trim(s: leaf.name) == "" {
         InstalledHostRootNotMounted {

@@ -917,7 +917,7 @@ fn network_install_ci_chain(architecture: Architecture) -> Optional<SitePxeEdgeP
     Absent => Absent
     Present { value: pin } => match pin {
       SitePxeEdgeChainPinned { chain: chain } => Present { value: chain }
-      SitePxeEdgeChainUnpinned { reason: _ } => Absent
+      SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } => Absent
     }
   }
 }
@@ -929,8 +929,8 @@ fn network_install_ci_binding(
 ) -> Optional<SitePxeEdgeInstallBinding> {
   match site_pxe_edge_request_admission(request: request, decided_at: decided_at) {
     RequestBound { binding: binding } => Present { value: binding }
-    RequestClientUnparseable { client: _ } => Absent
-    RequestWithheld { cause: _ } => Absent
+    RequestClientUnparseable { error: _ } => Absent
+    RequestWithheld { standing: _ } => Absent
   }
 }
 
@@ -987,7 +987,7 @@ fn network_install_ci_edge_target() -> Optional<SshTarget> {
 fn network_install_ci_edge_context(dispatch_id: NonEmptyStr) -> Optional<FleetSshExecutionContext> {
   match prepare_fleet_ssh_agent_context(attempt_raw: dispatch_id as String) {
     FleetSshContextReady { context: context } => Present { value: context }
-    FleetSshContextRefused { reason: _ } => Absent
+    FleetSshContextRefused { cause: _ } => Absent
   }
 }
 
