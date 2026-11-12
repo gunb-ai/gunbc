@@ -233,10 +233,20 @@ type ApprovalBrokerAddress
   = ApprovalBrokerAddressResolved { value: NonEmptyStr }
   | ApprovalBrokerAddressRefused { detail: NonEmptyStr }
 
+// THE ONE CAUSE a machine without a registry row produces when asked for its tailnet broker address. Both the
+// base URL and the bare host refuse for exactly this reason, so the cause text has a single authority (root
+// generalization: "the trigger is the second local implementation of one rule"); each caller stays LOCATED by
+// the context it passes, so the refusal stays typed, located and countable (gunbc.design_argument::fail_closed).
+data approval_broker_unregistered_machine_cause: NonEmptyStr = "the machine has no canonical tailnet host (it is not a registered machine name)"
+
+fn approval_broker_unregistered_refusal(context: NonEmptyStr) -> ApprovalBrokerAddress {
+  ApprovalBrokerAddressRefused { detail: join([context as String, " unresolved: ", approval_broker_unregistered_machine_cause as String], "") as NonEmptyStr }
+}
+
 fn approval_broker_base_url_on(machine: HostIdentity) -> ApprovalBrokerAddress {
   match tailnet_base_url_from(machine: machine, port: approval_broker_public_port) {
     Present { value: url } => ApprovalBrokerAddressResolved { value: url }
-    Absent => ApprovalBrokerAddressRefused { detail: "approval broker base url unresolved: the machine has no canonical tailnet host (it is not a registered machine name)" as NonEmptyStr }
+    Absent => approval_broker_unregistered_refusal(context: "approval broker base url" as NonEmptyStr)
   }
 }
 
@@ -244,7 +254,7 @@ fn approval_broker_base_url_on(machine: HostIdentity) -> ApprovalBrokerAddress {
 fn approval_broker_public_host_on(machine: HostIdentity) -> ApprovalBrokerAddress {
   match tailnet_host_from(machine: machine) {
     Present { value: h } => ApprovalBrokerAddressResolved { value: h }
-    Absent => ApprovalBrokerAddressRefused { detail: "approval broker public host unresolved: the machine has no canonical tailnet host (it is not a registered machine name)" as NonEmptyStr }
+    Absent => approval_broker_unregistered_refusal(context: "approval broker public host" as NonEmptyStr)
   }
 }
 
