@@ -51,6 +51,7 @@ module gunbc.fleet.machine_lifecycle
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
+import std.algebra { list_flat_map }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.annotation_reference { segment_is_identifier, segment_is_module_path }
 import product.host_identity { HostIdentity, host_identity_eq }
@@ -535,30 +536,32 @@ fn leg_producer_is_named(leg: TransitionLeg) -> Bool {
   }
 }
 
+// THE DEFICIT A LEG CARRIES, IF IT CARRIES ONE: `Present` exactly when the leg is an `UnmodeledLeg`. A leg
+// that names a producer has no deficit, so there is no standing to answer with -- a fabricated default here
+// would let any caller that maps it over a whole route report named producers as unowned gaps, and the type
+// would never complain (`gunbc.design_argument::fail_closed`: a plausible output is never fabricated, and
+// making the wrong state unwritable beats catching it). It also dissolves the companion Bool predicate that
+// hand-rolled the same match: "is this a gap?" is now `leg_deficit_standing(...) != Absent`, which cannot
+// drift from the reader.
+fn leg_deficit_standing(leg: TransitionLeg) -> DeficitStanding? {
+  match leg.producer {
+    UnmodeledLeg { reason: r } => Present { value: r }
+    RealProducer { ref: _, detail: _ } => Absent
+    PlannedProducer { site: _, lands_in: _ } => Absent
+  }
+}
+
 // THE OPEN GAPS OF A ROUTE, carried rather than dropped: which steps have no producer. The witness pins
-// this set, so a new gap reddens a claim instead of being reported as coverage.
-fn leg_carries_no_producer(leg: TransitionLeg) -> Bool {
-  match leg.producer {
-    UnmodeledLeg { reason: _ } => true
-    RealProducer { ref: _, detail: _ } => false
-    PlannedProducer { site: _, lands_in: _ } => false
-  }
-}
-
-// THE STANDING A GAP CARRIES. Only read on a leg `leg_carries_no_producer` has reported; the other two arms
-// answer with the no-owner standing so nothing pretends an owned deficit is unowned.
-fn leg_deficit_standing(leg: TransitionLeg) -> DeficitStanding {
-  match leg.producer {
-    UnmodeledLeg { reason: r } => r
-    RealProducer { ref: _, detail: _ } => NoStepOfThisPlanOwnsIt
-    PlannedProducer { site: _, lands_in: _ } => NoStepOfThisPlanOwnsIt
-  }
-}
-
+// this set, so a new gap reddens a claim instead of being reported as coverage. One flat-map over the
+// partial reader: a leg contributes its standing, or nothing.
 fn route_gaps(r: MachineTransitionRoute) -> List<DeficitStanding> {
-  map(
-    xs: filter(xs: route_legs(r: r), predicate: leg => leg_carries_no_producer(leg: leg)),
-    f: leg => leg_deficit_standing(leg: leg),
+  list_flat_map(
+    xs: route_legs(r: r),
+    f: leg =>
+      match leg_deficit_standing(leg: leg) {
+        Present { value: s } => [s]
+        Absent => []
+      },
   )
 }
 

@@ -120,7 +120,6 @@ import gunbc.fleet.machine_lifecycle {
   declaration_ref_is_well_formed,
   every_o4_transition_is_modeled,
   fleet_machine_authority_plan_ref,
-  leg_carries_no_producer,
   leg_producer_is_named,
   plan_landing_is_well_formed,
   machine_lifecycle_standing,
@@ -867,7 +866,7 @@ test fn a_route_whose_only_leg_is_an_unmodeled_gap_is_not_a_modeled_route() -> B
     && route_legs(r: gapped).length() == 1
     && route_gaps(r: gapped).length() == 1
     && all(route_gaps(r: gapped), standing => deficit_has_no_owning_step(standing: standing))
-    && all(route_legs(r: gapped), leg => leg_carries_no_producer(leg: leg))
+    && route_legs(r: gapped).length() == route_gaps(r: gapped).length()
 }
 
 // THE GAP THAT IS REALLY OPEN, said out loud: the plan defines reprovision over the machine's admitted
