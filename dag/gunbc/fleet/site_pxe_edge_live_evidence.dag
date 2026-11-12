@@ -1,0 +1,129 @@
+module gunbc.fleet.site_pxe_edge_live_evidence
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.host_command_binding { CommandHost }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.machine_intake.mtcollins1_census_member_readback {
+  MemberReading, IsoReading,
+  answer_on, read_member_on, iso_reading_of, MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured, StockSide, CasperKernel, CasperInitrd,
+}
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeLiveBootFile,
+  SitePxeEdgeLiveExtraction,
+  SitePxeEdgeLiveServed,
+  SitePxeEdgeLiveServedReading,
+  ServedBootFileMeasured,
+  ServedBootFileUnread,
+}
+
+// THE PRODUCERS OF THE LIVE BOOT PAIR'S EVIDENCE, as pure readings over answers a host gave. Two are separate on purpose:
+// the EXTRACTION is taken from the ISO (xorriso into a scratch directory, then sha256sum of the extracted file, the census member readback's
+// own read_member_on) and the SERVED reading is taken from the TFTP root by the exact absolute path the edge serves. Neither is rebuilt from
+// the other or from a receipt: the served reading is a function of the asked path and the answer alone, and takes no digest as input.
+// What these producers establish is that the values were READ, not that admission has consumed them as sole-constructor evidence: the
+// frontier site_pxe_edge_live_extraction_producer_frontier stays carried until the run wiring consumes these (the LiveBound slice).
+
+type SitePxeEdgeLiveExtractionReading
+  = LiveExtractionRead { extraction: SitePxeEdgeLiveExtraction }
+  | LiveExtractionUnread { reason: String }
+
+fn site_pxe_edge_live_hash_of_hex(hex: NonEmptyStr) -> ContentHash? {
+  match sha256_hex_digest(hex: hex as String) {
+    Absent => Absent
+    Present { value: d } => Present { value: Sha256Hash(d) }
+  }
+}
+
+fn site_pxe_edge_live_boot_file_of(tftp_path: NonEmptyStr, reading: MemberReading) -> SitePxeEdgeLiveBootFile? {
+  match reading {
+    MemberUnread { reason: _ } => Absent
+    MemberRead { digest: hex } =>
+      match site_pxe_edge_live_hash_of_hex(hex: hex) {
+        Absent => Absent
+        Present { value: h } => Present { value: SitePxeEdgeLiveBootFile { tftp_path: tftp_path, digest: h } }
+      }
+  }
+}
+
+fn site_pxe_edge_live_unread_reason(role: String, reading: MemberReading) -> String {
+  match reading {
+    MemberUnread { reason: r } => concat(concat("the ", role), concat(" was not extracted and measured: ", r))
+    MemberRead { digest: _ } => concat(concat("the ", role), "'s extracted digest is not a sha256 digest")
+  }
+}
+
+// The join of the three readings; any unread member is an unread extraction, never a partial receipt.
+fn site_pxe_edge_live_extraction_of(iso: IsoReading, kernel_path: NonEmptyStr, kernel: MemberReading, initrd_path: NonEmptyStr, initrd: MemberReading) -> SitePxeEdgeLiveExtractionReading {
+  match iso {
+    IsoUnmeasured { reason: r } => LiveExtractionUnread { reason: concat("the image was not measured: ", r) }
+    IsoMeasured { digest: iso_hex } =>
+      match site_pxe_edge_live_hash_of_hex(hex: iso_hex) {
+        Absent => LiveExtractionUnread { reason: "the image's measured digest is not a sha256 digest" }
+        Present { value: iso_digest } =>
+          match site_pxe_edge_live_boot_file_of(tftp_path: kernel_path, reading: kernel) {
+            Absent => LiveExtractionUnread { reason: site_pxe_edge_live_unread_reason(role: "kernel", reading: kernel) }
+            Present { value: k } =>
+              match site_pxe_edge_live_boot_file_of(tftp_path: initrd_path, reading: initrd) {
+                Absent => LiveExtractionUnread { reason: site_pxe_edge_live_unread_reason(role: "initrd", reading: initrd) }
+                Present { value: i } => LiveExtractionRead { extraction: SitePxeEdgeLiveExtraction { iso_digest: iso_digest, kernel: k, initrd: i } }
+              }
+          }
+      }
+  }
+}
+
+// THE EXTRACTION PRODUCER: measures the ISO at iso_path and extracts casper/vmlinuz and casper/initrd from it into `dir` (a scratch directory the
+// caller owns), recording each member under the TFTP path the edge will serve it at.
+fn site_pxe_edge_live_extraction_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> SitePxeEdgeLiveExtractionReading {
+  site_pxe_edge_live_extraction_of(
+    iso: iso_reading_of(measure: answer_on(host: host, command: sha256sum_file_command(path: iso_path as String))),
+    kernel_path: kernel_path,
+    kernel: read_member_on(host: host, dir: dir, iso_path: iso_path, side: StockSide, member: CasperKernel),
+    initrd_path: initrd_path,
+    initrd: read_member_on(host: host, dir: dir, iso_path: iso_path, side: StockSide, member: CasperInitrd),
+  )
+}
+
+fn site_pxe_edge_live_absolute_path(tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> NonEmptyStr {
+  concat(tftp_root as String, "/", tftp_path as String) as NonEmptyStr
+}
+
+// ONE SERVED FILE, READ BY THE PATH IT WAS ASKED AT. `sha256sum` prints "<hex>  <path>"; the printed path must be the absolute path that was
+// asked, else the line is another file's and the reading is unread. The measurement is then bound to the tftp-relative path asked, and there
+// is no digest among this function's inputs to rebuild it from.
+fn site_pxe_edge_live_served_reading(tftp_path: NonEmptyStr, absolute: NonEmptyStr, answer: RemoteAnswer) -> SitePxeEdgeLiveServedReading {
+  if answer.exit_code != 0 {
+    ServedBootFileUnread { reason: concat("sha256sum exit=", to_string(answer.exit_code), " ", trim(s: answer.stderr)) }
+  } else {
+    let fields: List<String> = filter(split(s: trim(s: answer.stdout), delimiter: " "), t => t != "")
+    match first(fields) {
+      Absent => ServedBootFileUnread { reason: "sha256sum printed no digest field" }
+      Present { value: hex } =>
+        if (match first(filter(fields, t => t != hex)) { Absent => true Present { value: p } => p != (absolute as String) }) {
+          ServedBootFileUnread { reason: "sha256sum printed another path than the one asked" }
+        } else {
+          match sha256_hex_digest(hex: hex) {
+            Absent => ServedBootFileUnread { reason: "sha256sum printed a field that is not a sha256 digest" }
+            Present { value: d } => ServedBootFileMeasured { path: tftp_path, digest: Sha256Hash(d) }
+          }
+        }
+    }
+  }
+}
+
+fn site_pxe_edge_live_served_file_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> SitePxeEdgeLiveServedReading {
+  let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
+  site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String)))
+}
+
+// THE TFTP-ROOT READBACK: asked of the paths alone (never of a receipt), over the host that serves them.
+fn site_pxe_edge_live_served_on(host: CommandHost, tftp_root: NonEmptyStr, kernel_path: NonEmptyStr, initrd_path: NonEmptyStr) -> SitePxeEdgeLiveServed {
+  SitePxeEdgeLiveServed {
+    kernel: site_pxe_edge_live_served_file_on(host: host, tftp_root: tftp_root, tftp_path: kernel_path),
+    initrd: site_pxe_edge_live_served_file_on(host: host, tftp_root: tftp_root, tftp_path: initrd_path),
+  }
+}
