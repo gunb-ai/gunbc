@@ -28,8 +28,9 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 //   EVIDENCE — the pull request an acceptance was earned by is one typed fact
 //           (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence): half a pull request is refused where
 //           the command line's three arguments are read, because it is not a value of the type; the
-//           absence is admissible only for an acceptance recorded before the dated cutoff — the one-time
-//           migration's case — and the refusal names both the cutoff and the receipt's own day.
+//           absence is admissible only for one of the migration's own receipts, named by its bytes in
+//           gunbc.roadmap.roadmap_event_log roadmap_migration_acceptance_identities — a date an operator
+//           types decides nothing — and the refusal says where the closed set lives.
 //   VERIFIER — the migration gate's seven facets, one named claim each, because the runbook prints WHICH
 //           problem it found: agreement reports nothing; swapped evidence refuses on BOTH sides of the
 //           difference; a fact the manifest names twice against one copy reports its counts; an acceptance
@@ -284,8 +285,8 @@ test fn a_retired_node_is_retired_once_because_its_key_is_the_reason_not_the_cal
 }
 
 // Half a pull request is refused where the three arguments are READ, by name of what is missing; a whole
-// one converts; an absence is the one-time migration's case, admitted only for a receipt the operator
-// recorded before the cutoff, and the refusal names both the cutoff and the receipt's own day.
+// one converts; an absence is the one-time migration's case, admitted only for a receipt the closed set
+// names by its bytes, and the refusal says where that set lives.
 test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
   let facts = fact_set()
   let half = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: "", sha: "")
@@ -463,22 +464,33 @@ fn absence_refuses(day: String) -> Bool {
   }
 }
 
-// Does the door ADMIT an absence dated `day`? Only a real calendar day before the cutoff answers true.
-fn absence_admits(day: String) -> Bool {
-  match issue_command_acceptance_evidence_law(
-    receipt: sample_receipt_on(node: "node-door-form", day: day), evidence: NoPullRequest) {
-    none => true
-    Present { value: _ } => false
+// The migration's own receipt with ONE field bent to `day`. Its membership of the closed set is what makes
+// these day arms discriminating: a bent receipt is refused, and the baseline beside it is admitted, so the
+// refusal is that field and not the door.
+fn receipt_with_day(receipt: RoadmapAcceptanceReceipt, day: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: receipt.node, criteria_digest: receipt.criteria_digest, red_control: receipt.red_control,
+    handback: receipt.handback, accepted_by: receipt.accepted_by, accepted_on: day as NonEmptyStr,
   }
 }
 
-// THE DAY IS A CALENDAR DAY, NOT A TEXT THAT SORTS BEFORE ONE. The cutoff door is the one place an acceptance
-// carrying no pull request is admitted, so the receipt's own day IS the evidence — and while that day was a
-// NonEmptyStr compared with string_compare_canonical, every spelling below sorted before "2026-11-01" as text and
-// was therefore ADMITTED while naming no day at all. A self-attested string judged against a date-shaped literal:
-// it reads as a hard rule and fails open, which is the shape gunbc.design_argument::fail_closed names a hard
-// reject ("a diff landing a silent widen … or escape hatch"). The door now reads the day through the checked
-// constructor gunbc.roadmap.roadmap_event_log roadmap_acceptance_day, and its Absent refuses here.
+// The pinned seed's first acceptance, or a receipt that is certainly NOT in the closed set when the pinned
+// line cannot be parsed — so a broken fixture fails the admitting claims instead of passing them.
+fn the_seeded_receipt() -> RoadmapAcceptanceReceipt {
+  match first_seed_receipt() {
+    Absent => sample_receipt_on(node: "node-parse-of-the-pinned-line-broke", day: "2026-07-29")
+    Present { value: r } => r
+  }
+}
+
+// THE DAY IS A CALENDAR DAY, NOT A TEXT THAT SORTS BEFORE ONE. This is where the day law earns its keep: an
+// acceptance carrying no pull request used to be admitted by the receipt's own day, compared with
+// string_compare_canonical against "2026-11-01", so every spelling below sorted before it and was ADMITTED
+// while naming no day at all — a self-attested string judged against a date-shaped literal, which reads as a
+// hard rule and fails open, the shape gunbc.design_argument::fail_closed calls a hard reject ("a diff landing
+// a silent widen … or escape hatch"). Two things closed that: the door became a closed set over the receipt's
+// bytes (roadmap_migration_acceptance_identities), and the day is read through the checked constructor
+// gunbc.roadmap.roadmap_event_log roadmap_acceptance_day, whose Absent refuses here, on both arms.
 //
 // The set is chosen to discriminate, not to decorate:
 // - "0", "1999", "2025-13-99" — too short for the form, or beyond any calendar. A text compare admitted all three.
@@ -499,8 +511,12 @@ test fn the_absence_refuses_a_day_that_is_not_a_calendar_day() -> Bool {
     && claim("'2026-02-3' refuses: the day must be two digits", absence_refuses(day: "2026-02-3"))
     && claim("'+026-11-03' refuses: a signed year is not a four-digit year", absence_refuses(day: "+026-11-03"))
     && claim("'banana--' refuses: dashes in the right places do not make a day", absence_refuses(day: "banana--"))
-    && claim("a real day before the cutoff is still admitted, leap day included",
-      absence_admits(day: "2026-07-29") && absence_admits(day: "2024-02-29"))
+    && claim("a well-formed day is not itself the reason: the migration's own receipt — a real calendar day, "
+             "no pull request — is admitted, which is what makes the nine refusals above about the day",
+      match issue_command_acceptance_evidence_law(receipt: the_seeded_receipt(), evidence: NoPullRequest) {
+        none => true
+        Present { value: _ } => false
+      })
 }
 
 // THE DAY IS CHECKED ON BOTH ARMS. A pull-request-evidenced acceptance carries a real merge fact, and a merge fact
@@ -518,34 +534,44 @@ test fn the_pull_request_arm_still_requires_a_real_day() -> Bool {
       match good { none => true, Present { value: _ } => false })
 }
 
-// WHERE THE LINE FALLS, EXACTLY. A rule stated as "before a cutoff" is only known by which side the boundary
-// cases land on, so each of these pins one: the cutoff day itself is on the REFUSING side (an acceptance
-// recorded on 2026-11-01 with no pull request is not the migration's, because the migration's records all
-// predate the switch — the whole case for the door), the day before it is on the admitting side, and the
-// shape checks are strict about what a human may type. The constructor does not trim, so surrounding space
-// refuses: the log is the writer of this field, so a stored space is a malformed field kept, re-emitted and
-// hashed into the event id as written — refused here rather than tolerated (see the comment on
-// gunbc.roadmap.roadmap_event_log roadmap_acceptance_day).
+// HOW STRICT THE DAY FORM IS ABOUT WHAT A HUMAN MAY TYPE. These are pinned on the pull-request arm, where
+// membership of the closed set cannot be what refused: the same receipt is admitted on its own day and
+// refused for a five-digit year, for a leading space, for a trailing one — so the refusals are the form,
+// nothing else. The constructor does not trim, and the log is the writer of this field: a stored space is a
+// malformed field kept, re-emitted and hashed into the event id as written, so it is refused at the command
+// rather than tolerated.
 //
 // A note on why no claim compares text order to calendar order: once the constructor admits only the
 // fixed-width canonical form, the collation order and the day-count order of any two admitted days are the
-// same order, so no input can tell those implementations apart. The day count is kept because a comparison
-// that CANNOT be won by a string is a better place to stand than one that merely has not lost yet.
-test fn the_cutoff_boundary_and_what_a_human_may_type_are_both_pinned() -> Bool {
-  claim("the day before the cutoff is admitted, so the eighteen recorded acceptances still pass the door",
-    absence_admits(day: "2026-10-31"))
-    && claim("the cutoff day ITSELF refuses: the door is strictly before, not on-or-before",
-      absence_refuses(day: "2026-11-01"))
-    && claim("the day after the cutoff refuses", absence_refuses(day: "2026-11-02"))
+// same order, so no input can tell those implementations apart.
+test fn the_day_form_is_strict_about_what_a_human_may_type() -> Bool {
+  let seeded = the_seeded_receipt()
+  fn admitted(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
+    match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
+      none => true
+      Present { value: _ } => false
+    }
+  }
+  fn refused(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
+    match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
+      Present { value: _ } => true
+      none => false
+    }
+  }
+  claim("the migration receipt on its own day, with a pull request, is admitted — the baseline the next arms bend",
+    admitted(evidence: earned(fact_set()), receipt: seeded))
     && claim("'19999-11-03' refuses: a five-digit year is not this form, even though it reads early as text",
-      absence_refuses(day: "19999-11-03"))
+      refused(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "19999-11-03")))
     && claim("surrounding space refuses: the field is stored as written, so a day valid only after trimming is refused",
-      absence_refuses(day: " 2026-10-31") && absence_refuses(day: "2026-10-31 "))
-    && claim("the same day typed without the space is admitted, so those two refusals are the space and nothing else",
-      absence_admits(day: "2026-10-31"))
-    && claim("an interior space refuses: ten characters with a dash in one right place is not enough",
-      absence_refuses(day: "2026-1 031"))
+      refused(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: " 2026-07-29"))
+      && refused(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "2026-07-29 ")))
+    && claim("the same day without the space is admitted, so those two refusals are the space and nothing else",
+      admitted(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "2026-07-29")))
+    && claim("and the day an absence is admitted on is the migration's day, whole: bend it by one day and the "
+             "closed set no longer knows the receipt",
+      refused(evidence: NoPullRequest, receipt: receipt_with_day(receipt: seeded, day: "2026-07-28")))
 }
+
 
 
 // THE MIGRATION VERIFIER, facet by facet. Each check is its own named claim, because a single Bool over
