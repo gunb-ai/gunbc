@@ -1590,11 +1590,17 @@ fn site_pxe_edge_live_record_reading(success: Bool, output: String) -> SitePxeEd
   }
 }
 
-// THE KERNEL'S STANDING: minted only when the receipt names the image's own pinned digest AND the kernel and initrd bytes
-// the edge actually serves hash to the receipt's digests. A record with no observed bytes, or bytes that differ, never mints it.
+// THE KERNEL'S STANDING. What this function can establish is bounded by what a text file can prove: a record on the edge that
+// names the image's own pinned digest, with kernel and initrd bytes the edge serves hashing to the record's digests, is
+// LiveKernelReceiptUnestablished -- internally consistent, not yet minted by anything that extracted the files from the ISO.
+// LiveKernelFromImage is NOT constructed here or anywhere in this change: it is the declared frontier
+// site_pxe_edge_live_kernel_producer_frontier, so every live binding is withheld until that producer lands. A record with no
+// observed bytes, or bytes that differ, is a different refusal.
+data site_pxe_edge_live_kernel_producer_frontier: NonEmptyStr = "LiveKernelFromImage is minted only by the placement change that performs the extraction (ISO onto the edge HTTP root, kernel and initrd extracted, receipt written by that same step); until it lands every live binding is withheld. Trigger: the ISO placement PR (Task B, after PR-2); its witness owes the inhabitance claim that runs the real producer and admits through it." as NonEmptyStr
+
 type SitePxeEdgeLiveKernelStanding
   = LiveKernelFromImage
-  | LiveKernelReceiptUnestablished { receipt: SitePxeEdgeLiveExtractionReceipt }
+  | LiveKernelReceiptUnestablished { receipt: SitePxeEdgeLiveExtractionReceipt, obligation: NonEmptyStr }
   | LiveKernelProvenanceUnplaced { reason: String }
   | LiveKernelFromOtherImage { extracted_from: ContentHash, pinned: ContentHash }
   | LiveKernelFilesUnobserved { reason: String }
@@ -1616,7 +1622,7 @@ fn site_pxe_edge_live_kernel_standing(image: SitePxeEdgeLiveImage, record: SiteP
               match initrd_bytes {
                 ChainloaderDigestUnobservable { reason: r } => LiveKernelFilesUnobserved { reason: concat("initrd: ", r) }
                 ChainloaderDigestObserved { digest: i } =>
-                  if content_hash_equal(left: i, right: rc.initrd) { LiveKernelReceiptUnestablished { receipt: rc } } else { LiveKernelFileDiffers { file: "initrd", observed: i, receipt: rc.initrd } }
+                  if content_hash_equal(left: i, right: rc.initrd) { LiveKernelReceiptUnestablished { receipt: rc, obligation: site_pxe_edge_live_kernel_producer_frontier } } else { LiveKernelFileDiffers { file: "initrd", observed: i, receipt: rc.initrd } }
               }
             }
         }
@@ -1649,7 +1655,7 @@ fn site_pxe_edge_live_refusals(binding: SitePxeEdgeLiveBinding, roster: SiteEdge
     })
     + (match kernel {
       LiveKernelFromImage => []
-      LiveKernelReceiptUnestablished { receipt: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
+      LiveKernelReceiptUnestablished { receipt: _, obligation: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
       LiveKernelProvenanceUnplaced { reason: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
       LiveKernelFromOtherImage { extracted_from: _, pinned: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]
       LiveKernelFilesUnobserved { reason: _ } => [InstallLiveKernelNotFromImage { standing: kernel }]

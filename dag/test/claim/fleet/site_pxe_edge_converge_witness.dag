@@ -180,6 +180,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   LiveBuildRefused,
   LiveArchitectureRefused,
   LiveKernelReceiptUnestablished,
+  site_pxe_edge_live_kernel_producer_frontier,
   LiveRecordRead,
   LiveRecordUnreadable,
   LiveKernelFilesUnobserved,
@@ -1973,7 +1974,7 @@ test fn a_kernel_not_extracted_from_the_image_is_withheld() -> Bool {
           let initrd_differs = live_standing_of(text: good, ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_a)
           let iso_only = live_standing_of(text: concat(hex_a, "  iso\n"), ok: true, kernel_hex: hex_b_hex(), initrd_hex: hex_c())
           let unobserved = site_pxe_edge_live_kernel_standing(image: live_image(), record: site_pxe_edge_live_record_reading(success: true, output: good), kernel_bytes: ChainloaderDigestUnobservable { reason: "sha256sum: no such file" }, initrd_bytes: byte_obs(path: "/srv/gunbc-site-pxe-edge/tftp/live/initrd", hex: hex_c()))
-          (match own { LiveKernelReceiptUnestablished { receipt: _ } => true _ => false })
+          (match own { LiveKernelReceiptUnestablished { receipt: _, obligation: ob } => (ob as String) == (site_pxe_edge_live_kernel_producer_frontier as String) _ => false })
             && (match unplaced { LiveKernelProvenanceUnplaced { reason: _ } => true _ => false })
             && (match foreign { LiveKernelFromOtherImage { extracted_from: _, pinned: p } => p == digest_a _ => false })
             && (match kernel_differs { LiveKernelFileDiffers { file: f, observed: _, receipt: _ } => f == "kernel" _ => false })
