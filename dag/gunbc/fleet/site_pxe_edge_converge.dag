@@ -12,7 +12,7 @@ import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout, UbuntuAutoinstallLiveCommands }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands, mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
 import std.os.types { NobleNumbat2404Lts }
 import gunbc.os_install { srv_fleet_key_only_install_account }
 import gunbc.os_install_emit { autoinstall_user_data_document, AutoinstallUserDataRendered, AutoinstallUserDataRefused, autoinstall_live_commands_user_data }
@@ -1371,7 +1371,7 @@ type SitePxeEdgeLiveRequest {
   architecture: Architecture
   image: SitePxeEdgeLiveImage
   build: UbuntuSeededInstallMediaBuildInput
-  built: UbuntuSeededInstallMediaBuilt
+  built: SitePxeEdgeLiveBuildRecord
   seed: UbuntuAutoinstallLiveCommands
 }
 
@@ -1414,14 +1414,42 @@ fn site_pxe_edge_live_seed_standing(build: UbuntuSeededInstallMediaBuildInput, s
 type SitePxeEdgeLiveBuildStanding
   = LiveBuildIsTheImages
   | LiveBuildNotTheImages { reason: String }
+  | LiveBuildRelationUnestablished { obligation: NonEmptyStr }
 
-fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, built: UbuntuSeededInstallMediaBuilt, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
-  if (built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
-    LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
-  } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: built.output_digest as String }), right: image.digest) == false {
-    LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
-  } else {
-    LiveBuildIsTheImages
+// WHERE A DERIVATION RECORD CAME FROM. UbuntuSeededInstallMediaBuilt is a pure constructor that takes any output digest, so a record
+// whose fields match proves consistency, never production. Only a record read back from the publisher's own derivation record
+// (the build key -> measured digest file the seeded-media publish writes) is evidence the build produced the ISO.
+type SitePxeEdgeLiveBuildRecord
+  = BuildRecordAsserted { built: UbuntuSeededInstallMediaBuilt }
+  | BuildRecordFromPublisherReadback { built: UbuntuSeededInstallMediaBuilt }
+
+data site_pxe_edge_live_build_producer_frontier: NonEmptyStr = "BuildRecordFromPublisherReadback is minted only by the placement/publish change that reads the seeded-media derivation record back and re-measures the file against it; until it lands the build-to-ISO relation is unestablished and every live binding is withheld. Trigger: the ISO placement PR (Task B, after PR-2); its witness owes the inhabitance claim that runs the real readback and admits through it." as NonEmptyStr
+
+// THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the authoritative census derivation (mtcollins1_census_image),
+// which folds the seed files (the capture program's own bytes), seed artifacts, user-data, cmdline, stock artifact, volume and
+// pinned dates. Not field by field: any field that differs is a different key.
+fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, record: SitePxeEdgeLiveBuildRecord, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
+  match mtcollins1_census_image {
+    CensusImageRefused { reason: r } => LiveBuildNotTheImages { reason: r }
+    CensusImageDerived { input: authority } =>
+      if (seeded_install_media_build_key(input: build) as String) != (seeded_install_media_build_key(input: authority) as String) {
+        LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
+      } else {
+        let built = match record {
+          BuildRecordAsserted { built: b } => b
+          BuildRecordFromPublisherReadback { built: b } => b
+        }
+        if (built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
+          LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
+        } else if content_hash_equal(left: Sha256Hash(Sha256Digest { hex: built.output_digest as String }), right: image.digest) == false {
+          LiveBuildNotTheImages { reason: "the derivation record's measured output digest is not the pinned image's digest" }
+        } else {
+          match record {
+            BuildRecordAsserted { built: _ } => LiveBuildRelationUnestablished { obligation: site_pxe_edge_live_build_producer_frontier }
+            BuildRecordFromPublisherReadback { built: _ } => LiveBuildIsTheImages
+          }
+        }
+      }
   }
 }
 
@@ -1489,8 +1517,9 @@ fn site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest) -> Site
       match site_pxe_edge_live_seed_standing(build: request.build, seed: request.seed) {
         LiveSeedNotTheImages { reason: r } => LiveSeedRefused { reason: r }
         LiveSeedIsTheImages =>
-          match site_pxe_edge_live_build_standing(build: request.build, built: request.built, image: request.image) {
+          match site_pxe_edge_live_build_standing(build: request.build, record: request.built, image: request.image) {
             LiveBuildNotTheImages { reason: r } => LiveBuildRefused { reason: r }
+            LiveBuildRelationUnestablished { obligation: o } => LiveBuildRefused { reason: concat("the build-to-ISO relation is unestablished: ", o as String) }
             LiveBuildIsTheImages =>
               match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
                 Present { value: r } => LiveArchitectureRefused { reason: r }
