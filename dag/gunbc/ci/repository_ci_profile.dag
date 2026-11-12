@@ -227,19 +227,15 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "heal-generated-artifacts" as NonEmptyStr,
         job_display_name: "heal-generated-artifacts" as NonEmptyStr,
         runner: selected_ci_runner_target(),
-        // A HEAL ROUND THAT CONVERGES NEEDS MORE THAN ONE GENERATION'S WORTH OF TIME. A real converging
-        // round on a large seed mirror runs about four generations of roughly twenty minutes each, so a
-        // 90-minute job kills the round after its third generation and reports a timeout instead of a
-        // verdict (operator decision msg_bdc6656a, the default-approved option A of msg_d00e6688; measured
-        // on srv1 heal units where a three-generation convergence took 2 h 41 m). The required gate stays
-        // at 90: it is a different job with a measured ~55-minute shape.
-        //
-        // THIS VALUE IS NOW THE FOLD'S INPUT. This job selects the fleet pool and triggers autonomously, so
-        // it is a member of gunbc.runner.runner_fleet_job_timeout_census, and it is the longest member: the
-        // drain wait bound, the bracket step budgets and the fleet-converge job backstop all grow from here
-        // by derivation, not by a literal. test.claim.runner.runner_fleet_job_timeout_bound_witness holds
-        // them inside the platform ceiling of 360 minutes, so a raise that would push the fleet-converge job
-        // past the ceiling turns that claim red rather than emitting an unrunnable workflow.
+        // WHY 180 AND NOT 90: a heal round that CONVERGES is several generations long, so this budget
+        // decides whether the round reports a verdict or a timeout. A three-generation convergence
+        // measured 2 h 41 m 47 s of wall; the two-generation shape measured 1 h 36 m 10 s; the CI heal of
+        // PR #16251 needs about four generations of roughly 20 minutes. The required gate keeps 90 because
+        // it is a different job with a measured ~55-minute shape. The sign-off for this increase, what was
+        // and was not approved, and the receipts are the ruling row this cites; what the raise does to the
+        // derived drain bound and the platform ceiling is held by
+        // test.claim.runner.runner_fleet_job_timeout_bound_witness, not by this comment.
+        // @ref(gunbc.design_ruling::heal_job_time_budget_raised_2026_11_12)
         timeout: minute(180)
       }
     },
