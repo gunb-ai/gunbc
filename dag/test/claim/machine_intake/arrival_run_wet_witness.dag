@@ -388,28 +388,6 @@ test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
 }
 
 
-// DEBUG BISECT (temporary): the six kernel witnesses returned false; these assert each pure leg
-// with the door's own fixture inputs so the refusal is located without guessing.
-test fn debug_manager_leg_decodes() -> Bool {
-  let read = current_manager_read_of(content: srv15_manager_stand_in, expected_sha256: "50a206b0d14f7c49d405f2a75161c23f2aab022c41b9ff252a40cc96987e283e" as NonEmptyStr, subject: "srv15" as NonEmptyStr, resource: "/redfish/v1/Managers/bmc" as NonEmptyStr, endpoint: srv15_bmc_observed_network, binding: altrad8ud_manager_capture_binding, capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Managers_bmc.json" as NonEmptyStr)
-  match read.identity.decoded {
-    RecordedManagerDecoded { observation: _observation } => true
-    _ => false
-  }
-}
-
-test fn debug_family_leg_discriminates() -> Bool {
-  let read = current_manager_read_of(content: srv15_manager_stand_in, expected_sha256: "50a206b0d14f7c49d405f2a75161c23f2aab022c41b9ff252a40cc96987e283e" as NonEmptyStr, subject: "srv15" as NonEmptyStr, resource: "/redfish/v1/Managers/bmc" as NonEmptyStr, endpoint: srv15_bmc_observed_network, binding: altrad8ud_manager_capture_binding, capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Managers_bmc.json" as NonEmptyStr)
-  match read.identity.decoded {
-    RecordedManagerDecoded { observation: observation } =>
-      match discriminate_family(observation: observation) {
-        FamilyDiscriminated { family: OpenBmc, basis: _basis } => true
-        _ => false
-      }
-    _ => false
-  }
-}
-
 test fn debug_policy_leg_hits() -> Bool {
   match bmc_credential_policy_for(key: BmcCredentialPolicyKey { board: asrock_altrad8ud_board_authority, firmware: BmcFirmwareReleaseIdentity { family: OpenBmc, raw_version: "3.22.00" as NonEmptyStr, semantic_version: none } }) {
     Present { value: _policy } => true
