@@ -6,6 +6,11 @@ import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloud.hetzner_cloud_api { HetznerTokenPermission, HetznerTokenRead, HetznerTokenReadWrite }
 import gunbc.fleet.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
+import product.host_identity { HostIdentity }
+import product.fabric.provider_route { ProviderRoute }
+import product.supplier.hetzner { hetzner_nuremberg_route, hetzner_helsinki_route }
+import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f }
+import gunbc.fleet.fleet_host_backing { ProviderResourceBinding, ProviderResourceAcquired }
 
 // THE HETZNER CLOUD PROJECT THE FLEET'S GUESTS ARE HELD UNDER. A Hetzner Cloud API token is scoped to
 // exactly one project, so the project is the account. The operator created its Read & Write token
@@ -70,3 +75,26 @@ data hetzner_cax41_hel1_1_acquisition: ProviderResourceAcquisition = ProviderRes
   login_key_registered: OperatorPerformed { performed_on: "2026-10-08", relayed: "operator ticked the project's srv2, MacBook and fleet-automation keys at creation; root login from srv2 verified" },
   resource_acquired: OperatorPerformed { performed_on: "2026-10-08", relayed: "console: cax41 #169308796 ubuntu-32gb-hel1-1 62.238.115.145 2a01:4f9:c015:a9ca::/64" },
 }
+
+// THE ONE HOME FOR WHICH CAX41 GUEST HOLDS WHICH ACQUIRED RESOURCE, AND ON WHICH ROUTE. This is a fact
+// in its own right, and it was being spelled twice (fleet_enrollment's cax41_guest rows and the A2
+// producer's guest rows each re-declared host -> resource) -- the fork gunbc.design_argument::single_authority
+// forbids, whatever constant each copy happened to name. It is declared ONCE here, over the acquisitions
+// above; gunbc.fleet.fleet_enrollment builds each guest's HostBacking.ProviderGuest.resource from it, and
+// gunbc.fleet.fleet_host_provider_observation adapts the very same binding into A2's unit identity inputs.
+// A guest whose binding is ProviderResourceAwaited (not yet acquired) carries Absent into A2 and is refused
+// typed, never bound by its host name (gunbc.design_argument::fail_closed).
+type HetznerGuestBinding { host: HostIdentity, route: ProviderRoute, binding: ProviderResourceBinding }
+
+data hetzner_guest_bindings: List<HetznerGuestBinding> = [
+  HetznerGuestBinding {
+    host: operator_host_183527,
+    route: hetzner_nuremberg_route(),
+    binding: ProviderResourceAcquired { acquisition: hetzner_cax41_nbg1_1_acquisition },
+  },
+  HetznerGuestBinding {
+    host: operator_host_3dde7f,
+    route: hetzner_helsinki_route(),
+    binding: ProviderResourceAcquired { acquisition: hetzner_cax41_hel1_1_acquisition },
+  },
+]
