@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.tools.realpath { realpath_canonical_command }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.host_command_binding { CommandHost }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
@@ -122,12 +123,28 @@ fn site_pxe_edge_live_root_relative_contained(path: NonEmptyStr) -> Bool {
   length(filter(segments, t => t == "" || t == "." || t == "..")) == 0
 }
 
+// A SYMLINK UNDER THE ROOT CAN POINT OUT OF IT, and a lexical check cannot see that. The served file's canonical path (realpath -e, every link
+// resolved) must lie strictly under the root's own canonical path; anything else, including a failed or unparseable resolution, is not contained.
+fn site_pxe_edge_live_realpath_contained(root: RemoteAnswer, file: RemoteAnswer) -> Bool {
+  if root.exit_code != 0 || file.exit_code != 0 {
+    false
+  } else {
+    let r = trim(s: root.stdout)
+    let f = trim(s: file.stdout)
+    r != "" && starts_with(s: f, prefix: concat(r, "/")) && length(filter(split(s: f, delimiter: "/"), t => t == ".." || t == ".")) == 0
+  }
+}
+
 fn site_pxe_edge_live_served_file_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> SitePxeEdgeLiveServedReading {
   if !site_pxe_edge_live_root_relative_contained(path: tftp_path) {
     ServedBootFileUnread { reason: "the TFTP path escapes the root or has an empty segment; nothing was dispatched" }
   } else {
     let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
-    site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String)))
+    if !site_pxe_edge_live_realpath_contained(root: answer_on(host: host, command: realpath_canonical_command(path: tftp_root as String)), file: answer_on(host: host, command: realpath_canonical_command(path: absolute as String))) {
+      ServedBootFileUnread { reason: "the served file does not resolve (symlinks followed) to a path under the TFTP root; it was not measured" }
+    } else {
+      site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String)))
+    }
   }
 }
 

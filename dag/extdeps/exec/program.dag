@@ -76,6 +76,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_program"),
     decl_ref(module_path: "extdeps.tools.grep", decl_name: "grep_program"),
     decl_ref(module_path: "extdeps.tools.wc", decl_name: "wc_program"),
+    decl_ref(module_path: "extdeps.tools.realpath", decl_name: "realpath_program"),
     decl_ref(module_path: "extdeps.tools.nbdkit", decl_name: "nbdkit_program"),
     decl_ref(module_path: "extdeps.tools.sha512sum", decl_name: "sha512sum_program"),
     decl_ref(module_path: "extdeps.tools.base64", decl_name: "base64_program"),

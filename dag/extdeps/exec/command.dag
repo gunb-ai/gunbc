@@ -165,6 +165,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_exact_destination_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "sort_in_place_command"),
     decl_ref(module_path: "extdeps.tools.unzip", decl_name: "unzip_extract_command"),
+    decl_ref(module_path: "extdeps.tools.realpath", decl_name: "realpath_canonical_command"),
     decl_ref(module_path: "extdeps.tools.ldd", decl_name: "ldd_command"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_extract_command"),
     decl_ref(module_path: "extdeps.tools.node", decl_name: "node_eval_command"),

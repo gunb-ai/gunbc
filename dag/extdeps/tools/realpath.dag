@@ -1,0 +1,42 @@
+module extdeps.tools.realpath
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/realpath-invocation.html"
+  }
+}
+
+fn realpath_program() -> ProgramIdentity = cataloged_program(invocation: "realpath")
+
+data realpath_cli_tool: CliTool = CliTool {
+  program: realpath_program(),
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.realpath",
+      decl_name: "realpath_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.realpath.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// -e: every component must exist; --: the path is never read as an option. Prints the canonical absolute path with every symlink resolved.
+fn realpath_canonical_command(path: String) -> ArgvCommand {
+  argv_command(program: realpath_program(), arguments: ["-e", "--", path])
+}

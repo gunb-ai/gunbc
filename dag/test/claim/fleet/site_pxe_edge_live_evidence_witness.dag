@@ -13,7 +13,7 @@ import gunbc.fleet.site_pxe_edge_live_evidence {
   LiveExtractionUnread,
 }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on, site_pxe_edge_live_realpath_contained }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -88,4 +88,22 @@ test fn a_tftp_path_outside_the_root_is_refused_before_dispatch() -> Bool {
     ServedBootFileMeasured { path: _, digest: _ } => false
   }
   refused("../other/image") && refused("/etc/passwd") && refused("casper//vmlinuz") && refused("casper/./vmlinuz") && refused("casper/../../x")
+}
+
+// RED: a served file whose CANONICAL path (symlinks resolved) is outside the root's canonical path, or whose resolution failed or printed a
+// non-absolute or dotted path, is not contained; the root itself is not a file under it. Positive control: a canonical path strictly under the root.
+test fn a_served_file_resolving_outside_the_root_is_not_contained() -> Bool {
+  let ok = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp\n")
+  let under = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp/casper/vmlinuz\n")
+  let out = answered(exit_code: 0, stdout: "/etc/shadow\n")
+  let sibling = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp-other/x\n")
+  let failed = answered(exit_code: 1, stdout: "")
+  let dotted = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp/../x\n")
+  site_pxe_edge_live_realpath_contained(root: ok, file: under)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: out)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: sibling)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: failed)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: dotted)
+    && !site_pxe_edge_live_realpath_contained(root: ok, file: ok)
+    && !site_pxe_edge_live_realpath_contained(root: failed, file: under)
 }
