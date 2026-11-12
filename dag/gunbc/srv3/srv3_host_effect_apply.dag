@@ -1,6 +1,11 @@
 module gunbc.srv3.srv3_host_effect_apply
 
-import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.ci.ci_deploy_access {
+  DeployAccess,
+  ci_deploy_srv1_access,
+  deploy_access_check,
+  deploy_access_unprivileged_fixture_actor,
+}
 import gunbc.host.host_effect_realize { host_effect_apply, host_effect_apply_gated }
 import gunbc.nbd_proxy_virtual_media_install { actuator_image_unresolved_reason }
 import gunbc.os_install_actuator_selection {
@@ -12,7 +17,27 @@ import gunbc.os_install_actuator_selection {
 import gunbc.provisioning.seeded_install_media_publish { SeededImageResolved }
 import gunbc.srv3.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_serve_host_effect }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_resolve }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.optional { Absent, Present }
+import gunbc.host.host_effect {
+  BootOnceReadBackSleep,
+  ConvergePlanApplied,
+  HostEffect,
+  HostEffectEvidence,
+  HostEffectIntent,
+  NodeControlPlane,
+  Srv3BmcwebSessionLogin,
+  Srv3BmcwebTokenExtract,
+  Srv3InstallMediaFetch,
+  Srv3ReceiptEmit,
+  Srv3SeededInstallMediaRemaster,
+  Srv3SeededInstallMediaToolchainEnsure,
+  ToolchainHomeInterferenceDiscriminated,
+  host_effect_identity_evidence,
+}
+import std.access { Deny, Permit }
+import std.types { List, NonEmptyStr }
+import std.realization_reconcile { NotConverged, Reconciliation, reconciliation_converged }
 
 type Srv3TypedReceipt {
   lines: List<String>

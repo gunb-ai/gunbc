@@ -2,6 +2,10 @@ module gunbc.host.host_identity_observation
 
 import std.disposition { Disposition }
 import std.algebra { trim }
+import std.realization_reconcile { Reconciliation, Converged, NotConverged }
+import std.types { NonEmptyStr }
+import gunbc.host.host_effect { ConvergePlanApplied, HostEffect, HostEffectEvidence, HostEffectIntent, HostEffectTransport, HostIdentityShortHostnameRead, NodeControlPlane, ShellEffectApplied, ToolchainHomeInterferenceDiscriminated }
+import gunbc.host.host_effect_realize { host_effect_apply }
 
 
 type HostIdentityObservationRow {

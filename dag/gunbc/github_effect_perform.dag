@@ -575,6 +575,7 @@ fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> 
   decl_ref(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_revision_observed"),
   decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_dry_run_under_staged_key"),
   decl_ref(module_path: "gunbc.runner.runner_jit_dead_sweep_run", decl_name: "jit_dead_sweep_wet_under_staged_key"),
+  decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "observe_under_staged_key"),
 ] {
   match gcp.SecretManager.AccessVersion(
     access_token: wif_access_token,

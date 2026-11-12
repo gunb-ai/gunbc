@@ -143,7 +143,7 @@ import gunbc.machine_intake.bmc_secure {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data unit: UnitKey = "BRD-000451" as UnitKey
+data unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "BRD-000451" }
 
 data assembly: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-1U-ALT",

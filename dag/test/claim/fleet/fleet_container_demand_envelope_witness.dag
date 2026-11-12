@@ -1,5 +1,8 @@
 module test.claim.fleet.fleet_container_demand_envelope_witness
 
+import gunbc.fleet.fleet_container { witness_fail_open_memory_blind_demand_exceeds_budget, witness_high_demand_shrinks_envelope_and_fits, witness_run_demand_envelope_fits_budget, witness_unreadable_budget_uses_conservative_demand }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

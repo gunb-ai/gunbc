@@ -15,6 +15,7 @@ import extdeps.languages.json.parse {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
 import gunbc.actions_run_binding {
   ActionsRunBinding,
   actions_run_binding_json,
@@ -136,7 +137,7 @@ fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {
 
 // THE PATH IS RELATIVE TO THE DEPLOYING CHECKOUT. A CI transaction writes it in the workflow
 // runner's workspace and the fleet-converge job uploads that directory as a GitHub Actions
-// artifact (gunbc.ci.ci_spec gunbc_live_deploy_receipt_artifact_dir). An operator-local apply writes
+// artifact (gunbc.live_deploy.apply_receipt gunbc_live_deploy_receipt_artifact_dir). An operator-local apply writes
 // the same relative path on the operator's machine — the record of the LATEST local apply for that
 // instance_id (Filesystem.Write overwrites). Those are different filesystems: a local apply cannot
 // overwrite the uploaded CI artifact.
@@ -887,3 +888,7 @@ fn assert_dashboard_deploy_receipts() -> ProcessExit {
     _ => exit_failure(reason: dashboard_receipt_assert_verdict_text(verdict: verdict))
   }
 }
+
+data gunbc_live_deploy_receipt_artifact_name: String = live_deploy_apply_receipt_artifact_name_for(instance_id: srv1_dashboard_live_id as String)
+
+data gunbc_live_deploy_receipt_artifact_dir: String = live_deploy_apply_receipt_dir_for(instance_id: srv1_dashboard_live_id as String)

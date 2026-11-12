@@ -7,13 +7,20 @@ module test.claim.roadmap.worker_session_memory_ceiling_witness
 // pair is the discriminator: under the OLD conflated field the lab's compute ceiling and build-pool
 // appropriation would be 8 GiB-based and fail the equalities below (RED against the old field).
 
-import std.types { Bool }
-import std.measure { byte_size_count, kibibyte_count }
+import std.types { Bool, NonEmptyStr }
+import std.optional { Absent }
+import std.measure { byte_size_count, kibibyte_count, second }
 import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance, srv1_live_dashboard_instance,
   srv1_lab_dispatch_worker_memory_max, dispatch_worker_memory_ceiling, compute_build_memory_ceiling_default,
+  belt_obligation_memory_max_default, belt_reviewer_memory_max_default,
 }
 import gunbc.roadmap.roadmap_session_placement { session_placement_pool }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_belt_actuate { belt_obligation_unit_command }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_command }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.compute.host_capacity {
   ComputeBuildPool, host_capacity_pool_slots, host_capacity_pool_appropriation, compute_memory_ceiling,
   compute_memory_appropriation, host_capacity_session_seat_ceiling,
@@ -50,4 +57,94 @@ test fn the_worker_cap_governs_the_session_seat_and_session_pool() -> Bool {
   let pool = session_placement_pool(instance: lab)
   kibibyte_count(k: host_capacity_session_seat_ceiling(instance: lab)) == 8388608
     && kibibyte_count(k: host_capacity_pool_appropriation(instance: lab, pool: pool)) == 8388608 * host_capacity_pool_slots(pool: pool)
+}
+
+// THE BELT OBLIGATION UNIT'S MEMORY BUDGET IS NOT THE WORKER-SESSION CAP. The obligation unit runs
+// `gunbc run` entry points (compile, test, publish) in its own cgroup; it is NOT a worker session.
+// The srv1 lab's 8 GiB worker cap must NOT cap the obligation unit. This claim is a DATA check: the
+// obligation budget is its own declared field (belt_obligation_memory_max), equal to its default and
+// distinct from the worker cap. It does NOT execute the unit fold, so it cannot catch the fold reading
+// the wrong field -- that discrimination is the pair of claims below, which call belt_obligation_unit_command
+// and dispatch_review_unit_command and read the rendered MemoryMax. The old conflated field (the obligation
+// unit reading dispatch_worker_memory_max) would OOM the obligation unit at 8 GiB against a measured 9.4-9.7
+// GiB peak (2026-11-08/09); the DATA split is necessary but not sufficient -- see the execution claims below.
+test fn the_obligation_budget_is_not_the_worker_cap() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  byte_size_count(b: lab.belt_obligation_memory_max) == 23622320128
+    && byte_size_count(b: lab.belt_obligation_memory_max) == byte_size_count(b: belt_obligation_memory_max_default)
+    && byte_size_count(b: lab.belt_obligation_memory_max) != byte_size_count(b: lab.dispatch_worker_memory_max)
+    && byte_size_count(b: live.belt_obligation_memory_max) == byte_size_count(b: belt_obligation_memory_max_default)
+}
+
+// THE OBLIGATION UNIT RENDERS ITS OWN MEMORYMAX, NOT THE WORKER FIGURE (gunbc.design_argument::witness_one_interface:
+// a witness discriminates at ONE interface -- here, belt_obligation_unit_command -- on the srv1 lab instance). This
+// is the claim that goes RED if the obligation unit's MemoryMax is reverted to read instance.dispatch_worker_memory_max:
+// the fold would then emit MemoryMax=8589934592 (the 8 GiB worker cap), so the obligation-figure membership below
+// fails AND the worker-figure exclusion below fails -- both directions go red on the revert. The heavy inputs
+// (the instance, the unit name, the run bound) are supplied as VALUES; this witness executes the real fold, not a
+// re-derived copy, so the argv it reads IS the production argv.
+test fn the_obligation_unit_renders_its_own_memory_max_not_the_worker_cap() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match belt_obligation_unit_command(
+    instance: lab,
+    unit: "gunbc-belt-obligation-witness" as NonEmptyStr,
+    function: "belt_obligation_consume_function",
+    args: ["kind=witness"],
+    stop_hook: Absent,
+    run_bound: second(count: 3600),
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let words = argv_words(command: command)
+      let obligation_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.belt_obligation_memory_max))], "")
+      let worker_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.dispatch_worker_memory_max))], "")
+      any(words, w => w == obligation_word) && !any(words, w => w == worker_word)
+    }
+  }
+}
+
+// THE REVIEW-ROLE UNIT RENDERS ITS OWN BUDGET, NEITHER SIBLING (reviewer/auditor unit, adhoc-cfbbc1c8-885).
+// A reviewer runs the gunbc compiler, not a worker session: the lab's worker cap (8 GiB) sits BELOW the
+// kernel-measured peak (~9-10 GiB anon RSS, srv1 2026-11-12), so the worker figure was never honest for this
+// unit -- and slice admission reserves the reviewer's declared figure per unit. This pins the rendered unit's
+// MemoryMax to EXACTLY instance.belt_reviewer_memory_max, and neither the worker figure nor the obligation
+// figure: the enforced cap and the admitted reservation are the same number, so reserved room can never be
+// less than what the kernel may charge. Together with the obligation claim above, each unit reads its OWN
+// field; wiring any two units to one figure turns one of these claims red.
+test fn the_review_unit_renders_the_reviewer_memory_max() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match dispatch_review_unit_command(
+    instance: lab,
+    node_id: "node-1" as RoadmapNodeId,
+    attempt_key: "att-20261112",
+    worktree_path: "/opt/gunbc/dispatch-worktrees/node-1",
+    brief: "brief",
+    head_sha: "abc123",
+    criterion_key: "conformance-external-facts",
+    exit_hook: "+install -d -m 0755 -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let words = argv_words(command: command)
+      let reviewer_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.belt_reviewer_memory_max))], "")
+      let worker_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.dispatch_worker_memory_max))], "")
+      let obligation_word = join(["MemoryMax=", to_string(value: byte_size_count(b: lab.belt_obligation_memory_max))], "")
+      any(words, w => w == reviewer_word) && !any(words, w => w == worker_word) && !any(words, w => w == obligation_word)
+    }
+  }
+}
+
+// THE DECLARED REVIEW BUDGET IS THE HONEST 12 GiB, DISTINCT FROM BOTH SIBLINGS. It must sit above the
+// kernel-observed reviewer peak (~9-10 GiB, srv1 2026-11-12 journal) -- a declared figure below what the
+// workload charges would under-reserve the slice even while admission arithmetic said it fit -- and it is
+// the figure the cohort gate reserves per reviewer.
+test fn the_reviewer_budget_is_the_honest_declared_figure() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  byte_size_count(b: lab.belt_reviewer_memory_max) == 12884901888
+    && byte_size_count(b: live.belt_reviewer_memory_max) == 12884901888
+    && byte_size_count(b: lab.belt_reviewer_memory_max) == byte_size_count(b: belt_reviewer_memory_max_default)
+    && byte_size_count(b: lab.belt_reviewer_memory_max) != byte_size_count(b: lab.dispatch_worker_memory_max)
+    && byte_size_count(b: lab.belt_reviewer_memory_max) != byte_size_count(b: lab.belt_obligation_memory_max)
 }

@@ -1,0 +1,187 @@
+module test.claim.roadmap.roadmap_belt_review_room_admission_witness
+
+// A REVIEW ROUND ADMIITS ITS REVIEWERS ONLY INTO VERIFIED SLICE ROOM (adhoc-cfbbc1c8-885, sibling of #16385).
+// The srv1 lab 2026-11-12: two resumed review rounds launched 2 attempts x 17 criteria = 34 reviewer units
+// at once into gunbc-user-work.slice (MemoryMax 192G); every per-unit check read the kernel's charge, which
+// had not yet collected the minutes-behind ramp of the units launched seconds before, so all 34 single-fit
+// checks passed and the kernel journal records 37 "Memory cgroup out of memory" kills (oom_memcg = the slice)
+// of ~10 GB `gunbc` processes between 18:50Z and 19:15Z. Zero verdicts, both reviews environment-refused
+// again. The rule this witness pins: the round asks the ONE room model (gunbc.live_deploy.slice_bounds,
+// reused from the obligation admission of #16385 -- the same BeltSliceFitCheck, the same fold) ONCE for the
+// whole cohort, launches AT MOST the number of declared figures that fit the room, and what does not fit
+// WAITS -- pending, retried by a later belt sweep -- never launched into an OOM and never failed. A room
+// that cannot be read admits NOTHING (fail closed). A deferred criterion has no unit, no exit record and no
+// verdict -- its standing is AWAITING, not exited-without-a-verdict, so the #16401 environment-refused
+// route (every reviewer ENDED without a verdict) cannot fire on a deferral. The reviewer's declared figure
+// is its own honest budget (roadmap_dashboard_instance belt_reviewer_memory_max, 12 GiB against the ~9-10 GiB
+// kernel-observed peak), not the worker-session figure the unit previously carried.
+//
+// RED AGAINST MAIN: the cohort gate, the Fits arm's carried room, the launch/wait counting and the waiting
+// verdict vocabulary do not exist there -- 34 candidates each passed their own single-unit check and ALL
+// launched, so no bound, no deferral and no fail-closed read existed to witness.
+
+import std.types { Bool, String, List }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.live_deploy.slice_bounds {
+  BeltSliceFitCheck, BeltSliceFits, BeltSliceFull, BeltSliceUnreadable,
+  BeltCohortAdmission, BeltCohortRoom, BeltCohortFull, BeltCohortUnreadable, belt_user_work_cohort_admission,
+}
+import gunbc.roadmap.roadmap_belt_actuate {
+  ReviewLaunchRoom, ReviewLaunchAdmitted, ReviewLaunchWaiting,
+  belt_cohort_launch_count, belt_cohort_wait_reason, belt_review_admitted_call_ids,
+}
+import gunbc.roadmap.roadmap_review_criteria { review_criteria }
+import gunbc.roadmap.roadmap_review_function { ReviewCall }
+import gunbc.roadmap.roadmap_review_role {
+  CriterionReviewEvidence, criterion_standing, standing_ended_without_verdict, review_refusal_cause_class,
+  ReviewReceiptAbsent, CriterionAwaitingReviewer,
+}
+import gunbc.roadmap.roadmap_refused_retry { RefusalCauseInfrastructure, RefusalCauseCandidate }
+import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessExited }
+
+// THE REVIEWER'S HONEST DECLARED FIGURE, as the gate is asked: 12 GiB per reviewer (the declared default;
+// the kernel observed ~9-10 GiB per reviewer on srv1 -- a smaller reserved figure would under-reserve).
+data witness_reviewer_declared: ByteSize = byte_size(12884901888)
+
+fn witness_declared_bytes(multiplier: Nat) -> Nat {
+  byte_size_count(b: witness_reviewer_declared) * multiplier
+}
+
+// WITH ROOM FOR N REVIEWERS, AT MOST N LAUNCH AND THE REST ARE PENDING. The fit verdict says ONE unit fits
+// and leaves room for exactly TWO more declared figures; five criteria reach the launcher. The round launches
+// three and reports two WAITING -- partial admission, never a launch into an OOM, never a failure.
+test fn the_cohort_launches_only_what_the_room_holds_and_the_rest_wait() -> Bool {
+  let admission = belt_user_work_cohort_admission(
+    fit: BeltSliceFits { available: byte_size(witness_declared_bytes(2) + 1) },
+    declared: witness_reviewer_declared,
+    candidates: 5,
+  )
+  match admission {
+    BeltCohortRoom { launch: 3, waiting: 2 } =>
+      // The waiting report is a WAIT with the room's own words, not a failure and not silence.
+      standing_ended_without_verdict(s: criterion_standing(e: CriterionReviewEvidence { criterion_key: "witness-criterion", source: ReviewReceiptAbsent, process: WorkerProcessAbsent })) == false
+        && string_contains(s: belt_cohort_wait_reason(admission: admission), pattern: "wait")
+    _ => false
+  }
+}
+
+// ALL CANDIDATES FIT: every one launches, none waits. An admitted round launches its full plan.
+test fn a_cohort_the_room_holds_entirely_launches_whole() -> Bool {
+  match belt_user_work_cohort_admission(
+    fit: BeltSliceFits { available: byte_size(witness_declared_bytes(9)) },
+    declared: witness_reviewer_declared,
+    candidates: 5,
+  ) {
+    BeltCohortRoom { launch: 5, waiting: 0 } => belt_cohort_launch_count(admission: belt_user_work_cohort_admission(fit: BeltSliceFits { available: byte_size(witness_declared_bytes(9)) }, declared: witness_reviewer_declared, candidates: 5)) == 5
+    _ => false
+  }
+}
+
+// ROOM FOR EXACTLY ONE: the fit verdict leaves no room for a further declared figure, so a round of
+// seventeen launches one and seventeen-minus-one wait. (srv1 shape: every reviewer at ~10 GiB under the
+// kernel-observed peak; anything less than the declared figure is no room.)
+test fn room_for_exactly_one_launches_exactly_one() -> Bool {
+  match belt_user_work_cohort_admission(
+    fit: BeltSliceFits { available: byte_size(witness_declared_bytes(1) - 1) },
+    declared: witness_reviewer_declared,
+    candidates: 17,
+  ) {
+    BeltCohortRoom { launch: 1, waiting: 16 } => true
+    _ => false
+  }
+}
+
+// FULL ROOM LAUNCHES NOTHING. The fold says even one declared figure does not fit the room the standing
+// population leaves: no criterion launches, the whole cohort waits with the drain reason, and none is failed.
+test fn a_full_slice_admits_none_of_the_cohort() -> Bool {
+  let admission = belt_user_work_cohort_admission(
+    fit: BeltSliceFull { requested: witness_reviewer_declared, available: byte_size(witness_declared_bytes(1) - 1) },
+    declared: witness_reviewer_declared,
+    candidates: 17,
+  )
+  match admission {
+    BeltCohortFull { reason: _ } =>
+      belt_cohort_launch_count(admission: admission) == 0
+        && string_contains(s: belt_cohort_wait_reason(admission: admission), pattern: "drain")
+    _ => false
+  }
+}
+
+// UNOBSERVABLE ROOM LAUNCHES NONE -- FAIL CLOSED, NEVER LAUNCH BLIND. Every unreadable wire (an
+// un-censusable population, an unreadable charge or ceiling) collapses to the same verdict: zero launches,
+// a wait that the belt retries, no unit, no exit record, no verdict.
+test fn an_unobservable_room_launches_none() -> Bool {
+  let admission = belt_user_work_cohort_admission(
+    fit: BeltSliceUnreadable { reason: "the user-work slice reported a blank MemoryCurrent, so no fit can be established" },
+    declared: witness_reviewer_declared,
+    candidates: 34,
+  )
+  match admission {
+    BeltCohortUnreadable { reason: _ } =>
+      belt_cohort_launch_count(admission: admission) == 0
+        && string_contains(s: belt_cohort_wait_reason(admission: admission), pattern: "blank MemoryCurrent")
+    _ => false
+  }
+}
+
+// A ZERO DECLARED FIGURE ADMITS NOTHING: with no honest figure there is no admission arithmetic at all --
+// the cohort waits instead of launching on a vacuous fit.
+test fn a_zero_declared_figure_fails_closed() -> Bool {
+  match belt_user_work_cohort_admission(
+    fit: BeltSliceFits { available: byte_size(999999999) },
+    declared: byte_size(0),
+    candidates: 4,
+  ) {
+    BeltCohortUnreadable { reason: _ } => true
+    BeltCohortRoom { launch: l, waiting: _ } => l == 0
+    _ => false
+  }
+}
+
+// THE ADMITTED SET IS THE PLAN-ORDER PREFIX, and only it: room for three of five admits the FIRST THREE
+// criteria by plan order -- the launcher receives exactly those; the rest receive the waiting verdict.
+test fn the_admitted_prefix_is_plan_order_and_no_wider() -> Bool {
+  let candidates = map(review_criteria, c => ReviewCall { id: c.key, criterion: c, brief: "witness" })
+  let admitted = belt_review_admitted_call_ids(candidates: candidates, launch: 3)
+  count(admitted) == 3
+    && count(candidates) > 3
+    && admitted[0] == candidates[0].id
+    && admitted[1] == candidates[1].id
+    && admitted[2] == candidates[2].id
+    && !any(admitted, a => a == candidates[3].id)
+    && count(belt_review_admitted_call_ids(candidates: candidates, launch: 0)) == 0
+}
+
+// A DEFERRED CRITERION IS PENDING, NOT EXITED-WITHOUT-A-VERDICT. The deferral creates no unit and no exit
+// record, so the standing fold must read AWAITING -- and a round where some reviewers died without a verdict
+// while others merely wait is NOT the environment class (#16401): environment refusal needs EVERY reviewer
+// to have ended without a verdict, which a deferral never contributes.
+test fn a_deferred_reviewer_stands_pending_and_never_feeds_the_environment_route() -> Bool {
+  let deferred = criterion_standing(e: CriterionReviewEvidence { criterion_key: "witness-criterion", source: ReviewReceiptAbsent, process: WorkerProcessAbsent })
+  let exited = criterion_standing(e: CriterionReviewEvidence { criterion_key: "witness-criterion", source: ReviewReceiptAbsent, process: WorkerProcessExited { exit_code: 137, last_command: "gunbc run roadmap_review_verdict" } })
+  match deferred {
+    CriterionAwaitingReviewer { key: _ } =>
+      standing_ended_without_verdict(s: deferred) == false
+        && standing_ended_without_verdict(s: exited) == true
+        && match review_refusal_cause_class(standings: [exited, deferred]) {
+             RefusalCauseCandidate => true
+             _ => false
+           }
+        && match review_refusal_cause_class(standings: [exited, exited]) {
+             RefusalCauseInfrastructure => true
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// THE WAITING VERDICT IS CONSTRUCTED FROM THE ADMISSION AND CARRIES ITS REASON: the round hands every
+// unadmitted call the waiting verdict vocabulary (there is no unadmitted LAUNCH verb), and the admitted
+// calls alone carry the launch verdict.
+test fn the_waiting_verdict_vocabulary_has_no_unadmitted_launch_path() -> Bool {
+  let waiting = ReviewLaunchWaiting { reason: belt_cohort_wait_reason(admission: BeltCohortFull { reason: "the cohort waits for the standing services to drain" }) }
+  match waiting {
+    ReviewLaunchWaiting { reason } => string_contains(s: reason, pattern: "drain")
+    ReviewLaunchAdmitted => false
+  }
+}
