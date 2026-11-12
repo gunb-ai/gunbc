@@ -265,7 +265,7 @@ test fn an_acceptance_already_recorded_refuses_naming_its_identity() -> Bool {
   let events = precheck_events(node: "entry-graph-union-construction", digest: "0123456789abcdef")
   let identity = roadmap_acceptance_migration_identity(e: AcceptanceRecorded { receipt: receipt })
   let closed_set = roadmap_migration_acceptance_identities()
-  let widened = join([[identity], closed_set], "")
+  let widened = concat([identity], closed_set)
   let refused = refusals_of(roadmap_cutover_precheck_decide(
     retired: precheck_retired([]),
     history: RoadmapAcceptanceEventHistoryLoaded { events: events },
@@ -300,7 +300,7 @@ test fn an_acceptance_outside_the_closed_set_does_not_stop_the_attempt() -> Bool
     history: RoadmapAcceptanceEventHistoryLoaded {
       events: precheck_events(node: "a-node-the-migration-does-not-touch", digest: "fedcba9876543210") },
     retire_roster: roadmap_migration_retirement_ids(),
-    accept_roster: join([[other], closed_set], "")))
+    accept_roster: concat([other], closed_set)))
   outside
     && unrelated
     && (count(mirrored) == 1)
