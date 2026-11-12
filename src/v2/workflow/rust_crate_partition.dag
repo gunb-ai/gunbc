@@ -433,7 +433,17 @@ fn stage0_v1_infer_modules() -> List<String> {
     "v1_compiler_infer_types",
     "v1_compiler_ownership",
     "v1_compiler_emit_core_support",
-    "v1_compiler_type_head_exposure"
+    "v1_compiler_type_head_exposure",
+    // v1_compiler_rest_cause_text is the single declared-side authority for the RestBodyUndecodable
+    // refusal cause (read-refused / not-JSON / null-members / uninhabited). It is an emitter-produced
+    // support module (module v1.compiler.rest_cause_text, src/v1/05_rest_cause_text.dag): the emitter
+    // bakes its fixed phrases at codegen, and the interpreter will consume the same generated constants.
+    // It joins the v1-infer OWNED unit -- the same unit as its emitter-support sibling
+    // v1_compiler_emit_core_support -- because it is the only module-bearing package the host shell
+    // (v1-compiler, which hosts v1_compiler_emit_rust that references it) reaches directly. It imports
+    // no compiler module (only std String/concat), so it names no monolith-owned module and joins with
+    // no stage0_module_dag_edge, exactly as v1_compiler_type_head_exposure joins with none.
+    "v1_compiler_rest_cause_text"
   ])
 }
 
