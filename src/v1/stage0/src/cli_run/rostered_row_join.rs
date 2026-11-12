@@ -106,7 +106,7 @@ pub struct EnrolledRowType {
 /// Every rostered row type, joined against `RosteredRowType`'s variants in both directions on
 /// every required run — the same shape as `claim_executor`'s phase-roster join, for the same
 /// reason: nothing else holds these two enumerations together.
-pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 5] = [
+pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 6] = [
     EnrolledRowType {
         variant: "GuaranteeStallRows",
         type_name: super::derived_row_roster::GUARANTEE_STALL.row_type,
@@ -124,6 +124,12 @@ pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 5] = [
         type_name: "RungDrop",
         roster_module: super::derived_row_roster::RUNG_DROP.roster_module,
         roster_declaration: super::derived_row_roster::RUNG_DROP.roster_declaration,
+    },
+    EnrolledRowType {
+        variant: "IntegrationConcernRows",
+        type_name: super::derived_row_roster::INTEGRATION_CONCERN.row_type,
+        roster_module: super::derived_row_roster::INTEGRATION_CONCERN.roster_module,
+        roster_declaration: super::derived_row_roster::INTEGRATION_CONCERN.roster_declaration,
     },
     EnrolledRowType {
         variant: "CollisionRowControl",

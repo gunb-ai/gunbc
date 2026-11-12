@@ -66,6 +66,7 @@ data derived_row_roster_seed_growth_justification: SeedGrowthJustification = See
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "a_base_tree_with_no_row_files_has_no_roster_module_rather_than_an_empty_one", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "the_base_side_is_the_base_listing_not_the_head_directory", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "a_derived_roster_path_is_recognised_under_any_sweep_root", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join", decl_name: "ENROLLED_ROW_TYPES", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join", decl_name: "join_recurring_failure_mode_files_to_roster", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join", decl_name: "join_row_files_to_roster_members", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join", decl_name: "file_roster_join_tests", field: WholeDeclaration },
