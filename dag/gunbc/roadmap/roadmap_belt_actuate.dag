@@ -10098,6 +10098,16 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
 // that positive proof -- an unreadable manager, a boot that did not follow the hold, a still-present or never-named
 // unit -- is NOT death: HolderLivenessUnobservable, so the decision keeps the worker live and JOINED (fail-closed),
 // never falling through to fresh.
+//
+// THIS IS NOT A WEAKER GATE THAN belt_prior_worker_unit_ended_by_seat_ledger's AttemptUnitStartRecorded -- it is a
+// STRICTER, ORTHOGONAL ONE enforced by the reused authority itself, so dropping the placement-record gate here
+// cannot launch a duplicate beside a live vendor worker. session_worker_unit_lifecycle_for_instance only ever
+// reaches an ENDED arm through session_absent_unit_lifecycle -> unit_reboot_holder_liveness, which requires a
+// SessionHolderEvidenceRead; session_holder_evidence REFUSES (=> UnitLifecycleUnknown, NOT ended) unless (a) a
+// launcher in the corpus CLAIMS this unit -- otherwise "guessing one would manufacture a death reading taken from
+// the wrong manager" -- AND (b) the seat ledger holds an ACQUISITION for it -- "a missing instant is not an old
+// one" -- AND (c) the host boot began after that acquisition. A vendor-pane worker (no launcher claim, no seat
+// hold) therefore returns HolderLivenessUnobservable, never HolderObservedDead. (gunbc.roadmap.roadmap_session_placement)
 fn belt_prior_worker_run_host_liveness(
   instance: HostDashboardInstance,
   node_id: String,
@@ -10120,7 +10130,10 @@ fn belt_prior_worker_run_host_liveness(
 // (Google session + approve roster + CSRF), NEVER the agent door (whose grant is assign/dispatch). Until a human
 // has written the fact there is none to read, so this is OperatorNotConfirmed -- the fail-closed default: a not-
 // terminal worker stays joined unless the host PROVES it dead or a HUMAN has confirmed it gone. It NEVER fires on
-// its own; the four known reboot-dead nodes settle on the host proof above, not this arm.
+// its own; the four known reboot-dead nodes settle on the host proof above, not this arm. The human write/readback
+// route that would make this return OperatorConfirmedGone is the declared frontier tracked in gunb-ai/gunbc#16364,
+// triggered by serving on main being green again (#16156); until it lands no fact can be written, so this default
+// is the only reachable state.
 fn belt_operator_worker_gone() -> OperatorWorkerGone {
   OperatorNotConfirmed
 }

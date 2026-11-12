@@ -130,6 +130,12 @@ type WorktreeStanding
 // THE TYPED OPERATOR DISPOSITION on a prior worker that the host proof cannot settle. It is a HUMAN act, admitted
 // only through human_write_admission and recorded as a durable attempt fact; the decision only FOLDS it. It is a
 // sum, not a Bool, so "the operator has not spoken" is a distinct, typed state -- never collapsed into "confirmed".
+//
+// DECLARED FRONTIER (DESIGN consumption -- a declaration consumed by a named later change, with its trigger):
+// the human_write_admission WRITER and the durable-fact READBACK that could set OperatorConfirmedGone are tracked
+// in gunb-ai/gunbc#16364, TRIGGERED by serving on main being green again (#16156). Until #16364 lands, no human
+// fact can be written, so the belt readback stays OperatorNotConfirmed and this arm never fires -- the fail-closed
+// default is the only reachable state, and it is witnessed (unproven_live_worker_stays_joined_and_never_fresh).
 type OperatorWorkerGone
   = OperatorNotConfirmed
   | OperatorConfirmedGone { by: String, at: EpochSecs, note: String }
