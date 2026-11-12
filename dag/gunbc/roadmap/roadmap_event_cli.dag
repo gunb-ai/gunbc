@@ -684,3 +684,194 @@ fn roadmap_cutover_precheck_cli(report_path: String, roster_path: String) -> Pro
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE ORDERING GATE: no migration write without the precheck's admitted answer.
+//
+// WHY THIS IS A ROUTE AND NOT A LINE IN THE BOOK. Steps 0 and 4 sit in the same shell block, and the shell checked
+// the ordering with `[ -s "$D/cutover.retire.roster" ]`. A guard in prose is silent when it breaks: the two
+// statements stay adjacent, the file goes missing, and the append still reaches the carrier. The two witnesses that
+// used to prove that guard held were cut with the rest of the runbook's shell (the note at the top of
+// gunbc.witness.roadmap_cutover says why), so the guarantee moved HERE, where a claim can drive it and where an
+// operator cannot walk past it by editing a paragraph: the migration entries below refuse a write unless the
+// precheck's own report is readable, carries its admitted verdict, and — for a retirement — unless the roster on
+// disk is exactly the roster the model hands step 0 and names the node being retired.
+//
+// WHAT IT DOES NOT CLAIM. A report is a file, and a determined operator can type one. The gate makes an un-checked
+// migration write impossible by accident, which is what a one-time migration needs; it is not a defence against a
+// hand-written artifact, and it does not have to be — the log itself still refuses the duplicate (EventAlreadyPresent
+// at the chain, the operation identity at the record), so a forged report produces a refusal downstream rather than a
+// second copy of a fact.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+type RoadmapCutoverMigrationGate
+  = GateAdmitted { fact: String }
+  | GateRefused { detail: String }
+
+// The admitted verdict is one line the precheck renderer writes on the admitted side only; matching the line, rather
+// than any word inside the document, is what keeps a refusal document from ever satisfying the gate.
+fn roadmap_cutover_report_says_admitted(report_text: String?, fact: String) -> RoadmapCutoverMigrationGate {
+  match report_text {
+    Absent => GateRefused { detail: join([
+      "no pre-write precheck report is readable for ", fact,
+      " — this migration is one-time and refuses to write un-checked; run the precheck step and re-run this one"], "") }
+    Present { value: text } =>
+      if count(filter(
+        split(s: text, delimiter: "\n"),
+        l => string_contains(s: l, pattern: "ADMITTED — none of the migration's own facts is live yet"))) == 0 {
+        GateRefused { detail: join([
+          fact, " is refused: the precheck report in hand carries no ADMITTED verdict — the last thing the log said",
+          " about this migration was a refusal, or the file is not the report the precheck wrote"], "") }
+      } else {
+        GateAdmitted { fact: fact }
+      }
+  }
+}
+
+// Two lists agree when they are the same length and neither holds a line the other does not. The roster is unique by
+// construction (the precheck writes the model's own list, one id per line), so length plus containment is equality
+// here rather than a multiset argument.
+fn roadmap_cutover_string_lists_agree(left: List<String>, right: List<String>) -> Bool {
+  count(left) == count(right)
+    && count(filter(left, x => count(filter(right, y => y == x)) == 0)) == 0
+}
+
+fn roadmap_cutover_roster_lines_are_a_roster(lines: List<String>) -> Bool {
+  count(lines) > 0
+    && count(filter(lines, l => trim(s: l) == "" || string_contains(s: l, pattern: " "))) == 0
+}
+
+// A RETIREMENT is admitted only against the roster the model handed step 0. Roster absent, roster not the model's,
+// and node not named by the roster are three separate refusals with three different remedies, because the operator
+// standing in front of a refused step needs to know which file to go and look at.
+fn roadmap_cutover_migration_gate_decide_retirement(
+  node: String,
+  report_text: String?,
+  roster_lines: List<String>?,
+  model_roster: List<String>
+) -> RoadmapCutoverMigrationGate {
+  let fact = join(["the retirement of ", node], "")
+  match roadmap_cutover_report_says_admitted(report_text: report_text, fact: fact) {
+    GateRefused { detail } => GateRefused { detail: detail }
+    GateAdmitted { fact: _ } => match roster_lines {
+      Absent => GateRefused { detail: join([
+        fact, " is refused: the roster file step 0 emitted is not readable — the retirement step iterates that file,",
+        " and a retirement that iterates nothing else is a second home for a fact the model already owns"], "") }
+      Present { value: lines } =>
+        if !roadmap_cutover_roster_lines_are_a_roster(lines: lines) {
+          GateRefused { detail: join([
+            fact, " is refused: the roster in hand is not a roster — blank or multi-token lines are not node ids",
+            " (line-by-line, one id per line is what step 0 writes)"], "") }
+        } else if !roadmap_cutover_string_lists_agree(left: lines, right: model_roster) {
+          GateRefused { detail: join([
+            fact, " is refused: the roster in hand is not the roster the model holds — it lists ",
+            to_string(value: count(lines)), " node(s) against the model's ",
+            to_string(value: count(model_roster)),
+            "; a retirement step that iterates a list of its own is exactly the second home this cutover exists to remove"], "") }
+        } else if count(filter(lines, n => n == node)) == 0 {
+          GateRefused { detail: join([
+            fact, " is refused: the roster the precheck admitted does not name it — step 4 retires the roster and",
+            " nothing outside it"], "") }
+        } else {
+          GateAdmitted { fact: fact }
+        }
+    }
+  }
+}
+
+// AN ACCEPTANCE is admitted only against the closed set the acceptance law itself enforces. Same report requirement;
+// no roster file, because the precheck emits one roster (the retirement nodes) and the acceptances are pinned in the
+// model, not on disk.
+fn roadmap_cutover_migration_gate_decide_acceptance(
+  identity: String,
+  report_text: String?,
+  closed_set: List<String>
+) -> RoadmapCutoverMigrationGate {
+  let fact = join(["the acceptance ", identity], "")
+  match roadmap_cutover_report_says_admitted(report_text: report_text, fact: fact) {
+    GateRefused { detail } => GateRefused { detail: detail }
+    GateAdmitted { fact: _ } =>
+      if count(closed_set) == 0 {
+        GateRefused { detail: join([
+          fact, " is refused: the model hands back an EMPTY acceptance closed set, so nothing can be admitted",
+          " without pull-request evidence and a migration that records nothing is not a migration"], "") }
+      } else if count(filter(closed_set, i => i == identity)) == 0 {
+        GateRefused { detail: join([
+          fact, " is refused: it is not one of the ", to_string(value: count(closed_set)),
+          " identities pinned in gunbc.roadmap.roadmap_event_log roadmap_migration_acceptance_identities —",
+          " the closed set is the only door for a receipt without a pull request, and it is also the door for this migration"], "") }
+      } else {
+        GateAdmitted { fact: fact }
+      }
+  }
+}
+
+// THE MIGRATION'S RETIREMENT ENTRY. Identical to roadmap_event_record_cli with kind=retire, except that nothing
+// reaches the carrier until the gate above has admitted the node — so the book cannot retire by forgetting to check,
+// and no edit to the book's guards can put the check back in front of the write.
+fn roadmap_cutover_retire_cli(
+  repo_root: String,
+  node: String,
+  text: String,
+  author: String,
+  report_path: String,
+  roster_path: String
+) -> ProcessExit {
+  let report = Filesystem.Read(path: report_path)
+  let roster = Filesystem.Read(path: roster_path)
+  let gate = roadmap_cutover_migration_gate_decide_retirement(
+    node: node,
+    report_text: if report.success { Present { value: report.content } } else { Absent },
+    roster_lines: if roster.success {
+      Present { value: filter(split(s: roster.content, delimiter: "\n"), l => trim(s: l) != "") }
+    } else { Absent },
+    model_roster: roadmap_migration_retirement_ids())
+  match gate {
+    GateRefused { detail } => ExitFailure {
+      code: 1,
+      reason: join(["roadmap_cutover_retire_cli: ", detail,
+        "; the retirement was NOT handed to the carrier (report ", report_path, ", roster ", roster_path, ")"], "") }
+    GateAdmitted { fact: _ } => roadmap_event_record_cli(
+      repo_root: repo_root, node: node, kind: "retire", text: text, author: author)
+  }
+}
+
+// THE MIGRATION'S ACCEPTANCE ENTRY, same shape. A line this route cannot parse is handed to
+// roadmap_acceptance_record_cli untouched, so the operator reads the located refusal the record route already knows
+// how to give — the gate does not get to invent a worse message for a malformed line, and a malformed line never
+// reaches the carrier either way.
+fn roadmap_cutover_acceptance_record_cli(
+  repo_root: String,
+  receipt_line: String,
+  pr_url: String,
+  merged_at: String,
+  head_sha: String,
+  author: String,
+  report_path: String
+) -> ProcessExit {
+  let report = Filesystem.Read(path: report_path)
+  match roadmap_acceptance_line_of(text: receipt_line) {
+    Absent => roadmap_acceptance_record_cli(
+      repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
+      merged_at: merged_at, head_sha: head_sha, author: author)
+    Present { value: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
+      Absent => roadmap_acceptance_record_cli(
+        repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
+        merged_at: merged_at, head_sha: head_sha, author: author)
+      Present { value: _ } => {
+        let gate = roadmap_cutover_migration_gate_decide_acceptance(
+          identity: roadmap_acceptance_migration_identity(e: line),
+          report_text: if report.success { Present { value: report.content } } else { Absent },
+          closed_set: roadmap_migration_acceptance_identities())
+        match gate {
+          GateRefused { detail } => ExitFailure {
+            code: 1,
+            reason: join(["roadmap_cutover_acceptance_record_cli: ", detail,
+              "; the acceptance was NOT handed to the carrier (report ", report_path, ")"], "") }
+          GateAdmitted { fact: _ } => roadmap_acceptance_record_cli(
+            repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
+            merged_at: merged_at, head_sha: head_sha, author: author)
+        }
+      }
+    }
+  }
+}
