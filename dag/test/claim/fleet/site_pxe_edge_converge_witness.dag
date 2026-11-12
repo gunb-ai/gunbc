@@ -2051,3 +2051,22 @@ test fn a_live_source_with_an_unparseable_client_is_refused_before_any_producer_
       }
   }
 }
+
+// RED (side chat on #16400): an image path, kernel path or initrd path that leaves its root is refused before any producer dispatches. The host is
+// a real LocalCommandHost, and the reason is the pre-dispatch one, which no dispatched command can produce.
+test fn a_live_source_path_outside_its_root_is_refused_before_extraction_dispatches() -> Bool {
+  match census_build() {
+    Absent => false
+    Present { value: i } => {
+      let mac = MacParsed { address: x86_mac }
+      let image_at = p => SitePxeEdgeLiveImage { served_path: p as NonEmptyStr, digest: live_image().digest }
+      let admit = (img, k, r) => site_pxe_edge_live_source_admission(host: LocalCommandHost, source: SitePxeEdgeLiveSource { client: mac, architecture: Aarch64, image: img, kernel_path: k as NonEmptyStr, initrd_path: r as NonEmptyStr, build: i, built: live_built_of(build: i), seed: mtcollins1_census_live_commands })
+      let refused = a => match a { LiveExtractionRefused { mac: _, reason: why } => string_contains(s: why, pattern: "nothing was dispatched") _ => false }
+      refused(admit(image_at("../other.iso"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(image_at("/etc/shadow"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(image_at("iso//a.iso"), "casper/vmlinuz", "casper/initrd"))
+        && refused(admit(live_image(), "../vmlinuz", "casper/initrd"))
+        && refused(admit(live_image(), "casper/vmlinuz", "/initrd"))
+    }
+  }
+}

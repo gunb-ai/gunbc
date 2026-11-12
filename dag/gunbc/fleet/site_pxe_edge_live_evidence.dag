@@ -116,14 +116,14 @@ fn site_pxe_edge_live_served_reading(tftp_path: NonEmptyStr, absolute: NonEmptyS
   }
 }
 
-// A TFTP-relative path stays under the root: no leading slash, and no empty, "." or ".." segment.
-fn site_pxe_edge_live_tftp_path_contained(tftp_path: NonEmptyStr) -> Bool {
-  let segments: List<String> = split(s: tftp_path as String, delimiter: "/")
+// A ROOT-RELATIVE PATH (TFTP or HTTP root alike) stays under its root: no leading slash, and no empty, "." or ".." segment.
+fn site_pxe_edge_live_root_relative_contained(path: NonEmptyStr) -> Bool {
+  let segments: List<String> = split(s: path as String, delimiter: "/")
   length(filter(segments, t => t == "" || t == "." || t == "..")) == 0
 }
 
 fn site_pxe_edge_live_served_file_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> SitePxeEdgeLiveServedReading {
-  if !site_pxe_edge_live_tftp_path_contained(tftp_path: tftp_path) {
+  if !site_pxe_edge_live_root_relative_contained(path: tftp_path) {
     ServedBootFileUnread { reason: "the TFTP path escapes the root or has an empty segment; nothing was dispatched" }
   } else {
     let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
